@@ -112,7 +112,7 @@ if [[ ! -x "$CARGO_VERUS_BIN" ]]; then
     exit 127
 fi
 
-export RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-1.97.1-x86_64-unknown-linux-gnu}"
+export RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-1.98.1-x86_64-unknown-linux-gnu}"
 export PATH="$HOME/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 package_lines="$(
@@ -185,6 +185,11 @@ focus_fingerprint="$(
 )"
 
 mkdir -p "$FOCUS_STATE_DIR"
+# This script creates the target directory before Cargo does; Cargo refuses to
+# clean a target directory that lacks its cache tag.
+if [[ ! -f "$FOCUS_TARGET_DIR/CACHEDIR.TAG" ]]; then
+    printf 'Signature: 8a477f597d28d172789f06886806bc55\n' > "$FOCUS_TARGET_DIR/CACHEDIR.TAG"
+fi
 exec 8>"$FOCUS_STATE_LOCK"
 flock 8
 

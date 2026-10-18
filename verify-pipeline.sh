@@ -34,7 +34,7 @@ args=()
 if ((${#normalized_args[@]} > 0)); then
     args=("${normalized_args[@]}")
 fi
-export RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-1.97.1-x86_64-unknown-linux-gnu}"
+export RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-1.98.1-x86_64-unknown-linux-gnu}"
 export PATH="$HOME/.cargo/bin:$PATH"
 cd "$CURRENT_DIR"
 if "$cold"; then
@@ -54,9 +54,8 @@ mv ".verus-log/verify-count.$$" .verus-log/verify-count
 flock -u 9
 printf 'verification run #%s (pipeline; Cargo default; cold VeriFlat=%s; dependency caches retained)\n' "$run_count" "$cold" >&2
 command=(
-    env VERUS_PIPELINE_SMT=1
     "$CURRENT_DIR/verus/source/target-verus/release/cargo-verus"
-    verify --workspace --exclude VeriFlat -- --num-threads 32 --time
+    verify --pipelined-erasure --workspace --exclude VeriFlat -- --num-threads 32 --time
 )
 if ((${#args[@]} > 0)); then
     command+=("${args[@]}")

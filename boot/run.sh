@@ -8,7 +8,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 PROFILE=${PROFILE:-release}
-cargo +1.97.1 build --profile "$PROFILE" -p aloader -p kernel -p dom0
+cargo +1.98.1 build --profile "$PROFILE" -p aloader -p kernel -p dom0
 OUT=target/x86_64-unknown-none/$PROFILE
 
 JUMBO=$(mktemp --suffix=.veriflat-jumbo)

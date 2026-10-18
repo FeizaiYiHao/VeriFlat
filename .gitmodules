@@ -1,3 +1,4 @@
 [submodule "verus"]
 	path = verus
-	url = https://github.com/verus-lang/verus.git
+	url = https://github.com/FeizaiYiHao/verus.git
+	branch = veriflat-verus-perf-series
