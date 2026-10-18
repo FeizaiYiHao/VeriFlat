@@ -46,7 +46,7 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::AllocatorCache(PageSize::SZ2m, alloc_ptr_2m, cache_cpu), TypedHeldLock { lock_id: final(self).allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.lock_id_by_index(cache_cpu), mode: TypedLockMode::Write }),
     {
         proof {
-            assert(old(self).allc_2m_mp.perms_wf() && old(self).allc_2m_mp.spec_index(alloc_ptr_2m).wf()) by { allocator_perms_wf_at(old(self).allc_2m_mp, alloc_ptr_2m); };
+            assert(old(self).allc_2m_mp.perms_wf() && old(self).allc_2m_mp.spec_index(alloc_ptr_2m).wf()) by { allocator_perms_wf_map(old(self).allc_2m_mp); allocator_perms_wf_at(old(self).allc_2m_mp, alloc_ptr_2m); };
             assert(old(lctx).lock_id_acyclic(old(self).allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.lock_id_by_index(cache_cpu))) by {
                 reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned); reveal(UnLockedMap::typed_shard_lock_map_aligned);
                 reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned);
@@ -104,7 +104,7 @@ impl KernelK {
             unlock_ensures(old(lctx), final(lctx), KernelObjId::AllocatorCache(PageSize::SZ2m, alloc_ptr_2m, cache_cpu), old(self).allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(cache_cpu).lock_id()),
     {
         proof {
-            assert({ &&& old(self).allc_2m_mp.perms_wf() &&& old(self).allc_2m_mp.spec_index(alloc_ptr_2m).wf() }) by { allocator_perms_wf_at(old(self).allc_2m_mp, alloc_ptr_2m); };
+            assert({ &&& old(self).allc_2m_mp.perms_wf() &&& old(self).allc_2m_mp.spec_index(alloc_ptr_2m).wf() }) by { allocator_perms_wf_map(old(self).allc_2m_mp); allocator_perms_wf_at(old(self).allc_2m_mp, alloc_ptr_2m); };
             assert(old(lctx).lock_entry_contains(old(self).allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.lock_id_by_index(cache_cpu), KernelObjId::AllocatorCache(PageSize::SZ2m, alloc_ptr_2m, cache_cpu))) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); };
         }
         assert(self.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(cache_cpu).view().wlocked_by(&*lctx)) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); };

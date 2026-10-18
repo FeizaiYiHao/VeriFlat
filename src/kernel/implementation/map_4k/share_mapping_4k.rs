@@ -295,7 +295,7 @@ fn share_one_mapping_4k(
         final(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end == old(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end,
 {
     let source_indices = va2index(source_va);
-    proof { pagetable_perms_wf_at(krnl.pt_mp, source_pagetable); pagetable_perms_wf_at(krnl.pt_mp, target_pagetable); }
+    proof { pagetable_perms_wf_at(krnl.pt_mp, source_pagetable); pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, target_pagetable); }
     let target_indices = va2index(target_va);
     assert({
         &&& spec_index2va(source_indices) == source_va
@@ -326,7 +326,7 @@ fn share_one_mapping_4k(
         assert({
             &&& krnl.pg_arr.inv()
             &&& krnl.pg_arr.spec_index(page_index).view().inv()
-        }) by { page_array_wf_at(krnl.pg_arr, page_index); };
+        }) by { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, page_index); };
         assert({
             &&& !krnl.pg_arr.spec_index(page_index).view().view().mappings().contains((target_pagetable, target_va))
             &&& krnl.pg_arr.spec_index(page_index).view().view().ref_count < usize::MAX
@@ -704,6 +704,7 @@ pub fn share_mapping_4k_source_owner_precheck(
         let source_va = source_range.index(i);
         let source_indices = va2index(source_va);
         proof {
+            pagetable_perms_wf_map(krnl.pt_mp);
             pagetable_perms_wf_at(krnl.pt_mp, source_pagetable);
             assert({
                 &&& spec_index2va(source_indices) == source_va
@@ -720,7 +721,7 @@ pub fn share_mapping_4k_source_owner_precheck(
         let Tracked(page_lock_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));
         let page_owner;
         {
-            proof { assert(krnl.pg_arr.inv()) by { page_array_wf_at(krnl.pg_arr, page_index); }; }
+            proof { assert(krnl.pg_arr.inv()) by { page_array_wf_map(krnl.pg_arr); }; }
             let page = krnl.pg_arr.borrow_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_lock_perm));
             page_owner = page.owning_container;
         }

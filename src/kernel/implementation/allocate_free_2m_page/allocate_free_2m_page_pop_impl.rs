@@ -1,5 +1,5 @@
 #[cfg(verus_keep_ghost)]
-use super::allocate_free_2m_page_pop_eof::{pop_stage_2m_page_transition_framing, pop_stage_2m_page_eof};
+use super::allocate_free_2m_page_pop_eof::{pop_stage_2m_page_eof_transition_framing, pop_stage_2m_page_eof};
 #[cfg(verus_keep_ghost)]
 use super::allocate_free_2m_page_pop_postconditions::eof_pop_2m_postconditions;
 use super::*;
@@ -98,12 +98,14 @@ verus! {
     {
         assert(krnl.allc_2m_mp.perms_wf() && krnl.allc_2m_mp.spec_index(alloc_ptr_2m).wf() && krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.inv()
             && krnl.allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.inv() && krnl.thr_mp.perms_wf() && krnl.pg_arr.inv()
-        ) by { allocator_perms_wf_at(krnl.allc_2m_mp, alloc_ptr_2m); thread_perms_wf_at(krnl.thr_mp, thread_ptr); reveal(page_array_wf); };
+        ) by { allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, alloc_ptr_2m); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, thread_ptr); reveal(page_array_wf); };
         let (node_addr, page_ptr) = match source {
             Some(cpu_id) => krnl.allc_2m_mp.borrow_cache_typed(alloc_ptr_2m, cpu_id, Ghost(lctx.allocator_cache_2m_lock_map()), Tracked(&*lctx), Tracked(source_lock_perm)).linked_list.peek_head(),
             None => krnl.allc_2m_mp.borrow_global_pool_typed(alloc_ptr_2m, Ghost(lctx.allocator_global_pool_2m_lock_map()), Tracked(&*lctx), Tracked(source_lock_perm)).peek_head(),
         };
-        assert(page_ptr_valid(page_ptr)) by { reveal(allocator_free_page_ptrs_wf); };
+        assert(page_ptr_valid(page_ptr)) by {
+            if let Some(cpu_id) = source { allocator_free_page_ptrs_wf_cache_at(krnl.allc_2m_mp, alloc_ptr_2m, cpu_id, page_ptr); } else { allocator_free_page_ptrs_wf_global_at(krnl.allc_2m_mp, alloc_ptr_2m, page_ptr); }
+        };
         let page_index = page_ptr2page_index(page_ptr);
         let ghost free_state = match source { Some(cpu_id) => FreePageAllocatorState::PreCpuCache { cpu_id }, None => FreePageAllocatorState::GlobalList };
         proof {
@@ -133,7 +135,7 @@ verus! {
             }
         }
         assert(krnl.pg_arr.inv() && krnl.thr_mp.perms_wf() && krnl.thr_mp.spec_index(thread_ptr).is_init()) by {
-            assert(krnl.pg_arr.inv()) by { page_array_wf_at(krnl.pg_arr, page_index); };
+            assert(krnl.pg_arr.inv()) by { page_array_wf_map(krnl.pg_arr); };
             thread_perms_wf_at(krnl.thr_mp, thread_ptr);
         };
         let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(page_index);
@@ -160,7 +162,7 @@ verus! {
             }
         };
         proof {
-            assert(pop_stage_2m_page_transition_framing(*old(krnl), *krnl, alloc_ptr_2m, thread_ptr, container_ptr, page_ptr, node_addr, source)) by { reveal(pop_stage_2m_page_transition_framing); };
+            assert(pop_stage_2m_page_eof_transition_framing(*old(krnl), *krnl, alloc_ptr_2m, thread_ptr, container_ptr, page_ptr, node_addr, source)) by { reveal(pop_stage_2m_page_eof_transition_framing); };
             pop_stage_2m_page_eof(*old(krnl), *krnl, alloc_ptr_2m, thread_ptr, container_ptr, page_ptr, node_addr, source);
             eof_pop_2m_postconditions(*old(krnl), *krnl, *old(lctx), alloc_ptr_2m, thread_ptr, container_ptr, page_ptr, node_addr, source);
         }

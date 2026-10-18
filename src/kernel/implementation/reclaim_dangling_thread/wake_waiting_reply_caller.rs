@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::wake_waiting_reply_caller_spec::wake_waiting_reply_caller_transition;
+use super::wake_waiting_reply_caller_spec::wake_waiting_reply_caller_eof_transition_framing;
 #[cfg(verus_keep_ghost)]
 use super::wake_waiting_reply_caller_eof::wake_waiting_reply_caller_eof;
 
@@ -75,7 +75,7 @@ pub fn wake_waiting_reply_caller(
 {
     proof {
         container_perms_wf_at(krnl.ctn_mp, container_ptr); container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, container_ptr);
-        thread_perms_wf_at(krnl.thr_mp, thread_ptr); thread_perms_wf_at(krnl.thr_mp, caller_ptr);
+        thread_perms_wf_at(krnl.thr_mp, thread_ptr); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, caller_ptr);
     }
     let scheduler_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().scheduler;
     let Tracked(scheduler_lock_perm) = krnl.wlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx));
@@ -98,7 +98,7 @@ pub fn wake_waiting_reply_caller(
         lctx.enter_kernel_view_release();
         lctx.update_lock_id(KernelObjId::Thread(caller_ptr), old_caller_lock_id, krnl.thr_mp.lock_id_by_key(caller_ptr));
         scheduler_perms_wf_at(krnl.sched_mp, scheduler_ptr);
-        assert(wake_waiting_reply_caller_transition(pre, *krnl, thread_ptr, caller_ptr, scheduler_ptr, cpu_id)) by { reveal(wake_waiting_reply_caller_transition); };
+        assert(wake_waiting_reply_caller_eof_transition_framing(pre, *krnl, thread_ptr, caller_ptr, scheduler_ptr, cpu_id)) by { reveal(wake_waiting_reply_caller_eof_transition_framing); };
         wake_waiting_reply_caller_eof(pre, *krnl, thread_ptr, caller_ptr, scheduler_ptr, cpu_id);
     }
     krnl.wunlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));

@@ -2,7 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_ipc_queue::{ipc_dequeue_endpoint_waiter, ipc_schedule_endpoint_waiter};
 #[cfg(verus_keep_ghost)]
-use super::syscall_ipc_pci_spec::ipc_pci_rendezvous_transition;
+use super::syscall_ipc_pci_spec::ipc_pci_rendezvous_eof_transition_framing;
 #[cfg(verus_keep_ghost)]
 use super::syscall_ipc_pci_eof::ipc_pci_rendezvous_eof;
 use super::syscall_ipc_transition::ipc_schedule_waiting_peer_and_finish;
@@ -322,7 +322,7 @@ verus! {
             final(krnl).all_objects_unlocked(final(lctx)),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
     {
-        proof { thread_perms_wf_at(krnl.thr_mp, peer_thread_ptr); thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); }
+        proof { thread_perms_wf_at(krnl.thr_mp, peer_thread_ptr); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); }
         let current_container = krnl.thr_mp.borrow_typed(current_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&current_thread_lock_perm)).owning_container;
         let peer_thread_ref = krnl.thr_mp.borrow_typed(peer_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&peer_thread_lock_perm));
         let peer_container = peer_thread_ref.owning_container;
@@ -396,11 +396,11 @@ verus! {
             process_perms_wf_map(krnl.prc_mp);
             lctx.enter_kernel_view_release();
             lctx.update_lock_id(KernelObjId::Thread(peer_thread_ptr), old_peer_thread_lock_id, krnl.thr_mp.lock_id_by_key(peer_thread_ptr));
-            scheduler_perms_wf_at(old(krnl).sched_mp, peer_scheduler_ptr); scheduler_perms_wf_at(krnl.sched_mp, peer_scheduler_ptr);
-            assert(ipc_pci_rendezvous_transition(
+            scheduler_perms_wf_map(old(krnl).sched_mp); scheduler_perms_wf_at(old(krnl).sched_mp, peer_scheduler_ptr); scheduler_perms_wf_map(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, peer_scheduler_ptr);
+            assert(ipc_pci_rendezvous_eof_transition_framing(
                 *old(krnl), *krnl, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred,
                 result, lctx.thread_id(),
-            )) by { reveal(ipc_pci_rendezvous_transition); };
+            )) by { reveal(ipc_pci_rendezvous_eof_transition_framing); };
             ipc_pci_rendezvous_eof(
                 *old(krnl), *krnl, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred,
                 result, lctx.thread_id(), steps.snapshot_k(), cpu_id, process_ptr, endpoint_index, waiting_state,

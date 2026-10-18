@@ -73,12 +73,9 @@ pub open spec fn kill_reclaim_state(
 /// every function `target` owns moves to `owner` detached and with its IOTLB domain emptied, and `owner`'s reverse set
 /// absorbs `target`'s. Lock owners, lock ids, and every other object stay.
 #[verifier::opaque]
-pub open spec fn kill_reassign_transition(pre: KernelK, post: KernelK, target: RwLockProcessPtr, owner: RwLockProcessPtr) -> bool {
+pub open spec fn kill_reassign_eof_transition_framing(pre: KernelK, post: KernelK, target: RwLockProcessPtr, owner: RwLockProcessPtr) -> bool {
     let empty_tlb = SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() };
     &&& post == (KernelK { irt: post.irt, iommu_tlb: post.iommu_tlb, prc_mp: post.prc_mp, ..pre })
-    &&& pre.prc_mp.dom().contains(target)
-    &&& pre.prc_mp.dom().contains(owner)
-    &&& target != owner
     &&& post.irt.locking_thread() == pre.irt.locking_thread()
     &&& post.irt.view().table_base() == pre.irt.view().table_base()
     &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_owner(b, d, f)] #![trigger post.irt.view().spec_index_iommu_root(b, d, f)] pci_bdf_valid(b, d, f) ==> {
@@ -108,16 +105,12 @@ pub open spec fn kill_reassign_transition(pre: KernelK, post: KernelK, target: R
 /// container, which has room for it: the target drops its `size` quota, which the allocator regains. Lock owners, lock
 /// ids, and every other object stay.
 #[verifier::opaque]
-pub open spec fn kill_quota_transition(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, allocator_ptr: RwLockPageAllocatorPtr, size: PageSize) -> bool {
+pub open spec fn kill_quota_eof_transition_framing(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, allocator_ptr: RwLockPageAllocatorPtr, size: PageSize) -> bool {
     let process = pre.prc_mp.spec_index(process_ptr);
     let pre_allocators = match size { PageSize::SZ4k => pre.allc_4k_mp, PageSize::SZ2m => pre.allc_2m_mp, PageSize::SZ1g => pre.allc_1g_mp };
     let post_allocators = match size { PageSize::SZ4k => post.allc_4k_mp, PageSize::SZ2m => post.allc_2m_mp, PageSize::SZ1g => post.allc_1g_mp };
     let allocator = pre_allocators.spec_index(allocator_ptr);
     let returned = match size { PageSize::SZ4k => process.view().quota_4k, PageSize::SZ2m => process.view().quota_2m, PageSize::SZ1g => process.view().quota_1g };
-    let container = pre.ctn_mp.spec_index(process.view_rodata().view().owning_container).view_rodata().view();
-    &&& pre.prc_mp.dom().contains(process_ptr)
-    &&& allocator_ptr == match size { PageSize::SZ4k => container.allocator_ptr_4k, PageSize::SZ2m => container.allocator_ptr_2m, PageSize::SZ1g => container.allocator_ptr_1g }
-    &&& allocator.quota.view().value + returned <= usize::MAX
     &&& post == (KernelK { prc_mp: post.prc_mp, allc_4k_mp: post.allc_4k_mp, allc_2m_mp: post.allc_2m_mp, allc_1g_mp: post.allc_1g_mp, ..pre })
     &&& !(size is SZ4k) ==> post.allc_4k_mp == pre.allc_4k_mp
     &&& !(size is SZ2m) ==> post.allc_2m_mp == pre.allc_2m_mp
@@ -149,14 +142,9 @@ pub open spec fn kill_quota_transition(pre: KernelK, post: KernelK, process_ptr:
 /// Marking the reclaimed target `process_ptr`, whose tables map nothing and which owns no thread, as having emptied its
 /// tables while it and its tables are still write-held. Lock owners, lock ids, and every other object stay.
 #[verifier::opaque]
-pub open spec fn kill_tables_emptied_transition(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr) -> bool {
+pub open spec fn kill_tables_emptied_eof_transition_framing(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr) -> bool {
     let process = pre.prc_mp.spec_index(process_ptr);
     &&& post == (KernelK { prc_mp: post.prc_mp, ..pre })
-    &&& pre.prc_mp.dom().contains(process_ptr)
-    &&& !process.view().zombie
-    &&& process.view().owned_threads.view().len() == 0
-    &&& pre.pt_mp.spec_index(process.view().pagetable).view().mapping_4k().dom() =~= Set::<VAddr>::empty()
-    &&& process.view().iommu_table is Some ==> pre.it_mp.spec_index(process.view().iommu_table->Some_0).view().mapping_4k().dom() =~= Set::<VAddr>::empty()
     &&& post.prc_mp.dom() == pre.prc_mp.dom()
     &&& post.prc_mp.perms_wf()
     &&& post.prc_mp.unchanged_except(&pre.prc_mp, process_ptr)
@@ -172,19 +160,12 @@ pub open spec fn kill_tables_emptied_transition(pre: KernelK, post: KernelK, pro
 /// Making the reclaimed target `process_ptr` a zombie: it keeps every field but becomes a zombie, and the write-held PCID
 /// allocator `pcid_allocator_ptr` of its container releases its PCID. Lock owners, lock ids, and every other object stay.
 #[verifier::opaque]
-pub open spec fn kill_zombify_transition(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, pcid_allocator_ptr: RwLockPcidAllocatorPtr) -> bool {
+pub open spec fn kill_zombify_eof_transition_framing(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, pcid_allocator_ptr: RwLockPcidAllocatorPtr) -> bool {
     let process = pre.prc_mp.spec_index(process_ptr);
     let pcid = process.view().pcid;
     let pre_allocator = pre.pcid_allc_mp.spec_index(pcid_allocator_ptr);
     let post_allocator = post.pcid_allc_mp.spec_index(pcid_allocator_ptr);
     &&& post == (KernelK { prc_mp: post.prc_mp, pcid_allc_mp: post.pcid_allc_mp, ..pre })
-    &&& pre.prc_mp.dom().contains(process_ptr)
-    &&& process.view().state.view() is TablesEmptied
-    &&& process.view().owned_threads.view().len() == 0
-    &&& process.view().quota_4k == 0
-    &&& process.view().quota_2m == 0
-    &&& process.view().quota_1g == 0
-    &&& pcid_allocator_ptr == pre.ctn_mp.spec_index(process.view_rodata().view().owning_container).view_rodata().view().pcid_allocator
     &&& post.prc_mp.dom() == pre.prc_mp.dom()
     &&& post.prc_mp.perms_wf()
     &&& post.prc_mp.unchanged_except(&pre.prc_mp, process_ptr)
@@ -195,12 +176,8 @@ pub open spec fn kill_zombify_transition(pre: KernelK, post: KernelK, process_pt
     &&& post.prc_mp.spec_index(process_ptr).locking_thread() == process.locking_thread()
     &&& post.prc_mp.spec_index(process_ptr).being_killed() == process.being_killed()
     &&& post.prc_mp.spec_index(process_ptr).killer_info() == process.killer_info()
-    &&& pre.pcid_allc_mp.dom().contains(pcid_allocator_ptr)
     &&& post.pcid_allc_mp.dom() == pre.pcid_allc_mp.dom()
     &&& post.pcid_allc_mp.unchanged_except(&pre.pcid_allc_mp, pcid_allocator_ptr)
-    &&& pcid_valid(pcid)
-    &&& pcid != KERNEL_DEFAULT_PCID
-    &&& pre_allocator.view().id_to_proc.view().spec_index(pcid as int).contains(process_ptr)
     &&& post_allocator.view().release_ensures(&pre_allocator.view(), process_ptr, pcid)
     &&& post_allocator.locking_thread() == pre_allocator.locking_thread()
     &&& post_allocator.being_killed() == pre_allocator.being_killed()

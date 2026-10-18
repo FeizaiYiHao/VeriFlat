@@ -5,13 +5,7 @@ verus! {
 /// The thread `thread_ptr` drops its caller link to the dangling thread `dangling_ptr` of its killed caller, and the dangling thread
 /// becomes killed and drops its callee link.
 #[verifier::opaque]
-pub open spec fn take_over_dangling_caller_transition(pre: KernelK, post: KernelK, thread_ptr: RwLockThreadPtr, dangling_ptr: RwLockThreadPtr) -> bool {
-    &&& thread_ptr != dangling_ptr
-    &&& pre.thr_mp.dom().contains(thread_ptr)
-    &&& pre.thr_mp.dom().contains(dangling_ptr)
-    &&& pre.thr_mp.spec_index(thread_ptr).view().caller == Some(dangling_ptr)
-    &&& pre.thr_mp.spec_index(dangling_ptr).view().state is DANGLING
-    &&& pre.thr_mp.spec_index(dangling_ptr).locking_thread() is Write
+pub open spec fn take_over_dangling_caller_eof_transition_framing(pre: KernelK, post: KernelK, thread_ptr: RwLockThreadPtr, dangling_ptr: RwLockThreadPtr) -> bool {
     &&& post == (KernelK { thr_mp: post.thr_mp, ..pre })
     &&& post.thr_mp.dom() == pre.thr_mp.dom()
     &&& forall|key: RwLockThreadPtr| #![trigger pre.thr_mp.spec_index(key)] #![trigger post.thr_mp.spec_index(key)]

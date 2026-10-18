@@ -4,23 +4,10 @@ use crate::*;
 verus! {
 /// Dequeues the endpoint waiter and schedules it on `wake_cpu`; no other object changes.
 #[verifier::opaque]
-pub open spec fn ipc_schedule_waiting_peer_transition(
+pub open spec fn ipc_schedule_waiting_peer_eof_transition_framing(
     pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
     peer_scheduler_ptr: RwLockSchedulerPtr, wake_cpu: CpuId, peer_result: RetValueType, thread_id: LockThreadId,
 ) -> bool {
-    &&& pre.inv()
-    &&& current_thread_ptr != peer_thread_ptr
-    &&& index_valid(NUM_CPUS, wake_cpu)
-    &&& pre.thr_mp.dom().contains(current_thread_ptr)
-    &&& pre.thr_mp.dom().contains(peer_thread_ptr)
-    &&& pre.ep_mp.dom().contains(endpoint_ptr)
-    &&& pre.sched_mp.dom().contains(peer_scheduler_ptr)
-    &&& pre.ctn_mp.dom().contains(pre.thr_mp.spec_index(peer_thread_ptr).view().owning_container)
-    &&& pre.ctn_mp.spec_index(pre.thr_mp.spec_index(peer_thread_ptr).view().owning_container).view_rodata().view().scheduler == peer_scheduler_ptr
-    &&& pre.thr_mp.spec_index(peer_thread_ptr).view().state.is_endpoint_waiting()
-    &&& pre.thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr)
-    &&& pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().len() > 0
-    &&& pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().spec_index(0) == peer_thread_ptr
     &&& post.pt_mp == pre.pt_mp
     &&& post.it_mp == pre.it_mp
     &&& post.irt == pre.irt
@@ -117,7 +104,6 @@ pub open spec fn ipc_schedule_waiting_peer_transition(
         &&& shard_after.view().queue.length as int == shard_before.view().queue.length as int + 1
         &&& shard_after.view().queue.map() == shard_before.view().queue.map().insert(pre.thr_mp.spec_index(peer_thread_ptr).view().scheduler_linkedlist_node.addr(), peer_thread_ptr)
         &&& shard_after.view().queue.dom() == shard_before.view().queue.dom().insert(pre.thr_mp.spec_index(peer_thread_ptr).view().scheduler_linkedlist_node.addr())
-        &&& !shard_before.view().queue.dom().contains(pre.thr_mp.spec_index(peer_thread_ptr).view().scheduler_linkedlist_node.addr())
     }
 }
 } // verus!

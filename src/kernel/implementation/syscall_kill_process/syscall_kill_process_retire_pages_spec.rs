@@ -7,7 +7,7 @@ verus! {
 /// allocator `allocator_ptr` of its owner, the container of the write-held killer `thread_ptr`, whose direct pending
 /// 4K refund grows by one.
 #[verifier::opaque]
-pub open spec fn kill_retire_table_page_transition(
+pub open spec fn kill_retire_table_page_eof_transition_framing(
     pre: KernelK, post: KernelK, iommu: bool, table: RwLockPageTableRoot, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
     node_addr: usize,
 ) -> bool {
@@ -16,29 +16,18 @@ pub open spec fn kill_retire_table_page_transition(
     let new_page = post.pg_arr.spec_index(page_index).view();
     let old_thread = pre.thr_mp.spec_index(thread_ptr);
     let new_thread = post.thr_mp.spec_index(thread_ptr);
-    let owner = old_thread.view().owning_container;
     let old_allocator = pre.allc_4k_mp.spec_index(allocator_ptr);
     let new_allocator = post.allc_4k_mp.spec_index(allocator_ptr);
     let free_state = PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } };
-    &&& page_ptr_valid(page_ptr)
-    &&& index_valid(NUM_CPUS, cpu_id)
-    &&& old_page.view().state == (PageState::Allocated4k { state: Allocated4KPageState::PageTable { pagetable_root: table, table_type: if iommu { IOMMU_TYPE } else { PT_TYPE } } })
-    &&& old_page.view().owning_container == owner
-    &&& pre.thr_mp.dom().contains(thread_ptr)
-    &&& pre.ctn_mp.dom().contains(owner)
-    &&& pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr
-    &&& pre.allc_4k_mp.dom().contains(allocator_ptr)
     &&& post == (KernelK { pt_mp: post.pt_mp, it_mp: post.it_mp, pg_arr: post.pg_arr, thr_mp: post.thr_mp, allc_4k_mp: post.allc_4k_mp, ..pre })
     &&& if iommu {
         let old_table = pre.it_mp.spec_index(table);
         let new_table = post.it_mp.spec_index(table);
         &&& post.pt_mp == pre.pt_mp
-        &&& pre.it_mp.dom().contains(table)
         &&& post.it_mp.dom() == pre.it_mp.dom()
         &&& post.it_mp.unchanged_except(&pre.it_mp, table)
         &&& new_table.locking_thread() == old_table.locking_thread()
         &&& new_table.being_killed() == old_table.being_killed()
-        &&& old_table.view().page_closure().contains(page_ptr)
         &&& new_table.view().page_closure() == old_table.view().page_closure().remove(page_ptr)
         &&& new_table.view().mapping_4k() == old_table.view().mapping_4k()
         &&& new_table.view().mapping_2m() == old_table.view().mapping_2m()
@@ -52,12 +41,10 @@ pub open spec fn kill_retire_table_page_transition(
         let old_table = pre.pt_mp.spec_index(table);
         let new_table = post.pt_mp.spec_index(table);
         &&& post.it_mp == pre.it_mp
-        &&& pre.pt_mp.dom().contains(table)
         &&& post.pt_mp.dom() == pre.pt_mp.dom()
         &&& post.pt_mp.unchanged_except(&pre.pt_mp, table)
         &&& new_table.locking_thread() == old_table.locking_thread()
         &&& new_table.being_killed() == old_table.being_killed()
-        &&& old_table.view().page_closure().contains(page_ptr)
         &&& new_table.view().page_closure() == old_table.view().page_closure().remove(page_ptr)
         &&& new_table.view().mapping_4k() == old_table.view().mapping_4k()
         &&& new_table.view().mapping_2m() == old_table.view().mapping_2m()
@@ -80,7 +67,6 @@ pub open spec fn kill_retire_table_page_transition(
     &&& new_page.view_ghost() == old_page.view_ghost()
     &&& new_page.locking_thread() == old_page.locking_thread()
     &&& new_page.being_killed() == old_page.being_killed()
-    &&& old_page.view().free_list_node_storage.addr() == node_addr
     &&& new_page.view().free_list_node_storage.addr() == node_addr
     &&& new_page.view() == (Page { state: free_state, free_list_node_storage: new_page.view().free_list_node_storage, perm_4k: new_page.view().perm_4k, ..old_page.view() })
     &&& post.thr_mp.dom() == pre.thr_mp.dom()
@@ -95,7 +81,6 @@ pub open spec fn kill_retire_table_page_transition(
     &&& new_thread.is_init() == old_thread.is_init()
     &&& new_thread.view_rodata() == old_thread.view_rodata()
     &&& new_thread.view_ghost() == old_thread.view_ghost()
-    &&& old_thread.locking_thread() is Write
     &&& new_thread.locking_thread() == old_thread.locking_thread()
     &&& new_thread.being_killed() == old_thread.being_killed()
     &&& new_thread.killer_info() == old_thread.killer_info()
@@ -117,7 +102,6 @@ pub open spec fn kill_retire_table_page_transition(
     &&& new_allocator.total_free_pages.view() == old_allocator.total_free_pages.view() + 1
     &&& new_allocator.cpu_caches.spec_index(cpu_id).view().view().view() == old_allocator.cpu_caches.spec_index(cpu_id).view().view().view().insert(0, page_ptr)
     &&& new_allocator.cpu_caches.spec_index(cpu_id).view().view().map() == old_allocator.cpu_caches.spec_index(cpu_id).view().view().map().insert(node_addr, page_ptr)
-    &&& !old_allocator.cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(node_addr)
     &&& new_allocator.cpu_caches.entries_unchanged_except(&old_allocator.cpu_caches, cpu_id)
     &&& new_allocator.cpu_caches.spec_index(cpu_id).view().locking_thread() == old_allocator.cpu_caches.spec_index(cpu_id).view().locking_thread()
 }

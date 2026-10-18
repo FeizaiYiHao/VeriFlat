@@ -1,17 +1,17 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::take_over_dangling_caller_spec::take_over_dangling_caller_transition;
+use super::take_over_dangling_caller_spec::take_over_dangling_caller_eof_transition_framing;
 
 verus! {
 proof fn take_over_dangling_caller_eof_memory_management_inv(pre: KernelK, post: KernelK, thread_ptr: RwLockThreadPtr, dangling_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
-        take_over_dangling_caller_transition(pre, post, thread_ptr, dangling_ptr),
+        take_over_dangling_caller_eof_transition_framing(pre, post, thread_ptr, dangling_ptr),
         post.subsystems_inv(),
     ensures post.memory_management_inv(),
 {
-    reveal(take_over_dangling_caller_transition);
+    reveal(take_over_dangling_caller_eof_transition_framing);
     assert(post.memory_management_inv()) by {
         assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
         assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
@@ -38,11 +38,17 @@ proof fn take_over_dangling_caller_eof_memory_management_inv(pre: KernelK, post:
 proof fn take_over_dangling_caller_eof_process_management_inv(pre: KernelK, post: KernelK, thread_ptr: RwLockThreadPtr, dangling_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
-        take_over_dangling_caller_transition(pre, post, thread_ptr, dangling_ptr),
+        thread_ptr != dangling_ptr,
+        pre.thr_mp.dom().contains(thread_ptr),
+        pre.thr_mp.dom().contains(dangling_ptr),
+        pre.thr_mp.spec_index(thread_ptr).view().caller == Some(dangling_ptr),
+        pre.thr_mp.spec_index(dangling_ptr).view().state is DANGLING,
+        pre.thr_mp.spec_index(dangling_ptr).locking_thread() is Write,
+        take_over_dangling_caller_eof_transition_framing(pre, post, thread_ptr, dangling_ptr),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
-    reveal(take_over_dangling_caller_transition);
+    reveal(take_over_dangling_caller_eof_transition_framing);
     assert(post.process_management_inv()) by {
         assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_descriptor_eq(pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
         assert(thread_caller_callee_wf(post.thr_mp)) by { reveal(thread_caller_callee_wf); };
@@ -60,11 +66,17 @@ proof fn take_over_dangling_caller_eof_process_management_inv(pre: KernelK, post
 pub(super) proof fn take_over_dangling_caller_eof(pre: KernelK, post: KernelK, thread_ptr: RwLockThreadPtr, dangling_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
-        take_over_dangling_caller_transition(pre, post, thread_ptr, dangling_ptr),
+        thread_ptr != dangling_ptr,
+        pre.thr_mp.dom().contains(thread_ptr),
+        pre.thr_mp.dom().contains(dangling_ptr),
+        pre.thr_mp.spec_index(thread_ptr).view().caller == Some(dangling_ptr),
+        pre.thr_mp.spec_index(dangling_ptr).view().state is DANGLING,
+        pre.thr_mp.spec_index(dangling_ptr).locking_thread() is Write,
+        take_over_dangling_caller_eof_transition_framing(pre, post, thread_ptr, dangling_ptr),
         post.thr_mp.perms_wf(),
     ensures post.inv(),
 {
-    reveal(take_over_dangling_caller_transition);
+    reveal(take_over_dangling_caller_eof_transition_framing);
     assert(post.subsystems_inv()) by {
         assert(thread_perms_wf(post.thr_mp)) by {
             reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);

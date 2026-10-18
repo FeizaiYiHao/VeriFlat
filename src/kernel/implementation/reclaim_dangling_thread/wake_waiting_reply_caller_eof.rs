@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::wake_waiting_reply_caller_spec::wake_waiting_reply_caller_transition;
+use super::wake_waiting_reply_caller_spec::wake_waiting_reply_caller_eof_transition_framing;
 
 verus! {
 proof fn wake_waiting_reply_caller_eof_memory_management_inv(
@@ -9,11 +9,11 @@ proof fn wake_waiting_reply_caller_eof_memory_management_inv(
 )
     requires
         pre.inv(),
-        wake_waiting_reply_caller_transition(pre, post, thread_ptr, caller_ptr, scheduler_ptr, cpu_id),
+        wake_waiting_reply_caller_eof_transition_framing(pre, post, thread_ptr, caller_ptr, scheduler_ptr, cpu_id),
         post.subsystems_inv(),
     ensures post.memory_management_inv(),
 {
-    reveal(wake_waiting_reply_caller_transition);
+    reveal(wake_waiting_reply_caller_eof_transition_framing);
     assert(post.memory_management_inv()) by {
         assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { reveal(scheduler_pages_wf); };
         assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
@@ -43,11 +43,20 @@ proof fn wake_waiting_reply_caller_eof_process_management_inv(
 )
     requires
         pre.inv(),
-        wake_waiting_reply_caller_transition(pre, post, thread_ptr, caller_ptr, scheduler_ptr, cpu_id),
+        thread_ptr != caller_ptr,
+        index_valid(NUM_CPUS, cpu_id),
+        pre.thr_mp.dom().contains(thread_ptr),
+        pre.thr_mp.dom().contains(caller_ptr),
+        pre.sched_mp.dom().contains(scheduler_ptr),
+        pre.ctn_mp.spec_index(pre.thr_mp.spec_index(caller_ptr).view().owning_container).view_rodata().view().scheduler == scheduler_ptr,
+        pre.thr_mp.spec_index(thread_ptr).view().caller == Some(caller_ptr),
+        pre.thr_mp.spec_index(caller_ptr).view().state is WAITING_REPLY,
+        !pre.sched_mp.spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().view().queue.dom().contains(pre.thr_mp.spec_index(caller_ptr).view().scheduler_linkedlist_node.addr()),
+        wake_waiting_reply_caller_eof_transition_framing(pre, post, thread_ptr, caller_ptr, scheduler_ptr, cpu_id),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
-    reveal(wake_waiting_reply_caller_transition);
+    reveal(wake_waiting_reply_caller_eof_transition_framing);
     assert(post.process_management_inv()) by {
         assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_descriptor_eq(pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
         assert(thread_caller_callee_wf(post.thr_mp)) by { reveal(thread_caller_callee_wf); };
@@ -73,12 +82,21 @@ pub(super) proof fn wake_waiting_reply_caller_eof(
 )
     requires
         pre.inv(),
-        wake_waiting_reply_caller_transition(pre, post, thread_ptr, caller_ptr, scheduler_ptr, cpu_id),
+        thread_ptr != caller_ptr,
+        index_valid(NUM_CPUS, cpu_id),
+        pre.thr_mp.dom().contains(thread_ptr),
+        pre.thr_mp.dom().contains(caller_ptr),
+        pre.sched_mp.dom().contains(scheduler_ptr),
+        pre.ctn_mp.spec_index(pre.thr_mp.spec_index(caller_ptr).view().owning_container).view_rodata().view().scheduler == scheduler_ptr,
+        pre.thr_mp.spec_index(thread_ptr).view().caller == Some(caller_ptr),
+        pre.thr_mp.spec_index(caller_ptr).view().state is WAITING_REPLY,
+        !pre.sched_mp.spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().view().queue.dom().contains(pre.thr_mp.spec_index(caller_ptr).view().scheduler_linkedlist_node.addr()),
+        wake_waiting_reply_caller_eof_transition_framing(pre, post, thread_ptr, caller_ptr, scheduler_ptr, cpu_id),
         post.thr_mp.perms_wf(),
         scheduler_perms_wf(post.sched_mp),
     ensures post.inv(),
 {
-    reveal(wake_waiting_reply_caller_transition);
+    reveal(wake_waiting_reply_caller_eof_transition_framing);
     assert(post.subsystems_inv()) by {
         assert(thread_perms_wf(post.thr_mp)) by {
             reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);

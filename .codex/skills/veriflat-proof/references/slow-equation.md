@@ -18,7 +18,7 @@
   work.
 - Full EOF is defined by its proof boundary, not by the location of an inline
   tail. Define exactly one open spec, optionally `#[verifier::opaque]` for
-  solver scheduling: `<operation>_transition_framing`. This S is the complete
+  solver scheduling: `<operation>_eof_transition_framing`. This S is the complete
   operation-state summary: it records every changed object family, every exact
   pre-to-post mutation, and every preservation or argument-identity fact needed
   by the whole post-state proof. A summary covering only one subsystem or one

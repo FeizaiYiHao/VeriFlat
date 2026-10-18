@@ -6,7 +6,7 @@ verus! {
 /// whole `size` quota, which the write-held `size` allocator `allocator_ptr` of their container regains. Lock owners,
 /// lock ids, and every other object stay.
 #[verifier::opaque]
-pub open spec fn thread_exit_quota_transition(
+pub open spec fn thread_exit_quota_eof_transition_framing(
     pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, allocator_ptr: RwLockPageAllocatorPtr, size: PageSize,
 ) -> bool {
     let process = pre.prc_mp.spec_index(process_ptr);
@@ -47,7 +47,6 @@ pub open spec fn thread_exit_quota_transition(
     &&& post.prc_mp.spec_index(process_ptr).view_ghost() == process.view_ghost()
     &&& post.prc_mp.spec_index(process_ptr).locking_thread() == process.locking_thread()
     &&& post.prc_mp.spec_index(process_ptr).being_killed() == process.being_killed()
-    &&& !process.being_killed()
     &&& post.thr_mp.perms_wf()
     &&& post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr)
     &&& post.thr_mp.spec_index(thread_ptr).is_init()

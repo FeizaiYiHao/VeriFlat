@@ -150,7 +150,7 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         process_cpu_wf_at(old(krnl).prc_mp, old(krnl).cpu_arr, cpu_id); process_pagetable_match_process_at(old(krnl).prc_mp, old(krnl).pt_mp, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap());
     };
     let Tracked(pagetable_perm) = krnl.wlock_pagetable(pagetable, Tracked(&mut *lctx));
-    assert(krnl.pt_mp.perms_wf()) by { pagetable_perms_wf_at(krnl.pt_mp, pagetable); };
+    assert(krnl.pt_mp.perms_wf()) by { pagetable_perms_wf_map(krnl.pt_mp); };
     let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_perm));
     let indices = va2index(va);
     proof { assert(va_range == (VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) })) by { va_range.va_range_lemma(); }; }

@@ -64,6 +64,7 @@ pub fn remove_iommu_4k_mapping_without_free(
     let page_index = page_ptr2page_index(page_ptr);
     let iova = index2va(indices);
     proof {
+        iommu_table_perms_wf_map(krnl.it_mp);
         iommu_table_perms_wf_at(krnl.it_mp, iommu_table);
         assert(krnl.it_mp.spec_index(iommu_table).view().kernel_l4_end == 0) by { reveal(PageTable::kernel_entries_wf); };
     }
@@ -78,7 +79,7 @@ pub fn remove_iommu_4k_mapping_without_free(
     }
     assert(index_valid(NUM_PAGES, page_index) && krnl.pg_arr.inv() && krnl.pg_arr.spec_index(page_index).view().inv() && krnl.pg_arr.spec_index(page_index).view().view().state is Mapped4k
         && krnl.pg_arr.spec_index(page_index).view().view().iommu_mappings().contains((iommu_table, iova))) by {
-        page_ptr_valid_imply_page_index_valid(); page_array_wf_at(krnl.pg_arr, page_index); reveal(page_iommu_table_wf); page_ptr_roundtrip();
+        page_ptr_valid_imply_page_index_valid(); page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, page_index); reveal(page_iommu_table_wf); page_ptr_roundtrip();
     };
     let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(page_index);
     page_array_remove_4k_iommu_mapping_without_free(&mut krnl.pg_arr, page_index, iommu_table, iova, Tracked(&*lctx), page_perm);

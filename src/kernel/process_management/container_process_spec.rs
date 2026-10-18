@@ -64,4 +64,14 @@ pub open spec fn per_container_process_tree_wf(container_perms: ContainerLockedM
             ==> container_perms.spec_index(c_ptr).view_ghost().owned_processes.view().is_empty()
             || process_tree_wf(container_perms.spec_index(c_ptr).view().root_process, container_perms.spec_index(c_ptr).view_ghost().owned_processes.view(), process_perms)
 }
+
+/// Container `c_ptr`'s process tree is empty or well formed.
+pub proof fn per_container_process_tree_wf_at(container_perms: ContainerLockedMap, process_perms: ProcessLockedMap, c_ptr: RwLockContainerPtr)
+    requires
+        per_container_process_tree_wf(container_perms, process_perms),
+        container_perms.dom().contains(c_ptr),
+    ensures
+        container_perms.spec_index(c_ptr).view_ghost().owned_processes.view().is_empty()
+            || process_tree_wf(container_perms.spec_index(c_ptr).view().root_process, container_perms.spec_index(c_ptr).view_ghost().owned_processes.view(), process_perms),
+{ reveal(per_container_process_tree_wf); }
 } // verus!

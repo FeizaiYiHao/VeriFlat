@@ -100,7 +100,7 @@ pub(super) enum MissingPageTableLevel { L4, L3, L2 }
             final(krnl).thr_mp.spec_index(quota_thread_ptr).view().temp_alloc_cache_1g.view() == old(krnl).thr_mp.spec_index(quota_thread_ptr).view().temp_alloc_cache_1g.view(),
             final(krnl).thr_mp.spec_index(quota_thread_ptr).view().quota_2m == old(krnl).thr_mp.spec_index(quota_thread_ptr).view().quota_2m,
             final(krnl).thr_mp.spec_index(quota_thread_ptr).view().quota_1g == old(krnl).thr_mp.spec_index(quota_thread_ptr).view().quota_1g,
-            final(krnl).thr_mp.spec_index(quota_thread_ptr).view().free_quota_pending_fields_equal(&old(krnl).thr_mp.spec_index(quota_thread_ptr).view()),
+            final(krnl).thr_mp.spec_index(quota_thread_ptr).view().free_quota_pending_fields_unchanged(&old(krnl).thr_mp.spec_index(quota_thread_ptr).view()),
             final(krnl).thr_mp.spec_index(quota_thread_ptr).view().state == old(krnl).thr_mp.spec_index(quota_thread_ptr).view().state,
             final(krnl).thr_mp.spec_index(quota_thread_ptr).view().blocking_endpoint_ptr == old(krnl).thr_mp.spec_index(quota_thread_ptr).view().blocking_endpoint_ptr,
             final(krnl).thr_mp.spec_index(quota_thread_ptr).view().owning_container == old(krnl).thr_mp.spec_index(quota_thread_ptr).view().owning_container,
@@ -145,11 +145,12 @@ pub(super) enum MissingPageTableLevel { L4, L3, L2 }
     {
         let page_index = page_ptr2page_index(page_ptr);
         assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable_ptr).inv() && krnl.thr_mp.perms_wf() && krnl.thr_mp.spec_index(quota_thread_ptr).inv()) by {
-            pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); thread_perms_wf_at(krnl.thr_mp, quota_thread_ptr);
+            pagetable_perms_wf_map(krnl.pt_mp);
+            pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, quota_thread_ptr);
         };
         assert(index_valid(NUM_PAGES, page_index) && krnl.pg_arr.inv() && krnl.pg_arr.spec_index(page_index).view().is_init() && krnl.pg_arr.spec_index(page_index).view().inv()
             && krnl.pg_arr.spec_index(page_index).view().view().inv() && krnl.pg_arr.spec_index(page_index).view().view().addr == page_ptr) by {
-            page_ptr_valid_imply_page_index_valid(); page_array_wf_at(krnl.pg_arr, page_index);
+            page_ptr_valid_imply_page_index_valid(); page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, page_index);
         };
         assert(!krnl.pt_mp.spec_index(pagetable_ptr).view().page_closure().contains(page_ptr)) by {
             if krnl.pt_mp.spec_index(pagetable_ptr).view().page_closure().contains(page_ptr) { pagetable_pages_wf_closure_entry_at(krnl.pt_mp, krnl.pg_arr, pagetable_ptr, page_ptr); }

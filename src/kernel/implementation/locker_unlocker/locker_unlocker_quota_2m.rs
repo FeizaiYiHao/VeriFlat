@@ -36,6 +36,7 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::AllocatorQuota(PageSize::SZ2m, alloc_ptr_2m), TypedHeldLock { lock_id: final(self).allc_2m_mp.spec_index(alloc_ptr_2m).quota.lock_id(), mode: TypedLockMode::Write }),
     {
         proof {
+            allocator_perms_wf_map(old(self).allc_2m_mp);
             allocator_perms_wf_at(old(self).allc_2m_mp, alloc_ptr_2m);
             assert(old(lctx).lock_id_acyclic(old(self).allc_2m_mp.spec_index(alloc_ptr_2m).quota.lock_id())) by {
                 reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned); reveal(UnLockedMap::typed_shard_lock_map_aligned);
@@ -92,7 +93,7 @@ impl KernelK {
             typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::AllocatorQuota(PageSize::SZ2m, alloc_ptr_2m)),
     {
         proof {
-            assert(old(self).allc_2m_mp.perms_wf() && old(self).allc_2m_mp.spec_index(alloc_ptr_2m).inv()) by { allocator_perms_wf_at(old(self).allc_2m_mp, alloc_ptr_2m); };
+            assert(old(self).allc_2m_mp.perms_wf() && old(self).allc_2m_mp.spec_index(alloc_ptr_2m).inv()) by { allocator_perms_wf_map(old(self).allc_2m_mp); allocator_perms_wf_at(old(self).allc_2m_mp, alloc_ptr_2m); };
             assert(old(lctx).lock_entry_contains(old(self).allc_2m_mp.spec_index(alloc_ptr_2m).quota.lock_id(), KernelObjId::AllocatorQuota(PageSize::SZ2m, alloc_ptr_2m))) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); };
         }
         assert(self.allc_2m_mp.spec_index(alloc_ptr_2m).quota.wlocked_by(&*lctx)) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); };

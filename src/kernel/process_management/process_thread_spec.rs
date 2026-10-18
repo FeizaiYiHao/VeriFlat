@@ -37,6 +37,27 @@ verus! {
             }
     }
 
+    /// Thread `t_ptr` owned by process `p_ptr` is a live thread of `p_ptr` that mirrors the process's container, depths, and page table.
+    pub proof fn process_thread_wf_process_at(process_map: ProcessLockedMap, thread_map: ThreadLockedMap, p_ptr: RwLockProcessPtr, t_ptr: RwLockThreadPtr)
+        requires
+            process_thread_wf(process_map, thread_map),
+            process_map.dom().contains(p_ptr),
+        ensures
+            process_map.spec_index(p_ptr).view().owned_threads.view().contains(t_ptr) ==> {
+                let thread = thread_map.spec_index(t_ptr).view();
+                let process = process_map.spec_index(p_ptr);
+                &&& thread_map.dom().contains(t_ptr)
+                &&& thread.owning_proc == p_ptr
+                &&& thread.owning_container == process.view_rodata().view().owning_container
+                &&& thread.container_depth == process.view_rodata().view().container_depth
+                &&& thread.process_depth == process.view_rodata().view().depth
+                &&& thread.proc_pagetable_ptr == process.view().pagetable
+                &&& process.view().owned_threads.map().dom().contains(thread.proc_linkedlist_node.addr())
+                &&& process.view().owned_threads.map().spec_index(thread.proc_linkedlist_node.addr()) == t_ptr
+                &&& !thread.proc_linkedlist_node.is_init()
+            },
+    { reveal(process_thread_wf); }
+
     pub proof fn process_thread_wf_at(process_map: ProcessLockedMap, thread_map: ThreadLockedMap, thread_ptr: RwLockThreadPtr)
         requires
             process_thread_wf(process_map, thread_map),

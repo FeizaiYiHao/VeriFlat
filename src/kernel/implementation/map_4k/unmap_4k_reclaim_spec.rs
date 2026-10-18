@@ -5,7 +5,7 @@ verus! {
 /// Removes a page's final 4K mapping, returns the page to the allocator CPU
 /// cache, and increments the owning thread's pending free-quota counter.
 #[verifier::opaque]
-pub open spec fn reclaim_last_4k_mapping_to_cpu_cache_transition(
+pub open spec fn reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr, owner: RwLockContainerPtr,
     depth: usize, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, old_counter: usize, new_counter: usize, node_addr: usize,
 ) -> bool {
@@ -16,25 +16,6 @@ pub open spec fn reclaim_last_4k_mapping_to_cpu_cache_transition(
     let new_thread = post.thr_mp.spec_index(thread_ptr);
     let old_allocator = pre.allc_4k_mp.spec_index(allocator_ptr);
     let new_allocator = post.allc_4k_mp.spec_index(allocator_ptr);
-    &&& pre.pt_mp.dom().contains(pagetable)
-    &&& va_4k_valid(va)
-    &&& pre.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va)
-    &&& !pre.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(va).present
-    &&& pre.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(va).addr == page_ptr
-    &&& page_ptr_valid(page_ptr)
-    &&& old_page.view().ref_count == 1
-    &&& old_page.view().state is Mapped4k
-    &&& !old_page.view().is_io_page
-    &&& old_page.view().owning_container == owner
-    &&& index_valid(NUM_CPUS, cpu_id)
-    &&& pre.allc_4k_mp.dom().contains(allocator_ptr)
-    &&& pre.thr_mp.dom().contains(thread_ptr)
-    &&& pre.ctn_mp.dom().contains(owner)
-    &&& pre.ctn_mp.spec_index(owner).view_rodata().view().depth == depth
-    &&& pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr
-    &&& depth <= old_thread.view().container_depth
-    &&& (if depth == old_thread.view().container_depth { owner == old_thread.view().owning_container } else { old_thread.view().upper_container_seq.view().spec_index(depth as int) == owner })
-    &&& old_counter == old_thread.view().free_quota_pending_4k_at_depth(depth)
     &&& post == (KernelK { pt_mp: post.pt_mp, pg_arr: post.pg_arr, thr_mp: post.thr_mp, allc_4k_mp: post.allc_4k_mp, ..pre })
     &&& post.pt_mp.dom() == pre.pt_mp.dom()
     &&& post.pt_mp.unchanged_except(&pre.pt_mp, pagetable)
@@ -68,7 +49,6 @@ pub open spec fn reclaim_last_4k_mapping_to_cpu_cache_transition(
     &&& new_page.locking_thread() == old_page.locking_thread()
     &&& new_page.being_killed() == old_page.being_killed()
     &&& new_page.view().free_list_node_storage.addr() == node_addr
-    &&& old_page.view().free_list_node_storage.addr() == node_addr
     &&& new_page.view() == (Page {
         state: PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } },
         mappings: Ghost(old_page.view().mappings().remove((pagetable, va))), ref_count: 0, free_list_node_storage: new_page.view().free_list_node_storage, ..old_page.view()
@@ -88,7 +68,6 @@ pub open spec fn reclaim_last_4k_mapping_to_cpu_cache_transition(
     &&& new_thread.is_init() == old_thread.is_init()
     &&& new_thread.view_rodata() == old_thread.view_rodata()
     &&& new_thread.view_ghost() == old_thread.view_ghost()
-    &&& old_thread.locking_thread() is Write
     &&& new_thread.locking_thread() == old_thread.locking_thread()
     &&& new_thread.being_killed() == old_thread.being_killed()
     &&& new_thread.killer_info() == old_thread.killer_info()
@@ -117,7 +96,6 @@ pub open spec fn reclaim_last_4k_mapping_to_cpu_cache_transition(
     &&& new_allocator.total_free_pages.view() == old_allocator.total_free_pages.view() + 1
     &&& new_allocator.cpu_caches.spec_index(cpu_id).view().view().view() == old_allocator.cpu_caches.spec_index(cpu_id).view().view().view().insert(0, page_ptr)
     &&& new_allocator.cpu_caches.spec_index(cpu_id).view().view().map() == old_allocator.cpu_caches.spec_index(cpu_id).view().view().map().insert(node_addr, page_ptr)
-    &&& !old_allocator.cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(node_addr)
     &&& new_allocator.cpu_caches.entries_unchanged_except(&old_allocator.cpu_caches, cpu_id)
     &&& new_allocator.cpu_caches.spec_index(cpu_id).view().locking_thread() == old_allocator.cpu_caches.spec_index(cpu_id).view().locking_thread()
     &&& new_allocator.global_pool == old_allocator.global_pool

@@ -19,21 +19,12 @@ pub open spec fn rebalance_pull_syscall_result(pre: KernelU, cpu_id: CpuId) -> R
 /// Moves the head of shard `victim` of `scheduler_ptr` to the tail of the empty shard `cpu_id` and retargets
 /// that thread's scheduled state; every other object is unchanged.
 #[verifier::opaque]
-pub open spec fn rebalance_pull_transition(pre: KernelK, post: KernelK, cpu_id: CpuId, scheduler_ptr: RwLockSchedulerPtr, victim: CpuId, thread_ptr: RwLockThreadPtr) -> bool {
+pub open spec fn rebalance_pull_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, scheduler_ptr: RwLockSchedulerPtr, victim: CpuId, thread_ptr: RwLockThreadPtr) -> bool {
     let before = pre.thr_mp.spec_index(thread_ptr);
     let after = post.thr_mp.spec_index(thread_ptr);
     let scheduler_before = pre.sched_mp.spec_index(scheduler_ptr);
     let scheduler_after = post.sched_mp.spec_index(scheduler_ptr);
     let node = before.view().scheduler_linkedlist_node.addr();
-    &&& index_valid(NUM_CPUS, cpu_id)
-    &&& index_valid(NUM_CPUS, victim)
-    &&& victim != cpu_id
-    &&& pre.sched_mp.dom().contains(scheduler_ptr)
-    &&& pre.thr_mp.dom().contains(thread_ptr)
-    &&& scheduler_before.shard(victim).queue.view().len() > 0
-    &&& scheduler_before.shard(victim).queue.view()[0] == thread_ptr
-    &&& scheduler_before.shard(cpu_id).queue.view().len() == 0
-    &&& before.view().state == (ThreadState::SCHEDULED { cpu_id: victim })
     &&& post == (KernelK { thr_mp: post.thr_mp, sched_mp: post.sched_mp, ..pre })
     &&& post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr)
     &&& after.is_init() == before.is_init()

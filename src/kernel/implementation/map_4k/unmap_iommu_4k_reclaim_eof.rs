@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::unmap_iommu_4k_reclaim_spec::reclaim_last_iommu_4k_mapping_to_cpu_cache_transition;
+use super::unmap_iommu_4k_reclaim_spec::reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing;
 
 verus! {
 proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_process_management_inv(
@@ -10,11 +10,11 @@ proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_process_management_inv(
 )
     requires
         pre.inv(),
-        reclaim_last_iommu_4k_mapping_to_cpu_cache_transition(pre, post, iommu_table, indices, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr),
+        reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing(pre, post, iommu_table, indices, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
-    reveal(reclaim_last_iommu_4k_mapping_to_cpu_cache_transition);
+    reveal(reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing);
     assert(post.process_management_inv()) by {
         assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.ep_mp); };
         assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.ep_mp); };
@@ -34,7 +34,31 @@ proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_page_relations(
 )
     requires
         pre.inv(),
-        reclaim_last_iommu_4k_mapping_to_cpu_cache_transition(pre, post, iommu_table, indices, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr),
+        reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing(pre, post, iommu_table, indices, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr),
+        ({
+            let iova = spec_index2va(indices);
+            let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view();
+            &&& pre.it_mp.dom().contains(iommu_table)
+            &&& pei_valid(indices.0)
+            &&& pei_valid(indices.1)
+            &&& pei_valid(indices.2)
+            &&& pei_valid(indices.3)
+            &&& pre.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(iova)
+            &&& !pre.it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(iova).present
+            &&& pre.it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(iova).addr == page_ptr
+            &&& pre.it_mp.spec_index(iommu_table).locking_thread() is Write
+            &&& page_ptr_valid(page_ptr)
+            &&& old_page.ref_count == 1
+            &&& old_page.state is Mapped4k
+            &&& !old_page.is_io_page
+            &&& old_page.owning_container == owner
+            &&& old_page.free_list_node_storage.addr() == node_addr
+            &&& index_valid(NUM_CPUS, cpu_id)
+            &&& pre.allc_4k_mp.dom().contains(allocator_ptr)
+            &&& !pre.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(node_addr)
+            &&& pre.ctn_mp.dom().contains(owner)
+            &&& pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr
+        }),
         post.subsystems_inv(),
     ensures
         allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
@@ -65,7 +89,7 @@ proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_page_relations(
         container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
         container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr),
 {
-    reveal(reclaim_last_iommu_4k_mapping_to_cpu_cache_transition);
+    reveal(reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing);
     let page_index = page_ptr2page_index(page_ptr);
     assert(index_valid(NUM_PAGES, page_index)) by { page_ptr_valid_imply_page_index_valid(); };
     assert(pre.pg_arr.spec_index(page_index).view().view().iommu_mappings().contains((iommu_table, spec_index2va(indices))) && pre.pg_arr.spec_index(page_index).view().view().mappings().len() == 0) by {
@@ -121,11 +145,23 @@ proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_allocator_quota_wf(
 )
     requires
         pre.inv(),
-        reclaim_last_iommu_4k_mapping_to_cpu_cache_transition(pre, post, iommu_table, indices, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr),
+        reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing(pre, post, iommu_table, indices, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr),
+        ({
+            let old_thread = pre.thr_mp.spec_index(thread_ptr);
+            &&& pre.allc_4k_mp.dom().contains(allocator_ptr)
+            &&& pre.thr_mp.dom().contains(thread_ptr)
+            &&& old_thread.locking_thread() is Write
+            &&& pre.ctn_mp.dom().contains(owner)
+            &&& pre.ctn_mp.spec_index(owner).view_rodata().view().depth == depth
+            &&& pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr
+            &&& depth <= old_thread.view().container_depth
+            &&& (if depth == old_thread.view().container_depth { owner == old_thread.view().owning_container } else { old_thread.view().upper_container_seq.view().spec_index(depth as int) == owner })
+            &&& old_counter == old_thread.view().free_quota_pending_4k_at_depth(depth)
+        }),
         post.subsystems_inv(),
     ensures container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
 {
-    reveal(reclaim_last_iommu_4k_mapping_to_cpu_cache_transition);
+    reveal(reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing);
     assert(container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
         assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp)) by {
             reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf); reveal(container_thread_wf); reveal(container_uppertree_seq_wf); reveal(thread_perms_wf);
@@ -151,7 +187,38 @@ proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_memory_management_inv(
 )
     requires
         pre.inv(),
-        reclaim_last_iommu_4k_mapping_to_cpu_cache_transition(pre, post, iommu_table, indices, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr),
+        reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing(pre, post, iommu_table, indices, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr),
+        ({
+            let iova = spec_index2va(indices);
+            let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view();
+            let old_thread = pre.thr_mp.spec_index(thread_ptr);
+            &&& pre.it_mp.dom().contains(iommu_table)
+            &&& pei_valid(indices.0)
+            &&& pei_valid(indices.1)
+            &&& pei_valid(indices.2)
+            &&& pei_valid(indices.3)
+            &&& pre.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(iova)
+            &&& !pre.it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(iova).present
+            &&& pre.it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(iova).addr == page_ptr
+            &&& pre.it_mp.spec_index(iommu_table).locking_thread() is Write
+            &&& page_ptr_valid(page_ptr)
+            &&& old_page.ref_count == 1
+            &&& old_page.state is Mapped4k
+            &&& !old_page.is_io_page
+            &&& old_page.owning_container == owner
+            &&& old_page.free_list_node_storage.addr() == node_addr
+            &&& index_valid(NUM_CPUS, cpu_id)
+            &&& pre.allc_4k_mp.dom().contains(allocator_ptr)
+            &&& !pre.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(node_addr)
+            &&& pre.thr_mp.dom().contains(thread_ptr)
+            &&& old_thread.locking_thread() is Write
+            &&& pre.ctn_mp.dom().contains(owner)
+            &&& pre.ctn_mp.spec_index(owner).view_rodata().view().depth == depth
+            &&& pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr
+            &&& depth <= old_thread.view().container_depth
+            &&& (if depth == old_thread.view().container_depth { owner == old_thread.view().owning_container } else { old_thread.view().upper_container_seq.view().spec_index(depth as int) == owner })
+            &&& old_counter == old_thread.view().free_quota_pending_4k_at_depth(depth)
+        }),
         post.subsystems_inv(),
     ensures post.memory_management_inv(),
 {
@@ -165,8 +232,38 @@ pub(super) proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof(
 )
     requires
         pre.inv(),
-        page_ptr_valid(page_ptr),
-        reclaim_last_iommu_4k_mapping_to_cpu_cache_transition(pre, post, iommu_table, indices, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr),
+        reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing(pre, post, iommu_table, indices, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr),
+        ({
+            let iova = spec_index2va(indices);
+            let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view();
+            let old_thread = pre.thr_mp.spec_index(thread_ptr);
+            &&& pre.it_mp.dom().contains(iommu_table)
+            &&& pei_valid(indices.0)
+            &&& pei_valid(indices.1)
+            &&& pei_valid(indices.2)
+            &&& pei_valid(indices.3)
+            &&& pre.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(iova)
+            &&& !pre.it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(iova).present
+            &&& pre.it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(iova).addr == page_ptr
+            &&& pre.it_mp.spec_index(iommu_table).locking_thread() is Write
+            &&& page_ptr_valid(page_ptr)
+            &&& old_page.ref_count == 1
+            &&& old_page.state is Mapped4k
+            &&& !old_page.is_io_page
+            &&& old_page.owning_container == owner
+            &&& old_page.free_list_node_storage.addr() == node_addr
+            &&& index_valid(NUM_CPUS, cpu_id)
+            &&& pre.allc_4k_mp.dom().contains(allocator_ptr)
+            &&& !pre.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(node_addr)
+            &&& pre.thr_mp.dom().contains(thread_ptr)
+            &&& old_thread.locking_thread() is Write
+            &&& pre.ctn_mp.dom().contains(owner)
+            &&& pre.ctn_mp.spec_index(owner).view_rodata().view().depth == depth
+            &&& pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr
+            &&& depth <= old_thread.view().container_depth
+            &&& (if depth == old_thread.view().container_depth { owner == old_thread.view().owning_container } else { old_thread.view().upper_container_seq.view().spec_index(depth as int) == owner })
+            &&& old_counter == old_thread.view().free_quota_pending_4k_at_depth(depth)
+        }),
         iommu_table_perms_wf(post.it_mp),
         post.pg_arr.inv(),
         post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().inv(),
@@ -216,7 +313,7 @@ pub(super) proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof(
         kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
 {
-    reveal(reclaim_last_iommu_4k_mapping_to_cpu_cache_transition);
+    reveal(reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing);
     assert(post.subsystems_inv()) by {
         reveal(pagetable_perms_wf); reveal(page_array_wf); reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
         reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(allocator_perms_wf); reveal(KernelK::default_pagetable_wf);

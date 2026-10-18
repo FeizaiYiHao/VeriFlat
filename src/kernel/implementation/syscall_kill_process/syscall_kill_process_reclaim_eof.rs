@@ -7,11 +7,11 @@ verus! {
 proof fn kill_reassign_eof_memory(pre: KernelK, post: KernelK, target: RwLockProcessPtr, owner: RwLockProcessPtr)
     requires
         pre.inv(),
-        kill_reassign_transition(pre, post, target, owner),
+        kill_reassign_eof_transition_framing(pre, post, target, owner),
         post.subsystems_inv(),
     ensures post.memory_management_inv(),
 {
-    reveal(kill_reassign_transition);
+    reveal(kill_reassign_eof_transition_framing);
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); };
     assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { lemma_process_pages_wf_preserved_for_process_domain_eq_forall(); };
@@ -27,11 +27,11 @@ proof fn kill_reassign_eof_memory(pre: KernelK, post: KernelK, target: RwLockPro
 proof fn kill_reassign_eof_process(pre: KernelK, post: KernelK, target: RwLockProcessPtr, owner: RwLockProcessPtr)
     requires
         pre.inv(),
-        kill_reassign_transition(pre, post, target, owner),
+        kill_reassign_eof_transition_framing(pre, post, target, owner),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
-    reveal(kill_reassign_transition);
+    reveal(kill_reassign_eof_transition_framing);
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { lemma_container_process_wf_preserved_for_process_rodata_forall(); };
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { per_container_process_tree_wf_preserved_for_tree_fields_eq(post.ctn_mp, pre.prc_mp, post.prc_mp); };
     assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { reveal(process_pcid_allocator_wf); };
@@ -46,13 +46,16 @@ proof fn kill_reassign_eof_process(pre: KernelK, post: KernelK, target: RwLockPr
 pub(super) proof fn kill_reassign_eof(pre: KernelK, post: KernelK, target: RwLockProcessPtr, owner: RwLockProcessPtr)
     requires
         pre.inv(),
-        kill_reassign_transition(pre, post, target, owner),
+        kill_reassign_eof_transition_framing(pre, post, target, owner),
+        pre.prc_mp.dom().contains(target),
+        pre.prc_mp.dom().contains(owner),
+        target != owner,
         post.irt.inv(),
         post.iommu_tlb.inv(),
         post.prc_mp.perms_wf(),
     ensures post.inv(),
 {
-    reveal(kill_reassign_transition);
+    reveal(kill_reassign_eof_transition_framing);
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(process_perms_wf); };
     kill_reassign_eof_memory(pre, post, target, owner);
     kill_reassign_eof_process(pre, post, target, owner);
@@ -66,13 +69,20 @@ pub(super) proof fn kill_reassign_eof(pre: KernelK, post: KernelK, target: RwLoc
 proof fn kill_quota_eof_memory(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, allocator_ptr: RwLockPageAllocatorPtr, size: PageSize)
     requires
         pre.inv(),
-        kill_quota_transition(pre, post, process_ptr, allocator_ptr, size),
+        kill_quota_eof_transition_framing(pre, post, process_ptr, allocator_ptr, size),
+        pre.prc_mp.dom().contains(process_ptr),
+        size is SZ4k ==> allocator_ptr == pre.ctn_mp.spec_index(pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container).view_rodata().view().allocator_ptr_4k,
+        size is SZ2m ==> allocator_ptr == pre.ctn_mp.spec_index(pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container).view_rodata().view().allocator_ptr_2m,
+        size is SZ1g ==> allocator_ptr == pre.ctn_mp.spec_index(pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container).view_rodata().view().allocator_ptr_1g,
+        size is SZ4k ==> pre.allc_4k_mp.spec_index(allocator_ptr).quota.view().value + pre.prc_mp.spec_index(process_ptr).view().quota_4k <= usize::MAX,
+        size is SZ2m ==> pre.allc_2m_mp.spec_index(allocator_ptr).quota.view().value + pre.prc_mp.spec_index(process_ptr).view().quota_2m <= usize::MAX,
+        size is SZ1g ==> pre.allc_1g_mp.spec_index(allocator_ptr).quota.view().value + pre.prc_mp.spec_index(process_ptr).view().quota_1g <= usize::MAX,
         post.subsystems_inv(),
         pre.thr_mp.dom().contains(thread_ptr),
         pre.thr_mp.spec_index(thread_ptr).view().owning_container == pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container,
     ensures post.memory_management_inv(),
 {
-    reveal(kill_quota_transition);
+    reveal(kill_quota_eof_transition_framing);
     let process = pre.prc_mp.spec_index(process_ptr).view();
     let container_ptr = pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container;
     let dp4k = if size is SZ4k { -(process.quota_4k as int) } else { 0int };
@@ -80,10 +90,10 @@ proof fn kill_quota_eof_memory(pre: KernelK, post: KernelK, process_ptr: RwLockP
     let dp1g = if size is SZ1g { -(process.quota_1g as int) } else { 0int };
     process_perms_wf_at(pre.prc_mp, process_ptr); container_process_wf_process_at(pre.ctn_mp, pre.prc_mp, process_ptr); container_thread_wf_at(pre.ctn_mp, pre.thr_mp, thread_ptr);
     assert(allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
-        lemma_allocator_pages_wf_preserved_for_allocator_quota_value_framed_fields_forall(); reveal(allocator_2m_pages_wf); reveal(allocator_1g_pages_wf);
+        lemma_allocator_pages_wf_preserved_for_allocator_invariant_fields_except_quota_forall(); reveal(allocator_2m_pages_wf); reveal(allocator_1g_pages_wf);
     };
-    assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { lemma_container_process_page_pagetable_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
-    assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { lemma_page_iommu_table_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
+    assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { lemma_container_process_page_pagetable_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
+    assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { lemma_page_iommu_table_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
     assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { lemma_process_pages_wf_preserved_for_process_domain_eq_forall(); };
     assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
     assert(process_pagetable_match(post.prc_mp, post.pt_mp)) by { lemma_process_pagetable_match_preserved_for_process_pagetable_fields_forall(); };
@@ -111,15 +121,16 @@ proof fn kill_quota_eof_memory(pre: KernelK, post: KernelK, process_ptr: RwLockP
 proof fn kill_quota_eof_process(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, allocator_ptr: RwLockPageAllocatorPtr, size: PageSize)
     requires
         pre.inv(),
-        kill_quota_transition(pre, post, process_ptr, allocator_ptr, size),
+        kill_quota_eof_transition_framing(pre, post, process_ptr, allocator_ptr, size),
+        pre.prc_mp.dom().contains(process_ptr),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
-    reveal(kill_quota_transition);
+    reveal(kill_quota_eof_transition_framing);
     process_perms_wf_at(pre.prc_mp, process_ptr);
-    assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { lemma_process_pcid_allocator_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
+    assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { lemma_process_pcid_allocator_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { lemma_container_process_wf_preserved_for_process_rodata_forall(); };
-    assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { lemma_per_container_process_tree_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
+    assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { lemma_per_container_process_tree_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
     assert(process_kill_mark_wf(post.prc_mp)) by { reveal(process_kill_mark_wf); };
     assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { lemma_process_cpu_wf_preserved_for_process_pagetable_fields_forall(); };
     assert(process_thread_wf(post.prc_mp, post.thr_mp)) by {
@@ -135,31 +146,41 @@ proof fn kill_quota_eof_process(pre: KernelK, post: KernelK, process_ptr: RwLock
 pub(super) proof fn kill_quota_eof(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, allocator_ptr: RwLockPageAllocatorPtr, size: PageSize)
     requires
         pre.inv(),
-        kill_quota_transition(pre, post, process_ptr, allocator_ptr, size),
+        kill_quota_eof_transition_framing(pre, post, process_ptr, allocator_ptr, size),
+        pre.prc_mp.dom().contains(process_ptr),
+        size is SZ4k ==> allocator_ptr == pre.ctn_mp.spec_index(pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container).view_rodata().view().allocator_ptr_4k,
+        size is SZ2m ==> allocator_ptr == pre.ctn_mp.spec_index(pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container).view_rodata().view().allocator_ptr_2m,
+        size is SZ1g ==> allocator_ptr == pre.ctn_mp.spec_index(pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container).view_rodata().view().allocator_ptr_1g,
+        size is SZ4k ==> pre.allc_4k_mp.spec_index(allocator_ptr).quota.view().value + pre.prc_mp.spec_index(process_ptr).view().quota_4k <= usize::MAX,
+        size is SZ2m ==> pre.allc_2m_mp.spec_index(allocator_ptr).quota.view().value + pre.prc_mp.spec_index(process_ptr).view().quota_2m <= usize::MAX,
+        size is SZ1g ==> pre.allc_1g_mp.spec_index(allocator_ptr).quota.view().value + pre.prc_mp.spec_index(process_ptr).view().quota_1g <= usize::MAX,
         pre.thr_mp.dom().contains(thread_ptr),
         pre.thr_mp.spec_index(thread_ptr).view().owning_container == pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container,
     ensures post.inv(),
 {
-    reveal(kill_quota_transition);
+    reveal(kill_quota_eof_transition_framing);
     process_perms_wf_at(pre.prc_mp, process_ptr);
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(process_perms_wf); reveal(allocator_perms_wf); };
     kill_quota_eof_memory(pre, post, process_ptr, thread_ptr, allocator_ptr, size);
     kill_quota_eof_process(pre, post, process_ptr, allocator_ptr, size);
-    assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
-    assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { lemma_iommu_root_table_process_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
-    assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { lemma_process_pci_function_ownership_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
-    assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { lemma_iommu_tlb_wf_spec_preserved_for_process_quota_4k_framed_fields_forall(); };
+    assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
+    assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { lemma_iommu_root_table_process_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
+    assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { lemma_process_pci_function_ownership_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
+    assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { lemma_iommu_tlb_wf_spec_preserved_for_process_invariant_fields_except_quota_forall(); };
     assert(iommu_table_lock_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { iommu_table_lock_wf_preserved_for_root_and_process_fields_eq(pre.irt.view(), post.irt.view(), pre.prc_mp, post.prc_mp, post.it_mp); };
 }
 
 proof fn kill_tables_emptied_eof_process(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr)
     requires
         pre.inv(),
-        kill_tables_emptied_transition(pre, post, process_ptr),
+        kill_tables_emptied_eof_transition_framing(pre, post, process_ptr),
+        pre.prc_mp.dom().contains(process_ptr),
+        !pre.prc_mp.spec_index(process_ptr).view().zombie,
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() == 0,
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
-    reveal(kill_tables_emptied_transition);
+    reveal(kill_tables_emptied_eof_transition_framing);
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { per_container_process_tree_wf_preserved_for_tree_fields_eq(pre.ctn_mp, pre.prc_mp, post.prc_mp); reveal(per_container_process_tree_wf); };
     assert(process_kill_mark_wf(post.prc_mp)) by { reveal(process_kill_mark_wf); };
@@ -175,10 +196,15 @@ proof fn kill_tables_emptied_eof_process(pre: KernelK, post: KernelK, process_pt
 pub(super) proof fn kill_tables_emptied_eof(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr)
     requires
         pre.inv(),
-        kill_tables_emptied_transition(pre, post, process_ptr),
+        kill_tables_emptied_eof_transition_framing(pre, post, process_ptr),
+        pre.prc_mp.dom().contains(process_ptr),
+        !pre.prc_mp.spec_index(process_ptr).view().zombie,
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() == 0,
+        pre.pt_mp.spec_index(pre.prc_mp.spec_index(process_ptr).view().pagetable).view().mapping_4k().dom() =~= Set::<VAddr>::empty(),
+        pre.prc_mp.spec_index(process_ptr).view().iommu_table is Some ==> pre.it_mp.spec_index(pre.prc_mp.spec_index(process_ptr).view().iommu_table->Some_0).view().mapping_4k().dom() =~= Set::<VAddr>::empty(),
     ensures post.inv(),
 {
-    reveal(kill_tables_emptied_transition);
+    reveal(kill_tables_emptied_eof_transition_framing);
     process_perms_wf_at(pre.prc_mp, process_ptr);
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(process_perms_wf); };
     assert(post.memory_management_inv()) by {
@@ -204,11 +230,22 @@ pub(super) proof fn kill_tables_emptied_eof(pre: KernelK, post: KernelK, process
 proof fn kill_zombify_eof_process(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, pcid_allocator_ptr: RwLockPcidAllocatorPtr)
     requires
         pre.inv(),
-        kill_zombify_transition(pre, post, process_ptr, pcid_allocator_ptr),
+        kill_zombify_eof_transition_framing(pre, post, process_ptr, pcid_allocator_ptr),
+        pre.prc_mp.dom().contains(process_ptr),
+        pre.prc_mp.spec_index(process_ptr).view().state.view() is TablesEmptied,
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() == 0,
+        pre.prc_mp.spec_index(process_ptr).view().quota_4k == 0,
+        pre.prc_mp.spec_index(process_ptr).view().quota_2m == 0,
+        pre.prc_mp.spec_index(process_ptr).view().quota_1g == 0,
+        pcid_allocator_ptr == pre.ctn_mp.spec_index(pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container).view_rodata().view().pcid_allocator,
+        pre.pcid_allc_mp.dom().contains(pcid_allocator_ptr),
+        pcid_valid(pre.prc_mp.spec_index(process_ptr).view().pcid),
+        pre.prc_mp.spec_index(process_ptr).view().pcid != KERNEL_DEFAULT_PCID,
+        pre.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().id_to_proc.view().spec_index(pre.prc_mp.spec_index(process_ptr).view().pcid as int).contains(process_ptr),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
-    reveal(kill_zombify_transition);
+    reveal(kill_zombify_eof_transition_framing);
     process_perms_wf_at(pre.prc_mp, process_ptr);
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { per_container_process_tree_wf_preserved_for_tree_fields_eq(pre.ctn_mp, pre.prc_mp, post.prc_mp); reveal(per_container_process_tree_wf); };
@@ -226,11 +263,22 @@ proof fn kill_zombify_eof_process(pre: KernelK, post: KernelK, process_ptr: RwLo
 pub(super) proof fn kill_zombify_eof(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, pcid_allocator_ptr: RwLockPcidAllocatorPtr)
     requires
         pre.inv(),
-        kill_zombify_transition(pre, post, process_ptr, pcid_allocator_ptr),
+        kill_zombify_eof_transition_framing(pre, post, process_ptr, pcid_allocator_ptr),
+        pre.prc_mp.dom().contains(process_ptr),
+        pre.prc_mp.spec_index(process_ptr).view().state.view() is TablesEmptied,
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() == 0,
+        pre.prc_mp.spec_index(process_ptr).view().quota_4k == 0,
+        pre.prc_mp.spec_index(process_ptr).view().quota_2m == 0,
+        pre.prc_mp.spec_index(process_ptr).view().quota_1g == 0,
+        pcid_allocator_ptr == pre.ctn_mp.spec_index(pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container).view_rodata().view().pcid_allocator,
+        pre.pcid_allc_mp.dom().contains(pcid_allocator_ptr),
+        pcid_valid(pre.prc_mp.spec_index(process_ptr).view().pcid),
+        pre.prc_mp.spec_index(process_ptr).view().pcid != KERNEL_DEFAULT_PCID,
+        pre.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().id_to_proc.view().spec_index(pre.prc_mp.spec_index(process_ptr).view().pcid as int).contains(process_ptr),
         pcid_allocator_perms_wf(post.pcid_allc_mp),
     ensures post.inv(),
 {
-    reveal(kill_zombify_transition);
+    reveal(kill_zombify_eof_transition_framing);
     process_perms_wf_at(pre.prc_mp, process_ptr);
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(process_perms_wf); };
     assert(post.memory_management_inv()) by {

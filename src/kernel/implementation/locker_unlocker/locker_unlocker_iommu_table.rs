@@ -41,6 +41,7 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::IommuTable(iommu_table_ptr), TypedHeldLock { lock_id: final(self).it_mp.lock_id_by_key(iommu_table_ptr), mode: TypedLockMode::Write }),
     {
         proof {
+            iommu_table_perms_wf_map(old(self).it_mp);
             iommu_table_perms_wf_at(old(self).it_mp, iommu_table_ptr);
             assert(old(lctx).lock_id_acyclic(old(self).it_mp.lock_id_by_key(iommu_table_ptr))) by {
                 reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned);
@@ -100,7 +101,7 @@ impl KernelK {
             unlock_ensures(old(lctx), final(lctx), KernelObjId::IommuTable(iommu_table_ptr), old(self).it_mp.lock_id_by_key(iommu_table_ptr)),
     {
         proof {
-            assert(old(self).it_mp.perms_wf() && old(self).it_mp.spec_index(iommu_table_ptr).inv()) by { iommu_table_perms_wf_at(old(self).it_mp, iommu_table_ptr); };
+            assert(old(self).it_mp.perms_wf() && old(self).it_mp.spec_index(iommu_table_ptr).inv()) by { iommu_table_perms_wf_map(old(self).it_mp); iommu_table_perms_wf_at(old(self).it_mp, iommu_table_ptr); };
             assert(old(lctx).lock_entry_contains(old(self).it_mp.lock_id_by_key(iommu_table_ptr), KernelObjId::IommuTable(iommu_table_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         assert(self.it_mp.spec_index(iommu_table_ptr).wlocked_by(&*lctx)) by { old(self).it_mp.typed_lock_map_aligned_write_at(old(lctx).iommu_table_lock_map(), old(lctx).thread_id(), iommu_table_ptr); };

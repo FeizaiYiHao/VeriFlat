@@ -332,7 +332,7 @@ verus! {
             assert({
                 &&& krnl.ep_mp.perms_wf()
                 &&& krnl.thr_mp.spec_index(current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id })
-            }) by { endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr); };
+            }) by { endpoint_perms_wf_map(krnl.ep_mp); endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr); };
         }
         let endpoint_ref = krnl.ep_mp.borrow_typed(endpoint_ptr, Ghost(lctx.endpoint_lock_map()), Tracked(&*lctx), Tracked(&endpoint_lock_perm));
         let queue_len = endpoint_ref.queue.len();
@@ -704,7 +704,7 @@ verus! {
                 Some(RetValueType::ErrorIpcPeerKilled)
             } else { None },
     {
-        assert(krnl.ep_mp.perms_wf() && krnl.ep_mp.spec_index(endpoint_ptr).is_init() && krnl.ep_mp.spec_index(endpoint_ptr).view().queue.wf()) by { endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr); };
+        assert(krnl.ep_mp.perms_wf() && krnl.ep_mp.spec_index(endpoint_ptr).is_init() && krnl.ep_mp.spec_index(endpoint_ptr).view().queue.wf()) by { endpoint_perms_wf_map(krnl.ep_mp); endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr); };
         let endpoint_ref = krnl.ep_mp.borrow_typed(endpoint_ptr, Ghost(lctx.endpoint_lock_map()), Tracked(&*lctx), Tracked(&endpoint_lock_perm));
         let (_, peer_thread_ptr) = endpoint_ref.queue.peek_head();
 

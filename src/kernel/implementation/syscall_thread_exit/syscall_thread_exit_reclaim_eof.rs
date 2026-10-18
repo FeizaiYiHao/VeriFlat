@@ -1,17 +1,22 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::syscall_thread_exit_reclaim_spec::thread_exit_tables_emptied_transition;
+use super::syscall_thread_exit_reclaim_spec::thread_exit_tables_emptied_eof_transition_framing;
 
 verus! {
 proof fn thread_exit_tables_emptied_eof_process(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
-        thread_exit_tables_emptied_transition(pre, post, process_ptr, thread_ptr),
+        thread_exit_tables_emptied_eof_transition_framing(pre, post, process_ptr, thread_ptr),
+        pre.prc_mp.dom().contains(process_ptr),
+        !pre.prc_mp.spec_index(process_ptr).view().zombie,
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() == 1,
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.view().contains(thread_ptr),
+        pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitZombie),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
-    reveal(thread_exit_tables_emptied_transition);
+    reveal(thread_exit_tables_emptied_eof_transition_framing);
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { per_container_process_tree_wf_preserved_for_tree_fields_eq(pre.ctn_mp, pre.prc_mp, post.prc_mp); reveal(per_container_process_tree_wf); };
     assert(process_kill_mark_wf(post.prc_mp)) by { reveal(process_kill_mark_wf); };
@@ -27,10 +32,17 @@ proof fn thread_exit_tables_emptied_eof_process(pre: KernelK, post: KernelK, pro
 pub(super) proof fn thread_exit_tables_emptied_eof(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
-        thread_exit_tables_emptied_transition(pre, post, process_ptr, thread_ptr),
+        thread_exit_tables_emptied_eof_transition_framing(pre, post, process_ptr, thread_ptr),
+        pre.prc_mp.dom().contains(process_ptr),
+        !pre.prc_mp.spec_index(process_ptr).view().zombie,
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() == 1,
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.view().contains(thread_ptr),
+        pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitZombie),
+        pre.pt_mp.spec_index(pre.prc_mp.spec_index(process_ptr).view().pagetable).view().mapping_4k().dom() =~= Set::<VAddr>::empty(),
+        pre.prc_mp.spec_index(process_ptr).view().iommu_table is Some ==> pre.it_mp.spec_index(pre.prc_mp.spec_index(process_ptr).view().iommu_table->Some_0).view().mapping_4k().dom() =~= Set::<VAddr>::empty(),
     ensures post.inv(),
 {
-    reveal(thread_exit_tables_emptied_transition);
+    reveal(thread_exit_tables_emptied_eof_transition_framing);
     process_perms_wf_at(pre.prc_mp, process_ptr);
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(process_perms_wf); };
     assert(post.memory_management_inv()) by {

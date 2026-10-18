@@ -150,10 +150,10 @@ pub fn refill_4k_cache_batch(krnl: &mut KernelK, allocator: RwLockPageAllocatorP
         let pool = krnl.allc_4k_mp.borrow_global_pool_typed(allocator, Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), pool_perm);
         proof { pool.lemma_len_view(); }
         let (_, page_ptr) = pool.peek_head();
-        assert(page_ptr_valid(page_ptr)) by { reveal(allocator_free_page_ptrs_wf); };
+        assert(page_ptr_valid(page_ptr)) by { allocator_free_page_ptrs_wf_global_at(krnl.allc_4k_mp, allocator, page_ptr); };
         let page_index = page_ptr2page_index(page_ptr);
         assert(index_valid(NUM_PAGES, page_index) && krnl.pg_arr.lock_id_by_index(page_index).major == FREE_PAGE_LOCK_MAJOR) by {
-            reveal(allocator_free_page_ptrs_wf); reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); reveal(page_array_wf);
+            container_allocator_free_4k_page_wf_global_at(krnl.allc_4k_mp, krnl.pg_arr, allocator, page_ptr); reveal(page_array_wf);
             reveal(LinkedList::wf_value_list); page_ptr_valid_imply_page_index_valid(); seq_skip_lemma::<PagePtr>();
         };
         let Tracked(page_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));

@@ -12,8 +12,12 @@ verus! {
             allocator_perms_wf(alloc_map),
             alloc_map.dom().contains(alloc_ptr),
         ensures
-            alloc_map.perms_wf(),
             alloc_map.spec_index(alloc_ptr).inv(),
+    { reveal(allocator_perms_wf); }
+
+    pub proof fn allocator_perms_wf_map(alloc_map: PageAllocatorUnLockedMap)
+        requires allocator_perms_wf(alloc_map)
+        ensures alloc_map.perms_wf()
     { reveal(allocator_perms_wf); }
 
     #[verifier::opaque]
@@ -27,4 +31,21 @@ verus! {
             #![trigger allocator_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr)]
             allocator_map.dom().contains(alloc_ptr) && index_valid(NUM_CPUS, cpu_i) && allocator_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr) ==> page_ptr_valid(page_ptr)
     }
+
+    /// A page in allocator `alloc_ptr`'s global pool has a valid page pointer.
+    pub proof fn allocator_free_page_ptrs_wf_global_at(allocator_map: PageAllocatorUnLockedMap, alloc_ptr: RwLockPageAllocatorPtr, page_ptr: PagePtr)
+        requires
+            allocator_free_page_ptrs_wf(allocator_map),
+            allocator_map.dom().contains(alloc_ptr),
+        ensures allocator_map.spec_index(alloc_ptr).global_pool.view().view().contains(page_ptr) ==> page_ptr_valid(page_ptr),
+    { reveal(allocator_free_page_ptrs_wf); }
+
+    /// A page in allocator `alloc_ptr`'s CPU `cpu_i` cache has a valid page pointer.
+    pub proof fn allocator_free_page_ptrs_wf_cache_at(allocator_map: PageAllocatorUnLockedMap, alloc_ptr: RwLockPageAllocatorPtr, cpu_i: CpuId, page_ptr: PagePtr)
+        requires
+            allocator_free_page_ptrs_wf(allocator_map),
+            allocator_map.dom().contains(alloc_ptr),
+            index_valid(NUM_CPUS, cpu_i),
+        ensures allocator_map.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_i).view().view().view().contains(page_ptr) ==> page_ptr_valid(page_ptr),
+    { reveal(allocator_free_page_ptrs_wf); }
 }

@@ -49,7 +49,7 @@ pub(super) fn kill_reclaim_target(
 {
     kill_reassign_functions(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, Ghost(chain), Tracked(&*chain_perms), Tracked(cpu_perm),
         Tracked(process_perm), Tracked(thread_perm), Ghost(start), Ghost(pre), Ghost(child_index));
-    proof { process_perms_wf_at(krnl.prc_mp, target); }
+    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
     let zombie = {
         let tracked target_perm = chain_perms.tracked_borrow(target);
         krnl.prc_mp.borrow_typed(target, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(target_perm)).zombie
@@ -116,7 +116,7 @@ fn kill_reassign_functions(
             krnl.prc_mp.update_ghost(target, ProcessGhost { owned_pci_functions: Ghost(Set::empty()), ..target_ghost });
             krnl.prc_mp.update_ghost(process_ptr, ProcessGhost { owned_pci_functions: Ghost(owner_ghost.owned_pci_functions.view().union(target_ghost.owned_pci_functions.view())), ..owner_ghost });
             assert(krnl.prc_mp.typed_lock_map_aligned(lctx.process_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
-            assert(kill_reassign_transition(locked, *krnl, target, process_ptr)) by { reveal(kill_reassign_transition); };
+            assert(kill_reassign_eof_transition_framing(locked, *krnl, target, process_ptr)) by { reveal(kill_reassign_eof_transition_framing); };
             kill_reassign_eof(locked, *krnl, target, process_ptr);
         }
     }
@@ -127,7 +127,7 @@ fn kill_reassign_functions(
         if moved {
             kill_step_pre_from_k(&before, &before_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Walk); kill_reassign_pre_from_k(&before, target);
             assert(before.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view().contains((witness.0, witness.1, witness.2))) by { reveal(process_pci_function_ownership_wf); };
-            reveal(kill_reassign_transition);
+            reveal(kill_reassign_eof_transition_framing);
             kernel_process_functions_reassigned_implies_u_step(&before, &after, target, process_ptr);
             krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
             kill_reassign_step_from_u(before_u, kernel_k_to_kernel_u(after), cpu_id, process_ptr, target);
@@ -347,7 +347,7 @@ fn kill_reclaim_live(
         final(krnl).prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
         final(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set == old(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set,
 {
-    proof { process_perms_wf_at(krnl.prc_mp, target); }
+    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
     let (pagetable, iommu_table) = {
         let tracked target_perm = chain_perms.tracked_borrow(target);
         let process = krnl.prc_mp.borrow_typed(target, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(target_perm));
@@ -355,7 +355,7 @@ fn kill_reclaim_live(
     };
     let (Tracked(pagetable_perm), Tracked(iommu_perm)) = kill_reclaim_lock_table(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, Ghost(chain),
         Tracked(chain_perms), Tracked(cpu_perm), Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Ghost(start), Ghost(pre), Ghost(child_index));
-    proof { pagetable_perms_wf_at(krnl.pt_mp, pagetable); }
+    proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); }
     let kernel_l4_end = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_perm)).kernel_l4_end;
     let start_l4 = if kernel_l4_end < KERNEL_MEM_END_L4INDEX { KERNEL_MEM_END_L4INDEX } else { kernel_l4_end };
     let ghost locked_pt = krnl.pt_mp.spec_index(pagetable).view();

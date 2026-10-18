@@ -3,7 +3,7 @@ use crate::*;
 use super::syscall_cpu_hotplug_spec::*;
 use super::syscall_cpu_hotplug_trace::*;
 #[cfg(verus_keep_ghost)]
-use super::cpu_online_child_eof::{cpu_online_child_eof, cpu_online_child_transition_framing};
+use super::cpu_online_child_eof::{cpu_online_child_eof, cpu_online_child_eof_transition_framing};
 
 verus! {
 /// Brings `target`, an Off cpu of the `child`-th child of the caller's live, non-zombie container, back to Idle under the
@@ -142,7 +142,7 @@ pub fn syscall_cpu_online_child(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut 
     proof {
         lctx.enter_kernel_view_release();
         lctx.update_lock_id(KernelObjId::Cpu(target), old_target_lock_id, krnl.cpu_arr.lock_id_by_index(target));
-        assert(cpu_online_child_transition_framing(online_pre, *krnl, cpu_set_ptr, target, child_ptr)) by { reveal(cpu_online_child_transition_framing); };
+        assert(cpu_online_child_eof_transition_framing(online_pre, *krnl, cpu_set_ptr, target, child_ptr)) by { reveal(cpu_online_child_eof_transition_framing); };
         cpu_online_child_eof(online_pre, *krnl, cpu_set_ptr, target, child_ptr);
     }
     krnl.wunlock_cpu(target, Tracked(lctx), Tracked(target_lock_perm));

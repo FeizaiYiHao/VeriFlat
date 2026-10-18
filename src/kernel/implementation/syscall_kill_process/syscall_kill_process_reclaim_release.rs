@@ -62,7 +62,7 @@ pub(super) fn kill_reclaim_clear_leaves(
                 ==> !final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present,
         final(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set == old(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set,
 {
-    proof { pagetable_perms_wf_at(krnl.pt_mp, pagetable); }
+    proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); }
     let mut cursor: (L4Index, L3Index, L2Index, L1Index) = (start_l4, 0, 0, 0);
     let mut found = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_perm)).next_mapped_4k_from(cursor);
     while found.is_some()
@@ -117,6 +117,7 @@ pub(super) fn kill_reclaim_clear_leaves(
         let next = found.unwrap();
         let va = index2va(next);
         proof {
+            pagetable_perms_wf_map(krnl.pt_mp);
             pagetable_perms_wf_at(krnl.pt_mp, pagetable);
             assert(spec_va_4k_valid(va) && spec_va2index(va) == next) by { spec_va_4k_index_roundtrip_at(va, next.0, next.1, next.2, next.3); };
         }
@@ -142,7 +143,7 @@ pub(super) fn kill_reclaim_clear_leaves(
             proof { assert(!krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va) || !krnl.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(va).present) by { reveal(PageTable::wf_mapping_4k); }; }
         }
         cursor = (next.0, next.1, next.2, next.3 + 1);
-        proof { pagetable_perms_wf_at(krnl.pt_mp, pagetable); }
+        proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); }
         found = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_perm)).next_mapped_4k_from(cursor);
     }
 }
@@ -368,6 +369,7 @@ pub(super) fn kill_reclaim_unmap_leaves(
 {
     let ghost entry_thread = krnl.thr_mp.spec_index(thread_ptr).view();
     proof {
+        pagetable_perms_wf_map(krnl.pt_mp);
         pagetable_perms_wf_at(krnl.pt_mp, pagetable); thread_perms_wf_at(krnl.thr_mp, thread_ptr);
         assert(krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == krnl.thr_mp.spec_index(thread_ptr).view().owning_container) by { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); };
         assert(entry_thread.container_depth <= MAX_CONTAINER_TREE_DEPTH) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); container_perms_wf_at(krnl.ctn_mp, entry_thread.owning_container); };
@@ -442,7 +444,7 @@ pub(super) fn kill_reclaim_unmap_leaves(
         }
         reclaim_unmapped_4k_page(krnl, pagetable, va, thread_ptr, cpu_id, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(pagetable_perm), Tracked(thread_perm));
         cursor = (next.0, next.1, next.2, next.3 + 1);
-        proof { pagetable_perms_wf_at(krnl.pt_mp, pagetable); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target); }
+        proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target); }
         found = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_perm)).next_mapped_4k_from(cursor);
     }
     proof {
@@ -512,6 +514,7 @@ pub(super) fn kill_reclaim_iommu_leaves(
 {
     let ghost entry_thread = krnl.thr_mp.spec_index(thread_ptr).view();
     proof {
+        iommu_table_perms_wf_map(krnl.it_mp);
         iommu_table_perms_wf_at(krnl.it_mp, iommu_table); thread_perms_wf_at(krnl.thr_mp, thread_ptr);
         assert(entry_thread.container_depth <= MAX_CONTAINER_TREE_DEPTH) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); container_perms_wf_at(krnl.ctn_mp, entry_thread.owning_container); };
         assert(krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == entry_thread.owning_container) by { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); };
@@ -588,7 +591,7 @@ pub(super) fn kill_reclaim_iommu_leaves(
         reclaim_unmapped_iommu_4k_page(krnl, iommu_table, next, thread_ptr, cpu_id, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(iommu_perm),
             Tracked(thread_perm));
         cursor = (next.0, next.1, next.2, next.3 + 1);
-        proof { iommu_table_perms_wf_at(krnl.it_mp, iommu_table); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target); }
+        proof { iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target); }
         found = krnl.it_mp.borrow_typed(iommu_table, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_perm)).next_mapped_4k_from(cursor);
     }
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
@@ -694,7 +697,7 @@ fn kill_reclaim_return_quota_size(
     let ghost entry_k = *krnl;
     let ghost entry_lctx = *lctx;
     let ghost entry_steps = steps.view();
-    proof { process_perms_wf_at(krnl.prc_mp, target); }
+    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
     let container_ptr = krnl.prc_mp.borrow_rodata(target).borrow().owning_container;
     proof {
         assert({
@@ -727,7 +730,7 @@ fn kill_reclaim_return_quota_size(
                 quota.value = quota.value + process_quota;
             }
             proof {
-                assert(kill_quota_transition(locked, *krnl, target, allocator_ptr, size)) by { reveal(kill_quota_transition); };
+                assert(kill_quota_eof_transition_framing(locked, *krnl, target, allocator_ptr, size)) by { reveal(kill_quota_eof_transition_framing); };
                 kill_quota_eof(locked, *krnl, target, thread_ptr, allocator_ptr, size);
                 assert(krnl.allc_4k_mp.spec_index(allocator_ptr).wf() && krnl.allc_4k_mp.spec_index(allocator_ptr).quota.inv()) by { allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr); };
             }
@@ -753,7 +756,7 @@ fn kill_reclaim_return_quota_size(
                 quota.value = quota.value + process_quota;
             }
             proof {
-                assert(kill_quota_transition(locked, *krnl, target, allocator_ptr, size)) by { reveal(kill_quota_transition); };
+                assert(kill_quota_eof_transition_framing(locked, *krnl, target, allocator_ptr, size)) by { reveal(kill_quota_eof_transition_framing); };
                 kill_quota_eof(locked, *krnl, target, thread_ptr, allocator_ptr, size);
                 assert(krnl.allc_2m_mp.spec_index(allocator_ptr).wf() && krnl.allc_2m_mp.spec_index(allocator_ptr).quota.inv()) by { allocator_perms_wf_at(krnl.allc_2m_mp, allocator_ptr); };
             }
@@ -779,7 +782,7 @@ fn kill_reclaim_return_quota_size(
                 quota.value = quota.value + process_quota;
             }
             proof {
-                assert(kill_quota_transition(locked, *krnl, target, allocator_ptr, size)) by { reveal(kill_quota_transition); };
+                assert(kill_quota_eof_transition_framing(locked, *krnl, target, allocator_ptr, size)) by { reveal(kill_quota_eof_transition_framing); };
                 kill_quota_eof(locked, *krnl, target, thread_ptr, allocator_ptr, size);
                 assert(krnl.allc_1g_mp.spec_index(allocator_ptr).wf() && krnl.allc_1g_mp.spec_index(allocator_ptr).quota.inv()) by { allocator_perms_wf_at(krnl.allc_1g_mp, allocator_ptr); };
             }
@@ -870,6 +873,7 @@ pub(super) fn kill_reclaim_unlock_table(
     krnl.set_thread_syscall_progress(thread_ptr, Ghost(kill_progress(target, KillStage::Zombie)), Tracked(&*lctx), Tracked(thread_perm));
     let ghost progressed = *krnl;
     proof {
+        process_perms_wf_map(krnl.prc_mp);
         process_perms_wf_at(krnl.prc_mp, target);
         assert(krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom() =~= Set::<VAddr>::empty()) by {
             pagetable_perms_wf_at(krnl.pt_mp, pagetable); reveal(KernelK::default_pagetable_wf); broadcast use spec_va_4k_valid_index_roundtrip;
@@ -887,7 +891,7 @@ pub(super) fn kill_reclaim_unlock_table(
         process.state = Ghost(ProcessState::TablesEmptied);
     }
     proof {
-        assert(kill_tables_emptied_transition(progressed, *krnl, target)) by { reveal(kill_tables_emptied_transition); };
+        assert(kill_tables_emptied_eof_transition_framing(progressed, *krnl, target)) by { reveal(kill_tables_emptied_eof_transition_framing); };
         kill_tables_emptied_eof(progressed, *krnl, target);
     }
     if let Some(it) = iommu_table {
@@ -976,7 +980,7 @@ pub(super) fn kill_reclaim_zombify(
     }
     let Tracked(pcid_allocator_perm) = krnl.wlock_pcid_allocator(pcid_allocator_ptr, Tracked(&mut *lctx));
     let ghost locked = *krnl;
-    proof { pcid_allocator_perms_wf_at(krnl.pcid_allc_mp, pcid_allocator_ptr); process_perms_wf_at(krnl.prc_mp, target); }
+    proof { pcid_allocator_perms_wf_at(krnl.pcid_allc_mp, pcid_allocator_ptr); process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
     pcid_allocator_map_release(&mut krnl.pcid_allc_mp, pcid_allocator_ptr, target, pcid, Tracked(&*lctx), Tracked(&pcid_allocator_perm));
     {
         let tracked target_perm = chain_perms.tracked_borrow(target);
@@ -985,7 +989,7 @@ pub(super) fn kill_reclaim_zombify(
         process.state = Ghost(ProcessState::Zombie);
     }
     proof {
-        assert(kill_zombify_transition(locked, *krnl, target, pcid_allocator_ptr)) by { reveal(kill_zombify_transition); };
+        assert(kill_zombify_eof_transition_framing(locked, *krnl, target, pcid_allocator_ptr)) by { reveal(kill_zombify_eof_transition_framing); };
         kill_zombify_eof(locked, *krnl, target, pcid_allocator_ptr);
     }
     krnl.wunlock_pcid_allocator(pcid_allocator_ptr, Tracked(&mut *lctx), Tracked(pcid_allocator_perm));

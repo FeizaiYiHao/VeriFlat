@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::allocate_free_2m_page_pop_eof::pop_stage_2m_page_transition_framing;
+use super::allocate_free_2m_page_pop_eof::pop_stage_2m_page_eof_transition_framing;
 
 verus! {
 pub(super) proof fn eof_pop_2m_postconditions(pre: KernelK, post: KernelK, pre_lctx: LocalContext, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)
@@ -10,12 +10,12 @@ pub(super) proof fn eof_pop_2m_postconditions(pre: KernelK, post: KernelK, pre_l
         typed_lock_maps_aligned(&pre, &pre_lctx),
         !pre.thr_mp.spec_index(thread).being_killed(),
         !pre.pg_arr.spec_index(page_ptr2page_index(page)).view().being_killed(),
-        pop_stage_2m_page_transition_framing(pre, post, allocator, thread, container, page, node, source),
+        pop_stage_2m_page_eof_transition_framing(pre, post, allocator, thread, container, page, node, source),
+        index_valid(NUM_PAGES, page_ptr2page_index(page)),
+        pre.thr_mp.dom().contains(thread),
+        pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view().owning_container == container,
         post.thr_mp.perms_wf(),
     ensures
-        page_ptr_valid(page),
-        pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view().state is Free2m,
-        !pre.thr_mp.spec_index(thread).view().temp_alloc_cache_2m.view().contains(page),
         post.allc_2m_mp.unchanged_except(&pre.allc_2m_mp, allocator),
         post.allc_2m_mp.spec_index(allocator).quota == pre.allc_2m_mp.spec_index(allocator).quota,
         post == (KernelK { pg_arr: post.pg_arr, thr_mp: post.thr_mp, allc_2m_mp: post.allc_2m_mp, ..pre }),
@@ -35,7 +35,7 @@ pub(super) proof fn eof_pop_2m_postconditions(pre: KernelK, post: KernelK, pre_l
         post.pg_arr.spec_index(page_ptr2page_index(page)).view().view().state == (PageState::Owned2m { thread_ptr: thread }),
         post.pg_arr.spec_index(page_ptr2page_index(page)).view().view().owning_container == container,
 {
-    reveal(pop_stage_2m_page_transition_framing);
+    reveal(pop_stage_2m_page_eof_transition_framing);
     assert(post.thr_mp.lock_id_by_key(thread) == pre.thr_mp.lock_id_by_key(thread)) by { thread_perms_wf_at(pre.thr_mp, thread); };
     pre.thr_mp.typed_lock_map_aligned_held_in_dom(pre_lctx.thread_lock_map(), pre_lctx.thread_id());
     assert(held_pages_unchanged_except(pre.pg_arr, post.pg_arr, &pre_lctx, set![page_ptr2page_index(page)])) by { reveal(LockedArray::typed_lock_map_aligned); };

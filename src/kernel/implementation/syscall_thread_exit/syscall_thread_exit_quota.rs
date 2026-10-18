@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::syscall_thread_exit_quota_spec::thread_exit_quota_transition;
+use super::syscall_thread_exit_quota_spec::thread_exit_quota_eof_transition_framing;
 #[cfg(verus_keep_ghost)]
 use super::syscall_thread_exit_quota_eof::thread_exit_quota_eof;
 
@@ -86,7 +86,7 @@ pub(super) fn thread_exit_return_quota(
             proof { assert(krnl.allc_4k_mp.dom().contains(allocator_ptr)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); }; }
             let Tracked(quota_lock_perm) = krnl.wlock_allocator_quota_4k(allocator_ptr, Tracked(&mut *lctx));
             let ghost locked = *krnl;
-            proof { process_perms_wf_at(krnl.prc_mp, process_ptr); thread_perms_wf_at(krnl.thr_mp, thread_ptr); }
+            proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, process_ptr); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, thread_ptr); }
             let process_quota = {
                 let process = krnl.prc_mp.borrow_mut_typed(process_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(process_lock_perm));
                 let quota = process.quota_4k;
@@ -105,7 +105,7 @@ pub(super) fn thread_exit_return_quota(
                 quota.value = quota.value + process_quota + thread_quota;
             }
             proof {
-                assert(thread_exit_quota_transition(locked, *krnl, process_ptr, thread_ptr, allocator_ptr, size)) by { reveal(thread_exit_quota_transition); };
+                assert(thread_exit_quota_eof_transition_framing(locked, *krnl, process_ptr, thread_ptr, allocator_ptr, size)) by { reveal(thread_exit_quota_eof_transition_framing); };
                 thread_exit_quota_eof(locked, *krnl, container_ptr, process_ptr, thread_ptr, allocator_ptr, size);
                 assert(krnl.allc_4k_mp.spec_index(allocator_ptr).wf() && krnl.allc_4k_mp.spec_index(allocator_ptr).quota.inv()) by { allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr); };
             }
@@ -117,7 +117,7 @@ pub(super) fn thread_exit_return_quota(
             proof { assert(krnl.allc_2m_mp.dom().contains(allocator_ptr)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); }; }
             let Tracked(quota_lock_perm) = krnl.wlock_allocator_quota_2m(allocator_ptr, Tracked(&mut *lctx));
             let ghost locked = *krnl;
-            proof { process_perms_wf_at(krnl.prc_mp, process_ptr); thread_perms_wf_at(krnl.thr_mp, thread_ptr); }
+            proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, process_ptr); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, thread_ptr); }
             let process_quota = {
                 let process = krnl.prc_mp.borrow_mut_typed(process_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(process_lock_perm));
                 let quota = process.quota_2m;
@@ -136,7 +136,7 @@ pub(super) fn thread_exit_return_quota(
                 quota.value = quota.value + process_quota + thread_quota;
             }
             proof {
-                assert(thread_exit_quota_transition(locked, *krnl, process_ptr, thread_ptr, allocator_ptr, size)) by { reveal(thread_exit_quota_transition); };
+                assert(thread_exit_quota_eof_transition_framing(locked, *krnl, process_ptr, thread_ptr, allocator_ptr, size)) by { reveal(thread_exit_quota_eof_transition_framing); };
                 thread_exit_quota_eof(locked, *krnl, container_ptr, process_ptr, thread_ptr, allocator_ptr, size);
                 assert(krnl.allc_2m_mp.spec_index(allocator_ptr).wf() && krnl.allc_2m_mp.spec_index(allocator_ptr).quota.inv()) by { allocator_perms_wf_at(krnl.allc_2m_mp, allocator_ptr); };
             }
@@ -148,7 +148,7 @@ pub(super) fn thread_exit_return_quota(
             proof { assert(krnl.allc_1g_mp.dom().contains(allocator_ptr)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); }; }
             let Tracked(quota_lock_perm) = krnl.wlock_allocator_quota_1g(allocator_ptr, Tracked(&mut *lctx));
             let ghost locked = *krnl;
-            proof { process_perms_wf_at(krnl.prc_mp, process_ptr); thread_perms_wf_at(krnl.thr_mp, thread_ptr); }
+            proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, process_ptr); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, thread_ptr); }
             let process_quota = {
                 let process = krnl.prc_mp.borrow_mut_typed(process_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(process_lock_perm));
                 let quota = process.quota_1g;
@@ -167,7 +167,7 @@ pub(super) fn thread_exit_return_quota(
                 quota.value = quota.value + process_quota + thread_quota;
             }
             proof {
-                assert(thread_exit_quota_transition(locked, *krnl, process_ptr, thread_ptr, allocator_ptr, size)) by { reveal(thread_exit_quota_transition); };
+                assert(thread_exit_quota_eof_transition_framing(locked, *krnl, process_ptr, thread_ptr, allocator_ptr, size)) by { reveal(thread_exit_quota_eof_transition_framing); };
                 thread_exit_quota_eof(locked, *krnl, container_ptr, process_ptr, thread_ptr, allocator_ptr, size);
                 assert(krnl.allc_1g_mp.spec_index(allocator_ptr).wf() && krnl.allc_1g_mp.spec_index(allocator_ptr).quota.inv()) by { allocator_perms_wf_at(krnl.allc_1g_mp, allocator_ptr); };
             }

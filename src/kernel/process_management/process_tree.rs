@@ -19,7 +19,6 @@ verus! {
             process_perms_wf(process_perms),
             process_perms.dom().contains(process_ptr),
         ensures
-            process_perms.perms_wf(),
             process_perms.view().spec_index(process_ptr).is_init(),
             process_perms.view().spec_index(process_ptr).addr() == process_ptr,
             process_perms.spec_index(process_ptr).inv(),
@@ -58,6 +57,23 @@ verus! {
         &&& forall|p_ptr: RwLockProcessPtr| #![trigger process_tree_dom.contains(p_ptr)] process_tree_dom.contains(p_ptr) && p_ptr != root_process ==> process_perms.spec_index(p_ptr).view_rodata().view().parent is Some
     }
 
+    /// The tree root is a depth-0 member with an initialized parent node; member `p_ptr` is a process, and a non-root one has a parent.
+    pub proof fn process_root_wf_at(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap, p_ptr: RwLockProcessPtr)
+        requires
+            process_root_wf(root_process, process_tree_dom, process_perms),
+            process_tree_dom.contains(p_ptr),
+        ensures
+            process_tree_dom.contains(root_process),
+            process_perms.dom().contains(p_ptr),
+            process_perms.spec_index(root_process).view_rodata().view().depth == 0,
+            process_perms.spec_index(root_process).view().parent_linkedlist_node.is_init(),
+            p_ptr != root_process ==> {
+                &&& process_perms.spec_index(p_ptr).view_rodata().view().depth != 0
+                &&& process_perms.spec_index(p_ptr).view().parent_linkedlist_node.is_init() == false
+                &&& process_perms.spec_index(p_ptr).view_rodata().view().parent is Some
+            },
+    { reveal(process_root_wf); }
+
     #[verifier::opaque]
     pub open spec fn process_children_parent_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap) -> bool {
         &&& forall|p_ptr: RwLockProcessPtr, child_p_ptr: RwLockProcessPtr|
@@ -76,6 +92,31 @@ verus! {
                 &&& process_perms.spec_index(process_perms.spec_index(p_ptr).view_rodata().view().parent.unwrap()).view().children.view().contains(p_ptr)
             }
     }
+
+    /// Child `child_p_ptr` of member `p_ptr` is a member whose parent is `p_ptr`, one level deeper.
+    pub proof fn process_children_parent_wf_at(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap, p_ptr: RwLockProcessPtr, child_p_ptr: RwLockProcessPtr)
+        requires
+            process_children_parent_wf(root_process, process_tree_dom, process_perms),
+            process_tree_dom.contains(p_ptr),
+        ensures
+            process_perms.spec_index(p_ptr).view().children.view().contains(child_p_ptr) ==> {
+                &&& process_tree_dom.contains(child_p_ptr)
+                &&& process_perms.spec_index(child_p_ptr).view_rodata().view().parent.unwrap() == p_ptr
+                &&& process_perms.spec_index(child_p_ptr).view_rodata().view().depth == process_perms.spec_index(p_ptr).view_rodata().view().depth + 1
+            },
+    { reveal(process_children_parent_wf); }
+
+    /// Member `p_ptr`'s parent, if any, is a member that lists `p_ptr` among its children.
+    pub proof fn process_children_parent_wf_parent_at(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap, p_ptr: RwLockProcessPtr)
+        requires
+            process_children_parent_wf(root_process, process_tree_dom, process_perms),
+            process_tree_dom.contains(p_ptr),
+        ensures
+            process_perms.spec_index(p_ptr).view_rodata().view().parent is Some ==> {
+                &&& process_tree_dom.contains(process_perms.spec_index(p_ptr).view_rodata().view().parent.unwrap())
+                &&& process_perms.spec_index(process_perms.spec_index(p_ptr).view_rodata().view().parent.unwrap()).view().children.view().contains(p_ptr)
+            },
+    { reveal(process_children_parent_wf); }
 
     #[verifier::opaque]
     pub open spec fn process_linkedlist_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap) -> bool {
@@ -122,6 +163,21 @@ verus! {
                 &&& process_perms.spec_index(u_ptr).view_ghost().uppertree_seq.view() =~= process_perms.spec_index(p_ptr).view_ghost().uppertree_seq.view().subrange(0, process_perms.spec_index(u_ptr).view_rodata().view().depth as int)
             }
     }
+
+    /// Ancestor `u_ptr` of member `p_ptr` is a member at its own depth in `p_ptr`'s upper-tree sequence, whose subtree holds `p_ptr`.
+    pub proof fn process_uppertree_seq_wf_at(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap, p_ptr: RwLockProcessPtr, u_ptr: RwLockProcessPtr)
+        requires
+            process_uppertree_seq_wf(root_process, process_tree_dom, process_perms),
+            process_tree_dom.contains(p_ptr),
+        ensures
+            process_perms.spec_index(p_ptr).view_ghost().uppertree_seq.view().contains(u_ptr) ==> {
+                &&& process_tree_dom.contains(u_ptr)
+                &&& process_perms.spec_index(p_ptr).view_ghost().uppertree_seq.view().spec_index(process_perms.spec_index(u_ptr).view_rodata().view().depth as int) == u_ptr
+                &&& process_perms.spec_index(u_ptr).view_rodata().view().depth == process_perms.spec_index(p_ptr).view_ghost().uppertree_seq.view().index_of(u_ptr)
+                &&& process_perms.spec_index(u_ptr).view_ghost().subtree_set.view().contains(p_ptr)
+                &&& process_perms.spec_index(u_ptr).view_ghost().uppertree_seq.view() =~= process_perms.spec_index(p_ptr).view_ghost().uppertree_seq.view().subrange(0, process_perms.spec_index(u_ptr).view_rodata().view().depth as int)
+            },
+    { reveal(process_uppertree_seq_wf); }
 
     #[verifier::opaque]
     pub open spec fn process_subtree_set_exclusive(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap) -> bool {

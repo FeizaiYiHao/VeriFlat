@@ -7,7 +7,7 @@ use super::syscall_ipc_dispatch::running_thread_not_in_endpoint_queue;
 #[cfg(verus_keep_ghost)]
 use super::syscall_ipc_endpoint_eof::ipc_finish_endpoint_transit_eof;
 #[cfg(verus_keep_ghost)]
-use super::syscall_ipc_endpoint_spec::ipc_finish_endpoint_transit_transition;
+use super::syscall_ipc_endpoint_spec::ipc_finish_endpoint_transit_eof_transition_framing;
 use super::syscall_ipc_spec::*;
 use super::syscall_ipc_trace::*;
 
@@ -58,7 +58,7 @@ pub(super) fn ipc_copy_endpoint_reference(
         final(krnl).thr_mp.spec_index(receiver_thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(receiver_thread_ptr).being_killed(),
         final(krnl).thr_mp.spec_index(receiver_thread_ptr).view().state == old(krnl).thr_mp.spec_index(receiver_thread_ptr).view().state,
         final(krnl).thr_mp.spec_index(receiver_thread_ptr).view().syscall_progress == old(krnl).thr_mp.spec_index(receiver_thread_ptr).view().syscall_progress,
-        final(krnl).thr_mp.spec_index(receiver_thread_ptr).view().free_quota_pending_fields_equal(&old(krnl).thr_mp.spec_index(receiver_thread_ptr).view()),
+        final(krnl).thr_mp.spec_index(receiver_thread_ptr).view().free_quota_pending_fields_unchanged(&old(krnl).thr_mp.spec_index(receiver_thread_ptr).view()),
         final(krnl).thr_mp.spec_index(receiver_thread_ptr).view().temp_alloc_cache_4k == old(krnl).thr_mp.spec_index(receiver_thread_ptr).view().temp_alloc_cache_4k,
         final(krnl).thr_mp.spec_index(receiver_thread_ptr).view().temp_alloc_cache_2m == old(krnl).thr_mp.spec_index(receiver_thread_ptr).view().temp_alloc_cache_2m,
         final(krnl).thr_mp.spec_index(receiver_thread_ptr).view().temp_alloc_cache_1g == old(krnl).thr_mp.spec_index(receiver_thread_ptr).view().temp_alloc_cache_1g,
@@ -78,8 +78,8 @@ pub(super) fn ipc_copy_endpoint_reference(
 {
     hide(Seq::contains);
     proof {
-        assert(krnl.thr_mp.perms_wf()) by { thread_perms_wf_at(krnl.thr_mp, receiver_thread_ptr); };
-        assert(krnl.ep_mp.perms_wf()) by { endpoint_perms_wf_at(krnl.ep_mp, payload_endpoint_ptr); };
+        assert(krnl.thr_mp.perms_wf()) by { thread_perms_wf_map(krnl.thr_mp); };
+        assert(krnl.ep_mp.perms_wf()) by { endpoint_perms_wf_map(krnl.ep_mp); };
         assert({
             &&& krnl.thr_mp.view().spec_index(receiver_thread_ptr).is_init()
             &&& krnl.thr_mp.view().spec_index(receiver_thread_ptr).addr() == receiver_thread_ptr
@@ -595,7 +595,7 @@ pub(super) fn ipc_finish_endpoint_transit(
     proof {
         lctx.enter_kernel_view_release();
         lctx.update_lock_id(KernelObjId::Thread(peer_thread_ptr), old_peer_thread_lock_id, krnl.thr_mp.lock_id_by_key(peer_thread_ptr));
-        assert(ipc_finish_endpoint_transit_transition(*old(krnl), *krnl, current_thread_ptr, peer_thread_ptr, peer_scheduler_ptr, wake_cpu, result)) by { reveal(ipc_finish_endpoint_transit_transition); };
+        assert(ipc_finish_endpoint_transit_eof_transition_framing(*old(krnl), *krnl, current_thread_ptr, peer_thread_ptr, peer_scheduler_ptr, wake_cpu, result)) by { reveal(ipc_finish_endpoint_transit_eof_transition_framing); };
         ipc_finish_endpoint_transit_eof(*old(krnl), *krnl, current_thread_ptr, peer_thread_ptr, peer_scheduler_ptr, wake_cpu, result);
     }
 
@@ -793,7 +793,7 @@ fn ipc_endpoint_check_slots(
     let tracked current_thread_lock_perm = current_thread_lock_perm.get();
     let tracked channel_endpoint_lock_perm = channel_endpoint_lock_perm.get();
     let tracked peer_thread_lock_perm = peer_thread_lock_perm.get();
-    proof { thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); thread_perms_wf_at(krnl.thr_mp, peer_thread_ptr); }
+    proof { thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, peer_thread_ptr); }
     let source_lock_perm = Tracked(if source_thread_ptr == current_thread_ptr { &current_thread_lock_perm } else { &peer_thread_lock_perm });
     let source_endpoint_option = *krnl.thr_mp.borrow_typed(source_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), source_lock_perm).endpoint_descriptors.get(source_endpoint_index);
     let receiver_lock_perm = Tracked(if receiver_thread_ptr == current_thread_ptr { &current_thread_lock_perm } else { &peer_thread_lock_perm });
@@ -1004,7 +1004,7 @@ pub(super) fn ipc_rendezvous_endpoint(
         container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, current_thread_ptr); container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, peer_thread_ptr);
     }
     let Tracked(payload_endpoint_lock_perm) = krnl.wlock_endpoint(payload_endpoint_ptr, Tracked(&mut *lctx));
-    proof { endpoint_perms_wf_at(krnl.ep_mp, payload_endpoint_ptr); thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); }
+    proof { endpoint_perms_wf_map(krnl.ep_mp); endpoint_perms_wf_at(krnl.ep_mp, payload_endpoint_ptr); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); }
     let payload_endpoint_ref = krnl.ep_mp.borrow_typed(payload_endpoint_ptr, Ghost(lctx.endpoint_lock_map()), Tracked(&*lctx), Tracked(&payload_endpoint_lock_perm));
     let endpoint_owner = payload_endpoint_ref.owning_container;
     let receiver_container = krnl.thr_mp.borrow_typed(receiver_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), receiver_lock_perm).owning_container;
@@ -1016,7 +1016,7 @@ pub(super) fn ipc_rendezvous_endpoint(
     } else {
         RetValueType::ErrorIpcEndpointOwnerMismatch
     };
-    proof { thread_perms_wf_at(krnl.thr_mp, peer_thread_ptr); thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); }
+    proof { thread_perms_wf_at(krnl.thr_mp, peer_thread_ptr); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); }
     let peer_thread_ref = krnl.thr_mp.borrow_typed(peer_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&peer_thread_lock_perm));
     let peer_container_ptr = peer_thread_ref.owning_container;
     let peer_last_cpu = peer_thread_ref.last_cpu;

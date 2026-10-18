@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::reclaim_dangling_thread_spec::reclaim_dangling_thread_transition;
+use super::reclaim_dangling_thread_spec::reclaim_dangling_thread_eof_transition_framing;
 
 verus! {
 proof fn reclaim_dangling_thread_eof_subsystems_inv(
@@ -9,7 +9,13 @@ proof fn reclaim_dangling_thread_eof_subsystems_inv(
 )
     requires
         pre.inv(),
-        reclaim_dangling_thread_transition(pre, post, cpu_id, dangling_ptr, owner, allocator_ptr, cache_node_addr),
+        reclaim_dangling_thread_eof_transition_framing(pre, post, cpu_id, dangling_ptr, owner, allocator_ptr, cache_node_addr),
+        index_valid(NUM_CPUS, cpu_id),
+        page_ptr_valid(dangling_ptr),
+        pre.thr_mp.dom().contains(dangling_ptr),
+        pre.allc_4k_mp.dom().contains(allocator_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(dangling_ptr)).view().view().free_list_node_storage.addr() == cache_node_addr,
+        !pre.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(cache_node_addr),
         page_array_wf(post.pg_arr),
         container_perms_wf(post.ctn_mp),
         post.thr_mp.perms_wf(),
@@ -17,7 +23,7 @@ proof fn reclaim_dangling_thread_eof_subsystems_inv(
         post.allc_4k_mp.spec_index(allocator_ptr).wf(),
     ensures post.subsystems_inv(),
 {
-    reveal(reclaim_dangling_thread_transition);
+    reveal(reclaim_dangling_thread_eof_transition_framing);
     assert(thread_perms_wf(post.thr_mp)) by {
         reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
     };
@@ -30,7 +36,18 @@ proof fn reclaim_dangling_thread_eof_page_relations(
 )
     requires
         pre.inv(),
-        reclaim_dangling_thread_transition(pre, post, cpu_id, dangling_ptr, owner, allocator_ptr, cache_node_addr),
+        reclaim_dangling_thread_eof_transition_framing(pre, post, cpu_id, dangling_ptr, owner, allocator_ptr, cache_node_addr),
+        index_valid(NUM_CPUS, cpu_id),
+        page_ptr_valid(dangling_ptr),
+        pre.thr_mp.dom().contains(dangling_ptr),
+        pre.thr_mp.spec_index(dangling_ptr).view().temp_alloc_clean(),
+        pre.ctn_mp.dom().contains(owner),
+        pre.pg_arr.spec_index(page_ptr2page_index(dangling_ptr)).view().view().owning_container == owner,
+        pre.pg_arr.spec_index(page_ptr2page_index(dangling_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread }),
+        pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr,
+        pre.allc_4k_mp.dom().contains(allocator_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(dangling_ptr)).view().view().free_list_node_storage.addr() == cache_node_addr,
+        !pre.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(cache_node_addr),
         post.subsystems_inv(),
     ensures
         allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
@@ -57,7 +74,7 @@ proof fn reclaim_dangling_thread_eof_page_relations(
         container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
         container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr),
 {
-    reveal(reclaim_dangling_thread_transition);
+    reveal(reclaim_dangling_thread_eof_transition_framing);
     let page_index = page_ptr2page_index(dangling_ptr);
     let dangling = pre.thr_mp.spec_index(dangling_ptr).view();
     page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip();
@@ -107,10 +124,16 @@ proof fn reclaim_dangling_thread_eof_allocator_quota_wf(
 )
     requires
         pre.inv(),
-        reclaim_dangling_thread_transition(pre, post, cpu_id, dangling_ptr, owner, allocator_ptr, cache_node_addr),
+        reclaim_dangling_thread_eof_transition_framing(pre, post, cpu_id, dangling_ptr, owner, allocator_ptr, cache_node_addr),
+        pre.thr_mp.dom().contains(dangling_ptr),
+        pre.thr_mp.spec_index(dangling_ptr).view().quota_4k == 0,
+        pre.thr_mp.spec_index(dangling_ptr).view().quota_2m == 0,
+        pre.thr_mp.spec_index(dangling_ptr).view().quota_1g == 0,
+        pre.thr_mp.spec_index(dangling_ptr).view().free_quota_pending_clean(),
+        pre.ctn_mp.dom().contains(pre.thr_mp.spec_index(dangling_ptr).view().owning_container),
     ensures container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
 {
-    reveal(reclaim_dangling_thread_transition);
+    reveal(reclaim_dangling_thread_eof_transition_framing);
     thread_perms_wf_at(pre.thr_mp, dangling_ptr);
     lemma_container_thread_quota_folds_remove_empty_thread_forall(pre.rt_ctn, pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, pre.thr_mp.spec_index(dangling_ptr).view().owning_container, dangling_ptr);
     assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp)) by { reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf); };
@@ -123,7 +146,15 @@ proof fn reclaim_dangling_thread_eof_thread_relations(
 )
     requires
         pre.inv(),
-        reclaim_dangling_thread_transition(pre, post, cpu_id, dangling_ptr, owner, allocator_ptr, cache_node_addr),
+        reclaim_dangling_thread_eof_transition_framing(pre, post, cpu_id, dangling_ptr, owner, allocator_ptr, cache_node_addr),
+        pre.thr_mp.dom().contains(dangling_ptr),
+        pre.thr_mp.spec_index(dangling_ptr).locking_thread() is Write,
+        pre.thr_mp.spec_index(dangling_ptr).view().state is KILLED,
+        pre.thr_mp.spec_index(dangling_ptr).view().proc_linkedlist_node.is_init(),
+        pre.thr_mp.spec_index(dangling_ptr).view().caller is None,
+        pre.thr_mp.spec_index(dangling_ptr).view().callee is None,
+        forall|j: int| #![trigger pre.thr_mp.spec_index(dangling_ptr).view().endpoint_descriptors.view().spec_index(j)] 0 <= j < MAX_NUM_ENDPOINT_DESCRIPTORS ==> pre.thr_mp.spec_index(dangling_ptr).view().endpoint_descriptors.view().spec_index(j) is None,
+        pre.ctn_mp.dom().contains(pre.thr_mp.spec_index(dangling_ptr).view().owning_container),
         post.subsystems_inv(),
     ensures
         container_tree_wf(post.rt_ctn, post.ctn_mp),
@@ -147,7 +178,7 @@ proof fn reclaim_dangling_thread_eof_thread_relations(
         container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr),
         thread_cpu_wf(post.thr_mp, post.cpu_arr),
 {
-    reveal(reclaim_dangling_thread_transition);
+    reveal(reclaim_dangling_thread_eof_transition_framing);
     let uppers = pre.ctn_mp.spec_index(pre.thr_mp.spec_index(dangling_ptr).view().owning_container).view_ghost().uppertree_seq.view();
     assert(container_tree_wf(post.rt_ctn, post.ctn_mp)) by { container_no_change_to_tree_fields_imply_wf(pre.rt_ctn, pre.ctn_mp, post.ctn_mp); };
     assert(post.ctn_mp.spec_index(post.rt_ctn).view_ghost().owned_processes.view().contains(post.ctn_mp.spec_index(post.rt_ctn).view().root_process)) by { reveal(container_root_wf); };
@@ -176,7 +207,29 @@ pub(super) proof fn reclaim_dangling_thread_eof(
 )
     requires
         pre.inv(),
-        reclaim_dangling_thread_transition(pre, post, cpu_id, dangling_ptr, owner, allocator_ptr, cache_node_addr),
+        reclaim_dangling_thread_eof_transition_framing(pre, post, cpu_id, dangling_ptr, owner, allocator_ptr, cache_node_addr),
+        index_valid(NUM_CPUS, cpu_id),
+        page_ptr_valid(dangling_ptr),
+        pre.thr_mp.dom().contains(dangling_ptr),
+        pre.thr_mp.spec_index(dangling_ptr).locking_thread() is Write,
+        pre.thr_mp.spec_index(dangling_ptr).view().state is KILLED,
+        pre.thr_mp.spec_index(dangling_ptr).view().proc_linkedlist_node.is_init(),
+        pre.thr_mp.spec_index(dangling_ptr).view().caller is None,
+        pre.thr_mp.spec_index(dangling_ptr).view().callee is None,
+        forall|j: int| #![trigger pre.thr_mp.spec_index(dangling_ptr).view().endpoint_descriptors.view().spec_index(j)] 0 <= j < MAX_NUM_ENDPOINT_DESCRIPTORS ==> pre.thr_mp.spec_index(dangling_ptr).view().endpoint_descriptors.view().spec_index(j) is None,
+        pre.thr_mp.spec_index(dangling_ptr).view().temp_alloc_clean(),
+        pre.thr_mp.spec_index(dangling_ptr).view().quota_4k == 0,
+        pre.thr_mp.spec_index(dangling_ptr).view().quota_2m == 0,
+        pre.thr_mp.spec_index(dangling_ptr).view().quota_1g == 0,
+        pre.thr_mp.spec_index(dangling_ptr).view().free_quota_pending_clean(),
+        pre.ctn_mp.dom().contains(pre.thr_mp.spec_index(dangling_ptr).view().owning_container),
+        pre.ctn_mp.dom().contains(owner),
+        pre.pg_arr.spec_index(page_ptr2page_index(dangling_ptr)).view().view().owning_container == owner,
+        pre.pg_arr.spec_index(page_ptr2page_index(dangling_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread }),
+        pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr,
+        pre.allc_4k_mp.dom().contains(allocator_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(dangling_ptr)).view().view().free_list_node_storage.addr() == cache_node_addr,
+        !pre.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(cache_node_addr),
         page_array_wf(post.pg_arr),
         container_perms_wf(post.ctn_mp),
         post.thr_mp.perms_wf(),
@@ -188,7 +241,7 @@ pub(super) proof fn reclaim_dangling_thread_eof(
     reclaim_dangling_thread_eof_page_relations(pre, post, cpu_id, dangling_ptr, owner, allocator_ptr, cache_node_addr);
     reclaim_dangling_thread_eof_allocator_quota_wf(pre, post, cpu_id, dangling_ptr, owner, allocator_ptr, cache_node_addr);
     reclaim_dangling_thread_eof_thread_relations(pre, post, cpu_id, dangling_ptr, owner, allocator_ptr, cache_node_addr);
-    reveal(reclaim_dangling_thread_transition);
+    reveal(reclaim_dangling_thread_eof_transition_framing);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
         reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match);
         reveal(container_cpu_wf);
@@ -205,7 +258,29 @@ pub(super) proof fn reclaim_dangling_thread_eof_fields(
         entry.inv(),
         entry == (KernelK { pg_arr: entry.pg_arr, allc_4k_mp: entry.allc_4k_mp, ..start }),
         kernel_container_nonlock_fields_and_quotas_unchanged(&start, &entry),
-        reclaim_dangling_thread_transition(entry, mid, cpu_id, dangling_ptr, owner, allocator_ptr, cache_node_addr),
+        reclaim_dangling_thread_eof_transition_framing(entry, mid, cpu_id, dangling_ptr, owner, allocator_ptr, cache_node_addr),
+        index_valid(NUM_CPUS, cpu_id),
+        page_ptr_valid(dangling_ptr),
+        entry.thr_mp.dom().contains(dangling_ptr),
+        entry.thr_mp.spec_index(dangling_ptr).locking_thread() is Write,
+        entry.thr_mp.spec_index(dangling_ptr).view().state is KILLED,
+        entry.thr_mp.spec_index(dangling_ptr).view().proc_linkedlist_node.is_init(),
+        entry.thr_mp.spec_index(dangling_ptr).view().caller is None,
+        entry.thr_mp.spec_index(dangling_ptr).view().callee is None,
+        forall|j: int| #![trigger entry.thr_mp.spec_index(dangling_ptr).view().endpoint_descriptors.view().spec_index(j)] 0 <= j < MAX_NUM_ENDPOINT_DESCRIPTORS ==> entry.thr_mp.spec_index(dangling_ptr).view().endpoint_descriptors.view().spec_index(j) is None,
+        entry.thr_mp.spec_index(dangling_ptr).view().temp_alloc_clean(),
+        entry.thr_mp.spec_index(dangling_ptr).view().quota_4k == 0,
+        entry.thr_mp.spec_index(dangling_ptr).view().quota_2m == 0,
+        entry.thr_mp.spec_index(dangling_ptr).view().quota_1g == 0,
+        entry.thr_mp.spec_index(dangling_ptr).view().free_quota_pending_clean(),
+        entry.ctn_mp.dom().contains(entry.thr_mp.spec_index(dangling_ptr).view().owning_container),
+        entry.ctn_mp.dom().contains(owner),
+        entry.pg_arr.spec_index(page_ptr2page_index(dangling_ptr)).view().view().owning_container == owner,
+        entry.pg_arr.spec_index(page_ptr2page_index(dangling_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread }),
+        entry.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr,
+        entry.allc_4k_mp.dom().contains(allocator_ptr),
+        entry.pg_arr.spec_index(page_ptr2page_index(dangling_ptr)).view().view().free_list_node_storage.addr() == cache_node_addr,
+        !entry.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(cache_node_addr),
         post == (KernelK { pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..mid }),
         kernel_container_nonlock_fields_and_quotas_unchanged(&mid, &post),
     ensures
@@ -222,7 +297,7 @@ pub(super) proof fn reclaim_dangling_thread_eof_fields(
             &&& post.ctn_mp.spec_index(c).being_killed() == start.ctn_mp.spec_index(c).being_killed()
         },
 {
-    reveal(reclaim_dangling_thread_transition); reveal(kernel_dangling_thread_reclaimed_fields); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
+    reveal(reclaim_dangling_thread_eof_transition_framing); reveal(kernel_dangling_thread_reclaimed_fields); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
     page_ptr_roundtrip();
     reveal(container_page_owner_wf); reveal(container_allocator_wf);
 }

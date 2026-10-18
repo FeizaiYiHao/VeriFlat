@@ -15,6 +15,22 @@ pub open spec fn pcid_needflush_wf(array: PcidNeedFlushArray) -> bool {
         }
 }
 
+/// Entry `(cpu_id, pcid)` is well formed, pinned to its slot, and write-held exactly when it names a valid holder cpu.
+pub proof fn pcid_needflush_wf_at(array: PcidNeedFlushArray, cpu_id: CpuId, pcid: Pcid)
+    requires
+        pcid_needflush_wf(array),
+        index_valid(NUM_CPUS, cpu_id),
+        pcid_valid(pcid),
+    ensures
+        ({
+            let entry = array.spec_index(cpu_id, pcid);
+            &&& entry.inv()
+            &&& entry.view().index() == (cpu_id, pcid)
+            &&& entry.wlocked() == (entry.view_ghost() is Some)
+            &&& (entry.view_ghost() is Some ==> index_valid(NUM_CPUS, entry.view_ghost().unwrap()))
+        }),
+{ reveal(pcid_needflush_wf); }
+
 #[verifier::opaque]
 pub open spec fn cpu_published_wf(published: CpuPublishedArray, cpus: CpuLockedArray, needflush: PcidNeedFlushArray) -> bool {
     forall|cpu_id: CpuId|

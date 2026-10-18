@@ -5,43 +5,13 @@ verus! {
 /// Dequeues and schedules the endpoint waiter and, on success, moves the Off
 /// CPU between the source and target CPU sets, preserving PCID and published state.
 #[verifier::opaque]
-pub open spec fn ipc_cpu_rendezvous_transition(
+pub open spec fn ipc_cpu_rendezvous_eof_transition_framing(
     pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr,
     endpoint_ptr: RwLockEndpointPtr, peer_scheduler_ptr: RwLockSchedulerPtr, wake_cpu: CpuId,
     source_container: RwLockContainerPtr, target_container: RwLockContainerPtr,
     source_cpu_set: RwLockCpuSetPtr, target_cpu_set: RwLockCpuSetPtr,
     transfer_cpu_id: CpuId, transferred: bool, peer_result: RetValueType, thread_id: LockThreadId,
 ) -> bool {
-    &&& pre.inv()
-    &&& index_valid(NUM_CPUS, transfer_cpu_id)
-    &&& current_thread_ptr != peer_thread_ptr
-    &&& source_container != target_container
-    &&& pre.thr_mp.spec_index(peer_thread_ptr).view().owning_container != pre.thr_mp.spec_index(current_thread_ptr).view().owning_container
-    &&& index_valid(NUM_CPUS, wake_cpu)
-    &&& wake_cpu == pre.thr_mp.spec_index(peer_thread_ptr).view().last_cpu
-    &&& source_cpu_set != target_cpu_set
-    &&& pre.ctn_mp.dom().contains(source_container)
-    &&& pre.ctn_mp.dom().contains(target_container)
-    &&& pre.thr_mp.dom().contains(current_thread_ptr)
-    &&& pre.thr_mp.dom().contains(peer_thread_ptr)
-    &&& pre.ep_mp.dom().contains(endpoint_ptr)
-    &&& pre.sched_mp.dom().contains(peer_scheduler_ptr)
-    &&& pre.cpu_set_mp.dom().contains(source_cpu_set)
-    &&& pre.cpu_set_mp.dom().contains(target_cpu_set)
-    &&& pre.ctn_mp.spec_index(source_container).view_rodata().view().cpu_set == source_cpu_set
-    &&& pre.ctn_mp.spec_index(target_container).view_rodata().view().cpu_set == target_cpu_set
-    &&& pre.ctn_mp.spec_index(pre.thr_mp.spec_index(peer_thread_ptr).view().owning_container).view_rodata().view().scheduler == peer_scheduler_ptr
-    &&& pre.thr_mp.spec_index(peer_thread_ptr).view().state.is_endpoint_waiting()
-    &&& pre.thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr)
-    &&& pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().len() > 0
-    &&& pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().spec_index(0) == peer_thread_ptr
-    &&& transferred ==> {
-        &&& pre.cpu_set_mp.spec_index(source_cpu_set).view().owned_cpus.view().contains(transfer_cpu_id)
-        &&& pre.cpu_set_mp.spec_index(source_cpu_set).view().owned_cpus.closed_view().contains(transfer_cpu_id)
-        &&& !pre.cpu_set_mp.spec_index(target_cpu_set).view().owned_cpus.view().contains(transfer_cpu_id)
-        &&& pre.cpu_arr.spec_index(transfer_cpu_id).view().view().view().state is Off
-        &&& pre.cpu_arr.spec_index(transfer_cpu_id).view().view().view().owning_container == source_container
-    }
     &&& post.pt_mp == pre.pt_mp
     &&& post.it_mp == pre.it_mp
     &&& post.irt == pre.irt
@@ -175,7 +145,6 @@ pub open spec fn ipc_cpu_rendezvous_transition(
         &&& shard_after.view().queue.length as int == shard_before.view().queue.length as int + 1
         &&& shard_after.view().queue.map() == shard_before.view().queue.map().insert(pre.thr_mp.spec_index(peer_thread_ptr).view().scheduler_linkedlist_node.addr(), peer_thread_ptr)
         &&& shard_after.view().queue.dom() == shard_before.view().queue.dom().insert(pre.thr_mp.spec_index(peer_thread_ptr).view().scheduler_linkedlist_node.addr())
-        &&& !shard_before.view().queue.dom().contains(pre.thr_mp.spec_index(peer_thread_ptr).view().scheduler_linkedlist_node.addr())
     }
 }
 }

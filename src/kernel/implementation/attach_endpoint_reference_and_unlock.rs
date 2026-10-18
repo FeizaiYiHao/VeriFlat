@@ -84,7 +84,7 @@ verus! {
                 &&& krnl.ep_mp.spec_index(endpoint_ptr).view().rf_counter < usize::MAX
             }) by { reveal(thread_endpoint_ref_counter_wf); endpoint_ref_counter_bounded(&*krnl, endpoint_ptr); };
         }
-        proof { assert(krnl.thr_mp.perms_wf()) by { reveal(thread_perms_wf); }; assert(krnl.ep_mp.perms_wf() && krnl.ep_mp.spec_index(endpoint_ptr).is_init()) by { endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr); }; }
+        proof { assert(krnl.thr_mp.perms_wf()) by { reveal(thread_perms_wf); }; assert(krnl.ep_mp.perms_wf() && krnl.ep_mp.spec_index(endpoint_ptr).is_init()) by { endpoint_perms_wf_map(krnl.ep_mp); endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr); }; }
         {
             let thread_mut = krnl.thr_mp.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&thread_lock_perm));
             thread_mut.endpoint_descriptors.set(0, Some(endpoint_ptr));

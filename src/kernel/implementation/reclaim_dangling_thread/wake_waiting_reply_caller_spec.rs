@@ -5,17 +5,9 @@ verus! {
 /// Schedules the caller `thread_ptr` serves on shard `cpu_id` of the caller's scheduler with `ErrorIpcCalleeExited` and
 /// drops the callee's caller link. Shared by exit and kill.
 #[verifier::opaque]
-pub open spec fn wake_waiting_reply_caller_transition(
+pub open spec fn wake_waiting_reply_caller_eof_transition_framing(
     pre: KernelK, post: KernelK, thread_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_id: CpuId,
 ) -> bool {
-    &&& thread_ptr != caller_ptr
-    &&& index_valid(NUM_CPUS, cpu_id)
-    &&& pre.thr_mp.dom().contains(thread_ptr)
-    &&& pre.thr_mp.dom().contains(caller_ptr)
-    &&& pre.sched_mp.dom().contains(scheduler_ptr)
-    &&& pre.ctn_mp.spec_index(pre.thr_mp.spec_index(caller_ptr).view().owning_container).view_rodata().view().scheduler == scheduler_ptr
-    &&& pre.thr_mp.spec_index(thread_ptr).view().caller == Some(caller_ptr)
-    &&& pre.thr_mp.spec_index(caller_ptr).view().state is WAITING_REPLY
     &&& post == (KernelK { thr_mp: post.thr_mp, sched_mp: post.sched_mp, ..pre })
     &&& post.thr_mp.dom() == pre.thr_mp.dom()
     &&& forall|key: RwLockThreadPtr| #![trigger pre.thr_mp.spec_index(key)] #![trigger post.thr_mp.spec_index(key)]
@@ -71,7 +63,6 @@ pub open spec fn wake_waiting_reply_caller_transition(
         &&& shard_after.view().queue.length as int == shard_before.view().queue.length as int + 1
         &&& shard_after.view().queue.map() == shard_before.view().queue.map().insert(node_addr, caller_ptr)
         &&& shard_after.view().queue.dom() == shard_before.view().queue.dom().insert(node_addr)
-        &&& !shard_before.view().queue.dom().contains(node_addr)
     }
 }
 } // verus!

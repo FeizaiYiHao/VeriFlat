@@ -21,7 +21,6 @@ verus! {
             scheduler_perms_wf(scheduler_map),
             scheduler_map.dom().contains(scheduler_ptr),
         ensures
-            scheduler_map.perms_wf(),
             scheduler_map.spec_index(scheduler_ptr).inv(),
     { reveal(scheduler_perms_wf); }
 }

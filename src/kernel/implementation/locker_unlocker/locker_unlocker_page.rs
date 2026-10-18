@@ -54,6 +54,7 @@ impl KernelK {
             lock_ensures(old(lctx), final(lctx), old(self).pg_arr.lock_id_by_index(page_index), KernelObjId::Page(page_index)),
     {
         proof {
+            page_array_wf_map(old(self).pg_arr);
             page_array_wf_at(old(self).pg_arr, page_index);
             assert(old(lctx).lock_id_acyclic(old(self).pg_arr.lock_id_by_index(page_index))) by {
                 reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned); reveal(UnLockedMap::typed_shard_lock_map_aligned);

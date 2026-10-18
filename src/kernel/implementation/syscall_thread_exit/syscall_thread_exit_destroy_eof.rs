@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::syscall_thread_exit_destroy_spec::thread_exit_destroy_transition;
+use super::syscall_thread_exit_destroy_spec::thread_exit_destroy_eof_transition_framing;
 
 verus! {
 proof fn thread_exit_destroy_eof_subsystems_inv(
@@ -10,7 +10,38 @@ proof fn thread_exit_destroy_eof_subsystems_inv(
 )
     requires
         pre.inv(),
-        thread_exit_destroy_transition(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr),
+        thread_exit_destroy_eof_transition_framing(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr),
+        index_valid(NUM_CPUS, cpu_id),
+        page_ptr_valid(thread_ptr),
+        pre.thr_mp.dom().contains(thread_ptr),
+        !pre.thr_mp.spec_index(thread_ptr).being_killed(),
+        pre.thr_mp.spec_index(thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        pre.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
+        pre.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
+        pre.thr_mp.spec_index(thread_ptr).view().caller is None,
+        pre.thr_mp.spec_index(thread_ptr).view().callee is None,
+        forall|j: int| #![trigger pre.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().spec_index(j)] 0 <= j < MAX_NUM_ENDPOINT_DESCRIPTORS ==> pre.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().spec_index(j) is None,
+        pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
+        pre.thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
+        pre.thr_mp.spec_index(thread_ptr).view().proc_linkedlist_node.addr() == proc_node_addr,
+        pre.prc_mp.dom().contains(process_ptr),
+        pre.prc_mp.spec_index(process_ptr).view().quota_4k + pre.thr_mp.spec_index(thread_ptr).view().quota_4k <= usize::MAX,
+        pre.prc_mp.spec_index(process_ptr).view().quota_2m + pre.thr_mp.spec_index(thread_ptr).view().quota_2m <= usize::MAX,
+        pre.prc_mp.spec_index(process_ptr).view().quota_1g + pre.thr_mp.spec_index(thread_ptr).view().quota_1g <= usize::MAX,
+        pre.ctn_mp.dom().contains(container_ptr),
+        pre.ctn_mp.dom().contains(owner),
+        pre.pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().owning_container == owner,
+        pre.pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread }),
+        pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr,
+        pre.allc_4k_mp.dom().contains(allocator_ptr),
+        !pre.cpu_arr.spec_index(cpu_id).view().being_killed(),
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.view().contains(thread_ptr),
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.map().dom().contains(proc_node_addr),
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.map().spec_index(proc_node_addr) == thread_ptr,
+        !pre.prc_mp.spec_index(process_ptr).being_killed(),
+        pre.pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().free_list_node_storage.addr() == cache_node_addr,
+        !pre.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(cache_node_addr),
+        pre.pcid_allc_mp.dom().contains(pre.ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator),
         page_array_wf(post.pg_arr),
         post.cpu_arr.inv(),
         post.cpu_arr.spec_index(cpu_id).view().is_init(),
@@ -27,7 +58,7 @@ proof fn thread_exit_destroy_eof_subsystems_inv(
         pcid_allocator_perms_wf(post.pcid_allc_mp),
     ensures post.subsystems_inv(),
 {
-    reveal(thread_exit_destroy_transition);
+    reveal(thread_exit_destroy_eof_transition_framing);
     assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); };
     assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
     assert(container_perms_wf(post.ctn_mp)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
@@ -45,7 +76,38 @@ proof fn thread_exit_destroy_eof_page_relations(
 )
     requires
         pre.inv(),
-        thread_exit_destroy_transition(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr),
+        thread_exit_destroy_eof_transition_framing(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr),
+        index_valid(NUM_CPUS, cpu_id),
+        page_ptr_valid(thread_ptr),
+        pre.thr_mp.dom().contains(thread_ptr),
+        !pre.thr_mp.spec_index(thread_ptr).being_killed(),
+        pre.thr_mp.spec_index(thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        pre.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
+        pre.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
+        pre.thr_mp.spec_index(thread_ptr).view().caller is None,
+        pre.thr_mp.spec_index(thread_ptr).view().callee is None,
+        forall|j: int| #![trigger pre.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().spec_index(j)] 0 <= j < MAX_NUM_ENDPOINT_DESCRIPTORS ==> pre.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().spec_index(j) is None,
+        pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
+        pre.thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
+        pre.thr_mp.spec_index(thread_ptr).view().proc_linkedlist_node.addr() == proc_node_addr,
+        pre.prc_mp.dom().contains(process_ptr),
+        pre.prc_mp.spec_index(process_ptr).view().quota_4k + pre.thr_mp.spec_index(thread_ptr).view().quota_4k <= usize::MAX,
+        pre.prc_mp.spec_index(process_ptr).view().quota_2m + pre.thr_mp.spec_index(thread_ptr).view().quota_2m <= usize::MAX,
+        pre.prc_mp.spec_index(process_ptr).view().quota_1g + pre.thr_mp.spec_index(thread_ptr).view().quota_1g <= usize::MAX,
+        pre.ctn_mp.dom().contains(container_ptr),
+        pre.ctn_mp.dom().contains(owner),
+        pre.pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().owning_container == owner,
+        pre.pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread }),
+        pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr,
+        pre.allc_4k_mp.dom().contains(allocator_ptr),
+        !pre.cpu_arr.spec_index(cpu_id).view().being_killed(),
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.view().contains(thread_ptr),
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.map().dom().contains(proc_node_addr),
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.map().spec_index(proc_node_addr) == thread_ptr,
+        !pre.prc_mp.spec_index(process_ptr).being_killed(),
+        pre.pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().free_list_node_storage.addr() == cache_node_addr,
+        !pre.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(cache_node_addr),
+        pre.pcid_allc_mp.dom().contains(pre.ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator),
         post.subsystems_inv(),
     ensures
         allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
@@ -76,7 +138,7 @@ proof fn thread_exit_destroy_eof_page_relations(
         container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
         container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr),
 {
-    reveal(thread_exit_destroy_transition);
+    reveal(thread_exit_destroy_eof_transition_framing);
     let page_index = page_ptr2page_index(thread_ptr);
     let thread = pre.thr_mp.spec_index(thread_ptr).view();
     page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip();
@@ -128,10 +190,41 @@ proof fn thread_exit_destroy_eof_allocator_quota_wf(
 )
     requires
         pre.inv(),
-        thread_exit_destroy_transition(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr),
+        thread_exit_destroy_eof_transition_framing(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr),
+        index_valid(NUM_CPUS, cpu_id),
+        page_ptr_valid(thread_ptr),
+        pre.thr_mp.dom().contains(thread_ptr),
+        !pre.thr_mp.spec_index(thread_ptr).being_killed(),
+        pre.thr_mp.spec_index(thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        pre.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
+        pre.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
+        pre.thr_mp.spec_index(thread_ptr).view().caller is None,
+        pre.thr_mp.spec_index(thread_ptr).view().callee is None,
+        forall|j: int| #![trigger pre.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().spec_index(j)] 0 <= j < MAX_NUM_ENDPOINT_DESCRIPTORS ==> pre.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().spec_index(j) is None,
+        pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
+        pre.thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
+        pre.thr_mp.spec_index(thread_ptr).view().proc_linkedlist_node.addr() == proc_node_addr,
+        pre.prc_mp.dom().contains(process_ptr),
+        pre.prc_mp.spec_index(process_ptr).view().quota_4k + pre.thr_mp.spec_index(thread_ptr).view().quota_4k <= usize::MAX,
+        pre.prc_mp.spec_index(process_ptr).view().quota_2m + pre.thr_mp.spec_index(thread_ptr).view().quota_2m <= usize::MAX,
+        pre.prc_mp.spec_index(process_ptr).view().quota_1g + pre.thr_mp.spec_index(thread_ptr).view().quota_1g <= usize::MAX,
+        pre.ctn_mp.dom().contains(container_ptr),
+        pre.ctn_mp.dom().contains(owner),
+        pre.pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().owning_container == owner,
+        pre.pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread }),
+        pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr,
+        pre.allc_4k_mp.dom().contains(allocator_ptr),
+        !pre.cpu_arr.spec_index(cpu_id).view().being_killed(),
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.view().contains(thread_ptr),
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.map().dom().contains(proc_node_addr),
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.map().spec_index(proc_node_addr) == thread_ptr,
+        !pre.prc_mp.spec_index(process_ptr).being_killed(),
+        pre.pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().free_list_node_storage.addr() == cache_node_addr,
+        !pre.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(cache_node_addr),
+        pre.pcid_allc_mp.dom().contains(pre.ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator),
     ensures container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
 {
-    reveal(thread_exit_destroy_transition);
+    reveal(thread_exit_destroy_eof_transition_framing);
     thread_perms_wf_at(pre.thr_mp, thread_ptr);
     process_thread_wf_at(pre.prc_mp, pre.thr_mp, thread_ptr);
     lemma_container_process_thread_quota_folds_remove_thread_forall(pre.rt_ctn, pre.ctn_mp, post.ctn_mp, pre.prc_mp, post.prc_mp, pre.thr_mp, post.thr_mp, container_ptr, thread_ptr, process_ptr);
@@ -146,7 +239,38 @@ proof fn thread_exit_destroy_eof_thread_relations(
 )
     requires
         pre.inv(),
-        thread_exit_destroy_transition(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr),
+        thread_exit_destroy_eof_transition_framing(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr),
+        index_valid(NUM_CPUS, cpu_id),
+        page_ptr_valid(thread_ptr),
+        pre.thr_mp.dom().contains(thread_ptr),
+        !pre.thr_mp.spec_index(thread_ptr).being_killed(),
+        pre.thr_mp.spec_index(thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        pre.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
+        pre.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
+        pre.thr_mp.spec_index(thread_ptr).view().caller is None,
+        pre.thr_mp.spec_index(thread_ptr).view().callee is None,
+        forall|j: int| #![trigger pre.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().spec_index(j)] 0 <= j < MAX_NUM_ENDPOINT_DESCRIPTORS ==> pre.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().spec_index(j) is None,
+        pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
+        pre.thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
+        pre.thr_mp.spec_index(thread_ptr).view().proc_linkedlist_node.addr() == proc_node_addr,
+        pre.prc_mp.dom().contains(process_ptr),
+        pre.prc_mp.spec_index(process_ptr).view().quota_4k + pre.thr_mp.spec_index(thread_ptr).view().quota_4k <= usize::MAX,
+        pre.prc_mp.spec_index(process_ptr).view().quota_2m + pre.thr_mp.spec_index(thread_ptr).view().quota_2m <= usize::MAX,
+        pre.prc_mp.spec_index(process_ptr).view().quota_1g + pre.thr_mp.spec_index(thread_ptr).view().quota_1g <= usize::MAX,
+        pre.ctn_mp.dom().contains(container_ptr),
+        pre.ctn_mp.dom().contains(owner),
+        pre.pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().owning_container == owner,
+        pre.pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread }),
+        pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr,
+        pre.allc_4k_mp.dom().contains(allocator_ptr),
+        !pre.cpu_arr.spec_index(cpu_id).view().being_killed(),
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.view().contains(thread_ptr),
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.map().dom().contains(proc_node_addr),
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.map().spec_index(proc_node_addr) == thread_ptr,
+        !pre.prc_mp.spec_index(process_ptr).being_killed(),
+        pre.pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().free_list_node_storage.addr() == cache_node_addr,
+        !pre.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(cache_node_addr),
+        pre.pcid_allc_mp.dom().contains(pre.ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator),
         post.subsystems_inv(),
     ensures
         container_tree_wf(post.rt_ctn, post.ctn_mp),
@@ -170,7 +294,7 @@ proof fn thread_exit_destroy_eof_thread_relations(
         container_thread_wf(post.ctn_mp, post.thr_mp),
         process_thread_wf(post.prc_mp, post.thr_mp),
 {
-    reveal(thread_exit_destroy_transition);
+    reveal(thread_exit_destroy_eof_transition_framing);
     let uppers = pre.ctn_mp.spec_index(container_ptr).view_ghost().uppertree_seq.view();
     process_thread_wf_at(pre.prc_mp, pre.thr_mp, thread_ptr);
     process_perms_wf_at(pre.prc_mp, process_ptr);
@@ -214,14 +338,45 @@ proof fn thread_exit_destroy_eof_cpu_relations(
 )
     requires
         pre.inv(),
-        thread_exit_destroy_transition(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr),
+        thread_exit_destroy_eof_transition_framing(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr),
+        index_valid(NUM_CPUS, cpu_id),
+        page_ptr_valid(thread_ptr),
+        pre.thr_mp.dom().contains(thread_ptr),
+        !pre.thr_mp.spec_index(thread_ptr).being_killed(),
+        pre.thr_mp.spec_index(thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        pre.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
+        pre.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
+        pre.thr_mp.spec_index(thread_ptr).view().caller is None,
+        pre.thr_mp.spec_index(thread_ptr).view().callee is None,
+        forall|j: int| #![trigger pre.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().spec_index(j)] 0 <= j < MAX_NUM_ENDPOINT_DESCRIPTORS ==> pre.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().spec_index(j) is None,
+        pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
+        pre.thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
+        pre.thr_mp.spec_index(thread_ptr).view().proc_linkedlist_node.addr() == proc_node_addr,
+        pre.prc_mp.dom().contains(process_ptr),
+        pre.prc_mp.spec_index(process_ptr).view().quota_4k + pre.thr_mp.spec_index(thread_ptr).view().quota_4k <= usize::MAX,
+        pre.prc_mp.spec_index(process_ptr).view().quota_2m + pre.thr_mp.spec_index(thread_ptr).view().quota_2m <= usize::MAX,
+        pre.prc_mp.spec_index(process_ptr).view().quota_1g + pre.thr_mp.spec_index(thread_ptr).view().quota_1g <= usize::MAX,
+        pre.ctn_mp.dom().contains(container_ptr),
+        pre.ctn_mp.dom().contains(owner),
+        pre.pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().owning_container == owner,
+        pre.pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread }),
+        pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr,
+        pre.allc_4k_mp.dom().contains(allocator_ptr),
+        !pre.cpu_arr.spec_index(cpu_id).view().being_killed(),
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.view().contains(thread_ptr),
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.map().dom().contains(proc_node_addr),
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.map().spec_index(proc_node_addr) == thread_ptr,
+        !pre.prc_mp.spec_index(process_ptr).being_killed(),
+        pre.pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().free_list_node_storage.addr() == cache_node_addr,
+        !pre.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(cache_node_addr),
+        pre.pcid_allc_mp.dom().contains(pre.ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator),
         post.subsystems_inv(),
     ensures
         container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr),
         process_cpu_wf(post.prc_mp, post.cpu_arr),
         thread_cpu_wf(post.thr_mp, post.cpu_arr),
 {
-    reveal(thread_exit_destroy_transition);
+    reveal(thread_exit_destroy_eof_transition_framing);
     process_perms_wf_at(pre.prc_mp, process_ptr);
     reveal(cpu_array_wf); reveal(thread_cpu_wf);
     assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); };
@@ -236,7 +391,38 @@ pub(super) proof fn thread_exit_destroy_eof(
 )
     requires
         pre.inv(),
-        thread_exit_destroy_transition(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr),
+        thread_exit_destroy_eof_transition_framing(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr),
+        index_valid(NUM_CPUS, cpu_id),
+        page_ptr_valid(thread_ptr),
+        pre.thr_mp.dom().contains(thread_ptr),
+        !pre.thr_mp.spec_index(thread_ptr).being_killed(),
+        pre.thr_mp.spec_index(thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        pre.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
+        pre.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
+        pre.thr_mp.spec_index(thread_ptr).view().caller is None,
+        pre.thr_mp.spec_index(thread_ptr).view().callee is None,
+        forall|j: int| #![trigger pre.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().spec_index(j)] 0 <= j < MAX_NUM_ENDPOINT_DESCRIPTORS ==> pre.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().spec_index(j) is None,
+        pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
+        pre.thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
+        pre.thr_mp.spec_index(thread_ptr).view().proc_linkedlist_node.addr() == proc_node_addr,
+        pre.prc_mp.dom().contains(process_ptr),
+        pre.prc_mp.spec_index(process_ptr).view().quota_4k + pre.thr_mp.spec_index(thread_ptr).view().quota_4k <= usize::MAX,
+        pre.prc_mp.spec_index(process_ptr).view().quota_2m + pre.thr_mp.spec_index(thread_ptr).view().quota_2m <= usize::MAX,
+        pre.prc_mp.spec_index(process_ptr).view().quota_1g + pre.thr_mp.spec_index(thread_ptr).view().quota_1g <= usize::MAX,
+        pre.ctn_mp.dom().contains(container_ptr),
+        pre.ctn_mp.dom().contains(owner),
+        pre.pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().owning_container == owner,
+        pre.pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread }),
+        pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr,
+        pre.allc_4k_mp.dom().contains(allocator_ptr),
+        !pre.cpu_arr.spec_index(cpu_id).view().being_killed(),
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.view().contains(thread_ptr),
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.map().dom().contains(proc_node_addr),
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.map().spec_index(proc_node_addr) == thread_ptr,
+        !pre.prc_mp.spec_index(process_ptr).being_killed(),
+        pre.pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().free_list_node_storage.addr() == cache_node_addr,
+        !pre.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(cache_node_addr),
+        pre.pcid_allc_mp.dom().contains(pre.ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator),
         page_array_wf(post.pg_arr),
         post.cpu_arr.inv(),
         post.cpu_arr.spec_index(cpu_id).view().is_init(),
@@ -258,7 +444,7 @@ pub(super) proof fn thread_exit_destroy_eof(
     thread_exit_destroy_eof_allocator_quota_wf(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr);
     thread_exit_destroy_eof_thread_relations(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr);
     thread_exit_destroy_eof_cpu_relations(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr);
-    reveal(thread_exit_destroy_transition);
+    reveal(thread_exit_destroy_eof_transition_framing);
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
     assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
     assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
@@ -280,7 +466,38 @@ pub(super) proof fn thread_exit_destroy_eof_fields(
         entry.inv(),
         entry == (KernelK { pg_arr: entry.pg_arr, allc_4k_mp: entry.allc_4k_mp, pcid_needflush: entry.pcid_needflush, pcid_allc_mp: entry.pcid_allc_mp, ..start }),
         kernel_container_nonlock_fields_and_quotas_unchanged(&start, &entry),
-        thread_exit_destroy_transition(entry, mid, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr),
+        thread_exit_destroy_eof_transition_framing(entry, mid, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr),
+        index_valid(NUM_CPUS, cpu_id),
+        page_ptr_valid(thread_ptr),
+        entry.thr_mp.dom().contains(thread_ptr),
+        !entry.thr_mp.spec_index(thread_ptr).being_killed(),
+        entry.thr_mp.spec_index(thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        entry.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
+        entry.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
+        entry.thr_mp.spec_index(thread_ptr).view().caller is None,
+        entry.thr_mp.spec_index(thread_ptr).view().callee is None,
+        forall|j: int| #![trigger entry.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().spec_index(j)] 0 <= j < MAX_NUM_ENDPOINT_DESCRIPTORS ==> entry.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().spec_index(j) is None,
+        entry.thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
+        entry.thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
+        entry.thr_mp.spec_index(thread_ptr).view().proc_linkedlist_node.addr() == proc_node_addr,
+        entry.prc_mp.dom().contains(process_ptr),
+        entry.prc_mp.spec_index(process_ptr).view().quota_4k + entry.thr_mp.spec_index(thread_ptr).view().quota_4k <= usize::MAX,
+        entry.prc_mp.spec_index(process_ptr).view().quota_2m + entry.thr_mp.spec_index(thread_ptr).view().quota_2m <= usize::MAX,
+        entry.prc_mp.spec_index(process_ptr).view().quota_1g + entry.thr_mp.spec_index(thread_ptr).view().quota_1g <= usize::MAX,
+        entry.ctn_mp.dom().contains(container_ptr),
+        entry.ctn_mp.dom().contains(owner),
+        entry.pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().owning_container == owner,
+        entry.pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread }),
+        entry.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr,
+        entry.allc_4k_mp.dom().contains(allocator_ptr),
+        !entry.cpu_arr.spec_index(cpu_id).view().being_killed(),
+        entry.prc_mp.spec_index(process_ptr).view().owned_threads.view().contains(thread_ptr),
+        entry.prc_mp.spec_index(process_ptr).view().owned_threads.map().dom().contains(proc_node_addr),
+        entry.prc_mp.spec_index(process_ptr).view().owned_threads.map().spec_index(proc_node_addr) == thread_ptr,
+        !entry.prc_mp.spec_index(process_ptr).being_killed(),
+        entry.pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().free_list_node_storage.addr() == cache_node_addr,
+        !entry.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(cache_node_addr),
+        entry.pcid_allc_mp.dom().contains(entry.ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator),
         post == (KernelK {
             cpu_arr: post.cpu_arr, pcid_needflush: post.pcid_needflush, ctn_mp: post.ctn_mp, prc_mp: post.prc_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp,
             pcid_allc_mp: post.pcid_allc_mp, ..mid
@@ -300,7 +517,7 @@ pub(super) proof fn thread_exit_destroy_eof_fields(
         kernel_container_nonlock_fields_and_quotas_unchanged(&mid, &post),
     ensures kernel_thread_exit_fields(&start, &post, cpu_id, thread_ptr, entry.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID).view().needflush),
 {
-    reveal(thread_exit_destroy_transition); reveal(kernel_thread_exit_fields); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
+    reveal(thread_exit_destroy_eof_transition_framing); reveal(kernel_thread_exit_fields); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
     process_thread_wf_at(entry.prc_mp, entry.thr_mp, thread_ptr);
     page_ptr_roundtrip();
     reveal(container_page_owner_wf); reveal(container_allocator_wf);

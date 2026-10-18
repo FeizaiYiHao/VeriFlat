@@ -2,7 +2,7 @@ use super::*;
 #[cfg(verus_keep_ghost)]
 use super::allocate_free_4k_page_pop_postconditions::eof_pop_4k_postconditions;
 #[cfg(verus_keep_ghost)]
-use super::allocate_free_4k_page_pop_eof::{eof_pop_4k_inv, pop_stage_4k_page_transition_framing};
+use super::allocate_free_4k_page_pop_eof::{eof_pop_4k_inv, pop_stage_4k_page_eof_transition_framing};
 use vstd::prelude::*;
 use vstd::simple_pptr::*;
 use crate::*;
@@ -102,7 +102,9 @@ verus! {
             Some(cpu_id) => krnl.allc_4k_mp.borrow_cache_typed(alloc_ptr_4k, cpu_id, Ghost(lctx.allocator_cache_4k_lock_map()), Tracked(&*lctx), Tracked(source_lock_perm)).linked_list.peek_head(),
             None => krnl.allc_4k_mp.borrow_global_pool_typed(alloc_ptr_4k, Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), Tracked(source_lock_perm)).peek_head(),
         };
-        assert(page_ptr_valid(page_ptr)) by { reveal(allocator_free_page_ptrs_wf); };
+        assert(page_ptr_valid(page_ptr)) by {
+            if let Some(cpu_id) = source { allocator_free_page_ptrs_wf_cache_at(krnl.allc_4k_mp, alloc_ptr_4k, cpu_id, page_ptr); } else { allocator_free_page_ptrs_wf_global_at(krnl.allc_4k_mp, alloc_ptr_4k, page_ptr); }
+        };
         let page_index = page_ptr2page_index(page_ptr);
         let ghost free_state = match source { Some(cpu_id) => FreePageAllocatorState::PreCpuCache { cpu_id }, None => FreePageAllocatorState::GlobalList };
         proof {
@@ -110,12 +112,12 @@ verus! {
                 assert({
                     &&& old(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cpu_id).view().view().view().contains(page_ptr)
                     &&& krnl.pg_arr.spec_index(page_index).view().view().state == PageState::Free4k { allocator_ptr: Ghost(alloc_ptr_4k), state: free_state }
-                }) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); };
+                }) by { container_allocator_free_4k_page_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, alloc_ptr_4k, cpu_id, page_ptr); };
             } else {
                 assert({
                     &&& old(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.view().view().contains(page_ptr)
                     &&& krnl.pg_arr.spec_index(page_index).view().view().state == PageState::Free4k { allocator_ptr: Ghost(alloc_ptr_4k), state: free_state }
-                }) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); };
+                }) by { container_allocator_free_4k_page_wf_global_at(krnl.allc_4k_mp, krnl.pg_arr, alloc_ptr_4k, page_ptr); };
             }
         }
         let Tracked(page_lock_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));
@@ -132,13 +134,12 @@ verus! {
             }
         }
         assert(krnl.pg_arr.inv() && krnl.thr_mp.perms_wf() && krnl.thr_mp.spec_index(thread_ptr).is_init()
-        ) by { page_array_wf_at(krnl.pg_arr, page_index); thread_perms_wf_at(krnl.thr_mp, thread_ptr); };
+        ) by { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, page_index); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, thread_ptr); };
         let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(page_index);
         {
             let mut page = krnl.pg_arr.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_lock_perm));
             assert(page.owning_container == container_ptr && node_addr == page.free_list_node_storage.addr()) by {
-                reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_wf); reveal(LinkedList::wf_map);
-                reveal(container_allocator_cpu_cache_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf);
+                container_allocator_free_4k_page_wf_at(old(krnl).allc_4k_mp, old(krnl).pg_arr, page_index); reveal(container_allocator_wf); reveal(LinkedList::wf_map);
             };
             page.state = PageState::Owned4k { thread_ptr };
             page.free_list_node_storage.put(Tracked(node_perm));
@@ -157,7 +158,7 @@ verus! {
             }
         };
         proof {
-            assert(pop_stage_4k_page_transition_framing(*old(krnl), *krnl, alloc_ptr_4k, thread_ptr, container_ptr, page_ptr, node_addr, source)) by { reveal(pop_stage_4k_page_transition_framing); };
+            assert(pop_stage_4k_page_eof_transition_framing(*old(krnl), *krnl, alloc_ptr_4k, thread_ptr, container_ptr, page_ptr, node_addr, source)) by { reveal(pop_stage_4k_page_eof_transition_framing); };
             eof_pop_4k_inv(*old(krnl), *krnl, alloc_ptr_4k, thread_ptr, container_ptr, page_ptr, node_addr, source);
             eof_pop_4k_postconditions(*old(krnl), *krnl, *old(lctx), alloc_ptr_4k, thread_ptr, container_ptr, page_ptr, node_addr, source);
         }

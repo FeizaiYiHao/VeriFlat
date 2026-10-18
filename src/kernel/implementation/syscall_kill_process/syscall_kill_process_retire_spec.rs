@@ -20,7 +20,7 @@ pub open spec fn kill_retire_pages(k: KernelK, target: RwLockProcessPtr) -> Seq<
 /// `kill_retire_pages(pre, target)` returns through its free-list node to shard `cpu_id` of the container's 4K allocator
 /// `allocator_ptr`, whose quota grows by the number of those pages.
 #[verifier::opaque]
-pub open spec fn kill_retire_transition(
+pub open spec fn kill_retire_eof_transition_framing(
     pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr,
     allocator_ptr: RwLockPageAllocatorPtr,
 ) -> bool {
@@ -36,47 +36,6 @@ pub open spec fn kill_retire_transition(
     let post_allocator = post.allc_4k_mp.spec_index(allocator_ptr);
     let pre_cache = pre_allocator.cpu_caches.spec_index(cpu_id).view();
     let post_cache = post_allocator.cpu_caches.spec_index(cpu_id).view();
-    &&& index_valid(NUM_CPUS, cpu_id)
-    &&& pre.prc_mp.dom().contains(target)
-    &&& process.locking_thread() is Write
-    &&& process.being_killed()
-    &&& process.view().zombie
-    &&& process.view().children.view().len() == 0
-    &&& process.view().owned_threads.view().len() == 0
-    &&& process.view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty()
-    &&& process.view_rodata().view().parent == Some(parent_ptr)
-    &&& process.view_rodata().view().owning_container == container_ptr
-    &&& pre.prc_mp.dom().contains(parent_ptr)
-    &&& parent_ptr != target
-    &&& uppers.contains(parent_ptr)
-    &&& pre.prc_mp.spec_index(parent_ptr).view().children.map().dom().contains(node_addr)
-    &&& pre.prc_mp.spec_index(parent_ptr).view().children.map().spec_index(node_addr) == target
-    &&& pre.pt_mp.dom().contains(pagetable)
-    &&& pre.pt_mp.spec_index(pagetable).locking_thread() is Write
-    &&& pre.pt_mp.spec_index(pagetable).view().page_closure() =~= set![pre.pt_mp.spec_index(pagetable).view().cr3]
-    &&& pre.pt_mp.spec_index(pagetable).view().mapping_4k().dom() =~= Set::<VAddr>::empty()
-    &&& pre.pt_mp.spec_index(pagetable).view().mapping_2m().dom() =~= Set::<VAddr>::empty()
-    &&& pre.pt_mp.spec_index(pagetable).view().mapping_1g().dom() =~= Set::<VAddr>::empty()
-    &&& iommu_table is Some ==> {
-        let it = iommu_table->Some_0;
-        &&& pre.it_mp.dom().contains(it)
-        &&& pre.it_mp.spec_index(it).locking_thread() is Write
-        &&& pre.it_mp.spec_index(it).view().page_closure() =~= set![pre.it_mp.spec_index(it).view().cr3]
-        &&& pre.it_mp.spec_index(it).view().mapping_4k().dom() =~= Set::<VAddr>::empty()
-        &&& pre.it_mp.spec_index(it).view().mapping_2m().dom() =~= Set::<VAddr>::empty()
-        &&& pre.it_mp.spec_index(it).view().mapping_1g().dom() =~= Set::<VAddr>::empty()
-    }
-    &&& pre.ctn_mp.dom().contains(container_ptr)
-    &&& pre.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == allocator_ptr
-    &&& pre.allc_4k_mp.dom().contains(allocator_ptr)
-    &&& pages.no_duplicates()
-    &&& forall|k: int| #![trigger pages[k]] 0 <= k < n ==> {
-        &&& index_valid(NUM_PAGES, pages[k])
-        &&& pages[k] == page_ptr2page_index(target) || pages[k] == page_ptr2page_index(pagetable) || pages[k] == page_ptr2page_index(pre.pt_mp.spec_index(pagetable).view().cr3)
-            || iommu_table is Some && (pages[k] == page_ptr2page_index(iommu_table->Some_0) || pages[k] == page_ptr2page_index(pre.it_mp.spec_index(iommu_table->Some_0).view().cr3))
-        &&& pre.pg_arr.spec_index(pages[k]).view().view().state is Allocated4k
-        &&& pre.pg_arr.spec_index(pages[k]).view().view().owning_container == container_ptr
-    }
     &&& post == (KernelK { prc_mp: post.prc_mp, ctn_mp: post.ctn_mp, pt_mp: post.pt_mp, it_mp: post.it_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..pre })
     &&& post.prc_mp.dom() == pre.prc_mp.dom().remove(target)
     &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)] post.prc_mp.dom().contains(p) ==> {

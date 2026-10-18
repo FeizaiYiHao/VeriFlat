@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::syscall_new_container_cpu_spec::new_container_cpu_transfer_transition;
+use super::syscall_new_container_cpu_spec::new_container_cpu_transfer_eof_transition_framing;
 #[cfg(verus_keep_ghost)]
 use super::syscall_new_container_cpu_eof::new_container_cpu_transfer_eof;
 
@@ -111,8 +111,8 @@ pub(super) fn transfer_new_container_cpu(
         transfer_cpu.transfer_off_cpu_to_container(child_container_ptr, child_container_depth);
     }
     proof {
-        assert(new_container_cpu_transfer_transition(locked_k, *krnl, parent_container_ptr, child_container_ptr, parent_cpu_set, child_cpu_set, transfer_cpu_id, lctx.thread_id())) by {
-            reveal(new_container_cpu_transfer_transition);
+        assert(new_container_cpu_transfer_eof_transition_framing(locked_k, *krnl, parent_container_ptr, child_container_ptr, parent_cpu_set, child_cpu_set, transfer_cpu_id, lctx.thread_id())) by {
+            reveal(new_container_cpu_transfer_eof_transition_framing);
         };
         new_container_cpu_transfer_eof(locked_k, *krnl, parent_container_ptr, child_container_ptr, parent_cpu_set, child_cpu_set, transfer_cpu_id, lctx.thread_id());
     }

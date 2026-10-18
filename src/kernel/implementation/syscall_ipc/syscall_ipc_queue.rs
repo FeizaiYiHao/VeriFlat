@@ -30,7 +30,7 @@ pub(super) fn ipc_block_thread_on_endpoint(
         final(thread_map).unchanged_except(old(thread_map), thread_ptr),
         final(thread_map).spec_index(thread_ptr).locking_thread() == old(thread_map).spec_index(thread_ptr).locking_thread(),
         final(thread_map).spec_index(thread_ptr).being_killed() == old(thread_map).spec_index(thread_ptr).being_killed(),
-        final(thread_map).spec_index(thread_ptr).view().ipc_framed_fields_equal(&old(thread_map).spec_index(thread_ptr).view()),
+        final(thread_map).spec_index(thread_ptr).view().non_ipc_fields_unchanged(&old(thread_map).spec_index(thread_ptr).view()),
         final(thread_map).spec_index(thread_ptr).view().caller == old(thread_map).spec_index(thread_ptr).view().caller,
         final(thread_map).spec_index(thread_ptr).view().syscall_progress == old(thread_map).spec_index(thread_ptr).view().syscall_progress,
         final(thread_map).spec_index(thread_ptr).view().callee == old(thread_map).spec_index(thread_ptr).view().callee,
@@ -46,7 +46,7 @@ pub(super) fn ipc_block_thread_on_endpoint(
         ret.1.view().addr() == ret.0,
         ret.1.view().value().view() == thread_ptr,
 {
-    proof { thread_perms_wf_at(*old(thread_map), thread_ptr); }
+    proof { thread_perms_wf_map(*old(thread_map)); thread_perms_wf_at(*old(thread_map), thread_ptr); }
     let ret = {
         let thread_mut = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
         thread_mut.block_on_endpoint(thread_ptr, endpoint_ptr, endpoint_index, waiting_state, payload, pt_regs)
@@ -105,7 +105,7 @@ pub(super) fn ipc_enqueue_endpoint_waiter(
             old(endpoint_map).spec_index(endpoint_ptr).view().queue_state
         },
 {
-    proof { endpoint_perms_wf_at(*old(endpoint_map), endpoint_ptr); }
+    proof { endpoint_perms_wf_map(*old(endpoint_map)); endpoint_perms_wf_at(*old(endpoint_map), endpoint_ptr); }
     {
         let endpoint_mut = endpoint_map.borrow_mut_typed(endpoint_ptr, Ghost(lctx.endpoint_lock_map()), Tracked(lctx), endpoint_lock_perm);
         endpoint_mut.enqueue_waiter(thread_ptr, waiting_state, node_addr, node_perm);
@@ -149,7 +149,7 @@ pub(super) fn ipc_schedule_endpoint_waiter(
         final(thread_map).spec_index(thread_ptr).locking_thread() == old(thread_map).spec_index(thread_ptr).locking_thread(),
         final(thread_map).spec_index(thread_ptr).being_killed() == old(thread_map).spec_index(thread_ptr).being_killed(),
         final(thread_map).spec_index(current_thread_ptr) == old(thread_map).spec_index(current_thread_ptr),
-        final(thread_map).spec_index(thread_ptr).view().ipc_framed_fields_equal(&old(thread_map).spec_index(thread_ptr).view()),
+        final(thread_map).spec_index(thread_ptr).view().non_ipc_fields_unchanged(&old(thread_map).spec_index(thread_ptr).view()),
         final(thread_map).spec_index(thread_ptr).view().caller == old(thread_map).spec_index(thread_ptr).view().caller,
         final(thread_map).spec_index(thread_ptr).view().syscall_progress == old(thread_map).spec_index(thread_ptr).view().syscall_progress,
         final(thread_map).spec_index(thread_ptr).view().callee == old(thread_map).spec_index(thread_ptr).view().callee,
@@ -167,7 +167,7 @@ pub(super) fn ipc_schedule_endpoint_waiter(
         ret.1.view().addr() == ret.0,
         ret.1.view().value().view() == thread_ptr,
 {
-    proof { thread_perms_wf_at(*old(thread_map), thread_ptr); }
+    proof { thread_perms_wf_map(*old(thread_map)); thread_perms_wf_at(*old(thread_map), thread_ptr); }
     let ret = {
         let thread_mut = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
         thread_mut.endpoint_waiter_to_scheduled(thread_ptr, wake_cpu, result, endpoint_node_perm)
@@ -205,7 +205,7 @@ pub(super) fn ipc_move_endpoint_waiter_to_transit(thread_map: &mut ThreadLockedM
         final(thread_map).spec_index(thread_ptr).locking_thread() == old(thread_map).spec_index(thread_ptr).locking_thread(),
         final(thread_map).spec_index(thread_ptr).being_killed() == old(thread_map).spec_index(thread_ptr).being_killed(),
         final(thread_map).spec_index(current_thread_ptr) == old(thread_map).spec_index(current_thread_ptr),
-        final(thread_map).spec_index(thread_ptr).view().ipc_framed_fields_equal(&old(thread_map).spec_index(thread_ptr).view()),
+        final(thread_map).spec_index(thread_ptr).view().non_ipc_fields_unchanged(&old(thread_map).spec_index(thread_ptr).view()),
         final(thread_map).spec_index(thread_ptr).view().caller == old(thread_map).spec_index(thread_ptr).view().caller,
         final(thread_map).spec_index(thread_ptr).view().syscall_progress == old(thread_map).spec_index(thread_ptr).view().syscall_progress,
         final(thread_map).spec_index(thread_ptr).view().callee == old(thread_map).spec_index(thread_ptr).view().callee,
@@ -216,7 +216,7 @@ pub(super) fn ipc_move_endpoint_waiter_to_transit(thread_map: &mut ThreadLockedM
         final(thread_map).spec_index(thread_ptr).view().scheduler_linkedlist_node == old(thread_map).spec_index(thread_ptr).view().scheduler_linkedlist_node,
         final(thread_map).spec_index(thread_ptr).view().ipc_payload == old(thread_map).spec_index(thread_ptr).view().ipc_payload,
 {
-    proof { thread_perms_wf_at(*old(thread_map), thread_ptr); }
+    proof { thread_perms_wf_map(*old(thread_map)); thread_perms_wf_at(*old(thread_map), thread_ptr); }
     {
         let thread_mut = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
         thread_mut.endpoint_waiter_to_endpoint_transit(thread_ptr, endpoint_node_perm);
@@ -252,7 +252,7 @@ pub(super) fn ipc_schedule_endpoint_transit(
         final(thread_map).spec_index(thread_ptr).locking_thread() == old(thread_map).spec_index(thread_ptr).locking_thread(),
         final(thread_map).spec_index(thread_ptr).being_killed() == old(thread_map).spec_index(thread_ptr).being_killed(),
         final(thread_map).spec_index(current_thread_ptr) == old(thread_map).spec_index(current_thread_ptr),
-        final(thread_map).spec_index(thread_ptr).view().ipc_framed_fields_equal(&old(thread_map).spec_index(thread_ptr).view()),
+        final(thread_map).spec_index(thread_ptr).view().non_ipc_fields_unchanged(&old(thread_map).spec_index(thread_ptr).view()),
         final(thread_map).spec_index(thread_ptr).view().caller == old(thread_map).spec_index(thread_ptr).view().caller,
         final(thread_map).spec_index(thread_ptr).view().syscall_progress == old(thread_map).spec_index(thread_ptr).view().syscall_progress,
         final(thread_map).spec_index(thread_ptr).view().callee == old(thread_map).spec_index(thread_ptr).view().callee,
@@ -268,7 +268,7 @@ pub(super) fn ipc_schedule_endpoint_transit(
         ret.1.view().addr() == ret.0,
         ret.1.view().value().view() == thread_ptr,
 {
-    proof { thread_perms_wf_at(*old(thread_map), thread_ptr); }
+    proof { thread_perms_wf_map(*old(thread_map)); thread_perms_wf_at(*old(thread_map), thread_ptr); }
     let ret = {
         let thread_mut = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
         thread_mut.endpoint_transit_to_scheduled(thread_ptr, wake_cpu, result)
@@ -328,7 +328,7 @@ pub(super) fn ipc_dequeue_endpoint_waiter(endpoint_map: &mut EndpointLockedMap, 
             final(endpoint_map).spec_index(endpoint_ptr).view().queue.view().contains(t_ptr) ==>
                 old(endpoint_map).spec_index(endpoint_ptr).view().queue.view().contains(t_ptr),
 {
-    proof { endpoint_perms_wf_at(*old(endpoint_map), endpoint_ptr); }
+    proof { endpoint_perms_wf_map(*old(endpoint_map)); endpoint_perms_wf_at(*old(endpoint_map), endpoint_ptr); }
     let ret = {
         let endpoint_mut = endpoint_map.borrow_mut_typed(endpoint_ptr, Ghost(lctx.endpoint_lock_map()), Tracked(lctx), endpoint_lock_perm);
         endpoint_mut.dequeue_waiter(thread_ptr)

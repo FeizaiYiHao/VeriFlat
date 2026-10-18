@@ -184,6 +184,7 @@ impl KernelK {
             },
     {
         proof {
+            thread_perms_wf_map(old(self).thr_mp);
             thread_perms_wf_at(old(self).thr_mp, thread_ptr);
             let target_thread = old(self).thr_mp.spec_index(thread_ptr).view();
             if old(self).thr_mp.spec_index(thread_ptr).being_killed() {} else if killer_any_thread_lock_context(*old(self), *old(lctx), thread_ptr) {
@@ -292,7 +293,8 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Thread(thread_ptr), TypedHeldLock { lock_id: final(self).thr_mp.lock_id_by_key(thread_ptr), mode: TypedLockMode::Write }),
     {
         proof {
-            assert(old(self).thr_mp.dom().contains(thread_ptr)) by { reveal(process_thread_wf); };
+            assert(old(self).thr_mp.dom().contains(thread_ptr)) by { process_thread_wf_process_at(old(self).prc_mp, old(self).thr_mp, process_ptr, thread_ptr); };
+            thread_perms_wf_map(old(self).thr_mp);
             thread_perms_wf_at(old(self).thr_mp, thread_ptr);
             old(self).prc_mp.typed_lock_map_aligned_write_at(old(lctx).process_lock_map(), old(lctx).thread_id(), process_ptr);
             old(self).thr_mp.typed_lock_map_aligned_write_at(old(lctx).thread_lock_map(), old(lctx).thread_id(), thread_ptr);
@@ -363,7 +365,7 @@ impl KernelK {
             unlock_ensures(old(lctx), final(lctx), KernelObjId::Thread(thread_ptr), old(self).thr_mp.lock_id_by_key(thread_ptr)),
     {
         proof {
-            assert({ &&& old(self).thr_mp.perms_wf() &&& old(self).thr_mp.spec_index(thread_ptr).inv() }) by { thread_perms_wf_at(old(self).thr_mp, thread_ptr); };
+            assert({ &&& old(self).thr_mp.perms_wf() &&& old(self).thr_mp.spec_index(thread_ptr).inv() }) by { thread_perms_wf_map(old(self).thr_mp); thread_perms_wf_at(old(self).thr_mp, thread_ptr); };
             assert(old(lctx).lock_entry_contains(old(self).thr_mp.lock_id_by_key(thread_ptr), KernelObjId::Thread(thread_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         assert(self.thr_mp.spec_index(thread_ptr).wlocked_by(&*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
@@ -409,7 +411,7 @@ impl KernelK {
             final(self).thr_mp.spec_index(thread_ptr).being_killed() == old(self).thr_mp.spec_index(thread_ptr).being_killed(),
             final(self).thr_mp.lock_id_by_key(thread_ptr) == old(self).thr_mp.lock_id_by_key(thread_ptr),
     {
-        assert(self.thr_mp.perms_wf() && self.thr_mp.spec_index(thread_ptr).is_init()) by { thread_perms_wf_at(self.thr_mp, thread_ptr); };
+        assert(self.thr_mp.perms_wf() && self.thr_mp.spec_index(thread_ptr).is_init()) by { thread_perms_wf_map(self.thr_mp); thread_perms_wf_at(self.thr_mp, thread_ptr); };
         {
             let thread = self.thr_mp.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), lock_perm);
             thread.syscall_progress = progress;

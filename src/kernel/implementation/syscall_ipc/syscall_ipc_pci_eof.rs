@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::syscall_ipc_pci_spec::ipc_pci_rendezvous_transition;
+use super::syscall_ipc_pci_spec::ipc_pci_rendezvous_eof_transition_framing;
 #[cfg(verus_keep_ghost)]
 use super::syscall_ipc_dispatch::running_thread_not_in_endpoint_queue;
 
@@ -13,11 +13,29 @@ proof fn ipc_pci_rendezvous_eof_process_management_inv(
     transferred: bool, peer_result: RetValueType, thread_id: LockThreadId,
 )
     requires
-        ipc_pci_rendezvous_transition(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id),
+        pre.inv(),
+        index_valid(NUM_CPUS, wake_cpu),
+        pre.thr_mp.dom().contains(peer_thread_ptr),
+        pre.ep_mp.dom().contains(endpoint_ptr),
+        pre.sched_mp.dom().contains(peer_scheduler_ptr),
+        pre.ctn_mp.spec_index(pre.thr_mp.spec_index(peer_thread_ptr).view().owning_container).view_rodata().view().scheduler == peer_scheduler_ptr,
+        pre.thr_mp.spec_index(peer_thread_ptr).view().state.is_endpoint_waiting(),
+        pre.thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().len() > 0,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().spec_index(0) == peer_thread_ptr,
+        pci_bdf_valid(bdf.0, bdf.1, bdf.2),
+        pre.prc_mp.dom().contains(sender_proc),
+        pre.prc_mp.dom().contains(receiver_proc),
+        sender_proc != receiver_proc,
+        !pre.prc_mp.spec_index(sender_proc).view().zombie,
+        !pre.prc_mp.spec_index(receiver_proc).view().zombie,
+        transferred ==> pre.irt.view().spec_index_owner(bdf.0, bdf.1, bdf.2) == sender_proc,
+        !pre.sched_mp.spec_index(peer_scheduler_ptr).shards.spec_index(wake_cpu).view().view().queue.dom().contains(pre.thr_mp.spec_index(peer_thread_ptr).view().scheduler_linkedlist_node.addr()),
+        ipc_pci_rendezvous_eof_transition_framing(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
-    reveal(ipc_pci_rendezvous_transition);
+    reveal(ipc_pci_rendezvous_eof_transition_framing);
     assert(post.process_management_inv()) by {
         assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
@@ -52,11 +70,12 @@ proof fn ipc_pci_rendezvous_eof_memory_management_inv(
     transferred: bool, peer_result: RetValueType, thread_id: LockThreadId,
 )
     requires
-        ipc_pci_rendezvous_transition(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id),
+        pre.inv(),
+        ipc_pci_rendezvous_eof_transition_framing(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id),
         post.subsystems_inv(),
     ensures post.memory_management_inv(),
 {
-    reveal(ipc_pci_rendezvous_transition);
+    reveal(ipc_pci_rendezvous_eof_transition_framing);
     assert(post.memory_management_inv()) by {
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
         assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); };
@@ -104,7 +123,15 @@ proof fn ipc_pci_rendezvous_eof_iommu_inv(
     transferred: bool, peer_result: RetValueType, thread_id: LockThreadId,
 )
     requires
-        ipc_pci_rendezvous_transition(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id),
+        pre.inv(),
+        pci_bdf_valid(bdf.0, bdf.1, bdf.2),
+        pre.prc_mp.dom().contains(sender_proc),
+        pre.prc_mp.dom().contains(receiver_proc),
+        sender_proc != receiver_proc,
+        !pre.prc_mp.spec_index(sender_proc).view().zombie,
+        !pre.prc_mp.spec_index(receiver_proc).view().zombie,
+        transferred ==> pre.irt.view().spec_index_owner(bdf.0, bdf.1, bdf.2) == sender_proc,
+        ipc_pci_rendezvous_eof_transition_framing(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id),
         post.irt.view().wf(),
         post.iommu_tlb.inv(),
     ensures
@@ -113,7 +140,7 @@ proof fn ipc_pci_rendezvous_eof_iommu_inv(
         iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
         iommu_table_lock_wf(post.irt.view(), post.prc_mp, post.it_mp),
 {
-    reveal(ipc_pci_rendezvous_transition);
+    reveal(ipc_pci_rendezvous_eof_transition_framing);
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
     assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
     assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
@@ -127,7 +154,27 @@ pub(super) proof fn ipc_pci_rendezvous_eof(
     waiting_state: ThreadState,
 )
     requires
-        ipc_pci_rendezvous_transition(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id),
+        pre.inv(),
+        current_thread_ptr != peer_thread_ptr,
+        index_valid(NUM_CPUS, wake_cpu),
+        pre.thr_mp.dom().contains(current_thread_ptr),
+        pre.thr_mp.dom().contains(peer_thread_ptr),
+        pre.ep_mp.dom().contains(endpoint_ptr),
+        pre.sched_mp.dom().contains(peer_scheduler_ptr),
+        pre.ctn_mp.spec_index(pre.thr_mp.spec_index(peer_thread_ptr).view().owning_container).view_rodata().view().scheduler == peer_scheduler_ptr,
+        pre.thr_mp.spec_index(peer_thread_ptr).view().state.is_endpoint_waiting(),
+        pre.thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().len() > 0,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().spec_index(0) == peer_thread_ptr,
+        pci_bdf_valid(bdf.0, bdf.1, bdf.2),
+        pre.prc_mp.dom().contains(sender_proc),
+        pre.prc_mp.dom().contains(receiver_proc),
+        sender_proc != receiver_proc,
+        !pre.prc_mp.spec_index(sender_proc).view().zombie,
+        !pre.prc_mp.spec_index(receiver_proc).view().zombie,
+        transferred ==> pre.irt.view().spec_index_owner(bdf.0, bdf.1, bdf.2) == sender_proc,
+        !pre.sched_mp.spec_index(peer_scheduler_ptr).shards.spec_index(wake_cpu).view().view().queue.dom().contains(pre.thr_mp.spec_index(peer_thread_ptr).view().scheduler_linkedlist_node.addr()),
+        ipc_pci_rendezvous_eof_transition_framing(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id),
         post.irt.inv(),
         post.iommu_tlb.inv(),
         post.prc_mp.perms_wf(),
@@ -168,7 +215,7 @@ pub(super) proof fn ipc_pci_rendezvous_eof(
         post.inv(),
         kernel_ipc_rendezvous_fields(&snapshot, &post, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, None, if transferred { Some((bdf, sender_proc, receiver_proc)) } else { None }),
 {
-    reveal(ipc_pci_rendezvous_transition);
+    reveal(ipc_pci_rendezvous_eof_transition_framing);
     assert(post.subsystems_inv()) by {
         assert({
             &&& process_perms_wf(post.prc_mp)

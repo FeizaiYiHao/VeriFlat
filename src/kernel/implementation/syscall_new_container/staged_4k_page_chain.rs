@@ -68,7 +68,7 @@ pub(super) fn set_4k_page_staging_next(krnl: &mut KernelK, Tracked(lctx): Tracke
             &&& krnl.pg_arr.inv()
             &&& krnl.pg_arr.spec_index(page_index).view().is_init()
             &&& krnl.pg_arr.spec_index(page_index).view().view().inv()
-        }) by { page_ptr_valid_imply_page_index_valid(); page_array_wf_at(krnl.pg_arr, page_index); };
+        }) by { page_ptr_valid_imply_page_index_valid(); page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, page_index); };
     }
     {
         let page = krnl.pg_arr.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
@@ -257,7 +257,7 @@ pub(super) fn cleanup_published_4k_page_chain(
         let ghost lctx_before = *lctx;
         proof { broadcast use page_ptr_sequence_index_in_equal_set; page_ptr_valid_imply_page_index_valid(); vstd::seq::lemma_seq_subrange_index(page_ptrs, 0, remaining as int, remaining - 1); }
         let page_index = page_ptr2page_index(page_ptr);
-        proof { page_array_wf_at(krnl.pg_arr, page_index); }
+        proof { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, page_index); }
         let next = {
             let page = krnl.pg_arr.borrow_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(page_lock_perms.tracked_borrow(page_ptr)));
             page.free_list
@@ -355,7 +355,7 @@ pub(super) fn allocate_staged_4k_page_chain(
         final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_1g == old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_1g,
         final(krnl).thr_mp.spec_index(thread_ptr).view().quota_2m == old(krnl).thr_mp.spec_index(thread_ptr).view().quota_2m,
         final(krnl).thr_mp.spec_index(thread_ptr).view().quota_1g == old(krnl).thr_mp.spec_index(thread_ptr).view().quota_1g,
-        final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_fields_equal(&old(krnl).thr_mp.spec_index(thread_ptr).view()),
+        final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_fields_unchanged(&old(krnl).thr_mp.spec_index(thread_ptr).view()),
         final(krnl).thr_mp.dom().contains(thread_ptr),
         !final(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
         final(krnl).thr_mp.spec_index(thread_ptr).view().owning_container == old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container,
@@ -485,7 +485,7 @@ pub(super) fn allocate_staged_4k_page_chain(
             krnl.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_1g == old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_1g,
             krnl.thr_mp.spec_index(thread_ptr).view().quota_2m == old(krnl).thr_mp.spec_index(thread_ptr).view().quota_2m,
             krnl.thr_mp.spec_index(thread_ptr).view().quota_1g == old(krnl).thr_mp.spec_index(thread_ptr).view().quota_1g,
-            krnl.thr_mp.spec_index(thread_ptr).view().free_quota_pending_fields_equal(&old(krnl).thr_mp.spec_index(thread_ptr).view()),
+            krnl.thr_mp.spec_index(thread_ptr).view().free_quota_pending_fields_unchanged(&old(krnl).thr_mp.spec_index(thread_ptr).view()),
             thread_effective_quota_4k(krnl.thr_mp.spec_index(thread_ptr)) == thread_effective_quota_4k(old(krnl).thr_mp.spec_index(thread_ptr)) - i,
             thread_effective_quota_4k(krnl.thr_mp.spec_index(thread_ptr)) >= count - i,
             lctx.thread_id() == old(lctx).thread_id(),

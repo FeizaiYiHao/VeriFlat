@@ -145,7 +145,7 @@ pub(super) fn publish_new_container_base(
         forall|i: CpuId| #![trigger ret.6@.0.cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) && i != transfer_cpu_id ==>
             ret.6@.0.cpu_arr.spec_index(i).value.locking_thread() == old(krnl).cpu_arr.spec_index(i).value.locking_thread(),
         old(krnl).cpu_arr.spec_index(transfer_cpu_id).value.view().view().owning_container == parent_container_ptr,
-        publish_staged_container_root_kernel_state_framing(ret.6@.0, ret.6@.1, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page,
+        publish_staged_container_root_eof_transition_framing(ret.6@.0, ret.6@.1, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page,
             pages_4k.view()[0], pages_4k.view()[1], pages_4k.view()[2], pages_4k.view()[3], pages_4k.view()[8], pages_4k.view()[4], pages_4k.view()[5],
             pages_4k.view()[6], pages_4k.view()[7], funding_pages, allocator_quota_4k, process_quota_4k),
         ret.6@.2 == (KernelK { pg_arr: ret.6@.2.pg_arr, thr_mp: ret.6@.2.thr_mp, ..ret.6@.1 }),

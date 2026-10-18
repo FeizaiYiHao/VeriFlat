@@ -119,7 +119,7 @@ pub fn reclaim_unmapped_4k_page(
         pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pagetable, final(krnl).pt_mp.spec_index(pagetable).view()),
 {
     let indices = va2index(va);
-    proof { pagetable_perms_wf_at(krnl.pt_mp, pagetable); assert(spec_index2va(indices) == va) by { spec_va_4k_index_roundtrip_at(va, indices.0, indices.1, indices.2, indices.3,); }; }
+    proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); assert(spec_index2va(indices) == va) by { spec_va_4k_index_roundtrip_at(va, indices.0, indices.1, indices.2, indices.3,); }; }
     let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), pagetable_perm);
     let l4 = pt.get_entry_l4(indices.0).unwrap();
     let l3 = pt.get_entry_l3(indices.0, indices.1, &l4).unwrap();
@@ -128,7 +128,7 @@ pub fn reclaim_unmapped_4k_page(
     let page_index = page_ptr2page_index(page_ptr);
     proof { assert(krnl.pg_arr.lock_id_by_index(page_index).major == MAPPED_PAGE_LOCK_MAJOR) by { reveal(mapped_4k_page_pagetable_wf); }; }
     let Tracked(page_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));
-    proof { page_array_wf_at(krnl.pg_arr, page_index); }
+    proof { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, page_index); }
     let page = krnl.pg_arr.borrow_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_perm));
     let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(page_index);
     if page.ref_count > 1 || page.is_io_page {
@@ -140,7 +140,7 @@ pub fn reclaim_unmapped_4k_page(
         let owner_ro = krnl.ctn_mp.borrow_rodata(owner).borrow();
         let depth = owner_ro.depth;
         let allocator_ptr = owner_ro.allocator_ptr_4k;
-        proof { thread_perms_wf_at(krnl.thr_mp, thread_ptr); }
+        proof { thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, thread_ptr); }
         let thread = krnl.thr_mp.borrow_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), thread_perm);
         let thread_depth = thread.container_depth;
         proof { prove_unmapped_4k_page_owner_position_in_thread_container_chain(krnl, pagetable, va, page_ptr, thread_ptr, owner, depth, thread_depth,); }

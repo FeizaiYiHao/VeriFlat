@@ -22,7 +22,7 @@ pub open spec fn schedule_syscall_result(pre: KernelU, cpu_id: CpuId) -> Schedul
 /// Switches the CPU to the head of its scheduler shard, optionally requeues the
 /// previous thread there, and updates the affected PCID publication and TLB state.
 #[verifier::opaque]
-pub open spec fn scheduler_context_switch_transition(pre: KernelK, post: KernelK, cpu_id: CpuId, scheduler_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr, entry_regs: Registers) -> bool {
+pub open spec fn scheduler_context_switch_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, scheduler_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr, entry_regs: Registers) -> bool {
     let cpu_before = pre.cpu_arr.spec_index(cpu_id).view();
     let cpu_after = post.cpu_arr.spec_index(cpu_id).view();
     let old_cpu = cpu_before.view().view();
@@ -43,25 +43,6 @@ pub open spec fn scheduler_context_switch_transition(pre: KernelK, post: KernelK
     let next_node = pre.thr_mp.spec_index(next_thread).view().scheduler_linkedlist_node.addr();
     let needflush_before = pre.pcid_needflush.spec_index(cpu_id, pcid);
     let needflush_after = post.pcid_needflush.spec_index(cpu_id, pcid);
-    &&& index_valid(NUM_CPUS, cpu_id)
-    &&& !(old_cpu.state is Off)
-    &&& pre.thr_mp.dom().contains(next_thread)
-    &&& pre.prc_mp.dom().contains(next_process)
-    &&& pre.sched_mp.dom().contains(scheduler_ptr)
-    &&& pre.ctn_mp.dom().contains(old_cpu.owning_container)
-    &&& pcid_valid(pcid)
-    &&& pre.thr_mp.spec_index(next_thread).view().state is SCHEDULED
-    &&& scheduler_before.owning_container == old_cpu.owning_container
-    &&& pre.thr_mp.spec_index(next_thread).view().owning_container == old_cpu.owning_container
-    &&& pre.ctn_mp.spec_index(old_cpu.owning_container).view_rodata().view().scheduler == scheduler_ptr
-    &&& queue_before.view().len() > 0
-    &&& queue_before.view()[0] == next_thread
-    &&& (previous is Some ==> {
-        let prev = previous.unwrap();
-        &&& prev != next_thread
-        &&& pre.thr_mp.dom().contains(prev)
-        &&& pre.thr_mp.spec_index(prev).view().state == (ThreadState::RUNNING { cpu_id })
-    })
     &&& post == (KernelK { cpu_arr: post.cpu_arr, pcid_needflush: post.pcid_needflush, cpu_published: post.cpu_published, sched_mp: post.sched_mp, thr_mp: post.thr_mp, cpu_tlb: post.cpu_tlb, ..pre })
     &&& post.cpu_arr.view().len() == pre.cpu_arr.view().len()
     &&& (forall|c: CpuId| #![trigger pre.cpu_arr.spec_index(c)] #![trigger post.cpu_arr.spec_index(c)] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_arr.spec_index(c) == pre.cpu_arr.spec_index(c))
@@ -70,7 +51,6 @@ pub open spec fn scheduler_context_switch_transition(pre: KernelK, post: KernelK
     &&& cpu_after.view_ghost() == cpu_before.view_ghost()
     &&& cpu_after.being_killed() == cpu_before.being_killed()
     &&& cpu_after.killer_info() == cpu_before.killer_info()
-    &&& !cpu_before.being_killed()
     &&& cpu_after.locking_thread() == cpu_before.locking_thread()
     &&& new_cpu == (CpuView {
         state: CpuState::Running, current_process: Some(next_process),
@@ -115,7 +95,6 @@ pub open spec fn scheduler_context_switch_transition(pre: KernelK, post: KernelK
     &&& shard_after.being_killed() == shard_before.being_killed()
     &&& shard_after.locking_thread() == shard_before.locking_thread()
     &&& queue_after.view() == match previous { Some(prev) => queue_before.view().skip(1).push(prev), None => queue_before.view().skip(1) }
-    &&& (previous is Some ==> !queue_before.map().remove(next_node).dom().contains(pre.thr_mp.spec_index(previous.unwrap()).view().scheduler_linkedlist_node.addr()))
     &&& queue_after.length as int == queue_before.length as int - 1 + if previous is Some { 1int } else { 0int }
     &&& queue_after.map() == match previous {
         Some(prev) => queue_before.map().remove(next_node).insert(pre.thr_mp.spec_index(prev).view().scheduler_linkedlist_node.addr(), prev),

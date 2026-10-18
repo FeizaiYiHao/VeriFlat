@@ -1,16 +1,25 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::rebalance_pull_spec::rebalance_pull_transition;
+use super::rebalance_pull_spec::rebalance_pull_eof_transition_framing;
 
 verus! {
 proof fn rebalance_pull_eof_container_thread_scheduler(pre: KernelK, post: KernelK, cpu_id: CpuId, scheduler_ptr: RwLockSchedulerPtr, victim: CpuId, thread_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
-        rebalance_pull_transition(pre, post, cpu_id, scheduler_ptr, victim, thread_ptr),
+        rebalance_pull_eof_transition_framing(pre, post, cpu_id, scheduler_ptr, victim, thread_ptr),
+        index_valid(NUM_CPUS, cpu_id),
+        index_valid(NUM_CPUS, victim),
+        victim != cpu_id,
+        pre.sched_mp.dom().contains(scheduler_ptr),
+        pre.thr_mp.dom().contains(thread_ptr),
+        pre.sched_mp.spec_index(scheduler_ptr).shard(victim).queue.view().len() > 0,
+        pre.sched_mp.spec_index(scheduler_ptr).shard(victim).queue.view()[0] == thread_ptr,
+        pre.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.view().len() == 0,
+        pre.thr_mp.spec_index(thread_ptr).view().state == (ThreadState::SCHEDULED { cpu_id: victim }),
     ensures container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp),
 {
-    reveal(rebalance_pull_transition);
+    reveal(rebalance_pull_eof_transition_framing);
     let queue = pre.sched_mp.spec_index(scheduler_ptr).shard(victim).queue;
     assert(queue.view().no_duplicates()) by { reveal(scheduler_perms_wf); reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list); };
     reveal(container_thread_scheduler_wf); reveal(container_scheduler_wf); reveal(container_thread_wf);
@@ -20,17 +29,26 @@ proof fn rebalance_pull_eof_container_thread_scheduler(pre: KernelK, post: Kerne
 proof fn rebalance_pull_eof_thread_endpoint_ref_counter(pre: KernelK, post: KernelK, cpu_id: CpuId, scheduler_ptr: RwLockSchedulerPtr, victim: CpuId, thread_ptr: RwLockThreadPtr)
     requires
         thread_endpoint_ref_counter_wf(pre.thr_mp, pre.ep_mp),
-        rebalance_pull_transition(pre, post, cpu_id, scheduler_ptr, victim, thread_ptr),
+        rebalance_pull_eof_transition_framing(pre, post, cpu_id, scheduler_ptr, victim, thread_ptr),
     ensures thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp),
-{ reveal(rebalance_pull_transition); thread_endpoint_ref_counter_wf_preserved_for_descriptor_eq(pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); }
+{ reveal(rebalance_pull_eof_transition_framing); thread_endpoint_ref_counter_wf_preserved_for_descriptor_eq(pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); }
 
 proof fn rebalance_pull_eof_process_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, scheduler_ptr: RwLockSchedulerPtr, victim: CpuId, thread_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
-        rebalance_pull_transition(pre, post, cpu_id, scheduler_ptr, victim, thread_ptr),
+        rebalance_pull_eof_transition_framing(pre, post, cpu_id, scheduler_ptr, victim, thread_ptr),
+        index_valid(NUM_CPUS, cpu_id),
+        index_valid(NUM_CPUS, victim),
+        victim != cpu_id,
+        pre.sched_mp.dom().contains(scheduler_ptr),
+        pre.thr_mp.dom().contains(thread_ptr),
+        pre.sched_mp.spec_index(scheduler_ptr).shard(victim).queue.view().len() > 0,
+        pre.sched_mp.spec_index(scheduler_ptr).shard(victim).queue.view()[0] == thread_ptr,
+        pre.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.view().len() == 0,
+        pre.thr_mp.spec_index(thread_ptr).view().state == (ThreadState::SCHEDULED { cpu_id: victim }),
     ensures post.process_management_inv(),
 {
-    reveal(rebalance_pull_transition);
+    reveal(rebalance_pull_eof_transition_framing);
     assert(post.process_management_inv()) by {
         rebalance_pull_eof_container_thread_scheduler(pre, post, cpu_id, scheduler_ptr, victim, thread_ptr);
         assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_running_thread_eq(pre.thr_mp, post.thr_mp, pre.cpu_arr, post.cpu_arr); };
@@ -48,7 +66,16 @@ proof fn rebalance_pull_eof_process_management_inv(pre: KernelK, post: KernelK, 
 pub(super) proof fn rebalance_pull_eof(pre: KernelK, post: KernelK, cpu_id: CpuId, scheduler_ptr: RwLockSchedulerPtr, victim: CpuId, thread_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
-        rebalance_pull_transition(pre, post, cpu_id, scheduler_ptr, victim, thread_ptr),
+        rebalance_pull_eof_transition_framing(pre, post, cpu_id, scheduler_ptr, victim, thread_ptr),
+        index_valid(NUM_CPUS, cpu_id),
+        index_valid(NUM_CPUS, victim),
+        victim != cpu_id,
+        pre.sched_mp.dom().contains(scheduler_ptr),
+        pre.thr_mp.dom().contains(thread_ptr),
+        pre.sched_mp.spec_index(scheduler_ptr).shard(victim).queue.view().len() > 0,
+        pre.sched_mp.spec_index(scheduler_ptr).shard(victim).queue.view()[0] == thread_ptr,
+        pre.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.view().len() == 0,
+        pre.thr_mp.spec_index(thread_ptr).view().state == (ThreadState::SCHEDULED { cpu_id: victim }),
         post.thr_mp.perms_wf(),
         post.thr_mp.spec_index(thread_ptr).view().inv(),
         scheduler_perms_wf(post.sched_mp),
@@ -60,7 +87,7 @@ pub(super) proof fn rebalance_pull_eof(pre: KernelK, post: KernelK, cpu_id: CpuI
         }),
 {
     hide(Seq::contains);
-    reveal(rebalance_pull_transition);
+    reveal(rebalance_pull_eof_transition_framing);
     let queues = scheduler_shards_of(pre.sched_mp.spec_index(scheduler_ptr));
     assert(scheduler_shards_of(post.sched_mp.spec_index(scheduler_ptr)) =~= queues.update(victim as int, queues[victim as int].skip(1)).update(cpu_id as int, queues[cpu_id as int].push(thread_ptr))) by { reveal(scheduler_shards_of); };
     assert(post.subsystems_inv()) by {

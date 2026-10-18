@@ -117,7 +117,7 @@ pub(super) fn kill_mark_child(
     let ghost before = *krnl;
     let ghost before_lctx = *lctx;
     let ghost before_steps = steps.view();
-    proof { process_perms_wf_at(krnl.prc_mp, target); krnl.prc_mp.spec_index(target).view().children.lemma_len_view(); }
+    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); krnl.prc_mp.spec_index(target).view().children.lemma_len_view(); }
     let child_ptr = {
         let tracked target_perm = chain_perms.tracked_borrow(target);
         krnl.prc_mp.borrow_typed(target, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(target_perm)).children.get(0)
@@ -130,12 +130,21 @@ pub(super) fn kill_mark_child(
             &&& child_ro.parent == Some(target)
             &&& child_ro.depth == target_ro.depth + 1
             &&& child_ro.owning_container == target_ro.owning_container
-        }) by { reveal(container_process_wf); reveal(per_container_process_tree_wf); reveal(process_root_wf); reveal(process_children_parent_wf); };
+        }) by {
+            let tree = krnl.ctn_mp.spec_index(target_ro.owning_container).view_ghost().owned_processes.view();
+            let root = krnl.ctn_mp.spec_index(target_ro.owning_container).view().root_process;
+            container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target); per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, target_ro.owning_container);
+            process_children_parent_wf_at(root, tree, krnl.prc_mp, target, child_ptr); process_root_wf_at(root, tree, krnl.prc_mp, child_ptr);
+            container_process_wf_container_at(krnl.ctn_mp, krnl.prc_mp, target_ro.owning_container, child_ptr);
+        };
         assert(!krnl.prc_mp.spec_index(child_ptr).wlocked_by_thread(lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
         assert(krnl.prc_mp.spec_index(process_ptr).view_ghost().subtree_set.view().contains(child_ptr)) by {
             let uppers = krnl.prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view();
+            let tree = krnl.ctn_mp.spec_index(target_ro.owning_container).view_ghost().owned_processes.view();
+            let root = krnl.ctn_mp.spec_index(target_ro.owning_container).view().root_process;
             process_perms_wf_at(krnl.prc_mp, child_ptr); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, child_ptr); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr);
-            reveal(per_container_process_tree_wf); reveal(process_root_wf); reveal(process_uppertree_seq_wf);
+            per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, target_ro.owning_container); process_root_wf_at(root, tree, krnl.prc_mp, child_ptr);
+            process_uppertree_seq_wf_at(root, tree, krnl.prc_mp, child_ptr, target); process_uppertree_seq_wf_at(root, tree, krnl.prc_mp, child_ptr, process_ptr);
             assert(uppers.contains(target)) by { reveal(process_children_depth_wf); };
             assert(uppers.contains(process_ptr)) by { reveal(process_subtree_set_wf); };
         };
@@ -196,7 +205,7 @@ pub(super) fn kill_first_thread(
     let ghost before_lctx = *lctx;
     let ghost before_steps = steps.view();
     let tracked target_perm = chain_perms.tracked_borrow(target);
-    proof { process_perms_wf_at(krnl.prc_mp, target); krnl.prc_mp.spec_index(target).view().owned_threads.lemma_len_view(); }
+    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); krnl.prc_mp.spec_index(target).view().owned_threads.lemma_len_view(); }
     let victim_ptr = krnl.prc_mp.borrow_typed(target, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(target_perm)).owned_threads.get(0);
     proof {
         let target_ro = krnl.prc_mp.spec_index(target).view_rodata().view();
@@ -207,7 +216,7 @@ pub(super) fn kill_first_thread(
             &&& victim.container_depth == target_ro.container_depth
             &&& victim.process_depth == target_ro.depth
             &&& !victim.proc_linkedlist_node.is_init()
-        }) by { reveal(process_thread_wf); };
+        }) by { process_thread_wf_process_at(krnl.prc_mp, krnl.thr_mp, target, victim_ptr); };
         thread_perms_wf_at(krnl.thr_mp, victim_ptr);
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr);
         assert(!krnl.thr_mp.spec_index(victim_ptr).being_killed()) by {
@@ -228,7 +237,7 @@ pub(super) fn kill_first_thread(
     if waiting_reply {
         kill_leave_process(krnl, Tracked(&*lctx), target, victim_ptr, Tracked(target_perm), Tracked(&victim_perm));
         proof {
-            reveal(kill_leave_process_transition);
+            reveal(kill_leave_process_eof_transition_framing);
             assert(krnl.prc_mp.spec_index(target).view().owned_threads.view().len() < before.prc_mp.spec_index(target).view().owned_threads.view().len()) by {
                 before.prc_mp.spec_index(target).view().owned_threads.view().index_of_first_ensures(victim_ptr);
             };
@@ -325,7 +334,7 @@ fn kill_victim_off_cpu_or_queue(
     let ghost before = *krnl;
     let ghost before_lctx = *lctx;
     let ghost before_steps = steps.view();
-    proof { thread_perms_wf_at(krnl.thr_mp, victim_ptr); }
+    proof { thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, victim_ptr); }
     let (scheduled, running) = match krnl.thr_mp.borrow_typed(victim_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(victim_perm)).state {
         ThreadState::SCHEDULED { .. } => (true, false),
         ThreadState::RUNNING { .. } => (false, true),
@@ -429,7 +438,7 @@ fn kill_unlink_victim(
     kill_leave_process(krnl, Tracked(&*lctx), target, victim_ptr, Tracked(target_perm), Tracked(victim_perm));
     let ghost left_k = *krnl;
     proof {
-        reveal(kill_leave_process_transition);
+        reveal(kill_leave_process_eof_transition_framing);
         assert(krnl.prc_mp.spec_index(target).view().owned_threads.view().len() < before.prc_mp.spec_index(target).view().owned_threads.view().len()) by {
             before.prc_mp.spec_index(target).view().owned_threads.view().index_of_first_ensures(victim_ptr);
         };

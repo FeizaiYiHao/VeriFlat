@@ -104,7 +104,7 @@ pub(super) fn thread_exit_reclaim(
         final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread(),
         final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
 {
-    proof { process_perms_wf_at(krnl.prc_mp, process_ptr); }
+    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, process_ptr); }
     let process = krnl.prc_mp.borrow_rodata(process_ptr).borrow();
     let pagetable = process.pagetable;
     let cr3 = process.cr3;
@@ -115,7 +115,7 @@ pub(super) fn thread_exit_reclaim(
     let (Tracked(pagetable_lock_perm), Tracked(iommu_table_lock_perm), Ghost(table_lctx)) = thread_exit_reclaim_lock_table(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), Ghost(cpu_id),
         Ghost(container_ptr), process_ptr, thread_ptr, pagetable, iommu_table, Ghost(cr3), Ghost(pcid), Tracked(cpu_lock_perm), Tracked(process_lock_perm), Tracked(thread_lock_perm),
         Ghost(start), Ghost(pre));
-    proof { pagetable_perms_wf_at(krnl.pt_mp, pagetable); }
+    proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); }
     let kernel_l4_end = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_lock_perm)).kernel_l4_end;
     let start_l4 = if kernel_l4_end < KERNEL_MEM_END_L4INDEX { KERNEL_MEM_END_L4INDEX } else { kernel_l4_end };
     let ghost pt_entry = TypedHeldLock { lock_id: krnl.pt_mp.lock_id_by_key(pagetable), mode: TypedLockMode::Write };
@@ -594,7 +594,7 @@ fn thread_exit_reclaim_clear_leaves(
             pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && start_l4 <= l4i && final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
                 ==> !final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present,
 {
-    proof { pagetable_perms_wf_at(krnl.pt_mp, pagetable); }
+    proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); }
     let mut cursor: (L4Index, L3Index, L2Index, L1Index) = (start_l4, 0, 0, 0);
     let mut found = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_lock_perm)).next_mapped_4k_from(cursor);
     while found.is_some()
@@ -735,6 +735,7 @@ fn thread_exit_reclaim_clear_leaves(
         let va = index2va(next);
         let ghost iter_pt = krnl.pt_mp.spec_index(pagetable).view();
         proof {
+            pagetable_perms_wf_map(krnl.pt_mp);
             pagetable_perms_wf_at(krnl.pt_mp, pagetable);
             assert(spec_va_4k_valid(va) && spec_va2index(va) == next) by { spec_va_4k_index_roundtrip_at(va, next.0, next.1, next.2, next.3); };
         }
@@ -765,6 +766,7 @@ fn thread_exit_reclaim_clear_leaves(
                 implies spec_va_4k_valid(key) && start_l4 <= spec_v2l4index(key) by {
                 if key != va { assert(iter_pt.mapping_4k().dom().contains(key) && iter_pt.mapping_4k().spec_index(key) == krnl.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(key)); }
             };
+            pagetable_perms_wf_map(krnl.pt_mp);
             pagetable_perms_wf_at(krnl.pt_mp, pagetable);
         }
         found = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_lock_perm)).next_mapped_4k_from(cursor);

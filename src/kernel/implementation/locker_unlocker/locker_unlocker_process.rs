@@ -89,6 +89,7 @@ impl KernelK {
             },
     {
         proof {
+            process_perms_wf_map(old(self).prc_mp);
             process_perms_wf_at(old(self).prc_mp, process_ptr);
             if !old(self).prc_mp.spec_index(process_ptr).being_killed() {
                 assert(old(lctx).lock_id_acyclic(old(self).prc_mp.lock_id_by_key(process_ptr))) by {
@@ -117,11 +118,11 @@ impl KernelK {
             assert(process_state_lock_wf(self.prc_mp)) by { reveal(process_state_lock_wf); };
             assert(process_emptied_threads_wf(self.prc_mp, self.thr_mp)) by { reveal(process_emptied_threads_wf); };
             assert(self.process_management_inv()) by { process_management_inv_preserved_for_process_invariant_fields(*old(self), *self); };
-            assert(iommu_root_table_process_wf(self.irt.view(), self.prc_mp, self.it_mp)) by { lemma_iommu_root_table_process_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
-            assert(process_pci_function_ownership_wf(self.irt.view(), self.prc_mp)) by { lemma_process_pci_function_ownership_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
-            assert(iommu_tlb_wf_spec(self.iommu_tlb, self.irt.view(), self.prc_mp, self.it_mp)) by { lemma_iommu_tlb_wf_spec_preserved_for_process_quota_4k_framed_fields_forall(); };
+            assert(iommu_root_table_process_wf(self.irt.view(), self.prc_mp, self.it_mp)) by { lemma_iommu_root_table_process_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
+            assert(process_pci_function_ownership_wf(self.irt.view(), self.prc_mp)) by { lemma_process_pci_function_ownership_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
+            assert(iommu_tlb_wf_spec(self.iommu_tlb, self.irt.view(), self.prc_mp, self.it_mp)) by { lemma_iommu_tlb_wf_spec_preserved_for_process_invariant_fields_except_quota_forall(); };
             assert(iommu_table_lock_wf(self.irt.view(), self.prc_mp, self.it_mp)) by { reveal(iommu_table_lock_wf); };
-            assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
+            assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {
@@ -178,6 +179,7 @@ impl KernelK {
             },
     {
         proof {
+            process_perms_wf_map(old(self).prc_mp);
             process_perms_wf_at(old(self).prc_mp, process_ptr);
             if !old(self).prc_mp.spec_index(process_ptr).being_killed() {
                 assert(old(lctx).lock_id_acyclic(old(self).prc_mp.lock_id_by_key(process_ptr))) by {
@@ -218,11 +220,11 @@ impl KernelK {
             assert(process_state_lock_wf(self.prc_mp)) by { reveal(process_state_lock_wf); };
             assert(process_emptied_threads_wf(self.prc_mp, self.thr_mp)) by { reveal(process_emptied_threads_wf); };
             assert(self.process_management_inv()) by { process_management_inv_preserved_for_process_invariant_fields(*old(self), *self); };
-            assert(iommu_root_table_process_wf(self.irt.view(), self.prc_mp, self.it_mp)) by { lemma_iommu_root_table_process_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
-            assert(process_pci_function_ownership_wf(self.irt.view(), self.prc_mp)) by { lemma_process_pci_function_ownership_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
-            assert(iommu_tlb_wf_spec(self.iommu_tlb, self.irt.view(), self.prc_mp, self.it_mp)) by { lemma_iommu_tlb_wf_spec_preserved_for_process_quota_4k_framed_fields_forall(); };
+            assert(iommu_root_table_process_wf(self.irt.view(), self.prc_mp, self.it_mp)) by { lemma_iommu_root_table_process_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
+            assert(process_pci_function_ownership_wf(self.irt.view(), self.prc_mp)) by { lemma_process_pci_function_ownership_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
+            assert(iommu_tlb_wf_spec(self.iommu_tlb, self.irt.view(), self.prc_mp, self.it_mp)) by { lemma_iommu_tlb_wf_spec_preserved_for_process_invariant_fields_except_quota_forall(); };
             assert(iommu_table_lock_wf(self.irt.view(), self.prc_mp, self.it_mp)) by { reveal(iommu_table_lock_wf); };
-            assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
+            assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         res
@@ -276,7 +278,7 @@ impl KernelK {
             typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::Process(process_ptr)),
     {
         proof {
-            assert({ &&& old(self).prc_mp.perms_wf() &&& old(self).prc_mp.spec_index(process_ptr).inv() }) by { process_perms_wf_at(old(self).prc_mp, process_ptr); };
+            assert({ &&& old(self).prc_mp.perms_wf() &&& old(self).prc_mp.spec_index(process_ptr).inv() }) by { process_perms_wf_map(old(self).prc_mp); process_perms_wf_at(old(self).prc_mp, process_ptr); };
             assert(old(lctx).lock_entry_contains(old(self).prc_mp.lock_id_by_key(process_ptr), KernelObjId::Process(process_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         assert(self.prc_mp.spec_index(process_ptr).wlocked_by(&*lctx)) by { old(self).prc_mp.typed_lock_map_aligned_write_at(old(lctx).process_lock_map(), old(lctx).thread_id(), process_ptr); };
@@ -292,9 +294,9 @@ impl KernelK {
             assert(process_state_lock_wf(self.prc_mp)) by { reveal(process_state_lock_wf); };
             assert(process_emptied_threads_wf(self.prc_mp, self.thr_mp)) by { reveal(process_emptied_threads_wf); };
             assert(self.process_management_inv()) by { process_management_inv_preserved_for_process_invariant_fields(*old(self), *self); };
-            assert(iommu_root_table_process_wf(self.irt.view(), self.prc_mp, self.it_mp)) by { lemma_iommu_root_table_process_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
-            assert(process_pci_function_ownership_wf(self.irt.view(), self.prc_mp)) by { lemma_process_pci_function_ownership_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
-            assert(iommu_tlb_wf_spec(self.iommu_tlb, self.irt.view(), self.prc_mp, self.it_mp)) by { lemma_iommu_tlb_wf_spec_preserved_for_process_quota_4k_framed_fields_forall(); };
+            assert(iommu_root_table_process_wf(self.irt.view(), self.prc_mp, self.it_mp)) by { lemma_iommu_root_table_process_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
+            assert(process_pci_function_ownership_wf(self.irt.view(), self.prc_mp)) by { lemma_process_pci_function_ownership_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
+            assert(iommu_tlb_wf_spec(self.iommu_tlb, self.irt.view(), self.prc_mp, self.it_mp)) by { lemma_iommu_tlb_wf_spec_preserved_for_process_invariant_fields_except_quota_forall(); };
             assert(iommu_table_lock_wf(self.irt.view(), self.prc_mp, self.it_mp)) by {
                 reveal(iommu_table_lock_wf); reveal(process_iommu_table_match);
                 old(self).prc_mp.typed_lock_map_aligned_write_at(old(lctx).process_lock_map(), old(lctx).thread_id(), process_ptr);
@@ -306,7 +308,7 @@ impl KernelK {
                     }
                 }
             };
-            assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
+            assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {

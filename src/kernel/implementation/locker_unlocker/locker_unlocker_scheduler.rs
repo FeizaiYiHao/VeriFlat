@@ -44,6 +44,7 @@ impl KernelK {
                 TypedHeldLock { lock_id: final(self).sched_mp.spec_index(scheduler_ptr).shards.lock_id_by_index(cpu_id), mode: TypedLockMode::Write }),
     {
         proof {
+            scheduler_perms_wf_map(old(self).sched_mp);
             scheduler_perms_wf_at(old(self).sched_mp, scheduler_ptr);
             assert(old(lctx).lock_id_acyclic(old(self).sched_mp.spec_index(scheduler_ptr).shards.lock_id_by_index(cpu_id))) by {
                 reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_shard_lock_map_aligned); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned);
@@ -103,6 +104,7 @@ impl KernelK {
             unlock_ensures(old(lctx), final(lctx), KernelObjId::SchedulerShard(scheduler_ptr, cpu_id), old(self).sched_mp.spec_index(scheduler_ptr).shards.lock_id_by_index(cpu_id)),
     {
         proof {
+            scheduler_perms_wf_map(old(self).sched_mp);
             scheduler_perms_wf_at(old(self).sched_mp, scheduler_ptr);
             assert(old(lctx).lock_entry_contains(old(self).sched_mp.spec_index(scheduler_ptr).shards.lock_id_by_index(cpu_id), KernelObjId::SchedulerShard(scheduler_ptr, cpu_id))) by { reveal(UnLockedMap::typed_shard_lock_map_aligned); };
             assert(old(self).sched_mp.spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().wlocked_by(old(lctx))) by { reveal(UnLockedMap::typed_shard_lock_map_aligned); };

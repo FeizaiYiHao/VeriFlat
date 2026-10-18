@@ -355,7 +355,9 @@ pub(super) fn share_new_container_range(
         assert(krnl.pt_mp.spec_index(source_pagetable_ptr).view().proc_ptr == parent_process_ptr && krnl.pt_mp.spec_index(child_pagetable_ptr).view().proc_ptr == child_process_ptr) by {
             process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, parent_process_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, child_process_ptr);
         };
-        assert(krnl.pt_mp.spec_index(child_pagetable_ptr).view().kernel_l4_end == krnl.pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end) by { reveal(KernelK::default_pagetable_wf); };
+        assert(krnl.pt_mp.spec_index(child_pagetable_ptr).view().kernel_l4_end == krnl.pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end) by {
+            krnl.default_pagetable_wf_at(child_pagetable_ptr); krnl.default_pagetable_wf_at(source_pagetable_ptr);
+        };
         assert(krnl.pt_mp.spec_index(child_pagetable_ptr).view().spec_mapping_4k_va_range_empty(source_range.start, source_range.view().spec_index((source_range.len - 1) as int))) by { reveal(PageTable::spec_mapping_4k_va_range_empty); };
         assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable_ptr, parent_container_ptr, source_range)) by {
             reveal(mapped_4k_page_pagetable_wf); reveal(container_process_page_pagetable_wf); reveal(process_thread_wf); reveal(container_subtree_set_exclusive);

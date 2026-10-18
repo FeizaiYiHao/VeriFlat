@@ -308,12 +308,11 @@ pub open spec fn ipc_reply_and_receive_syscall_trace(
 /// Dequeues the receive-call callee, switches `cpu_id` to its process, records the caller on it, parks the
 /// caller waiting for the reply with `entry_regs`, and updates the affected PCID publication and TLB state.
 #[verifier::opaque]
-pub open spec fn ipc_call_handoff_transition(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, callee_ptr: RwLockThreadPtr, entry_regs: Registers) -> bool {
+pub open spec fn ipc_call_handoff_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, callee_ptr: RwLockThreadPtr, entry_regs: Registers) -> bool {
     let cpu_before = pre.cpu_arr.spec_index(cpu_id).view();
     let cpu_after = post.cpu_arr.spec_index(cpu_id).view();
     let old_cpu = cpu_before.view().view();
     let new_cpu = cpu_after.view().view();
-    let caller = pre.thr_mp.spec_index(caller_ptr).view();
     let callee = pre.thr_mp.spec_index(callee_ptr).view();
     let next_process = callee.owning_proc;
     let target = pre.prc_mp.spec_index(next_process).view_rodata().view();
@@ -326,31 +325,6 @@ pub open spec fn ipc_call_handoff_transition(pre: KernelK, post: KernelK, cpu_id
     let needflush_after = post.pcid_needflush.spec_index(cpu_id, pcid);
     let endpoint_before = pre.ep_mp.spec_index(endpoint_ptr);
     let endpoint_after = post.ep_mp.spec_index(endpoint_ptr);
-    &&& index_valid(NUM_CPUS, cpu_id)
-    &&& caller_ptr != callee_ptr
-    &&& pre.thr_mp.dom().contains(caller_ptr)
-    &&& pre.thr_mp.dom().contains(callee_ptr)
-    &&& !pre.thr_mp.spec_index(caller_ptr).being_killed()
-    &&& pre.prc_mp.dom().contains(next_process)
-    &&& pre.ep_mp.dom().contains(endpoint_ptr)
-    &&& pre.ctn_mp.dom().contains(old_cpu.owning_container)
-    &&& pcid_valid(pcid)
-    &&& old_cpu.state is Running
-    &&& old_cpu.current_thread == Some(caller_ptr)
-    &&& old_cpu.current_process == Some(caller.owning_proc)
-    &&& caller.state == (ThreadState::RUNNING { cpu_id })
-    &&& caller.callee is None
-    &&& caller.owning_container == old_cpu.owning_container
-    &&& caller.endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr)
-    &&& callee.state is RECEIVING_CALL
-    &&& callee.caller is None
-    &&& callee.callee is None
-    &&& callee.blocking_endpoint_ptr == Some(endpoint_ptr)
-    &&& callee.owning_container == old_cpu.owning_container
-    &&& endpoint_before.view().queue.view().len() > 0
-    &&& endpoint_before.view().queue.view()[0] == callee_ptr
-    &&& endpoint_before.view().queue_state is RECEIVE
-    &&& !endpoint_before.view().queue.view().contains(caller_ptr)
     &&& post == (KernelK { cpu_arr: post.cpu_arr, pcid_needflush: post.pcid_needflush, cpu_published: post.cpu_published, thr_mp: post.thr_mp, ep_mp: post.ep_mp, cpu_tlb: post.cpu_tlb, ..pre })
     &&& post.cpu_arr.view().len() == pre.cpu_arr.view().len()
     &&& (forall|c: CpuId| #![trigger pre.cpu_arr.spec_index(c)] #![trigger post.cpu_arr.spec_index(c)] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_arr.spec_index(c) == pre.cpu_arr.spec_index(c))
@@ -359,7 +333,6 @@ pub open spec fn ipc_call_handoff_transition(pre: KernelK, post: KernelK, cpu_id
     &&& cpu_after.view_ghost() == cpu_before.view_ghost()
     &&& cpu_after.being_killed() == cpu_before.being_killed()
     &&& cpu_after.killer_info() == cpu_before.killer_info()
-    &&& !cpu_before.being_killed()
     &&& cpu_after.locking_thread() == cpu_before.locking_thread()
     &&& new_cpu == (CpuView {
         state: CpuState::Running, current_process: Some(next_process),
@@ -444,34 +417,11 @@ pub open spec fn ipc_call_handoff_transition(pre: KernelK, post: KernelK, cpu_id
 /// Dequeues the caller at the queue head, parks it waiting for the reply of the running callee, and records
 /// it as that callee's caller.
 #[verifier::opaque]
-pub open spec fn ipc_accept_call_transition(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, caller_ptr: RwLockThreadPtr) -> bool {
-    let cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
-    let callee = pre.thr_mp.spec_index(callee_ptr).view();
+pub open spec fn ipc_accept_call_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, caller_ptr: RwLockThreadPtr) -> bool {
     let caller = pre.thr_mp.spec_index(caller_ptr).view();
     let caller_node = caller.endpoint_linkedlist_node.addr();
     let endpoint_before = pre.ep_mp.spec_index(endpoint_ptr);
     let endpoint_after = post.ep_mp.spec_index(endpoint_ptr);
-    &&& index_valid(NUM_CPUS, cpu_id)
-    &&& caller_ptr != callee_ptr
-    &&& pre.thr_mp.dom().contains(caller_ptr)
-    &&& pre.thr_mp.dom().contains(callee_ptr)
-    &&& !pre.thr_mp.spec_index(caller_ptr).being_killed() && !pre.thr_mp.spec_index(callee_ptr).being_killed()
-    &&& pre.ep_mp.dom().contains(endpoint_ptr)
-    &&& cpu.state is Running
-    &&& cpu.current_thread == Some(callee_ptr)
-    &&& cpu.current_process == Some(callee.owning_proc)
-    &&& callee.state == (ThreadState::RUNNING { cpu_id })
-    &&& callee.caller is None
-    &&& callee.callee is None
-    &&& callee.endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr)
-    &&& caller.state is CALLING
-    &&& caller.callee is None
-    &&& caller.blocking_endpoint_ptr == Some(endpoint_ptr)
-    &&& caller.owning_container == callee.owning_container
-    &&& endpoint_before.view().queue.view().len() > 0
-    &&& endpoint_before.view().queue.view()[0] == caller_ptr
-    &&& endpoint_before.view().queue_state is SEND
-    &&& !endpoint_before.view().queue.view().contains(callee_ptr)
     &&& post == (KernelK { thr_mp: post.thr_mp, ep_mp: post.ep_mp, ..pre })
     &&& post.thr_mp.dom() == pre.thr_mp.dom()
     &&& (forall|ptr: RwLockThreadPtr| #![trigger pre.thr_mp.spec_index(ptr)] #![trigger post.thr_mp.spec_index(ptr)] pre.thr_mp.dom().contains(ptr) ==> {
@@ -526,7 +476,7 @@ pub open spec fn ipc_accept_call_transition(pre: KernelK, post: KernelK, cpu_id:
 /// `entry_regs` at the endpoint tail as a receive-call waiter, and updates the affected PCID publication and
 /// TLB state.
 #[verifier::opaque]
-pub open spec fn ipc_reply_handoff_transition(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, caller_ptr: RwLockThreadPtr, entry_regs: Registers) -> bool {
+pub open spec fn ipc_reply_handoff_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, caller_ptr: RwLockThreadPtr, entry_regs: Registers) -> bool {
     let cpu_before = pre.cpu_arr.spec_index(cpu_id).view();
     let cpu_after = post.cpu_arr.spec_index(cpu_id).view();
     let old_cpu = cpu_before.view().view();
@@ -544,27 +494,6 @@ pub open spec fn ipc_reply_handoff_transition(pre: KernelK, post: KernelK, cpu_i
     let needflush_after = post.pcid_needflush.spec_index(cpu_id, pcid);
     let endpoint_before = pre.ep_mp.spec_index(endpoint_ptr);
     let endpoint_after = post.ep_mp.spec_index(endpoint_ptr);
-    &&& index_valid(NUM_CPUS, cpu_id)
-    &&& caller_ptr != callee_ptr
-    &&& pre.thr_mp.dom().contains(caller_ptr)
-    &&& pre.thr_mp.dom().contains(callee_ptr)
-    &&& pre.prc_mp.dom().contains(next_process)
-    &&& pre.ep_mp.dom().contains(endpoint_ptr)
-    &&& pre.ctn_mp.dom().contains(old_cpu.owning_container)
-    &&& pcid_valid(pcid)
-    &&& old_cpu.state is Running
-    &&& old_cpu.current_thread == Some(callee_ptr)
-    &&& old_cpu.current_process == Some(callee.owning_proc)
-    &&& callee.state == (ThreadState::RUNNING { cpu_id })
-    &&& callee.caller == Some(caller_ptr)
-    &&& callee.callee is None
-    &&& callee.owning_container == old_cpu.owning_container
-    &&& callee.endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr)
-    &&& caller.state is WAITING_REPLY
-    &&& caller.callee == Some(callee_ptr)
-    &&& caller.owning_container == old_cpu.owning_container
-    &&& endpoint_before.view().queue.view().len() == 0 || endpoint_before.view().queue_state is RECEIVE
-    &&& !endpoint_before.view().queue.view().contains(callee_ptr)
     &&& post == (KernelK { cpu_arr: post.cpu_arr, pcid_needflush: post.pcid_needflush, cpu_published: post.cpu_published, thr_mp: post.thr_mp, ep_mp: post.ep_mp, cpu_tlb: post.cpu_tlb, ..pre })
     &&& post.cpu_arr.view().len() == pre.cpu_arr.view().len()
     &&& (forall|c: CpuId| #![trigger pre.cpu_arr.spec_index(c)] #![trigger post.cpu_arr.spec_index(c)] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_arr.spec_index(c) == pre.cpu_arr.spec_index(c))
@@ -573,7 +502,6 @@ pub open spec fn ipc_reply_handoff_transition(pre: KernelK, post: KernelK, cpu_i
     &&& cpu_after.view_ghost() == cpu_before.view_ghost()
     &&& cpu_after.being_killed() == cpu_before.being_killed()
     &&& cpu_after.killer_info() == cpu_before.killer_info()
-    &&& !cpu_before.being_killed()
     &&& cpu_after.locking_thread() == cpu_before.locking_thread()
     &&& new_cpu == (CpuView {
         state: CpuState::Running, current_process: Some(next_process),
@@ -636,7 +564,6 @@ pub open spec fn ipc_reply_handoff_transition(pre: KernelK, post: KernelK, cpu_i
     &&& endpoint_after.view().queue.length as int == endpoint_before.view().queue.length as int + 1
     &&& endpoint_after.view().queue.map() == endpoint_before.view().queue.map().insert(callee_node, callee_ptr)
     &&& endpoint_after.view().queue.dom() == endpoint_before.view().queue.dom().insert(callee_node)
-    &&& !endpoint_before.view().queue.map().dom().contains(callee_node)
     &&& endpoint_after.view().queue_state == if endpoint_before.view().queue.length == 0 { EndpointState::RECEIVE } else { endpoint_before.view().queue_state }
     &&& needflush_after.view().index() == needflush_before.view().index()
     &&& needflush_after.is_init() == needflush_before.is_init()

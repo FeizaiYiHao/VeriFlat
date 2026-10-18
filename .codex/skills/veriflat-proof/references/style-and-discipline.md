@@ -83,9 +83,9 @@
   precondition; a fact the just-executed callee can state goes in that callee's
   ensures instead. Without the full-EOF boundary a `*_wf_at` chain in exec is
   piecewise invariant closure, which is the same leak as a reveal: add the EOF
-  boundary first. The `_wf_at` lemmas that still ensure `perms_wf()` or `.inv()`
-  (thread/endpoint/allocator/pagetable/iommu-table perms, page_array,
-  cpu_array) are legacy exceptions to be narrowed.
+  boundary first. A map-level fact comes from the matching `*_wf_map` lemma
+  (`requires <pred>_wf(<maps>)`, `ensures` only `perms_wf()` or `.inv()`),
+  called only where that fact is needed.
 - Operation-local K-to-U bridging lemmas live in the operation's `*_trace.rs` and
   need no approval: `<op>_<step>_pre_from_k(krnl, lctx, cpu_id, ..)` requires
   only K facts the exec already holds and ensures the op's U step_pre on
@@ -117,11 +117,7 @@
   lives in the operation's `*_eof*.rs` or `*_spec.rs` file, never in the exec
   file. Framing names outside EOF state what is preserved (`held_*_unchanged`,
   `kernel_*_nonlock_fields_unchanged`); names that do not, such as
-  `*_framed_fields_equal` or `*_kernel_state_framing`, are to be renamed. Legacy
-  names scheduled for this rename: the `*_kernel_state_framing` specs
-  (create_process ×2, create_thread, create_endpoint,
-  publish_staged_container_root) and the `*_transition_framing` specs
-  (cpu_offline_request_child, cpu_online_child, pop_stage_2m/4k).
+  `*_framed_fields_equal` or `*_kernel_state_framing`, are to be renamed.
 - Keep preconditions limited to safety, semantics, and direct callees. Before
   removing a parameter, inspect exec uses, proof consumers, and dependencies
   across kernel-step boundaries; an argument unused by exec may still be needed.

@@ -2,7 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_ipc_queue::{ipc_dequeue_endpoint_waiter, ipc_schedule_endpoint_waiter};
 #[cfg(verus_keep_ghost)]
-use super::syscall_ipc_cpu_spec::ipc_cpu_rendezvous_transition;
+use super::syscall_ipc_cpu_spec::ipc_cpu_rendezvous_eof_transition_framing;
 #[cfg(verus_keep_ghost)]
 use super::syscall_ipc_cpu_eof::ipc_cpu_rendezvous_eof;
 use super::syscall_ipc_transition::ipc_schedule_waiting_peer_and_finish;
@@ -297,6 +297,7 @@ verus! {
     {
         proof {
             assert(krnl.cpu_arr.inv() && krnl.cpu_set_mp.perms_wf() && krnl.cpu_set_mp.spec_index(source_cpu_set).inv() && krnl.cpu_set_mp.spec_index(target_cpu_set).inv()) by {
+                cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view());
                 cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), transfer_cpu_id); cpu_set_perms_wf_map(krnl.cpu_set_mp); cpu_set_perms_wf_at(krnl.cpu_set_mp, source_cpu_set); cpu_set_perms_wf_at(krnl.cpu_set_mp, target_cpu_set);
             };
         }
@@ -465,9 +466,11 @@ verus! {
     {
         hide(Seq::contains);
         proof {
-            assert(krnl.thr_mp.perms_wf() && krnl.thr_mp.spec_index(peer_thread_ptr).is_init() && krnl.thr_mp.spec_index(current_thread_ptr).is_init()) by { thread_perms_wf_at(krnl.thr_mp, peer_thread_ptr); thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); };
+            assert(krnl.thr_mp.perms_wf() && krnl.thr_mp.spec_index(peer_thread_ptr).is_init() && krnl.thr_mp.spec_index(current_thread_ptr).is_init()) by {
+                thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, peer_thread_ptr); thread_perms_wf_at(krnl.thr_mp, current_thread_ptr);
+            };
         }
-        assert(krnl.cpu_arr.inv()) by { cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
+        assert(krnl.cpu_arr.inv()) by { cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); };
         let current_container = krnl.thr_mp.borrow_typed(current_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&current_thread_lock_perm)).owning_container;
         let peer_thread_ref = krnl.thr_mp.borrow_typed(peer_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&peer_thread_lock_perm));
         let peer_container = peer_thread_ref.owning_container;
@@ -592,12 +595,12 @@ verus! {
         proof {
             lctx.enter_kernel_view_release();
             lctx.update_lock_id(KernelObjId::Thread(peer_thread_ptr), old_peer_thread_lock_id, krnl.thr_mp.lock_id_by_key(peer_thread_ptr));
-            scheduler_perms_wf_at(old(krnl).sched_mp, peer_scheduler_ptr); scheduler_perms_wf_at(krnl.sched_mp, peer_scheduler_ptr);
-            assert(ipc_cpu_rendezvous_transition(
+            scheduler_perms_wf_map(old(krnl).sched_mp); scheduler_perms_wf_at(old(krnl).sched_mp, peer_scheduler_ptr); scheduler_perms_wf_map(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, peer_scheduler_ptr);
+            assert(ipc_cpu_rendezvous_eof_transition_framing(
                 *old(krnl), *krnl, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu,
                 source_container, target_container, source_cpu_set, target_cpu_set,
                 transfer_cpu_id, result is Success, peer_result, lctx.thread_id(),
-            )) by { reveal(ipc_cpu_rendezvous_transition); };
+            )) by { reveal(ipc_cpu_rendezvous_eof_transition_framing); };
             ipc_cpu_rendezvous_eof(
                 *old(krnl), *krnl, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu,
                 source_container, target_container, source_cpu_set, target_cpu_set,

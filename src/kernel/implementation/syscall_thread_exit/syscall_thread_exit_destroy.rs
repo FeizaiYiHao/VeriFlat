@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::syscall_thread_exit_destroy_spec::thread_exit_destroy_transition;
+use super::syscall_thread_exit_destroy_spec::thread_exit_destroy_eof_transition_framing;
 #[cfg(verus_keep_ghost)]
 use super::syscall_thread_exit_destroy_eof::{thread_exit_destroy_eof, thread_exit_destroy_eof_fields};
 
@@ -136,28 +136,29 @@ pub(super) fn thread_exit_destroy(
     let ghost proc_node_addr = krnl.thr_mp.spec_index(thread_ptr).view().proc_linkedlist_node.addr();
     proof {
         page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
+        thread_perms_wf_map(krnl.thr_mp);
         thread_perms_wf_at(krnl.thr_mp, thread_ptr);
         process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr);
+        process_perms_wf_map(krnl.prc_mp);
         process_perms_wf_at(krnl.prc_mp, process_ptr);
         container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr);
+        container_perms_wf_map(krnl.ctn_mp);
         container_perms_wf_at(krnl.ctn_mp, container_ptr);
         assert(krnl.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().contains(process_ptr)) by { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr); };
         container_process_thread_quota_sums_bounded(&*krnl, container_ptr, process_ptr, thread_ptr);
-        assert(page_ptr_valid(thread_ptr) && krnl.pg_arr.spec_index(page_index).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread })) by {
-            reveal(thread_pages_wf);
-        };
+        assert(page_ptr_valid(thread_ptr) && krnl.pg_arr.spec_index(page_index).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread })) by { thread_pages_wf_at(krnl.thr_mp, krnl.pg_arr, thread_ptr); };
         page_array_wf_at(krnl.pg_arr, page_index);
         assert(krnl.ctn_mp.dom().contains(owner)) by { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_index); };
         lemma_container_allocator_4k_quota_bounded(&*krnl, owner);
-        allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr);
-        assert(!krnl.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(thread_ptr)) by {
-            reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf);
+        allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr);
+        assert(!krnl.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(thread_ptr)) by { container_allocator_free_4k_page_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allocator_ptr, cpu_id, thread_ptr); };
+        assert(uppers.to_set().subset_of(krnl.ctn_mp.dom()) && !uppers.to_set().contains(container_ptr)) by {
+            uppers.to_set_ensures(); container_uppertree_seq_in_dom(krnl.rt_ctn, krnl.ctn_mp, container_ptr); container_uppertree_seq_not_self(krnl.rt_ctn, krnl.ctn_mp, container_ptr);
         };
-        assert(uppers.to_set().subset_of(krnl.ctn_mp.dom()) && !uppers.to_set().contains(container_ptr)) by { uppers.to_set_ensures(); reveal(container_uppertree_seq_wf); };
         assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.dom().contains(proc_node_addr)) by { reveal(LinkedList::wf_map); };
-        assert(krnl.cpu_arr.inv() && krnl.cpu_arr.spec_index(cpu_id).view().is_init() && krnl.cpu_arr.spec_index(cpu_id).view().view().wf()) by { cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
+        assert(krnl.cpu_arr.inv() && krnl.cpu_arr.spec_index(cpu_id).view().is_init() && krnl.cpu_arr.spec_index(cpu_id).view().view().wf()) by { cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
         assert(krnl.cpu_published[cpu_id as int].owner_cpu() == cpu_id) by { reveal(cpu_published_wf); };
-        assert(krnl.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID).inv()) by { reveal(pcid_needflush_wf); };
+        assert(krnl.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID).inv()) by { pcid_needflush_wf_at(krnl.pcid_needflush, cpu_id, KERNEL_DEFAULT_PCID); };
         assert(krnl.pcid_allc_mp.dom().contains(pcid_allocator_ptr)) by { container_pcid_allocator_wf_container_at(krnl.ctn_mp, krnl.pcid_allc_mp, container_ptr); };
         assert({
             &&& krnl.prc_mp.spec_index(process_ptr).view_rodata().view().pcid == krnl.prc_mp.spec_index(process_ptr).view().pcid
@@ -169,7 +170,7 @@ pub(super) fn thread_exit_destroy(
     let pcid = krnl.prc_mp.borrow_rodata(process_ptr).borrow().pcid;
     let root_process = krnl.ctn_mp.borrow_typed(container_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(&container_lock_perm)).root_process;
     let default_cr3 = krnl.dflt_pt.borrow().cr3;
-    assert(page_ptr_valid(default_cr3)) by { reveal(KernelK::default_pagetable_wf); reveal(PageTable::table_pages_wf); };
+    assert(page_ptr_valid(default_cr3)) by { krnl.default_pagetable_view_inv(); reveal(PageTable::table_pages_wf); };
     let ghost old_cpu_lock_id = krnl.cpu_arr.lock_id_by_index(cpu_id);
     krnl.cpu_arr.block_current(cpu_id, default_cr3, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_published, Tracked(&needflush_lock_perm), Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
     proof { lctx.update_lock_id(KernelObjId::Cpu(cpu_id), old_cpu_lock_id, krnl.cpu_arr.lock_id_by_index(cpu_id)); }
@@ -208,8 +209,8 @@ pub(super) fn thread_exit_destroy(
     }
     let ghost mid = *krnl;
     proof {
-        assert(thread_exit_destroy_transition(*old(krnl), mid, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr)) by {
-            reveal(thread_exit_destroy_transition); reveal(container_perms_wf);
+        assert(thread_exit_destroy_eof_transition_framing(*old(krnl), mid, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr)) by {
+            reveal(thread_exit_destroy_eof_transition_framing); reveal(container_perms_wf);
         };
         thread_exit_destroy_eof(*old(krnl), mid, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr);
     }

@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::syscall_ipc_endpoint_spec::ipc_finish_endpoint_transit_transition;
+use super::syscall_ipc_endpoint_spec::ipc_finish_endpoint_transit_eof_transition_framing;
 
 verus! {
 /// Closes every kernel invariant after the endpoint-transit peer is scheduled, from the summary and the
@@ -11,12 +11,23 @@ pub(super) proof fn ipc_finish_endpoint_transit_eof(
     wake_cpu: CpuId, peer_result: RetValueType,
 )
     requires
-        ipc_finish_endpoint_transit_transition(pre, post, current_thread_ptr, peer_thread_ptr, peer_scheduler_ptr, wake_cpu, peer_result),
+        pre.inv(),
+        current_thread_ptr != peer_thread_ptr,
+        index_valid(NUM_CPUS, wake_cpu),
+        pre.thr_mp.dom().contains(current_thread_ptr),
+        pre.thr_mp.dom().contains(peer_thread_ptr),
+        pre.thr_mp.spec_index(peer_thread_ptr).view().state is IPC_ENDPOINT_TRANSIT,
+        pre.sched_mp.dom().contains(peer_scheduler_ptr),
+        pre.ctn_mp.dom().contains(pre.thr_mp.spec_index(peer_thread_ptr).view().owning_container),
+        pre.ctn_mp.spec_index(pre.thr_mp.spec_index(peer_thread_ptr).view().owning_container).view_rodata().view().scheduler == peer_scheduler_ptr,
+        pre.sched_mp.spec_index(peer_scheduler_ptr).owning_container == pre.thr_mp.spec_index(peer_thread_ptr).view().owning_container,
+        !pre.sched_mp.spec_index(peer_scheduler_ptr).shard(wake_cpu).queue.view().contains(peer_thread_ptr),
+        ipc_finish_endpoint_transit_eof_transition_framing(pre, post, current_thread_ptr, peer_thread_ptr, peer_scheduler_ptr, wake_cpu, peer_result),
         thread_perms_wf(post.thr_mp),
         scheduler_perms_wf(post.sched_mp),
     ensures post.inv(),
 {
-    reveal(ipc_finish_endpoint_transit_transition);
+    reveal(ipc_finish_endpoint_transit_eof_transition_framing);
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_thread_endpoint_memory_fields(pre, post); };
     assert(post.process_management_inv()) by {

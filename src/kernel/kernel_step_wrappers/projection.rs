@@ -1153,7 +1153,7 @@ pub proof fn kernel_thread_dequeued_and_locks_changed_implies_u_step(
             syscall_progress: after.thr_mp.spec_index(current_thread_ptr).view().syscall_progress, ..entry.thr_mp.spec_index(current_thread_ptr).view()
         }),
         after.thr_mp.spec_index(current_thread_ptr).being_killed() == entry.thr_mp.spec_index(current_thread_ptr).being_killed(),
-        after.thr_mp.spec_index(peer_thread_ptr).view().ipc_framed_fields_equal(&entry.thr_mp.spec_index(peer_thread_ptr).view()),
+        after.thr_mp.spec_index(peer_thread_ptr).view().non_ipc_fields_unchanged(&entry.thr_mp.spec_index(peer_thread_ptr).view()),
         after.thr_mp.spec_index(peer_thread_ptr).view().state is IPC_ENDPOINT_TRANSIT,
         after.thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr is None,
         after.thr_mp.spec_index(peer_thread_ptr).view().caller == entry.thr_mp.spec_index(peer_thread_ptr).view().caller,

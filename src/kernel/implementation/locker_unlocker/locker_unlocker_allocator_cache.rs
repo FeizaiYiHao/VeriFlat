@@ -46,7 +46,7 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, cache_cpu), TypedHeldLock { lock_id: final(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.lock_id_by_index(cache_cpu), mode: TypedLockMode::Write }),
     {
         proof {
-            assert(old(self).allc_4k_mp.perms_wf() && old(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf()) by { allocator_perms_wf_at(old(self).allc_4k_mp, alloc_ptr_4k); };
+            assert(old(self).allc_4k_mp.perms_wf() && old(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf()) by { allocator_perms_wf_map(old(self).allc_4k_mp); allocator_perms_wf_at(old(self).allc_4k_mp, alloc_ptr_4k); };
             assert(old(lctx).lock_id_acyclic(old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.lock_id_by_index(cache_cpu))) by {
                 reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned); reveal(UnLockedMap::typed_shard_lock_map_aligned);
                 reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned);
@@ -60,7 +60,7 @@ impl KernelK {
             assert(allocator_invariant_fields_unchanged(old(self).allc_4k_mp, self.allc_4k_mp)) by { allocator_cache_lock_op_preserves_invariant_fields(old(self).allc_4k_mp, self.allc_4k_mp, alloc_ptr_4k, cache_cpu); };
             assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
             assert(self.memory_management_inv()) by {
-                lemma_allocator_pages_wf_preserved_for_allocator_quota_value_framed_fields_forall();
+                lemma_allocator_pages_wf_preserved_for_allocator_invariant_fields_except_quota_forall();
                 reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf);
                 lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_contents_forall();
                 lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(*old(self), *self);
@@ -102,7 +102,7 @@ impl KernelK {
             unlock_ensures(old(lctx), final(lctx), KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, cache_cpu), old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).lock_id()),
     {
         proof {
-            assert({ &&& old(self).allc_4k_mp.perms_wf() &&& old(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf() }) by { allocator_perms_wf_at(old(self).allc_4k_mp, alloc_ptr_4k); };
+            assert({ &&& old(self).allc_4k_mp.perms_wf() &&& old(self).allc_4k_mp.spec_index(alloc_ptr_4k).wf() }) by { allocator_perms_wf_map(old(self).allc_4k_mp); allocator_perms_wf_at(old(self).allc_4k_mp, alloc_ptr_4k); };
             assert(old(lctx).lock_entry_contains(old(self).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.lock_id_by_index(cache_cpu), KernelObjId::AllocatorCache(PageSize::SZ4k, alloc_ptr_4k, cache_cpu))) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); };
         }
         assert(self.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view().wlocked_by(&*lctx)) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); };
@@ -112,7 +112,7 @@ impl KernelK {
             assert(allocator_invariant_fields_unchanged(old(self).allc_4k_mp, self.allc_4k_mp)) by { allocator_cache_lock_op_preserves_invariant_fields(old(self).allc_4k_mp, self.allc_4k_mp, alloc_ptr_4k, cache_cpu); };
             assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
             assert(self.memory_management_inv()) by {
-                lemma_allocator_pages_wf_preserved_for_allocator_quota_value_framed_fields_forall();
+                lemma_allocator_pages_wf_preserved_for_allocator_invariant_fields_except_quota_forall();
                 reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf);
                 lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_contents_forall();
                 lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(*old(self), *self);

@@ -12,7 +12,7 @@ pub(super) proof fn eof_subsystems_inv(
     requires
         pre.inv(),
         pre.ctn_mp.spec_index(parent_container_ptr).view_rodata().view().depth < MAX_CONTAINER_TREE_DEPTH,
-        publish_staged_container_root_kernel_state_framing(
+        publish_staged_container_root_eof_transition_framing(
             pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
             allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
             allocator_quota_4k, process_quota_4k,
@@ -53,7 +53,7 @@ pub(super) proof fn eof_subsystems_inv(
     ensures
         post.subsystems_inv(),
 {
-    reveal(publish_staged_container_root_kernel_state_framing);
+    reveal(publish_staged_container_root_eof_transition_framing);
     assert(pagetable_perms_wf(post.pt_mp)) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); };
     assert(container_tree_fields_wf(post.ctn_mp)) by {
         assert(container_tree_fields_wf(pre.ctn_mp)) by { reveal(container_perms_wf); };
@@ -106,7 +106,7 @@ pub(super) proof fn eof_inv(
         forall|page_ptr: PagePtr|
             #![trigger funding_pages.to_set().contains(page_ptr)]
             funding_pages.to_set().contains(page_ptr) ==> page_ptr_valid(page_ptr),
-        publish_staged_container_root_kernel_state_framing(
+        publish_staged_container_root_eof_transition_framing(
             pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
             allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
             allocator_quota_4k, process_quota_4k,

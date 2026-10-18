@@ -48,7 +48,28 @@ proof fn kill_retire_eof_subsystems(
 )
     requires
         pre.inv(),
-        kill_retire_transition(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        index_valid(NUM_CPUS, cpu_id),
+        pre.prc_mp.dom().contains(target),
+        pre.prc_mp.spec_index(target).locking_thread() is Write,
+        pre.prc_mp.spec_index(target).view_rodata().view().owning_container == container_ptr,
+        pre.pt_mp.dom().contains(pre.prc_mp.spec_index(target).view().pagetable),
+        pre.pt_mp.spec_index(pre.prc_mp.spec_index(target).view().pagetable).locking_thread() is Write,
+        kill_retire_tables_emptied(pre, target),
+        pre.prc_mp.spec_index(target).view().iommu_table is Some ==> pre.it_mp.dom().contains(pre.prc_mp.spec_index(target).view().iommu_table->Some_0) && pre.it_mp.spec_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0).locking_thread() is Write,
+        pre.ctn_mp.dom().contains(container_ptr),
+        pre.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == allocator_ptr,
+        pre.allc_4k_mp.dom().contains(allocator_ptr),
+        kill_retire_pages(pre, target).no_duplicates(),
+        forall|k: int| #![trigger kill_retire_pages(pre, target)[k]] 0 <= k < kill_retire_pages(pre, target).len() ==> {
+            &&& index_valid(NUM_PAGES, kill_retire_pages(pre, target)[k])
+            &&& kill_retire_pages(pre, target)[k] == page_ptr2page_index(target) || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.prc_mp.spec_index(target).view().pagetable)
+                || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.pt_mp.spec_index(pre.prc_mp.spec_index(target).view().pagetable).view().cr3)
+                || pre.prc_mp.spec_index(target).view().iommu_table is Some && (kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0)
+                || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.it_mp.spec_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0).view().cr3))
+            &&& pre.pg_arr.spec_index(kill_retire_pages(pre, target)[k]).view().view().state is Allocated4k
+            &&& pre.pg_arr.spec_index(kill_retire_pages(pre, target)[k]).view().view().owning_container == container_ptr
+        },
         page_array_wf(post.pg_arr),
         container_perms_wf(post.ctn_mp),
         process_perms_wf(post.prc_mp),
@@ -58,7 +79,7 @@ proof fn kill_retire_eof_subsystems(
         post.allc_4k_mp.spec_index(allocator_ptr).wf(),
     ensures post.subsystems_inv(),
 {
-    reveal(kill_retire_transition);
+    reveal(kill_retire_eof_transition_framing);
     assert(allocator_perms_wf(post.allc_4k_mp)) by { reveal(allocator_perms_wf); };
     reveal(KernelK::default_pagetable_wf);
 }
@@ -69,7 +90,29 @@ proof fn kill_retire_eof_page_states(
 )
     requires
         pre.inv(),
-        kill_retire_transition(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        index_valid(NUM_CPUS, cpu_id),
+        pre.prc_mp.dom().contains(target),
+        pre.prc_mp.spec_index(target).view().zombie,
+        pre.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
+        pre.prc_mp.spec_index(target).view_rodata().view().parent == Some(parent_ptr),
+        pre.prc_mp.spec_index(target).view_rodata().view().owning_container == container_ptr,
+        pre.pt_mp.dom().contains(pre.prc_mp.spec_index(target).view().pagetable),
+        kill_retire_tables_emptied(pre, target),
+        pre.prc_mp.spec_index(target).view().iommu_table is Some ==> pre.it_mp.dom().contains(pre.prc_mp.spec_index(target).view().iommu_table->Some_0) && pre.it_mp.spec_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0).locking_thread() is Write,
+        pre.ctn_mp.dom().contains(container_ptr),
+        pre.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == allocator_ptr,
+        pre.allc_4k_mp.dom().contains(allocator_ptr),
+        kill_retire_pages(pre, target).no_duplicates(),
+        forall|k: int| #![trigger kill_retire_pages(pre, target)[k]] 0 <= k < kill_retire_pages(pre, target).len() ==> {
+            &&& index_valid(NUM_PAGES, kill_retire_pages(pre, target)[k])
+            &&& kill_retire_pages(pre, target)[k] == page_ptr2page_index(target) || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.prc_mp.spec_index(target).view().pagetable)
+                || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.pt_mp.spec_index(pre.prc_mp.spec_index(target).view().pagetable).view().cr3)
+                || pre.prc_mp.spec_index(target).view().iommu_table is Some && (kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0)
+                || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.it_mp.spec_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0).view().cr3))
+            &&& pre.pg_arr.spec_index(kill_retire_pages(pre, target)[k]).view().view().state is Allocated4k
+            &&& pre.pg_arr.spec_index(kill_retire_pages(pre, target)[k]).view().view().owning_container == container_ptr
+        },
     ensures
         allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
         container_page_owner_wf(post.ctn_mp, post.pg_arr),
@@ -83,7 +126,7 @@ proof fn kill_retire_eof_page_states(
         thread_staged_pages_wf(post.thr_mp, post.pg_arr),
         endpoint_pages_wf(post.ep_mp, post.pg_arr),
 {
-    reveal(kill_retire_transition);
+    reveal(kill_retire_eof_transition_framing);
     let process = pre.prc_mp.spec_index(target).view();
     let pt = pre.pt_mp.spec_index(process.pagetable).view();
     process_pages_wf_process_entry_at(pre.pg_arr, pre.prc_mp, target);
@@ -124,7 +167,28 @@ proof fn kill_retire_eof_process_pages(
 )
     requires
         pre.inv(),
-        kill_retire_transition(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        pre.prc_mp.dom().contains(target),
+        pre.prc_mp.spec_index(target).view().zombie,
+        pre.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
+        pre.prc_mp.spec_index(target).view_rodata().view().parent == Some(parent_ptr),
+        pre.prc_mp.spec_index(target).view_rodata().view().owning_container == container_ptr,
+        pre.prc_mp.dom().contains(parent_ptr),
+        parent_ptr != target,
+        pre.pt_mp.dom().contains(pre.prc_mp.spec_index(target).view().pagetable),
+        kill_retire_tables_emptied(pre, target),
+        pre.prc_mp.spec_index(target).view().iommu_table is Some ==> pre.it_mp.dom().contains(pre.prc_mp.spec_index(target).view().iommu_table->Some_0) && pre.it_mp.spec_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0).locking_thread() is Write,
+        pre.ctn_mp.dom().contains(container_ptr),
+        kill_retire_pages(pre, target).no_duplicates(),
+        forall|k: int| #![trigger kill_retire_pages(pre, target)[k]] 0 <= k < kill_retire_pages(pre, target).len() ==> {
+            &&& index_valid(NUM_PAGES, kill_retire_pages(pre, target)[k])
+            &&& kill_retire_pages(pre, target)[k] == page_ptr2page_index(target) || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.prc_mp.spec_index(target).view().pagetable)
+                || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.pt_mp.spec_index(pre.prc_mp.spec_index(target).view().pagetable).view().cr3)
+                || pre.prc_mp.spec_index(target).view().iommu_table is Some && (kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0)
+                || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.it_mp.spec_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0).view().cr3))
+            &&& pre.pg_arr.spec_index(kill_retire_pages(pre, target)[k]).view().view().state is Allocated4k
+            &&& pre.pg_arr.spec_index(kill_retire_pages(pre, target)[k]).view().view().owning_container == container_ptr
+        },
         ({
             let process = pre.prc_mp.spec_index(target).view();
             let pages = kill_retire_pages(pre, target);
@@ -144,7 +208,7 @@ proof fn kill_retire_eof_process_pages(
         pagetable_pages_wf(post.pt_mp, post.pg_arr),
         pagetable_pages_wf(post.it_mp, post.pg_arr),
 {
-    reveal(kill_retire_transition);
+    reveal(kill_retire_eof_transition_framing);
     let process = pre.prc_mp.spec_index(target).view();
     let pt = pre.pt_mp.spec_index(process.pagetable).view();
     process_pages_wf_process_entry_at(pre.pg_arr, pre.prc_mp, target);
@@ -170,7 +234,24 @@ proof fn kill_retire_eof_process_kernel_pages_owner(
 )
     requires
         pre.inv(),
-        kill_retire_transition(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        pre.prc_mp.dom().contains(target),
+        pre.prc_mp.spec_index(target).view().zombie,
+        pre.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
+        pre.prc_mp.spec_index(target).view_rodata().view().owning_container == container_ptr,
+        pre.pt_mp.dom().contains(pre.prc_mp.spec_index(target).view().pagetable),
+        kill_retire_tables_emptied(pre, target),
+        pre.prc_mp.spec_index(target).view().iommu_table is Some ==> pre.it_mp.dom().contains(pre.prc_mp.spec_index(target).view().iommu_table->Some_0) && pre.it_mp.spec_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0).locking_thread() is Write,
+        kill_retire_pages(pre, target).no_duplicates(),
+        forall|k: int| #![trigger kill_retire_pages(pre, target)[k]] 0 <= k < kill_retire_pages(pre, target).len() ==> {
+            &&& index_valid(NUM_PAGES, kill_retire_pages(pre, target)[k])
+            &&& kill_retire_pages(pre, target)[k] == page_ptr2page_index(target) || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.prc_mp.spec_index(target).view().pagetable)
+                || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.pt_mp.spec_index(pre.prc_mp.spec_index(target).view().pagetable).view().cr3)
+                || pre.prc_mp.spec_index(target).view().iommu_table is Some && (kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0)
+                || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.it_mp.spec_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0).view().cr3))
+            &&& pre.pg_arr.spec_index(kill_retire_pages(pre, target)[k]).view().view().state is Allocated4k
+            &&& pre.pg_arr.spec_index(kill_retire_pages(pre, target)[k]).view().view().owning_container == container_ptr
+        },
         ({
             let process = pre.prc_mp.spec_index(target).view();
             let pages = kill_retire_pages(pre, target);
@@ -187,7 +268,7 @@ proof fn kill_retire_eof_process_kernel_pages_owner(
         }),
     ensures process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp),
 {
-    reveal(kill_retire_transition);
+    reveal(kill_retire_eof_transition_framing);
     page_ptr_roundtrip(); page_index_roundtrip();
     assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by {
         reveal(process_kernel_pages_owner_wf); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match);
@@ -200,7 +281,24 @@ proof fn kill_retire_eof_mappings(
 )
     requires
         pre.inv(),
-        kill_retire_transition(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        pre.prc_mp.dom().contains(target),
+        pre.prc_mp.spec_index(target).view().zombie,
+        pre.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
+        pre.prc_mp.spec_index(target).view_rodata().view().owning_container == container_ptr,
+        pre.pt_mp.dom().contains(pre.prc_mp.spec_index(target).view().pagetable),
+        kill_retire_tables_emptied(pre, target),
+        pre.prc_mp.spec_index(target).view().iommu_table is Some ==> pre.it_mp.dom().contains(pre.prc_mp.spec_index(target).view().iommu_table->Some_0) && pre.it_mp.spec_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0).locking_thread() is Write,
+        kill_retire_pages(pre, target).no_duplicates(),
+        forall|k: int| #![trigger kill_retire_pages(pre, target)[k]] 0 <= k < kill_retire_pages(pre, target).len() ==> {
+            &&& index_valid(NUM_PAGES, kill_retire_pages(pre, target)[k])
+            &&& kill_retire_pages(pre, target)[k] == page_ptr2page_index(target) || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.prc_mp.spec_index(target).view().pagetable)
+                || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.pt_mp.spec_index(pre.prc_mp.spec_index(target).view().pagetable).view().cr3)
+                || pre.prc_mp.spec_index(target).view().iommu_table is Some && (kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0)
+                || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.it_mp.spec_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0).view().cr3))
+            &&& pre.pg_arr.spec_index(kill_retire_pages(pre, target)[k]).view().view().state is Allocated4k
+            &&& pre.pg_arr.spec_index(kill_retire_pages(pre, target)[k]).view().view().owning_container == container_ptr
+        },
     ensures
         page_pagetable_wf(post.pt_mp, post.pg_arr),
         container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr),
@@ -210,7 +308,7 @@ proof fn kill_retire_eof_mappings(
         pagetable_no_huge_leaf_wf(post.pt_mp, post.it_mp),
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.it_mp),
 {
-    reveal(kill_retire_transition);
+    reveal(kill_retire_eof_transition_framing);
     assert(page_pagetable_wf(post.pt_mp, post.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_perms_wf); };
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by {
         reveal(container_process_page_pagetable_wf); reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(process_pagetable_match);
@@ -228,7 +326,26 @@ proof fn kill_retire_eof_allocator(
 )
     requires
         pre.inv(),
-        kill_retire_transition(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        index_valid(NUM_CPUS, cpu_id),
+        pre.prc_mp.dom().contains(target),
+        pre.prc_mp.spec_index(target).view_rodata().view().owning_container == container_ptr,
+        pre.pt_mp.dom().contains(pre.prc_mp.spec_index(target).view().pagetable),
+        kill_retire_tables_emptied(pre, target),
+        pre.prc_mp.spec_index(target).view().iommu_table is Some ==> pre.it_mp.dom().contains(pre.prc_mp.spec_index(target).view().iommu_table->Some_0) && pre.it_mp.spec_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0).locking_thread() is Write,
+        pre.ctn_mp.dom().contains(container_ptr),
+        pre.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == allocator_ptr,
+        pre.allc_4k_mp.dom().contains(allocator_ptr),
+        kill_retire_pages(pre, target).no_duplicates(),
+        forall|k: int| #![trigger kill_retire_pages(pre, target)[k]] 0 <= k < kill_retire_pages(pre, target).len() ==> {
+            &&& index_valid(NUM_PAGES, kill_retire_pages(pre, target)[k])
+            &&& kill_retire_pages(pre, target)[k] == page_ptr2page_index(target) || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.prc_mp.spec_index(target).view().pagetable)
+                || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.pt_mp.spec_index(pre.prc_mp.spec_index(target).view().pagetable).view().cr3)
+                || pre.prc_mp.spec_index(target).view().iommu_table is Some && (kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0)
+                || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.it_mp.spec_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0).view().cr3))
+            &&& pre.pg_arr.spec_index(kill_retire_pages(pre, target)[k]).view().view().state is Allocated4k
+            &&& pre.pg_arr.spec_index(kill_retire_pages(pre, target)[k]).view().view().owning_container == container_ptr
+        },
     ensures
         post.allocator_free_pages_wf(),
         container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
@@ -236,7 +353,7 @@ proof fn kill_retire_eof_allocator(
         container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
         container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr),
 {
-    reveal(kill_retire_transition);
+    reveal(kill_retire_eof_transition_framing);
     page_ptr_valid_imply_page_index_valid(); page_index_valid_imply_page_ptr_valid(); page_ptr_roundtrip(); page_index_roundtrip();
     assert(allocator_free_page_ptrs_wf(post.allc_4k_mp)) by { reveal(allocator_free_page_ptrs_wf); };
     assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
@@ -260,10 +377,25 @@ proof fn kill_retire_eof_quota(
 )
     requires
         pre.inv(),
-        kill_retire_transition(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        pre.prc_mp.dom().contains(target),
+        pre.prc_mp.spec_index(target).being_killed(),
+        pre.prc_mp.spec_index(target).view().zombie,
+        pre.prc_mp.spec_index(target).view().children.view().len() == 0,
+        pre.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
+        pre.prc_mp.spec_index(target).view_rodata().view().parent == Some(parent_ptr),
+        pre.prc_mp.spec_index(target).view_rodata().view().owning_container == container_ptr,
+        pre.prc_mp.dom().contains(parent_ptr),
+        parent_ptr != target,
+        pre.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(parent_ptr),
+        pre.pt_mp.dom().contains(pre.prc_mp.spec_index(target).view().pagetable),
+        kill_retire_tables_emptied(pre, target),
+        pre.ctn_mp.dom().contains(container_ptr),
+        pre.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == allocator_ptr,
+        pre.allc_4k_mp.dom().contains(allocator_ptr),
     ensures container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
 {
-    reveal(kill_retire_transition);
+    reveal(kill_retire_eof_transition_framing);
     let owned = pre.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view();
     assert({
         &&& process_effective_quota_4k_fold_sum(owned.remove(target), post.prc_mp) == process_effective_quota_4k_fold_sum(owned, pre.prc_mp)
@@ -289,7 +421,39 @@ pub(super) proof fn kill_retire_eof_memory(
 )
     requires
         pre.inv(),
-        kill_retire_transition(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        index_valid(NUM_CPUS, cpu_id),
+        pre.prc_mp.dom().contains(target),
+        pre.prc_mp.spec_index(target).locking_thread() is Write,
+        pre.prc_mp.spec_index(target).being_killed(),
+        pre.prc_mp.spec_index(target).view().zombie,
+        pre.prc_mp.spec_index(target).view().children.view().len() == 0,
+        pre.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
+        pre.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
+        pre.prc_mp.spec_index(target).view_rodata().view().parent == Some(parent_ptr),
+        pre.prc_mp.spec_index(target).view_rodata().view().owning_container == container_ptr,
+        pre.prc_mp.dom().contains(parent_ptr),
+        parent_ptr != target,
+        pre.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(parent_ptr),
+        pre.prc_mp.spec_index(parent_ptr).view().children.map().dom().contains(pre.prc_mp.spec_index(target).view().parent_linkedlist_node.addr()),
+        pre.prc_mp.spec_index(parent_ptr).view().children.map().spec_index(pre.prc_mp.spec_index(target).view().parent_linkedlist_node.addr()) == target,
+        pre.pt_mp.dom().contains(pre.prc_mp.spec_index(target).view().pagetable),
+        pre.pt_mp.spec_index(pre.prc_mp.spec_index(target).view().pagetable).locking_thread() is Write,
+        kill_retire_tables_emptied(pre, target),
+        pre.prc_mp.spec_index(target).view().iommu_table is Some ==> pre.it_mp.dom().contains(pre.prc_mp.spec_index(target).view().iommu_table->Some_0) && pre.it_mp.spec_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0).locking_thread() is Write,
+        pre.ctn_mp.dom().contains(container_ptr),
+        pre.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == allocator_ptr,
+        pre.allc_4k_mp.dom().contains(allocator_ptr),
+        kill_retire_pages(pre, target).no_duplicates(),
+        forall|k: int| #![trigger kill_retire_pages(pre, target)[k]] 0 <= k < kill_retire_pages(pre, target).len() ==> {
+            &&& index_valid(NUM_PAGES, kill_retire_pages(pre, target)[k])
+            &&& kill_retire_pages(pre, target)[k] == page_ptr2page_index(target) || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.prc_mp.spec_index(target).view().pagetable)
+                || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.pt_mp.spec_index(pre.prc_mp.spec_index(target).view().pagetable).view().cr3)
+                || pre.prc_mp.spec_index(target).view().iommu_table is Some && (kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0)
+                || kill_retire_pages(pre, target)[k] == page_ptr2page_index(pre.it_mp.spec_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0).view().cr3))
+            &&& pre.pg_arr.spec_index(kill_retire_pages(pre, target)[k]).view().view().state is Allocated4k
+            &&& pre.pg_arr.spec_index(kill_retire_pages(pre, target)[k]).view().view().owning_container == container_ptr
+        },
         page_array_wf(post.pg_arr),
         container_perms_wf(post.ctn_mp),
         process_perms_wf(post.prc_mp),

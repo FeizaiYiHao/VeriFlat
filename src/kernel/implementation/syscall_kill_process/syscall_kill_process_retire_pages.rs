@@ -9,7 +9,7 @@ use super::syscall_kill_process_walk::kill_chain_state;
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_process_retire_spec::{kill_retire_held_state, kill_retire_pages, kill_retire_tables_emptied};
 #[cfg(verus_keep_ghost)]
-use super::syscall_kill_process_retire_pages_spec::kill_retire_table_page_transition;
+use super::syscall_kill_process_retire_pages_spec::kill_retire_table_page_eof_transition_framing;
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_process_retire_pages_eof::kill_retire_table_page_eof;
 
@@ -71,6 +71,7 @@ pub(super) fn kill_retire_structure_pages(
 {
     let ghost entry_thread = krnl.thr_mp.spec_index(thread_ptr).view();
     proof {
+        process_perms_wf_map(krnl.prc_mp);
         process_perms_wf_at(krnl.prc_mp, target);
         assert(krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == entry_thread.owning_container) by { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); };
         assert(entry_thread.container_depth <= MAX_CONTAINER_TREE_DEPTH) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); container_perms_wf_at(krnl.ctn_mp, entry_thread.owning_container); };
@@ -210,12 +211,14 @@ fn kill_retire_table_pages(
         let scan = if iommu {
             proof {
                 process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target);
+                iommu_table_perms_wf_map(krnl.it_mp);
                 iommu_table_perms_wf_at(krnl.it_mp, table);
             }
             krnl.it_mp.borrow_typed(table, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(table_perm)).next_structure_page()
         } else {
             proof {
                 process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target);
+                pagetable_perms_wf_map(krnl.pt_mp);
                 pagetable_perms_wf_at(krnl.pt_mp, table);
             }
             krnl.pt_mp.borrow_typed(table, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(table_perm)).next_structure_page()
@@ -250,6 +253,7 @@ fn kill_retire_table_pages(
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
             kernel_lock_states_unchanged_except_tables_of_implies_u_eq(&steps.snapshot_k(), &*krnl, Some(target));
             krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
+            page_array_wf_map(krnl.pg_arr);
             page_array_wf_at(krnl.pg_arr, page_index);
         }
         let owner = krnl.pg_arr.borrow_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_perm)).owning_container;
@@ -436,9 +440,10 @@ fn kill_retire_table_page_to_cache(
     let page_index = page_ptr2page_index(page_ptr);
     let ghost owner = krnl.thr_mp.spec_index(thread_ptr).view().owning_container;
     proof {
-        page_array_wf_at(krnl.pg_arr, page_index); thread_perms_wf_at(krnl.thr_mp, thread_ptr);
+        page_array_wf_at(krnl.pg_arr, page_index); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, thread_ptr);
+        allocator_perms_wf_map(krnl.allc_4k_mp);
         allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr);
-        assert(!krnl.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(page_ptr)) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); };
+        assert(!krnl.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(page_ptr)) by { container_allocator_free_4k_page_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allocator_ptr, cpu_id, page_ptr); };
         lemma_container_allocator_4k_quota_bounded(&*krnl, owner);
         assert(krnl.allc_4k_mp.spec_index(allocator_ptr).quota.view().value as int + *direct as int <= krnl.allc_4k_mp.spec_index(allocator_ptr).total_free_pages.view()) by {
             container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); lemma_thread_pending_4k_quota_bounded(&*krnl, thread_ptr, owner, krnl.thr_mp.spec_index(thread_ptr).view().container_depth);
@@ -458,7 +463,7 @@ fn kill_retire_table_page_to_cache(
         Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), Tracked(cache_perm));
     thread_map_add_free_quota_pending_4k(&mut krnl.thr_mp, thread_ptr, depth, direct, Tracked(&*lctx), Tracked(thread_perm));
     proof {
-        assert(kill_retire_table_page_transition(*old(krnl), *krnl, iommu, table, page_ptr, thread_ptr, allocator_ptr, cpu_id, node_addr)) by { reveal(kill_retire_table_page_transition); };
+        assert(kill_retire_table_page_eof_transition_framing(*old(krnl), *krnl, iommu, table, page_ptr, thread_ptr, allocator_ptr, cpu_id, node_addr)) by { reveal(kill_retire_table_page_eof_transition_framing); };
         kill_retire_table_page_eof(*old(krnl), *krnl, iommu, table, page_ptr, thread_ptr, allocator_ptr, cpu_id, node_addr);
     }
 }

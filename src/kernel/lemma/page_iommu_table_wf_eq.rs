@@ -20,11 +20,11 @@ pub proof fn page_iommu_table_wf_preserved_for_nonmapped_page_change(
         page_iommu_table_wf(container_map, process_map, new_iommu_table_map, new_page_array),
 { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); }
 
-pub proof fn lemma_page_iommu_table_wf_preserved_for_process_quota_4k_framed_fields_forall()
+pub proof fn lemma_page_iommu_table_wf_preserved_for_process_invariant_fields_except_quota_forall()
     ensures
         forall|container_map: ContainerLockedMap, pre: ProcessLockedMap, post: ProcessLockedMap, iommu_table_map: IommuTableLockedMap, page_array: PageLockedArray|
             #![trigger page_iommu_table_wf(container_map, pre, iommu_table_map, page_array), page_iommu_table_wf(container_map, post, iommu_table_map, page_array)]
-            page_iommu_table_wf(container_map, pre, iommu_table_map, page_array) && process_quota_4k_framed_fields_unchanged(pre, post)
+            page_iommu_table_wf(container_map, pre, iommu_table_map, page_array) && process_invariant_fields_except_quota_unchanged(pre, post)
                 ==> page_iommu_table_wf(container_map, post, iommu_table_map, page_array),
 { reveal(page_iommu_table_wf); }
 

@@ -4,7 +4,7 @@ use super::syscall_thread_exit_spec::*;
 use super::syscall_thread_exit_trace::*;
 use super::syscall_thread_exit_quota::thread_exit_return_quota;
 #[cfg(verus_keep_ghost)]
-use super::syscall_thread_exit_reclaim_spec::thread_exit_tables_emptied_transition;
+use super::syscall_thread_exit_reclaim_spec::thread_exit_tables_emptied_eof_transition_framing;
 #[cfg(verus_keep_ghost)]
 use super::syscall_thread_exit_reclaim_eof::thread_exit_tables_emptied_eof;
 
@@ -363,7 +363,7 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
             pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && KERNEL_MEM_END_L4INDEX <= l4i && kernel_l4_end <= l4i ==> !final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
         final(krnl).pt_mp.spec_index(pagetable).view().leaves_present(),
 {
-    proof { pagetable_perms_wf_at(krnl.pt_mp, pagetable); }
+    proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); }
     let mut indirect = [0usize; MAX_CONTAINER_TREE_DEPTH];
     let mut direct = 0usize;
     let mut cursor: (L4Index, L3Index, L2Index, L1Index) = (start_l4, 0, 0, 0);
@@ -521,6 +521,7 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
                 pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && start_l4 <= l4i && !spec_l4_index_path_le(cursor, (l4i, l3i, l2i, l1i)) implies !krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))) by {
                 if spec_index2va((l4i, l3i, l2i, l1i)) != va { assert(krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))) == iter_pt.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))); }
             };
+            pagetable_perms_wf_map(krnl.pt_mp);
             pagetable_perms_wf_at(krnl.pt_mp, pagetable);
         }
         found = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_lock_perm)).next_mapped_4k_from(cursor);
@@ -715,7 +716,7 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
             pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && KERNEL_MEM_END_L4INDEX <= l4i && kernel_l4_end <= l4i ==> !final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
         final(krnl).pt_mp.spec_index(pagetable).view().leaves_present(),
 {
-    proof { iommu_table_perms_wf_at(krnl.it_mp, iommu_table); }
+    proof { iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table); }
     let mut indirect = [0usize; MAX_CONTAINER_TREE_DEPTH];
     let mut direct = 0usize;
     let mut cursor: (L4Index, L3Index, L2Index, L1Index) = (0, 0, 0, 0);
@@ -895,6 +896,7 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
                     implies !krnl.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))) by {
                 if spec_index2va((l4i, l3i, l2i, l1i)) != iova { assert(krnl.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))) == leaf_it.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))); }
             };
+            iommu_table_perms_wf_map(krnl.it_mp);
             iommu_table_perms_wf_at(krnl.it_mp, iommu_table);
         }
         found = krnl.it_mp.borrow_typed(iommu_table, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm)).next_mapped_4k_from(cursor);
@@ -1075,7 +1077,7 @@ pub(super) fn thread_exit_reclaim_return_quota(
     let ghost reclaimed_it = krnl.it_mp.spec_index(iommu_table->Some_0);
     proof {
         assert(reclaimed_pt.view().mapping_4k().dom() =~= Set::<VAddr>::empty()) by {
-            pagetable_perms_wf_at(krnl.pt_mp, pagetable); reveal(KernelK::default_pagetable_wf); broadcast use spec_va_4k_valid_index_roundtrip;
+            pagetable_perms_wf_at(krnl.pt_mp, pagetable); krnl.default_pagetable_wf_at(pagetable); broadcast use spec_va_4k_valid_index_roundtrip;
         };
         if iommu_table is Some {
             assert(reclaimed_it.view().mapping_4k().dom() =~= Set::<VAddr>::empty()) by {
@@ -1141,15 +1143,14 @@ pub(super) fn thread_exit_reclaim_return_quota(
     proof { assert(krnl.pt_mp.spec_index(pagetable) == reclaimed_pt && (iommu_table is Some ==> krnl.it_mp.spec_index(iommu_table->Some_0) == reclaimed_it)); }
     krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::ThreadExitZombie)), Tracked(&*lctx), Tracked(thread_lock_perm));
     let ghost progressed = *krnl;
-    proof { process_perms_wf_at(krnl.prc_mp, process_ptr); }
+    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, process_ptr); }
     {
         let process = krnl.prc_mp.borrow_mut_typed(process_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(process_lock_perm));
         process.state = Ghost(ProcessState::TablesEmptied);
     }
     proof {
-        assert(thread_exit_tables_emptied_transition(progressed, *krnl, process_ptr, thread_ptr)) by {
-            reveal(thread_exit_tables_emptied_transition); process_thread_wf_at(progressed.prc_mp, progressed.thr_mp, thread_ptr);
-        };
+        process_thread_wf_at(progressed.prc_mp, progressed.thr_mp, thread_ptr);
+        assert(thread_exit_tables_emptied_eof_transition_framing(progressed, *krnl, process_ptr, thread_ptr)) by { reveal(thread_exit_tables_emptied_eof_transition_framing); };
         thread_exit_tables_emptied_eof(progressed, *krnl, process_ptr, thread_ptr);
     }
     if let Some(it) = iommu_table {

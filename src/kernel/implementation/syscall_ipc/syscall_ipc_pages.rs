@@ -193,7 +193,7 @@ fn ipc_check_pages_locked(
             &&& krnl.pt_mp.spec_index(target_pagetable).inv()
             &&& krnl.thr_mp.perms_wf()
             &&& krnl.thr_mp.spec_index(target_thread).inv()
-        }) by { pagetable_perms_wf_at(krnl.pt_mp, source_pagetable); pagetable_perms_wf_at(krnl.pt_mp, target_pagetable); thread_perms_wf_at(krnl.thr_mp, target_thread); };
+        }) by { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, source_pagetable); pagetable_perms_wf_at(krnl.pt_mp, target_pagetable); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, target_thread); };
     }
     let source_pt = krnl.pt_mp.borrow_typed(source_pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(source_pagetable_lock_perm));
     let range_len = target_range.len;
@@ -1018,7 +1018,7 @@ pub(super) fn ipc_rendezvous_pages(
             &&& krnl.thr_mp.perms_wf()
             &&& krnl.thr_mp.spec_index(current_thread_ptr).is_init()
             &&& krnl.thr_mp.spec_index(peer_thread_ptr).is_init()
-        }) by { thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); thread_perms_wf_at(krnl.thr_mp, peer_thread_ptr); };
+        }) by { thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); thread_perms_wf_at(krnl.thr_mp, peer_thread_ptr); };
     }
     let source_thread_ref = krnl.thr_mp.borrow_typed(
         source_thread, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(if source_thread == current_thread_ptr { &current_thread_lock_perm } else { &peer_thread_lock_perm }),

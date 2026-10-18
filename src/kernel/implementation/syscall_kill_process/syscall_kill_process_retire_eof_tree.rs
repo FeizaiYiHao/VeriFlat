@@ -12,13 +12,28 @@ pub(super) proof fn kill_retire_eof_tree(
 )
     requires
         pre.inv(),
-        kill_retire_transition(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        pre.prc_mp.dom().contains(target),
+        pre.prc_mp.spec_index(target).locking_thread() is Write,
+        pre.prc_mp.spec_index(target).being_killed(),
+        pre.prc_mp.spec_index(target).view().zombie,
+        pre.prc_mp.spec_index(target).view().children.view().len() == 0,
+        pre.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
+        pre.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
+        pre.prc_mp.spec_index(target).view_rodata().view().parent == Some(parent_ptr),
+        pre.prc_mp.spec_index(target).view_rodata().view().owning_container == container_ptr,
+        pre.prc_mp.dom().contains(parent_ptr),
+        parent_ptr != target,
+        pre.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(parent_ptr),
+        pre.prc_mp.spec_index(parent_ptr).view().children.map().dom().contains(pre.prc_mp.spec_index(target).view().parent_linkedlist_node.addr()),
+        pre.prc_mp.spec_index(parent_ptr).view().children.map().spec_index(pre.prc_mp.spec_index(target).view().parent_linkedlist_node.addr()) == target,
+        pre.ctn_mp.dom().contains(container_ptr),
     ensures
         container_process_wf(post.ctn_mp, post.prc_mp),
         per_container_process_tree_wf(post.ctn_mp, post.prc_mp),
         post.ctn_mp.spec_index(post.rt_ctn).view_ghost().owned_processes.view().contains(post.ctn_mp.spec_index(post.rt_ctn).view().root_process),
 {
-    reveal(kill_retire_transition);
+    reveal(kill_retire_eof_transition_framing);
     kill_retire_eof_per_container_process_tree_wf(pre, post, container_ptr, parent_ptr, target);
     kill_retire_eof_container_process_wf(pre, post, container_ptr, parent_ptr, target);
     let root_process = pre.ctn_mp.spec_index(container_ptr).view().root_process;

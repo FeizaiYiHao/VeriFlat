@@ -1,17 +1,35 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::cpu_offline_check_spec::cpu_went_off_transition;
+use super::cpu_offline_check_spec::cpu_went_off_eof_transition_framing;
 
 verus! {
 proof fn cpu_went_off_eof_container_thread_scheduler(pre: KernelK, post: KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, entry_regs: Registers)
     requires
         pre.inv(),
-        cpu_went_off_transition(pre, post, cpu_id, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, entry_regs),
+        cpu_went_off_eof_transition_framing(pre, post, cpu_id, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, entry_regs),
+        ({
+            let old_cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
+            let queue_before = pre.sched_mp.spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().view().queue;
+            &&& index_valid(NUM_CPUS, cpu_id)
+            &&& old_cpu.owning_container == container_ptr
+            &&& pre.ctn_mp.dom().contains(container_ptr)
+            &&& pre.ctn_mp.spec_index(container_ptr).view_rodata().view().scheduler == scheduler_ptr
+            &&& pre.sched_mp.dom().contains(scheduler_ptr)
+            &&& old_cpu.current_process is Some == old_cpu.current_thread is Some
+            &&& (old_cpu.current_thread is Some ==> {
+                let prev = old_cpu.current_thread.unwrap();
+                &&& pre.thr_mp.dom().contains(prev)
+                &&& pre.thr_mp.spec_index(prev).view().state == (ThreadState::RUNNING { cpu_id })
+                &&& pre.thr_mp.spec_index(prev).view().owning_proc == old_cpu.current_process.unwrap()
+                &&& !queue_before.view().contains(prev)
+                &&& !queue_before.map().dom().contains(pre.thr_mp.spec_index(prev).view().scheduler_linkedlist_node.addr())
+            })
+        }),
         post.subsystems_inv(),
     ensures container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp),
 {
-    reveal(cpu_went_off_transition);
+    reveal(cpu_went_off_eof_transition_framing);
     assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by {
         let cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
         assert(cpu.current_thread is Some ==> pre.thr_mp.spec_index(cpu.current_thread.unwrap()).view().owning_container == cpu.owning_container) by { reveal(process_thread_wf); reveal(process_cpu_wf); };
@@ -24,11 +42,32 @@ proof fn cpu_went_off_eof_container_thread_scheduler(pre: KernelK, post: KernelK
 proof fn cpu_went_off_eof_process_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, entry_regs: Registers)
     requires
         pre.inv(),
-        cpu_went_off_transition(pre, post, cpu_id, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, entry_regs),
+        cpu_went_off_eof_transition_framing(pre, post, cpu_id, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, entry_regs),
+        ({
+            let old_cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
+            let queue_before = pre.sched_mp.spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().view().queue;
+            &&& index_valid(NUM_CPUS, cpu_id)
+            &&& !pre.cpu_arr.spec_index(cpu_id).view().being_killed()
+            &&& old_cpu.owning_container == container_ptr
+            &&& pre.ctn_mp.dom().contains(container_ptr)
+            &&& pre.ctn_mp.spec_index(container_ptr).view_rodata().view().scheduler == scheduler_ptr
+            &&& pre.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set == cpu_set_ptr
+            &&& pre.sched_mp.dom().contains(scheduler_ptr)
+            &&& pre.cpu_set_mp.dom().contains(cpu_set_ptr)
+            &&& old_cpu.current_process is Some == old_cpu.current_thread is Some
+            &&& (old_cpu.current_thread is Some ==> {
+                let prev = old_cpu.current_thread.unwrap();
+                &&& pre.thr_mp.dom().contains(prev)
+                &&& pre.thr_mp.spec_index(prev).view().state == (ThreadState::RUNNING { cpu_id })
+                &&& pre.thr_mp.spec_index(prev).view().owning_proc == old_cpu.current_process.unwrap()
+                &&& !queue_before.view().contains(prev)
+                &&& !queue_before.map().dom().contains(pre.thr_mp.spec_index(prev).view().scheduler_linkedlist_node.addr())
+            })
+        }),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
-    reveal(cpu_went_off_transition);
+    reveal(cpu_went_off_eof_transition_framing);
     assert(post.process_management_inv()) by {
         cpu_went_off_eof_container_thread_scheduler(pre, post, cpu_id, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, entry_regs);
         assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); };
@@ -56,7 +95,30 @@ proof fn cpu_went_off_eof_process_management_inv(pre: KernelK, post: KernelK, cp
 pub(super) proof fn cpu_went_off_eof(pre: KernelK, post: KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, entry_regs: Registers)
     requires
         pre.inv(),
-        cpu_went_off_transition(pre, post, cpu_id, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, entry_regs),
+        cpu_went_off_eof_transition_framing(pre, post, cpu_id, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, entry_regs),
+        ({
+            let old_cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
+            let queue_before = pre.sched_mp.spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().view().queue;
+            &&& index_valid(NUM_CPUS, cpu_id)
+            &&& old_cpu.owning_container == container_ptr
+            &&& pre.ctn_mp.dom().contains(container_ptr)
+            &&& pre.ctn_mp.spec_index(container_ptr).view_rodata().view().scheduler == scheduler_ptr
+            &&& pre.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set == cpu_set_ptr
+            &&& flags_ptr == cpu_offline_flags_ptr(container_ptr)
+            &&& pre.sched_mp.dom().contains(scheduler_ptr)
+            &&& pre.cpu_set_mp.dom().contains(cpu_set_ptr)
+            &&& pre.cpu_offline_mp.dom().contains(flags_ptr)
+            &&& !pre.cpu_arr.spec_index(cpu_id).view().being_killed()
+            &&& old_cpu.current_process is Some == old_cpu.current_thread is Some
+            &&& (old_cpu.current_thread is Some ==> {
+                let prev = old_cpu.current_thread.unwrap();
+                &&& pre.thr_mp.dom().contains(prev)
+                &&& pre.thr_mp.spec_index(prev).view().state == (ThreadState::RUNNING { cpu_id })
+                &&& pre.thr_mp.spec_index(prev).view().owning_proc == old_cpu.current_process.unwrap()
+                &&& !queue_before.view().contains(prev)
+                &&& !queue_before.map().dom().contains(pre.thr_mp.spec_index(prev).view().scheduler_linkedlist_node.addr())
+            })
+        }),
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
         post.cpu_arr.spec_index(cpu_id).view().view().wf(),
@@ -74,7 +136,7 @@ pub(super) proof fn cpu_went_off_eof(pre: KernelK, post: KernelK, cpu_id: CpuId,
             index_valid(NUM_CPUS, other_cpu) && other_cpu != cpu_id ==> post.cpu_arr.spec_index(other_cpu) == pre.cpu_arr.spec_index(other_cpu),
 {
     hide(Seq::contains);
-    reveal(cpu_went_off_transition);
+    reveal(cpu_went_off_eof_transition_framing);
     assert(post.subsystems_inv()) by {
         assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); };
         assert(thread_perms_wf(post.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); };

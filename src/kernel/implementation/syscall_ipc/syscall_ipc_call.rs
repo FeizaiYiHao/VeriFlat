@@ -154,10 +154,10 @@ verus! {
             *final(pt_regs) == *old(steps).snapshot_k().thr_mp.spec_index(callee_ptr).view().trap_frame.get_some_0(),
     {
         proof {
-            thread_perms_wf_at(krnl.thr_mp, caller_ptr); thread_perms_wf_at(krnl.thr_mp, callee_ptr);
+            thread_perms_wf_at(krnl.thr_mp, caller_ptr); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, callee_ptr);
             running_thread_not_in_endpoint_queue(&*krnl, endpoint_ptr, caller_ptr);
             container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, caller_ptr);
-            assert(krnl.cpu_arr.inv()) by { cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
+            assert(krnl.cpu_arr.inv()) by { cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); };
         }
         let callee = krnl.thr_mp.borrow_typed(callee_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&callee_lock_perm));
         let next_process = callee.owning_proc;
@@ -204,7 +204,7 @@ verus! {
         callee.endpoint_receiver_to_running(callee_ptr, caller_ptr, Ghost(caller_depth), cpu_id, Tracked(endpoint_node_perm), pt_regs);
         proof {
             lctx.update_lock_id(KernelObjId::Thread(callee_ptr), before_switch.thr_mp.lock_id_by_key(callee_ptr), krnl.thr_mp.lock_id_by_key(callee_ptr));
-            assert(ipc_call_handoff_transition(before_switch, *krnl, cpu_id, caller_ptr, endpoint_ptr, endpoint_index, callee_ptr, *old(pt_regs))) by { reveal(ipc_call_handoff_transition); };
+            assert(ipc_call_handoff_eof_transition_framing(before_switch, *krnl, cpu_id, caller_ptr, endpoint_ptr, endpoint_index, callee_ptr, *old(pt_regs))) by { reveal(ipc_call_handoff_eof_transition_framing); };
             ipc_call_handoff_eof(before_switch, *krnl, cpu_id, caller_ptr, endpoint_ptr, endpoint_index, callee_ptr, *old(pt_regs));
         }
         krnl.wunlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx), Tracked(needflush_perm));
@@ -215,7 +215,7 @@ verus! {
         proof {
             let ghost flushed_pcid = ipc_handoff_flushed_pcid(old(steps).snapshot_k(), cpu_id, callee_ptr);
             assert(kernel_ipc_call_handoff_fields(&steps.snapshot_k(), &*krnl, cpu_id, caller_ptr, endpoint_ptr, endpoint_index, callee_ptr, *old(pt_regs), flushed_pcid)) by {
-                reveal(kernel_ipc_call_handoff_fields); reveal(ipc_call_handoff_transition);
+                reveal(kernel_ipc_call_handoff_fields); reveal(ipc_call_handoff_eof_transition_framing);
                 reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
                 reveal(kernel_thread_nonlock_fields_unchanged);
                 reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged);
@@ -363,7 +363,7 @@ verus! {
             final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
     {
         proof {
-            thread_perms_wf_at(krnl.thr_mp, caller_ptr); thread_perms_wf_at(krnl.thr_mp, callee_ptr);
+            thread_perms_wf_at(krnl.thr_mp, caller_ptr); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, callee_ptr);
             running_thread_not_in_endpoint_queue(&*krnl, endpoint_ptr, callee_ptr);
             container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, callee_ptr);
         }
@@ -393,7 +393,7 @@ verus! {
         callee.accept_queued_caller(caller_ptr, callee_ptr, Ghost(caller_depth));
         proof {
             lctx.update_lock_id(KernelObjId::Thread(callee_ptr), old(krnl).thr_mp.lock_id_by_key(callee_ptr), krnl.thr_mp.lock_id_by_key(callee_ptr));
-            assert(ipc_accept_call_transition(*old(krnl), *krnl, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr)) by { reveal(ipc_accept_call_transition); };
+            assert(ipc_accept_call_eof_transition_framing(*old(krnl), *krnl, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr)) by { reveal(ipc_accept_call_eof_transition_framing); };
             ipc_accept_call_eof(*old(krnl), *krnl, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr);
         }
         krnl.wunlock_thread(caller_ptr, Tracked(&mut *lctx), Tracked(caller_lock_perm));
@@ -547,10 +547,10 @@ verus! {
             *final(pt_regs) == *old(steps).snapshot_k().thr_mp.spec_index(caller_ptr).view().trap_frame.get_some_0(),
     {
         proof {
-            thread_perms_wf_at(krnl.thr_mp, caller_ptr); thread_perms_wf_at(krnl.thr_mp, callee_ptr);
+            thread_perms_wf_at(krnl.thr_mp, caller_ptr); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, callee_ptr);
             running_thread_not_in_endpoint_queue(&*krnl, endpoint_ptr, callee_ptr);
             container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, callee_ptr);
-            assert(krnl.cpu_arr.inv()) by { cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
+            assert(krnl.cpu_arr.inv()) by { cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); };
             assert(krnl.ep_mp.spec_index(endpoint_ptr).view().queue.length != usize::MAX) by { endpoint_queue_len_bounded(&*krnl, endpoint_ptr); };
             assert(krnl.ep_mp.spec_index(endpoint_ptr).view().queue.view().len() == krnl.ep_mp.spec_index(endpoint_ptr).view().queue.length) by { endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr); reveal(LinkedList::wf_value_list); };
         }
@@ -591,7 +591,7 @@ verus! {
         caller.waiting_reply_to_running(cpu_id, pt_regs);
         proof {
             lctx.update_lock_id(KernelObjId::Thread(caller_ptr), before_switch.thr_mp.lock_id_by_key(caller_ptr), krnl.thr_mp.lock_id_by_key(caller_ptr));
-            assert(ipc_reply_handoff_transition(before_switch, *krnl, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, *old(pt_regs))) by { reveal(ipc_reply_handoff_transition); };
+            assert(ipc_reply_handoff_eof_transition_framing(before_switch, *krnl, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, *old(pt_regs))) by { reveal(ipc_reply_handoff_eof_transition_framing); };
             ipc_reply_handoff_eof(before_switch, *krnl, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, *old(pt_regs));
         }
         krnl.wunlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx), Tracked(needflush_perm));
@@ -602,7 +602,7 @@ verus! {
         proof {
             let ghost flushed_pcid = ipc_handoff_flushed_pcid(old(steps).snapshot_k(), cpu_id, caller_ptr);
             assert(kernel_ipc_reply_handoff_fields(&steps.snapshot_k(), &*krnl, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, *old(pt_regs), flushed_pcid)) by {
-                reveal(kernel_ipc_reply_handoff_fields); reveal(ipc_reply_handoff_transition);
+                reveal(kernel_ipc_reply_handoff_fields); reveal(ipc_reply_handoff_eof_transition_framing);
                 reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
                 reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
                 reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged);
@@ -766,7 +766,7 @@ verus! {
             },
             !(ret is Success || ret is SuccessUsize) || waiting_state is RECEIVING_CALL ==> *final(pt_regs) == *old(pt_regs),
     {
-        assert(krnl.ep_mp.perms_wf() && krnl.ep_mp.spec_index(endpoint_ptr).is_init() && krnl.ep_mp.spec_index(endpoint_ptr).view().queue.wf()) by { endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr); };
+        assert(krnl.ep_mp.perms_wf() && krnl.ep_mp.spec_index(endpoint_ptr).is_init() && krnl.ep_mp.spec_index(endpoint_ptr).view().queue.wf()) by { endpoint_perms_wf_map(krnl.ep_mp); endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr); };
         let endpoint_ref = krnl.ep_mp.borrow_typed(endpoint_ptr, Ghost(lctx.endpoint_lock_map()), Tracked(&*lctx), Tracked(&endpoint_lock_perm));
         let (_, peer_thread_ptr) = endpoint_ref.queue.peek_head();
         proof {
@@ -1291,7 +1291,7 @@ verus! {
             }
             return RetValueType::ErrorIpcSameDirection;
         }
-        proof { thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); }
+        proof { thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); }
         let callee_ref = krnl.thr_mp.borrow_typed(current_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&current_thread_lock_perm));
         let caller_ptr = callee_ref.caller.unwrap();
         proof {

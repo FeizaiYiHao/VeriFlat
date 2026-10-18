@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::syscall_ipc_cpu_spec::ipc_cpu_rendezvous_transition;
+use super::syscall_ipc_cpu_spec::ipc_cpu_rendezvous_eof_transition_framing;
 #[cfg(verus_keep_ghost)]
 use super::syscall_ipc_dispatch::running_thread_not_in_endpoint_queue;
 
@@ -28,11 +28,42 @@ proof fn ipc_cpu_rendezvous_eof_process_management_inv(
     thread_id: LockThreadId,
 )
     requires
-        ipc_cpu_rendezvous_transition(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id),
+        pre.inv(),
+        index_valid(NUM_CPUS, transfer_cpu_id),
+        current_thread_ptr != peer_thread_ptr,
+        source_container != target_container,
+        pre.thr_mp.spec_index(peer_thread_ptr).view().owning_container != pre.thr_mp.spec_index(current_thread_ptr).view().owning_container,
+        index_valid(NUM_CPUS, wake_cpu),
+        wake_cpu == pre.thr_mp.spec_index(peer_thread_ptr).view().last_cpu,
+        source_cpu_set != target_cpu_set,
+        pre.ctn_mp.dom().contains(source_container),
+        pre.ctn_mp.dom().contains(target_container),
+        pre.thr_mp.dom().contains(current_thread_ptr),
+        pre.thr_mp.dom().contains(peer_thread_ptr),
+        pre.ep_mp.dom().contains(endpoint_ptr),
+        pre.sched_mp.dom().contains(peer_scheduler_ptr),
+        pre.cpu_set_mp.dom().contains(source_cpu_set),
+        pre.cpu_set_mp.dom().contains(target_cpu_set),
+        pre.ctn_mp.spec_index(source_container).view_rodata().view().cpu_set == source_cpu_set,
+        pre.ctn_mp.spec_index(target_container).view_rodata().view().cpu_set == target_cpu_set,
+        pre.ctn_mp.spec_index(pre.thr_mp.spec_index(peer_thread_ptr).view().owning_container).view_rodata().view().scheduler == peer_scheduler_ptr,
+        pre.thr_mp.spec_index(peer_thread_ptr).view().state.is_endpoint_waiting(),
+        pre.thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().len() > 0,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().spec_index(0) == peer_thread_ptr,
+        transferred ==> {
+            &&& pre.cpu_set_mp.spec_index(source_cpu_set).view().owned_cpus.view().contains(transfer_cpu_id)
+            &&& pre.cpu_set_mp.spec_index(source_cpu_set).view().owned_cpus.closed_view().contains(transfer_cpu_id)
+            &&& !pre.cpu_set_mp.spec_index(target_cpu_set).view().owned_cpus.view().contains(transfer_cpu_id)
+            &&& pre.cpu_arr.spec_index(transfer_cpu_id).view().view().view().state is Off
+            &&& pre.cpu_arr.spec_index(transfer_cpu_id).view().view().view().owning_container == source_container
+        },
+        !pre.sched_mp.spec_index(peer_scheduler_ptr).shards.spec_index(wake_cpu).view().view().queue.dom().contains(pre.thr_mp.spec_index(peer_thread_ptr).view().scheduler_linkedlist_node.addr()),
+        ipc_cpu_rendezvous_eof_transition_framing(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
-    reveal(ipc_cpu_rendezvous_transition);
+    reveal(ipc_cpu_rendezvous_eof_transition_framing);
     assert(post.process_management_inv()) by {
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
         assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
@@ -65,12 +96,13 @@ proof fn ipc_cpu_rendezvous_eof_memory_management_inv(
     thread_id: LockThreadId,
 )
     requires
-        ipc_cpu_rendezvous_transition(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id),
+        pre.inv(),
+        ipc_cpu_rendezvous_eof_transition_framing(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id),
         post.subsystems_inv(),
     ensures post.memory_management_inv(),
 {
     hide(Seq::contains);
-    reveal(ipc_cpu_rendezvous_transition);
+    reveal(ipc_cpu_rendezvous_eof_transition_framing);
     assert(post.memory_management_inv()) by {
         assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
         assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { scheduler_pages_wf_preserved_for_page_state_eq(pre.sched_mp, post.sched_mp, pre.pg_arr, post.pg_arr); };
@@ -105,7 +137,38 @@ pub(super) proof fn ipc_cpu_rendezvous_eof(
     cpu_transfer: Option<(CpuId, RwLockThreadPtr)>,
 )
     requires
-        ipc_cpu_rendezvous_transition(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id),
+        pre.inv(),
+        index_valid(NUM_CPUS, transfer_cpu_id),
+        current_thread_ptr != peer_thread_ptr,
+        source_container != target_container,
+        pre.thr_mp.spec_index(peer_thread_ptr).view().owning_container != pre.thr_mp.spec_index(current_thread_ptr).view().owning_container,
+        index_valid(NUM_CPUS, wake_cpu),
+        wake_cpu == pre.thr_mp.spec_index(peer_thread_ptr).view().last_cpu,
+        source_cpu_set != target_cpu_set,
+        pre.ctn_mp.dom().contains(source_container),
+        pre.ctn_mp.dom().contains(target_container),
+        pre.thr_mp.dom().contains(current_thread_ptr),
+        pre.thr_mp.dom().contains(peer_thread_ptr),
+        pre.ep_mp.dom().contains(endpoint_ptr),
+        pre.sched_mp.dom().contains(peer_scheduler_ptr),
+        pre.cpu_set_mp.dom().contains(source_cpu_set),
+        pre.cpu_set_mp.dom().contains(target_cpu_set),
+        pre.ctn_mp.spec_index(source_container).view_rodata().view().cpu_set == source_cpu_set,
+        pre.ctn_mp.spec_index(target_container).view_rodata().view().cpu_set == target_cpu_set,
+        pre.ctn_mp.spec_index(pre.thr_mp.spec_index(peer_thread_ptr).view().owning_container).view_rodata().view().scheduler == peer_scheduler_ptr,
+        pre.thr_mp.spec_index(peer_thread_ptr).view().state.is_endpoint_waiting(),
+        pre.thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().len() > 0,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().spec_index(0) == peer_thread_ptr,
+        transferred ==> {
+            &&& pre.cpu_set_mp.spec_index(source_cpu_set).view().owned_cpus.view().contains(transfer_cpu_id)
+            &&& pre.cpu_set_mp.spec_index(source_cpu_set).view().owned_cpus.closed_view().contains(transfer_cpu_id)
+            &&& !pre.cpu_set_mp.spec_index(target_cpu_set).view().owned_cpus.view().contains(transfer_cpu_id)
+            &&& pre.cpu_arr.spec_index(transfer_cpu_id).view().view().view().state is Off
+            &&& pre.cpu_arr.spec_index(transfer_cpu_id).view().view().view().owning_container == source_container
+        },
+        !pre.sched_mp.spec_index(peer_scheduler_ptr).shards.spec_index(wake_cpu).view().view().queue.dom().contains(pre.thr_mp.spec_index(peer_thread_ptr).view().scheduler_linkedlist_node.addr()),
+        ipc_cpu_rendezvous_eof_transition_framing(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id),
         post.cpu_arr.inv(),
         post.cpu_set_mp.perms_wf(),
         post.cpu_set_mp.spec_index(source_cpu_set).view().owned_cpus.wf(),
@@ -156,7 +219,7 @@ pub(super) proof fn ipc_cpu_rendezvous_eof(
             index_valid(NUM_CPUS, i) && (!transferred || i != transfer_cpu_id) ==> post.cpu_arr.spec_index(i) == pre.cpu_arr.spec_index(i),
         kernel_ipc_rendezvous_fields(&snapshot, &post, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer, None),
 {
-    reveal(ipc_cpu_rendezvous_transition);
+    reveal(ipc_cpu_rendezvous_eof_transition_framing);
     assert(post.subsystems_inv()) by {
         assert({
             &&& thread_perms_wf(post.thr_mp)

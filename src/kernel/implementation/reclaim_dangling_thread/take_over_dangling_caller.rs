@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::take_over_dangling_caller_spec::take_over_dangling_caller_transition;
+use super::take_over_dangling_caller_spec::take_over_dangling_caller_eof_transition_framing;
 #[cfg(verus_keep_ghost)]
 use super::take_over_dangling_caller_eof::take_over_dangling_caller_eof;
 
@@ -56,7 +56,7 @@ pub fn take_over_dangling_caller(
         final(krnl).thr_mp.spec_index(dangling_ptr).view().proc_linkedlist_node.is_init(),
 {
     proof {
-        thread_perms_wf_at(krnl.thr_mp, thread_ptr); thread_perms_wf_at(krnl.thr_mp, dangling_ptr);
+        thread_perms_wf_at(krnl.thr_mp, thread_ptr); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, dangling_ptr);
         krnl.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), dangling_ptr);
     }
     let ghost pre = *krnl;
@@ -72,7 +72,7 @@ pub fn take_over_dangling_caller(
     proof {
         lctx.enter_kernel_view_release();
         lctx.update_lock_id(KernelObjId::Thread(dangling_ptr), old_dangling_lock_id, krnl.thr_mp.lock_id_by_key(dangling_ptr));
-        assert(take_over_dangling_caller_transition(pre, *krnl, thread_ptr, dangling_ptr)) by { reveal(take_over_dangling_caller_transition); };
+        assert(take_over_dangling_caller_eof_transition_framing(pre, *krnl, thread_ptr, dangling_ptr)) by { reveal(take_over_dangling_caller_eof_transition_framing); };
         take_over_dangling_caller_eof(pre, *krnl, thread_ptr, dangling_ptr);
     }
 }

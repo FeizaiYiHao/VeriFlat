@@ -46,10 +46,12 @@ pub fn drop_endpoint_descriptor(
         final(krnl).ep_mp.spec_index(endpoint_ptr).being_killed() == old(krnl).ep_mp.spec_index(endpoint_ptr).being_killed(),
 {
     proof {
+        thread_perms_wf_map(krnl.thr_mp);
         thread_perms_wf_at(krnl.thr_mp, thread_ptr);
         assert(krnl.ep_mp.dom().contains(endpoint_ptr) && krnl.ep_mp.spec_index(endpoint_ptr).view().owning_threads.view().contains((thread_ptr, index))) by {
             thread_endpoint_ref_counter_wf_thread_at(krnl.thr_mp, krnl.ep_mp, thread_ptr, index);
         };
+        endpoint_perms_wf_map(krnl.ep_mp);
         endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr);
         vstd::set::lemma_set_remove_len(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_threads.view(), (thread_ptr, index));
     }

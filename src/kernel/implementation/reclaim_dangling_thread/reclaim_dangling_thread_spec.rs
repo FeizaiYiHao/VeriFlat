@@ -7,7 +7,7 @@ verus! {
 /// node at `cache_node_addr` to shard `cpu_id` of the 4K allocator `allocator_ptr` of its owner `owner`, whose quota
 /// grows by one.
 #[verifier::opaque]
-pub open spec fn reclaim_dangling_thread_transition(
+pub open spec fn reclaim_dangling_thread_eof_transition_framing(
     pre: KernelK, post: KernelK, cpu_id: CpuId, dangling_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, allocator_ptr: RwLockPageAllocatorPtr, cache_node_addr: usize,
 ) -> bool {
     let page_index = page_ptr2page_index(dangling_ptr);
@@ -21,26 +21,6 @@ pub open spec fn reclaim_dangling_thread_transition(
     let post_cache = post_allocator.cpu_caches.spec_index(cpu_id).view();
     let container_ptr = dangling.owning_container;
     let uppers = pre.ctn_mp.spec_index(container_ptr).view_ghost().uppertree_seq.view();
-    &&& index_valid(NUM_CPUS, cpu_id)
-    &&& page_ptr_valid(dangling_ptr)
-    &&& pre.thr_mp.dom().contains(dangling_ptr)
-    &&& pre.thr_mp.spec_index(dangling_ptr).locking_thread() is Write
-    &&& dangling.state is KILLED
-    &&& dangling.proc_linkedlist_node.is_init()
-    &&& dangling.caller is None
-    &&& dangling.callee is None
-    &&& forall|j: int| #![trigger dangling.endpoint_descriptors.view().spec_index(j)] 0 <= j < MAX_NUM_ENDPOINT_DESCRIPTORS ==> dangling.endpoint_descriptors.view().spec_index(j) is None
-    &&& dangling.temp_alloc_clean()
-    &&& dangling.quota_4k == 0
-    &&& dangling.quota_2m == 0
-    &&& dangling.quota_1g == 0
-    &&& dangling.free_quota_pending_clean()
-    &&& pre.ctn_mp.dom().contains(container_ptr)
-    &&& pre.ctn_mp.dom().contains(owner)
-    &&& pre_page.view().owning_container == owner
-    &&& pre_page.view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread })
-    &&& pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr
-    &&& pre.allc_4k_mp.dom().contains(allocator_ptr)
     &&& post == (KernelK { ctn_mp: post.ctn_mp, thr_mp: post.thr_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..pre })
     &&& post.ctn_mp.dom() == pre.ctn_mp.dom()
     &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)]
@@ -72,7 +52,6 @@ pub open spec fn reclaim_dangling_thread_transition(
     &&& post_page.view_ghost() == pre_page.view_ghost()
     &&& post_page.locking_thread() == pre_page.locking_thread()
     &&& post_page.being_killed() == pre_page.being_killed()
-    &&& pre_page.view().free_list_node_storage.addr() == cache_node_addr
     &&& post_page.view().free_list_node_storage.addr() == cache_node_addr
     &&& post_page.view() == (Page { state: free_state, free_list_node_storage: post_page.view().free_list_node_storage, perm_4k: post_page.view().perm_4k, ..pre_page.view() })
     &&& post.allc_4k_mp.dom() == pre.allc_4k_mp.dom()
@@ -80,7 +59,6 @@ pub open spec fn reclaim_dangling_thread_transition(
     &&& post_allocator.total_free_pages.view() == pre_allocator.total_free_pages.view() + 1
     &&& post_cache.view().view() == pre_cache.view().view().insert(0, dangling_ptr)
     &&& post_cache.view().map() == pre_cache.view().map().insert(cache_node_addr, dangling_ptr)
-    &&& !pre_cache.view().map().dom().contains(cache_node_addr)
     &&& post_allocator.cpu_caches.entries_unchanged_except(&pre_allocator.cpu_caches, cpu_id)
     &&& post_cache.locking_thread() == pre_cache.locking_thread()
     &&& post_allocator.global_pool == pre_allocator.global_pool

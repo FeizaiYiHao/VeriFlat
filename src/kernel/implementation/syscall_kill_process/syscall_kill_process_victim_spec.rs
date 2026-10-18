@@ -5,20 +5,12 @@ verus! {
 /// The write-held thread `victim_ptr`, waiting for a reply or killed, leaves the write-held marked process `process_ptr`,
 /// which absorbs its quota, and takes back its process node; a thread waiting for a reply becomes a dangling thread.
 #[verifier::opaque]
-pub open spec fn kill_leave_process_transition(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, victim_ptr: RwLockThreadPtr) -> bool {
+pub open spec fn kill_leave_process_eof_transition_framing(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, victim_ptr: RwLockThreadPtr) -> bool {
     let process = pre.prc_mp.spec_index(process_ptr);
     let victim = pre.thr_mp.spec_index(victim_ptr);
     let node_addr = victim.view().proc_linkedlist_node.addr();
     let after_process = post.prc_mp.spec_index(process_ptr);
     let after_victim = post.thr_mp.spec_index(victim_ptr);
-    &&& pre.prc_mp.dom().contains(process_ptr)
-    &&& pre.thr_mp.dom().contains(victim_ptr)
-    &&& process.view().owned_threads.view().contains(victim_ptr)
-    &&& process.being_killed()
-    &&& process.locking_thread() is Write
-    &&& victim.locking_thread() is Write
-    &&& victim.view().state is WAITING_REPLY || victim.view().state is KILLED
-    &&& victim.view().temp_alloc_clean()
     &&& post == (KernelK { prc_mp: post.prc_mp, thr_mp: post.thr_mp, ..pre })
     &&& post.prc_mp.unchanged_except(&pre.prc_mp, process_ptr)
     &&& after_process.is_init() == process.is_init()
@@ -52,18 +44,12 @@ pub open spec fn kill_leave_process_transition(pre: KernelK, post: KernelK, proc
 /// The write-held marked thread `victim_ptr` scheduled on shard `shard` of `scheduler_ptr` leaves the shard and becomes
 /// killed.
 #[verifier::opaque]
-pub open spec fn kill_dequeue_scheduled_transition(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, scheduler_ptr: RwLockSchedulerPtr, shard: CpuId) -> bool {
+pub open spec fn kill_dequeue_scheduled_eof_transition_framing(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, scheduler_ptr: RwLockSchedulerPtr, shard: CpuId) -> bool {
     let victim = pre.thr_mp.spec_index(victim_ptr);
     let after_victim = post.thr_mp.spec_index(victim_ptr);
     let node_addr = victim.view().scheduler_linkedlist_node.addr();
     let before = pre.sched_mp.spec_index(scheduler_ptr);
     let after = post.sched_mp.spec_index(scheduler_ptr);
-    &&& index_valid(NUM_CPUS, shard)
-    &&& pre.thr_mp.dom().contains(victim_ptr)
-    &&& pre.sched_mp.dom().contains(scheduler_ptr)
-    &&& victim.locking_thread() is Write
-    &&& victim.view().state == (ThreadState::SCHEDULED { cpu_id: shard })
-    &&& pre.ctn_mp.spec_index(victim.view().owning_container).view_rodata().view().scheduler == scheduler_ptr
     &&& post == (KernelK { sched_mp: post.sched_mp, thr_mp: post.thr_mp, ..pre })
     &&& post.thr_mp.unchanged_except(&pre.thr_mp, victim_ptr)
     &&& after_victim.is_init() == victim.is_init()
@@ -89,17 +75,12 @@ pub open spec fn kill_dequeue_scheduled_transition(pre: KernelK, post: KernelK, 
 /// The write-held marked thread `victim_ptr` waiting in the queue of the write-held endpoint `endpoint_ptr` leaves the
 /// queue and becomes killed.
 #[verifier::opaque]
-pub open spec fn kill_dequeue_endpoint_transition(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr) -> bool {
+pub open spec fn kill_dequeue_endpoint_eof_transition_framing(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr) -> bool {
     let victim = pre.thr_mp.spec_index(victim_ptr);
     let after_victim = post.thr_mp.spec_index(victim_ptr);
     let node_addr = victim.view().endpoint_linkedlist_node.addr();
     let before = pre.ep_mp.spec_index(endpoint_ptr);
     let after = post.ep_mp.spec_index(endpoint_ptr);
-    &&& pre.thr_mp.dom().contains(victim_ptr)
-    &&& pre.ep_mp.dom().contains(endpoint_ptr)
-    &&& victim.locking_thread() is Write
-    &&& victim.view().state.is_endpoint_waiting()
-    &&& victim.view().blocking_endpoint_ptr == Some(endpoint_ptr)
     &&& post == (KernelK { ep_mp: post.ep_mp, thr_mp: post.thr_mp, ..pre })
     &&& post.thr_mp.unchanged_except(&pre.thr_mp, victim_ptr)
     &&& after_victim.is_init() == victim.is_init()
@@ -130,16 +111,11 @@ pub open spec fn kill_dequeue_endpoint_transition(pre: KernelK, post: KernelK, v
 /// The write-held marked thread `victim_ptr` running on the write-held remote cpu `remote` is evicted: the cpu loads the
 /// default page table with the default PCID and goes idle, and the thread becomes killed.
 #[verifier::opaque]
-pub open spec fn kill_evict_transition(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, remote: CpuId, default_cr3: PageTableRoot) -> bool {
+pub open spec fn kill_evict_eof_transition_framing(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, remote: CpuId, default_cr3: PageTableRoot) -> bool {
     let victim = pre.thr_mp.spec_index(victim_ptr);
     let after_victim = post.thr_mp.spec_index(victim_ptr);
     let before = pre.cpu_arr.spec_index(remote).view();
     let after = post.cpu_arr.spec_index(remote).view();
-    &&& index_valid(NUM_CPUS, remote)
-    &&& pre.thr_mp.dom().contains(victim_ptr)
-    &&& victim.locking_thread() is Write
-    &&& victim.view().state == (ThreadState::RUNNING { cpu_id: remote })
-    &&& default_cr3 == pre.dflt_pt.view().cr3
     &&& post == (KernelK { cpu_arr: post.cpu_arr, cpu_published: post.cpu_published, thr_mp: post.thr_mp, ..pre })
     &&& post.thr_mp.unchanged_except(&pre.thr_mp, victim_ptr)
     &&& after_victim.is_init() == victim.is_init()
@@ -155,7 +131,6 @@ pub open spec fn kill_evict_transition(pre: KernelK, post: KernelK, victim_ptr: 
     &&& after.view().wf()
     &&& after.locking_thread() == before.locking_thread()
     &&& after.killer_info() == before.killer_info()
-    &&& !before.being_killed()
     &&& after.view_rodata() == before.view_rodata()
     &&& after.view_ghost() == before.view_ghost()
     &&& after.view().view() == (CpuView {

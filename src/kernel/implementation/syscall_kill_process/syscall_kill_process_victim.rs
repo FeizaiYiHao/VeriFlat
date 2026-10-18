@@ -32,18 +32,20 @@ pub(super) fn kill_leave_process(
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), lctx),
-        kill_leave_process_transition(*old(krnl), *final(krnl), process_ptr, victim_ptr),
+        kill_leave_process_eof_transition_framing(*old(krnl), *final(krnl), process_ptr, victim_ptr),
         final(krnl).thr_mp.lock_id_by_key(victim_ptr) == old(krnl).thr_mp.lock_id_by_key(victim_ptr),
         final(krnl).prc_mp.lock_id_by_key(process_ptr) == old(krnl).prc_mp.lock_id_by_key(process_ptr),
 {
     let ghost pre = *krnl;
     proof {
+        process_perms_wf_map(krnl.prc_mp);
         process_perms_wf_at(krnl.prc_mp, process_ptr);
         assert({
             &&& krnl.thr_mp.dom().contains(victim_ptr)
             &&& krnl.thr_mp.spec_index(victim_ptr).view().owning_proc == process_ptr
             &&& !krnl.thr_mp.spec_index(victim_ptr).view().proc_linkedlist_node.is_init()
-        }) by { reveal(process_thread_wf); };
+        }) by { process_thread_wf_process_at(krnl.prc_mp, krnl.thr_mp, process_ptr, victim_ptr); };
+        thread_perms_wf_map(krnl.thr_mp);
         thread_perms_wf_at(krnl.thr_mp, victim_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, victim_ptr);
         assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.dom().contains(krnl.thr_mp.spec_index(victim_ptr).view().proc_linkedlist_node.addr())) by { reveal(LinkedList::wf_map); };
         container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, victim_ptr); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr);
@@ -62,7 +64,7 @@ pub(super) fn kill_leave_process(
         if waiting_reply { victim.waiting_reply_to_dangling(node_perm); } else { victim.killed_leave_process(node_perm); }
     }
     proof {
-        assert(kill_leave_process_transition(pre, *krnl, process_ptr, victim_ptr)) by { reveal(kill_leave_process_transition); };
+        assert(kill_leave_process_eof_transition_framing(pre, *krnl, process_ptr, victim_ptr)) by { reveal(kill_leave_process_eof_transition_framing); };
         kill_leave_process_eof(pre, *krnl, process_ptr, victim_ptr);
     }
 }
@@ -118,6 +120,7 @@ pub(super) fn kill_dequeue_scheduled_victim(krnl: &mut KernelK, Tracked(lctx): T
         }),
 {
     proof {
+        thread_perms_wf_map(krnl.thr_mp);
         thread_perms_wf_at(krnl.thr_mp, victim_ptr); container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, victim_ptr);
         container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, krnl.thr_mp.spec_index(victim_ptr).view().owning_container);
         container_perms_wf_at(krnl.ctn_mp, krnl.thr_mp.spec_index(victim_ptr).view().owning_container);
@@ -132,6 +135,7 @@ pub(super) fn kill_dequeue_scheduled_victim(krnl: &mut KernelK, Tracked(lctx): T
     let Tracked(shard_lock_perm) = krnl.wlock_scheduler_shard(scheduler_ptr, shard, Tracked(&mut *lctx));
     let ghost pre = *krnl;
     proof {
+        thread_perms_wf_map(krnl.thr_mp);
         thread_perms_wf_at(krnl.thr_mp, victim_ptr);
         assert(krnl.sched_mp.spec_index(scheduler_ptr).shard(shard).queue.map().dom().contains(node_addr) && krnl.sched_mp.spec_index(scheduler_ptr).shard(shard).queue.map().spec_index(node_addr) == victim_ptr)
             by { reveal(container_thread_scheduler_wf); };
@@ -143,7 +147,7 @@ pub(super) fn kill_dequeue_scheduled_victim(krnl: &mut KernelK, Tracked(lctx): T
         victim.scheduled_to_killed(node_perm);
     }
     proof {
-        assert(kill_dequeue_scheduled_transition(pre, *krnl, victim_ptr, scheduler_ptr, shard)) by { reveal(kill_dequeue_scheduled_transition); };
+        assert(kill_dequeue_scheduled_eof_transition_framing(pre, *krnl, victim_ptr, scheduler_ptr, shard)) by { reveal(kill_dequeue_scheduled_eof_transition_framing); };
         kill_dequeue_scheduled_eof(pre, *krnl, victim_ptr, scheduler_ptr, shard);
     }
     krnl.wunlock_scheduler_shard(scheduler_ptr, shard, Tracked(&mut *lctx), Tracked(shard_lock_perm));
@@ -200,7 +204,7 @@ pub(super) fn kill_dequeue_endpoint_victim(krnl: &mut KernelK, Tracked(lctx): Tr
             &&& final(krnl).thr_mp.lock_id_by_key(victim_ptr) == old(krnl).thr_mp.lock_id_by_key(victim_ptr)
         }),
 {
-    proof { thread_perms_wf_at(krnl.thr_mp, victim_ptr); thread_endpoint_queue_wf_thread_at(krnl.thr_mp, krnl.ep_mp, victim_ptr); }
+    proof { thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, victim_ptr); thread_endpoint_queue_wf_thread_at(krnl.thr_mp, krnl.ep_mp, victim_ptr); }
     let (endpoint_ptr, node_addr) = {
         let victim = krnl.thr_mp.borrow_typed(victim_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(victim_lock_perm));
         (victim.blocking_endpoint_ptr.unwrap(), victim.endpoint_linkedlist_node.addr())
@@ -208,7 +212,7 @@ pub(super) fn kill_dequeue_endpoint_victim(krnl: &mut KernelK, Tracked(lctx): Tr
     let Tracked(endpoint_lock_perm) = krnl.wlock_endpoint(endpoint_ptr, Tracked(&mut *lctx));
     let ghost pre = *krnl;
     proof {
-        thread_perms_wf_at(krnl.thr_mp, victim_ptr); thread_endpoint_queue_wf_thread_at(krnl.thr_mp, krnl.ep_mp, victim_ptr); endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr);
+        thread_perms_wf_at(krnl.thr_mp, victim_ptr); thread_endpoint_queue_wf_thread_at(krnl.thr_mp, krnl.ep_mp, victim_ptr); endpoint_perms_wf_map(krnl.ep_mp); endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr);
         assert(krnl.ep_mp.spec_index(endpoint_ptr).view().queue.dom().contains(node_addr)) by { reveal(LinkedList::wf_map); };
     }
     let node_perm = {
@@ -220,7 +224,7 @@ pub(super) fn kill_dequeue_endpoint_victim(krnl: &mut KernelK, Tracked(lctx): Tr
         victim.endpoint_waiter_to_killed(node_perm);
     }
     proof {
-        assert(kill_dequeue_endpoint_transition(pre, *krnl, victim_ptr, endpoint_ptr)) by { reveal(kill_dequeue_endpoint_transition); };
+        assert(kill_dequeue_endpoint_eof_transition_framing(pre, *krnl, victim_ptr, endpoint_ptr)) by { reveal(kill_dequeue_endpoint_eof_transition_framing); };
         kill_dequeue_endpoint_eof(pre, *krnl, victim_ptr, endpoint_ptr);
     }
     krnl.wunlock_endpoint(endpoint_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
@@ -280,6 +284,7 @@ pub(super) fn kill_evict_running_victim(krnl: &mut KernelK, Tracked(lctx): Track
         }),
 {
     proof {
+        thread_perms_wf_map(krnl.thr_mp);
         thread_perms_wf_at(krnl.thr_mp, victim_ptr);
         let killer_cpu = lctx.cpu_id();
         thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, killer_cpu);
@@ -314,7 +319,7 @@ pub(super) fn kill_evict_running_victim(krnl: &mut KernelK, Tracked(lctx): Track
         assert(krnl.cpu_published[remote as int].owner_cpu() == remote) by { reveal(cpu_published_wf); };
     }
     let default_cr3 = krnl.dflt_pt.borrow().cr3;
-    assert(page_ptr_valid(default_cr3)) by { reveal(KernelK::default_pagetable_wf); reveal(PageTable::table_pages_wf); };
+    assert(page_ptr_valid(default_cr3)) by { krnl.default_pagetable_view_inv(); reveal(PageTable::table_pages_wf); };
     krnl.cpu_arr.evict_remote(remote, default_cr3, killer_info, &mut krnl.cpu_published, Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
     proof { lctx.update_lock_id(KernelObjId::Cpu(remote), old_cpu_lock_id, krnl.cpu_arr.lock_id_by_index(remote)); }
     {
@@ -322,7 +327,7 @@ pub(super) fn kill_evict_running_victim(krnl: &mut KernelK, Tracked(lctx): Track
         victim.running_to_killed();
     }
     proof {
-        assert(kill_evict_transition(pre, *krnl, victim_ptr, remote, default_cr3)) by { reveal(kill_evict_transition); };
+        assert(kill_evict_eof_transition_framing(pre, *krnl, victim_ptr, remote, default_cr3)) by { reveal(kill_evict_eof_transition_framing); };
         kill_evict_eof(pre, *krnl, victim_ptr, remote, default_cr3);
     }
     krnl.wunlock_cpu(remote, Tracked(&mut *lctx), Tracked(cpu_lock_perm));

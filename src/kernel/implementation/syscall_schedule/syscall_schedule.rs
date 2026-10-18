@@ -225,10 +225,10 @@ fn schedule_switch_to_queue_head(
             &&& krnl.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.view().len() == krnl.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.len()
             &&& krnl.sched_mp.spec_index(scheduler_ptr).owning_container == krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container
             &&& (current_thread is Some ==> !krnl.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.view().contains(current_thread.unwrap()))
-        }) by { scheduler_perms_wf_at(krnl.sched_mp, scheduler_ptr); container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp, scheduler_ptr, cpu_id, next_thread); reveal(LinkedList::wf_value_list); };
-        thread_perms_wf_at(krnl.thr_mp, next_thread);
+        }) by { scheduler_perms_wf_map(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, scheduler_ptr); container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp, scheduler_ptr, cpu_id, next_thread); reveal(LinkedList::wf_value_list); };
+        thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, next_thread);
         if current_thread is Some { thread_perms_wf_at(krnl.thr_mp, current_thread.unwrap()); }
-        assert(krnl.cpu_arr.inv()) by { cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
+        assert(krnl.cpu_arr.inv()) by { cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); };
     }
     let thread = krnl.thr_mp.borrow_typed(next_thread, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&next_lock_perm));
     let next_process = thread.owning_proc;
@@ -279,7 +279,7 @@ fn schedule_switch_to_queue_head(
     let syscall_return = target.scheduled_to_running(cpu_id, node_perm, pt_regs);
     proof {
         lctx.update_lock_id(KernelObjId::Thread(next_thread), before_switch.thr_mp.lock_id_by_key(next_thread), krnl.thr_mp.lock_id_by_key(next_thread));
-        assert(scheduler_context_switch_transition(before_switch, *krnl, cpu_id, scheduler_ptr, next_thread, *old(pt_regs))) by { reveal(scheduler_context_switch_transition); };
+        assert(scheduler_context_switch_eof_transition_framing(before_switch, *krnl, cpu_id, scheduler_ptr, next_thread, *old(pt_regs))) by { reveal(scheduler_context_switch_eof_transition_framing); };
         scheduler_context_switch_eof(before_switch, *krnl, cpu_id, scheduler_ptr, next_thread, *old(pt_regs));
     }
     krnl.wunlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx), Tracked(needflush_perm));
@@ -294,7 +294,7 @@ fn schedule_switch_to_queue_head(
         let ghost flushed_pcid = schedule_flushed_pcid(*old(krnl), cpu_id, next_thread);
         let ghost switch_before = steps.view();
         assert(kernel_context_switch_fields(&steps.snapshot_k(), &*krnl, cpu_id, next_thread, *old(pt_regs), flushed_pcid)) by {
-            reveal(kernel_context_switch_fields); reveal(scheduler_context_switch_transition); reveal(container_scheduler_wf);
+            reveal(kernel_context_switch_fields); reveal(scheduler_context_switch_eof_transition_framing); reveal(container_scheduler_wf);
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
             reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
             reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged);
@@ -458,6 +458,7 @@ pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         &&& krnl.sched_mp.spec_index(scheduler_ptr).owning_container == container_ptr
         &&& (current_thread is Some ==> !krnl.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.view().contains(current_thread.unwrap()))
     }) by {
+        scheduler_perms_wf_map(krnl.sched_mp);
         scheduler_perms_wf_at(krnl.sched_mp, scheduler_ptr); container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, container_ptr);
         container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp, scheduler_ptr, cpu_id, current_thread.unwrap()); reveal(LinkedList::wf_value_list);
     };

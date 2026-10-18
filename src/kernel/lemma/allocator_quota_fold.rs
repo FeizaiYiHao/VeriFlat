@@ -496,7 +496,7 @@ pub proof fn lemma_container_process_thread_quota_folds_insert_zero_forall(
                 &&& thread_effective_quota_4k(post_thr.spec_index(t)) == thread_effective_quota_4k(pre_thr.spec_index(t))
                 &&& thread_effective_quota_2m(post_thr.spec_index(t)) == thread_effective_quota_2m(pre_thr.spec_index(t))
                 &&& thread_effective_quota_1g(post_thr.spec_index(t)) == thread_effective_quota_1g(pre_thr.spec_index(t))
-                &&& post_thr.spec_index(t).view().free_quota_pending_fields_equal(&pre_thr.spec_index(t).view())
+                &&& post_thr.spec_index(t).view().free_quota_pending_fields_unchanged(&pre_thr.spec_index(t).view())
             },
         thread_effective_quota_4k(post_thr.spec_index(new_t)) == 0,
         thread_effective_quota_2m(post_thr.spec_index(new_t)) == 0,
@@ -670,7 +670,7 @@ pub proof fn lemma_container_process_thread_quota_folds_remove_thread_forall(
                 &&& thread_effective_quota_4k(post_thr.spec_index(t)) == thread_effective_quota_4k(pre_thr.spec_index(t))
                 &&& thread_effective_quota_2m(post_thr.spec_index(t)) == thread_effective_quota_2m(pre_thr.spec_index(t))
                 &&& thread_effective_quota_1g(post_thr.spec_index(t)) == thread_effective_quota_1g(pre_thr.spec_index(t))
-                &&& post_thr.spec_index(t).view().free_quota_pending_fields_equal(&pre_thr.spec_index(t).view())
+                &&& post_thr.spec_index(t).view().free_quota_pending_fields_unchanged(&pre_thr.spec_index(t).view())
             },
     ensures
         forall|c: RwLockContainerPtr|
@@ -829,7 +829,7 @@ pub proof fn lemma_container_thread_quota_folds_remove_empty_thread_forall(
                 &&& thread_effective_quota_4k(post_thr.spec_index(t)) == thread_effective_quota_4k(pre_thr.spec_index(t))
                 &&& thread_effective_quota_2m(post_thr.spec_index(t)) == thread_effective_quota_2m(pre_thr.spec_index(t))
                 &&& thread_effective_quota_1g(post_thr.spec_index(t)) == thread_effective_quota_1g(pre_thr.spec_index(t))
-                &&& post_thr.spec_index(t).view().free_quota_pending_fields_equal(&pre_thr.spec_index(t).view())
+                &&& post_thr.spec_index(t).view().free_quota_pending_fields_unchanged(&pre_thr.spec_index(t).view())
             },
     ensures
         forall|c: RwLockContainerPtr|
@@ -1264,7 +1264,7 @@ pub proof fn lemma_container_process_thread_quota_folds_change_forall(
         thread_effective_quota_4k(post_thr.spec_index(thread_ptr)) == thread_effective_quota_4k(pre_thr.spec_index(thread_ptr)) + dt4k,
         thread_effective_quota_2m(post_thr.spec_index(thread_ptr)) == thread_effective_quota_2m(pre_thr.spec_index(thread_ptr)) + dt2m,
         thread_effective_quota_1g(post_thr.spec_index(thread_ptr)) == thread_effective_quota_1g(pre_thr.spec_index(thread_ptr)) + dt1g,
-        forall|t: RwLockThreadPtr| #![trigger post_thr.spec_index(t).view()] pre_thr.dom().contains(t) ==> post_thr.spec_index(t).view().free_quota_pending_fields_equal(&pre_thr.spec_index(t).view()),
+        forall|t: RwLockThreadPtr| #![trigger post_thr.spec_index(t).view()] pre_thr.dom().contains(t) ==> post_thr.spec_index(t).view().free_quota_pending_fields_unchanged(&pre_thr.spec_index(t).view()),
     ensures
         forall|c: RwLockContainerPtr|
             #![trigger ctn.spec_index(c).view_rodata().view().allocator_ptr_4k]

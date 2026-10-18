@@ -20,7 +20,6 @@ verus! {
             container_perms_wf(container_perms),
             container_perms.dom().contains(container_ptr),
         ensures
-            container_perms.perms_wf(),
             container_perms.view().spec_index(container_ptr).is_init(),
             container_perms.view().spec_index(container_ptr).addr() == container_ptr,
             container_perms.spec_index(container_ptr).inv(),

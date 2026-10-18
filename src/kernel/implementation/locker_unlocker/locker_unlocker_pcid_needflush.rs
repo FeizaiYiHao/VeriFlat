@@ -40,7 +40,7 @@ impl KernelK {
             &&& self.pcid_needflush.spec_index(cpu_id, pcid).view().index() == (cpu_id, pcid)
             &&& !self.pcid_needflush.spec_index(cpu_id, pcid).locked_by_thread(lctx.thread_id())
             &&& wlock_requires(self.pcid_needflush.spec_index(cpu_id, pcid), &*lctx)
-        }) by { reveal(pcid_needflush_wf); reveal(LockedArray2D::typed_lock_map_aligned); };
+        }) by { pcid_needflush_wf_at(self.pcid_needflush, cpu_id, pcid); reveal(LockedArray2D::typed_lock_map_aligned); };
         assert(old(lctx).lock_id_acyclic(old(self).pcid_needflush.lock_id_by_index(cpu_id, pcid))) by {
             reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned); reveal(UnLockedMap::typed_shard_lock_map_aligned);
             reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
@@ -86,7 +86,7 @@ impl KernelK {
             },
             *final(self) == (KernelK { pcid_needflush: final(self).pcid_needflush, ..*old(self) }),
     {
-        assert(self.pcid_needflush.spec_index(cpu_id, pcid).inv()) by { reveal(pcid_needflush_wf); };
+        assert(self.pcid_needflush.spec_index(cpu_id, pcid).inv()) by { pcid_needflush_wf_at(self.pcid_needflush, cpu_id, pcid); };
         assert(self.pcid_needflush.spec_index(cpu_id, pcid).wlocked_by(&*lctx)) by { reveal(LockedArray2D::typed_lock_map_aligned); };
         assert(lctx.lock_entry_contains(self.pcid_needflush.lock_id_by_index(cpu_id, pcid), KernelObjId::PcidNeedFlush(cpu_id, pcid))) by { reveal(LockedArray2D::typed_lock_map_aligned); };
         self.pcid_needflush.set_ghost(cpu_id, pcid, Ghost(None), Tracked(&*lctx), Tracked(lp.borrow()));
@@ -129,7 +129,7 @@ impl KernelK {
                 ==> final(self).pcid_needflush.spec_index(c, p) == old(self).pcid_needflush.spec_index(c, p),
             *final(self) == (KernelK { pcid_needflush: final(self).pcid_needflush, ..*old(self) }),
     {
-        assert(self.pcid_needflush.spec_index(cpu_id, pcid).is_init()) by { reveal(pcid_needflush_wf); };
+        assert(self.pcid_needflush.spec_index(cpu_id, pcid).is_init()) by { pcid_needflush_wf_at(self.pcid_needflush, cpu_id, pcid); };
         let entry = self.pcid_needflush.borrow_mut_typed(cpu_id, pcid, Ghost(lctx.pcid_needflush_lock_map()), Tracked(lctx), lp);
         entry.set(true);
         proof {

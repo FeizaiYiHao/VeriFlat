@@ -208,7 +208,7 @@ impl Thread {
         thread
     }
 
-    pub open spec fn ipc_framed_fields_equal(&self, other: &Self) -> bool {
+    pub open spec fn non_ipc_fields_unchanged(&self, other: &Self) -> bool {
         &&& self.owning_container == other.owning_container
         &&& self.call_depth == other.call_depth
         &&& self.syscall_progress == other.syscall_progress
@@ -229,10 +229,10 @@ impl Thread {
         &&& self.endpoint_descriptors == other.endpoint_descriptors
         &&& self.endpoint_linkedlist_node.addr() == other.endpoint_linkedlist_node.addr()
         &&& self.upper_container_seq == other.upper_container_seq
-        &&& self.free_quota_pending_fields_equal(other)
+        &&& self.free_quota_pending_fields_unchanged(other)
     }
 
-    pub open spec fn free_quota_pending_fields_equal(&self, other: &Self) -> bool {
+    pub open spec fn free_quota_pending_fields_unchanged(&self, other: &Self) -> bool {
         &&& self.direct_free_quota_pending_4k == other.direct_free_quota_pending_4k
         &&& self.direct_free_quota_pending_2m == other.direct_free_quota_pending_2m
         &&& self.direct_free_quota_pending_1g == other.direct_free_quota_pending_1g
@@ -455,7 +455,7 @@ impl Thread {
             old(self).endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr),
         ensures
             final(self).inv(),
-            final(self).ipc_framed_fields_equal(old(self)),
+            final(self).non_ipc_fields_unchanged(old(self)),
             *final(self) == (Thread {
                 state: waiting_state, blocking_endpoint_ptr: Some(endpoint_ptr), blocking_endpoint_index: Some(endpoint_index), ipc_payload: payload,
                 trap_frame: final(self).trap_frame, endpoint_linkedlist_node: final(self).endpoint_linkedlist_node, ..*old(self)
@@ -498,7 +498,7 @@ impl Thread {
             endpoint_node_perm.view().value().view() == thread_ptr,
         ensures
             final(self).inv(),
-            final(self).ipc_framed_fields_equal(old(self)),
+            final(self).non_ipc_fields_unchanged(old(self)),
             final(self).state == (ThreadState::SCHEDULED { cpu_id }),
             final(self).blocking_endpoint_ptr is None,
             final(self).blocking_endpoint_index is None,
@@ -539,7 +539,7 @@ impl Thread {
             endpoint_node_perm.view().value().view() == thread_ptr,
         ensures
             final(self).inv(),
-            final(self).ipc_framed_fields_equal(old(self)),
+            final(self).non_ipc_fields_unchanged(old(self)),
             final(self).state is IPC_ENDPOINT_TRANSIT,
             final(self).blocking_endpoint_ptr is None,
             final(self).blocking_endpoint_index is None,
@@ -567,7 +567,7 @@ impl Thread {
             index_valid(NUM_CPUS, cpu_id),
         ensures
             final(self).inv(),
-            final(self).ipc_framed_fields_equal(old(self)),
+            final(self).non_ipc_fields_unchanged(old(self)),
             final(self).state == (ThreadState::SCHEDULED { cpu_id }),
             final(self).blocking_endpoint_ptr is None,
             final(self).blocking_endpoint_index is None,
@@ -604,7 +604,7 @@ impl Thread {
             endpoint_node_perm.view().value().view() == thread_ptr,
         ensures
             final(self).inv(),
-            final(self).ipc_framed_fields_equal(old(self)),
+            final(self).non_ipc_fields_unchanged(old(self)),
             *final(self) == (Thread {
                 state: ThreadState::WAITING_REPLY, callee: Some(callee_ptr), blocking_endpoint_ptr: None, blocking_endpoint_index: None,
                 endpoint_linkedlist_node: final(self).endpoint_linkedlist_node, ..*old(self)

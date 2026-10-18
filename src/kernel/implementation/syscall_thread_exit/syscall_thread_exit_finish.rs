@@ -120,13 +120,11 @@ pub(super) fn thread_exit_finish(
     }
     proof {
         thread_perms_wf_at(krnl.thr_mp, thread_ptr); page_ptr_valid_imply_page_index_valid();
-        assert(page_ptr_valid(thread_ptr) && krnl.pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread })) by {
-            reveal(thread_pages_wf);
-        };
+        assert(page_ptr_valid(thread_ptr) && krnl.pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread })) by { thread_pages_wf_at(krnl.thr_mp, krnl.pg_arr, thread_ptr); };
     }
     let page_index = page_ptr2page_index(thread_ptr);
     let Tracked(page_lock_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));
-    proof { page_array_wf_at(krnl.pg_arr, page_index); }
+    proof { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, page_index); }
     let owner = krnl.pg_arr.borrow_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_lock_perm)).owning_container;
     proof { assert(krnl.ctn_mp.dom().contains(owner)) by { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_index); }; container_perms_wf_at(krnl.ctn_mp, owner); }
     let allocator_ptr = krnl.ctn_mp.borrow_rodata(owner).borrow().allocator_ptr_4k;

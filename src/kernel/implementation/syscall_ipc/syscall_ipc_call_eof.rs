@@ -8,11 +8,37 @@ verus! {
 proof fn ipc_call_handoff_eof_process_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, callee_ptr: RwLockThreadPtr, entry_regs: Registers)
     requires
         pre.inv(),
-        ipc_call_handoff_transition(pre, post, cpu_id, caller_ptr, endpoint_ptr, endpoint_index, callee_ptr, entry_regs),
+        index_valid(NUM_CPUS, cpu_id),
+        caller_ptr != callee_ptr,
+        pre.thr_mp.dom().contains(caller_ptr),
+        pre.thr_mp.dom().contains(callee_ptr),
+        !pre.thr_mp.spec_index(caller_ptr).being_killed(),
+        pre.prc_mp.dom().contains(pre.thr_mp.spec_index(callee_ptr).view().owning_proc),
+        pre.ep_mp.dom().contains(endpoint_ptr),
+        pre.ctn_mp.dom().contains(pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
+        pcid_valid(pre.prc_mp.spec_index(pre.thr_mp.spec_index(callee_ptr).view().owning_proc).view_rodata().view().pcid),
+        !pre.cpu_arr.spec_index(cpu_id).view().being_killed(),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(caller_ptr),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(pre.thr_mp.spec_index(caller_ptr).view().owning_proc),
+        pre.thr_mp.spec_index(caller_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        pre.thr_mp.spec_index(caller_ptr).view().callee is None,
+        pre.thr_mp.spec_index(caller_ptr).view().owning_container == pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
+        pre.thr_mp.spec_index(caller_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr),
+        pre.thr_mp.spec_index(callee_ptr).view().state is RECEIVING_CALL,
+        pre.thr_mp.spec_index(callee_ptr).view().caller is None,
+        pre.thr_mp.spec_index(callee_ptr).view().callee is None,
+        pre.thr_mp.spec_index(callee_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
+        pre.thr_mp.spec_index(callee_ptr).view().owning_container == pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().len() > 0,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view()[0] == callee_ptr,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue_state is RECEIVE,
+        !pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().contains(caller_ptr),
+        ipc_call_handoff_eof_transition_framing(pre, post, cpu_id, caller_ptr, endpoint_ptr, endpoint_index, callee_ptr, entry_regs),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
-    reveal(ipc_call_handoff_transition);
+    reveal(ipc_call_handoff_eof_transition_framing);
     assert(post.process_management_inv()) by {
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
         assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); reveal(container_thread_wf); reveal(container_process_wf); reveal(process_thread_wf); };
@@ -34,7 +60,33 @@ proof fn ipc_call_handoff_eof_process_management_inv(pre: KernelK, post: KernelK
 pub(super) proof fn ipc_call_handoff_eof_subsystems(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, callee_ptr: RwLockThreadPtr, entry_regs: Registers)
     requires
         pre.inv(),
-        ipc_call_handoff_transition(pre, post, cpu_id, caller_ptr, endpoint_ptr, endpoint_index, callee_ptr, entry_regs),
+        index_valid(NUM_CPUS, cpu_id),
+        caller_ptr != callee_ptr,
+        pre.thr_mp.dom().contains(caller_ptr),
+        pre.thr_mp.dom().contains(callee_ptr),
+        !pre.thr_mp.spec_index(caller_ptr).being_killed(),
+        pre.prc_mp.dom().contains(pre.thr_mp.spec_index(callee_ptr).view().owning_proc),
+        pre.ep_mp.dom().contains(endpoint_ptr),
+        pre.ctn_mp.dom().contains(pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
+        pcid_valid(pre.prc_mp.spec_index(pre.thr_mp.spec_index(callee_ptr).view().owning_proc).view_rodata().view().pcid),
+        !pre.cpu_arr.spec_index(cpu_id).view().being_killed(),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(caller_ptr),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(pre.thr_mp.spec_index(caller_ptr).view().owning_proc),
+        pre.thr_mp.spec_index(caller_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        pre.thr_mp.spec_index(caller_ptr).view().callee is None,
+        pre.thr_mp.spec_index(caller_ptr).view().owning_container == pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
+        pre.thr_mp.spec_index(caller_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr),
+        pre.thr_mp.spec_index(callee_ptr).view().state is RECEIVING_CALL,
+        pre.thr_mp.spec_index(callee_ptr).view().caller is None,
+        pre.thr_mp.spec_index(callee_ptr).view().callee is None,
+        pre.thr_mp.spec_index(callee_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
+        pre.thr_mp.spec_index(callee_ptr).view().owning_container == pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().len() > 0,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view()[0] == callee_ptr,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue_state is RECEIVE,
+        !pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().contains(caller_ptr),
+        ipc_call_handoff_eof_transition_framing(pre, post, cpu_id, caller_ptr, endpoint_ptr, endpoint_index, callee_ptr, entry_regs),
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
         post.cpu_published[cpu_id as int].inv(),
@@ -44,7 +96,7 @@ pub(super) proof fn ipc_call_handoff_eof_subsystems(pre: KernelK, post: KernelK,
         post.subsystems_inv(),
 {
     hide(Seq::contains);
-    reveal(ipc_call_handoff_transition);
+    reveal(ipc_call_handoff_eof_transition_framing);
     assert(post.subsystems_inv()) by {
         assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); };
         assert(thread_perms_wf(post.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); };
@@ -58,19 +110,71 @@ pub(super) proof fn ipc_call_handoff_eof_subsystems(pre: KernelK, post: KernelK,
 pub(super) proof fn ipc_call_handoff_eof_memory(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, callee_ptr: RwLockThreadPtr, entry_regs: Registers)
     requires
         pre.inv(),
-        ipc_call_handoff_transition(pre, post, cpu_id, caller_ptr, endpoint_ptr, endpoint_index, callee_ptr, entry_regs),
+        index_valid(NUM_CPUS, cpu_id),
+        caller_ptr != callee_ptr,
+        pre.thr_mp.dom().contains(caller_ptr),
+        pre.thr_mp.dom().contains(callee_ptr),
+        !pre.thr_mp.spec_index(caller_ptr).being_killed(),
+        pre.prc_mp.dom().contains(pre.thr_mp.spec_index(callee_ptr).view().owning_proc),
+        pre.ep_mp.dom().contains(endpoint_ptr),
+        pre.ctn_mp.dom().contains(pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
+        pcid_valid(pre.prc_mp.spec_index(pre.thr_mp.spec_index(callee_ptr).view().owning_proc).view_rodata().view().pcid),
+        !pre.cpu_arr.spec_index(cpu_id).view().being_killed(),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(caller_ptr),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(pre.thr_mp.spec_index(caller_ptr).view().owning_proc),
+        pre.thr_mp.spec_index(caller_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        pre.thr_mp.spec_index(caller_ptr).view().callee is None,
+        pre.thr_mp.spec_index(caller_ptr).view().owning_container == pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
+        pre.thr_mp.spec_index(caller_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr),
+        pre.thr_mp.spec_index(callee_ptr).view().state is RECEIVING_CALL,
+        pre.thr_mp.spec_index(callee_ptr).view().caller is None,
+        pre.thr_mp.spec_index(callee_ptr).view().callee is None,
+        pre.thr_mp.spec_index(callee_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
+        pre.thr_mp.spec_index(callee_ptr).view().owning_container == pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().len() > 0,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view()[0] == callee_ptr,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue_state is RECEIVE,
+        !pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().contains(caller_ptr),
+        ipc_call_handoff_eof_transition_framing(pre, post, cpu_id, caller_ptr, endpoint_ptr, endpoint_index, callee_ptr, entry_regs),
     ensures
         post.memory_management_inv(),
 {
     hide(Seq::contains);
-    reveal(ipc_call_handoff_transition);
+    reveal(ipc_call_handoff_eof_transition_framing);
     assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_thread_endpoint_memory_fields(pre, post); };
 }
 
 pub(super) proof fn ipc_call_handoff_eof(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, callee_ptr: RwLockThreadPtr, entry_regs: Registers)
     requires
         pre.inv(),
-        ipc_call_handoff_transition(pre, post, cpu_id, caller_ptr, endpoint_ptr, endpoint_index, callee_ptr, entry_regs),
+        index_valid(NUM_CPUS, cpu_id),
+        caller_ptr != callee_ptr,
+        pre.thr_mp.dom().contains(caller_ptr),
+        pre.thr_mp.dom().contains(callee_ptr),
+        !pre.thr_mp.spec_index(caller_ptr).being_killed(),
+        pre.prc_mp.dom().contains(pre.thr_mp.spec_index(callee_ptr).view().owning_proc),
+        pre.ep_mp.dom().contains(endpoint_ptr),
+        pre.ctn_mp.dom().contains(pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
+        pcid_valid(pre.prc_mp.spec_index(pre.thr_mp.spec_index(callee_ptr).view().owning_proc).view_rodata().view().pcid),
+        !pre.cpu_arr.spec_index(cpu_id).view().being_killed(),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(caller_ptr),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(pre.thr_mp.spec_index(caller_ptr).view().owning_proc),
+        pre.thr_mp.spec_index(caller_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        pre.thr_mp.spec_index(caller_ptr).view().callee is None,
+        pre.thr_mp.spec_index(caller_ptr).view().owning_container == pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
+        pre.thr_mp.spec_index(caller_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr),
+        pre.thr_mp.spec_index(callee_ptr).view().state is RECEIVING_CALL,
+        pre.thr_mp.spec_index(callee_ptr).view().caller is None,
+        pre.thr_mp.spec_index(callee_ptr).view().callee is None,
+        pre.thr_mp.spec_index(callee_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
+        pre.thr_mp.spec_index(callee_ptr).view().owning_container == pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().len() > 0,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view()[0] == callee_ptr,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue_state is RECEIVE,
+        !pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().contains(caller_ptr),
+        ipc_call_handoff_eof_transition_framing(pre, post, cpu_id, caller_ptr, endpoint_ptr, endpoint_index, callee_ptr, entry_regs),
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
         post.cpu_published[cpu_id as int].inv(),
@@ -79,7 +183,7 @@ pub(super) proof fn ipc_call_handoff_eof(pre: KernelK, post: KernelK, cpu_id: Cp
     ensures post.inv(),
 {
     hide(Seq::contains);
-    reveal(ipc_call_handoff_transition);
+    reveal(ipc_call_handoff_eof_transition_framing);
     ipc_call_handoff_eof_subsystems(pre, post, cpu_id, caller_ptr, endpoint_ptr, endpoint_index, callee_ptr, entry_regs);
     ipc_call_handoff_eof_memory(pre, post, cpu_id, caller_ptr, endpoint_ptr, endpoint_index, callee_ptr, entry_regs);
     ipc_call_handoff_eof_process_management_inv(pre, post, cpu_id, caller_ptr, endpoint_ptr, endpoint_index, callee_ptr, entry_regs);
@@ -94,11 +198,33 @@ pub(super) proof fn ipc_call_handoff_eof(pre: KernelK, post: KernelK, cpu_id: Cp
 proof fn ipc_accept_call_eof_process_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, caller_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
-        ipc_accept_call_transition(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr),
+        index_valid(NUM_CPUS, cpu_id),
+        caller_ptr != callee_ptr,
+        pre.thr_mp.dom().contains(caller_ptr),
+        pre.thr_mp.dom().contains(callee_ptr),
+        !pre.thr_mp.spec_index(caller_ptr).being_killed(),
+        !pre.thr_mp.spec_index(callee_ptr).being_killed(),
+        pre.ep_mp.dom().contains(endpoint_ptr),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(callee_ptr),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(pre.thr_mp.spec_index(callee_ptr).view().owning_proc),
+        pre.thr_mp.spec_index(callee_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        pre.thr_mp.spec_index(callee_ptr).view().caller is None,
+        pre.thr_mp.spec_index(callee_ptr).view().callee is None,
+        pre.thr_mp.spec_index(callee_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr),
+        pre.thr_mp.spec_index(caller_ptr).view().state is CALLING,
+        pre.thr_mp.spec_index(caller_ptr).view().callee is None,
+        pre.thr_mp.spec_index(caller_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
+        pre.thr_mp.spec_index(caller_ptr).view().owning_container == pre.thr_mp.spec_index(callee_ptr).view().owning_container,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().len() > 0,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view()[0] == caller_ptr,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue_state is SEND,
+        !pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().contains(callee_ptr),
+        ipc_accept_call_eof_transition_framing(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
-    reveal(ipc_accept_call_transition);
+    reveal(ipc_accept_call_eof_transition_framing);
     assert(post.process_management_inv()) by {
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
         assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_thread_wf); reveal(process_thread_wf); };
@@ -119,12 +245,34 @@ proof fn ipc_accept_call_eof_process_management_inv(pre: KernelK, post: KernelK,
 pub(super) proof fn ipc_accept_call_eof(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, caller_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
-        ipc_accept_call_transition(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr),
+        index_valid(NUM_CPUS, cpu_id),
+        caller_ptr != callee_ptr,
+        pre.thr_mp.dom().contains(caller_ptr),
+        pre.thr_mp.dom().contains(callee_ptr),
+        !pre.thr_mp.spec_index(caller_ptr).being_killed(),
+        !pre.thr_mp.spec_index(callee_ptr).being_killed(),
+        pre.ep_mp.dom().contains(endpoint_ptr),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(callee_ptr),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(pre.thr_mp.spec_index(callee_ptr).view().owning_proc),
+        pre.thr_mp.spec_index(callee_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        pre.thr_mp.spec_index(callee_ptr).view().caller is None,
+        pre.thr_mp.spec_index(callee_ptr).view().callee is None,
+        pre.thr_mp.spec_index(callee_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr),
+        pre.thr_mp.spec_index(caller_ptr).view().state is CALLING,
+        pre.thr_mp.spec_index(caller_ptr).view().callee is None,
+        pre.thr_mp.spec_index(caller_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
+        pre.thr_mp.spec_index(caller_ptr).view().owning_container == pre.thr_mp.spec_index(callee_ptr).view().owning_container,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().len() > 0,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view()[0] == caller_ptr,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue_state is SEND,
+        !pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().contains(callee_ptr),
+        ipc_accept_call_eof_transition_framing(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr),
         endpoint_perms_wf(post.ep_mp),
     ensures post.inv(),
 {
     hide(Seq::contains);
-    reveal(ipc_accept_call_transition);
+    reveal(ipc_accept_call_eof_transition_framing);
     assert(post.subsystems_inv()) by {
         assert(thread_perms_wf(post.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); };
         reveal(cpu_array_wf); reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf);
@@ -138,11 +286,34 @@ pub(super) proof fn ipc_accept_call_eof(pre: KernelK, post: KernelK, cpu_id: Cpu
 proof fn ipc_reply_handoff_eof_process_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, caller_ptr: RwLockThreadPtr, entry_regs: Registers)
     requires
         pre.inv(),
-        ipc_reply_handoff_transition(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, entry_regs),
+        index_valid(NUM_CPUS, cpu_id),
+        caller_ptr != callee_ptr,
+        pre.thr_mp.dom().contains(caller_ptr),
+        pre.thr_mp.dom().contains(callee_ptr),
+        pre.prc_mp.dom().contains(pre.thr_mp.spec_index(caller_ptr).view().owning_proc),
+        pre.ep_mp.dom().contains(endpoint_ptr),
+        pre.ctn_mp.dom().contains(pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
+        pcid_valid(pre.prc_mp.spec_index(pre.thr_mp.spec_index(caller_ptr).view().owning_proc).view_rodata().view().pcid),
+        !pre.cpu_arr.spec_index(cpu_id).view().being_killed(),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(callee_ptr),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(pre.thr_mp.spec_index(callee_ptr).view().owning_proc),
+        pre.thr_mp.spec_index(callee_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        pre.thr_mp.spec_index(callee_ptr).view().caller == Some(caller_ptr),
+        pre.thr_mp.spec_index(callee_ptr).view().callee is None,
+        pre.thr_mp.spec_index(callee_ptr).view().owning_container == pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
+        pre.thr_mp.spec_index(callee_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr),
+        pre.thr_mp.spec_index(caller_ptr).view().state is WAITING_REPLY,
+        pre.thr_mp.spec_index(caller_ptr).view().callee == Some(callee_ptr),
+        pre.thr_mp.spec_index(caller_ptr).view().owning_container == pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().len() == 0 || pre.ep_mp.spec_index(endpoint_ptr).view().queue_state is RECEIVE,
+        !pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().contains(callee_ptr),
+        !pre.ep_mp.spec_index(endpoint_ptr).view().queue.map().dom().contains(pre.thr_mp.spec_index(callee_ptr).view().endpoint_linkedlist_node.addr()),
+        ipc_reply_handoff_eof_transition_framing(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, entry_regs),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
-    reveal(ipc_reply_handoff_transition);
+    reveal(ipc_reply_handoff_eof_transition_framing);
     assert(post.process_management_inv()) by {
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
         assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); reveal(container_thread_wf); reveal(container_process_wf); reveal(process_thread_wf); };
@@ -164,7 +335,30 @@ proof fn ipc_reply_handoff_eof_process_management_inv(pre: KernelK, post: Kernel
 pub(super) proof fn ipc_reply_handoff_eof_subsystems(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, caller_ptr: RwLockThreadPtr, entry_regs: Registers)
     requires
         pre.inv(),
-        ipc_reply_handoff_transition(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, entry_regs),
+        index_valid(NUM_CPUS, cpu_id),
+        caller_ptr != callee_ptr,
+        pre.thr_mp.dom().contains(caller_ptr),
+        pre.thr_mp.dom().contains(callee_ptr),
+        pre.prc_mp.dom().contains(pre.thr_mp.spec_index(caller_ptr).view().owning_proc),
+        pre.ep_mp.dom().contains(endpoint_ptr),
+        pre.ctn_mp.dom().contains(pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
+        pcid_valid(pre.prc_mp.spec_index(pre.thr_mp.spec_index(caller_ptr).view().owning_proc).view_rodata().view().pcid),
+        !pre.cpu_arr.spec_index(cpu_id).view().being_killed(),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(callee_ptr),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(pre.thr_mp.spec_index(callee_ptr).view().owning_proc),
+        pre.thr_mp.spec_index(callee_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        pre.thr_mp.spec_index(callee_ptr).view().caller == Some(caller_ptr),
+        pre.thr_mp.spec_index(callee_ptr).view().callee is None,
+        pre.thr_mp.spec_index(callee_ptr).view().owning_container == pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
+        pre.thr_mp.spec_index(callee_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr),
+        pre.thr_mp.spec_index(caller_ptr).view().state is WAITING_REPLY,
+        pre.thr_mp.spec_index(caller_ptr).view().callee == Some(callee_ptr),
+        pre.thr_mp.spec_index(caller_ptr).view().owning_container == pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().len() == 0 || pre.ep_mp.spec_index(endpoint_ptr).view().queue_state is RECEIVE,
+        !pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().contains(callee_ptr),
+        !pre.ep_mp.spec_index(endpoint_ptr).view().queue.map().dom().contains(pre.thr_mp.spec_index(callee_ptr).view().endpoint_linkedlist_node.addr()),
+        ipc_reply_handoff_eof_transition_framing(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, entry_regs),
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
         post.cpu_published[cpu_id as int].inv(),
@@ -174,7 +368,7 @@ pub(super) proof fn ipc_reply_handoff_eof_subsystems(pre: KernelK, post: KernelK
         post.subsystems_inv(),
 {
     hide(Seq::contains);
-    reveal(ipc_reply_handoff_transition);
+    reveal(ipc_reply_handoff_eof_transition_framing);
     assert(post.subsystems_inv()) by {
         assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); };
         assert(thread_perms_wf(post.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); };
@@ -188,19 +382,65 @@ pub(super) proof fn ipc_reply_handoff_eof_subsystems(pre: KernelK, post: KernelK
 pub(super) proof fn ipc_reply_handoff_eof_memory(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, caller_ptr: RwLockThreadPtr, entry_regs: Registers)
     requires
         pre.inv(),
-        ipc_reply_handoff_transition(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, entry_regs),
+        index_valid(NUM_CPUS, cpu_id),
+        caller_ptr != callee_ptr,
+        pre.thr_mp.dom().contains(caller_ptr),
+        pre.thr_mp.dom().contains(callee_ptr),
+        pre.prc_mp.dom().contains(pre.thr_mp.spec_index(caller_ptr).view().owning_proc),
+        pre.ep_mp.dom().contains(endpoint_ptr),
+        pre.ctn_mp.dom().contains(pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
+        pcid_valid(pre.prc_mp.spec_index(pre.thr_mp.spec_index(caller_ptr).view().owning_proc).view_rodata().view().pcid),
+        !pre.cpu_arr.spec_index(cpu_id).view().being_killed(),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(callee_ptr),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(pre.thr_mp.spec_index(callee_ptr).view().owning_proc),
+        pre.thr_mp.spec_index(callee_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        pre.thr_mp.spec_index(callee_ptr).view().caller == Some(caller_ptr),
+        pre.thr_mp.spec_index(callee_ptr).view().callee is None,
+        pre.thr_mp.spec_index(callee_ptr).view().owning_container == pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
+        pre.thr_mp.spec_index(callee_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr),
+        pre.thr_mp.spec_index(caller_ptr).view().state is WAITING_REPLY,
+        pre.thr_mp.spec_index(caller_ptr).view().callee == Some(callee_ptr),
+        pre.thr_mp.spec_index(caller_ptr).view().owning_container == pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().len() == 0 || pre.ep_mp.spec_index(endpoint_ptr).view().queue_state is RECEIVE,
+        !pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().contains(callee_ptr),
+        !pre.ep_mp.spec_index(endpoint_ptr).view().queue.map().dom().contains(pre.thr_mp.spec_index(callee_ptr).view().endpoint_linkedlist_node.addr()),
+        ipc_reply_handoff_eof_transition_framing(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, entry_regs),
     ensures
         post.memory_management_inv(),
 {
     hide(Seq::contains);
-    reveal(ipc_reply_handoff_transition);
+    reveal(ipc_reply_handoff_eof_transition_framing);
     assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_thread_endpoint_memory_fields(pre, post); };
 }
 
 pub(super) proof fn ipc_reply_handoff_eof(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, caller_ptr: RwLockThreadPtr, entry_regs: Registers)
     requires
         pre.inv(),
-        ipc_reply_handoff_transition(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, entry_regs),
+        index_valid(NUM_CPUS, cpu_id),
+        caller_ptr != callee_ptr,
+        pre.thr_mp.dom().contains(caller_ptr),
+        pre.thr_mp.dom().contains(callee_ptr),
+        pre.prc_mp.dom().contains(pre.thr_mp.spec_index(caller_ptr).view().owning_proc),
+        pre.ep_mp.dom().contains(endpoint_ptr),
+        pre.ctn_mp.dom().contains(pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
+        pcid_valid(pre.prc_mp.spec_index(pre.thr_mp.spec_index(caller_ptr).view().owning_proc).view_rodata().view().pcid),
+        !pre.cpu_arr.spec_index(cpu_id).view().being_killed(),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(callee_ptr),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(pre.thr_mp.spec_index(callee_ptr).view().owning_proc),
+        pre.thr_mp.spec_index(callee_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        pre.thr_mp.spec_index(callee_ptr).view().caller == Some(caller_ptr),
+        pre.thr_mp.spec_index(callee_ptr).view().callee is None,
+        pre.thr_mp.spec_index(callee_ptr).view().owning_container == pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
+        pre.thr_mp.spec_index(callee_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr),
+        pre.thr_mp.spec_index(caller_ptr).view().state is WAITING_REPLY,
+        pre.thr_mp.spec_index(caller_ptr).view().callee == Some(callee_ptr),
+        pre.thr_mp.spec_index(caller_ptr).view().owning_container == pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().len() == 0 || pre.ep_mp.spec_index(endpoint_ptr).view().queue_state is RECEIVE,
+        !pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().contains(callee_ptr),
+        !pre.ep_mp.spec_index(endpoint_ptr).view().queue.map().dom().contains(pre.thr_mp.spec_index(callee_ptr).view().endpoint_linkedlist_node.addr()),
+        ipc_reply_handoff_eof_transition_framing(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, entry_regs),
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
         post.cpu_published[cpu_id as int].inv(),
@@ -209,7 +449,7 @@ pub(super) proof fn ipc_reply_handoff_eof(pre: KernelK, post: KernelK, cpu_id: C
     ensures post.inv(),
 {
     hide(Seq::contains);
-    reveal(ipc_reply_handoff_transition);
+    reveal(ipc_reply_handoff_eof_transition_framing);
     ipc_reply_handoff_eof_subsystems(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, entry_regs);
     ipc_reply_handoff_eof_memory(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, entry_regs);
     ipc_reply_handoff_eof_process_management_inv(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, entry_regs);

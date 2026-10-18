@@ -41,7 +41,7 @@ pub fn page_array_retype_owned_4k(
         ret.view().is_init(),
         ret.view().addr() == final(page_array).spec_index(page_index).view().view().addr,
 {
-    assert(page_array.inv() && page_array.spec_index(page_index).view().is_init() && page_array.spec_index(page_index).view().view().inv()) by { page_array_wf_at(*page_array, page_index); };
+    assert(page_array.inv() && page_array.spec_index(page_index).view().is_init() && page_array.spec_index(page_index).view().view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, page_index); };
     let page = page_array.borrow_mut_typed(page_index, Ghost(page_locks), Tracked(lctx), Tracked(page_lock_perm));
     let ret = retype_owned_4k_to_kernel_object(page, new_state);
     proof { assert(page_array_wf(*page_array)) by { reveal(page_array_wf); }; }
@@ -84,7 +84,7 @@ pub fn page_array_add_4k_mapping(page_array: &mut PageLockedArray, page_index: P
         final(page_array).spec_index(page_index).view().view().perm_2m.view() == old(page_array).spec_index(page_index).view().view().perm_2m.view(),
         final(page_array).spec_index(page_index).view().view().perm_1g.view() == old(page_array).spec_index(page_index).view().view().perm_1g.view(),
 {
-    assert(page_array.inv() && page_array.spec_index(page_index).view().inv()) by { page_array_wf_at(*page_array, page_index); };
+    assert(page_array.inv() && page_array.spec_index(page_index).view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, page_index); };
     let page = page_array.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     add_4k_mapping(page, pagetable_ptr, va);
     proof {
@@ -146,7 +146,7 @@ pub fn pagetable_map_insert_4k(
         final(pagetable_map).spec_index(pagetable_ptr).view().cr3 =~= old(pagetable_map).spec_index(pagetable_ptr).view().cr3,
         final(pagetable_map).spec_index(pagetable_ptr).view().proc_ptr =~= old(pagetable_map).spec_index(pagetable_ptr).view().proc_ptr,
 {
-    assert(pagetable_map.perms_wf() && pagetable_map.spec_index(pagetable_ptr).inv()) by { pagetable_perms_wf_at(*pagetable_map, pagetable_ptr); };
+    assert(pagetable_map.perms_wf() && pagetable_map.spec_index(pagetable_ptr).inv()) by { pagetable_perms_wf_map(*pagetable_map); pagetable_perms_wf_at(*pagetable_map, pagetable_ptr); };
     let pagetable = pagetable_map.borrow_mut_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
     pagetable.map_4k_page(indices.0, indices.1, indices.2, indices.3, target_l1_ptr, target_entry, Tracked(&mut *lctx));
     proof { assert(pagetable_perms_wf(*pagetable_map)) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); }; }
@@ -194,7 +194,7 @@ pub fn pagetable_map_clear_4k_present(pagetable_map: &mut PageTableLockedMap, pa
         final(pagetable_map).spec_index(pagetable_ptr).view().pcid == old(pagetable_map).spec_index(pagetable_ptr).view().pcid,
         final(pagetable_map).spec_index(pagetable_ptr).view().proc_ptr == old(pagetable_map).spec_index(pagetable_ptr).view().proc_ptr,
 {
-    assert(pagetable_map.perms_wf() && pagetable_map.spec_index(pagetable_ptr).inv()) by { pagetable_perms_wf_at(*pagetable_map, pagetable_ptr); };
+    assert(pagetable_map.perms_wf() && pagetable_map.spec_index(pagetable_ptr).inv()) by { pagetable_perms_wf_map(*pagetable_map); pagetable_perms_wf_at(*pagetable_map, pagetable_ptr); };
     let pagetable = pagetable_map.borrow_mut_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
     pagetable.unmap_4k_page_user_view(indices.0, indices.1, indices.2, indices.3, target_l1_ptr, Tracked(&mut *lctx));
     proof { assert(pagetable_perms_wf(*pagetable_map)) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); }; }
@@ -242,7 +242,7 @@ pub fn pagetable_map_unmap_4k_kernel(pagetable_map: &mut PageTableLockedMap, pag
         final(pagetable_map).spec_index(pagetable_ptr).view().pcid == old(pagetable_map).spec_index(pagetable_ptr).view().pcid,
         final(pagetable_map).spec_index(pagetable_ptr).view().proc_ptr == old(pagetable_map).spec_index(pagetable_ptr).view().proc_ptr,
 {
-    assert(pagetable_map.perms_wf() && pagetable_map.spec_index(pagetable_ptr).inv()) by { pagetable_perms_wf_at(*pagetable_map, pagetable_ptr); };
+    assert(pagetable_map.perms_wf() && pagetable_map.spec_index(pagetable_ptr).inv()) by { pagetable_perms_wf_map(*pagetable_map); pagetable_perms_wf_at(*pagetable_map, pagetable_ptr); };
     let pagetable = pagetable_map.borrow_mut_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
     pagetable.unmap_4k_page_kernel(indices.0, indices.1, indices.2, indices.3, target_l1_ptr, Tracked(&mut *lctx));
     proof { assert(pagetable_perms_wf(*pagetable_map)) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); }; }
@@ -287,7 +287,7 @@ pub fn page_array_remove_4k_mapping_without_free(page_array: &mut PageLockedArra
                 perm_4k: final(page_array).spec_index(page_index).view().view().perm_4k, ..old(page_array).spec_index(page_index).view().view() })
             && final(page_array).spec_index(page_index).view().view().perm_4k.view() is None,
 {
-    assert(page_array.inv() && page_array.spec_index(page_index).view().is_init() && page_array.spec_index(page_index).view().view().inv()) by { page_array_wf_at(*page_array, page_index); };
+    assert(page_array.inv() && page_array.spec_index(page_index).view().is_init() && page_array.spec_index(page_index).view().view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, page_index); };
     let page = page_array.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     if page.ref_count > 1 { remove_shared_4k_mapping(page, pagetable_ptr, va); }
     else { remove_last_4k_io_mapping(page, pagetable_ptr, va); }
@@ -334,7 +334,7 @@ pub fn page_array_remove_last_4k_mapping_to_cache(
         ret.1.view().addr() == ret.0,
         ret.1.view().value().view() == old(page_array).spec_index(page_index).view().view().addr,
 {
-    assert(page_array.inv() && page_array.spec_index(page_index).view().is_init() && page_array.spec_index(page_index).view().view().inv()) by { page_array_wf_at(*page_array, page_index); };
+    assert(page_array.inv() && page_array.spec_index(page_index).view().is_init() && page_array.spec_index(page_index).view().view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, page_index); };
     let page = page_array.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     let ret = remove_last_4k_mapping_to_cache(page, pagetable_ptr, va, allocator_ptr, cpu_id);
     proof { assert(page_array_wf(*page_array)) by { reveal(page_array_wf); }; }
@@ -385,7 +385,7 @@ pub fn iommu_table_map_clear_4k_present(iommu_table_map: &mut IommuTableLockedMa
         final(iommu_table_map).spec_index(iommu_table_ptr).view().pcid == old(iommu_table_map).spec_index(iommu_table_ptr).view().pcid,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr == old(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr,
 {
-    assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).inv()) by { iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
+    assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).inv()) by { iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
     let iommu_table = iommu_table_map.borrow_mut_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm));
     iommu_table.unmap_4k_page_user_view(indices.0, indices.1, indices.2, indices.3, target_l1_ptr, Tracked(&mut *lctx));
     proof { assert(iommu_table_perms_wf(*iommu_table_map)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }; }
@@ -433,7 +433,7 @@ pub fn iommu_table_map_unmap_4k_kernel(iommu_table_map: &mut IommuTableLockedMap
         final(iommu_table_map).spec_index(iommu_table_ptr).view().pcid == old(iommu_table_map).spec_index(iommu_table_ptr).view().pcid,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr == old(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr,
 {
-    assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).inv()) by { iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
+    assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).inv()) by { iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
     let iommu_table = iommu_table_map.borrow_mut_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm));
     iommu_table.unmap_4k_page_kernel(indices.0, indices.1, indices.2, indices.3, target_l1_ptr, Tracked(&mut *lctx));
     proof { assert(iommu_table_perms_wf(*iommu_table_map)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }; }
@@ -479,7 +479,7 @@ pub fn pagetable_map_remove_table_page(
         ret.view().is_init(),
         ret.view().addr() == scan.spec_table_page()->Some_0,
 {
-    assert(pagetable_map.perms_wf() && pagetable_map.spec_index(pagetable_ptr).inv()) by { pagetable_perms_wf_at(*pagetable_map, pagetable_ptr); };
+    assert(pagetable_map.perms_wf() && pagetable_map.spec_index(pagetable_ptr).inv()) by { pagetable_perms_wf_map(*pagetable_map); pagetable_perms_wf_at(*pagetable_map, pagetable_ptr); };
     let pagetable = pagetable_map.borrow_mut_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
     let ret = pagetable.remove_structure_page(scan, Tracked(&mut *lctx));
     proof { assert(pagetable_perms_wf(*pagetable_map)) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); }; }
@@ -526,7 +526,7 @@ pub fn iommu_table_map_remove_table_page(
         ret.view().is_init(),
         ret.view().addr() == scan.spec_table_page()->Some_0,
 {
-    assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).inv()) by { iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
+    assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).inv()) by { iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
     let iommu_table = iommu_table_map.borrow_mut_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm));
     let ret = iommu_table.remove_structure_page(scan, Tracked(&mut *lctx));
     proof { assert(iommu_table_perms_wf(*iommu_table_map)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }; }
@@ -573,7 +573,7 @@ pub fn page_array_remove_4k_iommu_mapping_without_free(page_array: &mut PageLock
                 ref_count: 0, perm_4k: final(page_array).spec_index(page_index).view().view().perm_4k, ..old(page_array).spec_index(page_index).view().view() })
             && final(page_array).spec_index(page_index).view().view().perm_4k.view() is None,
 {
-    assert(page_array.inv() && page_array.spec_index(page_index).view().is_init() && page_array.spec_index(page_index).view().view().inv()) by { page_array_wf_at(*page_array, page_index); };
+    assert(page_array.inv() && page_array.spec_index(page_index).view().is_init() && page_array.spec_index(page_index).view().view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, page_index); };
     let page = page_array.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     if page.ref_count > 1 { remove_shared_4k_iommu_mapping(page, iommu_table_ptr, iova); }
     else { remove_last_4k_iommu_io_mapping(page, iommu_table_ptr, iova); }
@@ -621,7 +621,7 @@ pub fn page_array_remove_last_4k_iommu_mapping_to_cache(
         ret.1.view().addr() == ret.0,
         ret.1.view().value().view() == old(page_array).spec_index(page_index).view().view().addr,
 {
-    assert(page_array.inv() && page_array.spec_index(page_index).view().is_init() && page_array.spec_index(page_index).view().view().inv()) by { page_array_wf_at(*page_array, page_index); };
+    assert(page_array.inv() && page_array.spec_index(page_index).view().is_init() && page_array.spec_index(page_index).view().view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, page_index); };
     let page = page_array.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     let ret = remove_last_4k_iommu_mapping_to_cache(page, iommu_table_ptr, iova, allocator_ptr, cpu_id);
     proof { assert(page_array_wf(*page_array)) by { reveal(page_array_wf); }; }
@@ -668,7 +668,7 @@ pub fn page_array_retire_kernel_object_4k_to_cache(
         ret.1.view().value().view() == old(page_array).spec_index(page_index).view().view().addr,
 {
     assert(page_array.inv() && page_array.spec_index(page_index).view().is_init() && page_array.spec_index(page_index).view().view().inv()
-        && page_array.spec_index(page_index).view().view().addr == page_index2page_ptr(page_index)) by { page_array_wf_at(*page_array, page_index); };
+        && page_array.spec_index(page_index).view().view().addr == page_index2page_ptr(page_index)) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, page_index); };
     let page = page_array.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     let ret = convert_kernel_object_4k_to_free_cache(page, Tracked(perm), allocator_ptr, cpu_id);
     proof { assert(page_array_wf(*page_array)) by { reveal(page_array_wf); }; }
@@ -700,7 +700,7 @@ pub fn page_array_move_free_4k_to_global_list(page_array: &mut PageLockedArray, 
         final(page_array).spec_index(page_index).view().view_ghost() == old(page_array).spec_index(page_index).view().view_ghost(),
         final(page_array).spec_index(page_index).view().view() == (Page { state: PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::GlobalList }, ..old(page_array).spec_index(page_index).view().view() }),
 {
-    assert(page_array.inv() && page_array.spec_index(page_index).view().is_init() && page_array.spec_index(page_index).view().view().inv()) by { page_array_wf_at(*page_array, page_index); };
+    assert(page_array.inv() && page_array.spec_index(page_index).view().is_init() && page_array.spec_index(page_index).view().view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, page_index); };
     let page = page_array.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     page.state = PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::GlobalList };
     proof { assert(page_array.spec_index(page_index).view().view().inv()) by { reveal(Page::mappings_va_valid); }; assert(page_array_wf(*page_array)) by { reveal(page_array_wf); }; }
@@ -732,7 +732,7 @@ pub fn page_array_move_free_4k_to_cpu_cache(page_array: &mut PageLockedArray, pa
         final(page_array).spec_index(page_index).view().view_ghost() == old(page_array).spec_index(page_index).view().view_ghost(),
         final(page_array).spec_index(page_index).view().view() == (Page { state: PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } }, ..old(page_array).spec_index(page_index).view().view() }),
 {
-    assert(page_array.inv() && page_array.spec_index(page_index).view().is_init() && page_array.spec_index(page_index).view().view().inv()) by { page_array_wf_at(*page_array, page_index); };
+    assert(page_array.inv() && page_array.spec_index(page_index).view().is_init() && page_array.spec_index(page_index).view().view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, page_index); };
     let page = page_array.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     page.state = PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } };
     proof { assert(page_array.spec_index(page_index).view().view().inv()) by { reveal(Page::mappings_va_valid); }; assert(page_array_wf(*page_array)) by { reveal(page_array_wf); }; }
@@ -773,7 +773,7 @@ pub fn page_array_retype_owned_4k_for_container(pages: &mut PageLockedArray, chi
         ret.view().addr() == page_ptr,
 {
     let page_index = page_ptr2page_index(page_ptr);
-    assert(pages.inv() && pages.spec_index(page_index).view().is_init() && pages.spec_index(page_index).view().view().inv()) by { page_array_wf_at(*pages, page_index); };
+    assert(pages.inv() && pages.spec_index(page_index).view().is_init() && pages.spec_index(page_index).view().view().inv()) by { page_array_wf_map(*pages); page_array_wf_at(*pages, page_index); };
     let page = pages.borrow_mut_typed(page_index, Ghost(page_locks), Tracked(lctx), Tracked(page_lock_perm));
     let Tracked(page_perm) = retype_owned_4k_to_kernel_object(page, PageState::Allocated4k { state: page_state });
     page.owning_container = child_container_ptr;
@@ -821,7 +821,7 @@ pub fn page_array_retype_owned_2m_for_container(pages: &mut PageLockedArray, chi
 {
     let page_index = page_ptr2page_index(page_ptr);
     assert(pages.inv() && pages.spec_index(page_index).view().is_init() && pages.spec_index(page_index).view().view().inv()
-        && pages.spec_index(page_index).view().view().addr == page_index2page_ptr(page_index)) by { page_array_wf_at(*pages, page_index); };
+        && pages.spec_index(page_index).view().view().addr == page_index2page_ptr(page_index)) by { page_array_wf_map(*pages); page_array_wf_at(*pages, page_index); };
     let page = pages.borrow_mut_typed(page_index, Ghost(page_locks), Tracked(lctx), Tracked(page_lock_perm));
     let Tracked(page_perm) = take_perm_2m(page);
     page.state = PageState::Allocated2m { state: page_state };

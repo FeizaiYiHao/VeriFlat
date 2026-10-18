@@ -241,7 +241,7 @@ pub(super) fn publish_staged_process_with_iommu(
         Tracked(&l4_page_lock_perm), Tracked(&iommu_table_page_lock_perm), Tracked(&iommu_l4_page_lock_perm),
         Tracked(&parent_lock_perm), Tracked(&current_thread_lock_perm), Tracked(&pcid_allocator_lock_perm),
     );
-    proof { assert(krnl.prc_mp.spec_index(parent_ptr).view().state.view() is Running || krnl.prc_mp.spec_index(parent_ptr).view().state.view() is Zombie) by { reveal(create_process_with_iommu_from_staged_pages_kernel_state_framing); }; }
+    proof { assert(krnl.prc_mp.spec_index(parent_ptr).view().state.view() is Running || krnl.prc_mp.spec_index(parent_ptr).view().state.view() is Zombie) by { reveal(create_process_with_iommu_from_staged_pages_eof_transition_framing); }; }
     release_staged_process_with_iommu_input_locks(
         krnl, Tracked(&mut *lctx), cpu_id, container_ptr, parent_ptr, child_ptr, current_thread_ptr, pcid_allocator_ptr, source_pagetable_ptr,
         target_pagetable_ptr, iommu_table_ptr, process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr,
@@ -259,7 +259,7 @@ pub(super) fn publish_staged_process_with_iommu(
         assert(kernel_process_added(&steps.snapshot_k(), &*krnl, child_ptr)) by { reveal(kernel_process_added); };
         krnl.kernel_step_boundary_process_added(&mut *lctx, &mut *steps, child_ptr, current_thread_ptr);
         assert(new_process_publish_step_pre(steps.view().last().old_u, cpu_id) && new_process_publish_step(steps.view().last().old_u, steps.view().last().new_u, cpu_id)) by {
-            reveal(create_process_with_iommu_from_staged_pages_kernel_state_framing); reveal(kernel_thread_quota_4k_changed); reveal(process_thread_wf);
+            reveal(create_process_with_iommu_from_staged_pages_eof_transition_framing); reveal(kernel_thread_quota_4k_changed); reveal(process_thread_wf);
             new_process_publish_step_pre_from_k(old(krnl), old(lctx), cpu_id, parent_ptr, current_thread_ptr, container_ptr, *source_range, regs, endpoint_index, true);
             kernel_process_published_and_parent_unlocked_implies_u_step(old(krnl), &published_k, &published_lctx, parent_ptr, child_ptr, current_thread_ptr, container_ptr,
                 target_pagetable_ptr, Some(iommu_table_ptr), pcid_allocator_ptr, pcid, sharing);
@@ -270,7 +270,9 @@ pub(super) fn publish_staged_process_with_iommu(
     proof {
         assert(krnl.ctn_mp.dom().contains(container_ptr)) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, current_thread_ptr); };
         assert(krnl.pt_mp.spec_index(source_pagetable_ptr).view().proc_ptr == parent_ptr) by { process_thread_wf_at(old(krnl).prc_mp, old(krnl).thr_mp, current_thread_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); reveal(process_pagetable_match); };
-        assert(krnl.pt_mp.spec_index(target_pagetable_ptr).view().kernel_l4_end == old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end) by { reveal(KernelK::default_pagetable_wf); };
+        assert(krnl.pt_mp.spec_index(target_pagetable_ptr).view().kernel_l4_end == old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end) by {
+            krnl.default_pagetable_wf_at(target_pagetable_ptr); old(krnl).default_pagetable_wf_at(source_pagetable_ptr);
+        };
     }
     proof { assert(pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, target_pagetable_ptr, krnl.pt_mp.spec_index(target_pagetable_ptr).view())) by { reveal(tlb_wf_spec); }; }
     (child_ptr, target_pagetable_ptr, iommu_table_ptr, Tracked(child_lock_perm), Tracked(target_pagetable_lock_perm), Tracked(iommu_table_lock_perm))

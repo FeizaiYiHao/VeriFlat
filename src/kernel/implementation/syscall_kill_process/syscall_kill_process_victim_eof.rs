@@ -7,11 +7,19 @@ verus! {
 proof fn kill_leave_process_eof_memory(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, victim_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
-        kill_leave_process_transition(pre, post, process_ptr, victim_ptr),
+        kill_leave_process_eof_transition_framing(pre, post, process_ptr, victim_ptr),
+        pre.prc_mp.dom().contains(process_ptr),
+        pre.thr_mp.dom().contains(victim_ptr),
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.view().contains(victim_ptr),
+        pre.prc_mp.spec_index(process_ptr).being_killed(),
+        pre.prc_mp.spec_index(process_ptr).locking_thread() is Write,
+        pre.thr_mp.spec_index(victim_ptr).locking_thread() is Write,
+        pre.thr_mp.spec_index(victim_ptr).view().state is WAITING_REPLY || pre.thr_mp.spec_index(victim_ptr).view().state is KILLED,
+        pre.thr_mp.spec_index(victim_ptr).view().temp_alloc_clean(),
         post.subsystems_inv(),
     ensures post.memory_management_inv(),
 {
-    reveal(kill_leave_process_transition);
+    reveal(kill_leave_process_eof_transition_framing);
     let victim = pre.thr_mp.spec_index(victim_ptr).view();
     let container_ptr = victim.owning_container;
     assert(victim.owning_proc == process_ptr && pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr) by { reveal(process_thread_wf); };
@@ -48,11 +56,17 @@ proof fn kill_leave_process_eof_memory(pre: KernelK, post: KernelK, process_ptr:
 proof fn kill_leave_process_eof_process(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, victim_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
-        kill_leave_process_transition(pre, post, process_ptr, victim_ptr),
+        kill_leave_process_eof_transition_framing(pre, post, process_ptr, victim_ptr),
+        pre.prc_mp.dom().contains(process_ptr),
+        pre.thr_mp.dom().contains(victim_ptr),
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.view().contains(victim_ptr),
+        pre.prc_mp.spec_index(process_ptr).being_killed(),
+        pre.prc_mp.spec_index(process_ptr).locking_thread() is Write,
+        pre.thr_mp.spec_index(victim_ptr).view().state is WAITING_REPLY || pre.thr_mp.spec_index(victim_ptr).view().state is KILLED,
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
-    reveal(kill_leave_process_transition);
+    reveal(kill_leave_process_eof_transition_framing);
     process_perms_wf_at(pre.prc_mp, process_ptr);
     lemma_seq_remove_value_membership::<RwLockThreadPtr>();
     assert(post.process_management_inv()) by {
@@ -84,14 +98,22 @@ proof fn kill_leave_process_eof_process(pre: KernelK, post: KernelK, process_ptr
 pub(super) proof fn kill_leave_process_eof(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, victim_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
-        kill_leave_process_transition(pre, post, process_ptr, victim_ptr),
+        kill_leave_process_eof_transition_framing(pre, post, process_ptr, victim_ptr),
+        pre.prc_mp.dom().contains(process_ptr),
+        pre.thr_mp.dom().contains(victim_ptr),
+        pre.prc_mp.spec_index(process_ptr).view().owned_threads.view().contains(victim_ptr),
+        pre.prc_mp.spec_index(process_ptr).being_killed(),
+        pre.prc_mp.spec_index(process_ptr).locking_thread() is Write,
+        pre.thr_mp.spec_index(victim_ptr).locking_thread() is Write,
+        pre.thr_mp.spec_index(victim_ptr).view().state is WAITING_REPLY || pre.thr_mp.spec_index(victim_ptr).view().state is KILLED,
+        pre.thr_mp.spec_index(victim_ptr).view().temp_alloc_clean(),
         post.prc_mp.perms_wf(),
         post.prc_mp.spec_index(process_ptr).view().inv(),
         post.thr_mp.perms_wf(),
         post.thr_mp.spec_index(victim_ptr).view().inv(),
     ensures post.inv(),
 {
-    reveal(kill_leave_process_transition);
+    reveal(kill_leave_process_eof_transition_framing);
     assert(post.subsystems_inv()) by {
         assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };
         assert(thread_perms_wf(post.thr_mp)) by {
@@ -124,7 +146,7 @@ proof fn kill_victim_killed_eof_memory(pre: KernelK, post: KernelK)
             &&& post.thr_mp.spec_index(t).view().temp_alloc_cache_2m == pre.thr_mp.spec_index(t).view().temp_alloc_cache_2m
             &&& post.thr_mp.spec_index(t).view().temp_alloc_cache_1g == pre.thr_mp.spec_index(t).view().temp_alloc_cache_1g
             &&& post.thr_mp.spec_index(t).view().owning_container == pre.thr_mp.spec_index(t).view().owning_container
-            &&& post.thr_mp.spec_index(t).view().free_quota_pending_fields_equal(&pre.thr_mp.spec_index(t).view())
+            &&& post.thr_mp.spec_index(t).view().free_quota_pending_fields_unchanged(&pre.thr_mp.spec_index(t).view())
         },
         forall|s: RwLockSchedulerPtr| #![trigger post.sched_mp.spec_index(s)] pre.sched_mp.dom().contains(s) ==> post.sched_mp.spec_index(s).owning_container == pre.sched_mp.spec_index(s).owning_container,
         forall|e: RwLockEndpointPtr| #![trigger post.ep_mp.spec_index(e)] pre.ep_mp.dom().contains(e) ==> post.ep_mp.spec_index(e).view().owning_container == pre.ep_mp.spec_index(e).view().owning_container,
@@ -149,13 +171,19 @@ proof fn kill_victim_killed_eof_memory(pre: KernelK, post: KernelK)
 pub(super) proof fn kill_dequeue_scheduled_eof(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, scheduler_ptr: RwLockSchedulerPtr, shard: CpuId)
     requires
         pre.inv(),
-        kill_dequeue_scheduled_transition(pre, post, victim_ptr, scheduler_ptr, shard),
+        kill_dequeue_scheduled_eof_transition_framing(pre, post, victim_ptr, scheduler_ptr, shard),
+        index_valid(NUM_CPUS, shard),
+        pre.thr_mp.dom().contains(victim_ptr),
+        pre.sched_mp.dom().contains(scheduler_ptr),
+        pre.thr_mp.spec_index(victim_ptr).locking_thread() is Write,
+        pre.thr_mp.spec_index(victim_ptr).view().state == (ThreadState::SCHEDULED { cpu_id: shard }),
+        pre.ctn_mp.spec_index(pre.thr_mp.spec_index(victim_ptr).view().owning_container).view_rodata().view().scheduler == scheduler_ptr,
         post.thr_mp.perms_wf(),
         post.thr_mp.spec_index(victim_ptr).view().inv(),
         scheduler_perms_wf(post.sched_mp),
     ensures post.inv(),
 {
-    reveal(kill_dequeue_scheduled_transition);
+    reveal(kill_dequeue_scheduled_eof_transition_framing);
     let before = pre.sched_mp.spec_index(scheduler_ptr).shard(shard).queue;
     scheduler_perms_wf_at(pre.sched_mp, scheduler_ptr);
     assert(before.view().no_duplicates()) by { reveal(scheduler_perms_wf); reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list); };
@@ -189,14 +217,19 @@ pub(super) proof fn kill_dequeue_scheduled_eof(pre: KernelK, post: KernelK, vict
 pub(super) proof fn kill_dequeue_endpoint_eof(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr)
     requires
         pre.inv(),
-        kill_dequeue_endpoint_transition(pre, post, victim_ptr, endpoint_ptr),
+        kill_dequeue_endpoint_eof_transition_framing(pre, post, victim_ptr, endpoint_ptr),
+        pre.thr_mp.dom().contains(victim_ptr),
+        pre.ep_mp.dom().contains(endpoint_ptr),
+        pre.thr_mp.spec_index(victim_ptr).locking_thread() is Write,
+        pre.thr_mp.spec_index(victim_ptr).view().state.is_endpoint_waiting(),
+        pre.thr_mp.spec_index(victim_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
         post.thr_mp.perms_wf(),
         post.thr_mp.spec_index(victim_ptr).view().inv(),
         post.ep_mp.perms_wf(),
         post.ep_mp.spec_index(endpoint_ptr).view().inv(),
     ensures post.inv(),
 {
-    reveal(kill_dequeue_endpoint_transition);
+    reveal(kill_dequeue_endpoint_eof_transition_framing);
     let before = pre.ep_mp.spec_index(endpoint_ptr).view().queue;
     endpoint_perms_wf_at(pre.ep_mp, endpoint_ptr);
     assert(before.view().no_duplicates()) by { reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list); };
@@ -230,13 +263,19 @@ pub(super) proof fn kill_dequeue_endpoint_eof(pre: KernelK, post: KernelK, victi
 proof fn kill_evict_eof_cpu_relations(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, remote: CpuId, default_cr3: PageTableRoot)
     requires
         pre.inv(),
-        kill_evict_transition(pre, post, victim_ptr, remote, default_cr3),
+        kill_evict_eof_transition_framing(pre, post, victim_ptr, remote, default_cr3),
+        index_valid(NUM_CPUS, remote),
+        pre.thr_mp.dom().contains(victim_ptr),
+        pre.thr_mp.spec_index(victim_ptr).locking_thread() is Write,
+        pre.thr_mp.spec_index(victim_ptr).view().state == (ThreadState::RUNNING { cpu_id: remote }),
+        default_cr3 == pre.dflt_pt.view().cr3,
+        !pre.cpu_arr.spec_index(remote).view().being_killed(),
     ensures
         container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr),
         process_cpu_wf(post.prc_mp, post.cpu_arr),
         thread_cpu_wf(post.thr_mp, post.cpu_arr),
 {
-    reveal(kill_evict_transition);
+    reveal(kill_evict_eof_transition_framing);
     reveal(cpu_array_wf); reveal(thread_cpu_wf);
     assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); };
     assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); };
@@ -246,12 +285,18 @@ proof fn kill_evict_eof_cpu_relations(pre: KernelK, post: KernelK, victim_ptr: R
 pub(super) proof fn kill_evict_eof(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, remote: CpuId, default_cr3: PageTableRoot)
     requires
         pre.inv(),
-        kill_evict_transition(pre, post, victim_ptr, remote, default_cr3),
+        kill_evict_eof_transition_framing(pre, post, victim_ptr, remote, default_cr3),
+        index_valid(NUM_CPUS, remote),
+        pre.thr_mp.dom().contains(victim_ptr),
+        pre.thr_mp.spec_index(victim_ptr).locking_thread() is Write,
+        pre.thr_mp.spec_index(victim_ptr).view().state == (ThreadState::RUNNING { cpu_id: remote }),
+        default_cr3 == pre.dflt_pt.view().cr3,
+        !pre.cpu_arr.spec_index(remote).view().being_killed(),
         post.thr_mp.perms_wf(),
         post.thr_mp.spec_index(victim_ptr).view().inv(),
     ensures post.inv(),
 {
-    reveal(kill_evict_transition);
+    reveal(kill_evict_eof_transition_framing);
     assert(post.subsystems_inv()) by {
         assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); reveal(KernelK::default_pagetable_wf); };
         assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { reveal(cpu_offline_flags_wf); };

@@ -4,19 +4,11 @@ use crate::*;
 verus! {
 /// The online commit: the target cpu turns from Off to Idle and leaves its cpu set's closed set; nothing else changes.
 #[verifier::opaque]
-pub(super) open spec fn cpu_online_child_transition_framing(pre: KernelK, post: KernelK, cpu_set_ptr: RwLockCpuSetPtr, target: CpuId, child_ptr: RwLockContainerPtr) -> bool {
+pub(super) open spec fn cpu_online_child_eof_transition_framing(pre: KernelK, post: KernelK, cpu_set_ptr: RwLockCpuSetPtr, target: CpuId, child_ptr: RwLockContainerPtr) -> bool {
     let old_set = pre.cpu_set_mp.spec_index(cpu_set_ptr);
     let new_set = post.cpu_set_mp.spec_index(cpu_set_ptr);
     let old_cpu = pre.cpu_arr.spec_index(target).view();
     let new_cpu = post.cpu_arr.spec_index(target).view();
-    &&& index_valid(NUM_CPUS, target)
-    &&& pre.ctn_mp.dom().contains(child_ptr)
-    &&& pre.ctn_mp.spec_index(child_ptr).view_rodata().view().cpu_set == cpu_set_ptr
-    &&& pre.cpu_set_mp.dom().contains(cpu_set_ptr)
-    &&& old_set.view().owned_cpus.view().contains(target)
-    &&& old_set.view().owned_cpus.closed_view().contains(target)
-    &&& old_cpu.view().view().state is Off
-    &&& old_cpu.view().view().owning_container == child_ptr
     &&& post == (KernelK { cpu_arr: post.cpu_arr, cpu_set_mp: post.cpu_set_mp, ..pre })
     &&& post.cpu_set_mp.unchanged_except(&pre.cpu_set_mp, cpu_set_ptr)
     &&& new_set.is_init() == old_set.is_init()
@@ -39,11 +31,18 @@ pub(super) open spec fn cpu_online_child_transition_framing(pre: KernelK, post: 
 proof fn cpu_online_child_eof_process_management_inv(pre: KernelK, post: KernelK, cpu_set_ptr: RwLockCpuSetPtr, target: CpuId, child_ptr: RwLockContainerPtr)
     requires
         pre.inv(),
-        cpu_online_child_transition_framing(pre, post, cpu_set_ptr, target, child_ptr),
+        cpu_online_child_eof_transition_framing(pre, post, cpu_set_ptr, target, child_ptr),
+        index_valid(NUM_CPUS, target),
+        pre.ctn_mp.dom().contains(child_ptr),
+        pre.ctn_mp.spec_index(child_ptr).view_rodata().view().cpu_set == cpu_set_ptr,
+        pre.cpu_set_mp.dom().contains(cpu_set_ptr),
+        pre.cpu_set_mp.spec_index(cpu_set_ptr).view().owned_cpus.closed_view().contains(target),
+        pre.cpu_arr.spec_index(target).view().view().view().state is Off,
+        pre.cpu_arr.spec_index(target).view().view().view().owning_container == child_ptr,
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
-    reveal(cpu_online_child_transition_framing);
+    reveal(cpu_online_child_eof_transition_framing);
     assert(post.process_management_inv()) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); reveal(cpu_array_wf); };
 }
 
@@ -52,14 +51,21 @@ proof fn cpu_online_child_eof_process_management_inv(pre: KernelK, post: KernelK
 pub(super) proof fn cpu_online_child_eof(pre: KernelK, post: KernelK, cpu_set_ptr: RwLockCpuSetPtr, target: CpuId, child_ptr: RwLockContainerPtr)
     requires
         pre.inv(),
-        cpu_online_child_transition_framing(pre, post, cpu_set_ptr, target, child_ptr),
+        cpu_online_child_eof_transition_framing(pre, post, cpu_set_ptr, target, child_ptr),
+        index_valid(NUM_CPUS, target),
+        pre.ctn_mp.dom().contains(child_ptr),
+        pre.ctn_mp.spec_index(child_ptr).view_rodata().view().cpu_set == cpu_set_ptr,
+        pre.cpu_set_mp.dom().contains(cpu_set_ptr),
+        pre.cpu_set_mp.spec_index(cpu_set_ptr).view().owned_cpus.closed_view().contains(target),
+        pre.cpu_arr.spec_index(target).view().view().view().state is Off,
+        pre.cpu_arr.spec_index(target).view().view().view().owning_container == child_ptr,
         post.cpu_arr.inv(),
         post.cpu_arr.spec_index(target).view().view().wf(),
         post.cpu_set_mp.perms_wf(),
         post.cpu_set_mp.spec_index(cpu_set_ptr).view().owned_cpus.wf(),
     ensures post.inv(),
 {
-    reveal(cpu_online_child_transition_framing);
+    reveal(cpu_online_child_eof_transition_framing);
     assert(post.subsystems_inv()) by { reveal(cpu_array_wf); reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); reveal(cpu_set_perms_wf); reveal(KernelK::default_pagetable_wf); };
     assert(post.memory_management_inv()) by { reveal(cpu_set_pages_wf); };
     cpu_online_child_eof_process_management_inv(pre, post, cpu_set_ptr, target, child_ptr);

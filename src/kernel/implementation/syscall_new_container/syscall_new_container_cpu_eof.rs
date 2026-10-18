@@ -1,13 +1,25 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::syscall_new_container_cpu_spec::new_container_cpu_transfer_transition;
+use super::syscall_new_container_cpu_spec::new_container_cpu_transfer_eof_transition_framing;
 
 verus! {
 pub(super) proof fn new_container_cpu_transfer_eof(pre: KernelK, post: KernelK, parent_container: RwLockContainerPtr, child_container: RwLockContainerPtr, parent_cpu_set: RwLockCpuSetPtr, child_cpu_set: RwLockCpuSetPtr, transfer_cpu_id: CpuId, thread_id: LockThreadId)
     requires
         pre.inv(),
-        new_container_cpu_transfer_transition(pre, post, parent_container, child_container, parent_cpu_set, child_cpu_set, transfer_cpu_id, thread_id),
+        new_container_cpu_transfer_eof_transition_framing(pre, post, parent_container, child_container, parent_cpu_set, child_cpu_set, transfer_cpu_id, thread_id),
+        index_valid(NUM_CPUS, transfer_cpu_id),
+        parent_cpu_set != child_cpu_set,
+        pre.ctn_mp.dom().contains(parent_container),
+        pre.ctn_mp.dom().contains(child_container),
+        pre.cpu_set_mp.dom().contains(parent_cpu_set),
+        pre.cpu_set_mp.dom().contains(child_cpu_set),
+        pre.ctn_mp.spec_index(parent_container).view_rodata().view().cpu_set == parent_cpu_set,
+        pre.ctn_mp.spec_index(child_container).view_rodata().view().cpu_set == child_cpu_set,
+        pre.cpu_set_mp.spec_index(parent_cpu_set).view().owned_cpus.closed_view().contains(transfer_cpu_id),
+        !pre.cpu_set_mp.spec_index(child_cpu_set).view().owned_cpus.view().contains(transfer_cpu_id),
+        pre.cpu_arr.spec_index(transfer_cpu_id).view().view().view().state is Off,
+        pre.cpu_arr.spec_index(transfer_cpu_id).view().view().view().owning_container == parent_container,
         post.cpu_arr.inv(),
         post.cpu_set_mp.perms_wf(),
         post.cpu_set_mp.spec_index(parent_cpu_set).view().owned_cpus.wf(),
@@ -15,7 +27,7 @@ pub(super) proof fn new_container_cpu_transfer_eof(pre: KernelK, post: KernelK, 
     ensures
         post.inv(),
 {
-    reveal(new_container_cpu_transfer_transition);
+    reveal(new_container_cpu_transfer_eof_transition_framing);
     assert(post.subsystems_inv()) by { reveal(cpu_set_perms_wf); reveal(cpu_array_wf); reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf); };
     assert(post.memory_management_inv()) by { assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); }; };
     assert(post.process_management_inv()) by {

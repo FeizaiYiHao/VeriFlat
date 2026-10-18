@@ -3,7 +3,7 @@ use crate::*;
 #[cfg(verus_keep_ghost)]
 use super::unmap_4k_reclaim_eof::reclaim_last_4k_mapping_to_cpu_cache_eof;
 #[cfg(verus_keep_ghost)]
-use super::unmap_4k_reclaim_spec::reclaim_last_4k_mapping_to_cpu_cache_transition;
+use super::unmap_4k_reclaim_spec::reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing;
 
 verus! {
 pub fn remove_last_4k_mapping_to_allocator(
@@ -102,7 +102,7 @@ pub fn remove_last_4k_mapping_to_allocator(
     assert(krnl.allc_4k_mp.spec_index(allocator_ptr).quota.view().value as int + *counter as int <= krnl.allc_4k_mp.spec_index(allocator_ptr).total_free_pages.view()) by { lemma_thread_pending_4k_quota_bounded(krnl, thread_ptr, owner, depth); };
     let page_index = page_ptr2page_index(page_ptr);
     let indices = va2index(va);
-    assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable).inv() && spec_index2va(indices) == va) by { pagetable_perms_wf_at(krnl.pt_mp, pagetable); spec_va_4k_index_roundtrip_at(va, indices.0, indices.1, indices.2, indices.3); };
+    assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable).inv() && spec_index2va(indices) == va) by { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); spec_va_4k_index_roundtrip_at(va, indices.0, indices.1, indices.2, indices.3); };
     let l1_ptr;
     {
         let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), pagetable_perm);
@@ -118,8 +118,8 @@ pub fn remove_last_4k_mapping_to_allocator(
     };
     let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(page_index);
     assert(krnl.thr_mp.spec_index(thread_ptr).is_init() && krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.spec_index(allocator_ptr).wf() && !krnl.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(page_ptr)) by {
-        thread_perms_wf_at(krnl.thr_mp, thread_ptr); allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr);
-        reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf);
+        thread_perms_wf_at(krnl.thr_mp, thread_ptr); allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr);
+        container_allocator_free_4k_page_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allocator_ptr, cpu_id, page_ptr);
     };
     let (node_addr, node_perm) = page_array_remove_last_4k_mapping_to_cache(&mut krnl.pg_arr, page_index, pagetable, va, allocator_ptr, cpu_id, Tracked(&*lctx), page_perm);
     krnl.allc_4k_mp.push_cache_page_typed(allocator_ptr, cpu_id, node_addr, node_perm, Ghost(lctx.allocator_quota_4k_lock_map()), Ghost(lctx.allocator_cache_4k_lock_map()), Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), cache_perm);
@@ -133,8 +133,8 @@ pub fn remove_last_4k_mapping_to_allocator(
     }
 
     proof {
-        assert(reclaim_last_4k_mapping_to_cpu_cache_transition(*old(krnl), *krnl, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, *old(counter), *counter, node_addr)) by {
-            reveal(reclaim_last_4k_mapping_to_cpu_cache_transition);
+        assert(reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing(*old(krnl), *krnl, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, *old(counter), *counter, node_addr)) by {
+            reveal(reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing);
         };
         reclaim_last_4k_mapping_to_cpu_cache_eof(*old(krnl), *krnl, pagetable, va, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, *old(counter), *counter, node_addr);
         held_threads_unchanged_except_for_unchanged_except(old(krnl).thr_mp, krnl.thr_mp, old(lctx), thread_ptr);

@@ -91,7 +91,7 @@ fn release_killed_thread_descriptors(
             thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
         decreases MAX_NUM_ENDPOINT_DESCRIPTORS - index,
     {
-        proof { thread_perms_wf_at(krnl.thr_mp, thread_ptr); thread_cpu_wf_cpu_at(old(krnl).thr_mp, old(krnl).cpu_arr, cpu_id); }
+        proof { thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, thread_ptr); thread_cpu_wf_cpu_at(old(krnl).thr_mp, old(krnl).cpu_arr, cpu_id); }
         let descriptor = *krnl.thr_mp.borrow_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(thread_lock_perm)).endpoint_descriptors.get(index);
         if let Some(endpoint_ptr) = descriptor {
             proof { assert(krnl.ep_mp.dom().contains(endpoint_ptr)) by { thread_endpoint_ref_counter_wf_thread_at(krnl.thr_mp, krnl.ep_mp, thread_ptr, index); }; }
@@ -177,6 +177,7 @@ fn release_killed_thread_caller(
 {
     proof {
         held_kernel_objects_unchanged_reflexive(&*krnl, &*lctx);
+        thread_perms_wf_map(krnl.thr_mp);
         thread_perms_wf_at(krnl.thr_mp, thread_ptr);
         thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id);
         krnl.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr);

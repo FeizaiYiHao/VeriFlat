@@ -617,7 +617,7 @@ fn new_container_lock_entry(
     }
     let Tracked(source_pagetable_lock_perm) = krnl.wlock_pagetable(source_pagetable_ptr, Tracked(&mut *lctx));
     let source_start_indices = va2index(va);
-    proof { pagetable_perms_wf_at(krnl.pt_mp, source_pagetable_ptr); }
+    proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, source_pagetable_ptr); }
     let source_pt = krnl.pt_mp.borrow_typed(source_pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&source_pagetable_lock_perm));
     let source_ready = if source_start_indices.0 < source_pt.kernel_l4_end { false } else { share_mapping_4k_source_precheck(krnl, &source_range, source_pagetable_ptr, Tracked(&*lctx), Tracked(&source_pagetable_lock_perm)) };
     proof {

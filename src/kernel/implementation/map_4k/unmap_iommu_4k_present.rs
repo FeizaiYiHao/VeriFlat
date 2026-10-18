@@ -46,6 +46,7 @@ pub fn clear_iommu_4k_mapping_present(
         final(krnl).it_mp.spec_index(iommu_table).view().proc_ptr == old(krnl).it_mp.spec_index(iommu_table).view().proc_ptr,
 {
     proof {
+        iommu_table_perms_wf_map(krnl.it_mp);
         iommu_table_perms_wf_at(krnl.it_mp, iommu_table);
         assert(krnl.it_mp.spec_index(iommu_table).view().kernel_l4_end == 0) by { reveal(PageTable::kernel_entries_wf); };
     }

@@ -2,7 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::super::free_4k_page::drain_4k_cache_batch;
 #[cfg(verus_keep_ghost)]
-use super::reclaim_dangling_thread_spec::reclaim_dangling_thread_transition;
+use super::reclaim_dangling_thread_spec::reclaim_dangling_thread_eof_transition_framing;
 #[cfg(verus_keep_ghost)]
 use super::reclaim_dangling_thread_eof::{reclaim_dangling_thread_eof, reclaim_dangling_thread_eof_fields};
 
@@ -71,13 +71,11 @@ pub fn reclaim_dangling_thread(
     proof {
         held_kernel_objects_unchanged_reflexive(&*krnl, &*lctx);
         thread_perms_wf_at(krnl.thr_mp, dangling_ptr); page_ptr_valid_imply_page_index_valid();
-        assert(page_ptr_valid(dangling_ptr) && krnl.pg_arr.spec_index(page_ptr2page_index(dangling_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread })) by {
-            reveal(thread_pages_wf);
-        };
+        assert(page_ptr_valid(dangling_ptr) && krnl.pg_arr.spec_index(page_ptr2page_index(dangling_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread })) by { thread_pages_wf_at(krnl.thr_mp, krnl.pg_arr, dangling_ptr); };
     }
     let page_index = page_ptr2page_index(dangling_ptr);
     let Tracked(page_lock_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));
-    proof { page_array_wf_at(krnl.pg_arr, page_index); }
+    proof { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, page_index); }
     let owner = krnl.pg_arr.borrow_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_lock_perm)).owning_container;
     proof { assert(krnl.ctn_mp.dom().contains(owner)) by { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_index); }; container_perms_wf_at(krnl.ctn_mp, owner); }
     let allocator_ptr = krnl.ctn_mp.borrow_rodata(owner).borrow().allocator_ptr_4k;
@@ -110,16 +108,17 @@ pub fn reclaim_dangling_thread(
     let ghost container_ptr = krnl.thr_mp.spec_index(dangling_ptr).view().owning_container;
     let ghost uppers = krnl.ctn_mp.spec_index(container_ptr).view_ghost().uppertree_seq.view();
     proof {
-        container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, dangling_ptr); container_perms_wf_at(krnl.ctn_mp, container_ptr);
-        assert(uppers.to_set().subset_of(krnl.ctn_mp.dom()) && !uppers.to_set().contains(container_ptr)) by { uppers.to_set_ensures(); reveal(container_uppertree_seq_wf); };
+        container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, dangling_ptr); container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, container_ptr);
+        assert(uppers.to_set().subset_of(krnl.ctn_mp.dom()) && !uppers.to_set().contains(container_ptr)) by {
+            uppers.to_set_ensures(); container_uppertree_seq_in_dom(krnl.rt_ctn, krnl.ctn_mp, container_ptr); container_uppertree_seq_not_self(krnl.rt_ctn, krnl.ctn_mp, container_ptr);
+        };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&start, &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+        thread_perms_wf_map(krnl.thr_mp);
         thread_perms_wf_at(krnl.thr_mp, dangling_ptr); page_array_wf_at(krnl.pg_arr, page_index);
         krnl.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), dangling_ptr);
         lemma_container_allocator_4k_quota_bounded(&*krnl, owner);
         allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr);
-        assert(!krnl.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(dangling_ptr)) by {
-            reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf);
-        };
+        assert(!krnl.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(dangling_ptr)) by { container_allocator_free_4k_page_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allocator_ptr, cpu_id, dangling_ptr); };
         lctx.enter_kernel_view_release();
     }
     let Tracked(proc_node_perm) = {
@@ -140,7 +139,7 @@ pub fn reclaim_dangling_thread(
     proof { remove_thread_from_container_sets(&mut krnl.ctn_mp, container_ptr, dangling_ptr, uppers, lctx.container_lock_map(), lctx.thread_id()); }
     let ghost mid = *krnl;
     proof {
-        assert(reclaim_dangling_thread_transition(entry, mid, cpu_id, dangling_ptr, owner, allocator_ptr, cache_node_addr)) by { reveal(reclaim_dangling_thread_transition); };
+        assert(reclaim_dangling_thread_eof_transition_framing(entry, mid, cpu_id, dangling_ptr, owner, allocator_ptr, cache_node_addr)) by { reveal(reclaim_dangling_thread_eof_transition_framing); };
         reclaim_dangling_thread_eof(entry, mid, cpu_id, dangling_ptr, owner, allocator_ptr, cache_node_addr);
     }
     krnl.wunlock_allocator_quota_4k(allocator_ptr, Tracked(&mut *lctx), Tracked(quota_lock_perm));

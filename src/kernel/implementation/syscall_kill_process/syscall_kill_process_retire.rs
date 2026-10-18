@@ -49,7 +49,7 @@ pub(super) fn kill_retire_target(
         parent == if chain.len() == 1 { process_ptr } else { chain[chain.len() - 2] },
         final(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set.view() == old(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set.view().remove(target),
 {
-    proof { process_perms_wf_at(krnl.prc_mp, target); }
+    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
     let (pagetable, iommu_table) = {
         let tracked target_perm = chain_perms.tracked_borrow(target);
         let process = krnl.prc_mp.borrow_typed(target, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(target_perm));
@@ -187,10 +187,13 @@ fn kill_retire_process(
         final(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set.view() == old(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set.view().remove(target),
 {
     proof {
+        process_perms_wf_map(krnl.prc_mp);
         process_perms_wf_at(krnl.prc_mp, target);
         process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target);
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr);
-        assert(krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(process_ptr)) by { reveal(per_container_process_tree_wf); reveal(process_subtree_set_wf); };
+        assert(krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(process_ptr)) by {
+            per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container); reveal(process_subtree_set_wf);
+        };
     }
     let tracked target_perm = chain_perms.tracked_remove(target);
     let tracked parent_perm = if chain.len() == 1 { process_perm } else { chain_perms.tracked_borrow(chain[chain.len() - 2]) };
@@ -243,7 +246,7 @@ fn kill_retire_process(
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
         kernel_lock_states_unchanged_except_tables_of_implies_u_eq(&steps.snapshot_k(), &*krnl, Some(target));
         krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-        assert(krnl.pt_mp.spec_index(pagetable).view().kernel_l4_end == KERNEL_MEM_END_L4INDEX) by { reveal(KernelK::default_pagetable_wf); };
+        assert(krnl.pt_mp.spec_index(pagetable).view().kernel_l4_end == KERNEL_MEM_END_L4INDEX) by { krnl.default_pagetable_wf_at(pagetable); };
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target);
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr);
     }
@@ -437,6 +440,7 @@ fn kill_retire_commit(
 {
     let ghost entry = *krnl;
     proof {
+        allocator_perms_wf_map(krnl.allc_4k_mp);
         allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr);
         krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), target);
         krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
@@ -461,7 +465,7 @@ fn kill_retire_commit(
     }
     let ghost mid = *krnl;
     proof {
-        assert(kill_retire_transition(entry, mid, cpu_id, target, parent_ptr, container_ptr, allocator_ptr)) by { reveal(kill_retire_transition); };
+        assert(kill_retire_eof_transition_framing(entry, mid, cpu_id, target, parent_ptr, container_ptr, allocator_ptr)) by { reveal(kill_retire_eof_transition_framing); };
         kill_retire_eof(entry, mid, *old(lctx), cpu_id, target, parent_ptr, container_ptr, allocator_ptr);
     }
     krnl.wunlock_allocator_quota_4k(allocator_ptr, Tracked(&mut *lctx), Tracked(quota_lock_perm));
@@ -547,8 +551,10 @@ fn kill_retire_unlink_process(
         let root = krnl.ctn_mp.spec_index(container_ptr).view().root_process;
         let tree = krnl.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view();
         process_perms_wf_at(krnl.prc_mp, target); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target);
-        assert(process_tree_wf(root, tree, krnl.prc_mp)) by { reveal(per_container_process_tree_wf); };
-        assert(root != target) by { reveal(process_root_wf); reveal(process_children_parent_wf); };
+        assert(process_tree_wf(root, tree, krnl.prc_mp)) by { per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, container_ptr); };
+        assert(root != target) by {
+            process_root_wf_at(root, tree, krnl.prc_mp, target); process_children_parent_wf_parent_at(root, tree, krnl.prc_mp, target); process_children_parent_wf_at(root, tree, krnl.prc_mp, parent_ptr, target);
+        };
         assert(krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().to_set().subset_of(krnl.prc_mp.dom())
             && krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(parent_ptr)) by { reveal(process_root_wf); reveal(process_uppertree_seq_wf); reveal(process_children_depth_wf); };
         assert(krnl.prc_mp.spec_index(parent_ptr).view().children.map().dom().contains(krnl.prc_mp.spec_index(target).view().parent_linkedlist_node.addr())
@@ -629,7 +635,7 @@ fn kill_retire_remove_tables(
         forall|i: PageIndex| #![trigger ret.view().dom().contains(i)] ret.view().dom().contains(i) ==> ret.view()[i].is_init() && ret.view()[i].addr() == page_index2page_ptr(i),
 {
     let ghost entry = *krnl;
-    proof { pagetable_perms_wf_at(krnl.pt_mp, pagetable); page_ptr_roundtrip(); }
+    proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); page_ptr_roundtrip(); }
     let (Tracked(pt_object_perm), Tracked(pt_root_perm)) = krnl.remove_pagetable_and_reclaim_4k_page_perms(pagetable, Tracked(pt_lock_perm), Tracked(&mut *lctx));
     let tracked mut page_perms: Map<PageIndex, PagePerm4k> = Map::tracked_empty();
     proof {
@@ -637,7 +643,7 @@ fn kill_retire_remove_tables(
         page_perms.tracked_insert(page_ptr2page_index(entry.pt_mp.spec_index(pagetable).view().cr3), pt_root_perm);
     }
     if let Some(it) = iommu_table {
-        proof { iommu_table_perms_wf_at(krnl.it_mp, it); }
+        proof { iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, it); }
         let tracked it_perm = it_lock_perm.tracked_unwrap();
         let (Tracked(it_object_perm), Tracked(it_root_perm)) = krnl.remove_iommu_table_and_reclaim_4k_page_perms(it, Tracked(it_perm), Tracked(&mut *lctx));
         proof {

@@ -24,7 +24,7 @@ pub open spec fn cpu_offline_check_flushed_default_pcid(pre: KernelK, cpu_id: Cp
 /// table and goes Off with an empty dirty map, its TLB entries are flushed, its slot in `cpu_set_ptr` is
 /// closed, and its request cell in `flags_ptr` is cleared.
 #[verifier::opaque]
-pub open spec fn cpu_went_off_transition(
+pub open spec fn cpu_went_off_eof_transition_framing(
     pre: KernelK, post: KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr,
     cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, entry_regs: Registers,
 ) -> bool {
@@ -48,26 +48,6 @@ pub open spec fn cpu_went_off_transition(
     let table_after = post.cpu_offline_mp.spec_index(flags_ptr);
     let cell_before = table_before.flags.spec_index(cpu_id).view();
     let cell_after = table_after.flags.spec_index(cpu_id).view();
-    &&& index_valid(NUM_CPUS, cpu_id)
-    &&& !(old_cpu.state is Off)
-    &&& old_cpu.owning_container == container_ptr
-    &&& pre.ctn_mp.dom().contains(container_ptr)
-    &&& pre.ctn_mp.spec_index(container_ptr).view_rodata().view().scheduler == scheduler_ptr
-    &&& pre.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set == cpu_set_ptr
-    &&& flags_ptr == cpu_offline_flags_ptr(container_ptr)
-    &&& pre.sched_mp.dom().contains(scheduler_ptr)
-    &&& pre.cpu_set_mp.dom().contains(cpu_set_ptr)
-    &&& pre.cpu_offline_mp.dom().contains(flags_ptr)
-    &&& cell_before.view().requested
-    &&& old_cpu.current_process is Some == previous is Some
-    &&& (previous is Some ==> {
-        let prev = previous.unwrap();
-        &&& pre.thr_mp.dom().contains(prev)
-        &&& pre.thr_mp.spec_index(prev).view().state == (ThreadState::RUNNING { cpu_id })
-        &&& pre.thr_mp.spec_index(prev).view().owning_proc == old_cpu.current_process.unwrap()
-        &&& !queue_before.view().contains(prev)
-        &&& !queue_before.map().dom().contains(pre.thr_mp.spec_index(prev).view().scheduler_linkedlist_node.addr())
-    })
     &&& post == (KernelK {
         cpu_arr: post.cpu_arr, pcid_needflush: post.pcid_needflush, cpu_published: post.cpu_published, cpu_tlb: post.cpu_tlb,
         sched_mp: post.sched_mp, thr_mp: post.thr_mp, cpu_set_mp: post.cpu_set_mp, cpu_offline_mp: post.cpu_offline_mp, ..pre
@@ -79,7 +59,6 @@ pub open spec fn cpu_went_off_transition(
     &&& cpu_after.view_ghost() == cpu_before.view_ghost()
     &&& cpu_after.being_killed() == cpu_before.being_killed()
     &&& cpu_after.killer_info() == cpu_before.killer_info()
-    &&& !cpu_before.being_killed()
     &&& cpu_after.locking_thread() == cpu_before.locking_thread()
     &&& new_cpu == (CpuView {
         state: CpuState::Off, current_process: None, current_thread: None, current_pagetable: None, current_cr3: pre.dflt_pt.view().cr3,

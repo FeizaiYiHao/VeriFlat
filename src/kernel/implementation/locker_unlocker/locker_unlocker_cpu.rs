@@ -45,7 +45,7 @@ impl KernelK {
             ret is Some ==> typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Cpu(cpu_id), TypedHeldLock { lock_id: final(self).cpu_arr.lock_id_by_index(cpu_id), mode: TypedLockMode::Write }),
     {
         proof {
-            assert(old(self).cpu_arr.inv() && old(self).cpu_arr.spec_index(cpu_id).view().inv()) by { cpu_array_wf_at(old(self).cpu_arr, old(self).dflt_pt.view(), cpu_id); };
+            assert(old(self).cpu_arr.inv() && old(self).cpu_arr.spec_index(cpu_id).view().inv()) by { cpu_array_wf_map(old(self).cpu_arr, old(self).dflt_pt.view()); cpu_array_wf_at(old(self).cpu_arr, old(self).dflt_pt.view(), cpu_id); };
             assert(old(lctx).lock_id_acyclic(old(self).cpu_arr.lock_id_by_index(cpu_id))) by {
                 reveal(LocalContext::lock_id_acyclic);
                 let cpu = old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view();
@@ -109,7 +109,7 @@ impl KernelK {
             !final(self).cpu_arr.spec_index(cpu_id).view().being_killed(),
     {
         proof {
-            assert(old(self).cpu_arr.inv() && old(self).cpu_arr.spec_index(cpu_id).view().inv()) by { cpu_array_wf_at(old(self).cpu_arr, old(self).dflt_pt.view(), cpu_id); };
+            assert(old(self).cpu_arr.inv() && old(self).cpu_arr.spec_index(cpu_id).view().inv()) by { cpu_array_wf_map(old(self).cpu_arr, old(self).dflt_pt.view()); cpu_array_wf_at(old(self).cpu_arr, old(self).dflt_pt.view(), cpu_id); };
             assert(old(self).cpu_arr.spec_index(cpu_id).view().view().view().state is Off) by { container_cpu_set_wf_cpu_set_at(old(self).ctn_mp, old(self).cpu_set_mp, cpu_set_ptr); cpu_set_perms_wf_at(old(self).cpu_set_mp, cpu_set_ptr); reveal(container_cpu_wf); };
             assert(old(lctx).lock_id_acyclic(old(self).cpu_arr.lock_id_by_index(cpu_id))) by {
                 reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned); reveal(UnLockedMap::typed_shard_lock_map_aligned);
@@ -183,7 +183,7 @@ impl KernelK {
             final(lctx).no_locks_held() ==> final(self).all_objects_unlocked(final(lctx)),
     {
         proof {
-            assert(old(self).cpu_arr.inv()) by { cpu_array_wf_at(old(self).cpu_arr, old(self).dflt_pt.view(), cpu_id); };
+            assert(old(self).cpu_arr.inv()) by { cpu_array_wf_map(old(self).cpu_arr, old(self).dflt_pt.view()); };
             assert(old(lctx).lock_entry_contains(old(self).cpu_arr.lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id))) by { reveal(LockedArray::typed_lock_map_aligned); };
         }
         assert(self.cpu_arr.spec_index(cpu_id).view().wlocked_by(&*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };

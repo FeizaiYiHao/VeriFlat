@@ -127,10 +127,18 @@ pub fn syscall_kill_process(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loca
             &&& child_ro.parent == Some(process_ptr)
             &&& child_ro.depth == process_ro.depth + 1
             &&& child_ro.owning_container == process_ro.owning_container
-        }) by { reveal(container_process_wf); reveal(per_container_process_tree_wf); reveal(process_root_wf); reveal(process_children_parent_wf); };
+        }) by {
+            let tree = krnl.ctn_mp.spec_index(process_ro.owning_container).view_ghost().owned_processes.view();
+            let root = krnl.ctn_mp.spec_index(process_ro.owning_container).view().root_process;
+            container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr); per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, process_ro.owning_container);
+            process_children_parent_wf_at(root, tree, krnl.prc_mp, process_ptr, child_ptr); process_root_wf_at(root, tree, krnl.prc_mp, child_ptr);
+            container_process_wf_container_at(krnl.ctn_mp, krnl.prc_mp, process_ro.owning_container, child_ptr);
+        };
         assert(krnl.prc_mp.spec_index(process_ptr).view_ghost().subtree_set.view().contains(child_ptr)) by {
-            process_perms_wf_at(krnl.prc_mp, child_ptr); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, child_ptr);
-            reveal(per_container_process_tree_wf); reveal(process_root_wf); reveal(process_uppertree_seq_wf);
+            let tree = krnl.ctn_mp.spec_index(process_ro.owning_container).view_ghost().owned_processes.view();
+            let root = krnl.ctn_mp.spec_index(process_ro.owning_container).view().root_process;
+            process_perms_wf_at(krnl.prc_mp, child_ptr); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, child_ptr); per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, process_ro.owning_container);
+            process_root_wf_at(root, tree, krnl.prc_mp, child_ptr); process_uppertree_seq_wf_at(root, tree, krnl.prc_mp, child_ptr, process_ptr);
             assert(krnl.prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view().contains(process_ptr)) by { reveal(process_children_depth_wf); };
         };
     }
@@ -228,6 +236,7 @@ fn kill_walk_and_finish(
             if walking { krnl.prc_mp.spec_index(target).view().owned_threads.view().len() } else { 0 },
     {
         proof {
+            process_perms_wf_map(krnl.prc_mp);
             process_perms_wf_at(krnl.prc_mp, target);
             krnl.prc_mp.spec_index(target).view().children.lemma_len_view(); krnl.prc_mp.spec_index(target).view().owned_threads.lemma_len_view();
         }
@@ -257,7 +266,7 @@ fn kill_walk_and_finish(
     let ghost finish_before = steps.view();
     krnl.set_thread_syscall_progress(thread_ptr, Ghost(None), Tracked(&*lctx), Tracked(&thread_perm));
     let ghost cleared_k = *krnl;
-    proof { assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by { reveal(process_thread_wf); }; }
+    proof { assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); }; }
     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_perm));
     krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_perm));
     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));

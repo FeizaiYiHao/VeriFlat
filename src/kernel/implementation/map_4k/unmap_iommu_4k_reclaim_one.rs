@@ -118,6 +118,7 @@ pub fn reclaim_unmapped_iommu_4k_page(
 {
     let iova = index2va(indices);
     proof {
+        iommu_table_perms_wf_map(krnl.it_mp);
         iommu_table_perms_wf_at(krnl.it_mp, iommu_table);
         assert(krnl.it_mp.spec_index(iommu_table).view().kernel_l4_end == 0) by { reveal(PageTable::kernel_entries_wf); };
     }
@@ -130,7 +131,7 @@ pub fn reclaim_unmapped_iommu_4k_page(
     let page_index = page_ptr2page_index(page_ptr);
     proof { assert(krnl.pg_arr.lock_id_by_index(page_index).major == MAPPED_PAGE_LOCK_MAJOR) by { reveal(page_iommu_table_wf); }; }
     let Tracked(page_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));
-    proof { page_array_wf_at(krnl.pg_arr, page_index); }
+    proof { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, page_index); }
     let page = krnl.pg_arr.borrow_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_perm));
     let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(page_index);
     if page.ref_count > 1 || page.is_io_page {
@@ -142,7 +143,7 @@ pub fn reclaim_unmapped_iommu_4k_page(
         let owner_ro = krnl.ctn_mp.borrow_rodata(owner).borrow();
         let depth = owner_ro.depth;
         let allocator_ptr = owner_ro.allocator_ptr_4k;
-        proof { thread_perms_wf_at(krnl.thr_mp, thread_ptr); }
+        proof { thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, thread_ptr); }
         let thread = krnl.thr_mp.borrow_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), thread_perm);
         let thread_depth = thread.container_depth;
         proof { prove_unmapped_iommu_4k_page_owner_position_in_thread_container_chain(krnl, iommu_table, iova, page_ptr, thread_ptr, owner, depth, thread_depth); }

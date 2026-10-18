@@ -152,6 +152,7 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Endpoint(endpoint_ptr), TypedHeldLock { lock_id: final(self).ep_mp.lock_id_by_key(endpoint_ptr), mode: TypedLockMode::Write }),
     {
         proof {
+            endpoint_perms_wf_map(old(self).ep_mp);
             endpoint_perms_wf_at(old(self).ep_mp, endpoint_ptr);
             assert(old(lctx).lock_id_acyclic(old(self).ep_mp.lock_id_by_key(endpoint_ptr))) by {
                 reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
@@ -208,7 +209,7 @@ impl KernelK {
             typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::Endpoint(endpoint_ptr)),
     {
         proof {
-            assert({ &&& old(self).ep_mp.perms_wf() &&& old(self).ep_mp.spec_index(endpoint_ptr).inv() }) by { endpoint_perms_wf_at(old(self).ep_mp, endpoint_ptr); };
+            assert({ &&& old(self).ep_mp.perms_wf() &&& old(self).ep_mp.spec_index(endpoint_ptr).inv() }) by { endpoint_perms_wf_map(old(self).ep_mp); endpoint_perms_wf_at(old(self).ep_mp, endpoint_ptr); };
             assert(old(lctx).lock_entry_contains(old(self).ep_mp.lock_id_by_key(endpoint_ptr), KernelObjId::Endpoint(endpoint_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         assert(self.ep_mp.spec_index(endpoint_ptr).wlocked_by(&*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };

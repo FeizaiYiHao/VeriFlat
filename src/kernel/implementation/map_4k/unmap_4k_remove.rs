@@ -65,7 +65,7 @@ pub fn remove_4k_mapping_without_free(krnl: &mut KernelK, pagetable: RwLockPageT
         l1_ptr = l2.addr;
     }
     assert(index_valid(NUM_PAGES, page_index) && krnl.pg_arr.inv() && krnl.pg_arr.spec_index(page_index).view().inv() && krnl.pg_arr.spec_index(page_index).view().view().state is Mapped4k && krnl.pg_arr.spec_index(page_index).view().view().mappings().contains((pagetable, va))) by {
-        page_ptr_valid_imply_page_index_valid(); page_array_wf_at(krnl.pg_arr, page_index); reveal(mapped_4k_page_pagetable_wf);
+        page_ptr_valid_imply_page_index_valid(); page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, page_index); reveal(mapped_4k_page_pagetable_wf);
     };
     let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(page_index);
     page_array_remove_4k_mapping_without_free(&mut krnl.pg_arr, page_index, pagetable, va, Tracked(&*lctx), page_perm);

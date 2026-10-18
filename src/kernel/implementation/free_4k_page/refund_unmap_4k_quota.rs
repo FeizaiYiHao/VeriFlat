@@ -181,7 +181,7 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
                 ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
 {
     hide(Seq::contains);
-    assert(krnl.thr_mp.perms_wf() && krnl.thr_mp.spec_index(thread_ptr).inv()) by { thread_perms_wf_at(krnl.thr_mp, thread_ptr); };
+    assert(krnl.thr_mp.perms_wf() && krnl.thr_mp.spec_index(thread_ptr).inv()) by { thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, thread_ptr); };
     let thread = krnl.thr_mp.borrow_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), thread_perm);
     let thread_depth = thread.container_depth;
     let mut owner = thread.owning_container;
@@ -279,7 +279,7 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
         decreases remaining,
     {
         let depth = remaining - 1;
-        assert(krnl.ctn_mp.perms_wf()) by { container_perms_wf_at(krnl.ctn_mp, owner); };
+        assert(krnl.ctn_mp.perms_wf()) by { container_perms_wf_map(krnl.ctn_mp); };
         let ro = krnl.ctn_mp.borrow_rodata(owner).borrow();
         let parent = ro.parent;
         let allocator_ptr = ro.allocator_ptr_4k;

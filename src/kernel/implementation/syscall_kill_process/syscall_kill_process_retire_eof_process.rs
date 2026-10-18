@@ -12,7 +12,22 @@ pub(super) proof fn kill_retire_eof_container_relations(
 )
     requires
         pre.inv(),
-        kill_retire_transition(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        pre.prc_mp.dom().contains(target),
+        pre.prc_mp.spec_index(target).locking_thread() is Write,
+        pre.prc_mp.spec_index(target).being_killed(),
+        pre.prc_mp.spec_index(target).view().zombie,
+        pre.prc_mp.spec_index(target).view().children.view().len() == 0,
+        pre.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
+        pre.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
+        pre.prc_mp.spec_index(target).view_rodata().view().parent == Some(parent_ptr),
+        pre.prc_mp.spec_index(target).view_rodata().view().owning_container == container_ptr,
+        pre.prc_mp.dom().contains(parent_ptr),
+        parent_ptr != target,
+        pre.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(parent_ptr),
+        pre.prc_mp.spec_index(parent_ptr).view().children.map().dom().contains(pre.prc_mp.spec_index(target).view().parent_linkedlist_node.addr()),
+        pre.prc_mp.spec_index(parent_ptr).view().children.map().spec_index(pre.prc_mp.spec_index(target).view().parent_linkedlist_node.addr()) == target,
+        pre.ctn_mp.dom().contains(container_ptr),
     ensures
         container_tree_wf(post.rt_ctn, post.ctn_mp),
         container_endpoint_wf(post.ctn_mp, post.ep_mp),
@@ -28,7 +43,7 @@ pub(super) proof fn kill_retire_eof_container_relations(
         container_thread_wf(post.ctn_mp, post.thr_mp),
         thread_cpu_wf(post.thr_mp, post.cpu_arr),
 {
-    reveal(kill_retire_transition);
+    reveal(kill_retire_eof_transition_framing);
     assert(container_tree_wf(post.rt_ctn, post.ctn_mp)) by { container_no_change_to_tree_fields_imply_wf(pre.rt_ctn, pre.ctn_mp, post.ctn_mp); };
     assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { container_endpoint_wf_preserved_for_endpoint_owner_eq(pre.ctn_mp, post.ctn_mp, pre.ep_mp, post.ep_mp); };
     assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { container_thread_endpoint_wf_preserved_for_descriptor_owner_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
@@ -48,7 +63,26 @@ pub(super) proof fn kill_retire_eof_process_relations(
 )
     requires
         pre.inv(),
-        kill_retire_transition(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        pre.prc_mp.dom().contains(target),
+        pre.prc_mp.spec_index(target).locking_thread() is Write,
+        pre.prc_mp.spec_index(target).being_killed(),
+        pre.prc_mp.spec_index(target).view().zombie,
+        pre.prc_mp.spec_index(target).view().children.view().len() == 0,
+        pre.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
+        pre.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
+        pre.prc_mp.spec_index(target).view_rodata().view().parent == Some(parent_ptr),
+        pre.prc_mp.spec_index(target).view_rodata().view().owning_container == container_ptr,
+        pre.prc_mp.dom().contains(parent_ptr),
+        parent_ptr != target,
+        pre.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(parent_ptr),
+        pre.prc_mp.spec_index(parent_ptr).view().children.map().dom().contains(pre.prc_mp.spec_index(target).view().parent_linkedlist_node.addr()),
+        pre.prc_mp.spec_index(parent_ptr).view().children.map().spec_index(pre.prc_mp.spec_index(target).view().parent_linkedlist_node.addr()) == target,
+        pre.pt_mp.dom().contains(pre.prc_mp.spec_index(target).view().pagetable),
+        pre.pt_mp.spec_index(pre.prc_mp.spec_index(target).view().pagetable).locking_thread() is Write,
+        kill_retire_tables_emptied(pre, target),
+        pre.prc_mp.spec_index(target).view().iommu_table is Some ==> pre.it_mp.dom().contains(pre.prc_mp.spec_index(target).view().iommu_table->Some_0) && pre.it_mp.spec_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0).locking_thread() is Write,
+        pre.ctn_mp.dom().contains(container_ptr),
         pre.prc_mp.typed_lock_map_aligned(lctx.process_lock_map(), lctx.thread_id()),
         typed_lock_map_contains_mode(lctx.process_lock_map(), target, TypedLockMode::Write),
         forall|d: RwLockProcessPtr| #![trigger lctx.process_lock_map().dom().contains(d)] lctx.process_lock_map().dom().contains(d) && pre.prc_mp.spec_index(d).killer_info() is Some
@@ -62,7 +96,7 @@ pub(super) proof fn kill_retire_eof_process_relations(
         process_state_lock_wf(post.prc_mp),
         process_emptied_threads_wf(post.prc_mp, post.thr_mp),
 {
-    reveal(kill_retire_transition);
+    reveal(kill_retire_eof_transition_framing);
     assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); reveal(process_cpu_wf); };
     assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { reveal(process_pcid_allocator_wf); reveal(container_pcid_allocator_wf); };
     assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); };
@@ -80,14 +114,27 @@ pub(super) proof fn kill_retire_eof_iommu(
 )
     requires
         pre.inv(),
-        kill_retire_transition(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        pre.prc_mp.dom().contains(target),
+        pre.prc_mp.spec_index(target).locking_thread() is Write,
+        pre.prc_mp.spec_index(target).being_killed(),
+        pre.prc_mp.spec_index(target).view().zombie,
+        pre.prc_mp.spec_index(target).view().children.view().len() == 0,
+        pre.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
+        pre.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
+        pre.prc_mp.spec_index(target).view_rodata().view().owning_container == container_ptr,
+        pre.pt_mp.dom().contains(pre.prc_mp.spec_index(target).view().pagetable),
+        pre.pt_mp.spec_index(pre.prc_mp.spec_index(target).view().pagetable).locking_thread() is Write,
+        kill_retire_tables_emptied(pre, target),
+        pre.prc_mp.spec_index(target).view().iommu_table is Some ==> pre.it_mp.dom().contains(pre.prc_mp.spec_index(target).view().iommu_table->Some_0) && pre.it_mp.spec_index(pre.prc_mp.spec_index(target).view().iommu_table->Some_0).locking_thread() is Write,
+        pre.ctn_mp.dom().contains(container_ptr),
     ensures
         iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
         process_pci_function_ownership_wf(post.irt.view(), post.prc_mp),
         iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
         iommu_table_lock_wf(post.irt.view(), post.prc_mp, post.it_mp),
 {
-    reveal(kill_retire_transition);
+    reveal(kill_retire_eof_transition_framing);
     assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); reveal(process_pci_function_ownership_wf); process_iommu_table_match_process_at(pre.prc_mp, pre.it_mp, target); };
     assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
@@ -107,13 +154,22 @@ broadcast proof fn kill_retire_eof_tlb_entry(
         process_pagetable_match(pre.prc_mp, pre.pt_mp),
         cpu_dirty_map_proc_pcid_match(pre.prc_mp, pre.cpu_arr, pre.pcid_needflush, pre.cpu_tlb),
         tlb_wf_spec(pre.cpu_tlb, pre.pt_mp, pre.cpu_arr, pre.pcid_needflush),
-        kill_retire_transition(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        pre.prc_mp.dom().contains(target),
+        pre.prc_mp.spec_index(target).locking_thread() is Write,
+        pre.prc_mp.spec_index(target).being_killed(),
+        pre.prc_mp.spec_index(target).view().zombie,
+        pre.prc_mp.spec_index(target).view().children.view().len() == 0,
+        pre.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
+        pre.pt_mp.dom().contains(pre.prc_mp.spec_index(target).view().pagetable),
+        pre.pt_mp.spec_index(pre.prc_mp.spec_index(target).view().pagetable).locking_thread() is Write,
+        kill_retire_tables_emptied(pre, target),
         index_valid(NUM_CPUS, c),
         pcid_valid(p),
         p != KERNEL_DEFAULT_PCID,
     ensures
-        #![trigger kill_retire_transition(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr), post.cpu_tlb.spec_index((c, p))]
-        #![trigger kill_retire_transition(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr), post.cpu_arr.spec_index(c).view().view().tlb_dirty_bitmap().spec_index(p)]
+        #![trigger kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr), post.cpu_tlb.spec_index((c, p))]
+        #![trigger kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr), post.cpu_arr.spec_index(c).view().view().tlb_dirty_bitmap().spec_index(p)]
         ({
             let tlb = post.cpu_tlb.spec_index((c, p));
             let cpu = post.cpu_arr.spec_index(c).view().view();
@@ -124,7 +180,7 @@ broadcast proof fn kill_retire_eof_tlb_entry(
             &&& dirty is Some && ((!needflush && !tlb.is_empty()) || cpu.view().current_pcid == p) ==> dirty.unwrap().process_ptr != target && dirty.unwrap().pagetable_ptr != pagetable
         }),
 {
-    reveal(kill_retire_transition);
+    reveal(kill_retire_eof_transition_framing);
     let tlb = pre.cpu_tlb.spec_index((c, p));
     let cpu = pre.cpu_arr.spec_index(c).view().view();
     let dirty = cpu.tlb_dirty_bitmap().spec_index(p);
@@ -146,12 +202,21 @@ pub(super) proof fn kill_retire_eof_tlb(
 )
     requires
         pre.inv(),
-        kill_retire_transition(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        pre.prc_mp.dom().contains(target),
+        pre.prc_mp.spec_index(target).locking_thread() is Write,
+        pre.prc_mp.spec_index(target).being_killed(),
+        pre.prc_mp.spec_index(target).view().zombie,
+        pre.prc_mp.spec_index(target).view().children.view().len() == 0,
+        pre.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
+        pre.pt_mp.dom().contains(pre.prc_mp.spec_index(target).view().pagetable),
+        pre.pt_mp.spec_index(pre.prc_mp.spec_index(target).view().pagetable).locking_thread() is Write,
+        kill_retire_tables_emptied(pre, target),
     ensures
         cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush),
         tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.cpu_arr, post.pcid_needflush),
 {
-    reveal(kill_retire_transition);
+    reveal(kill_retire_eof_transition_framing);
     assert(cpu_dirty_map_contains_container_processes(post.ctn_mp, post.cpu_set_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb)) by { reveal(cpu_dirty_map_contains_container_processes); reveal(container_cpu_wf); broadcast use kill_retire_eof_tlb_entry; };
     assert(cpu_dirty_map_proc_pcid_match(post.prc_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb)) by { reveal(cpu_dirty_map_proc_pcid_match); broadcast use kill_retire_eof_tlb_entry; };
     assert(cpu_dirty_map_contains_pagetable_pcid_match(post.pt_mp, post.cpu_arr, post.pcid_needflush, post.cpu_tlb)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); broadcast use kill_retire_eof_tlb_entry; };

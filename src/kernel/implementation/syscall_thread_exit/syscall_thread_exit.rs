@@ -196,7 +196,7 @@ pub fn syscall_thread_exit(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Local
         }
     }
     thread_exit_drop_descriptors(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, thread_ptr, Tracked(&thread_lock_perm), Ghost(start), Ghost(pre));
-    proof { process_perms_wf_at(krnl.prc_mp, process_ptr); krnl.prc_mp.spec_index(process_ptr).view().owned_threads.lemma_len_view(); }
+    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, process_ptr); krnl.prc_mp.spec_index(process_ptr).view().owned_threads.lemma_len_view(); }
     let last = krnl.prc_mp.borrow_typed(process_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(&process_lock_perm)).owned_threads.len() == 1;
     if last {
         thread_exit_reclaim(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, thread_ptr, Tracked(&cpu_lock_perm), Tracked(&process_lock_perm),

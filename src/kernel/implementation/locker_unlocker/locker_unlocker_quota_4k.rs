@@ -36,6 +36,7 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k), TypedHeldLock { lock_id: final(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota.lock_id(), mode: TypedLockMode::Write }),
     {
         proof {
+            allocator_perms_wf_map(old(self).allc_4k_mp);
             allocator_perms_wf_at(old(self).allc_4k_mp, alloc_ptr_4k);
             assert(old(lctx).lock_id_acyclic(old(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota.lock_id())) by {
                 reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned); reveal(UnLockedMap::typed_shard_lock_map_aligned);
@@ -48,7 +49,7 @@ impl KernelK {
             assert(allocator_perms_wf(self.allc_4k_mp)) by { reveal(allocator_perms_wf); };
             assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
             assert(self.memory_management_inv()) by {
-                lemma_allocator_pages_wf_preserved_for_allocator_quota_value_framed_fields_forall();
+                lemma_allocator_pages_wf_preserved_for_allocator_invariant_fields_except_quota_forall();
                 reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf);
                 lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_contents_forall();
                 lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(*old(self), *self);
@@ -94,7 +95,7 @@ impl KernelK {
             typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k)),
     {
         proof {
-            assert(old(self).allc_4k_mp.perms_wf() && old(self).allc_4k_mp.spec_index(alloc_ptr_4k).inv()) by { allocator_perms_wf_at(old(self).allc_4k_mp, alloc_ptr_4k); };
+            assert(old(self).allc_4k_mp.perms_wf() && old(self).allc_4k_mp.spec_index(alloc_ptr_4k).inv()) by { allocator_perms_wf_map(old(self).allc_4k_mp); allocator_perms_wf_at(old(self).allc_4k_mp, alloc_ptr_4k); };
             assert(old(lctx).lock_entry_contains(old(self).allc_4k_mp.spec_index(alloc_ptr_4k).quota.lock_id(), KernelObjId::AllocatorQuota(PageSize::SZ4k, alloc_ptr_4k))) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); };
         }
         assert(self.allc_4k_mp.spec_index(alloc_ptr_4k).quota.wlocked_by(&*lctx)) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); };
@@ -104,7 +105,7 @@ impl KernelK {
             assert(allocator_invariant_fields_unchanged(old(self).allc_4k_mp, self.allc_4k_mp)) by { allocator_quota_lock_op_preserves_invariant_fields(old(self).allc_4k_mp, self.allc_4k_mp, alloc_ptr_4k); };
             assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
             assert(self.memory_management_inv()) by {
-                lemma_allocator_pages_wf_preserved_for_allocator_quota_value_framed_fields_forall();
+                lemma_allocator_pages_wf_preserved_for_allocator_invariant_fields_except_quota_forall();
                 reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf);
                 lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_contents_forall();
                 lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(*old(self), *self);
