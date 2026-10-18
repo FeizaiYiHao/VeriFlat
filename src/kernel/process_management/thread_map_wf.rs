@@ -4,7 +4,8 @@ use crate::*;
 verus! {
     // Proof dependencies (confirmed):
     // thread_free_quota_pending_empty_unless_wlocked,
-    // thread_temp_alloc_empty_unless_wlocked.
+    // thread_temp_alloc_empty_unless_wlocked,
+    // thread_syscall_progress_only_when_wlocked.
     #[verifier::opaque]
     pub open spec fn thread_perms_wf(thread_map: ThreadLockedMap) -> bool {
         &&& thread_map.perms_wf()
@@ -36,10 +37,11 @@ verus! {
             thread_map.spec_index(thread_ptr).view().inv(),
     { reveal(thread_perms_wf); }
 
+    /// A thread in endpoint transit or killed is write-held.
     pub open spec fn thread_endpoint_transit_only_when_wlocked(thread_map: ThreadLockedMap) -> bool {
         forall|thread_ptr: RwLockThreadPtr|
             #![trigger thread_map.spec_index(thread_ptr).view().state]
-            thread_map.dom().contains(thread_ptr) && thread_map.spec_index(thread_ptr).view().state is IPC_ENDPOINT_TRANSIT ==> thread_map.spec_index(thread_ptr).locking_thread() is Write
+            thread_map.dom().contains(thread_ptr) && (thread_map.spec_index(thread_ptr).view().state is IPC_ENDPOINT_TRANSIT || thread_map.spec_index(thread_ptr).view().state is KILLED) ==> thread_map.spec_index(thread_ptr).locking_thread() is Write
     }
 
     #[verifier::opaque]

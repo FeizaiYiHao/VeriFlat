@@ -52,10 +52,7 @@ pub ghost struct CpuU {
     pub state: CpuState,
     pub current_process: Option<RwLockProcessPtr>,
     pub current_thread: Option<RwLockThreadPtr>,
-}
-
-impl LockUserVisibilityTrait for Cpu {
-    open spec fn is_user_visible() -> bool { true }
+    pub killed: bool,
 }
 
 impl Cpu {
@@ -136,6 +133,7 @@ impl Cpu {
                 index_valid(NUM_CPUS, cpu_id) ==> {
                     &&& ret.spec_index(cpu_id).view().inv()
                     &&& !ret.spec_index(cpu_id).view().locked()
+                    &&& !ret.spec_index(cpu_id).view().being_killed()
                     &&& ret.spec_index(cpu_id).view().view().view().owning_container == owning_container
                     &&& ret.spec_index(cpu_id).view().view().view().container_depth == 0
                     &&& ret.spec_index(cpu_id).view().view().view().state == if cpu_id == 0 { CpuState::Idle } else { CpuState::Off }
@@ -155,6 +153,7 @@ impl Cpu {
                     old_cpu < cpu_id ==> {
                         &&& cpus.spec_index(old_cpu).inv()
                         &&& !cpus.spec_index(old_cpu).locked()
+                        &&& !cpus.spec_index(old_cpu).being_killed()
                         &&& cpus.spec_index(old_cpu).view().view().owning_container == owning_container
                         &&& cpus.spec_index(old_cpu).view().view().container_depth == 0
                         &&& cpus.spec_index(old_cpu).view().view().state == if old_cpu == 0 { CpuState::Idle } else { CpuState::Off }
@@ -217,9 +216,6 @@ impl Cpu {
     {
         self.current_thread
     }
-
-    pub open spec fn spec_current_cr3(&self) -> PageTableRoot { self.view().current_cr3 }
-    pub open spec fn spec_current_pcid(&self) -> Pcid { self.view().current_pcid }
 
     pub fn flush_current_tlb(&mut self, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, tlb: &mut CpuTLB, Tracked(lctx): Tracked<&LocalContext>)
         requires
@@ -365,6 +361,7 @@ impl CpuLockedArray {
             final(self).spec_index(cpu_id).view().view().wf(),
             final(self).spec_index(cpu_id).view().locking_thread() == old(self).spec_index(cpu_id).view().locking_thread(),
             final(self).spec_index(cpu_id).view().being_killed() == old(self).spec_index(cpu_id).view().being_killed(),
+            final(self).spec_index(cpu_id).view().killer_info() == old(self).spec_index(cpu_id).view().killer_info(),
             final(self).spec_index(cpu_id).view().view_rodata() == old(self).spec_index(cpu_id).view().view_rodata(),
             final(self).spec_index(cpu_id).view().view_ghost() == old(self).spec_index(cpu_id).view().view_ghost(),
             final(self).typed_lock_map_aligned(old(lctx).cpu_lock_map().insert(cpu_id, TypedHeldLock { lock_id: final(self).spec_index(cpu_id).lock_id(), mode: TypedLockMode::Write }), final(lctx).thread_id()),
@@ -385,6 +382,65 @@ impl CpuLockedArray {
             assert(pcid_needflush_wf(*old(needflush)) ==> pcid_needflush_wf(*needflush)) by { reveal(pcid_needflush_wf); };
             assert(cpu_published_wf(*old(published), *old(self), *old(needflush)) ==> cpu_published_wf(*published, *self, *needflush)) by { reveal(cpu_published_wf); };
         }
+    }
+
+    /// Evict the thread running on the remote cpu `cpu_id`, which this thread write-holds: mark the cpu for `killer_info`,
+    /// make it load the default page table with the default PCID, unmark it, and leave it idle. Its TLB entries, PCID flush
+    /// flags, and dirty bitmap stay as they are.
+    pub fn evict_remote(
+        &mut self, cpu_id: CpuId, default_cr3: PageTableRoot, killer_info: KillerInfo, published: &mut CpuPublishedArray, Tracked(lctx): Tracked<&mut LocalContext>,
+        cpu_lock_perm: Tracked<&LockPerm>,
+    )
+        requires
+            old(self).inv(),
+            !old(self).spec_index(cpu_id).view().being_killed(),
+            page_ptr_valid(default_cr3),
+            index_valid(NUM_CPUS, cpu_id),
+            cpu_id != old(lctx).cpu_id(),
+            old(lctx).kernel_view_locking_state() is Acquire,
+            old(self).typed_lock_map_aligned(old(lctx).cpu_lock_map(), old(lctx).thread_id()),
+            typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
+            old(self).spec_index(cpu_id).view().is_init(),
+            old(self).spec_index(cpu_id).view().view().wf(),
+            old(self).spec_index(cpu_id).view().view().view().state is Running,
+            cpu_lock_perm.view().state() is WriteLock,
+            cpu_lock_perm.view().thread_id() == old(lctx).thread_id(),
+            cpu_lock_perm.view().lock_id() == old(self).spec_index(cpu_id).view().locking_thread()->Write_lock_id,
+            old(published)[cpu_id as int].owner_cpu() == cpu_id,
+        ensures
+            final(published)[cpu_id as int].inv(),
+            final(published)[cpu_id as int].view() == (default_cr3, KERNEL_DEFAULT_PCID),
+            final(published)[cpu_id as int].owner_cpu() == old(published)[cpu_id as int].owner_cpu(),
+            forall|c: CpuId| #![trigger final(published)[c as int]] #![trigger old(published)[c as int]] index_valid(NUM_CPUS, c) && c != cpu_id ==> final(published)[c as int] == old(published)[c as int],
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
+            final(lctx).thread_id() == old(lctx).thread_id(),
+            final(lctx).kernel_view_locking_state() is Release,
+            typed_lock_maps_unchanged(old(lctx), final(lctx)),
+            old(lctx).cpu_lock_map().index(cpu_id).lock_id == old(self).spec_index(cpu_id).lock_id(),
+            final(self).inv(),
+            final(self).entries_unchanged_except(old(self), cpu_id),
+            final(self).spec_index(cpu_id).view().is_init(),
+            final(self).spec_index(cpu_id).view().view().wf(),
+            final(self).spec_index(cpu_id).view().locking_thread() == old(self).spec_index(cpu_id).view().locking_thread(),
+            final(self).spec_index(cpu_id).view().killer_info() == old(self).spec_index(cpu_id).view().killer_info(),
+            final(self).spec_index(cpu_id).view().view_rodata() == old(self).spec_index(cpu_id).view().view_rodata(),
+            final(self).spec_index(cpu_id).view().view_ghost() == old(self).spec_index(cpu_id).view().view_ghost(),
+            final(self).typed_lock_map_aligned(old(lctx).cpu_lock_map().insert(cpu_id, TypedHeldLock { lock_id: final(self).spec_index(cpu_id).lock_id(), mode: TypedLockMode::Write }), final(lctx).thread_id()),
+            final(self).spec_index(cpu_id).view().view().view() == (CpuView { state: CpuState::Idle, current_process: None, current_thread: None, current_pagetable: None, current_cr3: default_cr3, current_pcid: KERNEL_DEFAULT_PCID, ..old(self).spec_index(cpu_id).view().view().view() }),
+    {
+        proof { lctx.enter_kernel_view_release(); }
+        assert(self.spec_index(cpu_id).view().wlocked_by(&*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
+        self.mark_kill(cpu_id, Tracked(&*lctx), killer_info);
+        assert(self.typed_lock_map_aligned(lctx.cpu_lock_map(), lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
+        let cpu = self.borrow_mut_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), cpu_lock_perm);
+        published[cpu_id].evict_remote_cpu(&mut cpu.cr3_pcid, cpu_id, default_cr3, Tracked(&*lctx));
+        self.unkill(cpu_id, Tracked(&*lctx));
+        assert(self.typed_lock_map_aligned(lctx.cpu_lock_map(), lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
+        let cpu = self.borrow_mut_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), cpu_lock_perm);
+        cpu.current_process = None;
+        cpu.current_thread = None;
+        cpu.current_pagetable = None;
+        cpu.state = CpuState::Idle;
     }
 
     /// Select a thread on this running or idle CPU without changing containers.
@@ -459,6 +515,7 @@ impl CpuLockedArray {
             final(self).spec_index(cpu_id).view().view().wf(),
             final(self).spec_index(cpu_id).view().locking_thread() == old(self).spec_index(cpu_id).view().locking_thread(),
             final(self).spec_index(cpu_id).view().being_killed() == old(self).spec_index(cpu_id).view().being_killed(),
+            final(self).spec_index(cpu_id).view().killer_info() == old(self).spec_index(cpu_id).view().killer_info(),
             final(self).spec_index(cpu_id).view().view_rodata() == old(self).spec_index(cpu_id).view().view_rodata(),
             final(self).spec_index(cpu_id).view().view_ghost() == old(self).spec_index(cpu_id).view().view_ghost(),
             final(self).typed_lock_map_aligned(old(lctx).cpu_lock_map().insert(cpu_id, TypedHeldLock { lock_id: final(self).spec_index(cpu_id).lock_id(), mode: TypedLockMode::Write }), final(lctx).thread_id()),

@@ -7,8 +7,6 @@ impl KernelK {
         requires
             old(self).inv(),
             old(self).allc_1g_mp.dom().contains(alloc_ptr_1g),
-            old(self).allc_1g_mp.spec_index(alloc_ptr_1g).wf(),
-            !typed_lock_map_contains_mode(old(lctx).allocator_quota_1g_lock_map(), alloc_ptr_1g, TypedLockMode::Write),
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).pcid_needflush_lock_map().dom().is_empty(),
             forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
@@ -65,8 +63,6 @@ impl KernelK {
         requires
             old(self).inv(),
             old(self).allc_1g_mp.dom().contains(alloc_ptr_1g),
-            old(self).allc_1g_mp.spec_index(alloc_ptr_1g).wf(),
-            old(self).allc_1g_mp.spec_index(alloc_ptr_1g).quota.inv(),
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),
             lock_perm.view().lock_id() == old(self).allc_1g_mp.spec_index(alloc_ptr_1g).quota.locking_thread()->Write_lock_id,
@@ -81,6 +77,7 @@ impl KernelK {
             typed_lock_maps_aligned(final(self), final(lctx)),
             *final(self) == (KernelK { allc_1g_mp: final(self).allc_1g_mp, ..*old(self) }),
             final(self).allc_1g_mp.unchanged_except(&old(self).allc_1g_mp, alloc_ptr_1g),
+            final(self).allc_1g_mp.perms_wf(),
             final(self).allc_1g_mp.spec_index(alloc_ptr_1g).wf(),
             !final(lctx).allocator_quota_1g_lock_map().dom().contains(alloc_ptr_1g),
             final(self).allc_1g_mp.spec_index(alloc_ptr_1g).cpu_caches == old(self).allc_1g_mp.spec_index(alloc_ptr_1g).cpu_caches,
@@ -95,7 +92,7 @@ impl KernelK {
             typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::AllocatorQuota(PageSize::SZ1g, alloc_ptr_1g)),
     {
         proof {
-            assert(old(self).allc_1g_mp.perms_wf()) by { reveal(allocator_perms_wf); };
+            assert(old(self).allc_1g_mp.perms_wf() && old(self).allc_1g_mp.spec_index(alloc_ptr_1g).inv()) by { allocator_perms_wf_at(old(self).allc_1g_mp, alloc_ptr_1g); };
             assert(old(lctx).lock_entry_contains(old(self).allc_1g_mp.spec_index(alloc_ptr_1g).quota.lock_id(), KernelObjId::AllocatorQuota(PageSize::SZ1g, alloc_ptr_1g))) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); };
         }
         assert(self.allc_1g_mp.spec_index(alloc_ptr_1g).quota.wlocked_by(&*lctx)) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); };

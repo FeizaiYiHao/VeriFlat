@@ -51,6 +51,7 @@ pub(super) open spec fn pop_stage_2m_page_transition_framing(
     &&& new_thread.locking_thread() == old_thread.locking_thread()
     &&& new_thread.locking_thread() is Write
     &&& new_thread.being_killed() == old_thread.being_killed()
+    &&& new_thread.killer_info() == old_thread.killer_info()
     &&& post.allc_2m_mp.unchanged_except(&pre.allc_2m_mp, allocator)
     &&& new_allocator == (PageAllocator { cpu_caches: new_allocator.cpu_caches, global_pool: new_allocator.global_pool, total_free_pages: Ghost((old_allocator.total_free_pages.view() - 1) as usize), ..old_allocator })
     &&& match source {
@@ -190,10 +191,13 @@ proof fn eof_pop_2m_process_pages(pre: KernelK, post: KernelK, allocator: RwLock
         pre.inv(),
         pop_stage_2m_page_transition_framing(pre, post, allocator, thread, container, page, node, source),
         post.subsystems_inv(),
-    ensures process_pages_wf(post.pg_arr, post.prc_mp),
+    ensures
+        process_pages_wf(post.pg_arr, post.prc_mp),
+        process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp),
 {
     reveal(pop_stage_2m_page_transition_framing);
     assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { reveal(process_pages_wf); };
+    assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
 }
 
 proof fn eof_pop_2m_quota(pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)
@@ -263,6 +267,8 @@ proof fn eof_pop_2m_staged_pages(pre: KernelK, post: KernelK, allocator: RwLockP
         endpoint_pages_wf(post.ep_mp, post.pg_arr),
         process_pagetable_match(post.prc_mp, post.pt_mp),
         process_iommu_table_match(post.prc_mp, post.it_mp),
+        pagetable_no_huge_leaf_wf(post.pt_mp, post.it_mp),
+        process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.it_mp),
 {
     reveal(pop_stage_2m_page_transition_framing);
     assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_2m_wf); };
@@ -275,9 +281,10 @@ proof fn eof_pop_2m_staged_pages(pre: KernelK, post: KernelK, allocator: RwLockP
 
 proof fn eof_pop_2m_global_pool(pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)
     requires
-        pre.inv(),
+        allocator_perms_wf(pre.allc_2m_mp),
+        allocator_free_page_ptrs_wf(pre.allc_2m_mp),
+        container_allocator_free_2m_page_wf(pre.allc_2m_mp, pre.pg_arr),
         pop_stage_2m_page_transition_framing(pre, post, allocator, thread, container, page, node, source),
-        post.subsystems_inv(),
     ensures container_allocator_global_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
 {
     hide(Seq::contains);
@@ -299,9 +306,11 @@ proof fn eof_pop_2m_global_pool(pre: KernelK, post: KernelK, allocator: RwLockPa
 
 proof fn eof_pop_2m_cpu_cache(pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)
     requires
-        pre.inv(),
+        allocator_perms_wf(pre.allc_2m_mp),
+        allocator_perms_wf(post.allc_2m_mp),
+        allocator_free_page_ptrs_wf(pre.allc_2m_mp),
+        container_allocator_free_2m_page_wf(pre.allc_2m_mp, pre.pg_arr),
         pop_stage_2m_page_transition_framing(pre, post, allocator, thread, container, page, node, source),
-        post.subsystems_inv(),
     ensures container_allocator_cpu_cache_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
 {
     hide(Seq::contains);
@@ -399,6 +408,7 @@ proof fn eof_pop_2m_process_management_inv(pre: KernelK, post: KernelK, allocato
         assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { container_thread_scheduler_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thr_mp, post.thr_mp, post.sched_mp); };
         assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { container_thread_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thr_mp, post.thr_mp); };
         assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { process_thread_wf_preserved_for_thread_process_management_fields(post.prc_mp, pre.thr_mp, post.thr_mp); };
+        assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
         assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.cpu_arr); };
     };
 }

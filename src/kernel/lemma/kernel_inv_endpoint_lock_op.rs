@@ -10,15 +10,6 @@ pub open spec fn endpoint_invariant_fields_unchanged(pre: EndpointLockedMap, pos
         pre.dom().contains(e_ptr) ==> post.spec_index(e_ptr).view() == pre.spec_index(e_ptr).view()
 }
 
-pub proof fn endpoint_lock_op_preserves_invariant_fields(pre: EndpointLockedMap, post: EndpointLockedMap, changed: RwLockEndpointPtr)
-    requires
-        post.unchanged_except(&pre, changed),
-        post.spec_index(changed).view() == pre.spec_index(changed).view(),
-    ensures
-        endpoint_invariant_fields_unchanged(pre, post),
-{
-}
-
 pub proof fn lemma_endpoint_perms_wf_preserved_for_lock_op_forall()
     ensures
         forall|pre: EndpointLockedMap, post: EndpointLockedMap, changed: RwLockEndpointPtr|

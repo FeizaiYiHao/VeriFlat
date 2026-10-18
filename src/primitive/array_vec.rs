@@ -97,40 +97,6 @@ impl<T: Copy, const N: usize> ArrayVec<T, N> {
         self.len = self.len + 1;
     }
 
-    pub fn pop(&mut self) -> (ret: T)
-        requires
-            old(self).wf(),
-            old(self).len() > 0,
-        ensures
-            final(self).wf(),
-            final(self).len() == old(self).len() - 1,
-            ret == old(self).view().spec_index(old(self).len() - 1),
-            final(self).view() =~= old(self).view().drop_last(),
-    {
-        let index = self.len() - 1;
-        let ret = *self.data.get(index);
-        self.len = self.len - 1;
-        ret
-    }
-
-    pub fn pop_unique(&mut self) -> (ret: &T)
-        requires
-            old(self).wf(),
-            old(self).view().len() > 0,
-            old(self).view().no_duplicates(),
-        ensures
-            final(self).wf(),
-            final(self).view().len() == old(self).view().len() - 1,
-            ret == old(self).view().spec_index(old(self).len() - 1),
-            final(self).view() =~= old(self).view().drop_last(),
-            final(self).view().no_duplicates(),
-    {
-        let index = self.len() - 1;
-        let ret = self.data.get(index);
-        self.len = self.len - 1;
-        ret
-    }
-
     pub fn set(&mut self, index: usize, value: T)
         requires
             old(self).wf(),

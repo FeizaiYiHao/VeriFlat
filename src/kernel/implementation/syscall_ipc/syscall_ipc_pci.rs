@@ -63,6 +63,7 @@ verus! {
             old(krnl).thr_mp.dom().contains(current_thread_ptr),
             old(krnl).thr_mp.spec_index(current_thread_ptr).being_killed() == false,
             !(old(krnl).thr_mp.spec_index(current_thread_ptr).view().state is IPC_ENDPOINT_TRANSIT),
+            !(old(krnl).thr_mp.spec_index(current_thread_ptr).view().state is KILLED),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is None,
@@ -73,6 +74,7 @@ verus! {
             old(krnl).thr_mp.dom().contains(peer_thread_ptr),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).being_killed() == false,
             !(old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is IPC_ENDPOINT_TRANSIT),
+            !(old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is KILLED),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
@@ -332,24 +334,24 @@ verus! {
         proof {
             process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, peer_thread_ptr);
             assert({
-                let pre = kernel_k_to_kernel_u(steps.snapshot_k());
-                &&& pre.cpu_array[cpu_id as int].current_thread == Some(current_thread_ptr)
-                &&& pre.thread_map[current_thread_ptr].endpoint_descriptors[endpoint_index as int] == Some(endpoint_ptr)
-                &&& pre.endpoint_map[endpoint_ptr].queue[0] == peer_thread_ptr
-                &&& pre.thread_map[current_thread_ptr].owning_proc == process_ptr
-                &&& pre.thread_map[peer_thread_ptr].owning_proc == peer_proc
-                &&& pre.thread_map[peer_thread_ptr].state == old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state
-                &&& pre.thread_map[peer_thread_ptr].ipc_payload == old(krnl).thr_mp.spec_index(peer_thread_ptr).view().ipc_payload
-                &&& pre.process_map[sender_proc].owned_pci_functions == old(krnl).prc_mp.spec_index(sender_proc).view_ghost().owned_pci_functions.view()
+                let pre = steps.snapshot_k();
+                &&& pre.thr_mp.dom().contains(current_thread_ptr) && pre.thr_mp.dom().contains(peer_thread_ptr) && pre.ep_mp.dom().contains(endpoint_ptr)
+                &&& pre.cpu_arr.spec_index(cpu_id).value.view().view().current_thread == Some(current_thread_ptr)
+                &&& pre.thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.view()[endpoint_index as int] == Some(endpoint_ptr)
+                &&& pre.ep_mp.spec_index(endpoint_ptr).view().queue.view()[0] == peer_thread_ptr
+                &&& pre.thr_mp.spec_index(current_thread_ptr).view().owning_proc == process_ptr
+                &&& pre.thr_mp.spec_index(peer_thread_ptr).view().owning_proc == peer_proc
+                &&& pre.thr_mp.spec_index(peer_thread_ptr).view().state == old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state
+                &&& pre.thr_mp.spec_index(peer_thread_ptr).view().ipc_payload == old(krnl).thr_mp.spec_index(peer_thread_ptr).view().ipc_payload
+                &&& pre.prc_mp.dom().contains(sender_proc)
+                &&& pre.prc_mp.spec_index(sender_proc).view_ghost().owned_pci_functions.view() == old(krnl).prc_mp.spec_index(sender_proc).view_ghost().owned_pci_functions.view()
             }) by {
                 reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
                 reveal(kernel_thread_nonlock_fields_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged);
-                kernel_cpu_thread_projection_at(&steps.snapshot_k(), cpu_id, process_ptr, current_thread_ptr, Some(endpoint_ptr));
-                kernel_cpu_thread_projection_at(&steps.snapshot_k(), cpu_id, process_ptr, peer_thread_ptr, None);
-                kernel_process_projection_at(&steps.snapshot_k(), sender_proc);
             };
         }
         if sender_proc == receiver_proc {
+            proof { ipc_rendezvous_result_from_k(&steps.snapshot_k(), cpu_id, endpoint_index, waiting_state, payload, current_thread_ptr, endpoint_ptr, peer_thread_ptr, RetValueType::ErrorIpcSameProcess); }
             return ipc_schedule_waiting_peer_and_finish(
                 krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr,
                 Ghost(Some((endpoint_index, waiting_state, payload))), peer_thread_ptr, RetValueType::ErrorIpcSameProcess, Tracked(cpu_lock_perm),
@@ -363,11 +365,8 @@ verus! {
         let result = if transferred { RetValueType::Success } else { RetValueType::ErrorIpcPciOwnerMismatch };
         let ghost pci_transfer = if transferred { Some((bdf, sender_proc, receiver_proc)) } else { None };
         proof {
-            assert({
-                let pre = kernel_k_to_kernel_u(steps.snapshot_k());
-                &&& result == ipc_rendezvous_result(pre, cpu_id, endpoint_index, waiting_state, payload)
-                &&& pci_transfer == ipc_pci_transfer(pre, cpu_id, endpoint_index, waiting_state, payload, result)
-            }) by { reveal(process_pci_function_ownership_wf); };
+            assert(transferred == old(krnl).prc_mp.spec_index(sender_proc).view_ghost().owned_pci_functions.view().contains(bdf)) by { reveal(process_pci_function_ownership_wf); };
+            ipc_rendezvous_result_from_k(&steps.snapshot_k(), cpu_id, endpoint_index, waiting_state, payload, current_thread_ptr, endpoint_ptr, peer_thread_ptr, result);
         }
         let wake_cpu = if peer_container == current_container { cpu_id } else { peer_last_cpu };
         proof { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, peer_thread_ptr); container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, current_thread_ptr); container_perms_wf_at(krnl.ctn_mp, peer_container); }

@@ -29,6 +29,8 @@ use super::syscall_mmap_4k_spec::mmap_4k_progress_after_leaf;
             va_4k_valid(va),
             old(krnl).thr_mp.dom().contains(thread_ptr),
             old(krnl).thr_mp.spec_index(thread_ptr).being_killed() == false,
+            old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() != Some(SyscallProgress::ThreadExitZombie),
+            !thread_is_dangling(old(krnl).thr_mp.spec_index(thread_ptr)),
             old(krnl).pt_mp.dom().contains(pagetable_ptr),
             old(krnl).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_va2index(va).0,
             pei_valid(spec_va2index(va).0),
@@ -77,6 +79,7 @@ use super::syscall_mmap_4k_spec::mmap_4k_progress_after_leaf;
             final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().free_list_node_storage == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().free_list_node_storage,
             final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().free_list == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().free_list,
             final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == false,
+            !thread_is_dangling(final(krnl).thr_mp.spec_index(thread_ptr)),
             final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread {
                 temp_alloc_cache_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k,
                 quota_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k,
@@ -95,7 +98,6 @@ use super::syscall_mmap_4k_spec::mmap_4k_progress_after_leaf;
             final(krnl).pg_arr.entries_unchanged_except(&old(krnl).pg_arr, page_ptr2page_index(page_ptr)),
             final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, thread_ptr),
             *final(krnl) == (KernelK { pt_mp: final(krnl).pt_mp, pg_arr: final(krnl).pg_arr, thr_mp: final(krnl).thr_mp, ..*old(krnl) }),
-            kernel_k_to_nonlock_kernel_u(*final(krnl)) != kernel_k_to_nonlock_kernel_u(*old(krnl)),
             final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == PageState::Mapped4k,
             final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().perm_4k.view() == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().perm_4k.view(),
             final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().mappings() == Set::empty().insert((pagetable_ptr, va)),
@@ -110,10 +112,6 @@ use super::syscall_mmap_4k_spec::mmap_4k_progress_after_leaf;
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l4(spec_va2index(va).0) == old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l4(spec_va2index(va).0),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l3(spec_va2index(va).0, spec_va2index(va).1) == old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l3(spec_va2index(va).0, spec_va2index(va).1),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l2(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2) == old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l2(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2),
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
-                #![trigger final(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l2(l4i, l3i, l2i)]
-                final(krnl).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
-                    ==> final(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l2(l4i, l3i, l2i) == old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l2(l4i, l3i, l2i),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().page_closure() == old(krnl).pt_mp.spec_index(pagetable_ptr).view().page_closure(),
     {
         let page_index = page_ptr2page_index(page_ptr);
@@ -172,12 +170,13 @@ use super::syscall_mmap_4k_spec::mmap_4k_progress_after_leaf;
                 assert(hugepage_1g_wf(krnl.pg_arr)) by { hugepage_1g_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr); };
                 assert(page_pagetable_wf(krnl.pt_mp, krnl.pg_arr)) by { page_pagetable_wf_preserved_for_4k_mapping_insert(old(krnl).pt_mp, krnl.pt_mp, old(krnl).pg_arr, krnl.pg_arr, pagetable_ptr, page_ptr, va); };
                 assert(container_process_page_pagetable_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr)) by {
-                    reveal(process_thread_wf); reveal(process_pagetable_match);
+                    process_thread_wf_at(old(krnl).prc_mp, old(krnl).thr_mp, thread_ptr); reveal(process_pagetable_match);
                     container_process_page_pagetable_wf_preserved_for_4k_mapping_insert(krnl.ctn_mp, krnl.prc_mp, old(krnl).pt_mp, krnl.pt_mp, old(krnl).pg_arr, krnl.pg_arr, pagetable_ptr, page_ptr, va);
                 };
                 assert(page_iommu_table_wf(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); };
                 assert(container_pages_wf(krnl.pg_arr, krnl.ctn_mp)) by { container_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).ctn_mp, krnl.ctn_mp); };
                 assert(process_pages_wf(krnl.pg_arr, krnl.prc_mp)) by { process_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).prc_mp, krnl.prc_mp); };
+                assert(process_kernel_pages_owner_wf(krnl.pg_arr, krnl.prc_mp, krnl.pt_mp, krnl.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(*old(krnl), *krnl); };
                 assert(pagetable_pages_wf(krnl.pt_mp, krnl.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(old(krnl).pt_mp, krnl.pt_mp, old(krnl).pg_arr, krnl.pg_arr); };
                 assert(pagetable_pages_wf(krnl.it_mp, krnl.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(old(krnl).it_mp, krnl.it_mp, old(krnl).pg_arr, krnl.pg_arr); };
                 assert(thread_pages_wf(krnl.thr_mp, krnl.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(old(krnl).thr_mp, krnl.thr_mp, old(krnl).pg_arr, krnl.pg_arr); };
@@ -190,6 +189,12 @@ use super::syscall_mmap_4k_spec::mmap_4k_progress_after_leaf;
                 };
                 assert(endpoint_pages_wf(krnl.ep_mp, krnl.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(old(krnl).ep_mp, krnl.ep_mp, old(krnl).pg_arr, krnl.pg_arr); };
                 assert(process_pagetable_match(krnl.prc_mp, krnl.pt_mp)) by { reveal(process_pagetable_match); };
+                assert(pagetable_no_huge_leaf_wf(krnl.pt_mp, krnl.it_mp)) by { reveal(pagetable_no_huge_leaf_wf); };
+                assert(process_emptied_tables_wf(krnl.prc_mp, krnl.pt_mp, krnl.it_mp)) by {
+                    reveal(process_emptied_tables_wf); reveal(process_pagetable_match); process_thread_wf_at(old(krnl).prc_mp, old(krnl).thr_mp, thread_ptr);
+                    process_perms_wf_at(old(krnl).prc_mp, old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc);
+                    process_emptied_threads_wf_at(old(krnl).prc_mp, old(krnl).thr_mp, old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc, thread_ptr);
+                };
                 assert(container_process_allocator_quota_wf(krnl.ctn_mp, krnl.prc_mp, krnl.thr_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by {
                     container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(krnl.ctn_mp, krnl.prc_mp, old(krnl).thr_mp, krnl.thr_mp, krnl.allc_4k_mp);
                     container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(krnl.ctn_mp, krnl.prc_mp, old(krnl).thr_mp, krnl.thr_mp, krnl.allc_2m_mp);
@@ -208,21 +213,11 @@ use super::syscall_mmap_4k_spec::mmap_4k_progress_after_leaf;
                 assert(container_thread_wf(krnl.ctn_mp, krnl.thr_mp)) by { container_thread_wf_preserved_for_thread_process_management_fields(krnl.ctn_mp, old(krnl).thr_mp, krnl.thr_mp); };
                 assert(process_thread_wf(krnl.prc_mp, krnl.thr_mp)) by { process_thread_wf_preserved_for_thread_process_management_fields(krnl.prc_mp, old(krnl).thr_mp, krnl.thr_mp); };
                 assert(thread_cpu_wf(krnl.thr_mp, krnl.cpu_arr)) by { thread_cpu_wf_preserved_for_thread_process_management_fields(old(krnl).thr_mp, krnl.thr_mp, krnl.cpu_arr); };
+                assert(process_emptied_threads_wf(krnl.prc_mp, krnl.thr_mp)) by { reveal(process_emptied_threads_wf); };
             };
             assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
             assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)) by { tlb_wf_spec_preserved_for_4k_mapping_insert(krnl.cpu_tlb, krnl.cpu_arr, old(krnl).pt_mp, krnl.pt_mp, pagetable_ptr, va, krnl.pcid_needflush); };
             held_pagetables_unchanged_except_for_unchanged_except(old(krnl).pt_mp, krnl.pt_mp, old(lctx), pagetable_ptr);
-            assert({
-                let process_ptr = krnl.thr_mp.spec_index(thread_ptr).view().owning_proc;
-                &&& kernel_k_to_nonlock_kernel_u(*old(krnl)).process_map.dom().contains(process_ptr)
-                &&& kernel_k_to_nonlock_kernel_u(*krnl).process_map.dom().contains(process_ptr)
-                &&& !kernel_k_to_nonlock_kernel_u(*old(krnl)).process_map.spec_index(process_ptr).pagetable.unwrap().mapping_4k.dom().contains(va)
-                &&& kernel_k_to_nonlock_kernel_u(*krnl).process_map.spec_index(process_ptr).pagetable.unwrap().mapping_4k.dom().contains(va)
-            }) by {
-                reveal(process_thread_wf);
-                kernel_process_nonlock_projection_at(old(krnl), krnl.thr_mp.spec_index(thread_ptr).view().owning_proc);
-                kernel_process_nonlock_projection_at(&*krnl, krnl.thr_mp.spec_index(thread_ptr).view().owning_proc);
-            };
         }
     }
 }

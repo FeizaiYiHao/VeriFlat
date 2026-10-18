@@ -89,6 +89,7 @@ pub(super) fn set_4k_page_staging_next(krnl: &mut KernelK, Tracked(lctx): Tracke
         assert(page_iommu_table_wf(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr)) by { page_iommu_table_wf_preserved_for_nonmapped_page_change(krnl.ctn_mp, krnl.prc_mp, old(krnl).it_mp, krnl.it_mp, old(krnl).pg_arr, krnl.pg_arr, page_ptr2page_index(page_ptr)); };
         assert(container_pages_wf(krnl.pg_arr, krnl.ctn_mp)) by { container_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).ctn_mp, krnl.ctn_mp); };
         assert(process_pages_wf(krnl.pg_arr, krnl.prc_mp)) by { process_pages_wf_preserved_for_page_state_eq(old(krnl).pg_arr, krnl.pg_arr, old(krnl).prc_mp, krnl.prc_mp); };
+        assert(process_kernel_pages_owner_wf(krnl.pg_arr, krnl.prc_mp, krnl.pt_mp, krnl.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(*old(krnl), *krnl); };
         assert(pagetable_pages_wf(krnl.pt_mp, krnl.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(old(krnl).pt_mp, krnl.pt_mp, old(krnl).pg_arr, krnl.pg_arr); };
         assert(pagetable_pages_wf(krnl.it_mp, krnl.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(old(krnl).it_mp, krnl.it_mp, old(krnl).pg_arr, krnl.pg_arr); };
         assert(thread_pages_wf(krnl.thr_mp, krnl.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(old(krnl).thr_mp, krnl.thr_mp, old(krnl).pg_arr, krnl.pg_arr); };
@@ -140,9 +141,6 @@ pub(super) fn cleanup_published_4k_page_chain(
         final(lctx).kernel_view_locking_state() is Release,
         final(lctx).thread_id() == old(lctx).thread_id(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        final(lctx).page_lock_map().submap_of(old(lctx).page_lock_map()),
-        final(lctx).page_lock_map().remove_keys(page_ptrs_to_indices(page_ptrs)) == old(lctx).page_lock_map().remove_keys(page_ptrs_to_indices(page_ptrs)),
-        final(lctx).page_lock_map().dom().disjoint(page_ptrs_to_indices(page_ptrs)),
         final(lctx).page_lock_map() == old(lctx).page_lock_map().remove_keys(page_ptrs_to_indices(page_ptrs)),
         held_pages_unchanged_except(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx), page_ptrs_to_indices(page_ptrs)),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
@@ -219,27 +217,7 @@ pub(super) fn cleanup_published_4k_page_chain(
             lctx.allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),
             lctx.allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
             lctx.allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
-            krnl.pt_mp == old(krnl).pt_mp,
-            krnl.it_mp == old(krnl).it_mp,
-            krnl.irt == old(krnl).irt,
-            krnl.cpu_arr == old(krnl).cpu_arr,
-            krnl.pcid_needflush == old(krnl).pcid_needflush,
-            krnl.cpu_published == old(krnl).cpu_published,
-            krnl.ctn_mp == old(krnl).ctn_mp,
-            krnl.sched_mp == old(krnl).sched_mp,
-            krnl.pcid_allc_mp == old(krnl).pcid_allc_mp,
-            krnl.cpu_set_mp == old(krnl).cpu_set_mp,
-            krnl.prc_mp == old(krnl).prc_mp,
-            krnl.thr_mp == old(krnl).thr_mp,
-            krnl.ep_mp == old(krnl).ep_mp,
-            krnl.allc_4k_mp == old(krnl).allc_4k_mp,
-            krnl.allc_2m_mp == old(krnl).allc_2m_mp,
-            krnl.allc_1g_mp == old(krnl).allc_1g_mp,
-            krnl.cpu_offline_mp == old(krnl).cpu_offline_mp,
-            krnl.cpu_tlb == old(krnl).cpu_tlb,
-            krnl.iommu_tlb == old(krnl).iommu_tlb,
-            krnl.rt_ctn == old(krnl).rt_ctn,
-            krnl.dflt_pt == old(krnl).dflt_pt,
+            *krnl == (KernelK { pg_arr: krnl.pg_arr, ..*old(krnl) }),
             forall|page_index: PageIndex|
                 #![trigger krnl.pg_arr.spec_index(page_index)]
                 #![trigger old(krnl).pg_arr.spec_index(page_index)]
@@ -356,6 +334,7 @@ pub(super) fn allocate_staged_4k_page_chain(
         count == 0 ==> final(steps).view() == old(steps).view() && *final(krnl) == *old(krnl),
         count > 0 ==> final(steps).view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*old(krnl))),
         old(steps).snapshot_k() == *old(krnl) || count > 0 ==> final(steps).snapshot_k() == *final(krnl),
+        old(steps).snapshot_k() == *old(krnl) ==> final(steps).view() == old(steps).view(),
         forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view())]
             old(lctx).pagetable_lock_map().dom().contains(pt) && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
                 ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
@@ -432,7 +411,6 @@ pub(super) fn allocate_staged_4k_page_chain(
         final(krnl).iommu_tlb.view() == final(steps).snapshot_k().iommu_tlb.view(),
         kernel_container_nonlock_fields_and_quotas_unchanged(&final(steps).snapshot_k(), final(krnl)),
 {
-    assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl));
     proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
     let mut head = STAGED_4K_PAGE_CHAIN_END;
     let ghost mut page_ptrs = Seq::<PagePtr>::empty();
@@ -453,7 +431,7 @@ pub(super) fn allocate_staged_4k_page_chain(
             &&& held_iommu_tables_unchanged(old(krnl).it_mp, krnl.it_mp, old(lctx))
             &&& held_cpus_unchanged(old(krnl).cpu_arr, krnl.cpu_arr, old(lctx))
         }) by { held_kernel_objects_unchanged_reflexive(old(krnl), old(lctx)); };
-        assert(krnl.ctn_mp.dom().contains(container_ptr)) by { reveal(container_thread_wf); };
+        assert(krnl.ctn_mp.dom().contains(container_ptr)) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); };
         assert(krnl.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view() == old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().union(page_ptrs.to_set())) by {
             vstd::set::axiom_set_ext_equal(krnl.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view(), old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().union(page_ptrs.to_set()));
         };
@@ -464,6 +442,7 @@ pub(super) fn allocate_staged_4k_page_chain(
             i == 0 ==> steps.view() == old(steps).view() && *krnl == *old(krnl) && steps.snapshot_u() == old(steps).snapshot_u(),
             i > 0 ==> steps.view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*old(krnl))),
             i > 0 || old(steps).snapshot_k() == *old(krnl) ==> steps.snapshot_k() == *krnl,
+            old(steps).snapshot_k() == *old(krnl) ==> steps.view() == old(steps).view(),
             forall|pt: RwLockPageTableRoot|
                 #![trigger old(lctx).pagetable_lock_map().dom().contains(pt)]
                 old(lctx).pagetable_lock_map().dom().contains(pt) ==> old(krnl).pt_mp.dom().contains(pt),
@@ -548,9 +527,6 @@ pub(super) fn allocate_staged_4k_page_chain(
             0 <= i <= count,
         decreases count - i,
     {
-        proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-        proof { assert(kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; }; }
         let (page_ptr, Tracked(page_lock_perm)) = allocate_free_4k_page(krnl, thread_ptr, container_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
         proof {
             assert(lctx.page_lock_map().dom() == old(lctx).page_lock_map().dom().union(page_ptrs_to_indices(page_ptrs.push(page_ptr)))) by {
@@ -595,8 +571,7 @@ pub(super) fn allocate_staged_4k_page_chain(
             page_ptrs = page_ptrs.push(page_ptr);
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-            use_type_invariant(&*steps);
-            assert(steps.snapshot_u() == kernel_k_to_kernel_u(*krnl)) by { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl); };
+            kernel_snapshot_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&*steps, &*krnl);
             steps.rebase_snapshot_k_if_unchanged(&*krnl);
         }
         head = page_ptr;

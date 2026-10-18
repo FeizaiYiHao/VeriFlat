@@ -3,6 +3,61 @@ use crate::*;
 use super::syscall_mmap_4k_spec::*;
 
 verus! {
+/// The entry state's K facts on the running thread, its process, and its pagetable decide the mmap result `ret`.
+pub(super) proof fn mmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAddr, range: usize, ret: RetValueType)
+    requires
+        krnl.inv(),
+        index_valid(NUM_CPUS, cpu_id),
+        !(range == 0 || range > usize::MAX / 4096 || !spec_va_4k_valid(va) || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range)),
+        {
+            let cpu = krnl.cpu_arr.spec_index(cpu_id).value;
+            let thread_ptr = cpu.view().view().current_thread->Some_0;
+            let thread = krnl.thr_mp.spec_index(thread_ptr);
+            let process = krnl.prc_mp.spec_index(thread.view().owning_proc);
+            let table = krnl.pt_mp.spec_index(process.view().pagetable).view();
+            let va_range = mmap_4k_syscall_va_range(va, range);
+            let clear = table.spec_mapping_4k_range_empty(spec_va2index(va), spec_va2index(va_range.view()[range - 1])) && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> {
+                let idx = spec_va2index(va_range.view()[j]);
+                &&& !table.mapping_1g().dom().contains(spec_index2va((idx.0, idx.1, 0, 0)))
+                &&& !table.mapping_2m().dom().contains(spec_index2va((idx.0, idx.1, idx.2, 0)))
+                &&& !table.mapping_4k().dom().contains(va_range.view()[j])
+            };
+            &&& ret is CpuIdle ==> !(cpu.view().view().state is Running) || cpu.being_killed()
+            &&& !(ret is CpuIdle) ==> cpu.view().view().state is Running && !cpu.being_killed() && cpu.view().view().current_thread is Some
+            &&& !(ret is CpuIdle) ==> krnl.thr_mp.dom().contains(thread_ptr) && krnl.prc_mp.dom().contains(thread.view().owning_proc)
+            &&& ret is ErrorThreadKilled ==> thread.being_killed()
+            &&& ret is ErrorNoQuota ==> !thread.being_killed() && thread.view().quota_4k < 4 * range
+            &&& (ret is Success || ret is Error || ret is ErrorVaInUse) ==> !thread.being_killed() && thread.view().quota_4k >= 4 * range && krnl.pt_mp.dom().contains(process.view().pagetable)
+            &&& (ret is Success || ret is ErrorVaInUse) ==> !process.view().zombie && table.leaves_present() && spec_v2l4index(va) >= table.kernel_l4_end
+            &&& ret is Error ==> spec_v2l4index(va) < table.kernel_l4_end
+            &&& ret is Success ==> clear
+            &&& ret is ErrorVaInUse ==> !clear
+            &&& ret is CpuIdle || ret is ErrorThreadKilled || ret is ErrorNoQuota || ret is Error || ret is Success || ret is ErrorVaInUse
+        },
+    ensures
+        mmap_4k_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, va, range) == ret,
+{
+    let c = krnl.cpu_arr.spec_index(cpu_id).value.view().view();
+    let thread = krnl.thr_mp.spec_index(c.current_thread->Some_0).view();
+    kernel_cpu_projection_at(krnl, cpu_id);
+    if !(ret is CpuIdle) {
+        kernel_cpu_thread_projection_at(krnl, cpu_id, thread.owning_proc, c.current_thread->Some_0, None);
+        if ret is Success || ret is Error || ret is ErrorVaInUse { kernel_l4_end_projection_at(krnl, krnl.prc_mp.spec_index(thread.owning_proc).view().pagetable); }
+        if ret is Success || ret is ErrorVaInUse { kernel_pagetable_mappings_projection_at(krnl, thread.owning_proc); }
+    }
+}
+
+/// The entry state's running thread's container is in the user view, as the enter step requires.
+pub(super) proof fn mmap_4k_enter_step_pre_from_k(krnl: &KernelK, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr)
+    requires
+        index_valid(NUM_CPUS, cpu_id),
+        krnl.prc_mp.dom().contains(process_ptr),
+        krnl.thr_mp.dom().contains(thread_ptr),
+        krnl.ctn_mp.dom().contains(krnl.thr_mp.spec_index(thread_ptr).view().owning_container),
+    ensures
+        kernel_k_to_kernel_u(*krnl).container_map.dom().contains(kernel_k_to_kernel_u(*krnl).thread_map.spec_index(thread_ptr).owning_container),
+{ kernel_cpu_thread_projection_at(krnl, cpu_id, process_ptr, thread_ptr, None); }
+
 /// Write-locking the caller's context and recording the first page is the enter step on `pre`/`post`.
 pub(super) proof fn mmap_4k_enter_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, range: VaRange4K)
     requires

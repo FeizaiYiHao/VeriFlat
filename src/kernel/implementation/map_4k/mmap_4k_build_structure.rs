@@ -6,6 +6,7 @@ use super::mmap_4k_install_one::install_one_mmap_4k_directory_page;
 use super::mmap_4k_build_structure_spec::*;
 
 verus! {
+    #[verifier::rlimit(12)]
     pub fn mmap_4k_build_one_structure(
         krnl: &mut KernelK, va: VAddr, alloc_ptr_4k: RwLockPageAllocatorPtr, quota_thread_ptr: RwLockThreadPtr,
         process_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr, cpu_id: CpuId, pagetable_ptr: RwLockPageTableRoot,
@@ -28,6 +29,7 @@ verus! {
             old(krnl).thr_mp.dom().contains(quota_thread_ptr),
             typed_lock_map_contains_mode(old(lctx).thread_lock_map(), quota_thread_ptr, TypedLockMode::Write),
             old(krnl).thr_mp.spec_index(quota_thread_ptr).being_killed() == false,
+            !thread_is_dangling(old(krnl).thr_mp.spec_index(quota_thread_ptr)),
             transfer_source is None ==> old(krnl).thr_mp.spec_index(quota_thread_ptr).view().owning_container == container_ptr,
             transfer_source is Some ==> {
                 let source = transfer_source->Some_0;
@@ -115,6 +117,7 @@ verus! {
             final(krnl).thr_mp.dom().contains(quota_thread_ptr),
             typed_lock_map_contains_mode(final(lctx).thread_lock_map(), quota_thread_ptr, TypedLockMode::Write),
             final(krnl).thr_mp.spec_index(quota_thread_ptr).being_killed() == false,
+            !thread_is_dangling(final(krnl).thr_mp.spec_index(quota_thread_ptr)),
             mmap_4k_quota_thread_container_compatible(final(krnl), final(lctx), quota_thread_ptr, container_ptr),
             ((final(krnl).thr_mp.spec_index(quota_thread_ptr).view().owning_proc == process_ptr && final(krnl).thr_mp.spec_index(quota_thread_ptr).view().proc_pagetable_ptr == pagetable_ptr)
                 || (typed_lock_map_contains_mode(final(lctx).process_lock_map(), process_ptr, TypedLockMode::Write) && !final(krnl).prc_mp.spec_index(process_ptr).view().zombie)),
@@ -236,9 +239,15 @@ verus! {
         proof {
             assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable_ptr).inv()) by { reveal(pagetable_perms_wf); };
         }
-        let l4_present = {
+        let (l4_present, l3_present, l2_present) = {
             let pagetable = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
-            pagetable.get_entry_l4(indices.0).is_some()
+            match pagetable.get_entry_l4(indices.0) {
+                None => (false, false, false),
+                Some(l4_entry) => match pagetable.get_entry_l3(indices.0, indices.1, &l4_entry) {
+                    None => (true, false, false),
+                    Some(l3_entry) => (true, true, pagetable.get_entry_l2(indices.0, indices.1, indices.2, &l3_entry).is_some()),
+                },
+            }
         };
         if !l4_present {
             install_one_mmap_4k_directory_page(
@@ -247,15 +256,8 @@ verus! {
                 Tracked(pagetable_lock_perm), Tracked(transfer_source_lock_perm), Tracked(transfer_target_lock_perm),
             );
         }
-        assert(krnl.pt_mp.perms_wf()) by { pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); };
-        let l3_present = {
-            let pagetable = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
-            let l4_entry = pagetable.get_entry_l4(indices.0).unwrap();
-            pagetable.get_entry_l3(indices.0, indices.1, &l4_entry).is_some()
-        };
         let ghost before_l3 = *krnl;
         let ghost lctx_l3 = *lctx;
-        proof { use_type_invariant(&*steps); }
         if !l3_present {
             assert(thread_effective_quota_4k(krnl.thr_mp.spec_index(quota_thread_ptr)) >= 1) by { reveal(thread_perms_wf); };
             install_one_mmap_4k_directory_page(
@@ -264,16 +266,8 @@ verus! {
                 Tracked(pagetable_lock_perm), Tracked(transfer_source_lock_perm), Tracked(transfer_target_lock_perm),
             );
         }
-        assert(krnl.pt_mp.perms_wf()) by { pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); };
-        let l2_present = {
-            let pagetable = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
-            let l4_entry = pagetable.get_entry_l4(indices.0).unwrap();
-            let l3_entry = pagetable.get_entry_l3(indices.0, indices.1, &l4_entry).unwrap();
-            pagetable.get_entry_l2(indices.0, indices.1, indices.2, &l3_entry).is_some()
-        };
         let ghost before_l2 = *krnl;
         let ghost lctx_l2 = *lctx;
-        proof { use_type_invariant(&*steps); }
         if !l2_present {
             install_one_mmap_4k_directory_page(
                 krnl, MissingPageTableLevel::L2, alloc_ptr_4k, quota_thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr,

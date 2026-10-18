@@ -14,14 +14,17 @@ verus! {
         &&& forall|va: VAddr|
             #![trigger pagetable.mapping_4k().dom().contains(va)]
             #![trigger cpu_tlb.tlb_4k().spec_index(va)]
+            #![trigger cpu_tlb.tlb_4k().dom().contains(va)]
             cpu_tlb.tlb_4k().dom().contains(va) ==> pagetable.mapping_4k().dom().contains(va) && spec_tlb_entry_equal_to_map_entry(cpu_tlb.tlb_4k().spec_index(va), pagetable.mapping_4k().spec_index(va))
         &&& forall|va: VAddr|
             #![trigger pagetable.mapping_2m().dom().contains(va)]
             #![trigger cpu_tlb.tlb_2m().spec_index(va)]
+            #![trigger cpu_tlb.tlb_2m().dom().contains(va)]
             cpu_tlb.tlb_2m().dom().contains(va) ==> pagetable.mapping_2m().dom().contains(va) && spec_tlb_entry_equal_to_map_entry(cpu_tlb.tlb_2m().spec_index(va), pagetable.mapping_2m().spec_index(va))
         &&& forall|va: VAddr|
             #![trigger pagetable.mapping_1g().dom().contains(va)]
             #![trigger cpu_tlb.tlb_1g().spec_index(va)]
+            #![trigger cpu_tlb.tlb_1g().dom().contains(va)]
             cpu_tlb.tlb_1g().dom().contains(va) ==> pagetable.mapping_1g().dom().contains(va) && spec_tlb_entry_equal_to_map_entry(cpu_tlb.tlb_1g().spec_index(va), pagetable.mapping_1g().spec_index(va))
     }
 
@@ -57,4 +60,13 @@ verus! {
                 &&& !pagetable_map.spec_index(dirty_entry.unwrap().pagetable_ptr).wlocked() ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(cpu_tlb.spec_index((cpu_id, pcid)), pagetable_map.spec_index(dirty_entry.unwrap().pagetable_ptr).view())
             }
     }
+
+    /// A page table of `k` whose leaves are all present, even while write-locked, keeps every TLB entry backed by it present.
+    pub proof fn tlb_wf_pagetable_entries_present_at(k: KernelK, pagetable: RwLockPageTableRoot)
+        requires
+            tlb_wf_spec(k.cpu_tlb, k.pt_mp, k.cpu_arr, k.pcid_needflush),
+            k.pt_mp.dom().contains(pagetable),
+            k.pt_mp.spec_index(pagetable).view().leaves_present(),
+        ensures pagetable_tlb_entries_present(k.cpu_tlb, k.cpu_arr, k.pcid_needflush, pagetable, k.pt_mp.spec_index(pagetable).view()),
+    { reveal(tlb_wf_spec); }
 }

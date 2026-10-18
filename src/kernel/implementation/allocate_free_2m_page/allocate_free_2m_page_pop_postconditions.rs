@@ -36,7 +36,7 @@ pub(super) proof fn eof_pop_2m_postconditions(pre: KernelK, post: KernelK, pre_l
         post.pg_arr.spec_index(page_ptr2page_index(page)).view().view().owning_container == container,
 {
     reveal(pop_stage_2m_page_transition_framing);
-    assert(post.thr_mp.lock_id_by_key(thread) == pre.thr_mp.lock_id_by_key(thread)) by { reveal(thread_perms_wf); };
+    assert(post.thr_mp.lock_id_by_key(thread) == pre.thr_mp.lock_id_by_key(thread)) by { thread_perms_wf_at(pre.thr_mp, thread); };
     pre.thr_mp.typed_lock_map_aligned_held_in_dom(pre_lctx.thread_lock_map(), pre_lctx.thread_id());
     assert(held_pages_unchanged_except(pre.pg_arr, post.pg_arr, &pre_lctx, set![page_ptr2page_index(page)])) by { reveal(LockedArray::typed_lock_map_aligned); };
     assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post)) by {

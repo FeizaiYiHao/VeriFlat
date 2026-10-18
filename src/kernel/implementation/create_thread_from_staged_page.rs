@@ -13,7 +13,7 @@ pub fn create_thread_from_staged_page_merged(
         old(krnl).inv(),
         page_ptr_valid(page_ptr),
         old(krnl).prc_mp.dom().contains(process_ptr),
-        !old(krnl).prc_mp.spec_index(process_ptr).view().zombie,
+        old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Creating || old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Running,
         old(krnl).prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr,
         old(krnl).thr_mp.dom().contains(staging_thread_ptr),
         old(krnl).ctn_mp.dom().contains(container_ptr),
@@ -77,6 +77,7 @@ pub fn create_thread_from_staged_page_merged(
         typed_lock_map_contains_mode(final(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
         final(krnl).prc_mp.spec_index(process_ptr).being_killed() == false,
         final(krnl).prc_mp.spec_index(process_ptr).view().owned_threads.view() == old(krnl).prc_mp.spec_index(process_ptr).view().owned_threads.view().push(page_ptr),
+        final(krnl).prc_mp.spec_index(process_ptr).view().state.view() == ProcessState::Running,
         final(krnl).prc_mp.spec_index(process_ptr).view().quota_4k == old(krnl).prc_mp.spec_index(process_ptr).view().quota_4k,
         forall|p: RwLockProcessPtr|
             #![trigger final(krnl).prc_mp.spec_index(p).locking_thread()]
@@ -84,6 +85,12 @@ pub fn create_thread_from_staged_page_merged(
         forall|p: RwLockProcessPtr|
             #![trigger final(krnl).prc_mp.spec_index(p).being_killed()]
             old(krnl).prc_mp.dom().contains(p) && p != process_ptr ==> final(krnl).prc_mp.spec_index(p).being_killed() == old(krnl).prc_mp.spec_index(p).being_killed(),
+        forall|p: RwLockProcessPtr|
+            #![trigger final(krnl).prc_mp.spec_index(p).killer_info()]
+            old(krnl).prc_mp.dom().contains(p) && p != process_ptr ==> final(krnl).prc_mp.spec_index(p).killer_info() == old(krnl).prc_mp.spec_index(p).killer_info(),
+        forall|p: RwLockProcessPtr|
+            #![trigger final(krnl).prc_mp.spec_index(p).view().state]
+            old(krnl).prc_mp.dom().contains(p) && p != process_ptr ==> final(krnl).prc_mp.spec_index(p).view().state == old(krnl).prc_mp.spec_index(p).view().state,
         forall|p: RwLockProcessPtr|
             #![trigger final(krnl).prc_mp.spec_index(p).view().owned_threads]
             old(krnl).prc_mp.dom().contains(p) && p != process_ptr ==> final(krnl).prc_mp.spec_index(p).view().owned_threads == old(krnl).prc_mp.spec_index(p).view().owned_threads,
@@ -141,23 +148,12 @@ pub fn create_thread_from_staged_page_merged(
                         else { old(krnl).ctn_mp.spec_index(c).view_ghost().owned_threads.view() }
                 &&& final(krnl).ctn_mp.spec_index(c).being_killed() == old(krnl).ctn_mp.spec_index(c).being_killed()
             },
-        final(krnl).ctn_mp.spec_index(container_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(container_ptr).view_rodata(),
-        final(krnl).ctn_mp.spec_index(container_ptr).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(container_ptr).view_ghost().owned_processes,
         forall|c: RwLockContainerPtr|
             #![trigger final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes]
             old(krnl).ctn_mp.dom().contains(c) ==> final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes,
         forall|c: RwLockContainerPtr|
-            #![trigger final(krnl).ctn_mp.spec_index(c).being_killed()]
-            old(krnl).ctn_mp.dom().contains(c) ==> final(krnl).ctn_mp.spec_index(c).being_killed() == old(krnl).ctn_mp.spec_index(c).being_killed(),
-        forall|c: RwLockContainerPtr|
             #![trigger final(krnl).ctn_mp.spec_index(c).locking_thread()]
             old(krnl).ctn_mp.dom().contains(c) ==> final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread(),
-        forall|c_ptr: RwLockContainerPtr|
-            #![trigger final(krnl).ctn_mp.spec_index(c_ptr).view_ghost().subtree_set]
-            old(krnl).ctn_mp.dom().contains(c_ptr) ==> final(krnl).ctn_mp.spec_index(c_ptr).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c_ptr).view_ghost().subtree_set,
-        forall|c_ptr: RwLockContainerPtr|
-            #![trigger final(krnl).ctn_mp.spec_index(c_ptr).view_ghost().uppertree_seq]
-            old(krnl).ctn_mp.dom().contains(c_ptr) ==> final(krnl).ctn_mp.spec_index(c_ptr).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c_ptr).view_ghost().uppertree_seq,
 {
     let ghost uppers = krnl.ctn_mp.spec_index(container_ptr).view_ghost().uppertree_seq.view();
     proof {
@@ -262,7 +258,7 @@ pub open spec fn create_thread_from_staged_page_kernel_state_framing(
     &&& post.prc_mp.unchanged_except(&pre.prc_mp, process_ptr)
     &&& forall|p: RwLockProcessPtr, f: PciBdf| #![trigger post.prc_mp.spec_index(p).view_ghost().owned_pci_functions.view().contains(f)]
         pre.prc_mp.dom().contains(p) ==> post.prc_mp.spec_index(p).view_ghost().owned_pci_functions.view().contains(f) == pre.prc_mp.spec_index(p).view_ghost().owned_pci_functions.view().contains(f)
-    &&& post_process.view() == (Process { owned_threads: post_process.view().owned_threads, ..pre_process.view() })
+    &&& post_process.view() == (Process { owned_threads: post_process.view().owned_threads, state: Ghost(ProcessState::Running), ..pre_process.view() })
     &&& post_process.view().owned_threads.view() == pre_process.view().owned_threads.view().push(page_ptr)
     &&& post_process.view().owned_threads.dom() == pre_process.view().owned_threads.dom().insert(process_node_addr)
     &&& post_process.view().owned_threads.map() == pre_process.view().owned_threads.map().insert(process_node_addr, page_ptr)
@@ -272,6 +268,7 @@ pub open spec fn create_thread_from_staged_page_kernel_state_framing(
     &&& post_process.view_ghost() == pre_process.view_ghost()
     &&& post_process.locking_thread() == pre_process.locking_thread()
     &&& post_process.being_killed() == pre_process.being_killed()
+    &&& post_process.killer_info() == pre_process.killer_info()
     &&& post.thr_mp.dom() =~= pre.thr_mp.dom().insert(page_ptr)
     &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)]
         pre.thr_mp.dom().contains(t) && t != staging_thread_ptr ==> post.thr_mp.spec_index(t) == pre.thr_mp.spec_index(t)
@@ -286,6 +283,7 @@ pub open spec fn create_thread_from_staged_page_kernel_state_framing(
     &&& post_staging.view().quota_4k == pre_staging.view().quota_4k - 1
     &&& post_staging.locking_thread() == pre_staging.locking_thread()
     &&& post_staging.being_killed() == pre_staging.being_killed()
+    &&& post_staging.killer_info() == pre_staging.killer_info()
     &&& post.thr_mp.spec_index(page_ptr).is_init()
     &&& !post.thr_mp.spec_index(page_ptr).being_killed()
     &&& thread.inv()
@@ -326,6 +324,18 @@ pub open spec fn create_thread_from_staged_page_kernel_state_framing(
     &&& scheduler_shards_of(post_scheduler) == scheduler_shards_of(pre_scheduler).update(cpu_id as int, scheduler_shards_of(pre_scheduler)[cpu_id as int].push(page_ptr))
 }
 
+/// Only the owning process's thread list changes and it runs, so no process becomes emptied and every table link keeps its value.
+proof fn eof_create_thread_process_emptied_tables_wf(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr)
+    requires
+        process_emptied_tables_wf(pre.prc_mp, pre.pt_mp, pre.it_mp),
+        post.pt_mp == pre.pt_mp,
+        post.it_mp == pre.it_mp,
+        post.prc_mp.unchanged_except(&pre.prc_mp, process_ptr),
+        post.prc_mp.spec_index(process_ptr).view() == (Process { owned_threads: post.prc_mp.spec_index(process_ptr).view().owned_threads, state: Ghost(ProcessState::Running), ..pre.prc_mp.spec_index(process_ptr).view() }),
+    ensures
+        process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.it_mp),
+{ reveal(process_emptied_tables_wf); }
+
 #[verifier::spinoff_prover]
 proof fn eof_create_thread_memory_management_inv(
     pre: KernelK, post: KernelK, page_ptr: PagePtr, process_ptr: RwLockProcessPtr, staging_thread_ptr: RwLockThreadPtr,
@@ -364,13 +374,13 @@ proof fn eof_create_thread_memory_management_inv(
 {
     reveal(create_thread_from_staged_page_kernel_state_framing);
     let page_index = page_ptr2page_index(page_ptr);
-    assert(index_valid(NUM_PAGES, page_index)) by { page_ptr_valid_imply_page_index_valid(); };
     assert(allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
         allocator_4k_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.allc_4k_mp, post.allc_4k_mp);
         allocator_2m_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.allc_2m_mp, post.allc_2m_mp);
         allocator_1g_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.allc_1g_mp, post.allc_1g_mp);
     };
     assert(container_page_owner_wf(post.ctn_mp, post.pg_arr)) by { container_page_owner_wf_preserved_for_owned_pages_and_owning_container_eq(pre.ctn_mp, post.ctn_mp, pre.pg_arr, post.pg_arr); };
+    assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
     assert(hugepage_2m_wf(post.pg_arr)) by { hugepage_2m_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); };
     assert(hugepage_1g_wf(post.pg_arr)) by { hugepage_1g_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); };
     assert(page_pagetable_wf(post.pt_mp, post.pg_arr)) by { page_pagetable_wf_preserved_for_nonmapped_page_change(pre.pt_mp, post.pt_mp, pre.pg_arr, post.pg_arr, page_index); };
@@ -393,6 +403,7 @@ proof fn eof_create_thread_memory_management_inv(
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
     assert(process_pagetable_match(post.prc_mp, post.pt_mp)) by { lemma_process_pagetable_match_preserved_for_process_pagetable_fields_forall(); };
     assert(process_iommu_table_match(post.prc_mp, post.it_mp)) by { lemma_process_iommu_table_match_preserved_for_process_iommu_table_fields_forall(); };
+    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.it_mp)) by { eof_create_thread_process_emptied_tables_wf(pre, post, process_ptr); };
     assert(container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
         pre.ctn_mp.spec_index(container_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
         lemma_container_process_thread_quota_folds_insert_zero_forall(pre.rt_ctn, pre.ctn_mp, post.ctn_mp, pre.prc_mp, post.prc_mp, pre.thr_mp, post.thr_mp, container_ptr, page_ptr);
@@ -475,6 +486,9 @@ proof fn eof_create_thread_process_management_inv(
     assert(container_pcid_allocator_wf(post.ctn_mp, post.pcid_allc_mp)) by { reveal(container_pcid_allocator_wf); };
     assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { reveal(process_pcid_allocator_wf); };
     assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { reveal(container_thread_wf); pre.ctn_mp.spec_index(container_ptr).view_ghost().uppertree_seq.view().to_set_ensures(); };
+    assert(process_kill_mark_wf(post.prc_mp)) by { reveal(process_kill_mark_wf); };
+    assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
+    assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
     assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { lemma_process_cpu_wf_preserved_for_process_pagetable_fields_forall(); };
     assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { reveal(thread_cpu_wf); };
 }

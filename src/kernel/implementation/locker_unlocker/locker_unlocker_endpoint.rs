@@ -9,7 +9,7 @@ impl KernelK {
             old(self).ep_mp.dom().contains(endpoint_ptr),
             !old(lctx).endpoint_lock_map().dom().contains(endpoint_ptr),
             old(lctx).kernel_view_locking_state() is Acquire,
-            {
+            old(lctx).lock_id_acyclic(old(self).ep_mp.lock_id_by_key(endpoint_ptr)) || {
                 let cpus = old(lctx).cpu_lock_map().dom();
                 let processes = old(lctx).process_lock_map().dom();
                 &&& !cpus.is_empty()
@@ -132,7 +132,10 @@ impl KernelK {
                             }
                         }
                     }
-            },
+            } || {
+                let cpu = old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view();
+                killer_held_context(*old(self), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0)
+            } || killed_thread_reclaim_lock_context(*old(self), *old(lctx)),
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -152,6 +155,8 @@ impl KernelK {
             endpoint_perms_wf_at(old(self).ep_mp, endpoint_ptr);
             assert(old(lctx).lock_id_acyclic(old(self).ep_mp.lock_id_by_key(endpoint_ptr))) by {
                 reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
+                let cpu = old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view();
+                if killer_held_context(*old(self), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0) || killed_thread_reclaim_lock_context(*old(self), *old(lctx)) { reveal(thread_cpu_wf); }
             };
             assert(!old(self).ep_mp.spec_index(endpoint_ptr).locked_by_thread(old(lctx).thread_id())) by {
                 if old(self).ep_mp.spec_index(endpoint_ptr).locked_by_thread(old(lctx).thread_id()) {
@@ -203,7 +208,7 @@ impl KernelK {
             typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::Endpoint(endpoint_ptr)),
     {
         proof {
-            assert({ &&& old(self).ep_mp.perms_wf() &&& old(self).ep_mp.spec_index(endpoint_ptr).inv() }) by { reveal(endpoint_perms_wf); };
+            assert({ &&& old(self).ep_mp.perms_wf() &&& old(self).ep_mp.spec_index(endpoint_ptr).inv() }) by { endpoint_perms_wf_at(old(self).ep_mp, endpoint_ptr); };
             assert(old(lctx).lock_entry_contains(old(self).ep_mp.lock_id_by_key(endpoint_ptr), KernelObjId::Endpoint(endpoint_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         assert(self.ep_mp.spec_index(endpoint_ptr).wlocked_by(&*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };

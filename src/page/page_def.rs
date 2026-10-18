@@ -151,9 +151,8 @@ impl LockMajorTrait for Page {
     open spec fn lock_major_2(&self) -> LockMajorId { Self::mapped_page_lock_major() }
     open spec fn lock_major_3(&self) -> LockMajorId { Self::merged_page_lock_major() }
     open spec fn lock_major_default(&self) -> LockMajorId {
-        // TODO: Allocated4k should get a relatively high major (TBD).
-        // For now it keeps ALLOCATED_PAGE_MAJOR = 1000.
         if self.is_owned() { OWNED_PAGE_LOCK_MAJOR }
+        else if self.state is Allocated4k && self.state->Allocated4k_state is PageTable { PAGETABLE_PAGE_MAJOR }
         else { Self::allocated_page_lock_major() }
     }
     open spec fn lock_major_1_predicate(&self) -> bool { self.is_free() }
@@ -165,10 +164,6 @@ impl LockMajorTrait for Page {
 impl LockOwnerIdTrait for Page {
     open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::None }
     open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::None }
-}
-
-impl LockUserVisibilityTrait for Page {
-    open spec fn is_user_visible() -> bool { false }
 }
 
 /// `free_list` is syscall-local staging state until an owned page is published.
@@ -221,29 +216,6 @@ pub fn convert_owned_4k_to_free_global(page: &mut Page, allocator_ptr: RwLockPag
     page.state = PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::GlobalList };
     page.owning_container = owning_container;
     (node_addr, Tracked(node_perm))
-}
-
-pub fn clear_free_4k_staging_next(page: &mut Page)
-    requires
-        old(page).inv(),
-        old(page).state is Free4k,
-    ensures
-        final(page).inv(),
-        final(page).free_list == 0,
-        final(page).addr == old(page).addr,
-        final(page).state == old(page).state,
-        final(page).is_io_page == old(page).is_io_page,
-        final(page).ref_count == old(page).ref_count,
-        final(page).owning_container == old(page).owning_container,
-        final(page).mappings == old(page).mappings,
-        final(page).iommu_mappings == old(page).iommu_mappings,
-        final(page).free_list_node_storage == old(page).free_list_node_storage,
-        final(page).perm_4k == old(page).perm_4k,
-        final(page).perm_2m == old(page).perm_2m,
-        final(page).perm_1g == old(page).perm_1g,
-{
-    proof { reveal(Page::mappings_va_valid); }
-    page.free_list = 0;
 }
 
 /// Extract the 4k page perm from a page that is Free4k or Owned4k.

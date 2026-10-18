@@ -170,10 +170,6 @@ impl LockOwnerIdTrait for PcidAllocator {
     open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::Some(self.container_depth.view()) }
     open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
 }
-
-impl LockUserVisibilityTrait for PcidAllocator {
-    open spec fn is_user_visible() -> bool { true }
-}
 } // verus!
 
 const ASSERT_PCID_ALLOCATOR_PAYLOAD_SIZE: [(); PCID_MAX * core::mem::size_of::<usize>()] = [(); core::mem::size_of::<PcidAllocator>()];

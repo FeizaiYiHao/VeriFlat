@@ -96,6 +96,8 @@ pub(super) proof fn eof_page_table_relations(
         pagetable_pages_wf(post.it_mp, post.pg_arr),
         process_pagetable_match(post.prc_mp, post.pt_mp),
         process_iommu_table_match(post.prc_mp, post.it_mp),
+        pagetable_no_huge_leaf_wf(post.pt_mp, post.it_mp),
+        process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.it_mp),
 {
     reveal(create_process_from_staged_pages_kernel_state_framing);
     assert(page_pagetable_wf(post.pt_mp, post.pg_arr)) by {
@@ -108,13 +110,16 @@ pub(super) proof fn eof_page_table_relations(
     assert(pagetable_pages_wf(post.it_mp, post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.it_mp, post.it_mp, pre.pg_arr, post.pg_arr); };
     assert(process_pagetable_match(post.prc_mp, post.pt_mp)) by { reveal(process_pagetable_match); };
     assert(process_iommu_table_match(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_match); };
+    assert(pagetable_no_huge_leaf_wf(post.pt_mp, post.it_mp)) by { reveal(pagetable_no_huge_leaf_wf); };
+    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.it_mp)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_match); };
 }
 
 proof fn eof_thread_staged_pages_1g(pre: KernelK, post: KernelK, staging_thread_ptr: RwLockThreadPtr)
     requires
         thread_staged_pages_1g_wf(pre.thr_mp, pre.pg_arr),
-        post.thr_mp.unchanged_except(&pre.thr_mp, staging_thread_ptr),
-        post.thr_mp.spec_index(staging_thread_ptr).view().temp_alloc_cache_1g == pre.thr_mp.spec_index(staging_thread_ptr).view().temp_alloc_cache_1g,
+        post.thr_mp.dom() == pre.thr_mp.dom(),
+        forall|t: RwLockThreadPtr, p: PagePtr| #![trigger post.thr_mp.spec_index(t).view().temp_alloc_cache_1g.view().contains(p)]
+            pre.thr_mp.dom().contains(t) ==> post.thr_mp.spec_index(t).view().temp_alloc_cache_1g.view().contains(p) == pre.thr_mp.spec_index(t).view().temp_alloc_cache_1g.view().contains(p),
         forall|i: PageIndex| #![trigger post.pg_arr.spec_index(i)]
             index_valid(NUM_PAGES, i) && (pre.pg_arr.spec_index(i).view().view().state is Owned1g || post.pg_arr.spec_index(i).view().view().state is Owned1g)
             ==> post.pg_arr.spec_index(i).view().view().state == pre.pg_arr.spec_index(i).view().view().state,
@@ -274,90 +279,33 @@ pub(super) proof fn eof_memory_management_inv(
     eof_page_table_relations(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid);
     eof_memory_relations(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid);
     eof_allocator_quota_wf(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid);
+    eof_process_kernel_pages_owner_wf(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid);
 }
 
-pub(super) proof fn eof_process_tree_invariants_perms(
+/// The new process's object page, page-table root page, and L4 page belong to its container; every other page keeps its
+/// state, owner, and process.
+pub(super) proof fn eof_process_kernel_pages_owner_wf(
     pre: KernelK, post: KernelK, process_page_ptr: PagePtr, pagetable_page_ptr: PagePtr, l4_page_ptr: PagePtr, parent_ptr: RwLockProcessPtr,
     staging_thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, pcid_allocator_ptr: RwLockPcidAllocatorPtr, pcid: Pcid,
 )
     requires
         pre.inv(),
-        !pre.prc_mp.dom().contains(process_page_ptr),
-        pre.prc_mp.dom().contains(parent_ptr),
-        pre.prc_mp.spec_index(parent_ptr).view_rodata().view().owning_container == container_ptr,
-        pre.prc_mp.spec_index(parent_ptr).view_rodata().view().depth < usize::MAX,
-        pre.ctn_mp.dom().contains(container_ptr),
-        pre.thr_mp.dom().contains(staging_thread_ptr),
-        pre.thr_mp.spec_index(staging_thread_ptr).view().owning_container == container_ptr,
-        pre.pcid_allc_mp.dom().contains(pcid_allocator_ptr),
-        pre.ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator == pcid_allocator_ptr,
-        pre.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().pcid_is_free(pcid),
+        page_ptr_valid(process_page_ptr),
+        page_ptr_valid(pagetable_page_ptr),
+        page_ptr_valid(l4_page_ptr),
+        process_page_ptr != pagetable_page_ptr,
+        process_page_ptr != l4_page_ptr,
+        pagetable_page_ptr != l4_page_ptr,
+        pre.pg_arr.spec_index(page_ptr2page_index(process_page_ptr)).view().view().owning_container == container_ptr,
+        pre.pg_arr.spec_index(page_ptr2page_index(pagetable_page_ptr)).view().view().owning_container == container_ptr,
+        pre.pg_arr.spec_index(page_ptr2page_index(l4_page_ptr)).view().view().owning_container == container_ptr,
         create_process_from_staged_pages_kernel_state_framing(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid),
-        post.prc_mp.spec_index(process_page_ptr).inv(),
-        post.prc_mp.spec_index(parent_ptr).inv(),
-        post.ctn_mp.spec_index(container_ptr).inv(),
-        post.thr_mp.spec_index(staging_thread_ptr).inv(),
-        post.pcid_allc_mp.spec_index(pcid_allocator_ptr).inv(),
     ensures
-        container_perms_wf(post.ctn_mp),
-        thread_perms_wf(post.thr_mp),
-        pcid_allocator_perms_wf(post.pcid_allc_mp),
+        process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp),
 {
     reveal(create_process_from_staged_pages_kernel_state_framing);
-    assert(container_perms_wf(post.ctn_mp)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
-    assert(thread_perms_wf(post.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_free_quota_pending_empty_unless_wlocked); };
-    assert(pcid_allocator_perms_wf(post.pcid_allc_mp)) by { reveal(pcid_allocator_perms_wf); };
-}
-
-pub(super) proof fn eof_process_tree_invariants_tree(
-    pre: KernelK, post: KernelK, process_page_ptr: PagePtr, pagetable_page_ptr: PagePtr, l4_page_ptr: PagePtr, parent_ptr: RwLockProcessPtr,
-    staging_thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, pcid_allocator_ptr: RwLockPcidAllocatorPtr, pcid: Pcid,
-)
-    requires
-        pre.inv(),
-        !pre.prc_mp.dom().contains(process_page_ptr),
-        pre.prc_mp.dom().contains(parent_ptr),
-        pre.prc_mp.spec_index(parent_ptr).view_rodata().view().owning_container == container_ptr,
-        pre.prc_mp.spec_index(parent_ptr).view_rodata().view().depth < usize::MAX,
-        pre.ctn_mp.dom().contains(container_ptr),
-        pre.thr_mp.dom().contains(staging_thread_ptr),
-        pre.thr_mp.spec_index(staging_thread_ptr).view().owning_container == container_ptr,
-        pre.pcid_allc_mp.dom().contains(pcid_allocator_ptr),
-        pre.ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator == pcid_allocator_ptr,
-        pre.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().pcid_is_free(pcid),
-        create_process_from_staged_pages_kernel_state_framing(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid),
-        post.prc_mp.spec_index(process_page_ptr).inv(),
-        post.prc_mp.spec_index(parent_ptr).inv(),
-        post.ctn_mp.spec_index(container_ptr).inv(),
-        post.thr_mp.spec_index(staging_thread_ptr).inv(),
-        post.pcid_allc_mp.spec_index(pcid_allocator_ptr).inv(),
-    ensures
-        process_tree_fields_wf(post.prc_mp),
-        process_perms_wf(post.prc_mp),
-        container_tree_wf(post.rt_ctn, post.ctn_mp),
-        container_process_wf(post.ctn_mp, post.prc_mp),
-        per_container_process_tree_wf(post.ctn_mp, post.prc_mp),
-{
-    reveal(create_process_from_staged_pages_kernel_state_framing);
-    let ancestors = pre.prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view().push(parent_ptr);
-    let root_process = pre.ctn_mp.spec_index(container_ptr).view().root_process;
-    let process_tree_dom = pre.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view();
-    assert(process_tree_wf(root_process, process_tree_dom, pre.prc_mp)) by { reveal(container_process_wf); reveal(per_container_process_tree_wf); };
-    assert(process_tree_fields_wf(post.prc_mp)) by {
-        assert(process_tree_fields_wf(pre.prc_mp)) by { reveal(process_perms_wf); };
-        assert(!pre.prc_mp.spec_index(parent_ptr).view().children.view().contains(process_page_ptr)) by { reveal(container_process_wf); reveal(process_children_parent_wf); };
-        assert(!pre.prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view().contains(parent_ptr)) by { reveal(container_process_wf); reveal(process_uppertree_seq_wf); };
-        process_perms_wf_at(pre.prc_mp, parent_ptr); seq_push_lemma::<RwLockProcessPtr>(); seq_push_unique_lemma::<RwLockProcessPtr>();
-    };
-    assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };
-    assert(process_add_child_ensures(root_process, process_tree_dom, pre.prc_mp, post.prc_mp, parent_ptr, process_page_ptr)) by { reveal(container_process_wf); ancestors.to_set_ensures(); seq_push_lemma::<RwLockProcessPtr>(); };
-    process_add_child_preserves_tree_wf(root_process, process_tree_dom, pre.prc_mp, post.prc_mp, parent_ptr, process_page_ptr);
-    assert(container_tree_wf(post.rt_ctn, post.ctn_mp)) by { container_no_change_to_tree_fields_imply_wf(pre.rt_ctn, pre.ctn_mp, post.ctn_mp); };
-    assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
-    assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by {
-        reveal(per_container_process_tree_wf); reveal(container_process_wf); reveal(process_uppertree_seq_wf); process_no_change_to_tree_fields_imply_wf_forall();
-        ancestors.to_set_ensures();
-    };
+    page_ptr_valid_imply_page_index_valid(); page_ptr2page_index_injective();
+    reveal(process_kernel_pages_owner_wf); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match);
 }
 
 pub(super) proof fn eof_process_tree_invariants(
@@ -382,17 +330,25 @@ pub(super) proof fn eof_process_tree_invariants(
         post.ctn_mp.spec_index(container_ptr).inv(),
         post.thr_mp.spec_index(staging_thread_ptr).inv(),
         post.pcid_allc_mp.spec_index(pcid_allocator_ptr).inv(),
-    ensures
         process_perms_wf(post.prc_mp),
-        container_perms_wf(post.ctn_mp),
-        thread_perms_wf(post.thr_mp),
-        pcid_allocator_perms_wf(post.pcid_allc_mp),
+    ensures
         container_tree_wf(post.rt_ctn, post.ctn_mp),
         container_process_wf(post.ctn_mp, post.prc_mp),
         per_container_process_tree_wf(post.ctn_mp, post.prc_mp),
 {
-    eof_process_tree_invariants_perms(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid);
-    eof_process_tree_invariants_tree(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid);
+    reveal(create_process_from_staged_pages_kernel_state_framing);
+    let ancestors = pre.prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view().push(parent_ptr);
+    let root_process = pre.ctn_mp.spec_index(container_ptr).view().root_process;
+    let process_tree_dom = pre.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view();
+    assert(process_tree_wf(root_process, process_tree_dom, pre.prc_mp)) by { reveal(container_process_wf); reveal(per_container_process_tree_wf); };
+    assert(process_add_child_ensures(root_process, process_tree_dom, pre.prc_mp, post.prc_mp, parent_ptr, process_page_ptr)) by { reveal(container_process_wf); ancestors.to_set_ensures(); seq_push_lemma::<RwLockProcessPtr>(); };
+    process_add_child_preserves_tree_wf(root_process, process_tree_dom, pre.prc_mp, post.prc_mp, parent_ptr, process_page_ptr);
+    assert(container_tree_wf(post.rt_ctn, post.ctn_mp)) by { container_no_change_to_tree_fields_imply_wf(pre.rt_ctn, pre.ctn_mp, post.ctn_mp); };
+    assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
+    assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by {
+        reveal(per_container_process_tree_wf); reveal(container_process_wf); reveal(process_uppertree_seq_wf); process_no_change_to_tree_fields_imply_wf_forall();
+        ancestors.to_set_ensures();
+    };
 }
 
 /// Separate query: inside the combined process-management closure this leaf fails in the monolith.
@@ -428,6 +384,7 @@ pub(super) proof fn eof_process_management_inv(
         post.ctn_mp.spec_index(container_ptr).inv(),
         post.thr_mp.spec_index(staging_thread_ptr).inv(),
         post.pcid_allc_mp.spec_index(pcid_allocator_ptr).inv(),
+        post.subsystems_inv(),
     ensures
         post.process_management_inv(),
 {
@@ -452,8 +409,11 @@ pub(super) proof fn eof_process_management_inv(
         assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { reveal(process_pcid_allocator_wf); reveal(container_pcid_allocator_wf); };
         assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { container_thread_scheduler_wf_preserved_for_scheduled_thread_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, post.sched_mp); reveal(container_thread_wf); };
         assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { container_thread_wf_preserved_for_container_thread_link_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp); };
+        assert(process_kill_mark_wf(post.prc_mp)) by { reveal(process_kill_mark_wf); };
+        assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
         assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); };
-        assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(Seq::contains); reveal(process_empty_lists_wlocked); reveal(process_thread_wf); };
+        assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(Seq::contains); reveal(process_thread_wf); };
+        assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
         assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.cpu_arr); };
     };
 }
@@ -512,6 +472,7 @@ pub(super) proof fn eof_inv(
         post.prc_mp.spec_index(parent_ptr).being_killed() == pre.prc_mp.spec_index(parent_ptr).being_killed(),
         !post.prc_mp.spec_index(process_page_ptr).being_killed(),
         !post.prc_mp.spec_index(process_page_ptr).view().zombie,
+        post.prc_mp.spec_index(process_page_ptr).view().state.view() is Creating,
         post.prc_mp.spec_index(process_page_ptr).view_rodata().view().owning_container == container_ptr,
         post.prc_mp.spec_index(process_page_ptr).view_rodata().view().pagetable == pagetable_page_ptr,
         post.prc_mp.spec_index(process_page_ptr).view().iommu_table == None,
@@ -532,8 +493,6 @@ pub(super) proof fn eof_inv(
         post.thr_mp.spec_index(staging_thread_ptr).being_killed() == pre.thr_mp.spec_index(staging_thread_ptr).being_killed(),
         post.pcid_allc_mp.dom() == pre.pcid_allc_mp.dom(),
         post.inv(),
-        kernel_u_create_process_changed(kernel_k_to_nonlock_kernel_u(pre), kernel_k_to_nonlock_kernel_u(post), parent_ptr, process_page_ptr, staging_thread_ptr),
-        kernel_k_to_nonlock_kernel_u(post) != kernel_k_to_nonlock_kernel_u(pre),
 {
     reveal(create_process_from_staged_pages_kernel_state_framing);
     eof_subsystems_inv(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid);
@@ -547,6 +506,5 @@ pub(super) proof fn eof_inv(
         reveal(cpu_dirty_map_contains_container_processes); reveal(container_cpu_wf); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match);
     };
     assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
-    kernel_create_process_framing_implies_nonlock_u_step(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid);
 }
 }

@@ -5,6 +5,7 @@ use core::ops::Index;
 
 use super::*;
 use crate::primitive::*;
+use crate::cpu::Cpu;
 
 verus! {
     #[verifier::reject_recursive_types(T)]
@@ -188,6 +189,7 @@ verus! {
                 final(self).spec_index(index).view().view_ghost() == old(self).spec_index(index).view().view_ghost(),
                 final(self).spec_index(index).view().locking_thread() == old(self).spec_index(index).view().locking_thread(),
                 final(self).spec_index(index).view().being_killed() == old(self).spec_index(index).view().being_killed(),
+                final(self).spec_index(index).view().killer_info() == old(self).spec_index(index).view().killer_info(),
                 // The `&mut T` linkage.
                 *ret == old(self).spec_index(index).view().view(),
                 final(self).spec_index(index).view().view() == *final(ret),
@@ -216,6 +218,7 @@ verus! {
                 final(self).spec_index(index).view().view_ghost() == old(self).spec_index(index).view().view_ghost(),
                 final(self).spec_index(index).view().locking_thread() == old(self).spec_index(index).view().locking_thread(),
                 final(self).spec_index(index).view().being_killed() == old(self).spec_index(index).view().being_killed(),
+                final(self).spec_index(index).view().killer_info() == old(self).spec_index(index).view().killer_info(),
                 *ret == old(self).spec_index(index).view().view(),
                 final(self).spec_index(index).view().view() == *final(ret),
                 final(self).typed_lock_map_aligned(held_locks.insert(index, TypedHeldLock { lock_id: final(self).spec_index(index).lock_id(), mode: held_locks.index(index).mode }), lctx.thread_id()),
@@ -229,7 +232,7 @@ verus! {
         }
     }
 
-    impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT, const N: usize> LockedArray<T, ROT, GhostT, N, NO_KILL_STATE> {
+    impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT, const N: usize, const HAS_KILL_STATE: bool> LockedArray<T, ROT, GhostT, N, HAS_KILL_STATE> {
         pub open spec fn lock_id_by_index(&self, index: usize) -> LockId
             recommends
                 0 <= index < N,
@@ -284,6 +287,100 @@ verus! {
                 unlock_ensures(old(lctx), final(lctx), obj_id.view(), old(self).lock_id_by_index(index)),
         {
             self.array.ar[index].wunlock_external(Tracked(lctx), lock_perm);
+        }
+    }
+
+    impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT, const N: usize> LockedArray<T, ROT, GhostT, N, HAS_KILL_STATE> {
+        /// Write-lock entry `index` unless it is marked: a marked entry returns at once with nothing changed.
+        #[verifier(external_body)]
+        pub fn wlock_unless_killed(&mut self, index: usize, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>) -> (ret: Option<Tracked<LockPerm>>)
+            requires
+                old(self).inv(),
+                0 <= index < N,
+                wlock_requires(old(self).spec_index(index).view(), old(lctx)),
+                !old(self).spec_index(index).view().being_killed() ==> old(lctx).lock_id_acyclic(old(self).lock_id_by_index(index)),
+            ensures
+                final(self).inv(),
+                final(self).view().len() == old(self).view().len(),
+                final(self).unchanged_except(old(self), index),
+                final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
+                (ret is None) == old(self).spec_index(index).view().being_killed(),
+                ret is None ==> *final(self) == *old(self) && *final(lctx) == *old(lctx),
+                ret is Some ==> wlock_ensures(old(self).spec_index(index).view(), final(self).spec_index(index).view(), old(self).lock_id_by_index(index), final(lctx), ret->Some_0.view()),
+                ret is Some ==> lock_ensures(old(lctx), final(lctx), old(self).lock_id_by_index(index), obj_id.view()),
+        {
+            self.array.ar[index].wlock_unless_killed(Tracked(lctx), Ghost::assume_new(), obj_id)
+        }
+
+        #[verifier(external_body)]
+        pub fn wunlock(&mut self, index: usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, obj_id: Ghost<KernelObjId>)
+            requires
+                old(self).inv(),
+                0 <= index < N,
+                old(self).spec_index(index).view().wlocked_by(old(lctx)),
+                old(self).spec_index(index).view().being_killed() == false,
+                lock_perm.view().state() is WriteLock,
+                lock_perm.view().thread_id() == old(lctx).thread_id(),
+                lock_perm.view().lock_id() == old(self).spec_index(index).view().locking_thread() -> Write_lock_id,
+                old(lctx).lock_entry_contains(old(self).lock_id_by_index(index), obj_id.view()),
+            ensures
+                final(self).inv(),
+                final(self).view().len() == old(self).view().len(),
+                final(self).unchanged_except(old(self), index),
+                final(self).spec_index(index).view().locking_thread() is None,
+                final(self).lock_id_by_index(index) == old(self).lock_id_by_index(index),
+                wunlock_ensures(old(self).spec_index(index).view(), final(self).spec_index(index).view()),
+                unlock_ensures(old(lctx), final(lctx), obj_id.view(), old(self).lock_id_by_index(index)),
+        {
+            self.array.ar[index].wunlock(Tracked(lctx), lock_perm, Ghost::assume_new(), obj_id);
+        }
+
+        /// Mark entry `index`, which this thread write-holds, for its killer; the write lock stays. Like
+        /// `RwLock::mark_kill`, the mark is a kernel-view Release: every other thread's next `*_unless_killed` lock fails.
+        #[verifier(external_body)]
+        pub fn mark_kill(&mut self, index: usize, Tracked(lctx): Tracked<&LocalContext>, killer_info: KillerInfo)
+            requires
+                old(self).inv(),
+                0 <= index < N,
+                old(self).spec_index(index).view().wlocked_by(lctx),
+                !old(self).spec_index(index).view().being_killed(),
+                lctx.kernel_view_locking_state() is Release,
+            ensures
+                final(self).inv(),
+                final(self).view().len() == old(self).view().len(),
+                final(self).unchanged_except(old(self), index),
+                final(self).spec_index(index).view().killer_info() == Some(killer_info),
+                final(self).spec_index(index).view().locking_thread() == old(self).spec_index(index).view().locking_thread(),
+                final(self).spec_index(index).view().is_init() == old(self).spec_index(index).view().is_init(),
+                final(self).spec_index(index).view().view_rodata() == old(self).spec_index(index).view().view_rodata(),
+                final(self).spec_index(index).view().view_ghost() == old(self).spec_index(index).view().view_ghost(),
+        {
+            self.array.ar[index].mark_kill(Tracked(lctx), killer_info);
+        }
+    }
+
+    impl LockedArray<Cpu, (), (), NUM_CPUS, HAS_KILL_STATE> {
+        /// TCB: clear the mark of cpu `index` while its killer still write-holds it. Only a cpu lock can be unmarked;
+        /// every other object keeps its mark until it is destroyed.
+        #[verifier(external_body)]
+        pub fn unkill(&mut self, index: usize, Tracked(lctx): Tracked<&LocalContext>)
+            requires
+                old(self).inv(),
+                index_valid(NUM_CPUS, index),
+                old(self).spec_index(index).view().wlocked_by(lctx),
+                old(self).spec_index(index).view().being_killed(),
+                lctx.kernel_view_locking_state() is Release,
+            ensures
+                final(self).inv(),
+                final(self).view().len() == old(self).view().len(),
+                final(self).unchanged_except(old(self), index),
+                !final(self).spec_index(index).view().being_killed(),
+                final(self).spec_index(index).view().locking_thread() == old(self).spec_index(index).view().locking_thread(),
+                final(self).spec_index(index).view().is_init() == old(self).spec_index(index).view().is_init(),
+                final(self).spec_index(index).view().view_rodata() == old(self).spec_index(index).view().view_rodata(),
+                final(self).spec_index(index).view().view_ghost() == old(self).spec_index(index).view().view_ghost(),
+        {
+            self.array.ar[index].unkill_external();
         }
     }
 }

@@ -15,7 +15,6 @@ impl KernelK {
         requires
             old(self).inv(),
             old(self).prc_mp.dom().contains(process_ptr),
-            !old(lctx).process_lock_map().dom().contains(process_ptr),
             old(lctx).kernel_view_locking_state() is Acquire,
             {
                 let cpus = old(lctx).cpu_lock_map().dom();
@@ -86,6 +85,7 @@ impl KernelK {
                 &&& old(self).prc_mp.spec_index(process_ptr).being_killed() == false
                 &&& wlock_ensures(old(self).prc_mp.spec_index(process_ptr), final(self).prc_mp.spec_index(process_ptr), old(self).prc_mp.lock_id_by_key(process_ptr), final(lctx), ret.unwrap().view())
                 &&& typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Process(process_ptr), TypedHeldLock { lock_id: final(self).prc_mp.lock_id_by_key(process_ptr), mode: TypedLockMode::Write })
+                &&& final(self).prc_mp.spec_index(process_ptr).view().state.view() is Running || final(self).prc_mp.spec_index(process_ptr).view().state.view() is Zombie
             },
     {
         proof {
@@ -104,11 +104,18 @@ impl KernelK {
         }
         let res = self.prc_mp.wlock_unless_killed(process_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Process(process_ptr)));
         proof {
+            assert(res is Some ==> self.prc_mp.spec_index(process_ptr).view().state.view() is Running || self.prc_mp.spec_index(process_ptr).view().state.view() is Zombie) by {
+                process_state_lock_wf_at(old(self).prc_mp, process_ptr);
+            };
             assert(process_perms_wf(self.prc_mp)) by { reveal(process_perms_wf); };
             assert(process_invariant_fields_unchanged(old(self).prc_mp, self.prc_mp)) by { process_lock_op_preserves_invariant_fields(old(self).prc_mp, self.prc_mp, process_ptr); };
             assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
+            assert(process_emptied_tables_wf(self.prc_mp, self.pt_mp, self.it_mp)) by { reveal(process_emptied_tables_wf); };
             assert(self.memory_management_inv()) by { memory_management_inv_preserved_for_process_invariant_fields(*old(self), *self); };
-            assert(process_thread_wf(self.prc_mp, self.thr_mp)) by { reveal(process_thread_wf); reveal(process_empty_lists_wlocked); };
+            assert(process_thread_wf(self.prc_mp, self.thr_mp)) by { reveal(process_thread_wf); };
+            assert(process_kill_mark_wf(self.prc_mp)) by { reveal(process_kill_mark_wf); };
+            assert(process_state_lock_wf(self.prc_mp)) by { reveal(process_state_lock_wf); };
+            assert(process_emptied_threads_wf(self.prc_mp, self.thr_mp)) by { reveal(process_emptied_threads_wf); };
             assert(self.process_management_inv()) by { process_management_inv_preserved_for_process_invariant_fields(*old(self), *self); };
             assert(iommu_root_table_process_wf(self.irt.view(), self.prc_mp, self.it_mp)) by { lemma_iommu_root_table_process_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
             assert(process_pci_function_ownership_wf(self.irt.view(), self.prc_mp)) by { lemma_process_pci_function_ownership_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
@@ -126,6 +133,101 @@ impl KernelK {
         res
     }
 
+    /// Write-lock a process below the killer's own and mark it for the killer. A process another killer already marked
+    /// is left untouched. On success the held entry moves to the sunk id a marked object reports.
+    pub fn try_wlock_process_and_mark_kill(&mut self, process_ptr: RwLockProcessPtr, killer_process: RwLockProcessPtr, killer_thread: RwLockThreadPtr, killer_info: KillerInfo, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Option<Tracked<LockPerm>>)
+        requires
+            old(self).inv(),
+            old(self).prc_mp.dom().contains(process_ptr),
+            old(self).prc_mp.dom().contains(killer_process),
+            !old(lctx).process_lock_map().dom().contains(process_ptr),
+            old(lctx).kernel_view_locking_state() is Acquire,
+            killer_held_context(*old(self), *old(lctx), killer_process, killer_thread),
+            killer_info.process == killer_process,
+            old(self).prc_mp.spec_index(process_ptr).view_rodata().view().parent is Some,
+            typed_lock_map_contains_mode(old(lctx).process_lock_map(), old(self).prc_mp.spec_index(process_ptr).view_rodata().view().parent->Some_0, TypedLockMode::Write),
+            old(self).prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == old(self).prc_mp.spec_index(killer_process).view_rodata().view().owning_container,
+            old(self).prc_mp.spec_index(process_ptr).view_rodata().view().depth > old(self).prc_mp.spec_index(killer_process).view_rodata().view().depth,
+            typed_lock_maps_aligned(old(self), old(lctx)),
+        ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
+            final(lctx).thread_id() == old(lctx).thread_id(),
+            final(self).inv(),
+            typed_lock_maps_aligned(final(self), final(lctx)),
+            *final(self) == (KernelK { prc_mp: final(self).prc_mp, ..*old(self) }),
+            final(self).prc_mp.unchanged_except(&old(self).prc_mp, process_ptr),
+            final(self).prc_mp.perms_wf(),
+            final(self).prc_mp.spec_index(process_ptr).view() == (Process { state: final(self).prc_mp.spec_index(process_ptr).view().state, ..old(self).prc_mp.spec_index(process_ptr).view() }),
+            final(self).prc_mp.spec_index(process_ptr).view_rodata() == old(self).prc_mp.spec_index(process_ptr).view_rodata(),
+            final(self).prc_mp.spec_index(process_ptr).view_ghost() == old(self).prc_mp.spec_index(process_ptr).view_ghost(),
+            ret is None ==> {
+                &&& old(self).prc_mp.spec_index(process_ptr).being_killed()
+                &&& final(self).prc_mp.spec_index(process_ptr) == old(self).prc_mp.spec_index(process_ptr)
+                &&& *final(lctx) == *old(lctx)
+            },
+            ret is Some ==> {
+                &&& !old(self).prc_mp.spec_index(process_ptr).being_killed()
+                &&& final(self).prc_mp.spec_index(process_ptr).being_killed()
+                &&& final(self).prc_mp.spec_index(process_ptr).killer_info() == Some(killer_info)
+                &&& final(self).prc_mp.spec_index(process_ptr).view().state.view() == if old(self).prc_mp.spec_index(process_ptr).view().zombie { ProcessState::Zombie } else { ProcessState::Killing }
+                &&& final(self).prc_mp.spec_index(process_ptr).locking_thread() == RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: ret.unwrap().view().lock_id() }
+                &&& ret.unwrap().view().state() is WriteLock
+                &&& ret.unwrap().view().thread_id() == final(lctx).thread_id()
+                &&& final(lctx).kernel_view_locking_state() is Release
+                &&& typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Process(process_ptr), TypedHeldLock { lock_id: final(self).prc_mp.lock_id_by_key(process_ptr), mode: TypedLockMode::Write })
+            },
+    {
+        proof {
+            process_perms_wf_at(old(self).prc_mp, process_ptr);
+            if !old(self).prc_mp.spec_index(process_ptr).being_killed() {
+                assert(old(lctx).lock_id_acyclic(old(self).prc_mp.lock_id_by_key(process_ptr))) by {
+                    reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
+                    reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(container_process_wf); reveal(thread_cpu_wf); reveal(process_thread_wf);
+                };
+            }
+            assert(!old(self).prc_mp.spec_index(process_ptr).locked_by_thread(old(lctx).thread_id())) by {
+                if old(self).prc_mp.spec_index(process_ptr).locked_by_thread(old(lctx).thread_id()) {
+                    assert(old(lctx).process_lock_map().dom().contains(process_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };
+                }
+            };
+        }
+        let res = self.prc_mp.try_wlock_and_mark_kill(process_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Process(process_ptr)), killer_info);
+        let res = if res.is_some() {
+            let Tracked(lock_perm) = res.unwrap();
+            let process = self.prc_mp.borrow_mut(process_ptr, Tracked(&*lctx), Tracked(&lock_perm));
+            if !process.zombie { process.state = Ghost(ProcessState::Killing); }
+            Some(Tracked(lock_perm))
+        } else { None };
+        proof {
+            if res is Some {
+                let entry = TypedHeldLock { lock_id: old(self).prc_mp.lock_id_by_key(process_ptr), mode: TypedLockMode::Write };
+                lctx.update_lock_id(KernelObjId::Process(process_ptr), old(self).prc_mp.lock_id_by_key(process_ptr), self.prc_mp.lock_id_by_key(process_ptr));
+                map_insert_overwrite_lemma(old(lctx).process_lock_map(), process_ptr, entry, TypedHeldLock { lock_id: self.prc_mp.lock_id_by_key(process_ptr), mode: TypedLockMode::Write });
+            }
+            assert(process_perms_wf(self.prc_mp)) by { reveal(process_perms_wf); };
+            assert(process_invariant_fields_unchanged(old(self).prc_mp, self.prc_mp)) by { process_lock_op_preserves_invariant_fields(old(self).prc_mp, self.prc_mp, process_ptr); };
+            assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
+            assert(process_emptied_tables_wf(self.prc_mp, self.pt_mp, self.it_mp)) by { reveal(process_emptied_tables_wf); };
+            assert(self.memory_management_inv()) by { memory_management_inv_preserved_for_process_invariant_fields(*old(self), *self); };
+            assert(process_thread_wf(self.prc_mp, self.thr_mp)) by { reveal(process_thread_wf); };
+            assert(process_kill_mark_wf(self.prc_mp)) by {
+                reveal(process_kill_mark_wf);
+                old(self).prc_mp.typed_lock_map_aligned_write_at(old(lctx).process_lock_map(), old(lctx).thread_id(), killer_process);
+                old(self).prc_mp.typed_lock_map_aligned_write_at(old(lctx).process_lock_map(), old(lctx).thread_id(), old(self).prc_mp.spec_index(process_ptr).view_rodata().view().parent->Some_0);
+            };
+            assert(process_state_lock_wf(self.prc_mp)) by { reveal(process_state_lock_wf); };
+            assert(process_emptied_threads_wf(self.prc_mp, self.thr_mp)) by { reveal(process_emptied_threads_wf); };
+            assert(self.process_management_inv()) by { process_management_inv_preserved_for_process_invariant_fields(*old(self), *self); };
+            assert(iommu_root_table_process_wf(self.irt.view(), self.prc_mp, self.it_mp)) by { lemma_iommu_root_table_process_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
+            assert(process_pci_function_ownership_wf(self.irt.view(), self.prc_mp)) by { lemma_process_pci_function_ownership_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
+            assert(iommu_tlb_wf_spec(self.iommu_tlb, self.irt.view(), self.prc_mp, self.it_mp)) by { lemma_iommu_tlb_wf_spec_preserved_for_process_quota_4k_framed_fields_forall(); };
+            assert(iommu_table_lock_wf(self.irt.view(), self.prc_mp, self.it_mp)) by { reveal(iommu_table_lock_wf); };
+            assert(cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
+            assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
+        }
+        res
+    }
+
     /// Companion of `wlock_process_unless_killed` for the unlock side.
     /// Wraps `LockedMap::wunlock` for `process_map` and re-establishes
     /// `inv()` immediately afterwards. Unlocking has no killed-branch — the
@@ -135,7 +237,9 @@ impl KernelK {
             old(self).inv(),
             old(self).prc_mp.dom().contains(process_ptr),
             old(self).prc_mp.spec_index(process_ptr).being_killed() == false,
-            old(self).prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0 || old(self).prc_mp.spec_index(process_ptr).view().zombie,
+            forall|d: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(d)] old(lctx).process_lock_map().dom().contains(d) && old(self).prc_mp.spec_index(d).killer_info() is Some
+                ==> old(self).prc_mp.spec_index(d).killer_info()->Some_0.process != process_ptr && old(self).prc_mp.spec_index(d).view_rodata().view().parent != Some(process_ptr),
+            old(self).prc_mp.spec_index(process_ptr).view().state.view() is Running || old(self).prc_mp.spec_index(process_ptr).view().state.view() is Zombie,
             old(self).prc_mp.spec_index(process_ptr).view().iommu_table is Some ==> !old(lctx).iommu_table_lock_map().dom().contains(old(self).prc_mp.spec_index(process_ptr).view().iommu_table->Some_0),
             typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
             lock_perm.view().state() is WriteLock,
@@ -158,8 +262,6 @@ impl KernelK {
             // ---- process_map: only the targeted entry's lock state changed (now unlocked) ----
             final(self).prc_mp.unchanged_except(&old(self).prc_mp, process_ptr),
             final(self).prc_mp.perms_wf(),
-            final(self).prc_mp.spec_index(process_ptr).locking_thread() is None,
-            !final(self).prc_mp.spec_index(process_ptr).locked(),
             final(self).prc_mp.lock_id_by_key(process_ptr) == old(self).prc_mp.lock_id_by_key(process_ptr),
             wunlock_ensures(old(self).prc_mp.spec_index(process_ptr), final(self).prc_mp.spec_index(process_ptr)),
             // ---- LocalContext: lock dropped; thread preserved ----
@@ -183,8 +285,12 @@ impl KernelK {
             assert(process_perms_wf(self.prc_mp)) by { reveal(process_perms_wf); };
             assert(process_invariant_fields_unchanged(old(self).prc_mp, self.prc_mp));
             assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
+            assert(process_emptied_tables_wf(self.prc_mp, self.pt_mp, self.it_mp)) by { reveal(process_emptied_tables_wf); };
             assert(self.memory_management_inv()) by { memory_management_inv_preserved_for_process_invariant_fields(*old(self), *self); };
-            assert(process_thread_wf(self.prc_mp, self.thr_mp)) by { reveal(process_thread_wf); reveal(process_empty_lists_wlocked); };
+            assert(process_thread_wf(self.prc_mp, self.thr_mp)) by { reveal(process_thread_wf); };
+            assert(process_kill_mark_wf(self.prc_mp)) by { reveal(process_kill_mark_wf); reveal(LockedMap::typed_lock_map_aligned); };
+            assert(process_state_lock_wf(self.prc_mp)) by { reveal(process_state_lock_wf); };
+            assert(process_emptied_threads_wf(self.prc_mp, self.thr_mp)) by { reveal(process_emptied_threads_wf); };
             assert(self.process_management_inv()) by { process_management_inv_preserved_for_process_invariant_fields(*old(self), *self); };
             assert(iommu_root_table_process_wf(self.irt.view(), self.prc_mp, self.it_mp)) by { lemma_iommu_root_table_process_wf_preserved_for_process_quota_4k_framed_fields_forall(); };
             assert(process_pci_function_ownership_wf(self.irt.view(), self.prc_mp)) by { lemma_process_pci_function_ownership_wf_preserved_for_process_quota_4k_framed_fields_forall(); };

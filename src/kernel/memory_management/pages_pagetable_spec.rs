@@ -4,6 +4,7 @@ use crate::*;
 verus! {
     pub open spec fn pagetable_root_page_forward_wf<const TABLE_TYPE: PTType>(pagetable_map: PageTableLockedMapOf<TABLE_TYPE>, page_array: PageLockedArray) -> bool {
         forall|page_index:PageIndex|
+            #![trigger page_array.spec_index(page_index).view().view().state]
             #![trigger pagetable_map.dom().contains(page_index2page_ptr(page_index))]
             index_valid(NUM_PAGES, page_index) && page_array.spec_index(page_index).view().view().state == (PageState::Allocated4k{state: Allocated4KPageState::AsPageTableRoot{table_type: TABLE_TYPE}})
                 ==> pagetable_map.dom().contains(page_index2page_ptr(page_index))
@@ -11,6 +12,7 @@ verus! {
 
     pub open spec fn pagetable_closure_page_forward_wf<const TABLE_TYPE: PTType>(pagetable_map: PageTableLockedMapOf<TABLE_TYPE>, page_array: PageLockedArray) -> bool {
         forall|page_index:PageIndex|
+            #![trigger page_array.spec_index(page_index).view().view().state]
             #![trigger pagetable_map.dom().contains(page_array.spec_index(page_index).view().view().state->Allocated4k_state->PageTable_pagetable_root)]
             #![trigger pagetable_map.spec_index(page_array.spec_index(page_index).view().view().state->Allocated4k_state->PageTable_pagetable_root).view().page_closure().contains(page_index2page_ptr(page_index))]
             index_valid(NUM_PAGES, page_index) && (page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::PageTable { .. }})
@@ -62,5 +64,14 @@ verus! {
             page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state->Allocated4k_state is PageTable,
             page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state->Allocated4k_state->PageTable_pagetable_root == pagetable_ptr,
             page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state->Allocated4k_state->PageTable_table_type == TABLE_TYPE,
+    { reveal(pagetable_pages_wf); }
+
+    pub proof fn pagetable_pages_wf_root_entry_at<const TABLE_TYPE: PTType>(pagetable_map: PageTableLockedMapOf<TABLE_TYPE>, page_array: PageLockedArray, pagetable_ptr: RwLockPageTableRoot)
+        requires
+            pagetable_pages_wf(pagetable_map, page_array),
+            pagetable_map.dom().contains(pagetable_ptr),
+        ensures
+            page_ptr_valid(pagetable_ptr),
+            page_array.spec_index(page_ptr2page_index(pagetable_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsPageTableRoot { table_type: TABLE_TYPE } }),
     { reveal(pagetable_pages_wf); }
 }

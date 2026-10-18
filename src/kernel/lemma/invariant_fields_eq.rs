@@ -219,7 +219,7 @@ pub proof fn lemma_process_thread_wf_preserved_for_process_thread_membership_fie
     ensures
         forall|pre: ProcessLockedMap, post: ProcessLockedMap, thread_map: ThreadLockedMap|
             #![trigger process_thread_wf(pre, thread_map), process_thread_wf(post, thread_map)]
-            process_thread_wf(pre, thread_map) && process_empty_lists_wlocked(post) && post.dom() == pre.dom() && (forall|p_ptr: RwLockProcessPtr|
+            process_thread_wf(pre, thread_map) && post.dom() == pre.dom() && (forall|p_ptr: RwLockProcessPtr|
                 #![trigger pre.spec_index(p_ptr)]
                 #![trigger post.spec_index(p_ptr)]
                 pre.dom().contains(p_ptr) ==> {

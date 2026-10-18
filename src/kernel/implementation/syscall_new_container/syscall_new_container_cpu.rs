@@ -42,6 +42,7 @@ pub(super) fn transfer_new_container_cpu(
             ..old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view().view()
         }),
         final(krnl).cpu_arr.spec_index(transfer_cpu_id).view().locking_thread() is None,
+        final(krnl).cpu_arr.spec_index(transfer_cpu_id).view().being_killed() == old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().being_killed(),
         final(krnl).inv(),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
@@ -96,7 +97,8 @@ pub(super) fn transfer_new_container_cpu(
             &&& krnl.cpu_arr.inv()
             &&& krnl.cpu_arr.spec_index(transfer_cpu_id).view().is_init()
             &&& krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().wf()
-        }) by { reveal(cpu_set_perms_wf); reveal(container_cpu_wf); reveal(cpu_array_wf); };
+            &&& !krnl.cpu_arr.spec_index(transfer_cpu_id).view().being_killed()
+        }) by { reveal(cpu_set_perms_wf); reveal(container_cpu_wf); reveal(cpu_array_wf); reveal(thread_cpu_wf); };
     }
     let child_container_depth = krnl.ctn_mp.borrow_rodata(child_container_ptr).borrow().depth;
     let ghost locked_k = *krnl;

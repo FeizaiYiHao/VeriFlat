@@ -33,7 +33,6 @@ pub type L4Index = usize;
 pub type L3Index = usize;
 pub type L2Index = usize;
 pub type L1Index = usize;
-pub type SLLIndex = i32;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[allow(non_camel_case_types)]
@@ -47,6 +46,10 @@ pub enum ThreadState {
     RECEIVING_CALL,
     WAITING_REPLY,
     RUNNING { cpu_id: CpuId },
+    /// Write-held by a killer, or by the callee reclaiming a killed caller's dangling thread, until the thread is destroyed or left dangling.
+    KILLED,
+    /// Dangling thread of a killed caller: detached from its process, and left in its container's thread sets until its callee reclaims it.
+    DANGLING,
 }
 
 impl ThreadState {
@@ -70,6 +73,14 @@ impl ThreadState {
             _ => false,
         }
     }
+
+    /// The thread has a callee that still owes it a reply (a live caller or a killed caller's dangling thread).
+    pub open spec fn is_reply_waiting(&self) -> bool {
+        match self {
+            ThreadState::WAITING_REPLY | ThreadState::DANGLING => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -88,24 +99,6 @@ impl EndpointState {
             _ => false,
         }
     }
-
-    pub fn is_receive(&self) -> (ret: bool)
-        ensures
-            ret == (self == EndpointState::RECEIVE),
-    {
-        match self {
-            EndpointState::RECEIVE => true,
-            _ => false,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum PageType {
-    R,
-    RW,
-    RX,
-    RWX,
 }
 
 #[allow(inconsistent_fields)]
@@ -180,36 +173,6 @@ pub enum PageTableErrorCode {
 
 #[derive(Clone, Copy)]
 #[allow(inconsistent_fields)]
-pub enum UserRetValueType {
-    Success,
-    ErrorNoQuota,
-    ErrorVaInUse,
-    Else,
-}
-
-impl UserRetValueType {
-    pub open spec fn spec_is_error(&self) -> bool {
-        match self {
-            Self::Success => { false },
-            Self::ErrorNoQuota => { true },
-            Self::ErrorVaInUse => { true },
-            Self::Else => { true },
-        }
-    }
-
-    #[verifier(when_used_as_spec(spec_is_error))]
-    pub fn is_error(&self) -> bool {
-        match self {
-            Self::Success => { false },
-            Self::ErrorNoQuota => { true },
-            Self::ErrorVaInUse => { true },
-            Self::Else => { true },
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
-#[allow(inconsistent_fields)]
 pub enum RetValueType {
     SuccessUsize { value: usize },
     SuccessSeqUsize { value: Ghost<Seq<usize>> },
@@ -279,6 +242,10 @@ pub enum RetValueType {
     ErrorContainerZombie,
     /// The callee serving this call exited before replying.
     ErrorIpcCalleeExited,
+    /// The caller this reply was for was killed; its dangling thread is reclaimed instead.
+    ErrorIpcCallerKilled,
+    /// The running process has no child at the requested position.
+    ErrorInvalidChild,
 }
 pub type PTType = bool;
 
@@ -290,78 +257,6 @@ pub struct VaRange4K {
     pub start: VAddr,
     pub len: usize,
     pub view: Ghost<Seq<VAddr>>,
-}
-
-pub open spec fn spec_va_range_disjoint(va_range_1: &VaRange4K, va_range_2: &VaRange4K) -> bool {
-    forall|i: int, j: int|
-        0 <= i < va_range_1.len && 0 <= j < va_range_2.len ==> va_range_1.view().spec_index(i) != va_range_2.view().spec_index(j)
-}
-
-proof fn spec_va_4k_valid_implies_aligned(va: VAddr)
-    requires
-        spec_va_4k_valid(va),
-    ensures
-        va % 4096 == 0,
-{
-    assert(va % 4096 == 0) by (bit_vector)
-        requires va & (!MEM_4K_MASK) as usize == 0;
-}
-
-proof fn aligned_difference_mod_4k(x: int, y: int)
-    requires
-        x % 4096 == 0,
-        y % 4096 == 0,
-    ensures
-        (y - x) % 4096 == 0,
-{
-    vstd::arithmetic::div_mod::lemma_fundamental_div_mod(x, 4096);
-    vstd::arithmetic::div_mod::lemma_fundamental_div_mod(y, 4096);
-    vstd::arithmetic::mul::lemma_mul_is_commutative(4096, x / 4096);
-    vstd::arithmetic::mul::lemma_mul_is_commutative(4096, y / 4096);
-    vstd::arithmetic::mul::lemma_mul_is_distributive_sub_other_way(4096, y / 4096, x / 4096);
-    vstd::arithmetic::div_mod::lemma_mod_multiples_basic(y / 4096 - x / 4096, 4096);
-}
-
-proof fn spec_va_add_range_bounds(va: VAddr, index: usize, len: usize)
-    requires
-        index < len,
-        len <= usize::MAX / 4096,
-        va < usize::MAX - len * 4096,
-    ensures
-        va <= spec_va_add_range(va, index),
-        spec_va_add_range(va, index) < va + len * 4096,
-        spec_va_add_range(va, index) as int == va as int + index as int * 4096,
-{}
-
-#[verifier(when_used_as_spec(spec_va_range_disjoint))]
-pub fn va_range_disjoint(va_range_1: &VaRange4K, va_range_2: &VaRange4K) -> (ret: bool)
-    requires
-        va_range_1.wf(),
-        va_range_2.wf(),
-    ensures
-        ret == va_range_disjoint(va_range_1, va_range_2),
-{
-    let ret = if va_range_1.len == 0 || va_range_2.len == 0 {
-        true
-    } else if va_range_1.start < va_range_2.start {
-        va_range_1.start + va_range_1.len * 4096 <= va_range_2.start
-    } else {
-        va_range_2.start + va_range_2.len * 4096 <= va_range_1.start
-    };
-    proof {
-        va_range_1.va_range_lemma();
-        va_range_2.va_range_lemma();
-        spec_va_4k_valid_implies_aligned(va_range_1.start);
-        spec_va_4k_valid_implies_aligned(va_range_2.start);
-        if !ret && va_range_1.start < va_range_2.start {
-            let page_offset = (va_range_2.start as int - va_range_1.start as int) / 4096;
-            assert(0 <= page_offset < va_range_1.len && va_range_1.view().spec_index(page_offset) == va_range_2.view().spec_index(0)) by { vstd::arithmetic::mul::lemma_mul_is_commutative(page_offset, 4096); };
-        } else if !ret {
-            let page_offset = (va_range_1.start as int - va_range_2.start as int) / 4096;
-            assert(0 <= page_offset < va_range_2.len && va_range_2.view().spec_index(page_offset) == va_range_1.view().spec_index(0)) by { aligned_difference_mod_4k(va_range_2.start as int, va_range_1.start as int); };
-        }
-    }
-    ret
 }
 
 impl VaRange4K {

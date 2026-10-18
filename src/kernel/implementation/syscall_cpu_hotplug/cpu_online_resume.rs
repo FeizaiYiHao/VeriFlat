@@ -9,7 +9,8 @@ pub enum OnlineResumeResult {
 
 /// IPI entry of a cpu that halted after going Off: under its own lock it re-reads its state. While still Off
 /// it releases the lock and halts again; once `syscall_cpu_online` has published Idle it records that its
-/// hardware runs again and returns to the idle loop. Neither outcome is a U step.
+/// hardware runs again and returns to the idle loop. A cpu a killer marked is not waited for: it halts again as if
+/// still Off. Neither outcome is a U step.
 pub fn cpu_online_resume(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId) -> (ret: OnlineResumeResult)
     requires
         index_valid(NUM_CPUS, cpu_id),
@@ -34,7 +35,7 @@ pub fn cpu_online_resume(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCo
         final(steps).view() == old(steps).view(),
         final(steps).nonlock_view().len() == 0,
         kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(*old(krnl)),
-        ret is StillOff == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Off,
+        ret is StillOff == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Off || old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed()),
         final(krnl).cpu_arr.spec_index(cpu_id).view().view().view() == (CpuView {
             hw_halted: if ret is StillOff { old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().hw_halted } else { false },
             ..old(krnl).cpu_arr.spec_index(cpu_id).view().view().view()
@@ -44,7 +45,13 @@ pub fn cpu_online_resume(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCo
 {
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
     proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
-    let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(&mut *lctx));
+    let cpu_lock_res = krnl.wlock_cpu(cpu_id, Tracked(&mut *lctx));
+    if cpu_lock_res.is_none() {
+        proof { no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); enter_kernel_view_release_preserving_lock_alignments(&*krnl, lctx); }
+        halt_until_ipi(Tracked(&*lctx));
+        return OnlineResumeResult::StillOff;
+    }
+    let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
     let state = cpu.state();
     if let CpuState::Off = state {

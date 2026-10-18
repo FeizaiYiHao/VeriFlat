@@ -3,59 +3,6 @@ use crate::*;
 use super::*;
 
 verus! {
-/// User-view change predicate for publishing a process with an empty page table.
-#[verifier::opaque]
-pub open spec fn kernel_u_create_process_changed(old_u: KernelU, new_u: KernelU, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr, staging_thread_ptr: RwLockThreadPtr) -> bool {
-    let child = new_u.process_map.spec_index(child_ptr);
-    let old_staging = old_u.thread_map.spec_index(staging_thread_ptr);
-    &&& new_u.endpoint_map == old_u.endpoint_map
-    &&& new_u.iommu_root_table == old_u.iommu_root_table
-    &&& new_u.cpu_array == old_u.cpu_array
-    &&& old_u.thread_map.dom().contains(staging_thread_ptr)
-    &&& old_staging.quota_4k >= 3
-    &&& new_u.thread_map == old_u.thread_map.insert(staging_thread_ptr, ThreadU { quota_4k: (old_staging.quota_4k as int - 3) as usize, ..old_staging })
-    &&& old_u.process_map.dom().contains(parent_ptr)
-    &&& !old_u.process_map.dom().contains(child_ptr)
-    &&& new_u.process_map.dom() == old_u.process_map.dom().insert(child_ptr)
-    &&& !child.zombie
-    &&& child.pagetable is Some
-    &&& child.pagetable.unwrap().mapping_4k.is_empty()
-    &&& child.pagetable.unwrap().mapping_2m.is_empty()
-    &&& child.pagetable.unwrap().mapping_1g.is_empty()
-    &&& child.iommu_table is None
-    &&& child.owned_pci_functions.is_empty()
-    &&& child.quota_4k == 0
-    &&& child.quota_2m == 0
-    &&& child.quota_1g == 0
-    &&& child.parent == Some(parent_ptr)
-    &&& child.children.len() == 0
-    &&& child.depth == old_u.process_map.spec_index(parent_ptr).depth + 1
-    &&& child.uppertree_seq == old_u.process_map.spec_index(parent_ptr).uppertree_seq.push(parent_ptr)
-    &&& child.subtree_set.is_empty()
-    &&& child.owned_threads.len() == 0
-    &&& !child.killed
-    &&& forall|p: RwLockProcessPtr|
-        #![trigger new_u.process_map.spec_index(p)]
-        old_u.process_map.dom().contains(p) ==> {
-            &&& new_u.process_map.spec_index(p).pagetable == old_u.process_map.spec_index(p).pagetable
-            &&& new_u.process_map.spec_index(p).iommu_table == old_u.process_map.spec_index(p).iommu_table
-            &&& new_u.process_map.spec_index(p).owned_pci_functions == old_u.process_map.spec_index(p).owned_pci_functions
-            &&& new_u.process_map.spec_index(p).quota_4k == old_u.process_map.spec_index(p).quota_4k
-            &&& new_u.process_map.spec_index(p).quota_2m == old_u.process_map.spec_index(p).quota_2m
-            &&& new_u.process_map.spec_index(p).quota_1g == old_u.process_map.spec_index(p).quota_1g
-            &&& new_u.process_map.spec_index(p).parent == old_u.process_map.spec_index(p).parent
-            &&& new_u.process_map.spec_index(p).depth == old_u.process_map.spec_index(p).depth
-            &&& new_u.process_map.spec_index(p).uppertree_seq == old_u.process_map.spec_index(p).uppertree_seq
-            &&& new_u.process_map.spec_index(p).owned_threads == old_u.process_map.spec_index(p).owned_threads
-            &&& new_u.process_map.spec_index(p).zombie == old_u.process_map.spec_index(p).zombie
-            &&& new_u.process_map.spec_index(p).killed == old_u.process_map.spec_index(p).killed
-            &&& p == parent_ptr ==> new_u.process_map.spec_index(p).children == old_u.process_map.spec_index(p).children.push(child_ptr)
-            &&& p != parent_ptr ==> new_u.process_map.spec_index(p).children == old_u.process_map.spec_index(p).children
-            &&& child.uppertree_seq.contains(p) ==> new_u.process_map.spec_index(p).subtree_set == old_u.process_map.spec_index(p).subtree_set.insert(child_ptr)
-            &&& !child.uppertree_seq.contains(p) ==> new_u.process_map.spec_index(p).subtree_set == old_u.process_map.spec_index(p).subtree_set
-        }
-}
-
 #[verifier::opaque]
 pub open spec fn create_process_from_staged_pages_kernel_state_framing(
     pre: KernelK, post: KernelK, process_page_ptr: PagePtr, pagetable_page_ptr: PagePtr, l4_page_ptr: PagePtr,
@@ -144,6 +91,7 @@ pub open spec fn create_process_from_staged_pages_kernel_state_framing(
             &&& post.prc_mp.spec_index(p_ptr).is_init() == pre.prc_mp.spec_index(p_ptr).is_init()
             &&& post.prc_mp.spec_index(p_ptr).locking_thread() == pre.prc_mp.spec_index(p_ptr).locking_thread()
             &&& post.prc_mp.spec_index(p_ptr).being_killed() == pre.prc_mp.spec_index(p_ptr).being_killed()
+            &&& post.prc_mp.spec_index(p_ptr).killer_info() == pre.prc_mp.spec_index(p_ptr).killer_info()
             &&& post.prc_mp.spec_index(p_ptr).view_rodata() == pre.prc_mp.spec_index(p_ptr).view_rodata()
             &&& post.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq == pre.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq
             &&& post.prc_mp.spec_index(p_ptr).view_ghost().owned_pci_functions == pre.prc_mp.spec_index(p_ptr).view_ghost().owned_pci_functions
@@ -177,6 +125,7 @@ pub open spec fn create_process_from_staged_pages_kernel_state_framing(
     &&& !post.prc_mp.spec_index(process_page_ptr).being_killed()
     &&& post.prc_mp.spec_index(process_page_ptr).wlocked()
     &&& !post.prc_mp.spec_index(process_page_ptr).view().zombie
+    &&& post.prc_mp.spec_index(process_page_ptr).view().state.view() is Creating
     &&& post.prc_mp.spec_index(process_page_ptr).view().pcid == pcid
     &&& post.prc_mp.spec_index(process_page_ptr).view().pagetable == pagetable_page_ptr
     &&& post.prc_mp.spec_index(process_page_ptr).view().iommu_table is None
@@ -221,6 +170,7 @@ pub open spec fn create_process_from_staged_pages_kernel_state_framing(
     &&& post.thr_mp.spec_index(staging_thread_ptr).view().temp_alloc_cache_4k.view().is_empty()
     &&& post.thr_mp.spec_index(staging_thread_ptr).locking_thread() == pre.thr_mp.spec_index(staging_thread_ptr).locking_thread()
     &&& post.thr_mp.spec_index(staging_thread_ptr).being_killed() == pre.thr_mp.spec_index(staging_thread_ptr).being_killed()
+    &&& post.thr_mp.spec_index(staging_thread_ptr).killer_info() == pre.thr_mp.spec_index(staging_thread_ptr).killer_info()
     &&& forall|t_ptr: RwLockThreadPtr|
         #![trigger post.thr_mp.view().spec_index(t_ptr).is_init()]
         pre.thr_mp.dom().contains(t_ptr) ==> {
@@ -316,6 +266,7 @@ pub fn create_process_from_staged_pages(
         final(krnl).prc_mp.spec_index(parent_ptr).being_killed() == old(krnl).prc_mp.spec_index(parent_ptr).being_killed(),
         !final(krnl).prc_mp.spec_index(process_page_ptr).being_killed(),
         !final(krnl).prc_mp.spec_index(process_page_ptr).view().zombie,
+        final(krnl).prc_mp.spec_index(process_page_ptr).view().state.view() is Creating,
         final(krnl).prc_mp.spec_index(process_page_ptr).view_rodata().view().owning_container == container_ptr,
         final(krnl).prc_mp.spec_index(process_page_ptr).view_rodata().view().pagetable == pagetable_page_ptr,
         final(krnl).prc_mp.spec_index(process_page_ptr).view().iommu_table == None,
@@ -337,8 +288,6 @@ pub fn create_process_from_staged_pages(
         final(krnl).pcid_allc_mp.dom() == old(krnl).pcid_allc_mp.dom(),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(krnl).inv(),
-        kernel_u_create_process_changed(kernel_k_to_nonlock_kernel_u(*old(krnl)), kernel_k_to_nonlock_kernel_u(*final(krnl)), parent_ptr, process_page_ptr, staging_thread_ptr),
-        kernel_k_to_nonlock_kernel_u(*final(krnl)) != kernel_k_to_nonlock_kernel_u(*old(krnl)),
         ret.0 == process_page_ptr,
         ret.1 == pagetable_page_ptr,
         create_process_from_staged_pages_kernel_state_framing(*old(krnl), *final(krnl), process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid),
@@ -398,20 +347,19 @@ pub fn create_process_from_staged_pages(
     let pagetable_page_index = page_ptr2page_index(pagetable_page_ptr);
     let l4_page_index = page_ptr2page_index(l4_page_ptr);
     proof {
+        assert({
+            &&& process_page_ptr == page_index2page_ptr(process_page_index)
+            &&& pagetable_page_ptr == page_index2page_ptr(pagetable_page_index)
+            &&& l4_page_ptr == page_index2page_ptr(l4_page_index)
+        }) by { page_ptr_roundtrip(); };
         assert(krnl.prc_mp.view().spec_index(parent_ptr).is_init() && krnl.prc_mp.view().spec_index(parent_ptr).addr() == parent_ptr && krnl.prc_mp.spec_index(parent_ptr).inv()) by { process_perms_wf_at(krnl.prc_mp, parent_ptr); };
         assert(krnl.ctn_mp.view().spec_index(container_ptr).is_init() && krnl.ctn_mp.view().spec_index(container_ptr).addr() == container_ptr && krnl.ctn_mp.spec_index(container_ptr).inv()) by { container_perms_wf_at(krnl.ctn_mp, container_ptr); };
         assert(krnl.pg_arr.spec_index(l4_page_index).view().is_init() && krnl.pg_arr.spec_index(l4_page_index).view().view().inv()
-            && krnl.pg_arr.spec_index(l4_page_index).view().view().addr == l4_page_ptr && krnl.pg_arr.spec_index(l4_page_index).view().view().perm_4k.view().is_some()) by {
-            reveal(page_array_wf); page_ptr_roundtrip();
-        };
+            && krnl.pg_arr.spec_index(l4_page_index).view().view().addr == l4_page_ptr && krnl.pg_arr.spec_index(l4_page_index).view().view().perm_4k.view().is_some()) by { page_array_wf_at(krnl.pg_arr, l4_page_index); };
         assert(krnl.pg_arr.spec_index(pagetable_page_index).view().is_init() && krnl.pg_arr.spec_index(pagetable_page_index).view().view().inv()
-            && krnl.pg_arr.spec_index(pagetable_page_index).view().view().addr == pagetable_page_ptr && krnl.pg_arr.spec_index(pagetable_page_index).view().view().perm_4k.view().is_some()) by {
-            reveal(page_array_wf); page_ptr_roundtrip();
-        };
+            && krnl.pg_arr.spec_index(pagetable_page_index).view().view().addr == pagetable_page_ptr && krnl.pg_arr.spec_index(pagetable_page_index).view().view().perm_4k.view().is_some()) by { page_array_wf_at(krnl.pg_arr, pagetable_page_index); };
         assert(krnl.pg_arr.spec_index(process_page_index).view().is_init() && krnl.pg_arr.spec_index(process_page_index).view().view().inv()
-            && krnl.pg_arr.spec_index(process_page_index).view().view().addr == process_page_ptr && krnl.pg_arr.spec_index(process_page_index).view().view().perm_4k.view().is_some()) by {
-            reveal(page_array_wf); page_ptr_roundtrip();
-        };
+            && krnl.pg_arr.spec_index(process_page_index).view().view().addr == process_page_ptr && krnl.pg_arr.spec_index(process_page_index).view().view().perm_4k.view().is_some()) by { page_array_wf_at(krnl.pg_arr, process_page_index); };
         assert(krnl.dflt_pt.view().wf()) by { reveal(KernelK::default_pagetable_wf); };
         assert(pei_valid(krnl.dflt_pt.view().kernel_l4_end)) by { reveal(PageTable::kernel_entries_wf); };
     }
@@ -460,7 +408,7 @@ pub fn create_process_from_staged_pages(
     let ghost pagetable_page_locks = l4_page_locks.insert(pagetable_page_index, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pagetable_page_index), mode: TypedLockMode::Write });
     proof { page_pagetable_wf_preserved_for_nonmapped_page_change(krnl.pt_mp, krnl.pt_mp, page_array_before_pagetable_retype, krnl.pg_arr, pagetable_page_index); }
     thread_map_consume_staged_4k(&mut krnl.thr_mp, staging_thread_ptr, pagetable_page_ptr, Tracked(&*lctx), Tracked(staging_thread_lock_perm));
-    proof { assert(krnl.pt_mp.perms_wf()) by { reveal(pagetable_perms_wf); }; }
+    proof { assert(krnl.pt_mp.perms_wf()) by { pagetable_perms_wf_map(krnl.pt_mp); }; }
     let Tracked(pagetable_lock_perm) = krnl.retype_page_to_pagetable_and_insert(pagetable_page_ptr, pagetable_value, Tracked(pagetable_page_perm), Tracked(&mut *lctx));
 
     let parent_depth = krnl.prc_mp.borrow_rodata(parent_ptr).borrow().depth;
@@ -471,10 +419,7 @@ pub fn create_process_from_staged_pages(
         pagetable: pagetable_page_ptr, cr3, iommu_cr3: None, pcid,
     }, Ghost(process_page_ptr));
     let process_ghost = ProcessGhost { uppertree_seq: Ghost(ancestors), subtree_set: Ghost(Set::empty()), owned_pci_functions: Ghost(Set::empty()) };
-    proof {
-        assert(parent_ancestors.len() == parent_depth) by { process_perms_wf_at(krnl.prc_mp, parent_ptr); };
-        assert(ancestors.len() == process_rodata.view().depth);
-    }
+    proof { assert(parent_ancestors.len() == parent_depth && ancestors.len() == process_rodata.view().depth) by { process_perms_wf_at(krnl.prc_mp, parent_ptr); }; }
     let ghost page_array_before_process_retype = krnl.pg_arr;
     let Tracked(process_page_perm) = page_array_retype_owned_4k(
         &mut krnl.pg_arr, process_page_index,
@@ -482,7 +427,7 @@ pub fn create_process_from_staged_pages(
         Ghost(pagetable_page_locks), Tracked(&*lctx), Tracked(process_page_lock_perm),
     );
     thread_map_consume_staged_4k(&mut krnl.thr_mp, staging_thread_ptr, process_page_ptr, Tracked(&*lctx), Tracked(staging_thread_lock_perm));
-    proof { assert(krnl.prc_mp.perms_wf()) by { reveal(process_perms_wf); }; }
+    proof { assert(krnl.prc_mp.perms_wf()) by { process_perms_wf_map(krnl.prc_mp); }; }
     let Tracked(process_lock_perm) = krnl.retype_page_to_process_and_insert(process_page_ptr, process_value, process_rodata, process_ghost, Tracked(process_page_perm), Tracked(&mut *lctx));
     process_map_link_new_child(&mut krnl.prc_mp, parent_ptr, process_page_ptr, Ghost(ancestors), Tracked(&*lctx), Tracked(parent_lock_perm), Tracked(&process_lock_perm));
     proof { container_map_add_owned_process(&mut krnl.ctn_mp, container_ptr, process_page_ptr, lctx.container_lock_map(), lctx.thread_id()); }

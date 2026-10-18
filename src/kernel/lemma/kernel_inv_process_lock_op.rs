@@ -3,14 +3,14 @@ use crate::*;
 use crate::kernel::*;
 
 verus! {
-/// Process invariant fields other than the empty-thread write-lock guard.
+/// Process invariant fields other than the lifecycle state, which the lock-sensitive leaves read with the lock state.
 pub open spec fn process_invariant_fields_unchanged(pre: ProcessLockedMap, post: ProcessLockedMap) -> bool {
     &&& pre.dom() =~= post.dom()
     &&& forall|p_ptr: RwLockProcessPtr|
         #![trigger pre.spec_index(p_ptr)]
         #![trigger post.spec_index(p_ptr)]
         pre.dom().contains(p_ptr) ==> {
-            &&& post.spec_index(p_ptr).view() == pre.spec_index(p_ptr).view()
+            &&& post.spec_index(p_ptr).view() == (Process { state: post.spec_index(p_ptr).view().state, ..pre.spec_index(p_ptr).view() })
             &&& post.spec_index(p_ptr).view_rodata() == pre.spec_index(p_ptr).view_rodata()
             &&& post.spec_index(p_ptr).view_ghost() == pre.spec_index(p_ptr).view_ghost()
         }
@@ -19,7 +19,7 @@ pub open spec fn process_invariant_fields_unchanged(pre: ProcessLockedMap, post:
 pub proof fn process_lock_op_preserves_invariant_fields(pre: ProcessLockedMap, post: ProcessLockedMap, changed: RwLockProcessPtr)
     requires
         post.unchanged_except(&pre, changed),
-        post.spec_index(changed).view() == pre.spec_index(changed).view(),
+        post.spec_index(changed).view() == (Process { state: post.spec_index(changed).view().state, ..pre.spec_index(changed).view() }),
         post.spec_index(changed).view_rodata() == pre.spec_index(changed).view_rodata(),
         post.spec_index(changed).view_ghost() == pre.spec_index(changed).view_ghost(),
     ensures
@@ -32,6 +32,7 @@ pub proof fn memory_management_inv_preserved_for_process_invariant_fields(pre: K
         pre.memory_management_inv(),
         container_process_wf(pre.ctn_mp, pre.prc_mp),
         process_invariant_fields_unchanged(pre.prc_mp, post.prc_mp),
+        process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.it_mp),
         post.pt_mp == pre.pt_mp,
         post.it_mp == pre.it_mp,
         post.pg_arr == pre.pg_arr,
@@ -59,12 +60,16 @@ pub proof fn memory_management_inv_preserved_for_process_invariant_fields(pre: K
     assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp)) by { container_process_allocator_quota_1g_wf_preserved_for_process_1g_fields(post.ctn_mp, post.thr_mp, post.allc_1g_mp, pre.prc_mp, post.prc_mp); };
     assert(process_pagetable_match(post.prc_mp, post.pt_mp)) by { lemma_process_pagetable_match_preserved_for_process_pagetable_fields_forall(); };
     assert(process_iommu_table_match(post.prc_mp, post.it_mp)) by { lemma_process_iommu_table_match_preserved_for_process_iommu_table_fields_forall(); };
+    assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
 }
 
 pub proof fn process_management_inv_preserved_for_process_invariant_fields(pre: KernelK, post: KernelK)
     requires
         pre.process_management_inv(),
         process_thread_wf(post.prc_mp, post.thr_mp),
+        process_kill_mark_wf(post.prc_mp),
+        process_state_lock_wf(post.prc_mp),
+        process_emptied_threads_wf(post.prc_mp, post.thr_mp),
         process_invariant_fields_unchanged(pre.prc_mp, post.prc_mp),
         post.cpu_arr == pre.cpu_arr,
         post.ctn_mp == pre.ctn_mp,

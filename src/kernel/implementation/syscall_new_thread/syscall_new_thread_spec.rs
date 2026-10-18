@@ -10,10 +10,12 @@ verus! {
 /// The result of `syscall_new_thread` and `syscall_new_thread_with_endpoint` from the state at entry,
 /// in the implementation's check order: a killed process or caller, a caller without 4K quota, and an
 /// empty shared descriptor.
+/// A cpu no longer Running or marked by a killer returns CpuIdle first.
 pub open spec fn new_thread_syscall_result(pre: KernelU, cpu_id: CpuId, endpoint_index: Option<EndpointIdx>) -> RetValueType {
     let cpu = pre.cpu_array[cpu_id as int];
     let thread = pre.thread_map[cpu.current_thread->Some_0];
-    if pre.process_map[cpu.current_process->Some_0].killed { RetValueType::ErrorProcessKilled }
+    if !(cpu.state is Running) || cpu.killed { RetValueType::CpuIdle }
+    else if pre.process_map[cpu.current_process->Some_0].killed { RetValueType::ErrorProcessKilled }
     else if thread.killed { RetValueType::ErrorThreadKilled }
     else if thread.quota_4k == 0 { RetValueType::ErrorNoQuota }
     else if endpoint_index is Some && thread.endpoint_descriptors[endpoint_index->Some_0 as int] is None { RetValueType::Error }

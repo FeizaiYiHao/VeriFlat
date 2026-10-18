@@ -44,7 +44,7 @@ impl PageAllocator {
                     &&& !ret.cpu_caches.spec_index(cpu_id).view().locked()
                 },
     {
-        assert(linked_list.view().len() == linked_list.length) by { reveal(LinkedList::wf_value_list); };
+        assert(linked_list.view().len() == linked_list.length) by { linked_list.lemma_len_view(); };
         let mut cache_array: Array<RwLock<AllocatorCache, (), (), NO_KILL_STATE>, NUM_CPUS> = Array::new();
         let mut cpu_id = 0;
         while cpu_id < NUM_CPUS
@@ -205,27 +205,12 @@ impl PageAllocator {
             old(self).wf(),
             index_valid(NUM_CPUS, cpu_id),
             wlock_requires(old(self).cpu_caches.spec_index(cpu_id).view(), old(lctx)),
-            old(lctx).lock_id_acyclic(LockId {
-                container: old(self).cpu_caches.spec_index(cpu_id).container_depth(),
-                process: old(self).cpu_caches.spec_index(cpu_id).process_depth(),
-                major: old(self).cpu_caches.spec_index(cpu_id).view().view().current_lock_major(),
-                minor: old(self).cpu_caches.spec_index(cpu_id).lock_minor(),
-            }),
+            old(lctx).lock_id_acyclic(old(self).cpu_caches.lock_id_by_index(cpu_id)),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).wf(),
-            wlock_ensures(old(self).cpu_caches.spec_index(cpu_id).view(), final(self).cpu_caches.spec_index(cpu_id).view(), LockId {
-                container: old(self).cpu_caches.spec_index(cpu_id).container_depth(),
-                process: old(self).cpu_caches.spec_index(cpu_id).process_depth(),
-                major: old(self).cpu_caches.spec_index(cpu_id).view().view().current_lock_major(),
-                minor: old(self).cpu_caches.spec_index(cpu_id).lock_minor(),
-            }, final(lctx), ret.view()),
-            lock_ensures(old(lctx), final(lctx), LockId {
-                container: old(self).cpu_caches.spec_index(cpu_id).container_depth(),
-                process: old(self).cpu_caches.spec_index(cpu_id).process_depth(),
-                major: old(self).cpu_caches.spec_index(cpu_id).view().view().current_lock_major(),
-                minor: old(self).cpu_caches.spec_index(cpu_id).lock_minor(),
-            }, KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id)),
+            wlock_ensures(old(self).cpu_caches.spec_index(cpu_id).view(), final(self).cpu_caches.spec_index(cpu_id).view(), old(self).cpu_caches.lock_id_by_index(cpu_id), final(lctx), ret.view()),
+            lock_ensures(old(lctx), final(lctx), old(self).cpu_caches.lock_id_by_index(cpu_id), KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id)),
             final(self).cpu_caches.unchanged_except(&old(self).cpu_caches, cpu_id),
             final(self).global_pool == old(self).global_pool,
             final(self).quota == old(self).quota,
@@ -269,34 +254,18 @@ impl PageAllocator {
         requires
             old(self).wf(),
             wlock_requires(old(self).global_pool, old(lctx)),
-            old(lctx).lock_id_acyclic(LockId {
-                container: old(self).global_pool.view().container_depth(),
-                process: old(self).global_pool.view().process_depth(),
-                major: old(self).global_pool.view().current_lock_major(),
-                minor: old(self).global_pool.view().lock_minor(),
-            }),
+            old(lctx).lock_id_acyclic(old(self).global_pool.lock_id()),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).wf(),
-            wlock_ensures(old(self).global_pool, final(self).global_pool, LockId {
-                container: old(self).global_pool.view().container_depth(),
-                process: old(self).global_pool.view().process_depth(),
-                major: old(self).global_pool.view().current_lock_major(),
-                minor: old(self).global_pool.view().lock_minor(),
-            }, final(lctx), ret.view()),
-            lock_ensures(old(lctx), final(lctx), LockId {
-                container: old(self).global_pool.view().container_depth(),
-                process: old(self).global_pool.view().process_depth(),
-                major: old(self).global_pool.view().current_lock_major(),
-                minor: old(self).global_pool.view().lock_minor(),
-            }, KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr.view())),
+            wlock_ensures(old(self).global_pool, final(self).global_pool, old(self).global_pool.lock_id(), final(lctx), ret.view()),
+            lock_ensures(old(lctx), final(lctx), old(self).global_pool.lock_id(), KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr.view())),
             final(self).cpu_caches == old(self).cpu_caches,
             final(self).quota == old(self).quota,
             final(self).owning_container == old(self).owning_container,
             final(self).total_free_pages == old(self).total_free_pages,
     {
-        let lock_id = Ghost(LockId { container: self.global_pool.view().container_depth(), process: self.global_pool.view().process_depth(),
-            major: self.global_pool.view().current_lock_major(), minor: self.global_pool.view().lock_minor() });
+        let lock_id = Ghost(old(self).global_pool.lock_id());
         self.global_pool.wlock(Tracked(lctx), lock_id, Ghost(KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr.view())))
     }
 
@@ -358,7 +327,7 @@ impl PageAllocator {
     {
         {
             let cache = self.cpu_caches.borrow_mut(cpu_id, Tracked(lctx), lock_perm);
-            assert(cache.linked_list.length != usize::MAX) by { reveal(LinkedList::wf_value_list); };
+            assert(cache.linked_list.length != usize::MAX) by { cache.linked_list.lemma_len_view(); };
             cache.linked_list.push_head(node_addr, node_perm);
         }
         self.total_free_pages = Ghost((self.total_free_pages.view() + 1) as usize);
@@ -436,13 +405,13 @@ impl PageAllocator {
             final(self).quota == old(self).quota,
             final(self).owning_container == old(self).owning_container,
     {
-        assert(self.global_pool.view().linked_list.length != usize::MAX) by { lemma_cache_len_fold_nonneg(self.cpu_caches.view()); reveal(LinkedList::wf_value_list); };
+        assert(self.global_pool.view().linked_list.length != usize::MAX) by { lemma_cache_len_fold_nonneg(self.cpu_caches.view()); self.global_pool.view().linked_list.lemma_len_view(); };
         {
             let pool = self.global_pool.borrow_mut(Tracked(lctx), lock_perm);
             pool.linked_list.push_head(node_addr, node_perm);
         }
         self.total_free_pages = Ghost((self.total_free_pages.view() + 1) as usize);
-        assert(self.wf()) by { self.global_pool.view().lemma_len_view(); old(self).global_pool.view().lemma_len_view(); lemma_cache_len_fold_congruence(old(self).cpu_caches.view(), self.cpu_caches.view()); };
+        assert(self.wf()) by { self.global_pool.view().lemma_len_view(); old(self).global_pool.view().lemma_len_view(); };
     }
 
     pub fn pop_global_pool_page(&mut self, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret: (usize, Tracked<PointsTo<Node<PagePtr>>>))
@@ -481,71 +450,8 @@ impl PageAllocator {
             (node_addr, Tracked(node_perm))
         };
         self.total_free_pages = Ghost((self.total_free_pages.view() - 1) as usize);
-        proof { self.global_pool.view().lemma_len_view(); old(self).global_pool.view().lemma_len_view(); lemma_cache_len_fold_congruence(old(self).cpu_caches.view(), self.cpu_caches.view()); }
+        proof { self.global_pool.view().lemma_len_view(); old(self).global_pool.view().lemma_len_view(); }
         (node_addr, node_perm)
-    }
-
-    pub fn move_global_pool_head_to_cache(&mut self, cpu_id: CpuId, Tracked(lctx): Tracked<&LocalContext>, Tracked(cache_lock_perm): Tracked<&LockPerm>, Tracked(global_pool_lock_perm): Tracked<&LockPerm>) -> (ret: (usize, PagePtr))
-        requires
-            old(self).wf(),
-            index_valid(NUM_CPUS, cpu_id),
-            old(self).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx),
-            old(self).cpu_caches.spec_index(cpu_id).view().is_init(),
-            cache_lock_perm.state() is WriteLock,
-            cache_lock_perm.thread_id() == lctx.thread_id(),
-            cache_lock_perm.lock_id() == old(self).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-            old(self).global_pool.wlocked_by(lctx),
-            old(self).global_pool.is_init(),
-            global_pool_lock_perm.state() is WriteLock,
-            global_pool_lock_perm.thread_id() == lctx.thread_id(),
-            global_pool_lock_perm.lock_id() == old(self).global_pool.locking_thread()->Write_lock_id,
-            old(self).global_pool.view().len() > 0,
-            old(self).cpu_caches.spec_index(cpu_id).view().view().linked_list.len() < ALLOCATOR_MAX_WATERMARK,
-            !old(self).cpu_caches.spec_index(cpu_id).view().view().view().contains(old(self).global_pool.view().view().spec_index(0)),
-        ensures
-            final(self).wf(),
-            ret.1 == old(self).global_pool.view().view().spec_index(0),
-            old(self).global_pool.view().map().dom().contains(ret.0),
-            old(self).global_pool.view().map().spec_index(ret.0) == ret.1,
-            final(self).global_pool.view().view() == old(self).global_pool.view().view().skip(1),
-            final(self).global_pool.view().map() == old(self).global_pool.view().map().remove(ret.0),
-            final(self).cpu_caches.spec_index(cpu_id).view().view().view() == old(self).cpu_caches.spec_index(cpu_id).view().view().view().insert(0, ret.1),
-            final(self).cpu_caches.spec_index(cpu_id).view().view().map() == old(self).cpu_caches.spec_index(cpu_id).view().view().map().insert(ret.0, ret.1),
-            !old(self).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(ret.0),
-            final(self).total_free_pages == old(self).total_free_pages,
-            final(self).cpu_caches.entries_unchanged_except(&old(self).cpu_caches, cpu_id),
-            final(self).cpu_caches.spec_index(cpu_id).view().is_init(),
-            final(self).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx),
-            final(self).cpu_caches.spec_index(cpu_id).view().write_lock_perm_match(cache_lock_perm),
-            final(self).cpu_caches.spec_index(cpu_id).view().locking_thread() == old(self).cpu_caches.spec_index(cpu_id).view().locking_thread(),
-            final(self).cpu_caches.spec_index(cpu_id).view().being_killed() == old(self).cpu_caches.spec_index(cpu_id).view().being_killed(),
-            final(self).cpu_caches.spec_index(cpu_id).lock_id() == old(self).cpu_caches.spec_index(cpu_id).lock_id(),
-            final(self).global_pool.is_init(),
-            final(self).global_pool.wlocked_by(lctx),
-            final(self).global_pool.write_lock_perm_match(global_pool_lock_perm),
-            final(self).global_pool.locking_thread() == old(self).global_pool.locking_thread(),
-            final(self).global_pool.being_killed() == old(self).global_pool.being_killed(),
-            final(self).global_pool.lock_id() == old(self).global_pool.lock_id(),
-            final(self).quota == old(self).quota,
-            final(self).owning_container == old(self).owning_container,
-    {
-        let ghost old_caches = self.cpu_caches;
-        let (node_addr, Tracked(node_perm), page_ptr) = {
-            let pool_mut = self.global_pool.borrow_mut(Tracked(lctx), Tracked(global_pool_lock_perm));
-            let (_, page_ptr) = pool_mut.peek_head();
-            let (node_addr, Tracked(node_perm)) = pool_mut.linked_list.pop_head();
-            (node_addr, Tracked(node_perm), page_ptr)
-        };
-        {
-            let cache_mut = self.cpu_caches.borrow_mut(cpu_id, Tracked(lctx), Tracked(cache_lock_perm));
-            assert(cache_mut.linked_list.length != usize::MAX) by { reveal(LinkedList::wf_value_list); };
-            cache_mut.linked_list.push_head(node_addr, Tracked(node_perm));
-        }
-        proof {
-            lemma_cache_len_fold_change_one_array(self.cpu_caches, old_caches, cpu_id);
-            assert(old(self).global_pool.view().len() == self.global_pool.view().len() + 1) by { old(self).global_pool.view().lemma_len_view(); self.global_pool.view().lemma_len_view(); };
-        }
-        (node_addr, page_ptr)
     }
 }
 }

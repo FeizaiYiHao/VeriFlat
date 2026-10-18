@@ -18,11 +18,12 @@ pub(super) proof fn ipc_schedule_waiting_peer_eof_process(
 {
     reveal(ipc_schedule_waiting_peer_transition);
     assert(post.process_management_inv()) by {
+        assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
         assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_perms_wf); thread_endpoint_ref_counter_wf_preserved_for_descriptor_eq(pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
         assert({
             &&& container_endpoint_wf(post.ctn_mp, post.ep_mp)
             &&& thread_caller_callee_wf(post.thr_mp)
-        }) by { reveal(container_endpoint_wf); reveal(thread_caller_callee_wf); };
+        }) by { container_endpoint_wf_preserved_for_endpoint_owner_eq(pre.ctn_mp, post.ctn_mp, pre.ep_mp, post.ep_mp); thread_caller_callee_wf_preserved_for_call_link_eq(pre.thr_mp, post.thr_mp); };
         assert({
             &&& container_scheduler_wf(post.ctn_mp, post.sched_mp)
             &&& container_thread_wf(post.ctn_mp, post.thr_mp)

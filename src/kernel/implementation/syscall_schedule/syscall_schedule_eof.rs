@@ -14,8 +14,11 @@ proof fn scheduler_context_switch_eof_container_thread_scheduler(pre: KernelK, p
     reveal(scheduler_context_switch_transition);
     assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by {
         let cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
-        assert(cpu.current_thread is Some ==> pre.thr_mp.spec_index(cpu.current_thread.unwrap()).view().owning_container == cpu.owning_container) by { reveal(thread_cpu_wf); reveal(process_thread_wf); reveal(process_cpu_wf); };
-        assert(pre.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.view().no_duplicates()) by { reveal(scheduler_perms_wf); reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list); };
+        assert(cpu.current_thread is Some ==> pre.thr_mp.spec_index(cpu.current_thread.unwrap()).view().owning_container == cpu.owning_container) by {
+            cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); thread_cpu_wf_cpu_at(pre.thr_mp, pre.cpu_arr, cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
+            if cpu.current_thread is Some { process_thread_wf_at(pre.prc_mp, pre.thr_mp, cpu.current_thread.unwrap()); }
+        };
+        assert(pre.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.view().no_duplicates()) by { scheduler_perms_wf_at(pre.sched_mp, scheduler_ptr); reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list); };
         reveal(container_thread_scheduler_wf); reveal(container_scheduler_wf); reveal(container_thread_wf);
         seq_push_lemma::<RwLockThreadPtr>(); seq_skip_lemma::<RwLockThreadPtr>();
     };
@@ -42,6 +45,7 @@ proof fn scheduler_context_switch_eof_process_management_inv(pre: KernelK, post:
         assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_endpoint_waiting_eq(pre.thr_mp, post.thr_mp, post.ep_mp); };
         assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { container_thread_endpoint_wf_preserved_for_descriptor_owner_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
         assert(thread_caller_callee_wf(post.thr_mp)) by { thread_caller_callee_wf_preserved_for_call_link_eq(pre.thr_mp, post.thr_mp); };
+        assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
     };
 }
 

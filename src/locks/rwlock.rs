@@ -79,6 +79,32 @@ impl RwLockInner {
         }
     }
 
+    /// Record `killer_info` on an object the caller already write-holds.
+    #[verifier::external_body]
+    pub fn mark_kill(&mut self, killer_info: KillerInfo) {
+        loop {
+            if self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok() {
+                debug_assert!(self.writing, "mark_kill called on object that is not write-locked");
+                self.killer_info = Some(killer_info);
+                self.lock.store(false, Ordering::Release);
+                break;
+            }
+        }
+    }
+
+    /// Clear the mark of a cpu lock the caller already write-holds and marked.
+    #[verifier::external_body]
+    pub fn unkill(&mut self) {
+        loop {
+            if self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok() {
+                debug_assert!(self.writing && self.killer_info.is_some(), "unkill called on object that is not write-locked and marked");
+                self.killer_info = None;
+                self.lock.store(false, Ordering::Release);
+                break;
+            }
+        }
+    }
+
     #[verifier::external_body]
     pub fn wunlock(&mut self) {
         loop {
@@ -362,6 +388,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL
             final(self).view_ghost() == old(self).view_ghost(),
             final(self).locking_thread() == old(self).locking_thread(),
             final(self).being_killed() == old(self).being_killed(),
+            final(self).killer_info() == old(self).killer_info(),
             // The `&mut T` ⇄ inner value linkage.
             *ret == old(self).view(),
             final(self).view() == *final(ret),
@@ -518,6 +545,8 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT> RwLock<T,
             },
             ret.0 == true ==> {
                 &&& old(self).being_killed() == false
+                // Like `wlock`, the mark is taken only once the lock is free.
+                &&& old(self).locked() == false
                 &&& final(self).being_killed() == true
                 &&& final(self).killer_info_inner() == Some(killer_info)
                 &&& ret.1 is Some
@@ -545,6 +574,36 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT> RwLock<T,
             (true, Some(Tracked::assume_new()))
         }
     }
+
+    /// Mark an object this thread already write-holds for its killer; the write lock stays. Like
+    /// `try_wlock_and_mark_kill`, the mark is a kernel-view Release: every other thread's next `try_*` fails. A mark is
+    /// never cleared; the marked object is destroyed while its killer still holds it.
+    #[verifier::external_body]
+    pub fn mark_kill(&mut self, Tracked(lctx): Tracked<&LocalContext>, killer_info: KillerInfo)
+        requires
+            old(self).wlocked_by(lctx),
+            !old(self).being_killed(),
+            lctx.kernel_view_locking_state() is Release,
+        ensures
+            final(self).being_killed(),
+            final(self).killer_info_inner() == Some(killer_info),
+            final(self).locking_thread() == old(self).locking_thread(),
+            final(self).is_init() == old(self).is_init(),
+            final(self).view() == old(self).view(),
+            final(self).view_rodata() == old(self).view_rodata(),
+            final(self).view_ghost() == old(self).view_ghost(),
+    {
+        self.lock.mark_kill(killer_info);
+    }
+
+    /// TCB-only access to `RwLockInner::unkill`; the cpu-lock primitive `CpuLockedArray::unkill` states its contract.
+    #[verifier::external_body]
+    pub fn unkill_external(&mut self)
+        requires
+            true == false, // this function can only be called in the TCB
+    {
+        self.lock.unkill();
+    }
 }
 
 pub open spec fn wlock_requires<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool>(old: RwLock<T, ROT, GhostT, HAS_KILL_STATE>, lctx: &LocalContext) -> bool {
@@ -563,6 +622,7 @@ pub open spec fn wlock_ensures<T: LockInvTrait + LockMajorTrait, ROT, GhostT, co
     &&& new.view_rodata() == old.view_rodata()
     &&& new.view_ghost() == old.view_ghost()
     &&& new.being_killed() == old.being_killed()
+    &&& new.killer_info() == old.killer_info()
     &&& old.locked() == false
     &&& lock_perm.state() is WriteLock
     &&& new.locking_thread()->Write_lock_id == lock_perm.lock_id()
@@ -577,6 +637,7 @@ pub open spec fn wunlock_ensures<T: LockInvTrait, ROT, GhostT, const HAS_KILL_ST
     &&& new.view_rodata() == old.view_rodata()
     &&& new.view_ghost() == old.view_ghost()
     &&& new.being_killed() == old.being_killed()
+    &&& new.killer_info() == old.killer_info()
 }
 
 pub open spec fn take_ensures<T, ROT, GhostT, const HAS_KILL_STATE: bool>(old: RwLock<T, ROT, GhostT, HAS_KILL_STATE>, new: RwLock<T, ROT, GhostT, HAS_KILL_STATE>) -> bool {

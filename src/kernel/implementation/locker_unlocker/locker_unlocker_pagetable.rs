@@ -7,7 +7,6 @@ impl KernelK {
         requires
             old(self).inv(),
             old(self).pt_mp.dom().contains(pagetable_ptr),
-            !old(lctx).pagetable_lock_map().dom().contains(pagetable_ptr),
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).scheduler_lock_map().dom().is_empty(),
             old(lctx).cpu_set_lock_map().dom().is_empty(),
@@ -60,7 +59,10 @@ impl KernelK {
             assert(self.pt_mp.spec_index(pagetable_ptr).view().leaves_present()) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); };
             assert(pagetable_invariant_fields_unchanged(old(self).pt_mp, self.pt_mp));
             assert(self.subsystems_inv()) by { lemma_pagetable_perms_wf_preserved_for_lock_op_forall(); reveal(KernelK::default_pagetable_wf); };
+            assert(pagetable_no_huge_leaf_wf(self.pt_mp, self.it_mp)) by { reveal(pagetable_no_huge_leaf_wf); };
+            assert(process_emptied_tables_wf(self.prc_mp, self.pt_mp, self.it_mp)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_match); };
             assert(self.memory_management_inv()) by {
+                process_kernel_pages_owner_wf_preserved_for_page_state_eq(*old(self), *self);
                 lemma_process_pagetable_match_preserved_for_pagetable_invariant_fields_forall();
                 lemma_page_pagetable_wf_preserved_for_pagetable_invariant_fields_forall();
                 lemma_container_process_page_pagetable_wf_preserved_for_pagetable_invariant_fields_forall();
@@ -85,8 +87,6 @@ impl KernelK {
             source_pagetable != target_pagetable,
             old(self).pt_mp.dom().contains(source_pagetable),
             old(self).pt_mp.dom().contains(target_pagetable),
-            !old(lctx).pagetable_lock_map().dom().contains(source_pagetable),
-            !old(lctx).pagetable_lock_map().dom().contains(target_pagetable),
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).scheduler_lock_map().dom().is_empty(),
             old(lctx).cpu_set_lock_map().dom().is_empty(),
@@ -207,7 +207,10 @@ impl KernelK {
         proof {
             assert(pagetable_invariant_fields_unchanged(old(self).pt_mp, self.pt_mp)) by { pagetable_lock_op_preserves_invariant_fields(old(self).pt_mp, self.pt_mp, pagetable_ptr); };
             assert(self.subsystems_inv()) by { lemma_pagetable_perms_wf_preserved_for_lock_op_forall(); reveal(KernelK::default_pagetable_wf); };
+            assert(pagetable_no_huge_leaf_wf(self.pt_mp, self.it_mp)) by { reveal(pagetable_no_huge_leaf_wf); };
+            assert(process_emptied_tables_wf(self.prc_mp, self.pt_mp, self.it_mp)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_match); };
             assert(self.memory_management_inv()) by {
+                process_kernel_pages_owner_wf_preserved_for_page_state_eq(*old(self), *self);
                 lemma_process_pagetable_match_preserved_for_pagetable_invariant_fields_forall();
                 lemma_page_pagetable_wf_preserved_for_pagetable_invariant_fields_forall();
                 lemma_container_process_page_pagetable_wf_preserved_for_pagetable_invariant_fields_forall();

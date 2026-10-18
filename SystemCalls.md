@@ -117,6 +117,18 @@ empty and `post == pre`. A rejection with a visible effect is an explicit step
 **R7 Traces.** A `*_syscall_trace` is the first step, the phase steps with
 exact length bounds, and the exit step, each with its pre and transition.
 
+**R8 Idle cpu.** Every syscall entry write-locks its cpu first and returns
+`CpuIdle` with an empty trace and `post == pre` when the cpu is no longer
+Running or is `killed`: a kill evicted its thread between the trap and the
+lock, or a killer holds the cpu marked while it evicts the thread (§18). A
+marked cpu is never waited for: `wlock_cpu` returns at once, so the cpu
+reaches user mode or the idle `hlt` and takes the eviction IPI. Entries
+that check their arguments before locking (mmap_4k, unmap_4k, new_process,
+new_container, the hotplug `target` index, the IPC pages range) report
+argument errors first. The result specs and traces state this as their first
+branch (after the argument checks); IPC traces that classify `CpuIdle` as a
+block step take that branch only when the cpu is Running at entry.
+
 ## 3. alloc_quota_4k, alloc_quota_2m — one step each
 
 Status: conforms (alloc_quota_4k focused run #27373; alloc_quota_2m workspace
@@ -138,7 +150,7 @@ run #28754, monolith run #28755, noninterference run #28756).
 - Effect: the container's `quota_4k` decreases by `amount` and the process's
   increases by it (`kernel_u_only_process_quota_4k_changed`).
 
-Stutters: ContainerKilled, ContainerZombie, ProcessKilled,
+Stutters: CpuIdle (cpu not Running or killed), ContainerKilled, ContainerZombie, ProcessKilled,
 ContainerQuotaInsufficient, ProcessQuotaOverflow.
 
 ## 3a. alloc_thread_quota_4k, alloc_thread_quota_2m — one step each
@@ -164,7 +176,7 @@ noninterference run #28756).
 - Effect: the process's `quota_4k` decreases by `amount` and the thread's
   increases by it (`kernel_u_only_process2thread_quota_4k_changed`).
 
-Stutters: ProcessKilled, ThreadKilled, NoQuota, ThreadQuotaOverflow.
+Stutters: CpuIdle (cpu not Running or killed), ProcessKilled, ThreadKilled, NoQuota, ThreadQuotaOverflow.
 
 ## 4. schedule — one step
 
@@ -189,7 +201,7 @@ Status: conforms (focused run #27374).
   shard `cpu_id` as `SCHEDULED { cpu_id }`, and at most the
   `(cpu_id, flushed_pcid)` TLB entry is flushed.
 
-Stutters: Off, a killed running process or thread (Continue), an empty shard
+Stutters: Off, a `killed` cpu (Idle), a killed running process or thread (Continue), an empty shard
 `cpu_id` or a killed head (Idle or Continue). After Idle the trap layer runs
 `rebalance_pull` (§4c).
 
@@ -237,6 +249,7 @@ progress, so their pres name `cpu.owning_container` directly (R3).
 Stutters:
 - CpuOwnerMismatch: an invalid or foreign `target`; on the child variant also
   `i >= P.children.len()` or a `target` that `P.children[i]` does not own;
+- CpuIdle: after the `target` index check, a cpu no longer Running;
 - ContainerKilled: child variant only, when `P` is killed;
 - ContainerZombie: child variant only, when `P` is a zombie;
 - CpuAlreadyOff;
@@ -252,7 +265,7 @@ Stutters:
   the request bit of an Off cpu is already clear. The caller then sends an IPI
   to `target` (no U effect).
 
-Stutters: CpuOwnerMismatch (with the same child cases), ContainerKilled and
+Stutters: CpuOwnerMismatch for an invalid `target` index, CpuIdle (cpu not Running or killed), CpuOwnerMismatch (with the same child cases), ContainerKilled and
 ContainerZombie (child variant), CpuNotOff.
 
 ## 4b. cpu_offline_check — one step before each schedule
@@ -293,7 +306,7 @@ entry (`cpu_id == lctx.cpu_id()`); the trap layer halts it afterwards.
   pre holds; the trace predicate `cpu_offline_check_entry_trace` records
   `went_off` and the label.
 
-Stutters (`Continue`, no U step): the cpu is already Off; the request bit is
+Stutters (`Continue`, no U step): the cpu is already Off or `killed`; the request bit is
 clear; the running thread or its process is already killed (the bit is kept
 and `syscall_schedule` handles the kill). Each stutter leaves U unchanged.
 
@@ -301,7 +314,7 @@ and `syscall_schedule` handles the kill). Each stutter leaves U unchanged.
 { StillOff, Resumed }`, no U step)
 
 IPI entry of a cpu that halted after going Off. Under `cpu` it re-reads its
-state: while still Off it unlocks and halts again (`StillOff`); once
+state: while still Off it unlocks and halts again (`StillOff`, also returned at once for a `killed` cpu); once
 `syscall_cpu_online` has published Idle it clears the ghost `Cpu.hw_halted`
 and returns to the idle loop (`Resumed`), where the trap layer runs
 `cpu_offline_check` and `syscall_schedule` as usual. U is unchanged in both
@@ -362,7 +375,7 @@ detaches.
   domain `pci_bdf_did`; that IOTLB domain is already empty, because a
   detached function's domain is empty.
 
-Stutters (in this order): ProcessKilled, PciOwnerMismatch, PciNoIommuTable,
+Stutters (in this order): CpuIdle (cpu not Running or killed), ProcessKilled, PciOwnerMismatch, PciNoIommuTable,
 PciAlreadyAttached.
 
 ## 5. new_thread, new_thread_with_endpoint — enter, finish
@@ -397,7 +410,7 @@ Status: conforms (focused run #27397).
   `C`'s thread set and the tail of `C.scheduler[cpu_id]`.
   The step unlocks `cpu`, `P`, `T`, and the endpoint and clears `prog`.
 
-Stutters: ProcessKilled, ThreadKilled, NoQuota, a missing endpoint descriptor.
+Stutters: CpuIdle (cpu not Running or killed), ProcessKilled, ThreadKilled, NoQuota, a missing endpoint descriptor.
 
 ## 5a. new_endpoint — enter, finish
 
@@ -429,7 +442,7 @@ Status: conforms (workspace run #28754, monolith run #28755, noninterference run
   only at `(T, slot)`; `T.endpoint_descriptors[slot] = Some(E)` and `E` joins
   `C.owned_endpoints`. The step unlocks `cpu`, `C`, `P`, and `T` and clears `prog`.
 
-Stutters: ContainerKilled, ContainerZombie, ProcessKilled, ThreadKilled, an
+Stutters: CpuIdle (cpu not Running or killed), ContainerKilled, ContainerZombie, ProcessKilled, ThreadKilled, an
 occupied descriptor (IpcEndpointTargetInUse), NoQuota.
 
 ## 6. mmap_4k — enter, directory/leaf steps, exit
@@ -473,7 +486,7 @@ Status: conforms (workspace run #27748).
 Trace: `range + 2 <= len <= 4 * range + 2`; enter, then directory or leaf
 steps, then exit.
 
-Stutters: argument errors, ThreadKilled, NoQuota, a kernel-range VA (Error),
+Stutters: argument errors, CpuIdle (cpu not Running or killed), ThreadKilled, NoQuota, a kernel-range VA (Error),
 and VaInUse.
 
 ## 7. unmap_4k — enter, leaf/flush/flushed/refund steps, exit
@@ -529,7 +542,7 @@ Status: conforms (workspace run #27748).
 
 Trace: `range + 3 <= len <= range + NUM_CPUS + MAX_CONTAINER_TREE_DEPTH + 4`.
 
-Stutters: argument errors, ContainerKilled, ContainerZombie, ProcessKilled,
+Stutters: argument errors, CpuIdle (cpu not Running or killed), ContainerKilled, ContainerZombie, ProcessKilled,
 ThreadKilled, and an unmapped or kernel-range VA.
 
 ## 8. share_4k — directory and leaf sub-steps
@@ -621,7 +634,7 @@ finish.
 
 Trace: `range + 3 <= len <= 4 * range + 3`.
 
-Stutters: argument errors, ProcessKilled, ThreadKilled, NoPcid, a missing
+Stutters: argument errors, CpuIdle (cpu not Running or killed), ProcessKilled, ThreadKilled, NoPcid, a missing
 endpoint, NoQuota, and an unmapped or kernel-range source VA. new_process does
 not check whether `C` is killed.
 
@@ -686,7 +699,7 @@ workspace run #28754, monolith run #28755, noninterference run #28756).
 
 Trace: `range + 3 <= len <= 4 * range + 3`.
 
-Stutters: argument errors, ContainerKilled, ContainerZombie, depth overflow,
+Stutters: argument errors, CpuIdle (cpu not Running or killed), ContainerKilled, ContainerZombie, depth overflow,
 ProcessKilled, ThreadKilled, a missing endpoint descriptor (Error), NoQuota,
 a bad source range, IpcCpuOwnerMismatch, IpcCpuNotOff.
 
@@ -701,7 +714,7 @@ Status: conforms (workspace run #27751; Pci payload workspace run #28638).
   `!thr.killed`, `edp_idx_valid(i)`, `E(i)` present,
   `T` not in `E(i).queue`, and `Unlocked` for `cpu`, `T`, `E(i)`. `P` is never
   locked: a killed caller process is caught by its killed thread.
-- Stutters: ThreadKilled, InvalidEndpoint, PeerKilled (a killed
+- Stutters: CpuIdle (cpu not Running or killed), ThreadKilled, InvalidEndpoint, PeerKilled (a killed
   peer stays queued), and for no_block the NoPeer and SameDirection results.
 
 **Block** (blocking entry points)
@@ -981,7 +994,7 @@ result. Every step changes a non-lock field (`prog`, or the receiver's
 `quota_4k` in a directory step), so the nonlock view has `len + 5` to
 `4 * len + 5` steps on success and 4 on a failed check.
 
-Stutters: argument errors (Error before any step), ThreadKilled,
+Stutters: argument errors (Error before any step), CpuIdle (cpu not Running or killed), ThreadKilled,
 InvalidEndpoint, and PeerKilled.
 
 ## 14. Syscall entry list
@@ -1008,6 +1021,7 @@ InvalidEndpoint, and PeerKilled.
 | `syscall_call` (`call`, `call_usize`), `syscall_receive_call`, `syscall_reply_and_receive` (`reply_and_receive`, `reply_and_receive_usize`) | §11a |
 | `syscall_pci_attach_dma` | §4d |
 | `syscall_thread_exit` | §17 |
+| `syscall_kill_process` | §18 |
 
 ## 15. Approved representation changes
 
@@ -1200,17 +1214,17 @@ Verified: thread_exit focused run #29094, workspace run #29101, monolith run
   releases the caller `R` (blocked-thread major 10002), and each drop step
   acquires and releases `E(index)` (10001).
 - Non-U: in enter, when `R` exists, shard `cpu_id` of `C`'s scheduler
-  (10008). In the lock-table step, the root table (10004), released inside
+  (10009). In the lock-table step, the root table (10004), released inside
   the step once `IT(P)` is locked. In reclaim, per unmapped CPU or IOMMU
   page: the page (mapped-page major
-  10006, moved to the free-page major once it is `Free4k`), shard `cpu_id`
-  of its owner's 4K allocator cache (10009), and that allocator's pool
-  (10010, only to drain a full cache); per flushed cpu, its `(cpu', pcid)`
+  10007, moved to the free-page major once it is `Free4k`), shard `cpu_id`
+  of its owner's 4K allocator cache (10010), and that allocator's pool
+  (10011, only to drain a full cache); per flushed cpu, its `(cpu', pcid)`
   needflush cell (30001); and the 4K, 2M, and 1G allocator quota of `C`
   and of its ancestors (20002), one at a time. In finish: for `P`'s last
   thread, `C`'s PCID allocator (107) before anything else; `T`'s page
   (allocated-page major 1000), shard `cpu_id` of the 4K allocator cache of
-  the page's owner (10009), that allocator's global pool (10010, only to
+  the page's owner (10010), that allocator's global pool (10011, only to
   drain a full cache), its quota (20002), and the
   `(cpu_id, KERNEL_DEFAULT_PCID)` needflush cell (30001). `update_lock_id`
   moves the woken `R` to the scheduled-thread major (20001), the page to the
@@ -1337,10 +1351,270 @@ reclaim steps in the order above), then finish; `2 <= len`, with no
 numeric upper bound. A stutter leaves an empty trace, `post == pre`, and no
 lock held.
 
-Stutters (in this order): ContainerKilled, ProcessKilled, ThreadKilled,
+Stutters (in this order): CpuIdle (cpu not Running or killed), ContainerKilled, ProcessKilled, ThreadKilled,
 PeerKilled (a killed `R`, met when its lock is tried after `T`'s).
 
 Trusted primitive: `retype_thread_rwlock_to_4k_page_perm` (external_body;
 authorized TCB), the inverse of the `retype_page_perm_to_rwlock` mint that
 creates a thread: it retires the removed, write-locked thread object, returns
 its page as a raw 4K page permission, and drops `T`'s lock from `lctx`.
+
+## 18. kill_process — enter, walk, thread, reclaim, retire steps, finish
+
+Status: implemented, including the thread kill (dangling, mark, dequeue, evict,
+unlink, killed-thread reclaim), PCI reassignment, live reclaim, zombie reap,
+and table-structure retirement.
+Verified: kill focused run #TBD, workspace run #TBD, monolith run #TBD,
+noninterference run #TBD.
+
+- Arguments: `child_index`. The running thread `T` of `cpu_id` kills
+  `D = P.children[child_index]` and every process below it, one subtree at a
+  time, depth first and bottom up. The trap layer checks nothing.
+- Result: Success unless the call stutters (`kill_process_syscall_result`);
+  the killer keeps running. After Success no process of the subtree is left,
+  and each of its threads is reclaimed or, if it waited for a reply, left as
+  an unlocked dangling thread that its callee reclaims.
+- U locks retained from enter to finish: `cpu` (major 1), `P` (105), and `T`
+  (106). Each marked process stays write-locked from the step that marks it
+  to its retire step; these processes form the chain from `D` down to the
+  target `L`. A marked thread `V` stays write-locked from its mark step until
+  it is reclaimed, and `PT(L)` (10003) and, when `L` has one, `IT(L)` (10005)
+  from the lock-table step to the unlock-table step. A marked process or
+  thread reports the minimal lock id (major 0), so every later lock is above
+  it. `C` is never locked: its thread and process sets are lock-free ghost
+  state, and its quota and PCIDs change only under allocator locks inside one
+  step (R5).
+- Non-U, each taken and released inside one atomic section: the locks of the
+  killed-thread reclaim and of the leaf reclaim as in §17; the root table
+  (10004) in the reassign step; `C`'s PCID allocator (107) in the zombify
+  step; and the structure-page, root-page, cache, pool, and quota locks of
+  the retire stage. Across the retire stage's sections the killer holds `L`'s
+  process page, the object pages of `PT(L)` and `IT(L)`, and both tables
+  (hold below). The per-step lists below name them.
+- Lock order: `cpu`, `P`, `T`, then the marked chain and `V` at the sunk id;
+  inside a step, `V` at the major of its state, then its shard, endpoint,
+  or remote cpu `R`; in the killed-thread reclaim, the endpoint, the caller,
+  the shard, the page, cache, pool, and quota; in reclaim, the root table,
+  `PT(L)`, `IT(L)`, the per-page, needflush, and quota locks, and the PCID
+  allocator; in retire, the process and table object pages (1000), `PT(L)`,
+  `IT(L)`, then in each section a structure page or the root pages (10006),
+  the cache, pool, and quota. `R` (major 1) is above `T` because it runs a process deeper than
+  `P`.
+- Progress: `KillProcess { process: L, stage }`. Enter records `{ D, Walk }`;
+  a mark-child step moves to `{ child, Walk }`; mark thread records
+  `Thread { V }` and unlink returns to `Walk`; reclaim records
+  `Reclaim { flushed }`, `Quota { returned }`, `Zombie`, and `Retire`; the
+  retire step moves to `{ L.parent, Walk }`. Finish needs `{ P, Walk }`.
+- Derivation: every step reads `P` as `cpu.current_process->Some_0` and `T`
+  as `cpu.current_thread->Some_0`; `W(cpu)` keeps them stable until finish.
+  `L` and `V` are recorded in `prog` (R2). `W(L)` keeps `L.children[0]`,
+  `L.owned_threads[0]`, `L.parent`, `PT(L)`, and `IT(L)` stable, and
+  `L.parent` is the previous chain process or `P`, both write-held. Every
+  process of the subtree belongs to `C = cpu.owning_container`.
+- Middle steps (`kill_process_middle_step`) all require
+  `kill_process_step_pre`: `W` for `cpu`, `P`, and `T`, `prog is
+  KillProcess`, `L` present, `W(L)`, and `L.killed`.
+
+**Enter** (`kill_process_enter_step_pre`, `kill_process_enter_step`)
+
+- Pre: `index_valid(cpu_id)`, `cpu.state is Running`, `prog is None`,
+  `cpu.current_process == Some(P)`, `thr.owning_proc == P`,
+  `thr.state == RUNNING { cpu_id }`, `!P.killed`, `!thr.killed`; `Unlocked`
+  for `cpu`, `P`, and `T`; `child_index < P.children.len()`, `D` present, and
+  `!D.killed`. `C.killed` and `C.zombie` are not checked.
+- Effect: write-locks `cpu`, `P`, and `T`; marks `D` (`killed`) and
+  write-locks it; `prog = KillProcess { D, Walk }`. In K, `D` is locked at
+  the process major below `P` and its id sinks once it is marked
+  (`try_wlock_process_and_mark_kill`).
+
+**Walk** (stage `Walk`)
+
+- Mark child (`kill_process_mark_child_step`): pre `L.children` non-empty
+  and `L.children[0]` present; effect: marks and write-locks `L.children[0]`
+  and records `{ L.children[0], Walk }`. A child of the write-held `L`
+  cannot carry another killer's mark (`process_kill_mark_wf`), so the step
+  always applies.
+- Dangling (`kill_process_dangling_step`; `kill_process_thread_step_pre`:
+  `L.children` empty, `V = L.owned_threads[0]` present): pre
+  `V.state is WAITING_REPLY` and `Unlocked(V)`; effect: `V` leaves
+  `L.owned_threads`, `L` absorbs its `quota_4k`, `quota_2m`, and `quota_1g`,
+  and `V` becomes `DANGLING` with no quota, keeping its descriptors, `caller`,
+  and `callee`. `V` is not marked and stays unlocked (in K it is locked at the
+  blocked major 10002 and released inside the step). It stays in `C`'s
+  thread set until its callee reclaims it: a reply (§11a,
+  ErrorIpcCallerKilled), the callee's exit (§17), or the reclaim of a killed
+  callee below.
+- Mark thread (`kill_process_mark_thread_step`): pre as for dangling with
+  `!V.state.is_reply_waiting()`; effect: `V.killed`, `W(V)`, and
+  `prog = { L, Thread { V } }`. In K, `V` is locked at the major of its state
+  (running 106, scheduled 20001, blocked 10002; a TRANSIT or KILLED thread is
+  write-held elsewhere and is waited for), and `mark_thread_kill` marks it
+  and sinks its id.
+
+**Thread** (stage `Thread { V }`; `kill_process_victim_step_pre`: `V`
+present, `W(V)`, `V.killed`)
+
+- Dequeue scheduled (`kill_process_dequeue_scheduled_step`):
+  `V.state == SCHEDULED { s }`; `V` leaves `scheduler[s]` of its container
+  and becomes `KILLED` with `error_code = None`. Non-U: shard `s` (10009).
+- Dequeue endpoint (`kill_process_dequeue_endpoint_step`):
+  `V.state.is_endpoint_waiting()` on `E = V.blocking_endpoint_ptr->Some_0`;
+  `V` leaves `E.queue` and becomes `KILLED` with no blocking endpoint. `E`
+  (10001) is locked and released inside the step.
+- Evict (`kill_process_evict_step`): `V.state == RUNNING { R }`,
+  `R != cpu_id`; `R` becomes Idle with no current process or thread, and `V`
+  becomes `KILLED`. In K the killer write-locks `R`, marks it with its own
+  `killer_info` (`V` carries the same mark, `thread_cpu_wf`), sends the
+  maskable eviction IPI and waits for its acknowledgement, unmarks `R`
+  (`unkill`), and sets it Idle with no current process or thread
+  (`evict_remote`). `R` takes the IPI only in user mode or at its idle `hlt`:
+  it loads the default page table with the default PCID, acknowledges, and,
+  from user mode, abandons `V` for `run_idle`. Every own-cpu lock of `R`
+  returns at once on the mark, so `R` cannot spin while the killer waits.
+  `update_lock_id` moves `R` to the idle major (2), and `R` is released inside
+  the step. The mark is U-visible as `cpu.killed` but cleared within the
+  step.
+- Unlink (`kill_process_unlink_step`): `V.state is KILLED`; `V` leaves
+  `L.owned_threads`, `L` absorbs its quota of every size, `V` keeps none, and
+  `prog = { L, Walk }`. `V` stays write-held.
+- Killed-thread reclaim (`kernel_u_killed_thread_reclaim_step`, shared with
+  the reply and exit dangling-caller paths), one step per change, the kernel choosing
+  the thread (R1):
+  - each descriptor of `V` that holds an endpoint is cleared, and its
+    unlocked endpoint drops `(V, index)` (`kernel_u_killed_descriptor_dropped`;
+    the endpoint, 10001, is locked inside the step);
+  - when `V` serves a call from `X`: a waiting `X` becomes
+    `SCHEDULED { cpu_id }` with `ErrorIpcCalleeExited` on shard `cpu_id` of
+    its container (`kernel_u_killed_caller_woken`), or a `DANGLING` `X` is
+    taken over as a write-locked `KILLED` thread without callee
+    (`kernel_u_killed_caller_taken_over`); in K, `X` is locked at the blocked
+    major (10002) and a taken-over `X` moves to the killed-thread major (108);
+  - `V` leaves the thread map and `C.owned_threads`, and the container that
+    owns its page gains one `quota_4k` (`kernel_u_dangling_thread_reclaimed`); in
+    K its page (1000) becomes `Free4k` in shard `cpu_id` of its owner's 4K
+    allocator cache (10010; the pool, 10011, only drains a full cache in a
+    section that stutters) under that allocator's quota lock (20002);
+  - a taken-over `X` is reclaimed the same way.
+
+**Reclaim** (stage `Walk`; `kill_process_empty_target_pre`: `L` has no
+children and no threads)
+
+- Reassign (`kill_process_reassign_functions_step`): every PCI function `L`
+  owns is detached, gets `P` as its root-table owner, and has its IOTLB
+  domain `pci_bdf_did` emptied; `L.owned_pci_functions` moves to `P`. K
+  scans all 65,536 B/D/Fs under the root table lock (10004), taken and
+  released inside the step. A target owning no function takes no step.
+- Zombie retire (`kill_process_zombie_retire_step`): an `L` that is already a
+  zombie (§17) and owns no function moves to `Retire`.
+- Lock table (`kill_process_lock_table_step`): a live `L` owning no function
+  write-locks `PT(L)` and `IT(L)`; `prog = Reclaim { flushed: false }`.
+- The remaining reclaim steps follow §17 with `L` for `P` and
+  `kill_process_reclaim_step_pre` (the stage, `W(PT(L))`, and `W(IT(L))` when
+  present) for `unmap_4k_locked`:
+  - Leaf (`kill_process_leaf_step`): one valid user 4K mapping leaves
+    `PT(L)`; the kernel chooses the VA. In K the entry is only marked not
+    present.
+  - Flush (pre `kill_process_flush_step_pre`: no valid user 4K mapping left in
+    `PT(L)`): one `(cpu', L.pcid)` TLB entry becomes empty
+    (`kernel_u_cpu_tlb_cleared`). Non-U: that needflush cell (30001).
+  - Flushed (`kill_process_flushed_step`): `prog = Reclaim { flushed: true }`.
+  - Refund: one container in `C` or `C.uppertree_seq` gains 4K quota
+    (`kernel_u_container_quota_4k_increased`). Before the refunds, K removes
+    each cleared entry and returns its page (mapped-page major 10007) to
+    shard `cpu_id` of its owner's 4K allocator cache (10010; pool 10011 only
+    to drain a full cache) in atomic sections that change no U state and
+    stutter, accumulating the refund in `T`'s pending quota; each refund
+    step takes one allocator quota lock (20002). The IOMMU leaf steps follow
+    the CPU refunds and are followed by their own refunds.
+  - IOMMU leaf (`kill_process_iommu_leaf_step`): `Reclaim { flushed: true }`;
+    one 4K mapping (the kernel chooses the IOVA) leaves `IT(L)`. No IOTLB
+    flush follows: the reassign step detached and moved every function `L`
+    owned and emptied its domain, and a write-locked IOMMU table has no
+    attached function. In K the leaf is marked not present, then removed and
+    its page refunded as for a CPU leaf.
+  - Quota (`kill_process_quota_step`): the next size `S` (4K, then 2M, then
+    1G) moves the whole `L.quota_S` to `C`, zeroes it, and sets
+    `prog = Quota { returned: S }`. Non-U: `C`'s allocator quota of size `S`
+    (20002).
+  - Unlock table (`kill_process_unlock_table_step`): `Quota { returned: 1G }`,
+    no valid user 4K mapping left in `PT(L)`, and none in `IT(L)`; unlocks
+    both and sets `prog = Zombie`.
+- Zombify (`kill_process_zombify_step`): `prog` at `Zombie`, `!L.zombie`;
+  `L` becomes a zombie whose `pagetable` and `iommu_table` project as
+  `None`, `L.pcid` joins `C.free_pcids`, and `prog = { L, Retire }`. Non-U:
+  `C`'s PCID allocator (107).
+
+**Retire** (stage `Retire`)
+
+- Hold, no step: one section locks `L`'s process page and the object pages
+  of `PT(L)` and `IT(L)` (1000) in index order, then `PT(L)` (10003) and
+  `IT(L)` (10005). The killer keeps them until the retire step, so no other
+  thread changes the tables between the sections below.
+- Structure retirement, no step: for `PT(L)` and then `IT(L)`, the killer
+  scans the held table for the next table page below the root that links
+  nothing (an L1, L2, or L3 table). Each such page takes one section: it
+  locks the page (structure-page major 10006, above both table locks) and
+  shard `cpu_id` of `C`'s 4K allocator cache (10010; pool 10011 only to
+  drain a full cache), unlinks the page from its parent table, returns it to
+  the cache, and counts its quota on `T`'s pending counter. Every section
+  removes one page, so the scans end. None of these sections changes U: a
+  zombie's tables project as `None`, and the page array, caches, and pending
+  counters are not in U.
+- Refund: after the scans, one refund step
+  (`kernel_u_container_quota_4k_increased`) returns any pending quota to the
+  killer's container chain.
+- Blocked: unreachable; a zombie's tables map nothing (`process_emptied_tables_wf`, `pagetable_no_huge_leaf_wf`).
+- Retire (`kill_process_retire_step`): pre `Retire`, `L` has no children and
+  no threads, `L.zombie`, `L` owns no function, `L.parent is Some`, and `C`
+  present; effect: `L` leaves the process map, its parent's `children`, the
+  `subtree_set` of every process in `L.uppertree_seq`, and
+  `C.owned_processes`; `C.quota_4k` grows by the number of 4K pages the step
+  frees: `L`'s process page, `PT(L)`'s object page and root table page, and,
+  when `L` has an IOMMU table, `IT(L)`'s object page and root table page (3
+  or 5); `prog = { L.parent, Walk }`. In K the step adds the root table
+  pages (10006) to the held pages and tables, then locks shard `cpu_id` of
+  `C`'s 4K allocator cache (10010; pool 10011 only to drain a full cache)
+  and `C`'s 4K quota (20002), retypes the table objects, their root tables,
+  and the process back into 4K pages, and returns them to the cache. `L`'s
+  lock leaves with the object.
+
+**Finish** (`kill_process_finish_step_pre`, `kill_process_finish_step`)
+
+- Pre: `W` for `cpu`, `P`, and `T`; `prog == KillProcess { P, Walk }` (the
+  walk retired `D`).
+- Effect: clears `prog` and unlocks `T`, `P`, and `cpu`. Nothing else
+  changes.
+
+Trace (`kill_process_syscall_trace`): enter, the middle steps, then finish;
+`2 <= len`, with no numeric upper bound. A stutter leaves an empty trace,
+`post == pre`, and no lock held.
+
+Stutters (in this order): CpuIdle (cpu not Running or killed), ProcessKilled (`P`),
+ThreadKilled, InvalidChild (`child_index >= P.children.len()`),
+ProcessKilled (`D` marked in the entry state; once `P` is write-held, its
+child cannot be marked by another killer, `process_kill_mark_wf`).
+
+Trusted primitives (external_body; authorized TCB): `RwLock::mark_kill`
+(marks a write-held object for its killer), `CpuLockedArray::unkill` (clears
+the mark of a cpu the killer still write-holds; no other object type is ever
+unmarked), the kill-aware `CpuLockedArray` lock operations
+(`wlock_unless_killed`, `wunlock`, `mark_kill`), `evict_remote_cpu` under
+`CpuLockedArray::evict_remote` (a maskable IPI, taken only in user mode or at
+the idle `hlt`, makes the remote cpu load the default page table and
+acknowledge; the killer spins for the acknowledgement; TODO: model this wait
+as a virtual lock in the lock order), `page_map_to_page_perm` (an
+unlinked table page is a 4K page again),
+`retype_pagetable_rwlock_to_4k_page_perms` (a page table whose only table
+page is its root becomes its object page and root page), and
+`retype_process_rwlock_to_4k_page_perm` (a killed, empty process becomes its
+4K page).
+
+Differences:
+
+1. Steps that acquire a U-visible object do not state `Unlocked` for it
+   (R3, R4): enter and mark child for the marked process, mark thread for
+   `V`, dequeue endpoint for `E`, evict for `R`, and lock table for `PT(L)`
+   and `IT(L)`. The dangling step and the killed-thread reclaim steps do.
+2. Liveness: a blocked retire stage retries forever. No invariant states
+   that a zombie's tables map nothing, although reclaim removes every 4K
+   leaf and no syscall creates 2M or 1G leaves.

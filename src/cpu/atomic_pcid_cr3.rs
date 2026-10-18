@@ -1,5 +1,13 @@
 use vstd::prelude::*;
 use crate::*;
+use super::cpu_cr3_pcid::CpuCr3Pcid;
+
+// Platform implementation: send the maskable eviction IPI to `cpu_id` and spin until it acknowledges. The target takes the
+// IPI only with interrupts enabled, in user mode or at the `hlt` of its idle loop; it loads `cr3` with the default PCID,
+// acknowledges, and from user mode abandons its thread for the idle loop.
+unsafe extern "C" {
+    fn veriflat_evict_ipi(cpu_id: usize, cr3: usize);
+}
 
 verus! {
 pub struct AtomicPcidCr3 {
@@ -42,6 +50,37 @@ impl AtomicPcidCr3 {
     {
         let packed = self.atomic.load(Tracked(&mut *lctx));
         (packed & MEM_MASK as usize, packed & 0xfffusize)
+    }
+
+    /// Platform eviction of the remote cpu `cpu_id` that owns this entry, by a maskable IPI whose acknowledgement this cpu
+    /// awaits. The platform guarantees that the target takes the IPI only with interrupts enabled, that is in user mode or
+    /// at the `hlt` of its idle loop, never inside a syscall; there it loads `cr3` with the default PCID, acknowledges, and,
+    /// from user mode, abandons its thread for the idle loop. The wait ends because the caller write-holds and marked the
+    /// target's cpu lock: every kernel path of the target that would lock its own cpu sees the mark, returns at once, and
+    /// reaches user mode or the idle `hlt`. This cpu then publishes the default context on the target's behalf.
+    // TODO: model the IPI wait as a virtual lock in the lock order.
+    #[verifier::external_body]
+    pub(super) fn evict_remote_cpu(&mut self, hardware: &mut CpuCr3Pcid, cpu_id: CpuId, cr3: PageTableRoot, Tracked(lctx): Tracked<&LocalContext>)
+        requires
+            old(hardware).wf(),
+            index_valid(NUM_CPUS, cpu_id),
+            cpu_id != lctx.cpu_id(),
+            page_ptr_valid(cr3),
+            old(self).owner_cpu() == cpu_id,
+            lctx.kernel_view_locking_state() is Release,
+        ensures
+            final(hardware).wf(),
+            final(hardware).cr3() == cr3,
+            final(hardware).pcid() == KERNEL_DEFAULT_PCID,
+            final(self).inv(),
+            final(self).view() == (cr3, KERNEL_DEFAULT_PCID),
+            final(self).owner_cpu() == cpu_id,
+    {
+        unsafe { veriflat_evict_ipi(cpu_id, cr3); }
+        hardware.hardware = Ghost((cr3, KERNEL_DEFAULT_PCID));
+        hardware.current_cr3 = cr3;
+        hardware.current_pcid = KERNEL_DEFAULT_PCID;
+        self.atomic.store(pack_pcid_cr3(cr3, KERNEL_DEFAULT_PCID), Tracked(lctx));
     }
 
     pub fn store(&mut self, cr3: PageTableRoot, pcid: Pcid, Tracked(lctx): Tracked<&LocalContext>)

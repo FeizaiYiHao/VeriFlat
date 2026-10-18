@@ -9,6 +9,8 @@ pub mod syscall_new_endpoint;
 #[cfg(not(feature = "split-crates"))]
 pub mod syscall_thread_exit;
 #[cfg(not(feature = "split-crates"))]
+pub mod syscall_kill_process;
+#[cfg(not(feature = "split-crates"))]
 pub mod syscall_new_process;
 #[cfg(not(feature = "split-crates"))]
 pub mod syscall_new_container;
@@ -47,3 +49,5 @@ pub(crate) mod allocator_cache_spec;
 
 #[cfg(not(feature = "split-crates"))]
 pub mod free_4k_page;
+#[cfg(not(feature = "split-crates"))]
+pub mod reclaim_dangling_thread;

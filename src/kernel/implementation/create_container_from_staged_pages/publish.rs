@@ -222,6 +222,7 @@ pub open spec fn publish_staged_container_root_kernel_state_framing(
     &&& post.prc_mp.spec_index(process_page).wlocked()
     &&& !post.prc_mp.spec_index(process_page).being_killed()
     &&& !post.prc_mp.spec_index(process_page).view().zombie
+    &&& post.prc_mp.spec_index(process_page).view().state.view() is Creating
     &&& post.prc_mp.spec_index(process_page).view().pcid == root_pcid
     &&& post.prc_mp.spec_index(process_page).view().pagetable == pagetable_page
     &&& post.prc_mp.spec_index(process_page).view().iommu_table is None
@@ -355,6 +356,7 @@ pub open spec fn publish_staged_container_root_kernel_state_framing(
     &&& post.thr_mp.spec_index(current_thread_ptr).locking_thread() == pre.thr_mp.spec_index(current_thread_ptr).locking_thread()
     &&& post.thr_mp.spec_index(current_thread_ptr).locking_thread() is Write
     &&& post.thr_mp.spec_index(current_thread_ptr).being_killed() == pre.thr_mp.spec_index(current_thread_ptr).being_killed()
+    &&& post.thr_mp.spec_index(current_thread_ptr).killer_info() == pre.thr_mp.spec_index(current_thread_ptr).killer_info()
     &&& thread_quota_4k_fields_unchanged(pre.thr_mp, post.thr_mp)
     &&& thread_quota_2m_fields_unchanged(pre.thr_mp, post.thr_mp)
     &&& thread_quota_1g_fields_unchanged(pre.thr_mp, post.thr_mp)
@@ -1011,6 +1013,7 @@ pub fn publish_staged_container_root(
         final(krnl).cpu_arr == old(krnl).cpu_arr,
         final(krnl).pcid_needflush == old(krnl).pcid_needflush,
         final(krnl).cpu_published == old(krnl).cpu_published,
+        final(krnl).ep_mp == old(krnl).ep_mp,
         final(krnl).allc_4k_mp.dom() == old(krnl).allc_4k_mp.dom().insert(allocator_4k_page),
         final(krnl).allc_2m_mp.dom() == old(krnl).allc_2m_mp.dom().insert(allocator_2m_page),
         final(krnl).allc_1g_mp.dom() == old(krnl).allc_1g_mp.dom().insert(allocator_1g_page),
@@ -1022,8 +1025,10 @@ pub fn publish_staged_container_root(
         final(krnl).ctn_mp.spec_index(container_page).view_rodata().view().scheduler == scheduler_page,
         final(krnl).ctn_mp.spec_index(container_page).view_rodata().view().allocator_ptr_4k == allocator_4k_page,
         final(krnl).ctn_mp.spec_index(container_page).view_ghost().owned_processes.view() == set![process_page],
+        final(krnl).ctn_mp.spec_index(container_page).view().root_process == process_page,
         !final(krnl).prc_mp.spec_index(process_page).being_killed(),
         !final(krnl).prc_mp.spec_index(process_page).view().zombie,
+        final(krnl).prc_mp.spec_index(process_page).view().state.view() is Creating,
         final(krnl).prc_mp.spec_index(process_page).view_rodata().view().owning_container == container_page,
         final(krnl).prc_mp.spec_index(process_page).view_rodata().view().pagetable == pagetable_page,
         final(krnl).prc_mp.spec_index(process_page).view().quota_4k == process_quota_4k,

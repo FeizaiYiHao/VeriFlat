@@ -54,10 +54,6 @@ impl LockOwnerIdTrait for SchedulerShard {
     open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
 }
 
-impl LockUserVisibilityTrait for SchedulerShard {
-    open spec fn is_user_visible() -> bool { true }
-}
-
 impl Scheduler {
     #[verifier::inline]
     pub open spec fn shard(&self, cpu_id: CpuId) -> SchedulerShard { self.shards.spec_index(cpu_id).view().view() }

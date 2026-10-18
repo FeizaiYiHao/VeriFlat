@@ -25,7 +25,6 @@ pub const IOMMU_ROOT_TABLE_HARDWARE_PAGES: usize = 1 + PCI_BUS_COUNT;
 /// A total `usize` process owner occupies one machine word, so 65,536 owner
 /// slots occupy exactly 128 pages on this 64-bit target.
 pub const IOMMU_ROOT_TABLE_METADATA_PAGES: usize = 128;
-pub const IOMMU_ROOT_TABLE_STATIC_PAGES: usize = IOMMU_ROOT_TABLE_HARDWARE_PAGES + IOMMU_ROOT_TABLE_METADATA_PAGES;
 /// Kept as a literal because Verus checks executable `usize` constant
 /// arithmetic for overflow; the compile-time layout assertions below tie it
 /// back to the actual structure.
@@ -35,14 +34,6 @@ pub open spec fn pci_bdf_valid(bus: usize, device: usize, function: usize) -> bo
     &&& bus < PCI_BUS_COUNT
     &&& device < PCI_DEVICE_COUNT
     &&& function < PCI_FUNCTION_COUNT
-}
-
-pub open spec fn pci_devfn(device: usize, function: usize) -> usize
-    recommends
-        device < PCI_DEVICE_COUNT,
-        function < PCI_FUNCTION_COUNT,
-{
-    (device * PCI_FUNCTION_COUNT + function) as usize
 }
 
 /// We do not allocate VT-d domain IDs: an exclusively owned PCI function has
@@ -416,10 +407,6 @@ impl LockIdTrait for IommuRootTable {
     open spec fn lock_id(&self) -> LockId {
         LockId { container: LockOwnerId::NotApp, process: LockOwnerId::NotApp, major: IOMMU_ROOT_TABLE_LOCK_MAJOR, minor: self.table_base() }
     }
-}
-
-impl LockUserVisibilityTrait for IommuRootTable {
-    open spec fn is_user_visible() -> bool { false }
 }
 
 /// Held-lock alignment of the single root-table lock, keyed by its table base.

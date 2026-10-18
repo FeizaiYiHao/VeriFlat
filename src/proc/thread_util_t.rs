@@ -64,7 +64,6 @@ pub fn retype_thread_rwlock_to_4k_page_perm(
         thread_perm.is_init(),
         thread_perm.addr() == thread_ptr,
         thread_perm.value().is_init(),
-        !thread_perm.value().being_killed(),
         thread_perm.value().view().scheduler_linkedlist_node.is_init(),
         thread_perm.value().view().endpoint_linkedlist_node.is_init(),
         proc_node_perm.is_init(),
@@ -371,47 +370,6 @@ pub fn retype_boot_root_thread(thread_map: &mut ThreadLockedMap, thread_ptr: RwL
 }
 
 impl KernelK {
-    pub fn retype_page_to_thread_and_insert(&mut self, page_ptr: PagePtr, thread_value: Thread, Tracked(page_perm): Tracked<PagePerm4k>, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
-        requires
-            old(self).thr_mp.perms_wf(),
-            !old(self).thr_mp.dom().contains(page_ptr),
-            page_perm.is_init(),
-            page_perm.addr() == page_ptr,
-            thread_value.inv(),
-            old(self).thr_mp.typed_lock_map_aligned(old(lctx).thread_lock_map(), old(lctx).thread_id()),
-            old(lctx).kernel_view_locking_state() is Acquire,
-        ensures
-            final(lctx).cpu_id() == old(lctx).cpu_id(),
-            *final(self) == (KernelK { thr_mp: final(self).thr_mp, ..*old(self) }),
-            final(self).thr_mp.perms_wf(),
-            final(self).thr_mp.dom() =~= old(self).thr_mp.dom().insert(page_ptr),
-            final(self).thr_mp.dom().contains(page_ptr),
-            forall|ptr: RwLockThreadPtr|
-                #![trigger old(self).thr_mp.dom().contains(ptr)]
-                old(self).thr_mp.dom().contains(ptr) ==> {
-                    &&& final(self).thr_mp.dom().contains(ptr)
-                    &&& final(self).thr_mp.spec_index(ptr) == old(self).thr_mp.spec_index(ptr)
-                },
-            final(self).thr_mp.spec_index(page_ptr).is_init(),
-            final(self).thr_mp.spec_index(page_ptr).view() == thread_value,
-            final(self).thr_mp.spec_index(page_ptr).being_killed() == false,
-            typed_lock_map_contains_mode(final(lctx).thread_lock_map(), page_ptr, TypedLockMode::Write),
-            ret.view().state() is WriteLock,
-            ret.view().thread_id() == final(lctx).thread_id(),
-            ret.view().ordering_lock_id() == final(self).thr_mp.lock_id_by_key(page_ptr),
-            final(self).thr_mp.lock_id_by_key(page_ptr) == (LockId { container: thread_value.container_depth(), process: thread_value.process_depth(), major: thread_value.current_lock_major(), minor: page_ptr }),
-            final(self).thr_mp.spec_index(page_ptr).write_lock_perm_match(&ret.view()),
-            final(lctx).thread_id() == old(lctx).thread_id(),
-            final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-            typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Thread(page_ptr), TypedHeldLock { lock_id: final(self).thr_mp.lock_id_by_key(page_ptr), mode: TypedLockMode::Write }),
-            final(self).thr_mp.typed_lock_map_aligned(final(lctx).thread_lock_map(), final(lctx).thread_id()),
-    {
-        proof { assert(!old(lctx).thread_lock_map().dom().contains(page_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); }; }
-        let Tracked(thread_perm) = self.thr_mp.retype_4k_and_insert(page_ptr, thread_value, (), Ghost(()), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::Thread(page_ptr)));
-        proof { assert(self.thr_mp.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }
-        Tracked(thread_perm)
-    }
-
     /// Remove a write-locked thread from `thr_mp` and reclaim its page memory together with the
     /// process node its process list returned.
     pub fn remove_thread_and_reclaim_4k_page_perm(
@@ -422,7 +380,6 @@ impl KernelK {
             old(self).thr_mp.perms_wf(),
             old(self).thr_mp.dom().contains(thread_ptr),
             old(self).thr_mp.spec_index(thread_ptr).is_init(),
-            !old(self).thr_mp.spec_index(thread_ptr).being_killed(),
             old(self).thr_mp.spec_index(thread_ptr).view().scheduler_linkedlist_node.is_init(),
             old(self).thr_mp.spec_index(thread_ptr).view().endpoint_linkedlist_node.is_init(),
             proc_node_perm.is_init(),

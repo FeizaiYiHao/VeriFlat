@@ -141,6 +141,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         assert(ret.user_only()) by { reveal(PageTable::user_only); };
         assert(ret.rwx_upper_level_entries()) by { reveal(PageTable::rwx_upper_level_entries); };
         assert(ret.table_pages_wf()) by { reveal(PageTable::table_pages_wf); };
+        assert(ret.tables_reachable_wf()) by { reveal(PageTable::tables_reachable_wf); };
         assert(ret.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
 
         ret
@@ -494,6 +495,32 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
                 }
     }
 
+    /// Every walk-table page hangs under the user part of the root at the path its reverse map records.
+    #[verifier::opaque]
+    pub open spec fn tables_reachable_wf(&self) -> bool {
+        &&& forall|p: PageMapPtr|
+            #![trigger self.l3_tables.view().dom().contains(p)]
+            self.l3_tables.view().dom().contains(p) ==> {
+                let l4i = self.l3_rev_map.view().spec_index(p);
+                &&& self.kernel_l4_end <= l4i && pei_valid(l4i)
+                &&& self.spec_resolve_mapping_l4(l4i) is Some && self.spec_resolve_mapping_l4(l4i)->0.addr == p
+            }
+        &&& forall|p: PageMapPtr|
+            #![trigger self.l2_tables.view().dom().contains(p)]
+            self.l2_tables.view().dom().contains(p) ==> {
+                let (l4i, l3i) = self.l2_rev_map.view().spec_index(p);
+                &&& self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i)
+                &&& self.spec_resolve_mapping_l3(l4i, l3i) is Some && self.spec_resolve_mapping_l3(l4i, l3i)->0.addr == p
+            }
+        &&& forall|p: PageMapPtr|
+            #![trigger self.l1_tables.view().dom().contains(p)]
+            self.l1_tables.view().dom().contains(p) ==> {
+                let (l4i, l3i, l2i) = self.l1_rev_map.view().spec_index(p);
+                &&& self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
+                &&& self.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some && self.spec_resolve_mapping_l2(l4i, l3i, l2i)->0.addr == p
+            }
+    }
+
     #[verifier::opaque]
     pub open spec fn kernel_entries_wf(&self) -> bool {
         &&& TABLE_TYPE == IOMMU_TYPE ==> self.kernel_l4_end == 0
@@ -528,39 +555,9 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         &&& self.user_only()
         &&& self.rwx_upper_level_entries()
         &&& self.table_pages_wf()
+        &&& self.tables_reachable_wf()
         &&& self.kernel_entries_wf()
         &&& self.pcid_wf()
-    }
-
-    pub open spec fn l4_entry_exists(&self, l4i: L4Index) -> bool
-        recommends
-            self.wf(),
-    {
-        self.spec_resolve_mapping_l4(l4i) is Some
-    }
-
-    pub open spec fn l3_2m_entry_exists(&self, l4i: L4Index, l3i: L3Index) -> bool
-        recommends
-            self.wf(),
-            self.l4_entry_exists(l4i),
-    {
-        self.spec_resolve_mapping_l3(l4i, l3i) is Some
-    }
-
-    pub open spec fn l3_4k_entry_exists(&self, l4i: L4Index, l3i: L3Index) -> bool
-        recommends
-            self.wf(),
-            self.l4_entry_exists(l4i),
-    {
-        self.spec_resolve_mapping_l3(l4i, l3i) is Some
-    }
-
-    pub open spec fn l2_4k_entry_exists(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index) -> bool
-        recommends
-            self.wf(),
-            self.l3_4k_entry_exists(l4i, l3i),
-    {
-        self.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some
     }
 }
 
@@ -588,9 +585,5 @@ impl<const TABLE_TYPE: PTType> LockMajorTrait for PageTable<TABLE_TYPE> {
 impl<const TABLE_TYPE: PTType> LockOwnerIdTrait for PageTable<TABLE_TYPE> {
     open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::none() }
     open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::none() }
-}
-
-impl<const TABLE_TYPE: PTType> LockUserVisibilityTrait for PageTable<TABLE_TYPE> {
-    open spec fn is_user_visible() -> bool { true }
 }
 } // verus!

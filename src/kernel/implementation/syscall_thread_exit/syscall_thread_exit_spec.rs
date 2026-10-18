@@ -2,21 +2,23 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// The result of `syscall_thread_exit` from the state at entry, in the implementation's check order: a killed container,
-/// process, or thread, and a killed caller waiting for the thread's reply. An exit otherwise leaves the cpu idle.
+/// The result of `syscall_thread_exit` from the state at entry, in the implementation's check order: a killed
+/// container, process, or thread, and a killed caller waiting for the thread's reply. An exit otherwise leaves the cpu
+/// idle. A cpu no longer Running or marked by a killer returns CpuIdle first.
 pub open spec fn thread_exit_syscall_result(pre: KernelU, cpu_id: CpuId) -> RetValueType {
     let cpu = pre.cpu_array[cpu_id as int];
     let thread = pre.thread_map[cpu.current_thread->Some_0];
-    if pre.container_map[cpu.owning_container].killed { RetValueType::ErrorContainerKilled }
+    if !(cpu.state is Running) || cpu.killed { RetValueType::CpuIdle }
+    else if pre.container_map[cpu.owning_container].killed { RetValueType::ErrorContainerKilled }
     else if pre.process_map[cpu.current_process->Some_0].killed { RetValueType::ErrorProcessKilled }
     else if thread.killed { RetValueType::ErrorThreadKilled }
     else if thread.caller is Some && pre.thread_map[thread.caller->Some_0].killed { RetValueType::ErrorIpcPeerKilled }
     else { RetValueType::CpuIdle }
 }
 
-/// The cpu runs a live thread of a live process inside its live container, and the thread has no syscall in progress.
-/// A caller the thread serves is live and waits for its reply. The cpu, the container, the process, the thread, and
-/// its caller are unlocked.
+/// The cpu runs a live thread of a live process inside its live container, and the thread has no syscall in progress. A
+/// caller the thread serves is live and waits for its reply, or is the dangling thread of a killed caller. The cpu, the container,
+/// the process, the thread, and its caller are unlocked.
 #[verifier::opaque]
 pub open spec fn thread_exit_enter_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -46,13 +48,14 @@ pub open spec fn thread_exit_enter_step_pre(old_u: KernelU, cpu_id: CpuId) -> bo
         &&& old_u.thread_map.dom().contains(thread.caller->Some_0)
         &&& caller.lock_state is Unlocked
         &&& !caller.killed
-        &&& caller.state is WAITING_REPLY
+        &&& caller.state.is_reply_waiting()
     }
 }
 
 /// Entering write-locks the cpu, the container, the process, and the thread, wakes the caller the thread serves on
-/// shard `cpu_id` of the caller's container with `ErrorIpcCalleeExited`, drops the thread's caller, and records an exit
-/// that has released no descriptor.
+/// shard `cpu_id` of the caller's container with `ErrorIpcCalleeExited` or takes over the dangling thread of a killed caller as a
+/// write-locked killed thread without a callee, drops the thread's caller, and records an exit that has released no
+/// descriptor.
 #[verifier::opaque]
 pub open spec fn thread_exit_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -67,7 +70,14 @@ pub open spec fn thread_exit_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: 
         ..old_u
     };
     let woken = match old_u.thread_map.spec_index(thread_ptr).caller {
-        Some(caller_ptr) => {
+        Some(caller_ptr) => if locked.thread_map[caller_ptr].state is DANGLING {
+            KernelU {
+                thread_map: locked.thread_map.insert(thread_ptr, ThreadU { caller: None, ..locked.thread_map[thread_ptr] }).insert(caller_ptr, ThreadU {
+                    state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked, ..locked.thread_map[caller_ptr]
+                }),
+                ..locked
+            }
+        } else {
             let caller_container = locked.thread_map[caller_ptr].owning_container;
             let scheduler = locked.container_map[caller_container].scheduler;
             KernelU {
@@ -353,14 +363,16 @@ pub open spec fn thread_exit_unlock_table_step(old_u: KernelU, new_u: KernelU, c
     })
 }
 
-/// A step between entering and finishing: releasing a descriptor, or, for a process's last thread, locking the
-/// process's tables, clearing one user 4K leaf, flushing one cpu's TLB for the process's PCID, recording the flush,
-/// clearing one IOMMU 4K leaf, refunding 4K quota to the thread's container chain, returning one size of quota, or
-/// unlocking the tables.
+/// A step between entering and finishing: reclaiming the dangling thread of a killed caller and the killed callers it takes over,
+/// releasing a descriptor, or, for a process's last
+/// thread, locking the process's tables, clearing one user 4K leaf, flushing one cpu's TLB for the process's PCID,
+/// recording the flush, clearing one IOMMU 4K leaf, refunding 4K quota to the thread's container chain, returning one
+/// size of quota, or unlocking the tables.
 pub open spec fn thread_exit_middle_step(step: KernelStep, cpu_id: CpuId) -> bool {
     let old_u = step.old_u;
     let new_u = step.new_u;
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
+    ||| thread_exit_drop_step_pre(old_u, cpu_id) && kernel_u_killed_thread_reclaim_step(old_u, new_u, cpu_id)
     ||| thread_exit_drop_step_pre(old_u, cpu_id) && thread_exit_drop_step(old_u, new_u, cpu_id)
     ||| thread_exit_lock_table_step_pre(old_u, cpu_id) && thread_exit_lock_table_step(old_u, new_u, cpu_id)
     ||| thread_exit_reclaim_step_pre(old_u, cpu_id, false) && thread_exit_leaf_step(old_u, new_u, cpu_id)
@@ -406,9 +418,10 @@ pub open spec fn thread_exit_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -> b
     } else { thread.syscall_progress->Some_0 is ThreadExit }
 }
 
-/// The running thread leaves the kernel and its cpu goes idle: its process absorbs its quota and becomes a zombie without
-/// threads, a zombie root process makes its container a zombie, the container owning the thread's page regains one 4K
-/// quota, at most the cpu's kernel TLB entry is flushed, and the cpu, the container, and the process are released.
+/// The running thread leaves the kernel and its cpu goes idle: its process absorbs its quota and becomes a zombie
+/// without threads, a zombie root process makes its container a zombie, the container owning the thread's page regains
+/// one 4K quota, at most the cpu's kernel TLB entry is flushed, and the cpu, the container, and the process are
+/// released.
 #[verifier::opaque]
 pub open spec fn thread_exit_finish_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];

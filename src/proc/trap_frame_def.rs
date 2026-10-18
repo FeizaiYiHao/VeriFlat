@@ -9,13 +9,6 @@ impl TrapFrameOption {
     pub open spec fn spec_is_some(&self) -> bool { self.exist }
     pub open spec fn spec_is_none(&self) -> bool { self.exist == false }
 
-    pub open spec fn spec_unwrap(&self) -> &Registers
-        recommends
-            self.is_some(),
-    {
-        &self.reg
-    }
-
     pub open spec fn get_some_0(&self) -> &Registers
         recommends
             self.is_some(),
@@ -39,27 +32,6 @@ impl TrapFrameOption {
         self.exist == false
     }
 
-    #[verifier(when_used_as_spec(spec_unwrap))]
-    pub fn unwrap(&self) -> (ret: &Registers)
-        ensures
-            self.get_some_0() =~= ret,
-    {
-        &self.reg
-    }
-
-    /// TODO(verification): a real fast path may copy only the registers a syscall frame has to keep
-    /// (rbx, rbp, r12-r15, rsp, rip, flags), but then its contract must say so, and the callers must
-    /// prove the frame came from `syscall` rather than an interrupt. Until the contracts distinguish
-    /// the two frame kinds every path copies the whole frame; this is the same as `set_self`.
-    pub fn set_self_fast(&mut self, src: &Registers)
-        ensures
-            final(self).is_some(),
-            final(self).get_some_0() =~= src,
-    {
-        self.exist = true;
-        self.reg = *src;
-    }
-
     pub fn set_self(&mut self, src: &Registers)
         ensures
             final(self).is_some(),
@@ -67,15 +39,6 @@ impl TrapFrameOption {
     {
         self.exist = true;
         self.reg = *src;
-    }
-
-    pub fn set_dst_fast(&self, dst: &mut Registers)
-        requires
-            self.is_some(),
-        ensures
-            *final(dst) =~= *self.get_some_0(),
-    {
-        *dst = self.reg;
     }
 
     pub fn set_dst(&self, dst: &mut Registers)
@@ -135,28 +98,6 @@ impl Registers {
         Self {
             r15: 0, r14: 0, r13: 0, r12: 0, rbp: 0, rbx: 0, r11: 0, r10: 0, r9: 0, r8: 0, rcx: 0, rdx: 0, rsi: 0, rdi: 0, rax: 0, error_code: 0, rip: 0, cs: 0, flags: 0, rsp: 0, ss: 0,
         }
-    }
-
-    pub fn new_empty() -> (ret: Self) {
-        Self::zeroed()
-    }
-
-    pub fn new(input: &Registers) -> (ret: Self)
-        ensures
-            ret =~= *input,
-    {
-        let ret = Self {
-            r15: input.r15, r14: input.r14, r13: input.r13, r12: input.r12, rbp: input.rbp, rbx: input.rbx, r11: input.r11, r10: input.r10, r9: input.r9, r8: input.r8, rcx: input.rcx,
-            rdx: input.rdx, rsi: input.rsi, rdi: input.rdi, rax: input.rax, error_code: input.error_code, rip: input.rip, cs: input.cs, flags: input.flags, rsp: input.rsp, ss: input.ss,
-        };
-        ret
-    }
-
-    pub fn set_self_fast(&mut self, src: &Registers)
-        ensures
-            *final(self) == src,
-    {
-        *self = *src;
     }
 }
 } // verus!

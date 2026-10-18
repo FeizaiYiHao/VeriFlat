@@ -37,33 +37,6 @@ impl<const N: usize> ArraySet<N> {
         ret
     }
 
-    pub fn init(&mut self)
-        requires
-            old(self).wf(),
-        ensures
-            final(self).wf(),
-            final(self).view() == Set::<usize>::empty(),
-            final(self).closed_view() == Set::<usize>::empty(),
-    {
-        self.len = 0;
-        self.set = Ghost(Set::<usize>::empty());
-        self.closed_set = Ghost(Set::<usize>::empty());
-        for i in 0..N
-            invariant
-                0 <= i <= N,
-                self.data.wf(),
-                self.closed.wf(),
-                self.len == 0,
-                self.set.view() == Set::<usize>::empty(),
-                self.closed_set.view() == Set::<usize>::empty(),
-                forall|j: int| 0 <= j < i ==> self.data.view().spec_index(j) == false,
-                forall|j: int| 0 <= j < i ==> self.closed.view().spec_index(j) == false,
-        {
-            self.data.set(i, false);
-            self.closed.set(i, false);
-        }
-    }
-
     pub closed spec fn view(&self) -> Set<usize> { self.set.view() }
     pub closed spec fn closed_view(&self) -> Set<usize> { self.closed_set.view() }
 

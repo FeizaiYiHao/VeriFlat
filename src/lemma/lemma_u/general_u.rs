@@ -35,24 +35,6 @@ pub proof fn map_union_remove_right_domain_disjoint_lemma<K, V>(left: Map<K, V>,
 {
 }
 
-pub broadcast proof fn submap_by_transitivity<K, V>(a: Map<K, V>, b: Map<K, V>, c: Map<K, V>)
-    requires
-        #[trigger] a.submap_of(b),
-        #[trigger] b.submap_of(c),
-    ensures
-        a.submap_of(c),
-{
-    assert(a.submap_of(c)) by { vstd::map_lib::lemma_submap_of_trans(a, b, c); };
-}
-
-pub proof fn set_insert_remove_absent_lemma<A>(s: Set<A>, a: A)
-    requires
-        !s.contains(a),
-    ensures
-        s.insert(a).remove(a) == s,
-{
-}
-
 pub proof fn seq_push_lemma<A>()
     ensures
         forall|s: Seq<A>, v: A, x: A|
@@ -85,25 +67,6 @@ pub proof fn seq_skip_index_of_lemma<A>()
     }
 }
 
-pub proof fn seq_to_set_lemma<A>()
-    ensures
-        forall|s: Seq<A>, a: A|
-            #![trigger s.contains(a)]
-            #![trigger s.to_set().contains(a)]
-            s.contains(a) == s.to_set().contains(a),
-{
-}
-
-pub proof fn seq_update_lemma<A>()
-    ensures
-        forall|s: Seq<A>, i: int, j: int, v: A|
-            0 <= i < s.len() && 0 <= j < s.len() && i != j ==> s.update(j, v).spec_index(i) == s.spec_index(i) && s.update(j, v).spec_index(j) == v,
-        forall|s: Seq<A>, i: int, v: A|
-            #![trigger s.update(i, v).spec_index(i)]
-            0 <= i < s.len() ==> s.update(i, v).spec_index(i) == v,
-{
-}
-
 // SPEC FIX: 1st conjunct now requires s.len() > 0 (s[0] is uninterp when len == 0).
 // 3rd conjunct now requires s.no_duplicates() (was false for s = [a, a]).
 // 4th conjunct now requires s.len() > 0 (s[0] is uninterp when len == 0).
@@ -123,44 +86,6 @@ pub proof fn seq_skip_lemma<A>()
     }
 
     assert forall|s: Seq<A>, v: A| s.len() > 0 && s.spec_index(0) == v && s.no_duplicates() implies s.skip(1) =~= s.remove_value(v) by { s.index_of_first_ensures(v); }
-}
-
-// Split facts for breaking a seq at index `i` into a prefix `subrange(0, i)`
-// and a suffix `subrange(i, len)` (the batch-pop / `pop_head_batch` idiom).
-// Bundles the length, indexing, no-duplicates, and to_set-partition facts the
-// two-list `wf()` re-establishment needs.
-pub proof fn seq_subrange_split_lemma<A>()
-    ensures
-        forall|s: Seq<A>, i: int|
-            #![trigger s.subrange(0, i)]
-            0 <= i <= s.len() ==> s.subrange(0, i).len() == i,
-        forall|s: Seq<A>, i: int|
-            #![trigger s.subrange(i, s.len() as int)]
-            0 <= i <= s.len() ==> s.subrange(i, s.len() as int).len() == s.len() - i,
-        forall|s: Seq<A>, i: int, k: int|
-            #![trigger s.subrange(0, i).spec_index(k)]
-            0 <= i <= s.len() && 0 <= k < i ==> s.subrange(0, i).spec_index(k) == s.spec_index(k),
-        forall|s: Seq<A>, i: int, k: int|
-            #![trigger s.subrange(i, s.len() as int).spec_index(k)]
-            0 <= i <= s.len() && 0 <= k < s.len() - i ==> s.subrange(i, s.len() as int).spec_index(k) == s.spec_index(i + k),
-        forall|s: Seq<A>, i: int|
-            #![trigger s.subrange(0, i).no_duplicates()]
-            0 <= i <= s.len() && s.no_duplicates() ==> s.subrange(0, i).no_duplicates(),
-        forall|s: Seq<A>, i: int|
-            #![trigger s.subrange(i, s.len() as int).no_duplicates()]
-            0 <= i <= s.len() && s.no_duplicates() ==> s.subrange(i, s.len() as int).no_duplicates(),
-        forall|s: Seq<A>, i: int, a: A|
-            #![trigger s.subrange(0, i).contains(a)]
-            0 <= i <= s.len() && s.no_duplicates() && s.subrange(0, i).contains(a) ==> !s.subrange(i, s.len() as int).contains(a),
-        forall|s: Seq<A>, i: int, a: A|
-            #![trigger s.subrange(i, s.len() as int).contains(a)]
-            0 <= i <= s.len() && s.no_duplicates() && s.subrange(i, s.len() as int).contains(a) ==> !s.subrange(0, i).contains(a),
-        forall|s: Seq<A>, i: int, a: A|
-            #![trigger s.subrange(0, i).contains(a)]
-            #![trigger s.subrange(i, s.len() as int).contains(a)]
-            0 <= i <= s.len() ==> (s.contains(a) == (s.subrange(0, i).contains(a) || s.subrange(i, s.len() as int).contains(a))),
-{
-    broadcast use vstd::seq_lib::lemma_seq_subrange_elements;
 }
 
 // SPEC FIX: bounded i to [0, s.len()) so subrange(0,i) and subrange(i+1, len) are well-defined.

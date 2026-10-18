@@ -41,7 +41,12 @@ pub(crate) proof fn schedule_current_cpu_references_wf(krnl: &KernelK, cpu_id: C
                 &&& krnl.prc_mp.spec_index(current_process.unwrap()).view().owned_threads.view().contains(ptr)
             })
         },
-{ assert(krnl.cpu_arr.spec_index(cpu_id).view().inv()) by { reveal(cpu_array_wf); }; reveal(container_cpu_wf); reveal(container_perms_wf); reveal(thread_cpu_wf); reveal(process_cpu_wf); reveal(process_thread_wf); }
+{
+    let cpu = krnl.cpu_arr.spec_index(cpu_id).view().view().view();
+    cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id);
+    container_perms_wf_at(krnl.ctn_mp, cpu.owning_container); thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
+    if cpu.current_thread is Some { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, cpu.current_thread.unwrap()); }
+}
 
 #[verifier::spinoff_prover]
 fn schedule_switch_to_queue_head(
@@ -127,6 +132,7 @@ fn schedule_switch_to_queue_head(
             let perm = process_lock_perm.unwrap().view();
             &&& old(krnl).prc_mp.dom().contains(process_ptr)
             &&& !old(krnl).prc_mp.spec_index(process_ptr).being_killed()
+            &&& old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Running || old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Zombie
             &&& typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write)
             &&& perm.state() is WriteLock
             &&& perm.thread_id() == old(lctx).thread_id()
@@ -280,14 +286,16 @@ fn schedule_switch_to_queue_head(
     krnl.wunlock_thread(next_thread, Tracked(&mut *lctx), Tracked(next_lock_perm));
     krnl.wunlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));
     if let Some(perm) = current_thread_lock_perm { krnl.wunlock_thread(current_thread.unwrap(), Tracked(&mut *lctx), perm); }
-    if let Some(perm) = process_lock_perm { krnl.wunlock_process(current_process.unwrap(), Tracked(&mut *lctx), perm); }
+    if let Some(perm) = process_lock_perm {
+        krnl.wunlock_process(current_process.unwrap(), Tracked(&mut *lctx), perm);
+    }
     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         let ghost flushed_pcid = schedule_flushed_pcid(*old(krnl), cpu_id, next_thread);
         let ghost switch_before = steps.view();
         assert(kernel_context_switch_fields(&steps.snapshot_k(), &*krnl, cpu_id, next_thread, *old(pt_regs), flushed_pcid)) by {
             reveal(kernel_context_switch_fields); reveal(scheduler_context_switch_transition); reveal(container_scheduler_wf);
-            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
+            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
             reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
             reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged);
         };
@@ -340,11 +348,12 @@ pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
             let scheduler_ptr = old(krnl).ctn_mp.spec_index(cpu.owning_container).view_rodata().view().scheduler;
             let queue = scheduler_shards_of(old(krnl).sched_mp.spec_index(scheduler_ptr))[cpu_id as int];
             &&& !(cpu.state is Off)
+            &&& !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed()
             &&& (cpu.current_process is Some ==> !old(krnl).prc_mp.spec_index(cpu.current_process.unwrap()).being_killed() && !old(krnl).thr_mp.spec_index(cpu.current_thread.unwrap()).being_killed())
             &&& queue.len() > 0
             &&& !old(krnl).thr_mp.spec_index(queue[0]).being_killed()
         },
-        ret is Idle ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Idle,
+        ret is Idle ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Idle || old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
         ret is Continue ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
         !(ret is Switched) ==> {
             &&& *final(pt_regs) == *old(pt_regs)
@@ -384,23 +393,28 @@ pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
     proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
 
-    let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(&mut *lctx));
+    let cpu_lock_res = krnl.wlock_cpu(cpu_id, Tracked(&mut *lctx));
+    if cpu_lock_res.is_none() {
+        proof {
+            no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); enter_kernel_view_release_preserving_lock_alignments(&*krnl, lctx);
+            schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *old(pt_regs));
+            assert(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running) by { reveal(thread_cpu_wf); };
+            schedule_result_from_k(old(krnl), cpu_id, ScheduleResult::Idle);
+        }
+        return ScheduleResult::Idle;
+    }
+    let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
     let state = cpu.state();
     let container_ptr = cpu.owning_container();
     let current_process = cpu.current_process();
     let current_thread = cpu.current_thread();
     if let CpuState::Off = state {
-        release_cpu_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm));
+        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
-            assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {
-                broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive, kernel_endpoint_nonlock_fields_unchanged_transitive;
-                kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl);
-            };
-        }
-        proof {
+            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, None, None, None, None, None);
             schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *old(pt_regs));
-            assert(schedule_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id) is Off) by { kernel_cpu_projection_at(old(krnl), cpu_id); };
+            schedule_result_from_k(old(krnl), cpu_id, ScheduleResult::Off);
         }
         return ScheduleResult::Off;
     }
@@ -411,18 +425,11 @@ pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
     if let Some(process_ptr) = current_process {
         let res = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
         if res.is_none() {
-            proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
-            proof { assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; }; }
-            release_cpu_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm));
+            krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
             proof {
-                assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {
-                    broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive, kernel_endpoint_nonlock_fields_unchanged_transitive;
-                    kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl);
-                };
-            }
-            proof {
+                steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(process_ptr), None, None, None, None);
                 schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *old(pt_regs));
-                assert(schedule_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id) is Continue) by { kernel_cpu_projection_at(old(krnl), cpu_id); kernel_process_projection_at(old(krnl), process_ptr); };
+                schedule_result_from_k(old(krnl), cpu_id, ScheduleResult::Continue);
             }
             return ScheduleResult::Continue;
         }
@@ -430,20 +437,12 @@ pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         let thread_ptr = current_thread.unwrap();
         let res = krnl.wlock_thread_unless_killed(thread_ptr, Tracked(&mut *lctx));
         if res.is_none() {
-            proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
-            proof { assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; }; }
-            release_cpu_and_process_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, process_lock_perm.unwrap(), Tracked(cpu_lock_perm));
+            krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), process_lock_perm.unwrap());
+            krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
             proof {
-                assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {
-                    broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive, kernel_endpoint_nonlock_fields_unchanged_transitive;
-                    kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl);
-                };
-            }
-            proof {
+                steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(process_ptr), Some(thread_ptr), None, None, None);
                 schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *old(pt_regs));
-                assert(schedule_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id) is Continue) by {
-                    kernel_cpu_projection_at(old(krnl), cpu_id); kernel_process_projection_at(old(krnl), process_ptr); kernel_thread_projection_at(old(krnl), thread_ptr);
-                };
+                schedule_result_from_k(old(krnl), cpu_id, ScheduleResult::Continue);
             }
             return ScheduleResult::Continue;
         }
@@ -458,7 +457,10 @@ pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         &&& krnl.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.view().len() == krnl.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.len()
         &&& krnl.sched_mp.spec_index(scheduler_ptr).owning_container == container_ptr
         &&& (current_thread is Some ==> !krnl.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.view().contains(current_thread.unwrap()))
-    }) by { reveal(scheduler_perms_wf); container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, container_ptr); container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp, scheduler_ptr, cpu_id, current_thread.unwrap()); reveal(LinkedList::wf_value_list); };
+    }) by {
+        scheduler_perms_wf_at(krnl.sched_mp, scheduler_ptr); container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, container_ptr);
+        container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp, scheduler_ptr, cpu_id, current_thread.unwrap()); reveal(LinkedList::wf_value_list);
+    };
     let shard = krnl.sched_mp.borrow_shard_typed(scheduler_ptr, cpu_id, Ghost(lctx.scheduler_lock_map()), Tracked(&*lctx), Tracked(&scheduler_lock_perm));
     if shard.queue.len() != 0 {
         let (_, next_thread) = shard.queue.peek_head();
@@ -474,18 +476,8 @@ pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
                 krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, pt_regs, scheduler_ptr, next_thread, current_process, current_thread,
                 process_lock_perm, current_thread_lock_perm, Tracked(scheduler_lock_perm), next_perm, Tracked(cpu_lock_perm),
             );
-            proof {
-                assert(schedule_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id) == (ScheduleResult::Switched { thread_ptr: next_thread, syscall_return })) by {
-                    kernel_cpu_projection_at(old(krnl), cpu_id); kernel_container_projection_at(old(krnl), container_ptr); kernel_thread_projection_at(old(krnl), next_thread);
-                    if current_process is Some { kernel_process_projection_at(old(krnl), current_process->Some_0); kernel_thread_projection_at(old(krnl), current_thread->Some_0); }
-                };
-            }
+            proof { schedule_result_from_k(old(krnl), cpu_id, ScheduleResult::Switched { thread_ptr: next_thread, syscall_return }); }
             return ScheduleResult::Switched { thread_ptr: next_thread, syscall_return };
-        }
-        proof {
-            assert(kernel_k_to_kernel_u(*old(krnl)).thread_map[next_thread].killed && kernel_k_to_kernel_u(*old(krnl)).container_map[container_ptr].scheduler[cpu_id as int][0] == next_thread) by {
-                kernel_container_projection_at(old(krnl), container_ptr); kernel_thread_projection_at(old(krnl), next_thread);
-            };
         }
     }
     let ret = if let CpuState::Idle = state { ScheduleResult::Idle } else { ScheduleResult::Continue };
@@ -497,10 +489,7 @@ pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         proof { assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl); }; }
         proof {
             schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *old(pt_regs));
-            assert(schedule_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id) == ret) by {
-                kernel_cpu_projection_at(old(krnl), cpu_id); kernel_container_projection_at(old(krnl), container_ptr);
-                if current_process is Some { kernel_process_projection_at(old(krnl), current_process->Some_0); kernel_thread_projection_at(old(krnl), current_thread->Some_0); }
-            };
+            schedule_result_from_k(old(krnl), cpu_id, ret);
         }
         return ret;
     }
@@ -510,7 +499,7 @@ pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
     proof { assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl); }; }
     proof {
         schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *old(pt_regs));
-        assert(schedule_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id) == ret) by { kernel_cpu_projection_at(old(krnl), cpu_id); kernel_container_projection_at(old(krnl), container_ptr); };
+        schedule_result_from_k(old(krnl), cpu_id, ret);
     }
     ret
 }

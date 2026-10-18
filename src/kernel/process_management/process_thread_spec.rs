@@ -3,17 +3,7 @@ use crate::*;
 
 verus! {
     #[verifier::opaque]
-    pub open spec fn process_empty_lists_wlocked(process_map: ProcessLockedMap) -> bool {
-        forall|p_ptr:RwLockProcessPtr|
-            #![trigger process_map.dom().contains(p_ptr)]
-            process_map.dom().contains(p_ptr) && !process_map.spec_index(p_ptr).view().zombie && process_map.spec_index(p_ptr).view().owned_threads.view().len() == 0
-                ==> process_map.spec_index(p_ptr).wlocked()
-    }
-
-    // Proof dependencies (confirmed): process_empty_lists_wlocked.
-    #[verifier::opaque]
     pub open spec fn process_thread_wf(process_map: ProcessLockedMap, thread_map: ThreadLockedMap) -> bool {
-        &&& process_empty_lists_wlocked(process_map)
         &&& forall|p_ptr:RwLockProcessPtr, t_ptr:RwLockThreadPtr|
             #![trigger process_map.spec_index(p_ptr).view().owned_threads.view().contains(t_ptr)]
             process_map.dom().contains(p_ptr) && process_map.spec_index(p_ptr).view().owned_threads.view().contains(t_ptr)
@@ -24,20 +14,26 @@ verus! {
                 && thread_map.spec_index(t_ptr).view().proc_pagetable_ptr == process_map.spec_index(p_ptr).view().pagetable
                 && process_map.spec_index(p_ptr).view().owned_threads.map().dom().contains(thread_map.spec_index(t_ptr).view().proc_linkedlist_node.addr())
                 && process_map.spec_index(p_ptr).view().owned_threads.map().spec_index(thread_map.spec_index(t_ptr).view().proc_linkedlist_node.addr()) == t_ptr
+                && !thread_map.spec_index(t_ptr).view().proc_linkedlist_node.is_init()
+        // A dangling thread has left its process, which may already be gone.
         &&& forall|t_ptr:RwLockThreadPtr|
             #![trigger thread_map.dom().contains(t_ptr), thread_map.spec_index(t_ptr).view().owning_proc]
-            thread_map.dom().contains(t_ptr)
+            thread_map.dom().contains(t_ptr) && !thread_is_dangling(thread_map.spec_index(t_ptr))
                 ==> process_map.dom().contains(thread_map.spec_index(t_ptr).view().owning_proc) && !process_map.spec_index(thread_map.spec_index(t_ptr).view().owning_proc).view().zombie
                 && process_map.spec_index(thread_map.spec_index(t_ptr).view().owning_proc).view().owned_threads.view().contains(t_ptr)
-        // A thread being killed belongs to a process being killed, and one killer write-holds both.
+        // A thread being killed is write-held and never waits for a reply; unless it is already a dangling thread, its process is
+        // being killed and the same killer write-holds both.
         &&& forall|t_ptr: RwLockThreadPtr|
             #![trigger thread_map.spec_index(t_ptr).being_killed()]
             thread_map.dom().contains(t_ptr) && thread_map.spec_index(t_ptr).being_killed() ==> {
                 let process = process_map.spec_index(thread_map.spec_index(t_ptr).view().owning_proc);
-                &&& process.being_killed()
-                &&& process.locking_thread() is Write
                 &&& thread_map.spec_index(t_ptr).locking_thread() is Write
-                &&& thread_map.spec_index(t_ptr).locking_thread()->Write_thread_id == process.locking_thread()->Write_thread_id
+                &&& !thread_map.spec_index(t_ptr).view().state.is_reply_waiting()
+                &&& !thread_is_dangling(thread_map.spec_index(t_ptr)) ==> {
+                    &&& process.being_killed()
+                    &&& process.locking_thread() is Write
+                    &&& thread_map.spec_index(t_ptr).locking_thread()->Write_thread_id == process.locking_thread()->Write_thread_id
+                }
             }
     }
 
@@ -45,6 +41,7 @@ verus! {
         requires
             process_thread_wf(process_map, thread_map),
             thread_map.dom().contains(thread_ptr),
+            !thread_is_dangling(thread_map.spec_index(thread_ptr)),
         ensures
             ({
                 let thread = thread_map.spec_index(thread_ptr).view();

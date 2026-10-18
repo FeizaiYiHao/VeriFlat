@@ -3,6 +3,49 @@ use crate::*;
 use super::syscall_unmap_4k_spec::*;
 
 verus! {
+/// The entry state's K facts on the running thread's cpu, container, process, and pagetable decide the unmap result `ret`.
+pub(super) proof fn unmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAddr, range: usize, ret: RetValueType)
+    requires
+        krnl.inv(),
+        index_valid(NUM_CPUS, cpu_id),
+        !(range == 0 || range > usize::MAX / 4096 || !spec_va_4k_valid(va) || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range)),
+        {
+            let cpu = krnl.cpu_arr.spec_index(cpu_id).value;
+            let thread_ptr = cpu.view().view().current_thread->Some_0;
+            let thread = krnl.thr_mp.spec_index(thread_ptr);
+            let container = krnl.ctn_mp.spec_index(thread.view().owning_container);
+            let process = krnl.prc_mp.spec_index(thread.view().owning_proc);
+            let table = krnl.pt_mp.spec_index(process.view().pagetable).view();
+            let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
+            let live = !container.being_killed() && !container.view().zombie && !process.being_killed() && !thread.being_killed();
+            let mapped = spec_v2l4index(va) >= table.kernel_l4_end && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range
+                ==> table.mapping_4k().dom().contains(va_range.view()[j]) && table.mapping_4k()[va_range.view()[j]].present;
+            &&& ret is CpuIdle ==> !(cpu.view().view().state is Running) || cpu.being_killed()
+            &&& !(ret is CpuIdle) ==> cpu.view().view().state is Running && !cpu.being_killed() && cpu.view().view().current_thread is Some
+            &&& !(ret is CpuIdle) ==> krnl.thr_mp.dom().contains(thread_ptr) && krnl.prc_mp.dom().contains(thread.view().owning_proc) && krnl.ctn_mp.dom().contains(thread.view().owning_container)
+            &&& ret is ErrorContainerKilled ==> container.being_killed()
+            &&& ret is ErrorContainerZombie ==> !container.being_killed() && container.view().zombie
+            &&& ret is ErrorProcessKilled ==> !container.being_killed() && !container.view().zombie && process.being_killed()
+            &&& ret is ErrorThreadKilled ==> !container.being_killed() && !container.view().zombie && !process.being_killed() && thread.being_killed()
+            &&& (ret is Success || ret is Error) ==> live && !process.view().zombie && krnl.pt_mp.dom().contains(process.view().pagetable) && table.leaves_present()
+            &&& ret is Success ==> mapped
+            &&& ret is Error ==> !mapped
+            &&& ret is CpuIdle || ret is ErrorContainerKilled || ret is ErrorContainerZombie || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is Success || ret is Error
+        },
+    ensures
+        unmap_4k_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, va, range) == ret,
+{
+    let c = krnl.cpu_arr.spec_index(cpu_id).value.view().view();
+    let thread = krnl.thr_mp.spec_index(c.current_thread->Some_0).view();
+    kernel_cpu_projection_at(krnl, cpu_id);
+    if !(ret is CpuIdle) {
+        kernel_cpu_thread_projection_at(krnl, cpu_id, thread.owning_proc, c.current_thread->Some_0, None); kernel_container_projection_at(krnl, thread.owning_container);
+        if ret is Success || ret is Error {
+            kernel_l4_end_projection_at(krnl, krnl.prc_mp.spec_index(thread.owning_proc).view().pagetable); kernel_pagetable_mappings_projection_at(krnl, thread.owning_proc);
+        }
+    }
+}
+
 /// Write-locking the caller's context and recording the first page is the enter step on `pre`/`post`.
 pub(super) proof fn unmap_4k_enter_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, range: VaRange4K)
     requires

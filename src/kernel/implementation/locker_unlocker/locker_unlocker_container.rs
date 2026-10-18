@@ -67,6 +67,7 @@ impl KernelK {
             // ---- Success: container locked by us, perm returned ----
             ret is Some ==> {
                 &&& old(self).ctn_mp.spec_index(container_ptr).being_killed() == false
+                &&& !old(self).ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().is_empty()
                 &&& wlock_ensures(old(self).ctn_mp.spec_index(container_ptr), final(self).ctn_mp.spec_index(container_ptr), old(self).ctn_mp.lock_id_by_key(container_ptr), final(lctx), ret.unwrap().view())
                 &&& typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Container(container_ptr), TypedHeldLock { lock_id: final(self).ctn_mp.lock_id_by_key(container_ptr), mode: TypedLockMode::Write })
             },
@@ -84,6 +85,7 @@ impl KernelK {
         }
         let res = self.ctn_mp.wlock_unless_killed(container_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Container(container_ptr)));
         proof {
+            assert(res is Some ==> !old(self).ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().is_empty()) by { reveal(container_process_wf); };
             assert(container_perms_wf(self.ctn_mp)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
             assert(container_invariant_fields_unchanged(old(self).ctn_mp, self.ctn_mp)) by { container_lock_op_preserves_invariant_fields(old(self).ctn_mp, self.ctn_mp, container_ptr); };
             assert(self.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };

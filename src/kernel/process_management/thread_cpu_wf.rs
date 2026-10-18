@@ -20,6 +20,19 @@ verus! {
                 &&& cpu_array.spec_index(thread_map.spec_index(t_ptr).view().state->RUNNING_cpu_id).view().view().view().state is Running
                 &&& cpu_array.spec_index(thread_map.spec_index(t_ptr).view().state->RUNNING_cpu_id).view().view().view().current_thread == Some(t_ptr)
             }
+        // A marked cpu is running and write-held; its current thread carries the same mark, and that thread's holder, its
+        // killer, holds the cpu.
+        &&& forall|cpu_i: CpuId|
+            #![trigger cpu_array.spec_index(cpu_i).view().being_killed()]
+            index_valid(NUM_CPUS, cpu_i) && cpu_array.spec_index(cpu_i).view().being_killed() ==> {
+                let cpu = cpu_array.spec_index(cpu_i).view();
+                let thread = thread_map.spec_index(cpu.view().view().current_thread->Some_0);
+                &&& cpu.view().view().state is Running
+                &&& cpu.view().view().current_thread is Some
+                &&& thread.killer_info() == cpu.killer_info()
+                &&& thread.locking_thread() is Write
+                &&& cpu.wlocked_by_thread(thread.locking_thread()->Write_thread_id)
+            }
     }
 
     pub proof fn thread_cpu_wf_cpu_at(thread_map: ThreadLockedMap, cpu_array: CpuLockedArray, cpu_i: CpuId)

@@ -94,6 +94,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         assert(self.user_only()) by { reveal(PageTable::user_only); };
         assert(self.rwx_upper_level_entries()) by { reveal(PageTable::rwx_upper_level_entries); };
         assert(self.table_pages_wf()) by { reveal(PageTable::table_pages_wf); };
+        assert(self.tables_reachable_wf()) by { reveal(PageTable::tables_reachable_wf); self.resolve_l2_unchanged(old(self)); };
         assert(self.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
     }
 
@@ -165,6 +166,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         assert(self.user_only()) by { reveal(PageTable::user_only); };
         assert(self.rwx_upper_level_entries()) by { reveal(PageTable::rwx_upper_level_entries); };
         assert(self.table_pages_wf()) by { reveal(PageTable::table_pages_wf); };
+        assert(self.tables_reachable_wf()) by { reveal(PageTable::tables_reachable_wf); self.resolve_l2_unchanged(old(self)); };
         assert(self.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
     }
 
@@ -222,6 +224,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         assert(self.user_only()) by { reveal(PageTable::user_only); };
         assert(self.rwx_upper_level_entries()) by { reveal(PageTable::rwx_upper_level_entries); };
         assert(self.table_pages_wf()) by { reveal(PageTable::table_pages_wf); };
+        assert(self.tables_reachable_wf()) by { reveal(PageTable::tables_reachable_wf); };
         assert(self.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
     }
 
@@ -249,6 +252,9 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             final(self).mapping_4k() =~= old(self).mapping_4k(),
             final(self).mapping_1g() =~= old(self).mapping_1g(),
             final(self).kernel_entries =~= old(self).kernel_entries,
+            final(self).cr3 == old(self).cr3,
+            final(self).pcid == old(self).pcid,
+            final(self).proc_ptr == old(self).proc_ptr,
             ret.0 == target_l1_p,
             ret.1.view().is_init(),
             ret.1.view().addr() == target_l1_p,
@@ -288,6 +294,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         assert(self.user_only()) by { reveal(PageTable::user_only); };
         assert(self.rwx_upper_level_entries()) by { reveal(PageTable::rwx_upper_level_entries); };
         assert(self.table_pages_wf()) by { reveal(PageTable::table_pages_wf); };
+        assert(self.tables_reachable_wf()) by { reveal(PageTable::tables_reachable_wf); };
         assert(self.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
         assert(self.page_closure() =~= old(self).page_closure().remove(target_l1_p)) by { reveal(PageTable::table_pages_wf); }
         return ret;
@@ -317,6 +324,9 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             final(self).mapping_4k() =~= old(self).mapping_4k(),
             final(self).mapping_1g() =~= old(self).mapping_1g(),
             final(self).kernel_entries =~= old(self).kernel_entries,
+            final(self).cr3 == old(self).cr3,
+            final(self).pcid == old(self).pcid,
+            final(self).proc_ptr == old(self).proc_ptr,
             ret.0 == target_l2_p,
             ret.1.view().is_init(),
             ret.1.view().addr() == target_l2_p,
@@ -357,6 +367,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         assert(self.user_only()) by { reveal(PageTable::user_only); };
         assert(self.rwx_upper_level_entries()) by { reveal(PageTable::rwx_upper_level_entries); };
         assert(self.table_pages_wf()) by { reveal(PageTable::table_pages_wf); };
+        assert(self.tables_reachable_wf()) by { reveal(PageTable::tables_reachable_wf); reveal(PageTable::wf_l4); reveal(PageTable::disjoint_l4); broadcast use PageTable::resolve_l3_addr_unique_at; };
         assert(self.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
         assert(self.page_closure() =~= old(self).page_closure().remove(target_l2_p)) by { reveal(PageTable::table_pages_wf); };
         return ret;
@@ -383,6 +394,9 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             final(self).mapping_4k() =~= old(self).mapping_4k(),
             final(self).mapping_1g() =~= old(self).mapping_1g(),
             final(self).kernel_entries =~= old(self).kernel_entries,
+            final(self).cr3 == old(self).cr3,
+            final(self).pcid == old(self).pcid,
+            final(self).proc_ptr == old(self).proc_ptr,
             ret.0 == target_l3_p,
             ret.1.view().is_init(),
             ret.1.view().addr() == target_l3_p,
@@ -419,6 +433,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         assert(self.user_only()) by { reveal(PageTable::user_only); };
         assert(self.rwx_upper_level_entries()) by { reveal(PageTable::rwx_upper_level_entries); };
         assert(self.table_pages_wf()) by { reveal(PageTable::table_pages_wf); };
+        assert(self.tables_reachable_wf()) by { reveal(PageTable::tables_reachable_wf); reveal(PageTable::disjoint_l4); };
         assert(self.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
         proof { assert_sets_equal!(self.page_closure() == old(self).page_closure().remove(target_l3_p), page_ptr => { reveal(PageTable::table_pages_wf); }); }
         return ret;

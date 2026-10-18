@@ -14,7 +14,8 @@ pub open spec fn container_process_wf(container_perms: ContainerLockedMap, proce
                 ==> process_perms.dom().contains(container_perms.spec_index(c_ptr).view().root_process) && container_perms.spec_index(c_ptr).view_ghost().owned_processes.view().contains(container_perms.spec_index(c_ptr).view().root_process)
             &&& container_perms.spec_index(c_ptr).view_ghost().owned_processes.view().subset_of(process_perms.dom())
             &&& container_perms.spec_index(c_ptr).view().zombie
-                ==> process_perms.dom().contains(container_perms.spec_index(c_ptr).view().root_process) && process_perms.spec_index(container_perms.spec_index(c_ptr).view().root_process).view().zombie
+                ==> container_perms.spec_index(c_ptr).view_ghost().owned_processes.view().contains(container_perms.spec_index(c_ptr).view().root_process)
+                    && process_perms.spec_index(container_perms.spec_index(c_ptr).view().root_process).view().zombie
         }
     &&& forall|c_ptr: RwLockContainerPtr, p_ptr: RwLockProcessPtr|
         #![trigger container_perms.spec_index(c_ptr).view_ghost().owned_processes.view().contains(p_ptr)]

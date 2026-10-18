@@ -196,6 +196,7 @@ fn new_page(addr: usize, state: PageState, ref_count: usize, owning_container: u
         ref_count,
         owning_container,
         mappings: Ghost::assume_new(),
+        iommu_mappings: Ghost::assume_new(),
         free_list_node_storage: ExternalNode::new(0),
         free_list: 0,
         perm_4k: Tracked::assume_new(),
@@ -350,7 +351,7 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
     let _ = finish_init_from_boot(
         layout, KERNEL_MEM_END_L4INDEX, &initial_regs, page_array, pcid_needflush, cpu_published, default_pagetable,
         free_4k_pool, free_2m_pool, free_1g_pool,
-        Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(),
+        Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(),
         Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(),
         Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(),
         Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(),

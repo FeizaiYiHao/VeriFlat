@@ -89,6 +89,9 @@ verus! {
             &&& endpoint_pages_wf(self.ep_mp, self.pg_arr)
             &&& process_pagetable_match(self.prc_mp, self.pt_mp)
             &&& process_iommu_table_match(self.prc_mp, self.it_mp)
+            &&& pagetable_no_huge_leaf_wf(self.pt_mp, self.it_mp)
+            &&& process_emptied_tables_wf(self.prc_mp, self.pt_mp, self.it_mp)
+            &&& process_kernel_pages_owner_wf(self.pg_arr, self.prc_mp, self.pt_mp, self.it_mp)
             &&& self.allocator_free_pages_wf()
             &&& container_process_allocator_quota_wf(self.ctn_mp, self.prc_mp, self.thr_mp, self.allc_4k_mp, self.allc_2m_mp, self.allc_1g_mp)
             &&& container_allocator_wf(self.ctn_mp, self.allc_4k_mp, self.allc_2m_mp, self.allc_1g_mp)
@@ -102,6 +105,8 @@ verus! {
             &&& self.ctn_mp.spec_index(self.rt_ctn).view_ghost().owned_processes.view().contains(self.ctn_mp.spec_index(self.rt_ctn).view().root_process)
             &&& container_process_wf(self.ctn_mp, self.prc_mp)
             &&& per_container_process_tree_wf(self.ctn_mp, self.prc_mp)
+            &&& process_kill_mark_wf(self.prc_mp)
+            &&& process_state_lock_wf(self.prc_mp)
             &&& container_endpoint_wf(self.ctn_mp, self.ep_mp)
             &&& container_cpu_wf(self.ctn_mp, self.cpu_set_mp, self.cpu_arr)
             &&& thread_endpoint_ref_counter_wf(self.thr_mp, self.ep_mp)
@@ -117,6 +122,7 @@ verus! {
             &&& container_thread_wf(self.ctn_mp, self.thr_mp)
             &&& process_cpu_wf(self.prc_mp, self.cpu_arr)
             &&& process_thread_wf(self.prc_mp, self.thr_mp)
+            &&& process_emptied_threads_wf(self.prc_mp, self.thr_mp)
             &&& thread_cpu_wf(self.thr_mp, self.cpu_arr)
         }
         /// All spec functions under this are closed
@@ -138,6 +144,7 @@ verus! {
             &&& self.dflt_pt.view().inv()
             &&& self.dflt_pt.view().pcid_value() == KERNEL_DEFAULT_PCID
             &&& self.dflt_pt.view().is_empty()
+            &&& self.dflt_pt.view().kernel_l4_end == KERNEL_MEM_END_L4INDEX
             &&& forall|pagetable_ptr: RwLockPageTableRoot|
                 #![trigger self.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end]
                 self.pt_mp.dom().contains(pagetable_ptr) ==> self.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end == self.dflt_pt.view().kernel_l4_end
@@ -359,5 +366,87 @@ verus! {
         &&& k.allc_1g_mp.typed_quota_lock_map_aligned(lctx.allocator_quota_1g_lock_map(), lctx.thread_id())
         &&& k.allc_1g_mp.typed_cache_lock_map_aligned(lctx.allocator_cache_1g_lock_map(), lctx.thread_id())
         &&& k.allc_1g_mp.typed_global_pool_lock_map_aligned(lctx.allocator_global_pool_1g_lock_map(), lctx.thread_id())
+    }
+
+    /// Locks a killer holds between steps: its running CPU, process and thread, plus the objects it marked.
+    pub open spec fn killer_held_context(k: KernelK, lctx: LocalContext, killer_process: RwLockProcessPtr, killer_thread: RwLockThreadPtr) -> bool {
+        &&& killer_held_context_except_tables(k, lctx, killer_process, killer_thread)
+        &&& lctx.page_lock_map().dom().is_empty()
+        &&& lctx.pagetable_lock_map().dom().is_empty()
+        &&& lctx.iommu_table_lock_map().dom().is_empty()
+    }
+
+    /// `killer_held_context` without its empty page, page-table, and IOMMU-table lock maps.
+    pub open spec fn killer_held_context_except_tables(k: KernelK, lctx: LocalContext, killer_process: RwLockProcessPtr, killer_thread: RwLockThreadPtr) -> bool {
+        let cpu_id = lctx.cpu_id();
+        let cpu = k.cpu_arr.spec_index(cpu_id).view().view().view();
+        &&& index_valid(NUM_CPUS, cpu_id)
+        &&& lctx.cpu_lock_map().dom() =~= set![cpu_id]
+        &&& typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write)
+        &&& cpu.state is Running
+        &&& cpu.current_process == Some(killer_process)
+        &&& cpu.current_thread == Some(killer_thread)
+        &&& typed_lock_map_contains_mode(lctx.process_lock_map(), killer_process, TypedLockMode::Write)
+        &&& typed_lock_map_contains_mode(lctx.thread_lock_map(), killer_thread, TypedLockMode::Write)
+        &&& forall|p: RwLockProcessPtr| #![trigger lctx.process_lock_map().dom().contains(p)] lctx.process_lock_map().dom().contains(p) && p != killer_process ==> k.prc_mp.spec_index(p).being_killed()
+        &&& forall|t: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(t)] lctx.thread_lock_map().dom().contains(t) && t != killer_thread ==> k.thr_mp.spec_index(t).being_killed()
+        &&& lctx.pcid_needflush_lock_map().dom().is_empty()
+        &&& lctx.cpu_offline_flag_lock_map().dom().is_empty()
+        &&& lctx.container_lock_map().dom().is_empty()
+        &&& lctx.endpoint_lock_map().dom().is_empty()
+        &&& lctx.scheduler_lock_map().dom().is_empty()
+        &&& lctx.pcid_allocator_lock_map().dom().is_empty()
+        &&& lctx.cpu_set_lock_map().dom().is_empty()
+        &&& lctx.iommu_root_table_lock_map().dom().is_empty()
+        &&& lctx.allocator_quota_4k_lock_map().dom().is_empty()
+        &&& lctx.allocator_cache_4k_lock_map().dom().is_empty()
+        &&& lctx.allocator_global_pool_4k_lock_map().dom().is_empty()
+        &&& lctx.allocator_quota_2m_lock_map().dom().is_empty()
+        &&& lctx.allocator_cache_2m_lock_map().dom().is_empty()
+        &&& lctx.allocator_global_pool_2m_lock_map().dom().is_empty()
+        &&& lctx.allocator_quota_1g_lock_map().dom().is_empty()
+        &&& lctx.allocator_cache_1g_lock_map().dom().is_empty()
+        &&& lctx.allocator_global_pool_1g_lock_map().dom().is_empty()
+    }
+
+    /// A killer holding only its own thread among threads may lock any thread of a deeper process of its container,
+    /// whatever its state.
+    pub open spec fn killer_any_thread_lock_context(k: KernelK, lctx: LocalContext, thread_ptr: RwLockThreadPtr) -> bool {
+        let cpu = k.cpu_arr.spec_index(lctx.cpu_id()).view().view().view();
+        let thread = k.thr_mp.spec_index(thread_ptr).view();
+        &&& killer_held_context(k, lctx, cpu.current_process->Some_0, cpu.current_thread->Some_0)
+        &&& lctx.thread_lock_map().dom() =~= set![cpu.current_thread->Some_0]
+        &&& thread.container_depth == cpu.container_depth
+        &&& thread.process_depth > cpu.process_depth
+    }
+
+    /// Locks a thread holds while it reclaims killed threads: its running cpu, any containers and processes, its running
+    /// thread, and killed or marked threads, none of them waiting on an endpoint or a reply, in IPC transit, or scheduled.
+    pub open spec fn killed_thread_reclaim_lock_context(k: KernelK, lctx: LocalContext) -> bool {
+        let cpu_id = lctx.cpu_id();
+        let cpu = k.cpu_arr.spec_index(cpu_id).view().view().view();
+        &&& index_valid(NUM_CPUS, cpu_id)
+        &&& lctx.cpu_lock_map().dom() =~= set![cpu_id]
+        &&& cpu.state is Running
+        &&& cpu.current_thread is Some
+        &&& lctx.thread_lock_map().dom().contains(cpu.current_thread->Some_0)
+        &&& forall|t: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(t)] lctx.thread_lock_map().dom().contains(t) ==> {
+            let state = k.thr_mp.spec_index(t).view().state;
+            &&& t == cpu.current_thread->Some_0 || state is KILLED || k.thr_mp.spec_index(t).being_killed()
+            &&& !(state.is_endpoint_waiting() || state.is_reply_waiting() || state is IPC_ENDPOINT_TRANSIT || state is SCHEDULED)
+        }
+        &&& lctx.page_lock_map().dom().is_empty()
+        &&& lctx.pcid_needflush_lock_map().dom().is_empty()
+        &&& lctx.cpu_offline_flag_lock_map().dom().is_empty()
+        &&& lctx.endpoint_lock_map().dom().is_empty()
+        &&& lctx.scheduler_lock_map().dom().is_empty()
+        &&& lctx.pcid_allocator_lock_map().dom().is_empty()
+        &&& lctx.cpu_set_lock_map().dom().is_empty()
+        &&& lctx.pagetable_lock_map().dom().is_empty()
+        &&& lctx.iommu_table_lock_map().dom().is_empty()
+        &&& lctx.iommu_root_table_lock_map().dom().is_empty()
+        &&& lctx.holds_no_allocator_locks(PageSize::SZ4k)
+        &&& lctx.holds_no_allocator_locks(PageSize::SZ2m)
+        &&& lctx.holds_no_allocator_locks(PageSize::SZ1g)
     }
 }

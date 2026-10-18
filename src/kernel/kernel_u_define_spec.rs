@@ -73,6 +73,7 @@ verus! {
                 CpuU {
                     lock_state: if include_lock_state { krnl.cpu_arr.spec_index(i as usize).value.lock_state_u() } else { LockStateU::Unlocked },
                     owning_container: c.owning_container, state: c.state, current_process: c.current_process, current_thread: c.current_thread,
+                    killed: krnl.cpu_arr.spec_index(i as usize).value.being_killed(),
                 }
             }),
             container_map: Map::new(krnl.ctn_mp.dom(), |ptr: RwLockContainerPtr| {

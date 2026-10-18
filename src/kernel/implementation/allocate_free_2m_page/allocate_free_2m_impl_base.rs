@@ -37,6 +37,7 @@ verus! {
         ensures
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
             final(steps).view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*old(krnl))),
+            old(steps).snapshot_k() == *old(krnl) ==> final(steps).view() == old(steps).view(),
             forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view())]
                 old(lctx).pagetable_lock_map().dom().contains(pt) && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
                     ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
@@ -100,7 +101,7 @@ verus! {
             &&& krnl.ctn_mp.view().spec_index(container_ptr).addr() == container_ptr
         }) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); container_perms_wf_at(krnl.ctn_mp, container_ptr); };
         let alloc_ptr_2m = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_2m;
-        assert(krnl.allc_2m_mp.dom().contains(alloc_ptr_2m) && krnl.allc_2m_mp.spec_index(alloc_ptr_2m).wf()) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); allocator_perms_wf_at(krnl.allc_2m_mp, alloc_ptr_2m); };
+        assert(krnl.allc_2m_mp.dom().contains(alloc_ptr_2m)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); };
         let Tracked(cache_lock_perm) = krnl.wlock_allocator_cache_2m(alloc_ptr_2m, cpu_id, Tracked(&mut *lctx));
 
         let cache_ref = krnl.allc_2m_mp.borrow_cache_typed(alloc_ptr_2m, cpu_id, Ghost(lctx.allocator_cache_2m_lock_map()), Tracked(&*lctx), Tracked(&cache_lock_perm));
@@ -131,7 +132,6 @@ verus! {
         }
 
         let Tracked(gp_lock_perm) = krnl.wlock_allocator_global_pool_2m(alloc_ptr_2m, Tracked(&mut *lctx));
-        assert(krnl.allc_2m_mp.perms_wf()) by { allocator_perms_wf_at(krnl.allc_2m_mp, alloc_ptr_2m); };
         let pool_ref = krnl.allc_2m_mp.borrow_global_pool_typed(alloc_ptr_2m, Ghost(lctx.allocator_global_pool_2m_lock_map()), Tracked(&*lctx), Tracked(&gp_lock_perm));
         let pool_len = pool_ref.len();
 
@@ -272,7 +272,7 @@ verus! {
             &&& krnl.ctn_mp.dom().contains(container_ptr)
             &&& krnl.ctn_mp.view().spec_index(container_ptr).is_init()
             &&& krnl.ctn_mp.view().spec_index(container_ptr).addr() == container_ptr
-        }) by { reveal(container_perms_wf); reveal(container_thread_wf); };
+        }) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); container_perms_wf_at(krnl.ctn_mp, container_ptr); };
         let alloc_ptr_2m = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_2m;
         assert(krnl.allc_2m_mp.dom().contains(alloc_ptr_2m)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); };
         let (cache_perms, pool_perm) = wlock_all_caches_and_global_pool(krnl, alloc_ptr_2m, Tracked(&mut *lctx));
@@ -288,9 +288,9 @@ verus! {
             // are all empty, and the held thread still has effective_quota_2m >= 1,
             // so total_free_pages >= 1 and hence pool.len() >= 1.
             assert(krnl.allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().len() > 0) by {
-                assert(krnl.ctn_mp.spec_index(container_ptr).view_ghost().owned_threads.view().contains(thread_ptr)) by { reveal(container_thread_wf); };
+                assert(krnl.ctn_mp.spec_index(container_ptr).view_ghost().owned_threads.view().contains(thread_ptr)) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); };
                 lemma_scan_fail_pool_nonempty(krnl, container_ptr, alloc_ptr_2m, thread_ptr);
-                reveal(allocator_perms_wf);
+                allocator_perms_wf_at(krnl.allc_2m_mp, alloc_ptr_2m);
                 krnl.allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().lemma_len_view();
             };
             pop_stage_2m_page(krnl, alloc_ptr_2m, None, thread_ptr, container_ptr, Tracked(&mut *lctx), Tracked(pool_perm.borrow()), Tracked(thread_lock_perm))
@@ -381,27 +381,7 @@ verus! {
                 krnl.inv(),
                 typed_lock_maps_aligned(krnl, &*lctx),
                 krnl.allc_2m_mp.dom().contains(alloc_ptr_2m),
-                krnl.pt_mp == old(krnl).pt_mp,
-                krnl.it_mp == old(krnl).it_mp,
-                krnl.irt == old(krnl).irt,
-                krnl.pg_arr == old(krnl).pg_arr,
-                krnl.cpu_arr == old(krnl).cpu_arr,
-                krnl.pcid_needflush == old(krnl).pcid_needflush,
-                krnl.cpu_published == old(krnl).cpu_published,
-                krnl.cpu_tlb == old(krnl).cpu_tlb,
-                krnl.iommu_tlb == old(krnl).iommu_tlb,
-                krnl.rt_ctn == old(krnl).rt_ctn,
-                krnl.ctn_mp == old(krnl).ctn_mp,
-                krnl.sched_mp == old(krnl).sched_mp,
-                krnl.pcid_allc_mp == old(krnl).pcid_allc_mp,
-                krnl.cpu_set_mp == old(krnl).cpu_set_mp,
-                krnl.prc_mp == old(krnl).prc_mp,
-                krnl.thr_mp == old(krnl).thr_mp,
-                krnl.ep_mp == old(krnl).ep_mp,
-                krnl.allc_4k_mp == old(krnl).allc_4k_mp,
-                krnl.allc_1g_mp == old(krnl).allc_1g_mp,
-                krnl.cpu_offline_mp == old(krnl).cpu_offline_mp,
-                krnl.dflt_pt == old(krnl).dflt_pt,
+                *krnl == (KernelK { allc_2m_mp: krnl.allc_2m_mp, ..*old(krnl) }),
                 krnl.allc_2m_mp.unchanged_except(&old(krnl).allc_2m_mp, alloc_ptr_2m),
                 krnl.allc_2m_mp.spec_index(alloc_ptr_2m).quota == old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).quota,
                 lctx.thread_id() == old(lctx).thread_id(),
@@ -451,7 +431,7 @@ verus! {
         {
             let Tracked(cache_perm) = krnl.wlock_allocator_cache_2m(alloc_ptr_2m, cpu, Tracked(&mut *lctx));
             proof {
-                assert(krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.lock_id_by_index(cpu) == allocator_cache_lock_id(cpu)) by { reveal(allocator_perms_wf); };
+                assert(krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.lock_id_by_index(cpu) == allocator_cache_lock_id(cpu)) by { allocator_perms_wf_at(krnl.allc_2m_mp, alloc_ptr_2m); };
                 assert(allocator_cache_key_prefix(alloc_ptr_2m, (cpu + 1) as CpuId) =~= allocator_cache_key_prefix(alloc_ptr_2m, cpu).insert((alloc_ptr_2m, cpu))) by {
                     vstd::assert_seqs_equal!(allocator_cache_key_prefix_seq(alloc_ptr_2m, (cpu + 1) as CpuId), allocator_cache_key_prefix_seq(alloc_ptr_2m, cpu).push((alloc_ptr_2m, cpu)));
                     allocator_cache_key_prefix_seq(alloc_ptr_2m, cpu).lemma_push_to_set_commute((alloc_ptr_2m, cpu));
@@ -461,12 +441,11 @@ verus! {
             cpu = cpu + 1;
         }
 
-        proof { assert(krnl.allc_2m_mp.spec_index(alloc_ptr_2m).wf()) by { reveal(allocator_perms_wf); }; }
         let Tracked(pool_perm) = krnl.wlock_allocator_global_pool_2m(alloc_ptr_2m, Tracked(&mut *lctx));
         proof {
             assert(cache_perms_match_lctx(krnl.allc_2m_mp, alloc_ptr_2m, &*lctx, &cache_perms)) by { reveal(cache_perms_match_lctx); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(KernelK::inv); reveal(container_allocator_wf); };
+            assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_allocator_wf); };
             assert(kernel_k_to_nonlock_kernel_u(*krnl) == kernel_k_to_nonlock_kernel_u(*old(krnl))) by { kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(old(krnl), krnl); };
         }
         (Tracked(cache_perms), Tracked(pool_perm))
@@ -521,27 +500,7 @@ verus! {
             invariant
                 krnl.inv(),
                 typed_lock_maps_aligned(krnl, &*lctx),
-                krnl.pt_mp == old(krnl).pt_mp,
-                krnl.it_mp == old(krnl).it_mp,
-                krnl.irt == old(krnl).irt,
-                krnl.pg_arr == old(krnl).pg_arr,
-                krnl.cpu_arr == old(krnl).cpu_arr,
-                krnl.pcid_needflush == old(krnl).pcid_needflush,
-                krnl.cpu_published == old(krnl).cpu_published,
-                krnl.cpu_tlb == old(krnl).cpu_tlb,
-                krnl.iommu_tlb == old(krnl).iommu_tlb,
-                krnl.rt_ctn == old(krnl).rt_ctn,
-                krnl.ctn_mp == old(krnl).ctn_mp,
-                krnl.sched_mp == old(krnl).sched_mp,
-                krnl.pcid_allc_mp == old(krnl).pcid_allc_mp,
-                krnl.cpu_set_mp == old(krnl).cpu_set_mp,
-                krnl.prc_mp == old(krnl).prc_mp,
-                krnl.thr_mp == old(krnl).thr_mp,
-                krnl.ep_mp == old(krnl).ep_mp,
-                krnl.allc_4k_mp == old(krnl).allc_4k_mp,
-                krnl.allc_1g_mp == old(krnl).allc_1g_mp,
-                krnl.cpu_offline_mp == old(krnl).cpu_offline_mp,
-                krnl.dflt_pt == old(krnl).dflt_pt,
+                *krnl == (KernelK { allc_2m_mp: krnl.allc_2m_mp, ..*old(krnl) }),
                 krnl.allc_2m_mp.dom().contains(alloc_ptr_2m),
                 krnl.allc_2m_mp.unchanged_except(&old(krnl).allc_2m_mp, alloc_ptr_2m),
                 krnl.allc_2m_mp.spec_index(alloc_ptr_2m).quota == old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).quota,
@@ -588,7 +547,7 @@ verus! {
                     &&& typed_lock_map_contains_mode(lctx.allocator_cache_2m_lock_map(), (alloc_ptr_2m, cpu), TypedLockMode::Write)
                     &&& krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(cpu).view().being_killed() == false
                     &&& krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.lock_id_by_index(cpu) == allocator_cache_lock_id(cpu)
-                }) by { reveal(cache_perms_match_lctx_from); reveal(allocator_perms_wf); };
+                }) by { reveal(cache_perms_match_lctx_from); allocator_perms_wf_at(krnl.allc_2m_mp, alloc_ptr_2m); };
             }
             let tracked cache_perm = perms.tracked_remove(cpu);
             krnl.wunlock_allocator_cache_2m(alloc_ptr_2m, cpu, Tracked(&mut *lctx), Tracked(cache_perm));
@@ -597,7 +556,7 @@ verus! {
                     vstd::assert_seqs_equal!(allocator_cache_key_prefix_seq(alloc_ptr_2m, (cpu + 1) as CpuId), allocator_cache_key_prefix_seq(alloc_ptr_2m, cpu).push((alloc_ptr_2m, cpu)));
                     allocator_cache_key_prefix_seq(alloc_ptr_2m, cpu).lemma_push_to_set_commute((alloc_ptr_2m, cpu));
                 };
-                assert(cache_perms_match_lctx_from(krnl.allc_2m_mp, alloc_ptr_2m, &*lctx, &perms, (cpu + 1) as CpuId)) by { reveal(cache_perms_match_lctx_from); reveal(allocator_perms_wf); };
+                assert(cache_perms_match_lctx_from(krnl.allc_2m_mp, alloc_ptr_2m, &*lctx, &perms, (cpu + 1) as CpuId)) by { reveal(cache_perms_match_lctx_from); allocator_perms_wf_at(krnl.allc_2m_mp, alloc_ptr_2m); };
             }
             cpu = cpu + 1;
         }
@@ -605,7 +564,7 @@ verus! {
             assert(allocator_caches_unlocked(krnl.allc_2m_mp, alloc_ptr_2m)) by { reveal(allocator_caches_unlocked); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(KernelK::inv); reveal(container_allocator_wf); };
+            assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_allocator_wf); };
             assert(kernel_k_to_nonlock_kernel_u(*krnl) == kernel_k_to_nonlock_kernel_u(*old(krnl))) by { kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(old(krnl), krnl); };
         }
     }
@@ -764,10 +723,9 @@ verus! {
                     && cache_perms.dom().contains(cpu) && cache_perms.spec_index(cpu).state() is WriteLock && cache_perms.spec_index(cpu).thread_id() == lctx.thread_id()
                     && cache_perms.spec_index(cpu).lock_id() == krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(cpu).view().locking_thread()->Write_lock_id
                     && typed_lock_map_contains_mode(lctx.allocator_cache_2m_lock_map(), (alloc_ptr_2m, cpu), TypedLockMode::Write)
-                    && krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(cpu).view().being_killed() == false) by { reveal(allocator_perms_wf); reveal(cache_perms_match_lctx); };
+                    && krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(cpu).view().being_killed() == false) by { allocator_perms_wf_at(krnl.allc_2m_mp, alloc_ptr_2m); reveal(cache_perms_match_lctx); };
             }
             let cache_ref = krnl.allc_2m_mp.borrow_cache_typed(alloc_ptr_2m, cpu, Ghost(lctx.allocator_cache_2m_lock_map()), Tracked(&*lctx), Tracked(cache_perms.tracked_borrow(cpu)));
-            assert(cache_ref.linked_list.wf()) by { assert(index_valid(NUM_CPUS, cpu) && krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches_wf()) by { reveal(allocator_perms_wf); }; };
             let cache_len = cache_ref.linked_list.len();
             assert(cache_len == krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(cpu).view().view().view().len()) by { cache_ref.linked_list.lemma_len_view(); };
             if cache_len > 0 {
@@ -790,7 +748,7 @@ verus! {
             cpu = cpu + 1;
         }
         assert(krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.view().fold_left(0int,
-            |sum: int, cache: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| { sum + cache.view().linked_list.len() }) == 0) by { reveal(allocator_perms_wf); krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.view().lemma_take_len(); };
+            |sum: int, cache: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| { sum + cache.view().linked_list.len() }) == 0) by { allocator_perms_wf_at(krnl.allc_2m_mp, alloc_ptr_2m); krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.view().lemma_take_len(); };
         proof { held_threads_unchanged_except_for_unchanged_except(old(krnl).thr_mp, krnl.thr_mp, old(lctx), thread_ptr); }
         proof { assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; }; }
         proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); }; }
@@ -819,7 +777,7 @@ pub proof fn lemma_scan_fail_pool_nonempty(k: &KernelK, container_ptr: RwLockCon
     let owned_processes = k.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view();
     let owned_threads = k.ctn_mp.spec_index(container_ptr).view_ghost().owned_threads.view();
     assert(k.allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().view().len() > 0) by {
-        reveal(allocator_perms_wf); reveal(container_allocator_wf); reveal(container_process_wf); reveal(container_thread_wf); reveal(container_process_allocator_quota_2m_wf); reveal(process_perms_wf); reveal(thread_perms_wf);
+        reveal(allocator_perms_wf); reveal(container_allocator_wf); reveal(container_thread_wf); reveal(container_process_allocator_quota_2m_wf); reveal(thread_perms_wf);
         lemma_process_effective_quota_2m_fold_nonneg(owned_processes, k.prc_mp);
         lemma_thread_effective_quota_2m_fold_ge_member(owned_threads, k.thr_mp, thread_ptr);
         lemma_thread_direct_pending_2m_fold_nonneg(k.ctn_mp.spec_index(container_ptr).view_ghost().owned_threads.view(), k.thr_mp);

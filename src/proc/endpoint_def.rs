@@ -43,10 +43,6 @@ impl LockOwnerIdTrait for Endpoint {
     open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
 }
 
-impl LockUserVisibilityTrait for Endpoint {
-    open spec fn is_user_visible() -> bool { true }
-}
-
 impl Endpoint {
     pub fn new_root(endpoint_ptr: RwLockEndpointPtr, owning_container: RwLockContainerPtr, owning_thread: RwLockThreadPtr) -> (ret: Self)
         ensures
@@ -111,6 +107,31 @@ impl Endpoint {
             final(self).owning_container == old(self).owning_container,
     {
         self.queue.pop_head()
+    }
+
+    /// Removes the waiter at `node_addr` from anywhere in the queue and returns its node.
+    pub fn remove_waiter(&mut self, node_addr: usize) -> (ret: Tracked<PointsTo<Node<RwLockThreadPtr>>>)
+        requires
+            old(self).inv(),
+            old(self).queue.dom().contains(node_addr),
+        ensures
+            final(self).inv(),
+            final(self).queue.container_depth == old(self).queue.container_depth,
+            final(self).queue.lock_minor() == old(self).queue.lock_minor(),
+            final(self).queue.length == old(self).queue.length - 1,
+            final(self).queue.view() == old(self).queue.view().remove_value(old(self).queue.map().spec_index(node_addr)),
+            final(self).queue.dom() == old(self).queue.dom().remove(node_addr),
+            final(self).queue.map() == old(self).queue.map().remove(node_addr),
+            ret.view().is_init(),
+            ret.view().addr() == node_addr,
+            ret.view().value().view() == old(self).queue.map().spec_index(node_addr),
+            final(self).queue_state == old(self).queue_state,
+            final(self).rf_counter == old(self).rf_counter,
+            final(self).owning_threads == old(self).owning_threads,
+            final(self).owning_container == old(self).owning_container,
+    {
+        let (_, node_perm) = self.queue.remove(node_addr);
+        node_perm
     }
 
     pub fn enqueue_waiter(&mut self, thread_ptr: RwLockThreadPtr, waiting_state: ThreadState, node_addr: usize, node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>)

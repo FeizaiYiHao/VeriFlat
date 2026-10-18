@@ -68,7 +68,6 @@ impl KernelK {
             typed_lock_map_contains_mode(old(lctx).cpu_offline_flag_lock_map(), (flags_ptr, cpu_id), TypedLockMode::Write),
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
-            final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).inv(),
             kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), final(self)),
             kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, final(self).ep_mp),
@@ -81,7 +80,6 @@ impl KernelK {
             final(self).cpu_offline_mp.spec_index(flags_ptr).owning_container == old(self).cpu_offline_mp.spec_index(flags_ptr).owning_container,
             final(self).cpu_offline_mp.spec_index(flags_ptr).flags.unchanged_except(&old(self).cpu_offline_mp.spec_index(flags_ptr).flags, cpu_id),
             cpu_offline_requests_of(final(self).cpu_offline_mp.spec_index(flags_ptr)) == cpu_offline_requests_of(old(self).cpu_offline_mp.spec_index(flags_ptr)),
-            final(lctx).thread_id() == old(lctx).thread_id(),
             wunlock_ensures(old(self).cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_id).view(), final(self).cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_id).view()),
             unlock_ensures(old(lctx), final(lctx), KernelObjId::CpuOfflineFlag(flags_ptr, cpu_id), old(self).cpu_offline_mp.spec_index(flags_ptr).flags.lock_id_by_index(cpu_id)),
     {

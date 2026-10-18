@@ -64,6 +64,7 @@ pub fn cpu_array_flush_current_tlb(cpu_array: &mut CpuLockedArray, cpu_tlb: &mut
         final(cpu_array).spec_index(cpu_id).view().view() == old(cpu_array).spec_index(cpu_id).view().view(),
         final(cpu_array).spec_index(cpu_id).view().locking_thread() == old(cpu_array).spec_index(cpu_id).view().locking_thread(),
         final(cpu_array).spec_index(cpu_id).view().being_killed() == old(cpu_array).spec_index(cpu_id).view().being_killed(),
+        final(cpu_array).spec_index(cpu_id).view().killer_info() == old(cpu_array).spec_index(cpu_id).view().killer_info(),
         final(cpu_array).spec_index(cpu_id).view().view_rodata() == old(cpu_array).spec_index(cpu_id).view().view_rodata(),
         final(cpu_array).spec_index(cpu_id).view().view_ghost() == old(cpu_array).spec_index(cpu_id).view().view_ghost(),
         final(cpu_tlb).inv(),

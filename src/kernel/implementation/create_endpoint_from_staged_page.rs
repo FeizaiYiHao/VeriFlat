@@ -19,6 +19,7 @@ pub fn create_endpoint_from_staged_page(
         old(krnl).thr_mp.dom().contains(staging_thread_ptr),
         old(krnl).thr_mp.spec_index(staging_thread_ptr).view().owning_container == container_ptr,
         !old(krnl).thr_mp.spec_index(staging_thread_ptr).view().state.is_endpoint_waiting(),
+        !(old(krnl).thr_mp.spec_index(staging_thread_ptr).view().state is DANGLING),
         edp_idx_valid(endpoint_index),
         old(krnl).thr_mp.spec_index(staging_thread_ptr).view().endpoint_descriptors.view()[endpoint_index as int] is None,
         old(krnl).thr_mp.spec_index(staging_thread_ptr).view().temp_alloc_cache_4k.view() =~= Set::<PagePtr>::empty().insert(page_ptr),
@@ -157,6 +158,7 @@ pub open spec fn create_endpoint_from_staged_page_kernel_state_framing(
     &&& post_staging.view().endpoint_descriptors.view() == pre_staging.view().endpoint_descriptors.view().update(endpoint_index as int, Some(page_ptr))
     &&& post_staging.locking_thread() == pre_staging.locking_thread()
     &&& post_staging.being_killed() == pre_staging.being_killed()
+    &&& post_staging.killer_info() == pre_staging.killer_info()
     &&& post.ep_mp.dom() == pre.ep_mp.dom().insert(page_ptr)
     &&& forall|e: RwLockEndpointPtr| #![trigger post.ep_mp.spec_index(e)] pre.ep_mp.dom().contains(e) ==> post.ep_mp.spec_index(e) == pre.ep_mp.spec_index(e)
     &&& endpoint.is_init()
@@ -193,6 +195,7 @@ proof fn eof_create_endpoint_memory_management_inv(
         allocator_1g_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.allc_1g_mp, post.allc_1g_mp);
     };
     assert(container_page_owner_wf(post.ctn_mp, post.pg_arr)) by { container_page_owner_wf_preserved_for_owned_pages_and_owning_container_eq(pre.ctn_mp, post.ctn_mp, pre.pg_arr, post.pg_arr); };
+    assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
     assert(hugepage_2m_wf(post.pg_arr)) by { hugepage_2m_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); };
     assert(hugepage_1g_wf(post.pg_arr)) by { hugepage_1g_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); };
     assert(page_pagetable_wf(post.pt_mp, post.pg_arr)) by { page_pagetable_wf_preserved_for_nonmapped_page_change(pre.pt_mp, post.pt_mp, pre.pg_arr, post.pg_arr, page_index); };
@@ -295,6 +298,7 @@ proof fn eof_create_endpoint_process_management_inv(
     assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { reveal(container_thread_wf); container_thread_scheduler_wf_preserved_for_scheduled_thread_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, post.sched_mp); };
     assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { container_thread_wf_preserved_for_container_thread_link_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp); };
     assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { process_thread_wf_preserved_for_process_thread_link_eq(pre.prc_mp, post.prc_mp, pre.thr_mp, post.thr_mp); };
+    assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
     assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_running_thread_eq(pre.thr_mp, post.thr_mp, pre.cpu_arr, post.cpu_arr); };
 }
 

@@ -2,6 +2,7 @@ mod mmap_4k_create_entry_install;
 mod mmap_4k_install_one;
 pub mod mmap_4k_build_structure;
 pub mod mmap_4k_build_structure_spec;
+mod mmap_4k_build_structure_trace;
 pub mod share_mapping_4k;
 pub mod share_mapping_4k_spec;
 mod share_mapping_4k_trace;

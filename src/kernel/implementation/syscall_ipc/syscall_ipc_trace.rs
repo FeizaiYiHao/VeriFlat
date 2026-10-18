@@ -1,7 +1,454 @@
 use vstd::prelude::*;
 use crate::*;
 use super::syscall_ipc_spec::*;
+#[cfg(verus_keep_ghost)]
+use super::syscall_ipc_dispatch::endpoint_queue_member_thread_facts;
 verus! {
+/// The entry rejection on the user projection of `krnl` is `ret` when `ret` follows the same checks on `krnl`.
+pub(super) proof fn ipc_entry_result_from_k(krnl: &KernelK, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, blocking: bool, ret: Option<RetValueType>)
+    requires
+        krnl.inv(),
+        index_valid(NUM_CPUS, cpu_id),
+        ({
+            let cpu = krnl.cpu_arr.spec_index(cpu_id).value;
+            let thread = krnl.thr_mp.spec_index(cpu.view().view().current_thread->Some_0);
+            let endpoint_ptr = thread.view().endpoint_descriptors.view()[endpoint_index as int];
+            let queue = krnl.ep_mp.spec_index(endpoint_ptr->Some_0).view().queue.view();
+            let same_direction = (krnl.ep_mp.spec_index(endpoint_ptr->Some_0).view().queue_state is SEND) == waiting_state.is_endpoint_send_waiting();
+            if !(cpu.view().view().state is Running) || cpu.being_killed() { ret == Some(RetValueType::CpuIdle) }
+            else if !krnl.thr_mp.dom().contains(cpu.view().view().current_thread->Some_0) { false }
+            else if thread.being_killed() { ret == Some(RetValueType::ErrorThreadKilled) }
+            else if waiting_state is RECEIVING_CALL && thread.view().caller is Some { ret == Some(RetValueType::ErrorReplyOutOfPhase) }
+            else if endpoint_ptr is None { ret == Some(RetValueType::ErrorInvalidEndpoint) }
+            else if !krnl.ep_mp.dom().contains(endpoint_ptr->Some_0) { false }
+            else if queue.len() == 0 || same_direction {
+                ret == if blocking { Some(RetValueType::CpuIdle) } else if queue.len() == 0 { Some(RetValueType::ErrorIpcNoPeer) } else { Some(RetValueType::ErrorIpcSameDirection) }
+            } else { ret == if krnl.thr_mp.spec_index(queue[0]).being_killed() { Some(RetValueType::ErrorIpcPeerKilled) } else { None } }
+        }),
+    ensures ipc_entry_result(kernel_k_to_kernel_u(*krnl), cpu_id, endpoint_index, waiting_state, blocking) == ret,
+{
+    reveal(ipc_entry_result); kernel_cpu_projection_at(krnl, cpu_id);
+    let thread_ptr = krnl.cpu_arr.spec_index(cpu_id).value.view().view().current_thread->Some_0;
+    let endpoint_ptr = krnl.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view()[endpoint_index as int];
+    let queue = krnl.ep_mp.spec_index(endpoint_ptr->Some_0).view().queue.view();
+    if krnl.thr_mp.dom().contains(thread_ptr) { kernel_thread_projection_at(krnl, thread_ptr); }
+    if endpoint_ptr is Some && krnl.ep_mp.dom().contains(endpoint_ptr->Some_0) {
+        kernel_endpoint_projection_at(krnl, endpoint_ptr->Some_0);
+        if queue.len() > 0 { assert(queue.contains(queue[0])); endpoint_queue_member_thread_facts(krnl, endpoint_ptr->Some_0, queue[0]); kernel_thread_projection_at(krnl, queue[0]); }
+    }
+}
+
+/// The rendezvous result on the user projection of `krnl` is `ret` when the queue head `peer_ptr` meets the running `thread_ptr` as `ret` records.
+pub(super) proof fn ipc_rendezvous_result_from_k(
+    krnl: &KernelK, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, thread_ptr: RwLockThreadPtr,
+    endpoint_ptr: RwLockEndpointPtr, peer_ptr: RwLockThreadPtr, ret: RetValueType,
+)
+    requires
+        index_valid(NUM_CPUS, cpu_id),
+        krnl.thr_mp.dom().contains(thread_ptr),
+        krnl.thr_mp.dom().contains(peer_ptr),
+        krnl.ep_mp.dom().contains(endpoint_ptr),
+        krnl.cpu_arr.spec_index(cpu_id).value.view().view().current_thread == Some(thread_ptr),
+        krnl.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view()[endpoint_index as int] == Some(endpoint_ptr),
+        krnl.ep_mp.spec_index(endpoint_ptr).view().queue.view()[0] == peer_ptr,
+        ({
+            let peer = krnl.thr_mp.spec_index(peer_ptr).view();
+            let sends = waiting_state.is_endpoint_send_waiting();
+            let sent = if sends { payload } else { peer.ipc_payload };
+            let received = if sends { peer.ipc_payload } else { payload };
+            if waiting_state is CALLING || waiting_state is RECEIVING_CALL {
+                ret == if peer.state == (if sends { ThreadState::RECEIVING_CALL } else { ThreadState::CALLING }) { RetValueType::ErrorCallAcrossContainers } else { RetValueType::ErrorIpcTypeMismatch }
+            } else if peer.state != (if sends { ThreadState::RECEIVING } else { ThreadState::SENDING }) { ret is ErrorIpcTypeMismatch }
+            else {
+                match (sent, received) {
+                    (IPCPayLoad::Empty, IPCPayLoad::Empty) => ret is Success,
+                    (IPCPayLoad::Cpu { cpu_id: transfer }, IPCPayLoad::ReceiveCpu) => {
+                        let sender = krnl.thr_mp.spec_index(if sends { thread_ptr } else { peer_ptr }).view();
+                        let cpu = krnl.cpu_arr.spec_index(transfer).value.view().view();
+                        ret == if sender.owning_container == krnl.thr_mp.spec_index(if sends { peer_ptr } else { thread_ptr }).view().owning_container { RetValueType::ErrorIpcSameContainer }
+                            else if !index_valid(NUM_CPUS, transfer) || cpu.owning_container != sender.owning_container { RetValueType::ErrorIpcCpuOwnerMismatch }
+                            else if !(cpu.state is Off) { RetValueType::ErrorIpcCpuNotOff }
+                            else if sends { RetValueType::Success } else { RetValueType::SuccessUsize { value: transfer } }
+                    },
+                    (IPCPayLoad::Endpoint { endpoint_index: source }, IPCPayLoad::Endpoint { endpoint_index: target }) => ret == if krnl.thr_mp.spec_index(if sends { thread_ptr } else { peer_ptr }).view().endpoint_descriptors.view()[source as int] is None {
+                        RetValueType::ErrorIpcEndpointSourceInvalid
+                    } else if krnl.thr_mp.spec_index(if sends { peer_ptr } else { thread_ptr }).view().endpoint_descriptors.view()[target as int] is Some {
+                        RetValueType::ErrorIpcEndpointTargetInUse
+                    } else { RetValueType::Success },
+                    (IPCPayLoad::Pages { va_range: source }, IPCPayLoad::Pages { va_range: target }) => ret == if source.len != target.len { RetValueType::ErrorIpcTypeMismatch }
+                        else if krnl.thr_mp.spec_index(thread_ptr).view().owning_proc == krnl.thr_mp.spec_index(peer_ptr).view().owning_proc { RetValueType::ErrorIpcSameProcess }
+                        else { RetValueType::Success },
+                    (IPCPayLoad::Pci { bus: sent_bus, dev: sent_dev, fun: sent_fun }, IPCPayLoad::Pci { bus: received_bus, dev: received_dev, fun: received_fun }) => {
+                        let sender_proc = krnl.thr_mp.spec_index(if sends { thread_ptr } else { peer_ptr }).view().owning_proc;
+                        &&& ret == if sent_bus != received_bus || sent_dev != received_dev || sent_fun != received_fun { RetValueType::ErrorIpcTypeMismatch }
+                            else if krnl.thr_mp.spec_index(thread_ptr).view().owning_proc == krnl.thr_mp.spec_index(peer_ptr).view().owning_proc { RetValueType::ErrorIpcSameProcess }
+                            else if !krnl.prc_mp.spec_index(sender_proc).view_ghost().owned_pci_functions.view().contains((sent_bus as usize, sent_dev as usize, sent_fun as usize)) {
+                                RetValueType::ErrorIpcPciOwnerMismatch
+                            } else { RetValueType::Success }
+                        &&& (ret is Success || ret is ErrorIpcPciOwnerMismatch) ==> krnl.prc_mp.dom().contains(sender_proc)
+                    },
+                    _ => ret is ErrorIpcTypeMismatch,
+                }
+            }
+        }),
+    ensures
+        ipc_rendezvous_result(kernel_k_to_kernel_u(*krnl), cpu_id, endpoint_index, waiting_state, payload) == ret,
+        ipc_cpu_transfer(kernel_k_to_kernel_u(*krnl), cpu_id, endpoint_index, payload, ret) == if payload is Cpu && ret is Success { Some((payload->Cpu_cpu_id, peer_ptr)) }
+            else if payload is ReceiveCpu && ret is SuccessUsize { Some((ret->SuccessUsize_value, thread_ptr)) } else { None },
+        ipc_pci_transfer(kernel_k_to_kernel_u(*krnl), cpu_id, endpoint_index, waiting_state, payload, ret) == if payload is Pci && ret is Success {
+            let sends = waiting_state is SENDING;
+            Some(((payload->Pci_bus as usize, payload->Pci_dev as usize, payload->Pci_fun as usize), krnl.thr_mp.spec_index(if sends { thread_ptr } else { peer_ptr }).view().owning_proc,
+                krnl.thr_mp.spec_index(if sends { peer_ptr } else { thread_ptr }).view().owning_proc))
+        } else { None },
+{
+    kernel_cpu_projection_at(krnl, cpu_id); kernel_thread_projection_at(krnl, thread_ptr); kernel_thread_projection_at(krnl, peer_ptr); kernel_endpoint_queue_projection_at(krnl, endpoint_ptr);
+    let sent = if waiting_state.is_endpoint_send_waiting() { payload } else { krnl.thr_mp.spec_index(peer_ptr).view().ipc_payload };
+    let sender_proc = krnl.thr_mp.spec_index(if waiting_state.is_endpoint_send_waiting() { thread_ptr } else { peer_ptr }).view().owning_proc;
+    if sent is Cpu && index_valid(NUM_CPUS, sent->Cpu_cpu_id) { kernel_cpu_projection_at(krnl, sent->Cpu_cpu_id); }
+    if krnl.prc_mp.dom().contains(sender_proc) { kernel_process_projection_at(krnl, sender_proc); }
+}
+
+/// The cpu, the running thread with its pages progress, the recorded peer, and the channel it waits on are write-held on `krnl`, which
+/// gives the pages finish pre and the user-view context of the finish step.
+pub(super) proof fn ipc_pages_finish_step_pre_from_k(
+    krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, peer_ptr: RwLockThreadPtr,
+    channel_ptr: RwLockEndpointPtr, result: RetValueType, wake_cpu: CpuId,
+)
+    requires
+        krnl.inv(),
+        typed_lock_maps_aligned(krnl, lctx),
+        index_valid(NUM_CPUS, cpu_id),
+        typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), peer_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.endpoint_lock_map(), channel_ptr, TypedLockMode::Write),
+        krnl.prc_mp.dom().contains(process_ptr),
+        krnl.thr_mp.dom().contains(peer_ptr),
+        krnl.ep_mp.dom().contains(channel_ptr),
+        krnl.cpu_arr.spec_index(cpu_id).value.view().view().current_process == Some(process_ptr),
+        krnl.cpu_arr.spec_index(cpu_id).value.view().view().current_thread == Some(thread_ptr),
+        ({
+            let progress = krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view();
+            &&& progress is Some
+            &&& progress->Some_0 is IpcPages
+            &&& progress->Some_0->IpcPages_peer == peer_ptr
+            &&& progress->Some_0->IpcPages_released == Some(result)
+            &&& !progress->Some_0->IpcPages_locked
+        }),
+        krnl.thr_mp.spec_index(peer_ptr).view().blocking_endpoint_ptr == Some(channel_ptr),
+        krnl.ep_mp.spec_index(channel_ptr).view().queue.len() != 0,
+        krnl.ep_mp.spec_index(channel_ptr).view().queue.view()[0] == peer_ptr,
+        wake_cpu == if krnl.thr_mp.spec_index(peer_ptr).view().owning_container == krnl.thr_mp.spec_index(thread_ptr).view().owning_container { cpu_id }
+            else { krnl.thr_mp.spec_index(peer_ptr).view().last_cpu },
+    ensures
+        ({
+            let pre = kernel_k_to_kernel_u(*krnl);
+            let progress = pre.thread_map[thread_ptr].syscall_progress;
+            &&& wake_cpu == if pre.thread_map[peer_ptr].owning_container == pre.thread_map[thread_ptr].owning_container { cpu_id } else { pre.thread_map[peer_ptr].last_cpu }
+            &&& ipc_pages_held(pre, cpu_id)
+            &&& pre.cpu_array[cpu_id as int].current_process == Some(process_ptr)
+            &&& pre.cpu_array[cpu_id as int].current_thread == Some(thread_ptr)
+            &&& progress->Some_0->IpcPages_peer == peer_ptr
+            &&& progress->Some_0->IpcPages_released == Some(result)
+            &&& !progress->Some_0->IpcPages_locked
+            &&& pre.thread_map[peer_ptr].blocking_endpoint_ptr == Some(channel_ptr)
+            &&& pre.endpoint_map[channel_ptr].queue.len() > 0
+            &&& pre.endpoint_map[channel_ptr].queue[0] == peer_ptr
+            &&& pre.container_map.dom().contains(pre.thread_map[peer_ptr].owning_container)
+        }),
+{
+    endpoint_perms_wf_at(krnl.ep_mp, channel_ptr); krnl.ep_mp.spec_index(channel_ptr).view().queue.lemma_len_view(); container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, peer_ptr);
+    kernel_write_held_context_projection(krnl, lctx, cpu_id, process_ptr, thread_ptr, Some(channel_ptr)); kernel_write_held_context_projection(krnl, lctx, cpu_id, process_ptr, peer_ptr, None);
+    kernel_cpu_thread_projection_at(krnl, cpu_id, process_ptr, peer_ptr, Some(channel_ptr)); kernel_thread_projection_at(krnl, thread_ptr);
+}
+
+/// The running thread on `krnl` that meets the queue head `peer_ptr` with a same-length Pages payload from another process gives the pages
+/// enter pre and the user-view context of the enter step.
+pub(super) proof fn ipc_pages_enter_step_pre_from_k(
+    krnl: &KernelK, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, channel_ptr: RwLockEndpointPtr, peer_ptr: RwLockThreadPtr,
+    endpoint_index: EndpointIdx, waiting_state: ThreadState, range: VaRange4K, peer_range: VaRange4K,
+)
+    requires
+        range.wf(),
+        range.len > 0,
+        ({
+            let cpu = krnl.cpu_arr.spec_index(cpu_id).value;
+            let caller = krnl.thr_mp.spec_index(thread_ptr);
+            let peer = krnl.thr_mp.spec_index(peer_ptr);
+            let channel = krnl.ep_mp.spec_index(channel_ptr);
+            &&& index_valid(NUM_CPUS, cpu_id)
+            &&& cpu.locking_thread() is None
+            &&& cpu.view().view().state is Running
+            &&& cpu.view().view().current_process == Some(process_ptr)
+            &&& cpu.view().view().current_thread == Some(thread_ptr)
+            &&& krnl.prc_mp.dom().contains(process_ptr)
+            &&& krnl.thr_mp.dom().contains(thread_ptr)
+            &&& caller.locking_thread() is None
+            &&& caller.view().syscall_progress.view() is None
+            &&& !caller.being_killed()
+            &&& caller.view().state == (ThreadState::RUNNING { cpu_id })
+            &&& caller.view().owning_proc == process_ptr
+            &&& krnl.ctn_mp.dom().contains(caller.view().owning_container)
+            &&& edp_idx_valid(endpoint_index)
+            &&& caller.view().endpoint_descriptors.view()[endpoint_index as int] == Some(channel_ptr)
+            &&& krnl.ep_mp.dom().contains(channel_ptr)
+            &&& channel.locking_thread() is None
+            &&& !channel.view().queue.view().contains(thread_ptr)
+            &&& waiting_state is SENDING || waiting_state is RECEIVING
+            &&& channel.view().queue.view().len() > 0
+            &&& channel.view().queue.view()[0] == peer_ptr
+            &&& (channel.view().queue_state is SEND) != (waiting_state is SENDING)
+            &&& krnl.thr_mp.dom().contains(peer_ptr)
+            &&& peer.locking_thread() is None
+            &&& peer_ptr != thread_ptr
+            &&& !peer.being_killed()
+            &&& peer.view().state == (if waiting_state is SENDING { ThreadState::RECEIVING } else { ThreadState::SENDING })
+            &&& peer.view().blocking_endpoint_ptr == Some(channel_ptr)
+            &&& krnl.ctn_mp.dom().contains(peer.view().owning_container)
+            &&& peer.view().ipc_payload == (IPCPayLoad::Pages { va_range: peer_range })
+            &&& peer_range.len == range.len
+            &&& peer.view().owning_proc != process_ptr
+        }),
+    ensures
+        ipc_pages_enter_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id, endpoint_index, waiting_state, range),
+        ({
+            let pre = kernel_k_to_kernel_u(*krnl);
+            &&& pre.cpu_array[cpu_id as int].current_process == Some(process_ptr)
+            &&& pre.cpu_array[cpu_id as int].current_thread == Some(thread_ptr)
+            &&& pre.thread_map[thread_ptr].endpoint_descriptors[endpoint_index as int] == Some(channel_ptr)
+            &&& pre.endpoint_map[channel_ptr].queue[0] == peer_ptr
+            &&& pre.thread_map[peer_ptr].ipc_payload == (IPCPayLoad::Pages { va_range: peer_range })
+        }),
+{
+    kernel_cpu_thread_projection_at(krnl, cpu_id, process_ptr, thread_ptr, Some(channel_ptr)); kernel_thread_projection_at(krnl, peer_ptr);
+    ipc_pages_enter_step_pre_from_u(kernel_k_to_kernel_u(*krnl), cpu_id, process_ptr, thread_ptr, channel_ptr, peer_ptr, endpoint_index, waiting_state, range, peer_range);
+}
+
+/// The cpu, the running thread recording an unlocked pages rendezvous, its peer, and the channel write-held on `krnl` with both page tables unlocked
+/// give the lock-tables pre and the user-view context of the lock-tables step.
+pub(super) proof fn ipc_pages_lock_tables_step_pre_from_k(
+    krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, peer_ptr: RwLockThreadPtr, channel_ptr: RwLockEndpointPtr,
+    source_thread: RwLockThreadPtr, target_thread: RwLockThreadPtr, source_process: RwLockProcessPtr, target_process: RwLockProcessPtr,
+    source_pagetable: RwLockPageTableRoot, target_pagetable: RwLockPageTableRoot,
+)
+    requires
+        typed_lock_maps_aligned(krnl, lctx),
+        index_valid(NUM_CPUS, cpu_id),
+        typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), peer_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.endpoint_lock_map(), channel_ptr, TypedLockMode::Write),
+        krnl.thr_mp.dom().contains(thread_ptr),
+        krnl.thr_mp.dom().contains(peer_ptr),
+        krnl.cpu_arr.spec_index(cpu_id).value.view().view().current_process is Some,
+        krnl.cpu_arr.spec_index(cpu_id).value.view().view().current_thread == Some(thread_ptr),
+        ({
+            let progress = krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view();
+            &&& progress is Some
+            &&& progress->Some_0 is IpcPages
+            &&& progress->Some_0->IpcPages_peer == peer_ptr
+            &&& !progress->Some_0->IpcPages_locked
+            &&& progress->Some_0->IpcPages_released is None
+        }),
+        krnl.thr_mp.spec_index(peer_ptr).view().blocking_endpoint_ptr == Some(channel_ptr),
+        source_thread == thread_ptr && target_thread == peer_ptr || source_thread == peer_ptr && target_thread == thread_ptr,
+        (source_thread == thread_ptr) == (krnl.thr_mp.spec_index(peer_ptr).view().state is RECEIVING),
+        krnl.thr_mp.spec_index(source_thread).view().owning_proc == source_process,
+        krnl.thr_mp.spec_index(target_thread).view().owning_proc == target_process,
+        source_process != target_process,
+        krnl.prc_mp.dom().contains(source_process),
+        krnl.prc_mp.dom().contains(target_process),
+        !krnl.prc_mp.spec_index(source_process).view().zombie,
+        !krnl.prc_mp.spec_index(target_process).view().zombie,
+        krnl.prc_mp.spec_index(source_process).view().pagetable == source_pagetable,
+        krnl.prc_mp.spec_index(target_process).view().pagetable == target_pagetable,
+        krnl.pt_mp.dom().contains(source_pagetable),
+        krnl.pt_mp.dom().contains(target_pagetable),
+        krnl.pt_mp.spec_index(source_pagetable).locking_thread() is None,
+        krnl.pt_mp.spec_index(target_pagetable).locking_thread() is None,
+    ensures
+        ipc_pages_lock_tables_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
+        ({
+            let pre = kernel_k_to_kernel_u(*krnl);
+            &&& pre.cpu_array[cpu_id as int].current_thread == Some(thread_ptr)
+            &&& pre.thread_map[thread_ptr].syscall_progress == krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view()
+            &&& pre.thread_map[ipc_pages_sender(pre, cpu_id)].owning_proc == source_process
+            &&& pre.thread_map[ipc_pages_receiver(pre, cpu_id)].owning_proc == target_process
+        }),
+{
+    krnl.ep_mp.typed_lock_map_aligned_write_at(lctx.endpoint_lock_map(), lctx.thread_id(), channel_ptr);
+    kernel_write_held_context_projection(krnl, lctx, cpu_id, source_process, thread_ptr, Some(channel_ptr)); kernel_write_held_context_projection(krnl, lctx, cpu_id, target_process, peer_ptr, None);
+    kernel_cpu_thread_projection_at(krnl, cpu_id, source_process, peer_ptr, None); kernel_pagetable_mappings_projection_at(krnl, source_process); kernel_pagetable_mappings_projection_at(krnl, target_process);
+    ipc_pages_lock_tables_step_pre_from_u(kernel_k_to_kernel_u(*krnl), cpu_id);
+}
+
+/// The cpu, the running thread recording a locked pages rendezvous, its peer, the channel, and both page tables write-held on `krnl` give the
+/// check pre and the user-view context of the check step.
+pub(super) proof fn ipc_pages_check_step_pre_from_k(
+    krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, peer_ptr: RwLockThreadPtr, channel_ptr: RwLockEndpointPtr,
+    source_thread: RwLockThreadPtr, target_thread: RwLockThreadPtr, source_process: RwLockProcessPtr, target_process: RwLockProcessPtr,
+    source_pagetable: RwLockPageTableRoot, target_pagetable: RwLockPageTableRoot,
+)
+    requires
+        typed_lock_maps_aligned(krnl, lctx),
+        index_valid(NUM_CPUS, cpu_id),
+        typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), peer_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.endpoint_lock_map(), channel_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), source_pagetable, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), target_pagetable, TypedLockMode::Write),
+        krnl.thr_mp.dom().contains(thread_ptr),
+        krnl.thr_mp.dom().contains(peer_ptr),
+        krnl.cpu_arr.spec_index(cpu_id).value.view().view().current_process is Some,
+        krnl.cpu_arr.spec_index(cpu_id).value.view().view().current_thread == Some(thread_ptr),
+        ({
+            let progress = krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view();
+            &&& progress is Some
+            &&& progress->Some_0 is IpcPages
+            &&& progress->Some_0->IpcPages_peer == peer_ptr
+            &&& progress->Some_0->IpcPages_locked
+            &&& progress->Some_0->IpcPages_released is None
+        }),
+        krnl.thr_mp.spec_index(peer_ptr).view().blocking_endpoint_ptr == Some(channel_ptr),
+        source_thread == thread_ptr && target_thread == peer_ptr || source_thread == peer_ptr && target_thread == thread_ptr,
+        (source_thread == thread_ptr) == (krnl.thr_mp.spec_index(peer_ptr).view().state is RECEIVING),
+        krnl.thr_mp.spec_index(source_thread).view().owning_proc == source_process,
+        krnl.thr_mp.spec_index(target_thread).view().owning_proc == target_process,
+        source_process != target_process,
+        krnl.prc_mp.dom().contains(source_process),
+        krnl.prc_mp.dom().contains(target_process),
+        !krnl.prc_mp.spec_index(source_process).view().zombie,
+        !krnl.prc_mp.spec_index(target_process).view().zombie,
+        krnl.prc_mp.spec_index(source_process).view().pagetable == source_pagetable,
+        krnl.prc_mp.spec_index(target_process).view().pagetable == target_pagetable,
+    ensures
+        ipc_pages_check_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
+        ({
+            let pre = kernel_k_to_kernel_u(*krnl);
+            &&& pre.cpu_array[cpu_id as int].current_thread == Some(thread_ptr)
+            &&& pre.thread_map[thread_ptr].syscall_progress == krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view()
+            &&& pre.thread_map[ipc_pages_sender(pre, cpu_id)].owning_proc == source_process
+            &&& pre.thread_map[ipc_pages_receiver(pre, cpu_id)].owning_proc == target_process
+        }),
+{
+    krnl.ep_mp.typed_lock_map_aligned_write_at(lctx.endpoint_lock_map(), lctx.thread_id(), channel_ptr);
+    kernel_write_held_context_projection(krnl, lctx, cpu_id, source_process, thread_ptr, Some(channel_ptr)); kernel_write_held_context_projection(krnl, lctx, cpu_id, target_process, peer_ptr, None);
+    kernel_cpu_thread_projection_at(krnl, cpu_id, source_process, peer_ptr, None);
+    ipc_pages_check_step_pre_from_u(kernel_k_to_kernel_u(*krnl), cpu_id);
+}
+
+/// The pages checks on `krnl`, in the implementation's order and on the running thread's recorded ranges, give `ret` as the check result on
+/// its user projection.
+pub(super) proof fn ipc_pages_check_result_from_k(
+    krnl: &KernelK, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, peer_ptr: RwLockThreadPtr, source_thread: RwLockThreadPtr, target_thread: RwLockThreadPtr,
+    source_process: RwLockProcessPtr, target_process: RwLockProcessPtr, source_pagetable: RwLockPageTableRoot, target_pagetable: RwLockPageTableRoot,
+    target_container: RwLockContainerPtr, source_range: VaRange4K, target_range: VaRange4K, ret: RetValueType,
+)
+    requires
+        krnl.inv(),
+        index_valid(NUM_CPUS, cpu_id),
+        krnl.thr_mp.dom().contains(thread_ptr),
+        krnl.thr_mp.dom().contains(peer_ptr),
+        krnl.cpu_arr.spec_index(cpu_id).value.view().view().current_thread == Some(thread_ptr),
+        krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::IpcPages { source_range, target_range, peer: peer_ptr, locked: true, released: None }),
+        source_thread == thread_ptr && target_thread == peer_ptr || source_thread == peer_ptr && target_thread == thread_ptr,
+        (source_thread == thread_ptr) == (krnl.thr_mp.spec_index(peer_ptr).view().state is RECEIVING),
+        krnl.thr_mp.spec_index(source_thread).view().owning_proc == source_process,
+        krnl.thr_mp.spec_index(target_thread).view().owning_proc == target_process,
+        krnl.thr_mp.spec_index(target_thread).view().owning_container == target_container,
+        krnl.ctn_mp.dom().contains(target_container),
+        krnl.prc_mp.dom().contains(source_process),
+        krnl.prc_mp.dom().contains(target_process),
+        !krnl.prc_mp.spec_index(source_process).view().zombie,
+        !krnl.prc_mp.spec_index(target_process).view().zombie,
+        krnl.prc_mp.spec_index(source_process).view().pagetable == source_pagetable,
+        krnl.prc_mp.spec_index(target_process).view().pagetable == target_pagetable,
+        krnl.pt_mp.dom().contains(source_pagetable),
+        krnl.pt_mp.dom().contains(target_pagetable),
+        krnl.pt_mp.spec_index(source_pagetable).view().leaves_present(),
+        krnl.pt_mp.spec_index(target_pagetable).view().leaves_present(),
+        source_range.wf(),
+        target_range.wf(),
+        target_range.len > 0,
+        ({
+            let source_table = krnl.pt_mp.spec_index(source_pagetable).view();
+            let target_table = krnl.pt_mp.spec_index(target_pagetable).view();
+            ret == if spec_va2index(source_range.start).0 < source_table.kernel_l4_end { RetValueType::Error }
+                else if !(forall|j: int| #![trigger source_range.view().spec_index(j)] 0 <= j < source_range.len ==> {
+                    &&& source_table.mapping_4k().dom().contains(source_range.view().spec_index(j))
+                    &&& source_table.mapping_4k().spec_index(source_range.view().spec_index(j)).present
+                }) { RetValueType::ErrorIpcSourceUnmapped }
+                else if krnl.thr_mp.spec_index(target_thread).view().quota_4k < 3 * target_range.len { RetValueType::ErrorNoQuota }
+                else if spec_va2index(target_range.start).0 < target_table.kernel_l4_end { RetValueType::Error }
+                else if !target_table.spec_mapping_4k_range_empty(spec_va2index(target_range.start), spec_va2index(target_range.view().spec_index(target_range.len - 1)))
+                    || !(forall|j: int| #![trigger target_range.view().spec_index(j)] 0 <= j < target_range.len ==> {
+                        let indices = spec_va2index(target_range.view().spec_index(j));
+                        &&& !target_table.mapping_1g().dom().contains(spec_index2va((indices.0, indices.1, 0, 0)))
+                        &&& !target_table.mapping_2m().dom().contains(spec_index2va((indices.0, indices.1, indices.2, 0)))
+                        &&& !target_table.mapping_4k().dom().contains(target_range.view().spec_index(j))
+                    }) { RetValueType::ErrorVaInUse }
+                else if !share_mapping_4k_range_owner_compatible(krnl, source_pagetable, target_container, &source_range) { RetValueType::ErrorIpcPageOwnerMismatch }
+                else { RetValueType::Success }
+        }),
+    ensures ipc_pages_check_result(kernel_k_to_kernel_u(*krnl), cpu_id) == ret,
+{
+    kernel_cpu_thread_projection_at(krnl, cpu_id, source_process, thread_ptr, None); kernel_thread_projection_at(krnl, peer_ptr);
+    kernel_pagetable_mappings_projection_at(krnl, source_process); kernel_pagetable_mappings_projection_at(krnl, target_process);
+    kernel_l4_end_projection_at(krnl, source_pagetable); kernel_l4_end_projection_at(krnl, target_pagetable); kernel_container_ancestry_projection_at(krnl, target_container);
+}
+
+/// The cpu, the running thread that shared every page of a pages rendezvous, its peer, and both page tables write-held on `krnl` give the
+/// unlock-tables pre and the user-view context of the unlock-tables step.
+pub(super) proof fn ipc_pages_unlock_tables_step_pre_from_k(
+    krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, peer_ptr: RwLockThreadPtr, source_thread: RwLockThreadPtr,
+    target_thread: RwLockThreadPtr, source_process: RwLockProcessPtr, target_process: RwLockProcessPtr, source_pagetable: RwLockPageTableRoot,
+    target_pagetable: RwLockPageTableRoot, source_range: VaRange4K, target_range: VaRange4K,
+)
+    requires
+        typed_lock_maps_aligned(krnl, lctx),
+        index_valid(NUM_CPUS, cpu_id),
+        typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), peer_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), source_pagetable, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), target_pagetable, TypedLockMode::Write),
+        krnl.thr_mp.dom().contains(thread_ptr),
+        krnl.thr_mp.dom().contains(peer_ptr),
+        krnl.cpu_arr.spec_index(cpu_id).value.view().view().current_process is Some,
+        krnl.cpu_arr.spec_index(cpu_id).value.view().view().current_thread == Some(thread_ptr),
+        krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k {
+            source_range, target_range, shared: source_range.len, origin: Share4kOrigin::IpcPages { peer: peer_ptr },
+        }),
+        krnl.thr_mp.spec_index(peer_ptr).view().blocking_endpoint_ptr is Some,
+        source_thread == thread_ptr && target_thread == peer_ptr || source_thread == peer_ptr && target_thread == thread_ptr,
+        (source_thread == thread_ptr) == (krnl.thr_mp.spec_index(peer_ptr).view().state is RECEIVING),
+        krnl.thr_mp.spec_index(source_thread).view().owning_proc == source_process,
+        krnl.thr_mp.spec_index(target_thread).view().owning_proc == target_process,
+        krnl.ctn_mp.dom().contains(krnl.thr_mp.spec_index(target_thread).view().owning_container),
+        source_process != target_process,
+        krnl.prc_mp.dom().contains(source_process),
+        krnl.prc_mp.dom().contains(target_process),
+        !krnl.prc_mp.spec_index(source_process).view().zombie,
+        !krnl.prc_mp.spec_index(target_process).view().zombie,
+        krnl.prc_mp.spec_index(source_process).view().pagetable == source_pagetable,
+        krnl.prc_mp.spec_index(target_process).view().pagetable == target_pagetable,
+    ensures
+        ipc_pages_unlock_tables_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
+        ({
+            let pre = kernel_k_to_kernel_u(*krnl);
+            &&& pre.cpu_array[cpu_id as int].current_thread == Some(thread_ptr)
+            &&& pre.thread_map[thread_ptr].syscall_progress == krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view()
+            &&& share_4k_objects(pre, cpu_id).target == target_process
+            &&& pre.thread_map[share_4k_objects(pre, cpu_id).source_thread].owning_proc == source_process
+        }),
+{
+    reveal(share_4k_objects_k);
+    kernel_write_held_context_projection(krnl, lctx, cpu_id, source_process, thread_ptr, None); kernel_write_held_context_projection(krnl, lctx, cpu_id, target_process, peer_ptr, None);
+    kernel_cpu_thread_projection_at(krnl, cpu_id, source_process, peer_ptr, None); kernel_share_4k_objects_projection(krnl, lctx, cpu_id);
+    ipc_pages_unlock_tables_step_pre_from_u(kernel_k_to_kernel_u(*krnl), cpu_id);
+}
+
 /// The block wrapper's user-view facts are exactly the block step on `pre`/`post`.
 pub(super) proof fn ipc_block_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool)
     requires
@@ -90,6 +537,121 @@ pub(super) proof fn ipc_rendezvous_step_from_u(
         ipc_rendezvous_step_pre(pre, cpu_id, endpoint_index, waiting_state, payload),
         ipc_rendezvous_step(pre, post, cpu_id, endpoint_index, waiting_state, payload),
 { reveal(ipc_rendezvous_step_pre); reveal(ipc_step_pre); }
+
+/// The unlocked rendezvous context on `krnl` whose queue head carries an Endpoint payload gives the transit pre and the user-view context of the
+/// transit step.
+pub(super) proof fn ipc_endpoint_transit_step_pre_from_k(
+    krnl: &KernelK, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, channel_ptr: RwLockEndpointPtr, peer_ptr: RwLockThreadPtr,
+    endpoint_index: EndpointIdx, waiting_state: ThreadState, source_index: EndpointIdx, target_index: EndpointIdx,
+)
+    requires
+        ({
+            let cpu = krnl.cpu_arr.spec_index(cpu_id).value;
+            let caller = krnl.thr_mp.spec_index(thread_ptr);
+            let peer = krnl.thr_mp.spec_index(peer_ptr);
+            let channel = krnl.ep_mp.spec_index(channel_ptr);
+            &&& index_valid(NUM_CPUS, cpu_id)
+            &&& cpu.locking_thread() is None
+            &&& cpu.view().view().state is Running
+            &&& cpu.view().view().current_process == Some(process_ptr)
+            &&& cpu.view().view().current_thread == Some(thread_ptr)
+            &&& krnl.prc_mp.dom().contains(process_ptr)
+            &&& krnl.thr_mp.dom().contains(thread_ptr)
+            &&& caller.locking_thread() is None
+            &&& caller.view().syscall_progress.view() is None
+            &&& !caller.being_killed()
+            &&& caller.view().state == (ThreadState::RUNNING { cpu_id })
+            &&& caller.view().owning_proc == process_ptr
+            &&& krnl.ctn_mp.dom().contains(caller.view().owning_container)
+            &&& edp_idx_valid(endpoint_index)
+            &&& caller.view().endpoint_descriptors.view()[endpoint_index as int] == Some(channel_ptr)
+            &&& krnl.ep_mp.dom().contains(channel_ptr)
+            &&& channel.locking_thread() is None
+            &&& !channel.view().queue.view().contains(thread_ptr)
+            &&& waiting_state is SENDING || waiting_state is RECEIVING
+            &&& channel.view().queue.view().len() > 0
+            &&& channel.view().queue.view()[0] == peer_ptr
+            &&& (channel.view().queue_state is SEND) != (waiting_state is SENDING)
+            &&& krnl.thr_mp.dom().contains(peer_ptr)
+            &&& peer.locking_thread() is None
+            &&& peer_ptr != thread_ptr
+            &&& !peer.being_killed()
+            &&& peer.view().state == (if waiting_state is SENDING { ThreadState::RECEIVING } else { ThreadState::SENDING })
+            &&& peer.view().blocking_endpoint_ptr == Some(channel_ptr)
+            &&& krnl.ctn_mp.dom().contains(peer.view().owning_container)
+            &&& edp_idx_valid(source_index)
+            &&& edp_idx_valid(target_index)
+            &&& peer.view().ipc_payload == (IPCPayLoad::Endpoint { endpoint_index: if waiting_state is SENDING { target_index } else { source_index } })
+            &&& krnl.thr_mp.spec_index(if waiting_state is SENDING { thread_ptr } else { peer_ptr }).view().endpoint_descriptors.view()[source_index as int] is Some
+            &&& krnl.thr_mp.spec_index(if waiting_state is SENDING { peer_ptr } else { thread_ptr }).view().endpoint_descriptors.view()[target_index as int] is None
+        }),
+    ensures
+        ipc_endpoint_transit_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id, endpoint_index, waiting_state, if waiting_state is SENDING { source_index } else { target_index }),
+        kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_process == Some(process_ptr),
+        kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_thread == Some(thread_ptr),
+        kernel_k_to_kernel_u(*krnl).thread_map[thread_ptr].endpoint_descriptors[endpoint_index as int] == Some(channel_ptr),
+        kernel_k_to_kernel_u(*krnl).endpoint_map[channel_ptr].queue[0] == peer_ptr,
+{
+    kernel_cpu_thread_projection_at(krnl, cpu_id, process_ptr, thread_ptr, Some(channel_ptr)); kernel_thread_projection_at(krnl, peer_ptr);
+    ipc_endpoint_transit_step_pre_from_u(kernel_k_to_kernel_u(*krnl), cpu_id, process_ptr, thread_ptr, channel_ptr, peer_ptr, endpoint_index, waiting_state, source_index, target_index);
+}
+
+/// The cpu, the running thread recording an endpoint transfer, and its peer write-held on `krnl` with the payload endpoint unlocked give the finish pre
+/// and the user-view context of the finish step.
+pub(super) proof fn ipc_endpoint_finish_step_pre_from_k(
+    krnl: &KernelK, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, peer_ptr: RwLockThreadPtr, payload_ptr: RwLockEndpointPtr,
+    receiver: RwLockThreadPtr, source_index: EndpointIdx, target_index: EndpointIdx, result: RetValueType, wake_cpu: CpuId,
+)
+    requires
+        receiver == thread_ptr || receiver == peer_ptr,
+        thread_ptr != peer_ptr,
+        edp_idx_valid(source_index),
+        ({
+            let cpu = krnl.cpu_arr.spec_index(cpu_id).value;
+            let thread = krnl.thr_mp.spec_index(thread_ptr);
+            let peer = krnl.thr_mp.spec_index(peer_ptr);
+            let owner = krnl.ep_mp.spec_index(payload_ptr).view().owning_container;
+            let container = krnl.thr_mp.spec_index(receiver).view().owning_container;
+            &&& index_valid(NUM_CPUS, cpu_id)
+            &&& cpu.locking_thread() is Write
+            &&& cpu.view().view().current_process == Some(process_ptr)
+            &&& cpu.view().view().current_thread == Some(thread_ptr)
+            &&& krnl.prc_mp.dom().contains(process_ptr)
+            &&& krnl.thr_mp.dom().contains(thread_ptr)
+            &&& thread.locking_thread() is Write
+            &&& thread.view().syscall_progress.view() == Some(SyscallProgress::IpcEndpoint {
+                peer: peer_ptr, caller_sends: receiver == peer_ptr, payload_index: if receiver == peer_ptr { source_index } else { target_index },
+            })
+            &&& krnl.thr_mp.dom().contains(peer_ptr)
+            &&& peer.locking_thread() is Write
+            &&& peer.view().ipc_payload == (IPCPayLoad::Endpoint { endpoint_index: if receiver == peer_ptr { target_index } else { source_index } })
+            &&& krnl.ctn_mp.dom().contains(thread.view().owning_container)
+            &&& krnl.ctn_mp.dom().contains(peer.view().owning_container)
+            &&& krnl.thr_mp.spec_index(if receiver == peer_ptr { thread_ptr } else { peer_ptr }).view().endpoint_descriptors.view()[source_index as int] == Some(payload_ptr)
+            &&& krnl.ep_mp.dom().contains(payload_ptr)
+            &&& krnl.ep_mp.spec_index(payload_ptr).locking_thread() is None
+            &&& result == if owner == container || krnl.ctn_mp.spec_index(container).view_ghost().uppertree_seq.view().contains(owner) { RetValueType::Success } else { RetValueType::ErrorIpcEndpointOwnerMismatch }
+            &&& wake_cpu == if peer.view().owning_container == thread.view().owning_container { cpu_id } else { peer.view().last_cpu }
+        }),
+    ensures
+        ipc_endpoint_finish_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
+        ({
+            let pre = kernel_k_to_kernel_u(*krnl);
+            &&& pre.cpu_array[cpu_id as int].current_process == Some(process_ptr)
+            &&& pre.cpu_array[cpu_id as int].current_thread == Some(thread_ptr)
+            &&& pre.thread_map[thread_ptr].syscall_progress == Some(SyscallProgress::IpcEndpoint {
+                peer: peer_ptr, caller_sends: receiver == peer_ptr, payload_index: if receiver == peer_ptr { source_index } else { target_index },
+            })
+            &&& pre.thread_map[peer_ptr].ipc_payload == (IPCPayLoad::Endpoint { endpoint_index: if receiver == peer_ptr { target_index } else { source_index } })
+            &&& pre.thread_map[if receiver == peer_ptr { thread_ptr } else { peer_ptr }].endpoint_descriptors[source_index as int] == Some(payload_ptr)
+            &&& result == ipc_endpoint_finish_result(pre, cpu_id)
+            &&& wake_cpu == if pre.thread_map[peer_ptr].owning_container == pre.thread_map[thread_ptr].owning_container { cpu_id } else { pre.thread_map[peer_ptr].last_cpu }
+        }),
+{
+    kernel_cpu_thread_projection_at(krnl, cpu_id, process_ptr, thread_ptr, Some(payload_ptr)); kernel_thread_projection_at(krnl, peer_ptr);
+    kernel_container_ancestry_projection_at(krnl, krnl.thr_mp.spec_index(receiver).view().owning_container);
+    ipc_endpoint_finish_step_pre_from_u(kernel_k_to_kernel_u(*krnl), cpu_id, process_ptr, thread_ptr, peer_ptr, payload_ptr, receiver, source_index, target_index);
+}
 
 /// The unlocked rendezvous context on `pre` whose queue head carries an Endpoint payload is the transit pre.
 pub(super) proof fn ipc_endpoint_transit_step_pre_from_u(
@@ -409,6 +971,7 @@ pub(super) proof fn ipc_pages_unlock_tables_step_pre_from_u(pre: KernelU, cpu_id
             let source = pre.thread_map[objects.source_thread].owning_proc;
             &&& share_4k_locked(pre, cpu_id)
             &&& progress->Share4k_origin is IpcPages
+            &&& pre.thread_map[progress->Share4k_origin->IpcPages_peer].blocking_endpoint_ptr is Some
             &&& progress->Share4k_shared == progress->Share4k_source_range.len
             &&& source != objects.target
             &&& pre.process_map.dom().contains(source)
@@ -489,11 +1052,12 @@ pub(super) proof fn ipc_ordinary_trace_block_step(steps: &KernelSteps, before: S
     requires
         steps.view() == before.push(KernelStep { old_u: pre, new_u: post }),
         ipc_block_step_pre(pre, cpu_id, endpoint_index, waiting_state),
+        !pre.cpu_array[cpu_id as int].killed,
         ipc_block_step(pre, post, cpu_id, endpoint_index, waiting_state, payload, regs, flushed_default_pcid),
     ensures
         ipc_ordinary_syscall_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, post, cpu_id, endpoint_index, waiting_state,
             payload, regs, flushed_default_pcid, RetValueType::CpuIdle),
-{ reveal(ipc_ordinary_syscall_trace); }
+{ reveal(ipc_ordinary_syscall_trace); reveal(ipc_block_step_pre); reveal(ipc_step_pre); }
 
 /// A blocking trace since `before` is the payload's syscall trace.
 pub(super) proof fn ipc_syscall_trace_from_block(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool)
@@ -538,12 +1102,14 @@ pub(super) proof fn ipc_syscall_trace_from_rendezvous(steps: &KernelSteps, befor
 pub(super) proof fn ipc_syscall_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, regs: Registers, flushed_default_pcid: bool, ret: RetValueType)
     requires
         trace.len() == 0,
-        ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcNoPeer || ret is ErrorIpcSameDirection || ret is ErrorIpcPeerKilled || ret is ErrorReplyOutOfPhase,
+        ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcNoPeer || ret is ErrorIpcSameDirection || ret is ErrorIpcPeerKilled || ret is ErrorReplyOutOfPhase
+            || (ret is CpuIdle && ipc_entry_result(pre, cpu_id, endpoint_index, waiting_state, false) == Some(RetValueType::CpuIdle)),
+        ret is CpuIdle && payload is Pages ==> payload->Pages_va_range.wf() && payload->Pages_va_range.len > 0,
     ensures
         payload is Pages ==> ipc_pages_syscall_trace(trace, pre, pre, cpu_id, endpoint_index, waiting_state, payload->Pages_va_range, regs, flushed_default_pcid, ret),
         payload is Endpoint ==> ipc_endpoint_syscall_trace(trace, pre, pre, cpu_id, endpoint_index, waiting_state, payload->Endpoint_endpoint_index, regs, flushed_default_pcid, ret),
         (payload is Empty || payload is Usize || payload is Cpu || payload is ReceiveCpu || payload is Pci) ==> ipc_ordinary_syscall_trace(trace, pre, pre, cpu_id, endpoint_index, waiting_state, payload, regs, flushed_default_pcid, ret),
-{ reveal(ipc_pages_syscall_trace); reveal(ipc_endpoint_syscall_trace); reveal(ipc_ordinary_syscall_trace); reveal(ipc_pages_rendezvous_syscall_trace); reveal(ipc_endpoint_rendezvous_trace); }
+{ reveal(ipc_entry_result); reveal(ipc_pages_syscall_trace); reveal(ipc_endpoint_syscall_trace); reveal(ipc_ordinary_syscall_trace); reveal(ipc_pages_rendezvous_syscall_trace); reveal(ipc_endpoint_rendezvous_trace); }
 
 /// A rendezvous abandoned because the queue head died records no step for the Pages and Endpoint payloads.
 pub(super) proof fn ipc_rendezvous_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, ret: RetValueType)

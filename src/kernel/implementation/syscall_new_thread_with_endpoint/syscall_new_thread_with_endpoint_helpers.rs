@@ -37,10 +37,6 @@ verus! {
                 old(lctx).kernel_view_locking_state() is Acquire,
                 kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
                 kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
-                old(krnl).irt.view().owners() == old(steps).snapshot_k().irt.view().owners(),
-                old(krnl).irt.view().iommu_roots() == old(steps).snapshot_k().irt.view().iommu_roots(),
-                old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
-                old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
                 kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
                 old(krnl).thr_mp.dom().contains(current_thread_ptr),
                 old(krnl).ctn_mp.dom().contains(container_ptr),
@@ -70,6 +66,7 @@ verus! {
                 process_lock_perm.view().lock_id() == old(krnl).prc_mp.spec_index(process_ptr).locking_thread()->Write_lock_id,
                 typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
                 old(krnl).prc_mp.spec_index(process_ptr).being_killed() == false,
+                old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Running,
                 old(krnl).prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr,
                 current_thread_lock_perm.view().state() is WriteLock,
                 current_thread_lock_perm.view().thread_id() == old(lctx).thread_id(),
@@ -132,28 +129,18 @@ verus! {
             }
             let (page_ptr, Tracked(page_lock_perm)) = allocate_free_4k_page(krnl, current_thread_ptr, container_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&current_thread_lock_perm));
             let page_index = page_ptr2page_index(page_ptr);
-            proof {
-                assert({
-                    &&& kernel_k_to_kernel_u(steps.snapshot_k()).cpu_array[cpu_id as int].lock_state is WriteLocked
-                    &&& kernel_k_to_kernel_u(steps.snapshot_k()).process_map.spec_index(process_ptr).lock_state is WriteLocked
-                    &&& kernel_k_to_kernel_u(steps.snapshot_k()).thread_map.spec_index(current_thread_ptr).lock_state is WriteLocked
-                    &&& kernel_k_to_kernel_u(steps.snapshot_k()).endpoint_map.spec_index(endpoint_ptr).lock_state is WriteLocked
-                }) by { kernel_write_held_context_projection(&*krnl, &*lctx, cpu_id, process_ptr, current_thread_ptr, Some(endpoint_ptr)); };
-            }
+            proof { new_thread_finish_step_pre_from_k(&*krnl, &*lctx, cpu_id, process_ptr, current_thread_ptr, container_ptr, Some(endpoint_ptr), *initial_regs, Some(endpoint_index)); }
 
-            proof { assert(!krnl.prc_mp.spec_index(process_ptr).view().zombie) by { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); }; }
             let (new_thread_ptr, Tracked(new_thread_lock_perm)) = create_thread_from_staged_page_merged(
                 krnl, page_ptr, process_ptr, current_thread_ptr, container_ptr, scheduler_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&page_lock_perm),
                 Tracked(&process_lock_perm), Tracked(&current_thread_lock_perm), Tracked(&scheduler_lock_perm), initial_regs,
             );
             proof {
                 assert(krnl.thr_mp.spec_index(new_thread_ptr).view().endpoint_descriptors.view() == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| None)) by { reveal(kernel_new_thread_fields); };
-                assert(krnl.ctn_mp.dom().contains(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container)) by { container_endpoint_wf_at(krnl.ctn_mp, krnl.ep_mp, endpoint_ptr); };
                 assert({
                     ||| krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container == container_ptr
                     ||| krnl.ctn_mp.spec_index(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container).view_ghost().subtree_set.view().contains(container_ptr)
-                }) by { reveal(container_thread_endpoint_wf); };
-                assert(krnl.ep_mp.spec_index(endpoint_ptr).is_init()) by { endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr); };
+                }) by { container_endpoint_wf_at(krnl.ctn_mp, krnl.ep_mp, endpoint_ptr); reveal(container_thread_endpoint_wf); };
             }
             attach_endpoint_reference_and_unlock(krnl, new_thread_ptr, endpoint_ptr, current_thread_ptr, Tracked(&mut *lctx), Tracked(new_thread_lock_perm), Tracked(endpoint_lock_perm));
             krnl.wunlock_page(page_index, Tracked(&mut *lctx), Tracked(page_lock_perm));
@@ -176,7 +163,6 @@ verus! {
                     kernel_k_to_kernel_u(*krnl), cpu_id, *initial_regs, Some(endpoint_index), true)) by {
                     reveal(kernel_new_thread_fields);
                     kernel_new_thread_fields_and_unlocks_implies_u_step(&finish_k, &*krnl, cpu_id, process_ptr, current_thread_ptr, container_ptr, new_thread_ptr, *initial_regs, Some(endpoint_ptr), None, None);
-                    kernel_cpu_thread_projection_at(&finish_k, cpu_id, process_ptr, current_thread_ptr, Some(endpoint_ptr));
                     new_thread_finish_step_from_u(kernel_k_to_kernel_u(finish_k), kernel_k_to_kernel_u(*krnl), cpu_id, process_ptr, current_thread_ptr, container_ptr, new_thread_ptr, Some(endpoint_ptr), *initial_regs, Some(endpoint_index));
                     new_thread_trace_finish_step(&*steps, finish_before, old(steps).view().len() as int, kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(finish_k), kernel_k_to_kernel_u(*krnl), cpu_id, *initial_regs, Some(endpoint_index));
                 };

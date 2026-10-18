@@ -48,7 +48,11 @@ pub proof fn new_endpoint_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
         new_endpoint_finish_step_pre(old_u, cpu_id),
         new_endpoint_finish_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(new_endpoint_finish_step_pre); reveal(new_endpoint_finish_step); reveal(kernel_u_new_endpoint_changed); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(new_endpoint_finish_step_pre); reveal(new_endpoint_finish_step); reveal(kernel_u_new_endpoint_changed); reveal(kernel_u_cpu_ownership_wf);
+    assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] new_u.process_map.dom().contains(p) && new_u.process_map[p].pagetable is Some
+        ==> new_u.process_map[p].pagetable->Some_0.mapping_4k == old_u.process_map[p].pagetable->Some_0.mapping_4k);
+}
 
 /// The endpoint creation result of a running cpu of `b` reads only the view of `b`.
 pub proof fn new_endpoint_syscall_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, b: RwLockContainerPtr)

@@ -49,6 +49,7 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
             old(krnl).thr_mp.dom().contains(thread_ptr),
             typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
             old(krnl).thr_mp.spec_index(thread_ptr).being_killed() == false,
+            !thread_is_dangling(old(krnl).thr_mp.spec_index(thread_ptr)),
             old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
             old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
             thread_lock_perm.state() is WriteLock,
@@ -117,6 +118,7 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
             final(krnl).thr_mp.dom().contains(thread_ptr),
             typed_lock_map_contains_mode(final(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
             final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == false,
+            !thread_is_dangling(final(krnl).thr_mp.spec_index(thread_ptr)),
             final(krnl).thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
             final(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
             thread_lock_perm.thread_id() == final(lctx).thread_id(),
@@ -129,7 +131,6 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
             old(steps).nonlock_view().len() + range.len <= final(steps).nonlock_view().len(),
             final(steps).nonlock_view().len() <= old(steps).nonlock_view().len() + 4 * range.len,
             final(steps).nonlock_view().subrange(0, old(steps).nonlock_view().len() as int) == old(steps).nonlock_view(),
-            final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
             final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
@@ -172,6 +173,7 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
                 krnl.thr_mp.dom().contains(thread_ptr),
                 typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
                 krnl.thr_mp.spec_index(thread_ptr).being_killed() == false,
+                !thread_is_dangling(krnl.thr_mp.spec_index(thread_ptr)),
                 krnl.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
                 krnl.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
                 thread_lock_perm.state() is WriteLock,
@@ -183,7 +185,6 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
                 pagetable_lock_perm.state() is WriteLock,
                 pagetable_lock_perm.thread_id() == lctx.thread_id(),
                 pagetable_lock_perm.lock_id() == krnl.pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
-                steps.nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*krnl),
                 steps.snapshot_k() == *krnl,
                 lctx.page_lock_map().dom().is_empty(),
                 forall|held_cpu_id: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(held_cpu_id)] lctx.cpu_lock_map().dom().contains(held_cpu_id) ==> !(krnl.cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
@@ -281,10 +282,8 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
                     reveal(PageTable::wf_mapping_4k);
                     spec_va_4k_index_roundtrip_at(current_va, spec_v2l4index(current_va), spec_v2l3index(current_va), spec_v2l2index(current_va), spec_v2l1index(current_va));
                 };
+                kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl);
             }
-            proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); }; }
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-            proof { assert(kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; }; }
             let ghost build_before = steps.view();
             mmap_4k_build_one_structure(krnl, current_va, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, None, Ghost(thread_ptr), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(None), Tracked(None));
             proof {
@@ -293,7 +292,6 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
                     mmap_4k_range_steps_from_directory(&*steps, build_before, old(steps).view().len() as int, cpu_id);
                 };
             }
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
             let ghost leaf_before = steps.view();
             map_one_mmap_4k_page(krnl, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, current_va, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm));
             proof {

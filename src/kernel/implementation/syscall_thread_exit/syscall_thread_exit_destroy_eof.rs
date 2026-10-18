@@ -4,104 +4,6 @@ use crate::*;
 use super::syscall_thread_exit_destroy_spec::thread_exit_destroy_transition;
 
 verus! {
-/// The quotas of a thread with no staged page and of its process are summands of their container's conservation law,
-/// so each pair fits in a `usize`.
-pub(super) proof fn thread_exit_quota_sums_bounded(krnl: &KernelK, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr)
-    requires
-        krnl.inv(),
-        krnl.ctn_mp.dom().contains(container_ptr),
-        krnl.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().contains(process_ptr),
-        krnl.ctn_mp.spec_index(container_ptr).view_ghost().owned_threads.view().contains(thread_ptr),
-        krnl.thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
-    ensures
-        krnl.allc_4k_mp.spec_index(krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k).quota.view().value + krnl.prc_mp.spec_index(process_ptr).view().quota_4k
-        + krnl.thr_mp.spec_index(thread_ptr).view().quota_4k <= usize::MAX,
-        krnl.allc_2m_mp.spec_index(krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_2m).quota.view().value + krnl.prc_mp.spec_index(process_ptr).view().quota_2m
-        + krnl.thr_mp.spec_index(thread_ptr).view().quota_2m <= usize::MAX,
-        krnl.allc_1g_mp.spec_index(krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_1g).quota.view().value + krnl.prc_mp.spec_index(process_ptr).view().quota_1g
-        + krnl.thr_mp.spec_index(thread_ptr).view().quota_1g <= usize::MAX,
-{
-    let processes = krnl.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view();
-    let threads = krnl.ctn_mp.spec_index(container_ptr).view_ghost().owned_threads.view();
-    let indirect = krnl.ctn_mp.spec_index(container_ptr).view_ghost().owned_indirect_threads.view();
-    let depth = krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().depth as int;
-    reveal(container_thread_wf); reveal(thread_perms_wf);
-    assert(krnl.allc_4k_mp.spec_index(krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k).quota.view().value + krnl.prc_mp.spec_index(process_ptr).view().quota_4k
-        + krnl.thr_mp.spec_index(thread_ptr).view().quota_4k <= usize::MAX) by {
-        let process_value = |p: RwLockProcessPtr| process_effective_quota_4k(krnl.prc_mp.spec_index(p));
-        assert((|sum: int, p: RwLockProcessPtr| sum + process_value(p)) =~= (|sum: int, p: RwLockProcessPtr| sum + process_effective_quota_4k(krnl.prc_mp.spec_index(p)))
-            && processes.fold(0int, |sum: int, p: RwLockProcessPtr| sum + process_value(p)) >= process_value(process_ptr)) by { lemma_set_fold_int_sum_ge_member(processes, process_value, process_ptr); };
-        lemma_thread_effective_quota_4k_fold_ge_member(threads, krnl.thr_mp, thread_ptr);
-        lemma_thread_direct_pending_4k_fold_nonneg(threads, krnl.thr_mp);
-        lemma_thread_indirect_pending_4k_fold_nonneg(indirect, krnl.thr_mp, depth);
-        reveal(container_process_allocator_quota_4k_wf);
-    };
-    assert(krnl.allc_2m_mp.spec_index(krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_2m).quota.view().value + krnl.prc_mp.spec_index(process_ptr).view().quota_2m
-        + krnl.thr_mp.spec_index(thread_ptr).view().quota_2m <= usize::MAX) by {
-        let process_value = |p: RwLockProcessPtr| process_effective_quota_2m(krnl.prc_mp.spec_index(p));
-        assert((|sum: int, p: RwLockProcessPtr| sum + process_value(p)) =~= (|sum: int, p: RwLockProcessPtr| sum + process_effective_quota_2m(krnl.prc_mp.spec_index(p)))
-            && processes.fold(0int, |sum: int, p: RwLockProcessPtr| sum + process_value(p)) >= process_value(process_ptr)) by { lemma_set_fold_int_sum_ge_member(processes, process_value, process_ptr); };
-        lemma_thread_effective_quota_2m_fold_ge_member(threads, krnl.thr_mp, thread_ptr);
-        lemma_thread_direct_pending_2m_fold_nonneg(threads, krnl.thr_mp);
-        lemma_thread_indirect_pending_2m_fold_nonneg(indirect, krnl.thr_mp, depth);
-        reveal(container_process_allocator_quota_2m_wf);
-    };
-    assert(krnl.allc_1g_mp.spec_index(krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_1g).quota.view().value + krnl.prc_mp.spec_index(process_ptr).view().quota_1g
-        + krnl.thr_mp.spec_index(thread_ptr).view().quota_1g <= usize::MAX) by {
-        let process_value = |p: RwLockProcessPtr| process_effective_quota_1g(krnl.prc_mp.spec_index(p));
-        let thread_value = |t: RwLockThreadPtr| thread_effective_quota_1g(krnl.thr_mp.spec_index(t));
-        let direct_value = |t: RwLockThreadPtr| krnl.thr_mp.spec_index(t).view().direct_free_quota_pending_1g.view() as int;
-        let indirect_value = |t: RwLockThreadPtr| krnl.thr_mp.spec_index(t).view().indirect_free_quota_pending_1g.view().spec_index(depth) as int;
-        assert((|sum: int, p: RwLockProcessPtr| sum + process_value(p)) =~= (|sum: int, p: RwLockProcessPtr| sum + process_effective_quota_1g(krnl.prc_mp.spec_index(p)))
-            && processes.fold(0int, |sum: int, p: RwLockProcessPtr| sum + process_value(p)) >= process_value(process_ptr)) by { lemma_set_fold_int_sum_ge_member(processes, process_value, process_ptr); };
-        assert((|sum: int, t: RwLockThreadPtr| sum + thread_value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_1g(krnl.thr_mp.spec_index(t)))
-            && threads.fold(0int, |sum: int, t: RwLockThreadPtr| sum + thread_value(t)) >= thread_value(thread_ptr)) by { lemma_set_fold_int_sum_ge_member(threads, thread_value, thread_ptr); };
-        assert((|sum: int, t: RwLockThreadPtr| sum + direct_value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + krnl.thr_mp.spec_index(t).view().direct_free_quota_pending_1g.view())
-            && threads.fold(0int, |sum: int, t: RwLockThreadPtr| sum + direct_value(t)) >= 0) by { lemma_set_fold_int_sum_nonneg(threads, direct_value); };
-        assert((|sum: int, t: RwLockThreadPtr| sum + indirect_value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + krnl.thr_mp.spec_index(t).view().indirect_free_quota_pending_1g.view().spec_index(depth))
-            && indirect.fold(0int, |sum: int, t: RwLockThreadPtr| sum + indirect_value(t)) >= 0) by { lemma_set_fold_int_sum_nonneg(indirect, indirect_value); };
-        reveal(container_process_allocator_quota_1g_wf);
-    };
-}
-
-/// The quota of the 4K allocator of `owner` is a summand of the container's conservation law, so it is within the
-/// allocator's free pages, which the physical memory keeps below `usize::MAX`.
-pub(super) proof fn thread_exit_owner_allocator_bounded(krnl: &KernelK, owner: RwLockContainerPtr)
-    requires
-        krnl.inv(),
-        krnl.ctn_mp.dom().contains(owner),
-    ensures
-        krnl.allc_4k_mp.dom().contains(krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k),
-        krnl.allc_4k_mp.spec_index(krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k).quota.view().value
-            <= krnl.allc_4k_mp.spec_index(krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k).total_free_pages.view(),
-        krnl.allc_4k_mp.spec_index(krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k).total_free_pages.view() < usize::MAX,
-{
-    let allocator_ptr = krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k;
-    let allocator = krnl.allc_4k_mp.spec_index(allocator_ptr);
-    let threads = krnl.ctn_mp.spec_index(owner).view_ghost().owned_threads.view();
-    reveal(container_allocator_wf);
-    assert(allocator.quota.view().value <= allocator.total_free_pages.view()) by {
-        reveal(container_process_allocator_quota_4k_wf); reveal(container_thread_wf); reveal(process_perms_wf); reveal(thread_perms_wf);
-        lemma_process_effective_quota_4k_fold_nonneg(krnl.ctn_mp.spec_index(owner).view_ghost().owned_processes.view(), krnl.prc_mp);
-        let effective = |t: RwLockThreadPtr| thread_effective_quota_4k(krnl.thr_mp.spec_index(t));
-        assert((|sum: int, t: RwLockThreadPtr| sum + effective(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_4k(krnl.thr_mp.spec_index(t)))
-            && threads.fold(0int, |sum: int, t: RwLockThreadPtr| sum + effective(t)) >= 0) by { lemma_set_fold_int_sum_nonneg(threads, effective); };
-        lemma_thread_direct_pending_4k_fold_nonneg(threads, krnl.thr_mp);
-        lemma_thread_indirect_pending_4k_fold_nonneg(krnl.ctn_mp.spec_index(owner).view_ghost().owned_indirect_threads.view(), krnl.thr_mp, krnl.ctn_mp.spec_index(owner).view_rodata().view().depth as int);
-    };
-    assert(allocator.total_free_pages.view() < usize::MAX) by {
-        allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr);
-        reveal(allocator_free_page_ptrs_wf);
-        assert(allocator.global_pool.view().len() <= NUM_PAGES * 4096) by {
-            reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list); allocator.global_pool.view().lemma_len_view();
-            seq_unique_bounded_usize_len(allocator.global_pool.view().view(), (NUM_PAGES * 4096) as usize);
-        };
-        assert(allocator.cpu_caches.view().fold_left(0int, |sum: int, cache: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| sum + cache.view().linked_list.len()) <= NUM_CPUS * ALLOCATOR_MAX_WATERMARK) by {
-            lemma_cache_len_fold_upper_bound(allocator.cpu_caches);
-        };
-    };
-}
-
 proof fn thread_exit_destroy_eof_subsystems_inv(
     pre: KernelK, post: KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
     owner: RwLockContainerPtr, allocator_ptr: RwLockPageAllocatorPtr, proc_node_addr: usize, cache_node_addr: usize,
@@ -155,6 +57,7 @@ proof fn thread_exit_destroy_eof_page_relations(
         page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr),
         container_pages_wf(post.pg_arr, post.ctn_mp),
         process_pages_wf(post.pg_arr, post.prc_mp),
+        process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp),
         pagetable_pages_wf(post.pt_mp, post.pg_arr),
         pagetable_pages_wf(post.it_mp, post.pg_arr),
         thread_pages_wf(post.thr_mp, post.pg_arr),
@@ -165,6 +68,8 @@ proof fn thread_exit_destroy_eof_page_relations(
         endpoint_pages_wf(post.ep_mp, post.pg_arr),
         process_pagetable_match(post.prc_mp, post.pt_mp),
         process_iommu_table_match(post.prc_mp, post.it_mp),
+        pagetable_no_huge_leaf_wf(post.pt_mp, post.it_mp),
+        process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.it_mp),
         post.allocator_free_pages_wf(),
         container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
         container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr),
@@ -188,6 +93,7 @@ proof fn thread_exit_destroy_eof_page_relations(
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); };
     assert(container_pages_wf(post.pg_arr, post.ctn_mp)) by { container_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.ctn_mp, post.ctn_mp); };
     assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { process_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.prc_mp, post.prc_mp); };
+    assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
     assert(pagetable_pages_wf(post.pt_mp, post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, post.pt_mp, pre.pg_arr, post.pg_arr); };
     assert(pagetable_pages_wf(post.it_mp, post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.it_mp, post.it_mp, pre.pg_arr, post.pg_arr); };
     assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); page_ptr2page_index_injective(); };
@@ -203,6 +109,7 @@ proof fn thread_exit_destroy_eof_page_relations(
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
     assert(process_pagetable_match(post.prc_mp, post.pt_mp)) by { process_pagetable_match_preserved_for_process_fields_eq(pre.prc_mp, post.prc_mp, post.pt_mp); };
     assert(process_iommu_table_match(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_match); };
+    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.it_mp)) by { reveal(process_emptied_tables_wf); };
     assert(allocator_free_page_ptrs_wf(post.allc_4k_mp)) by { reveal(allocator_free_page_ptrs_wf); };
     assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { container_allocator_wf_preserved_for_owner_depth_eq(pre.ctn_mp, post.ctn_mp, pre.allc_4k_mp, post.allc_4k_mp, pre.allc_2m_mp, post.allc_2m_mp, pre.allc_1g_mp, post.allc_1g_mp); };
     assert(container_allocator_global_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf); };
@@ -246,6 +153,9 @@ proof fn thread_exit_destroy_eof_thread_relations(
         post.ctn_mp.spec_index(post.rt_ctn).view_ghost().owned_processes.view().contains(post.ctn_mp.spec_index(post.rt_ctn).view().root_process),
         container_process_wf(post.ctn_mp, post.prc_mp),
         per_container_process_tree_wf(post.ctn_mp, post.prc_mp),
+        process_kill_mark_wf(post.prc_mp),
+        process_state_lock_wf(post.prc_mp),
+        process_emptied_threads_wf(post.prc_mp, post.thr_mp),
         container_endpoint_wf(post.ctn_mp, post.ep_mp),
         thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp),
         thread_endpoint_queue_wf(post.thr_mp, post.ep_mp),
@@ -265,7 +175,6 @@ proof fn thread_exit_destroy_eof_thread_relations(
     process_thread_wf_at(pre.prc_mp, pre.thr_mp, thread_ptr);
     process_perms_wf_at(pre.prc_mp, process_ptr);
     lemma_seq_remove_value_membership::<RwLockThreadPtr>();
-    assert(pre.prc_mp.spec_index(process_ptr).view().owned_threads.view().no_duplicates()) by { reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list); };
     assert(container_tree_wf(post.rt_ctn, post.ctn_mp)) by { container_no_change_to_tree_fields_imply_wf(pre.rt_ctn, pre.ctn_mp, post.ctn_mp); };
     assert(post.ctn_mp.spec_index(post.rt_ctn).view_ghost().owned_processes.view().contains(post.ctn_mp.spec_index(post.rt_ctn).view().root_process)) by { reveal(container_root_wf); };
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
@@ -273,6 +182,9 @@ proof fn thread_exit_destroy_eof_thread_relations(
         per_container_process_tree_wf_preserved_for_tree_fields_eq(pre.ctn_mp, pre.prc_mp, post.prc_mp);
         reveal(per_container_process_tree_wf);
     };
+    assert(process_kill_mark_wf(post.prc_mp)) by { reveal(process_kill_mark_wf); };
+    assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
+    assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); reveal(process_thread_wf); };
     assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { container_endpoint_wf_preserved_for_endpoint_owner_eq(pre.ctn_mp, post.ctn_mp, pre.ep_mp, post.ep_mp); };
     assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_perms_wf); reveal(thread_endpoint_ref_counter_wf); };
     assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_queue_wf); };
@@ -293,7 +205,7 @@ proof fn thread_exit_destroy_eof_thread_relations(
     };
     assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf); };
     assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { reveal(container_thread_wf); uppers.to_set_ensures(); };
-    assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(process_thread_wf); reveal(process_empty_lists_wlocked); };
+    assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(process_thread_wf); };
 }
 
 proof fn thread_exit_destroy_eof_cpu_relations(
@@ -374,6 +286,7 @@ pub(super) proof fn thread_exit_destroy_eof_fields(
             pcid_allc_mp: post.pcid_allc_mp, ..mid
         }),
         post.cpu_arr.unchanged_except(&mid.cpu_arr, cpu_id),
+        post.cpu_arr.spec_index(cpu_id).value.killer_info() == mid.cpu_arr.spec_index(cpu_id).value.killer_info(),
         post.ctn_mp.unchanged_except(&mid.ctn_mp, container_ptr),
         post.ctn_mp.spec_index(container_ptr).view() == mid.ctn_mp.spec_index(container_ptr).view(),
         post.ctn_mp.spec_index(container_ptr).view_rodata() == mid.ctn_mp.spec_index(container_ptr).view_rodata(),

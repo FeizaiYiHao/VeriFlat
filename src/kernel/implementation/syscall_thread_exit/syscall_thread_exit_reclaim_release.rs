@@ -3,6 +3,10 @@ use crate::*;
 use super::syscall_thread_exit_spec::*;
 use super::syscall_thread_exit_trace::*;
 use super::syscall_thread_exit_quota::thread_exit_return_quota;
+#[cfg(verus_keep_ghost)]
+use super::syscall_thread_exit_reclaim_spec::thread_exit_tables_emptied_transition;
+#[cfg(verus_keep_ghost)]
+use super::syscall_thread_exit_reclaim_eof::thread_exit_tables_emptied_eof;
 
 verus! {
 /// Flush the process's PCID from every cpu once, then record the flush.
@@ -67,6 +71,7 @@ pub(super) fn thread_exit_reclaim_flush(
         old(krnl).cpu_arr.spec_index(cpu_id).view().view() == entry_k.cpu_arr.spec_index(cpu_id).view().view(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == entry_k.cpu_arr.spec_index(cpu_id).view().locking_thread(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == entry_k.cpu_arr.spec_index(cpu_id).view().being_killed(),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().killer_info() == entry_k.cpu_arr.spec_index(cpu_id).view().killer_info(),
         entry_k.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
         entry_k.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
         entry_k.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
@@ -123,8 +128,6 @@ pub(super) fn thread_exit_reclaim_flush(
         old(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress, ..entry_k.thr_mp.spec_index(thread_ptr).view() }),
         old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: false }),
         0 <= start <= old(steps).view().len(),
-        forall|va: VAddr| #![trigger old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va)]
-            spec_va_4k_valid(va) && kernel_l4_end <= spec_v2l4index(va) && old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va) ==> !old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(va).present,
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
             pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && start_l4 <= l4i && old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
                 ==> !old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present,
@@ -144,6 +147,7 @@ pub(super) fn thread_exit_reclaim_flush(
         final(krnl).cpu_arr.spec_index(cpu_id).view().view() == entry_k.cpu_arr.spec_index(cpu_id).view().view(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == entry_k.cpu_arr.spec_index(cpu_id).view().locking_thread(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == entry_k.cpu_arr.spec_index(cpu_id).view().being_killed(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().killer_info() == entry_k.cpu_arr.spec_index(cpu_id).view().killer_info(),
         final(krnl).cpu_published[cpu_id as int].view() == (cr3, pcid),
         final(krnl).ctn_mp.dom().contains(container_ptr),
         final(krnl).ctn_mp.spec_index(container_ptr) == entry_k.ctn_mp.spec_index(container_ptr),
@@ -162,53 +166,43 @@ pub(super) fn thread_exit_reclaim_flush(
         final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress, ..entry_k.thr_mp.spec_index(thread_ptr).view() }),
         final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: true }),
         old(steps).view().len() <= final(steps).view().len(),
-        forall|j: int| #![trigger final(steps).view()[j]] 0 <= j < old(steps).view().len() ==> final(steps).view()[j] == old(steps).view()[j],
+        forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pagetable, final(krnl).pt_mp.spec_index(pagetable).view()),
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
             pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && start_l4 <= l4i && final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
                 ==> !final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present,
 {
-    proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
     let ghost flush_before = steps.view();
-    let ghost flush_entry = kernel_k_to_kernel_u(*krnl);
-    proof {
-        assert(thread_exit_flush_step_pre(flush_entry, cpu_id) && flush_entry.cpu_array[cpu_id as int].current_thread == Some(thread_ptr) && flush_entry.thread_map[thread_ptr].owning_proc == process_ptr
-            && flush_entry.thread_map[thread_ptr].owning_container == container_ptr && flush_entry.process_map[process_ptr].pcid == pcid) by {
-            kernel_write_held_context_projection(&*krnl, &*lctx, cpu_id, process_ptr, thread_ptr, None);
-            kernel_pagetable_user_4k_unmapped_projection_at(&*krnl, process_ptr);
-            thread_exit_flush_step_pre_from_u(flush_entry, cpu_id, thread_ptr);
-        };
-    }
+    let ghost entry_flush_k = *krnl;
+    let ghost entry_flush_lctx = *lctx;
     flush_pagetable_tlbs(krnl, pagetable, cr3, pcid, cpu_id, thread_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(cpu_lock_perm));
     proof {
-        thread_exit_trace_from_tlb_flush(&*steps, flush_before, start, pre, flush_entry, cpu_id, thread_ptr, process_ptr, container_ptr, pcid);
-        use_type_invariant(&*steps);
-        assert(entry_lctx.container_lock_map().dom().contains(container_ptr) && entry_lctx.process_lock_map().dom().contains(process_ptr)
-            && entry_lctx.thread_lock_map().dom().contains(thread_ptr) && lctx.pagetable_lock_map().dom().contains(pagetable));
-        assert(thread_exit_flush_step_pre(steps.snapshot_u(), cpu_id) && steps.snapshot_u().cpu_array[cpu_id as int].current_thread == Some(thread_ptr)) by {
-            kernel_write_held_context_projection(&*krnl, &*lctx, cpu_id, process_ptr, thread_ptr, None);
-            kernel_pagetable_user_4k_unmapped_projection_at(&*krnl, process_ptr);
-            thread_exit_flush_step_pre_from_u(steps.snapshot_u(), cpu_id, thread_ptr);
+        assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
+            thread_exit_flush_step_pre_from_k(&entry_flush_k, &entry_flush_lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, pcid);
+            thread_exit_trace_from_tlb_flush(&*steps, flush_before, start, pre, kernel_k_to_kernel_u(entry_flush_k), cpu_id, thread_ptr, process_ptr, container_ptr, pcid);
         };
     }
+    let ghost flush_k = *krnl;
+    let ghost flush_lctx = *lctx;
     krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::ThreadExitReclaim { flushed: true })), Tracked(&*lctx), Tracked(thread_lock_perm));
     proof {
         let flushed_before = steps.view();
-        let flushed_pre = steps.snapshot_u();
         let flushed_k = *krnl;
-        assert(thread_exit_flushed_step(flushed_pre, kernel_k_to_kernel_u(flushed_k), cpu_id)) by {
-            kernel_thread_syscall_progress_changed_implies_u_step(&steps.snapshot_k(), &flushed_k, thread_ptr);
-            thread_exit_flushed_step_from_u(flushed_pre, kernel_k_to_kernel_u(flushed_k), cpu_id, thread_ptr);
-        };
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
-        thread_exit_trace_push(&*steps, flushed_before, start, pre, flushed_pre, kernel_k_to_kernel_u(flushed_k), cpu_id);
+        assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
+            thread_exit_flush_step_pre_from_k(&flush_k, &flush_lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, pcid);
+            kernel_thread_syscall_progress_changed_implies_u_step(&flush_k, &flushed_k, thread_ptr);
+            thread_exit_flushed_step_from_u(kernel_k_to_kernel_u(flush_k), kernel_k_to_kernel_u(flushed_k), cpu_id, thread_ptr);
+            thread_exit_trace_push(&*steps, flushed_before, start, pre, kernel_k_to_kernel_u(flush_k), kernel_k_to_kernel_u(flushed_k), cpu_id);
+        };
         pagetable_perms_wf_at(krnl.pt_mp, pagetable);
+        reveal(kernel_steps_prefix_unchanged);
     }
 }
 
-/// Unmap every cleared leaf of the locked page table, accumulating the quota of its page as the thread's pending refund,
-/// then refund that quota to the thread's container chain.
+/// Unmap every cleared leaf of the locked page table, accumulating the quota of its page as the thread's pending
+/// refund, then refund that quota to the thread's container chain.
 pub(super) fn thread_exit_reclaim_unmap_leaves(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
     Ghost(container_ptr): Ghost<RwLockContainerPtr>, Ghost(process_ptr): Ghost<RwLockProcessPtr>, thread_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot,
@@ -270,6 +264,7 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
         old(krnl).cpu_arr.spec_index(cpu_id).view().view() == entry_k.cpu_arr.spec_index(cpu_id).view().view(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == entry_k.cpu_arr.spec_index(cpu_id).view().locking_thread(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == entry_k.cpu_arr.spec_index(cpu_id).view().being_killed(),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().killer_info() == entry_k.cpu_arr.spec_index(cpu_id).view().killer_info(),
         entry_k.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
         entry_k.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
         entry_k.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
@@ -343,6 +338,7 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
         final(krnl).cpu_arr.spec_index(cpu_id).view().view() == entry_k.cpu_arr.spec_index(cpu_id).view().view(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == entry_k.cpu_arr.spec_index(cpu_id).view().locking_thread(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == entry_k.cpu_arr.spec_index(cpu_id).view().being_killed(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().killer_info() == entry_k.cpu_arr.spec_index(cpu_id).view().killer_info(),
         final(krnl).cpu_published[cpu_id as int].view() == (cr3, pcid),
         final(krnl).ctn_mp.dom().contains(container_ptr),
         final(krnl).ctn_mp.spec_index(container_ptr) == entry_k.ctn_mp.spec_index(container_ptr),
@@ -361,9 +357,10 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
         final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress, ..entry_k.thr_mp.spec_index(thread_ptr).view() }),
         final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: true }),
         old(steps).view().len() <= final(steps).view().len(),
-        forall|j: int| #![trigger final(steps).view()[j]] 0 <= j < old(steps).view().len() ==> final(steps).view()[j] == old(steps).view()[j],
+        forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pagetable, final(krnl).pt_mp.spec_index(pagetable).view()),
-        forall|va: VAddr| #![trigger final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va)] spec_va_4k_valid(va) && kernel_l4_end <= spec_v2l4index(va) ==> !final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va),
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
+            pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && KERNEL_MEM_END_L4INDEX <= l4i && kernel_l4_end <= l4i ==> !final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
         final(krnl).pt_mp.spec_index(pagetable).view().leaves_present(),
 {
     proof { pagetable_perms_wf_at(krnl.pt_mp, pagetable); }
@@ -424,6 +421,7 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
             krnl.cpu_arr.spec_index(cpu_id).view().view() == entry_k.cpu_arr.spec_index(cpu_id).view().view(),
             krnl.cpu_arr.spec_index(cpu_id).view().locking_thread() == entry_k.cpu_arr.spec_index(cpu_id).view().locking_thread(),
             krnl.cpu_arr.spec_index(cpu_id).view().being_killed() == entry_k.cpu_arr.spec_index(cpu_id).view().being_killed(),
+            krnl.cpu_arr.spec_index(cpu_id).view().killer_info() == entry_k.cpu_arr.spec_index(cpu_id).view().killer_info(),
             entry_k.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
             entry_k.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
             entry_k.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
@@ -483,7 +481,7 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
             forall|d: int| #![trigger indirect[d]] #![trigger krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().spec_index(d)] 0 <= d < krnl.thr_mp.spec_index(thread_ptr).view().container_depth
                 ==> indirect[d] == krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().spec_index(d),
             0 <= start <= old(steps).view().len() <= steps.view().len(),
-            forall|j: int| #![trigger steps.view()[j]] 0 <= j < old(steps).view().len() ==> steps.view()[j] == old(steps).view()[j],
+            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, steps.view()),
             pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, pagetable, krnl.pt_mp.spec_index(pagetable).view()),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
                 pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && start_l4 <= l4i && krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
@@ -515,7 +513,6 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
         let ghost iter_pt = krnl.pt_mp.spec_index(pagetable).view();
         proof {
             assert(spec_va_4k_valid(va) && spec_va2index(va) == next) by { spec_va_4k_index_roundtrip_at(va, next.0, next.1, next.2, next.3); };
-            kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl);
         }
         reclaim_unmapped_4k_page(krnl, pagetable, va, thread_ptr, cpu_id, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&pagetable_lock_perm), Tracked(thread_lock_perm));
         cursor = (next.0, next.1, next.2, next.3 + 1);
@@ -530,17 +527,12 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
     }
     let ghost reclaimed_pt = krnl.pt_mp.spec_index(pagetable);
     proof {
-        assert forall|va: VAddr| #![trigger krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va)] spec_va_4k_valid(va) && kernel_l4_end <= spec_v2l4index(va) implies !krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va) by {
-            let index = spec_va2index(va);
-            spec_va_4k_index_roundtrip_at(va, index.0, index.1, index.2, index.3);
-        };
         assert(krnl.pt_mp.spec_index(pagetable).view().leaves_present()) by {
             assert forall|va: VAddr| #![trigger krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va)] krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va) implies krnl.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(va).present by {
                 let index = spec_va2index(va);
                 if !krnl.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(va).present { spec_va_4k_index_roundtrip_at(va, index.0, index.1, index.2, index.3); }
             };
         };
-        kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl);
         assert(entry_lctx.container_lock_map().dom().contains(container_ptr) && entry_lctx.process_lock_map().dom().contains(process_ptr) && entry_lctx.cpu_lock_map().dom().contains(cpu_id)
             && lctx.pagetable_lock_map().dom().contains(pagetable));
     }
@@ -554,9 +546,9 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
     }
 }
 
-/// Clear and unmap every 4K leaf of the process's write-locked IOMMU table, one IOMMU leaf step per leaf in index order,
-/// accumulating the quota of its page as the thread's pending refund, then refund that quota to the thread's container
-/// chain.
+/// Clear and unmap every 4K leaf of the process's write-locked IOMMU table, one IOMMU leaf step per leaf in index
+/// order, accumulating the quota of its page as the thread's pending refund, then refund that quota to the thread's
+/// container chain.
 pub(super) fn thread_exit_reclaim_iommu_leaves(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, Ghost(container_ptr): Ghost<RwLockContainerPtr>,
     Ghost(process_ptr): Ghost<RwLockProcessPtr>, thread_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot, Ghost(cr3): Ghost<PageTableRoot>, Ghost(pcid): Ghost<Pcid>,
@@ -618,6 +610,7 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
         old(krnl).cpu_arr.spec_index(cpu_id).view().view() == entry_k.cpu_arr.spec_index(cpu_id).view().view(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == entry_k.cpu_arr.spec_index(cpu_id).view().locking_thread(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == entry_k.cpu_arr.spec_index(cpu_id).view().being_killed(),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().killer_info() == entry_k.cpu_arr.spec_index(cpu_id).view().killer_info(),
         entry_k.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
         entry_k.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
         entry_k.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
@@ -672,7 +665,8 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
         old(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress, ..entry_k.thr_mp.spec_index(thread_ptr).view() }),
         old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: true }),
         0 <= start <= old(steps).view().len(),
-        forall|va: VAddr| #![trigger old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va)] spec_va_4k_valid(va) && kernel_l4_end <= spec_v2l4index(va) ==> !old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va),
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
+            pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && KERNEL_MEM_END_L4INDEX <= l4i && kernel_l4_end <= l4i ==> !old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
         old(krnl).pt_mp.spec_index(pagetable).view().leaves_present(),
         iommu_table_lock_perm.state() is WriteLock,
         iommu_table_lock_perm.thread_id() == entry_lctx.thread_id(),
@@ -692,6 +686,7 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
         final(krnl).cpu_arr.spec_index(cpu_id).view().view() == entry_k.cpu_arr.spec_index(cpu_id).view().view(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == entry_k.cpu_arr.spec_index(cpu_id).view().locking_thread(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == entry_k.cpu_arr.spec_index(cpu_id).view().being_killed(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().killer_info() == entry_k.cpu_arr.spec_index(cpu_id).view().killer_info(),
         final(krnl).cpu_published[cpu_id as int].view() == (cr3, pcid),
         final(krnl).ctn_mp.dom().contains(container_ptr),
         final(krnl).ctn_mp.spec_index(container_ptr) == entry_k.ctn_mp.spec_index(container_ptr),
@@ -715,8 +710,9 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
         final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress, ..entry_k.thr_mp.spec_index(thread_ptr).view() }),
         final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: true }),
         old(steps).view().len() <= final(steps).view().len(),
-        forall|j: int| #![trigger final(steps).view()[j]] 0 <= j < old(steps).view().len() ==> final(steps).view()[j] == old(steps).view()[j],
-        forall|va: VAddr| #![trigger final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va)] spec_va_4k_valid(va) && kernel_l4_end <= spec_v2l4index(va) ==> !final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va),
+        forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
+            pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && KERNEL_MEM_END_L4INDEX <= l4i && kernel_l4_end <= l4i ==> !final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
         final(krnl).pt_mp.spec_index(pagetable).view().leaves_present(),
 {
     proof { iommu_table_perms_wf_at(krnl.it_mp, iommu_table); }
@@ -777,6 +773,7 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
             krnl.cpu_arr.spec_index(cpu_id).view().view() == entry_k.cpu_arr.spec_index(cpu_id).view().view(),
             krnl.cpu_arr.spec_index(cpu_id).view().locking_thread() == entry_k.cpu_arr.spec_index(cpu_id).view().locking_thread(),
             krnl.cpu_arr.spec_index(cpu_id).view().being_killed() == entry_k.cpu_arr.spec_index(cpu_id).view().being_killed(),
+            krnl.cpu_arr.spec_index(cpu_id).view().killer_info() == entry_k.cpu_arr.spec_index(cpu_id).view().killer_info(),
             entry_k.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
             entry_k.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
             entry_k.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
@@ -836,9 +833,9 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
             forall|d: int| #![trigger indirect[d]] #![trigger krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().spec_index(d)] 0 <= d < krnl.thr_mp.spec_index(thread_ptr).view().container_depth
                 ==> indirect[d] == krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().spec_index(d),
             0 <= start <= old(steps).view().len() <= steps.view().len(),
-            forall|j: int| #![trigger steps.view()[j]] 0 <= j < old(steps).view().len() ==> steps.view()[j] == old(steps).view()[j],
-            forall|va: VAddr| #![trigger krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va)]
-                spec_va_4k_valid(va) && kernel_l4_end <= spec_v2l4index(va) ==> !krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va),
+            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, steps.view()),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
+                pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && KERNEL_MEM_END_L4INDEX <= l4i && kernel_l4_end <= l4i ==> !krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
             krnl.pt_mp.spec_index(pagetable).view().leaves_present(),
             iommu_table_lock_perm.state() is WriteLock,
             iommu_table_lock_perm.thread_id() == entry_lctx.thread_id(),
@@ -877,19 +874,17 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
         clear_iommu_4k_mapping_present(krnl, iommu_table, next, Tracked(&mut *lctx), Tracked(iommu_table_lock_perm));
         proof {
             let leaf_post = *krnl;
-            assert(leaf_k.it_mp.spec_index(iommu_table).view().proc_ptr == process_ptr) by { reveal(process_iommu_table_match); };
-            assert(thread_exit_reclaim_step_pre(kernel_k_to_kernel_u(leaf_k), cpu_id, true)
-                && thread_exit_iommu_leaf_step(kernel_k_to_kernel_u(leaf_k), kernel_k_to_kernel_u(leaf_post), cpu_id)
-                && kernel_k_to_kernel_u(leaf_k) != kernel_k_to_kernel_u(leaf_post) && kernel_k_to_nonlock_kernel_u(leaf_k) != kernel_k_to_nonlock_kernel_u(leaf_post)) by {
-                kernel_write_held_context_projection(&leaf_k, &leaf_lctx, cpu_id, process_ptr, thread_ptr, None);
-                leaf_k.it_mp.typed_lock_map_aligned_write_at(leaf_lctx.iommu_table_lock_map(), leaf_lctx.thread_id(), iommu_table);
-                kernel_iommu_table_mappings_projection_at(&leaf_k, process_ptr);
+            assert(leaf_k.it_mp.spec_index(iommu_table).view().proc_ptr == process_ptr) by { process_iommu_table_match_process_at(leaf_k.prc_mp, leaf_k.it_mp, process_ptr); };
+            assert(kernel_k_to_kernel_u(leaf_k) != kernel_k_to_kernel_u(leaf_post) && kernel_k_to_nonlock_kernel_u(leaf_k) != kernel_k_to_nonlock_kernel_u(leaf_post)) by {
                 kernel_iommu_table_4k_present_cleared_implies_u_step(&leaf_k, &leaf_post, iommu_table, iova);
-                thread_exit_iommu_leaf_step_from_u(kernel_k_to_kernel_u(leaf_k), kernel_k_to_kernel_u(leaf_post), cpu_id, process_ptr, thread_ptr, iova);
             };
             krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
-            thread_exit_trace_push(&*steps, leaf_before, start, pre, kernel_k_to_kernel_u(leaf_k), kernel_k_to_kernel_u(leaf_post), cpu_id);
-            kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl);
+            assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
+                thread_exit_iommu_leaf_step_pre_from_k(&leaf_k, &leaf_lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, iommu_table);
+                kernel_iommu_table_4k_present_cleared_implies_u_step(&leaf_k, &leaf_post, iommu_table, iova);
+                thread_exit_iommu_leaf_step_from_u(kernel_k_to_kernel_u(leaf_k), kernel_k_to_kernel_u(leaf_post), cpu_id, process_ptr, thread_ptr, iova);
+                thread_exit_trace_push(&*steps, leaf_before, start, pre, kernel_k_to_kernel_u(leaf_k), kernel_k_to_kernel_u(leaf_post), cpu_id);
+            };
         }
         reclaim_unmapped_iommu_4k_page(krnl, iommu_table, next, thread_ptr, cpu_id, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(iommu_table_lock_perm),
             Tracked(thread_lock_perm));
@@ -906,11 +901,6 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
     }
     let ghost reclaimed_it = krnl.it_mp.spec_index(iommu_table);
     let ghost reclaimed_pt = krnl.pt_mp.spec_index(pagetable);
-    proof {
-        kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl);
-        assert(entry_lctx.container_lock_map().dom().contains(container_ptr) && entry_lctx.process_lock_map().dom().contains(process_ptr) && entry_lctx.cpu_lock_map().dom().contains(cpu_id)
-            && lctx.pagetable_lock_map().dom().contains(pagetable) && lctx.iommu_table_lock_map().dom().contains(iommu_table));
-    }
     let ghost refund_before = steps.view();
     refund_unmap_4k_quota(krnl, thread_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
     proof {
@@ -921,8 +911,8 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
     }
 }
 
-/// Return the thread's and the process's quota of every size to their container, then unlock the reclaimed IOMMU table and
-/// page table.
+/// Return the thread's and the process's quota of every size to their container, then mark the process as having
+/// emptied its tables and unlock the reclaimed IOMMU table and page table.
 pub(super) fn thread_exit_reclaim_return_quota(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, container_ptr: RwLockContainerPtr,
     process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot, Ghost(cr3): Ghost<PageTableRoot>, Ghost(pcid): Ghost<Pcid>,
@@ -982,6 +972,7 @@ pub(super) fn thread_exit_reclaim_return_quota(
         old(krnl).cpu_arr.spec_index(cpu_id).view().view() == entry_k.cpu_arr.spec_index(cpu_id).view().view(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == entry_k.cpu_arr.spec_index(cpu_id).view().locking_thread(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == entry_k.cpu_arr.spec_index(cpu_id).view().being_killed(),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().killer_info() == entry_k.cpu_arr.spec_index(cpu_id).view().killer_info(),
         entry_k.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
         entry_k.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
         entry_k.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
@@ -1003,6 +994,7 @@ pub(super) fn thread_exit_reclaim_return_quota(
         entry_k.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr,
         entry_k.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() == 1,
         !entry_k.prc_mp.spec_index(process_ptr).view().zombie,
+        !entry_k.prc_mp.spec_index(process_ptr).being_killed(),
         entry_k.prc_mp.spec_index(process_ptr).view().pagetable == pagetable,
         entry_k.prc_mp.spec_index(process_ptr).view_rodata().view().pcid == pcid,
         old(krnl).thr_mp.dom().contains(thread_ptr),
@@ -1034,7 +1026,8 @@ pub(super) fn thread_exit_reclaim_return_quota(
         old(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress, ..entry_k.thr_mp.spec_index(thread_ptr).view() }),
         old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: true }),
         0 <= start <= old(steps).view().len(),
-        forall|va: VAddr| #![trigger old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va)] spec_va_4k_valid(va) && kernel_l4_end <= spec_v2l4index(va) ==> !old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va),
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
+            pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && KERNEL_MEM_END_L4INDEX <= l4i && kernel_l4_end <= l4i ==> !old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
         old(krnl).pt_mp.spec_index(pagetable).view().leaves_present(),
         (iommu_table_lock_perm is Some) == (iommu_table is Some),
         iommu_table is Some ==> {
@@ -1057,16 +1050,17 @@ pub(super) fn thread_exit_reclaim_return_quota(
         final(lctx).kernel_view_locking_state() is Acquire,
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() <= final(steps).view().len(),
-        forall|j: int| #![trigger final(steps).view()[j]] 0 <= j < old(steps).view().len() ==> final(steps).view()[j] == old(steps).view()[j],
+        forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         thread_exit_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id),
         final(krnl).cpu_published[cpu_id as int].view() == (cr3, pcid),
         final(krnl).cpu_arr.spec_index(cpu_id).view().view() == entry_k.cpu_arr.spec_index(cpu_id).view().view(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == entry_k.cpu_arr.spec_index(cpu_id).view().locking_thread(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == entry_k.cpu_arr.spec_index(cpu_id).view().being_killed(),
+        final(krnl).cpu_arr.spec_index(cpu_id).view().killer_info() == entry_k.cpu_arr.spec_index(cpu_id).view().killer_info(),
         final(krnl).ctn_mp.dom().contains(container_ptr),
         final(krnl).ctn_mp.spec_index(container_ptr) == entry_k.ctn_mp.spec_index(container_ptr),
         final(krnl).prc_mp.dom().contains(process_ptr),
-        final(krnl).prc_mp.spec_index(process_ptr).view() == (Process { quota_4k: 0, quota_2m: 0, quota_1g: 0, ..entry_k.prc_mp.spec_index(process_ptr).view() }),
+        final(krnl).prc_mp.spec_index(process_ptr).view() == (Process { state: Ghost(ProcessState::TablesEmptied), quota_4k: 0, quota_2m: 0, quota_1g: 0, ..entry_k.prc_mp.spec_index(process_ptr).view() }),
         final(krnl).prc_mp.spec_index(process_ptr).view_rodata() == entry_k.prc_mp.spec_index(process_ptr).view_rodata(),
         final(krnl).prc_mp.spec_index(process_ptr).view_ghost() == entry_k.prc_mp.spec_index(process_ptr).view_ghost(),
         final(krnl).prc_mp.spec_index(process_ptr).locking_thread() == entry_k.prc_mp.spec_index(process_ptr).locking_thread(),
@@ -1079,98 +1073,102 @@ pub(super) fn thread_exit_reclaim_return_quota(
 {
     let ghost reclaimed_pt = krnl.pt_mp.spec_index(pagetable);
     let ghost reclaimed_it = krnl.it_mp.spec_index(iommu_table->Some_0);
+    proof {
+        assert(reclaimed_pt.view().mapping_4k().dom() =~= Set::<VAddr>::empty()) by {
+            pagetable_perms_wf_at(krnl.pt_mp, pagetable); reveal(KernelK::default_pagetable_wf); broadcast use spec_va_4k_valid_index_roundtrip;
+        };
+        if iommu_table is Some {
+            assert(reclaimed_it.view().mapping_4k().dom() =~= Set::<VAddr>::empty()) by {
+                iommu_table_perms_wf_at(krnl.it_mp, iommu_table->Some_0);
+                broadcast use iova_4k_valid_index_roundtrip;
+            };
+        }
+    }
     let ghost sz4k_before = steps.view();
     let ghost sz4k_k = *krnl;
     let ghost sz4k_lctx = *lctx;
     thread_exit_return_quota(krnl, Tracked(&mut *lctx), container_ptr, process_ptr, thread_ptr, PageSize::SZ4k, Tracked(process_lock_perm), Tracked(thread_lock_perm));
     proof {
         let returned_k = *krnl;
-        assert(thread_exit_quota_step_pre(kernel_k_to_kernel_u(sz4k_k), cpu_id) && thread_exit_quota_step(kernel_k_to_kernel_u(sz4k_k), kernel_k_to_kernel_u(returned_k), cpu_id)) by {
-            kernel_write_held_context_projection(&sz4k_k, &sz4k_lctx, cpu_id, process_ptr, thread_ptr, None);
+        krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
+        assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
+            thread_exit_quota_step_pre_from_k(&sz4k_k, &sz4k_lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, PageSize::SZ4k);
             kernel_thread_exit_quota_returned_implies_u_step(&sz4k_k, &returned_k, thread_ptr, PageSize::SZ4k);
             thread_exit_quota_step_from_u(kernel_k_to_kernel_u(sz4k_k), kernel_k_to_kernel_u(returned_k), cpu_id, thread_ptr, PageSize::SZ4k);
+            thread_exit_trace_push(&*steps, sz4k_before, start, pre, kernel_k_to_kernel_u(sz4k_k), kernel_k_to_kernel_u(returned_k), cpu_id);
         };
-        krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
-        thread_exit_trace_push(&*steps, sz4k_before, start, pre, kernel_k_to_kernel_u(sz4k_k), kernel_k_to_kernel_u(returned_k), cpu_id);
         assert(entry_lctx.container_lock_map().dom().contains(container_ptr) && entry_lctx.process_lock_map().dom().contains(process_ptr) && entry_lctx.cpu_lock_map().dom().contains(cpu_id)
             && entry_lctx.thread_lock_map().dom().contains(thread_ptr) && lctx.pagetable_lock_map().dom().contains(pagetable)
             && (iommu_table is Some ==> lctx.iommu_table_lock_map().dom().contains(iommu_table->Some_0)));
     }
-    // Return the thread's and the process's 2m quota to their container.
     let ghost sz2m_before = steps.view();
     let ghost sz2m_k = *krnl;
     let ghost sz2m_lctx = *lctx;
     thread_exit_return_quota(krnl, Tracked(&mut *lctx), container_ptr, process_ptr, thread_ptr, PageSize::SZ2m, Tracked(process_lock_perm), Tracked(thread_lock_perm));
     proof {
         let returned_k = *krnl;
-        assert(thread_exit_quota_step_pre(kernel_k_to_kernel_u(sz2m_k), cpu_id) && thread_exit_quota_step(kernel_k_to_kernel_u(sz2m_k), kernel_k_to_kernel_u(returned_k), cpu_id)) by {
-            kernel_write_held_context_projection(&sz2m_k, &sz2m_lctx, cpu_id, process_ptr, thread_ptr, None);
+        krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
+        assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
+            thread_exit_quota_step_pre_from_k(&sz2m_k, &sz2m_lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, PageSize::SZ2m);
             kernel_thread_exit_quota_returned_implies_u_step(&sz2m_k, &returned_k, thread_ptr, PageSize::SZ2m);
             thread_exit_quota_step_from_u(kernel_k_to_kernel_u(sz2m_k), kernel_k_to_kernel_u(returned_k), cpu_id, thread_ptr, PageSize::SZ2m);
+            thread_exit_trace_push(&*steps, sz2m_before, start, pre, kernel_k_to_kernel_u(sz2m_k), kernel_k_to_kernel_u(returned_k), cpu_id);
         };
-        krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
-        thread_exit_trace_push(&*steps, sz2m_before, start, pre, kernel_k_to_kernel_u(sz2m_k), kernel_k_to_kernel_u(returned_k), cpu_id);
         assert(entry_lctx.container_lock_map().dom().contains(container_ptr) && entry_lctx.process_lock_map().dom().contains(process_ptr) && entry_lctx.cpu_lock_map().dom().contains(cpu_id)
             && entry_lctx.thread_lock_map().dom().contains(thread_ptr) && lctx.pagetable_lock_map().dom().contains(pagetable)
             && (iommu_table is Some ==> lctx.iommu_table_lock_map().dom().contains(iommu_table->Some_0)));
     }
-    // Return the thread's and the process's 1g quota to their container.
     let ghost sz1g_before = steps.view();
     let ghost sz1g_k = *krnl;
     let ghost sz1g_lctx = *lctx;
     thread_exit_return_quota(krnl, Tracked(&mut *lctx), container_ptr, process_ptr, thread_ptr, PageSize::SZ1g, Tracked(process_lock_perm), Tracked(thread_lock_perm));
     proof {
         let returned_k = *krnl;
-        assert(thread_exit_quota_step_pre(kernel_k_to_kernel_u(sz1g_k), cpu_id) && thread_exit_quota_step(kernel_k_to_kernel_u(sz1g_k), kernel_k_to_kernel_u(returned_k), cpu_id)) by {
-            kernel_write_held_context_projection(&sz1g_k, &sz1g_lctx, cpu_id, process_ptr, thread_ptr, None);
+        krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
+        assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
+            thread_exit_quota_step_pre_from_k(&sz1g_k, &sz1g_lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, PageSize::SZ1g);
             kernel_thread_exit_quota_returned_implies_u_step(&sz1g_k, &returned_k, thread_ptr, PageSize::SZ1g);
             thread_exit_quota_step_from_u(kernel_k_to_kernel_u(sz1g_k), kernel_k_to_kernel_u(returned_k), cpu_id, thread_ptr, PageSize::SZ1g);
+            thread_exit_trace_push(&*steps, sz1g_before, start, pre, kernel_k_to_kernel_u(sz1g_k), kernel_k_to_kernel_u(returned_k), cpu_id);
         };
-        krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
-        thread_exit_trace_push(&*steps, sz1g_before, start, pre, kernel_k_to_kernel_u(sz1g_k), kernel_k_to_kernel_u(returned_k), cpu_id);
         assert(entry_lctx.container_lock_map().dom().contains(container_ptr) && entry_lctx.process_lock_map().dom().contains(process_ptr) && entry_lctx.cpu_lock_map().dom().contains(cpu_id)
             && entry_lctx.thread_lock_map().dom().contains(thread_ptr) && lctx.pagetable_lock_map().dom().contains(pagetable)
             && (iommu_table is Some ==> lctx.iommu_table_lock_map().dom().contains(iommu_table->Some_0)));
     }
-    // Unlock the reclaimed IOMMU table and page table.
     let ghost unlock_before = steps.view();
     let ghost unlock_k = *krnl;
     let ghost unlock_lctx = *lctx;
     proof { assert(krnl.pt_mp.spec_index(pagetable) == reclaimed_pt && (iommu_table is Some ==> krnl.it_mp.spec_index(iommu_table->Some_0) == reclaimed_it)); }
     krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::ThreadExitZombie)), Tracked(&*lctx), Tracked(thread_lock_perm));
+    let ghost progressed = *krnl;
+    proof { process_perms_wf_at(krnl.prc_mp, process_ptr); }
+    {
+        let process = krnl.prc_mp.borrow_mut_typed(process_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(process_lock_perm));
+        process.state = Ghost(ProcessState::TablesEmptied);
+    }
+    proof {
+        assert(thread_exit_tables_emptied_transition(progressed, *krnl, process_ptr, thread_ptr)) by {
+            reveal(thread_exit_tables_emptied_transition); process_thread_wf_at(progressed.prc_mp, progressed.thr_mp, thread_ptr);
+        };
+        thread_exit_tables_emptied_eof(progressed, *krnl, process_ptr, thread_ptr);
+    }
     if let Some(it) = iommu_table {
         krnl.wunlock_iommu_table(it, Tracked(&mut *lctx), Tracked(iommu_table_lock_perm.tracked_unwrap()));
     }
     proof {
-        let pt = krnl.pt_mp.spec_index(pagetable).view();
-        assert(pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, pagetable, pt)) by {
-            reveal(tlb_wf_spec);
-            assert forall|c: CpuId, p: Pcid| #![trigger krnl.cpu_tlb.spec_index((c, p))]
-                index_valid(NUM_CPUS, c) && pcid_valid(p) && p != KERNEL_DEFAULT_PCID
-                && (!krnl.pcid_needflush.spec_index(c, p).view().needflush || krnl.cpu_arr.spec_index(c).view().view().view().current_pcid == p)
-                && krnl.cpu_arr.spec_index(c).view().view().tlb_dirty_bitmap().spec_index(p) is Some && krnl.cpu_arr.spec_index(c).view().view().tlb_dirty_bitmap().spec_index(p).unwrap().pagetable_ptr == pagetable
-                implies single_cpu_single_pcid_tlb_subset_of_present_pagetable(krnl.cpu_tlb.spec_index((c, p)), pt) by {
-                let tlb = krnl.cpu_tlb.spec_index((c, p));
-                if !tlb.is_empty() {
-                    assert forall|va: VAddr| #![trigger tlb.tlb_4k().spec_index(va)] #![trigger pt.mapping_4k().spec_index(va)] tlb.tlb_4k().dom().contains(va) implies pt.mapping_4k().spec_index(va).present by { assert(pt.mapping_4k().dom().contains(va)); };
-                    assert forall|va: VAddr| #![trigger tlb.tlb_2m().spec_index(va)] #![trigger pt.mapping_2m().spec_index(va)] tlb.tlb_2m().dom().contains(va) implies pt.mapping_2m().spec_index(va).present by { assert(pt.mapping_2m().dom().contains(va)); };
-                    assert forall|va: VAddr| #![trigger tlb.tlb_1g().spec_index(va)] #![trigger pt.mapping_1g().spec_index(va)] tlb.tlb_1g().dom().contains(va) implies pt.mapping_1g().spec_index(va).present by { assert(pt.mapping_1g().dom().contains(va)); };
-                }
-            };
-        };
+        assert(pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, pagetable, krnl.pt_mp.spec_index(pagetable).view())) by { tlb_wf_pagetable_entries_present_at(*krnl, pagetable); };
     }
     krnl.wunlock_pagetable(pagetable, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
     proof {
         let unlocked_k = *krnl;
-        assert(thread_exit_unlock_table_step_pre(kernel_k_to_kernel_u(unlock_k), cpu_id) && thread_exit_unlock_table_step(kernel_k_to_kernel_u(unlock_k), kernel_k_to_kernel_u(unlocked_k), cpu_id)) by {
-            kernel_write_held_context_projection(&unlock_k, &unlock_lctx, cpu_id, process_ptr, thread_ptr, None);
-            kernel_pagetable_user_4k_unmapped_projection_at(&unlock_k, process_ptr);
-            if iommu_table is Some { kernel_iommu_table_4k_unmapped_projection_at(&unlock_k, process_ptr); }
-            kernel_process_tables_lock_state_and_progress_changed_implies_u_step(&unlock_k, &unlocked_k, &*lctx, process_ptr, pagetable, thread_ptr, false);
-            thread_exit_unlock_table_step_from_u(kernel_k_to_kernel_u(unlock_k), kernel_k_to_kernel_u(unlocked_k), cpu_id, thread_ptr);
-        };
+        let unlocked_lctx = *lctx;
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
-        thread_exit_trace_push(&*steps, unlock_before, start, pre, kernel_k_to_kernel_u(unlock_k), kernel_k_to_kernel_u(unlocked_k), cpu_id);
+        assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
+            thread_exit_unlock_table_step_pre_from_k(&unlock_k, &unlock_lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, iommu_table);
+            kernel_process_tables_lock_state_and_progress_changed_implies_u_step(&unlock_k, &unlocked_k, &unlocked_lctx, process_ptr, pagetable, thread_ptr, false);
+            thread_exit_unlock_table_step_from_u(kernel_k_to_kernel_u(unlock_k), kernel_k_to_kernel_u(unlocked_k), cpu_id, thread_ptr);
+            thread_exit_trace_push(&*steps, unlock_before, start, pre, kernel_k_to_kernel_u(unlock_k), kernel_k_to_kernel_u(unlocked_k), cpu_id);
+        };
         assert(lctx.pagetable_lock_map() =~= entry_lctx.pagetable_lock_map());
         assert(lctx.iommu_table_lock_map() =~= entry_lctx.iommu_table_lock_map());
         assert(entry_lctx.container_lock_map().dom().contains(container_ptr) && entry_lctx.process_lock_map().dom().contains(process_ptr) && entry_lctx.cpu_lock_map().dom().contains(cpu_id)

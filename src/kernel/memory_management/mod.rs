@@ -17,6 +17,7 @@ pub mod container_allocator_process_thread_spec;
 pub mod page_mapping_spec;
 pub mod process_pagetable_spec;
 pub mod process_iommu_table_spec;
+pub mod process_emptied_tables_spec;
 pub mod iommu_root_table_spec;
 
 pub mod allocator_spec;
@@ -44,9 +45,12 @@ pub use huge_page_spec::*;
 pub use subsystem_mutation::*;
 pub use process_pagetable_spec::*;
 pub use process_iommu_table_spec::*;
+pub use process_emptied_tables_spec::*;
 pub use iommu_root_table_spec::*;
 
 pub use pages_process_spec::*;
 pub use pages_container_spec::*;
 pub mod pages_cpu_set_spec;
 pub use pages_cpu_set_spec::*;
+pub mod process_kernel_pages_owner_spec;
+pub use process_kernel_pages_owner_spec::*;

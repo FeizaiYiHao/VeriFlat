@@ -3,22 +3,6 @@ verus! {
 use crate::*;
 
 impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
-    pub broadcast proof fn resolve_4k_l1_unchanged_at(&self, other: &Self, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index)
-        requires
-            self.kernel_l4_end == other.kernel_l4_end,
-            self.kernel_l4_end <= l4i && pei_valid(l4i),
-            pei_valid(l3i),
-            pei_valid(l2i),
-            pei_valid(l1i),
-            self.spec_resolve_mapping_l2(l4i, l3i, l2i) == other.spec_resolve_mapping_l2(l4i, l3i, l2i),
-            self.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some
-                ==> self.l1_tables.view().spec_index(self.spec_resolve_mapping_l2(l4i, l3i, l2i)->0.addr).value().spec_index(l1i) == other.l1_tables.view().spec_index(other.spec_resolve_mapping_l2(l4i, l3i, l2i)->0.addr).value().spec_index(l1i),
-        ensures
-            #![trigger self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i), other.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
-            self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) == other.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i),
-    {
-    }
-
     pub broadcast proof fn resolve_l3_addr_unique_at(&self, l4i: L4Index, l3i: L3Index, l4j: L4Index, l3j: L3Index)
         requires
             self.wf_l4(),

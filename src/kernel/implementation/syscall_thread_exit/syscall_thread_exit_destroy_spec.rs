@@ -2,11 +2,11 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// The exiting thread `thread_ptr` leaves the kernel from `cpu_id`, which goes idle on the default page table: its process
-/// drops it through the process-list node at `proc_node_addr`, absorbs its quotas, and becomes a zombie without threads;
-/// a zombie root process makes the container a zombie; the container and its upper containers drop the thread; and the
-/// thread's page returns through its free-list node at `cache_node_addr` to shard `cpu_id` of the 4K allocator of its
-/// owner `owner`, whose quota grows by one; a zombie releases its PCID to its container's PCID allocator.
+/// The exiting thread `thread_ptr` leaves the kernel from `cpu_id`, which goes idle on the default page table: its
+/// process drops it through the process-list node at `proc_node_addr`, absorbs its quotas, and becomes a zombie without
+/// threads; a zombie root process makes the container a zombie; the container and its upper containers drop the thread;
+/// and the thread's page returns through its free-list node at `cache_node_addr` to shard `cpu_id` of the 4K allocator
+/// of its owner `owner`, whose quota grows by one; a zombie releases its PCID to its container's PCID allocator.
 #[verifier::opaque]
 pub open spec fn thread_exit_destroy_transition(
     pre: KernelK, post: KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
@@ -64,6 +64,8 @@ pub open spec fn thread_exit_destroy_transition(
     &&& post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id)
     &&& post_cpu.locking_thread() == pre_cpu.locking_thread()
     &&& post_cpu.being_killed() == pre_cpu.being_killed()
+    &&& post_cpu.killer_info() == pre_cpu.killer_info()
+    &&& !pre_cpu.being_killed()
     &&& post_cpu.view_rodata() == pre_cpu.view_rodata()
     &&& post_cpu.view_ghost() == pre_cpu.view_ghost()
     &&& post_cpu.view().view() == (CpuView {
@@ -104,8 +106,9 @@ pub open spec fn thread_exit_destroy_transition(
     &&& post.prc_mp.dom() == pre.prc_mp.dom()
     &&& post.prc_mp.unchanged_except(&pre.prc_mp, process_ptr)
     &&& post_process.view() == (Process {
-        zombie, quota_4k: (pre_process.view().quota_4k + thread.quota_4k) as usize, quota_2m: (pre_process.view().quota_2m + thread.quota_2m) as usize,
-        quota_1g: (pre_process.view().quota_1g + thread.quota_1g) as usize, owned_threads: post_process.view().owned_threads, ..pre_process.view()
+        zombie, state: if zombie { Ghost(ProcessState::Zombie) } else { pre_process.view().state }, quota_4k: (pre_process.view().quota_4k + thread.quota_4k) as usize,
+        quota_2m: (pre_process.view().quota_2m + thread.quota_2m) as usize, quota_1g: (pre_process.view().quota_1g + thread.quota_1g) as usize,
+        owned_threads: post_process.view().owned_threads, ..pre_process.view()
     })
     &&& pre_process.view().owned_threads.view().contains(thread_ptr)
     &&& post_process.view().owned_threads.view() == pre_process.view().owned_threads.view().remove_value(thread_ptr)
@@ -118,6 +121,8 @@ pub open spec fn thread_exit_destroy_transition(
     &&& post_process.view_ghost() == pre_process.view_ghost()
     &&& post_process.locking_thread() == pre_process.locking_thread()
     &&& post_process.being_killed() == pre_process.being_killed()
+    &&& !pre_process.being_killed()
+    &&& zombie ==> pre_process.view().state.view() is TablesEmptied
     &&& post.thr_mp.dom() == pre.thr_mp.dom().remove(thread_ptr)
     &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)] post.thr_mp.dom().contains(t) ==> post.thr_mp.spec_index(t) == pre.thr_mp.spec_index(t)
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, page_index)

@@ -26,10 +26,6 @@ impl LockMajorTrait for AllocatorCache {
     open spec fn lock_major_default_predicate(&self) -> bool { false }
 }
 
-impl LockUserVisibilityTrait for AllocatorCache {
-    open spec fn is_user_visible() -> bool { false }
-}
-
 impl AllocatorCache {
     pub open spec fn wf(&self) -> bool {
         &&& self.linked_list.wf()

@@ -2,9 +2,9 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// Returning the `size` quota of the exiting thread `thread_ptr` and of its process `process_ptr`: both drop their whole
-/// `size` quota, which the write-held `size` allocator `allocator_ptr` of their container regains. Lock owners, lock ids,
-/// and every other object stay.
+/// Returning the `size` quota of the exiting thread `thread_ptr` and of its process `process_ptr`: both drop their
+/// whole `size` quota, which the write-held `size` allocator `allocator_ptr` of their container regains. Lock owners,
+/// lock ids, and every other object stay.
 #[verifier::opaque]
 pub open spec fn thread_exit_quota_transition(
     pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, allocator_ptr: RwLockPageAllocatorPtr, size: PageSize,
@@ -47,6 +47,7 @@ pub open spec fn thread_exit_quota_transition(
     &&& post.prc_mp.spec_index(process_ptr).view_ghost() == process.view_ghost()
     &&& post.prc_mp.spec_index(process_ptr).locking_thread() == process.locking_thread()
     &&& post.prc_mp.spec_index(process_ptr).being_killed() == process.being_killed()
+    &&& !process.being_killed()
     &&& post.thr_mp.perms_wf()
     &&& post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr)
     &&& post.thr_mp.spec_index(thread_ptr).is_init()
@@ -56,6 +57,6 @@ pub open spec fn thread_exit_quota_transition(
         PageSize::SZ1g => Thread { quota_1g: 0, ..thread.view() },
     }
     &&& post.thr_mp.spec_index(thread_ptr).locking_thread() == thread.locking_thread()
-    &&& post.thr_mp.spec_index(thread_ptr).being_killed() == thread.being_killed()
+    &&& post.thr_mp.spec_index(thread_ptr).being_killed() == thread.being_killed() && post.thr_mp.spec_index(thread_ptr).killer_info() == thread.killer_info()
 }
 } // verus!

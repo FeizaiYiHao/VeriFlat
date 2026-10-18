@@ -22,6 +22,7 @@ pub open spec fn mmap_4k_syscall_va_range(va: VAddr, len: usize) -> VaRange4K {
 /// malformed arguments, a killed caller, less than four 4K quota per page, a range below the first user
 /// L4 index, and then either a 4K leaf in the range's index interval or a range page covered by a 4K,
 /// 2M, or 1G leaf.
+/// A cpu no longer Running or marked by a killer returns CpuIdle after the argument checks.
 pub open spec fn mmap_4k_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr, range: usize) -> RetValueType {
     let thread = pre.thread_map[pre.cpu_array[cpu_id as int].current_thread->Some_0];
     let pagetable = pre.process_map[thread.owning_proc].pagetable->Some_0;
@@ -29,6 +30,7 @@ pub open spec fn mmap_4k_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr, 
     let start = spec_va2index(va);
     let end = spec_va2index(va_range.view()[range - 1]);
     if range == 0 || range > usize::MAX / 4096 || !spec_va_4k_valid(va) || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range) { RetValueType::Error }
+    else if !(pre.cpu_array[cpu_id as int].state is Running) || pre.cpu_array[cpu_id as int].killed { RetValueType::CpuIdle }
     else if thread.killed { RetValueType::ErrorThreadKilled }
     else if thread.quota_4k < 4 * range { RetValueType::ErrorNoQuota }
     else if !user_va_range(pre, va_range) { RetValueType::Error }

@@ -112,10 +112,6 @@ impl LockMajorTrait for Container {
     open spec fn lock_major_default_predicate(&self) -> bool { true }
 }
 
-impl LockUserVisibilityTrait for Container {
-    open spec fn is_user_visible() -> bool { true }
-}
-
 impl LockOwnerIdTrait for Container {
     open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
     open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }

@@ -17,16 +17,6 @@ impl PageTable<PT_TYPE> {
         &&& self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is None
     }
 
-    pub fn resolve_mapping_l4(&self, l4i: L4Index) -> (ret: Option<PageEntry>)
-        requires
-            self.wf(),
-            self.kernel_l4_end <= l4i && pei_valid(l4i),
-        ensures
-            ret =~= self.spec_resolve_mapping_l4(l4i),
-    {
-        self.get_entry_l4(l4i)
-    }
-
     pub fn resolve_mapping_4k_l3(&self, l4i: L4Index, l3i: L3Index) -> (ret: (Option<PageEntry>, PageTableErrorCode))
         requires
             self.wf(),

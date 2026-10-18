@@ -77,6 +77,7 @@ pub const NR_RECEIVE_CALL: usize = 39;
 pub const NR_REPLY_AND_RECEIVE: usize = 40;
 pub const NR_REPLY_AND_RECEIVE_USIZE: usize = 41;
 pub const NR_THREAD_EXIT: usize = 42;
+pub const NR_KILL_PROCESS: usize = 43;
 
 /// Trap-layer error codes, returned in `rax`.
 pub const ERR_INVALID_SYSCALL: isize = -1;
@@ -86,7 +87,7 @@ pub const ERR_INVALID_ARGUMENT: isize = -2;
 pub const MODEL_ERROR_BASE: isize = 100;
 
 /// `RetValueType` variants in declaration order; the kernel's `error_index` mirrors it.
-const RET_VALUE_NAMES: [&str; 44] = [
+const RET_VALUE_NAMES: [&str; 46] = [
     "SuccessUsize", "SuccessSeqUsize", "SuccessPairUsize", "SuccessThreeUsize", "Success", "ErrorNoQuota",
     "ErrorVaInUse", "CpuIdle", "Error", "Else", "NoQuota", "VaInUse", "ErrorContainerKilled",
     "ErrorContainerQuotaInsufficient", "ErrorProcessKilled", "ErrorThreadKilled", "ErrorNoPcid",
@@ -97,7 +98,7 @@ const RET_VALUE_NAMES: [&str; 44] = [
     "ErrorIpcSourceUnmapped", "ErrorIpcPageOwnerMismatch", "ErrorIpcEndpointSourceInvalid",
     "ErrorIpcEndpointTargetInUse", "ErrorIpcEndpointOwnerMismatch", "ErrorCallAcrossContainers",
     "ErrorReplyOutOfPhase", "ErrorProcessQuotaOverflow", "ErrorThreadQuotaOverflow", "ErrorContainerZombie",
-    "ErrorIpcCalleeExited",
+    "ErrorIpcCalleeExited", "ErrorIpcCallerKilled", "ErrorInvalidChild",
 ];
 
 /// Names the result in `rax`.
@@ -245,6 +246,12 @@ pub unsafe fn sys_new_thread_with_endpoint(endpoint_index: usize, ip: usize, sp:
 /// `endpoint_index`, funded by one 4K quota of the calling thread.
 pub unsafe fn sys_new_endpoint(endpoint_index: usize) -> isize {
     syscall1(NR_NEW_ENDPOINT, endpoint_index).rax
+}
+
+/// Kills the `child`-th child of the calling process and its whole subtree: every thread is
+/// reclaimed or left dangling for its callee, and every process is reclaimed.
+pub unsafe fn sys_kill_process(child: usize) -> isize {
+    syscall1(NR_KILL_PROCESS, child).rax
 }
 
 pub unsafe fn sys_mmap_4k(va: usize, range: usize) -> isize {

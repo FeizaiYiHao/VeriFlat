@@ -59,50 +59,6 @@ impl<A, const N: usize> Array<A, N> {
     }
 }
 
-impl<const N: usize> Array<u8, N> {
-    pub fn init2zero(&mut self)
-        requires
-            old(self).wf(),
-            N <= usize::MAX,
-        ensures
-            forall|index: int| 0 <= index < N ==> #[trigger] final(self).view().spec_index(index) == 0,
-            final(self).wf(),
-    {
-        let mut i = 0;
-        for i in 0..N
-            invariant
-                N <= usize::MAX,
-                0 <= i <= N,
-                self.wf(),
-                forall|j: int| #![auto] 0 <= j < i ==> self.view().spec_index(j) == 0,
-        {
-            self.set(i, 0);
-        }
-    }
-}
-
-impl<const N: usize> Array<usize, N> {
-    pub fn init2zero(&mut self)
-        requires
-            old(self).wf(),
-            N <= usize::MAX,
-        ensures
-            forall|index: int| 0 <= index < N ==> #[trigger] final(self).view().spec_index(index) == 0,
-            final(self).wf(),
-    {
-        let mut i = 0;
-        for i in 0..N
-            invariant
-                N <= usize::MAX,
-                0 <= i <= N,
-                self.wf(),
-                forall|j: int| #![auto] 0 <= j < i ==> self.view().spec_index(j) == 0,
-        {
-            self.set(i, 0);
-        }
-    }
-}
-
 impl<T: Copy, const N: usize> Array<Option<T>, N> {
     pub fn init2none(&mut self)
         requires

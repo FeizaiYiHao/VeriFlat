@@ -68,7 +68,7 @@ pub open spec fn ipc_cpu_rendezvous_transition(
         &&& after.is_init() == before.is_init()
         &&& after.view_rodata() == before.view_rodata()
         &&& after.view_ghost() == before.view_ghost()
-        &&& after.being_killed() == before.being_killed()
+        &&& after.being_killed() == before.being_killed() && !after.being_killed()
         &&& after.locking_thread() is Write
         &&& after.locking_thread()->Write_thread_id == thread_id
         &&& after.view().view() == CpuView { owning_container: target_container, container_depth: pre.ctn_mp.spec_index(target_container).view_rodata().view().depth, ..before.view().view() }

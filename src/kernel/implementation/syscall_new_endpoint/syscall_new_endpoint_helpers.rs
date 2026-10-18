@@ -28,10 +28,6 @@ pub(super) fn commit_new_endpoint(
         old(lctx).kernel_view_locking_state() is Acquire,
         kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
-        old(krnl).irt.view().owners() == old(steps).snapshot_k().irt.view().owners(),
-        old(krnl).irt.view().iommu_roots() == old(steps).snapshot_k().irt.view().iommu_roots(),
-        old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
-        old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
         kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
         cpu_lock_perm.view().state() is WriteLock,
         cpu_lock_perm.view().thread_id() == old(lctx).thread_id(),
@@ -56,7 +52,7 @@ pub(super) fn commit_new_endpoint(
         typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
         old(krnl).prc_mp.dom().contains(process_ptr),
         old(krnl).prc_mp.spec_index(process_ptr).being_killed() == false,
-        old(krnl).prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0,
+        old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Running || old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Zombie,
         thread_lock_perm.view().state() is WriteLock,
         thread_lock_perm.view().thread_id() == old(lctx).thread_id(),
         thread_lock_perm.view().lock_id() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
@@ -118,15 +114,7 @@ pub(super) fn commit_new_endpoint(
     }
     let (page_ptr, Tracked(page_lock_perm)) = allocate_free_4k_page(krnl, thread_ptr, container_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&thread_lock_perm));
     let page_index = page_ptr2page_index(page_ptr);
-    proof {
-        assert({
-            &&& kernel_k_to_kernel_u(steps.snapshot_k()).cpu_array[cpu_id as int].lock_state is WriteLocked
-            &&& kernel_k_to_kernel_u(steps.snapshot_k()).container_map.dom().contains(container_ptr)
-            &&& kernel_k_to_kernel_u(steps.snapshot_k()).container_map[container_ptr].lock_state is WriteLocked
-            &&& kernel_k_to_kernel_u(steps.snapshot_k()).process_map.spec_index(process_ptr).lock_state is WriteLocked
-            &&& kernel_k_to_kernel_u(steps.snapshot_k()).thread_map.spec_index(thread_ptr).lock_state is WriteLocked
-        }) by { kernel_write_held_context_projection(&*krnl, &*lctx, cpu_id, process_ptr, thread_ptr, None); };
-    }
+    proof { new_endpoint_finish_step_pre_from_k(&*krnl, &*lctx, cpu_id, container_ptr, process_ptr, thread_ptr, endpoint_index); }
     let Tracked(endpoint_lock_perm) = create_endpoint_from_staged_page(
         krnl, page_ptr, container_ptr, thread_ptr, endpoint_index, Tracked(&mut *lctx), Tracked(&page_lock_perm), Tracked(&container_lock_perm), Tracked(&thread_lock_perm),
     );
@@ -147,7 +135,6 @@ pub(super) fn commit_new_endpoint(
         assert(new_endpoint_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()),
             kernel_k_to_kernel_u(*krnl), cpu_id, endpoint_index, true)) by {
             kernel_new_endpoint_fields_and_unlocks_implies_u_step(&finish_k, &*krnl, cpu_id, container_ptr, process_ptr, thread_ptr, endpoint_index, page_ptr);
-            kernel_cpu_thread_projection_at(&finish_k, cpu_id, process_ptr, thread_ptr, None);
             new_endpoint_finish_step_from_u(kernel_k_to_kernel_u(finish_k), kernel_k_to_kernel_u(*krnl), cpu_id, container_ptr, process_ptr, thread_ptr, endpoint_index, page_ptr);
             new_endpoint_trace_finish_step(&*steps, finish_before, old(steps).view().len() as int, kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(finish_k),
                 kernel_k_to_kernel_u(*krnl), cpu_id, endpoint_index);

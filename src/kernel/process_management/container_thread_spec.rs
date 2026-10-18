@@ -45,6 +45,7 @@ verus! {
                 let container_ptr = thread_map.spec_index(thread_ptr).view().owning_container;
                 &&& container_map.dom().contains(container_ptr)
                 &&& container_map.spec_index(container_ptr).view_ghost().owned_threads.view().contains(thread_ptr)
+                &&& thread_map.spec_index(thread_ptr).view().container_depth == container_map.spec_index(container_ptr).view_rodata().view().depth
             }),
     { reveal(container_thread_wf); }
 }

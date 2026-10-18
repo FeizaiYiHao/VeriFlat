@@ -47,8 +47,6 @@ impl KernelK {
             typed_lock_map_contains_mode(old(lctx).iommu_root_table_lock_map(), old(self).irt.view().table_base(), TypedLockMode::Write),
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
-            final(lctx).cpu_id() == old(lctx).cpu_id(),
-            final(lctx).thread_id() == old(lctx).thread_id(),
             final(self).inv(),
             kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), final(self)),
             kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, final(self).ep_mp),

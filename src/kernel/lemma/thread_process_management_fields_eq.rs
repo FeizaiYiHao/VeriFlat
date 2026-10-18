@@ -11,6 +11,7 @@ pub open spec fn thread_process_management_fields_unchanged(pre: ThreadLockedMap
             &&& post.spec_index(t_ptr).view().state == pre.spec_index(t_ptr).view().state
             &&& post.spec_index(t_ptr).view().caller == pre.spec_index(t_ptr).view().caller
             &&& post.spec_index(t_ptr).view().callee == pre.spec_index(t_ptr).view().callee
+            &&& post.spec_index(t_ptr).view().call_depth == pre.spec_index(t_ptr).view().call_depth
             &&& post.spec_index(t_ptr).view().owning_container == pre.spec_index(t_ptr).view().owning_container
             &&& post.spec_index(t_ptr).view().container_depth == pre.spec_index(t_ptr).view().container_depth
             &&& post.spec_index(t_ptr).view().scheduler_linkedlist_node.addr() == pre.spec_index(t_ptr).view().scheduler_linkedlist_node.addr()
@@ -18,6 +19,7 @@ pub open spec fn thread_process_management_fields_unchanged(pre: ThreadLockedMap
             &&& post.spec_index(t_ptr).view().process_depth == pre.spec_index(t_ptr).view().process_depth
             &&& post.spec_index(t_ptr).view().proc_pagetable_ptr == pre.spec_index(t_ptr).view().proc_pagetable_ptr
             &&& post.spec_index(t_ptr).view().proc_linkedlist_node.addr() == pre.spec_index(t_ptr).view().proc_linkedlist_node.addr()
+            &&& post.spec_index(t_ptr).view().proc_linkedlist_node.is_init() == pre.spec_index(t_ptr).view().proc_linkedlist_node.is_init()
             &&& post.spec_index(t_ptr).view().endpoint_descriptors == pre.spec_index(t_ptr).view().endpoint_descriptors
             &&& post.spec_index(t_ptr).view().blocking_endpoint_ptr == pre.spec_index(t_ptr).view().blocking_endpoint_ptr
             &&& post.spec_index(t_ptr).view().endpoint_linkedlist_node.addr() == pre.spec_index(t_ptr).view().endpoint_linkedlist_node.addr()
@@ -47,7 +49,7 @@ pub proof fn thread_endpoint_ref_counter_wf_preserved_for_thread_process_managem
         thread_process_management_fields_unchanged(pre, post),
     ensures
         thread_endpoint_ref_counter_wf(post, endpoint_map),
-{ reveal(thread_endpoint_ref_counter_wf); }
+{ thread_endpoint_ref_counter_wf_preserved_for_descriptor_eq(pre, post, endpoint_map, endpoint_map); }
 
 pub proof fn thread_endpoint_queue_wf_preserved_for_thread_process_management_fields(pre: ThreadLockedMap, post: ThreadLockedMap, endpoint_map: EndpointLockedMap)
     requires
@@ -95,6 +97,9 @@ pub proof fn thread_cpu_wf_preserved_for_thread_process_management_fields(pre: T
     requires
         thread_cpu_wf(pre, cpu_array),
         thread_process_management_fields_unchanged(pre, post),
+        forall|t_ptr: RwLockThreadPtr| #![trigger post.spec_index(t_ptr).killer_info()]
+            pre.dom().contains(t_ptr) && pre.spec_index(t_ptr).view().state is RUNNING && pre.spec_index(t_ptr).being_killed()
+                ==> post.spec_index(t_ptr).killer_info() == pre.spec_index(t_ptr).killer_info() && post.spec_index(t_ptr).locking_thread() == pre.spec_index(t_ptr).locking_thread(),
     ensures
         thread_cpu_wf(post, cpu_array),
 { reveal(thread_cpu_wf); }

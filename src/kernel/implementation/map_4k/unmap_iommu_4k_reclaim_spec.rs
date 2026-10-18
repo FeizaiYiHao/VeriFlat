@@ -97,6 +97,7 @@ pub open spec fn reclaim_last_iommu_4k_mapping_to_cpu_cache_transition(
     &&& old_thread.locking_thread() is Write
     &&& new_thread.locking_thread() == old_thread.locking_thread()
     &&& new_thread.being_killed() == old_thread.being_killed()
+    &&& new_thread.killer_info() == old_thread.killer_info()
     &&& new_thread.view() == (Thread { direct_free_quota_pending_4k: new_thread.view().direct_free_quota_pending_4k, indirect_free_quota_pending_4k: new_thread.view().indirect_free_quota_pending_4k, ..old_thread.view() })
     &&& new_counter == old_counter + 1
     &&& new_thread.view().free_quota_pending_4k_at_depth(depth) == new_counter

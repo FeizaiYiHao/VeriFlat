@@ -16,6 +16,7 @@ pub open spec fn process_pcid_allocator_wf(container_map: ContainerLockedMap, pr
             &&& pcid_valid(pcid)
             // A zombie keeps its `pcid` field but has released the id back to the allocator.
             &&& !process_map.spec_index(p_ptr).view().zombie ==> pcid_allocator_map.spec_index(allocator_ptr).view().id_to_proc.view().spec_index(pcid as int).contains(p_ptr)
+            &&& process_map.spec_index(p_ptr).view().zombie ==> !pcid_allocator_map.spec_index(allocator_ptr).view().id_to_proc.view().spec_index(pcid as int).contains(p_ptr)
         }
     // PCID allocator -> process. The outer quantifier is keyed by the allocator's view so that a map whose
     // views are unchanged instantiates the inner one through a ground allocator term.
@@ -42,6 +43,7 @@ pub proof fn process_pcid_allocator_wf_process_at(container_map: ContainerLocked
             &&& pcid_allocator_map.dom().contains(allocator_ptr)
             &&& pcid_valid(pcid)
             &&& !process_map.spec_index(p_ptr).view().zombie ==> pcid_allocator_map.spec_index(allocator_ptr).view().id_to_proc.view().spec_index(pcid as int).contains(p_ptr)
+            &&& process_map.spec_index(p_ptr).view().zombie ==> !pcid_allocator_map.spec_index(allocator_ptr).view().id_to_proc.view().spec_index(pcid as int).contains(p_ptr)
         }),
 { reveal(process_pcid_allocator_wf); }
 }

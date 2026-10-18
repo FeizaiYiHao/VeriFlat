@@ -277,86 +277,6 @@ impl UnLockedMap<usize, PageAllocator> {
         self.borrow_global_pool(alloc_ptr, lock_perm)
     }
 
-    pub fn borrow_mut_global_pool<'a>(&'a mut self, alloc_ptr: usize, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a mut GlobalPool)
-        requires
-            old(self).dom().contains(alloc_ptr),
-            old(self).view().spec_index(alloc_ptr).is_init(),
-            old(self).view().spec_index(alloc_ptr).addr() == alloc_ptr,
-            old(self).spec_index(alloc_ptr).global_pool.wlocked_by(lctx),
-            old(self).spec_index(alloc_ptr).global_pool.is_init(),
-            lp.view().state() is WriteLock,
-            lp.view().thread_id() == lctx.thread_id(),
-            lp.view().lock_id() == old(self).spec_index(alloc_ptr).global_pool.locking_thread()->Write_lock_id,
-        ensures
-            old(self).perms_wf() ==> final(self).perms_wf(),
-            final(self).unchanged_except(old(self), alloc_ptr),
-            final(self).spec_index(alloc_ptr).global_pool.is_init(),
-            final(self).spec_index(alloc_ptr).global_pool.wlocked_by(lctx),
-            final(self).spec_index(alloc_ptr).global_pool.write_lock_perm_match(lp.view()),
-            // global_pool's lock perm and rodata/ghost are unchanged.
-            final(self).spec_index(alloc_ptr).global_pool.view_rodata() == old(self).spec_index(alloc_ptr).global_pool.view_rodata(),
-            final(self).spec_index(alloc_ptr).global_pool.view_ghost() == old(self).spec_index(alloc_ptr).global_pool.view_ghost(),
-            final(self).spec_index(alloc_ptr).global_pool.locking_thread() == old(self).spec_index(alloc_ptr).global_pool.locking_thread(),
-            final(self).spec_index(alloc_ptr).global_pool.being_killed() == old(self).spec_index(alloc_ptr).global_pool.being_killed(),
-            // Other PageAllocator-side fields unchanged.
-            final(self).spec_index(alloc_ptr).cpu_caches == old(self).spec_index(alloc_ptr).cpu_caches,
-            final(self).spec_index(alloc_ptr).quota == old(self).spec_index(alloc_ptr).quota,
-            final(self).spec_index(alloc_ptr).owning_container == old(self).spec_index(alloc_ptr).owning_container,
-            final(self).spec_index(alloc_ptr).total_free_pages == old(self).spec_index(alloc_ptr).total_free_pages,
-            // The `&mut LinkedList` ⇄ inner-value linkage.
-            *ret == old(self).spec_index(alloc_ptr).global_pool.view(),
-            final(self).spec_index(alloc_ptr).global_pool.view() == *final(ret),
-    {
-        let alloc = self.borrow_mut(alloc_ptr);
-        alloc.global_pool.borrow_mut(Tracked(lctx), lp)
-    }
-
-    pub fn borrow_mut_global_pool_typed<'a>(
-        &'a mut self, alloc_ptr: usize, Ghost(quota_locks): Ghost<Map<RwLockPageAllocatorPtr, TypedHeldLock>>,
-        Ghost(cache_locks): Ghost<Map<(RwLockPageAllocatorPtr, CpuId), TypedHeldLock>>,
-        Ghost(global_pool_locks): Ghost<Map<RwLockPageAllocatorPtr, TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>,
-    ) -> (ret: &'a mut GlobalPool)
-        requires
-            old(self).perms_wf(),
-            old(self).typed_quota_lock_map_aligned(quota_locks, lctx.thread_id()),
-            old(self).typed_cache_lock_map_aligned(cache_locks, lctx.thread_id()),
-            old(self).typed_global_pool_lock_map_aligned(global_pool_locks, lctx.thread_id()),
-            old(self).spec_index(alloc_ptr).global_pool.is_init(),
-            lp.view().state() is WriteLock,
-            lp.view().thread_id() == lctx.thread_id(),
-            typed_lock_map_contains_mode(global_pool_locks, alloc_ptr, TypedLockMode::Write),
-            lp.view().lock_id() == old(self).spec_index(alloc_ptr).global_pool.locking_thread()->Write_lock_id,
-        ensures
-            final(self).perms_wf(),
-            final(self).unchanged_except(old(self), alloc_ptr),
-            final(self).spec_index(alloc_ptr).global_pool.is_init(),
-            final(self).spec_index(alloc_ptr).global_pool.wlocked_by(lctx),
-            final(self).spec_index(alloc_ptr).global_pool.write_lock_perm_match(lp.view()),
-            final(self).spec_index(alloc_ptr).global_pool.view_rodata() == old(self).spec_index(alloc_ptr).global_pool.view_rodata(),
-            final(self).spec_index(alloc_ptr).global_pool.view_ghost() == old(self).spec_index(alloc_ptr).global_pool.view_ghost(),
-            final(self).spec_index(alloc_ptr).global_pool.locking_thread() == old(self).spec_index(alloc_ptr).global_pool.locking_thread(),
-            final(self).spec_index(alloc_ptr).global_pool.being_killed() == old(self).spec_index(alloc_ptr).global_pool.being_killed(),
-            final(self).spec_index(alloc_ptr).cpu_caches == old(self).spec_index(alloc_ptr).cpu_caches,
-            final(self).spec_index(alloc_ptr).quota == old(self).spec_index(alloc_ptr).quota,
-            final(self).spec_index(alloc_ptr).owning_container == old(self).spec_index(alloc_ptr).owning_container,
-            final(self).spec_index(alloc_ptr).total_free_pages == old(self).spec_index(alloc_ptr).total_free_pages,
-            *ret == old(self).spec_index(alloc_ptr).global_pool.view(),
-            final(self).spec_index(alloc_ptr).global_pool.view() == *final(ret),
-            final(self).typed_quota_lock_map_aligned(quota_locks, lctx.thread_id()),
-            final(self).typed_cache_lock_map_aligned(cache_locks, lctx.thread_id()),
-            final(self).typed_global_pool_lock_map_aligned(
-                global_pool_locks.insert(alloc_ptr, TypedHeldLock { lock_id: final(self).spec_index(alloc_ptr).global_pool.lock_id(), mode: global_pool_locks.index(alloc_ptr).mode }),
-                lctx.thread_id()),
-    {
-        proof {
-            reveal(UnLockedMap::typed_quota_lock_map_aligned);
-            reveal(UnLockedMap::typed_cache_lock_map_aligned);
-            reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
-            assert(old(self).dom().contains(alloc_ptr) && global_pool_locks.index(alloc_ptr).lock_id == old(self).spec_index(alloc_ptr).global_pool.lock_id());
-        }
-        self.borrow_mut_global_pool(alloc_ptr, Tracked(lctx), lp)
-    }
-
     pub fn borrow_cache<'a>(&'a self, alloc_ptr: usize, cpu_id: CpuId, lp: Tracked<&'a LockPerm>) -> (ret: &'a AllocatorCache)
         requires
             self.perms_wf(),
@@ -394,89 +314,6 @@ impl UnLockedMap<usize, PageAllocator> {
             &&& lock_perm.view().state() is ReadLock ==> self.spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().read_lock_perm_match(lock_perm.view())
         }) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); };
         self.borrow_cache(alloc_ptr, cpu_id, lock_perm)
-    }
-
-    pub fn borrow_mut_cache<'a>(&'a mut self, alloc_ptr: usize, cpu_id: CpuId, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a mut AllocatorCache)
-        requires
-            old(self).dom().contains(alloc_ptr),
-            old(self).view().spec_index(alloc_ptr).is_init(),
-            old(self).view().spec_index(alloc_ptr).addr() == alloc_ptr,
-            index_valid(NUM_CPUS, cpu_id),
-            old(self).spec_index(alloc_ptr).cpu_caches.inv(),
-            old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx),
-            old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().is_init(),
-            lp.view().state() is WriteLock,
-            lp.view().thread_id() == lctx.thread_id(),
-            lp.view().lock_id() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-        ensures
-            old(self).perms_wf() ==> final(self).perms_wf(),
-            final(self).unchanged_except(old(self), alloc_ptr),
-            final(self).spec_index(alloc_ptr).cpu_caches.inv(),
-            // Touched cache's lock state is preserved.
-            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().is_init(),
-            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx),
-            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().write_lock_perm_match(lp.view()),
-            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view_rodata() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view_rodata(),
-            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view_ghost() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view_ghost(),
-            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread(),
-            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().being_killed() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().being_killed(),
-            // Other cache entries in this allocator unchanged.
-            final(self).spec_index(alloc_ptr).cpu_caches.entries_unchanged_except(&old(self).spec_index(alloc_ptr).cpu_caches, cpu_id),
-            // Other PageAllocator-side fields unchanged.
-            final(self).spec_index(alloc_ptr).global_pool == old(self).spec_index(alloc_ptr).global_pool,
-            final(self).spec_index(alloc_ptr).quota == old(self).spec_index(alloc_ptr).quota,
-            final(self).spec_index(alloc_ptr).owning_container == old(self).spec_index(alloc_ptr).owning_container,
-            final(self).spec_index(alloc_ptr).total_free_pages == old(self).spec_index(alloc_ptr).total_free_pages,
-            // The `&mut AllocatorCache` ⇄ inner-value linkage.
-            *ret == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view(),
-            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view() == *final(ret),
-    {
-        let alloc = self.borrow_mut(alloc_ptr);
-        alloc.cpu_caches.borrow_mut(cpu_id, Tracked(lctx), lp)
-    }
-
-    pub fn borrow_mut_cache_typed<'a>(
-        &'a mut self, alloc_ptr: usize, cpu_id: CpuId, Ghost(quota_locks): Ghost<Map<RwLockPageAllocatorPtr, TypedHeldLock>>,
-        Ghost(cache_locks): Ghost<Map<(RwLockPageAllocatorPtr, CpuId), TypedHeldLock>>,
-        Ghost(global_pool_locks): Ghost<Map<RwLockPageAllocatorPtr, TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>,
-    ) -> (ret: &'a mut AllocatorCache)
-        requires
-            old(self).perms_wf(),
-            old(self).spec_index(alloc_ptr).cpu_caches.inv(),
-            old(self).typed_quota_lock_map_aligned(quota_locks, lctx.thread_id()),
-            old(self).typed_cache_lock_map_aligned(cache_locks, lctx.thread_id()),
-            old(self).typed_global_pool_lock_map_aligned(global_pool_locks, lctx.thread_id()),
-            old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().is_init(),
-            lp.view().state() is WriteLock,
-            lp.view().thread_id() == lctx.thread_id(),
-            typed_lock_map_contains_mode(cache_locks, (alloc_ptr, cpu_id), TypedLockMode::Write),
-            lp.view().lock_id() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-        ensures
-            final(self).perms_wf(),
-            final(self).unchanged_except(old(self), alloc_ptr),
-            final(self).spec_index(alloc_ptr).cpu_caches.inv(),
-            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().is_init(),
-            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx),
-            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().write_lock_perm_match(lp.view()),
-            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view_rodata() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view_rodata(),
-            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view_ghost() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view_ghost(),
-            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread(),
-            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().being_killed() == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().being_killed(),
-            final(self).spec_index(alloc_ptr).cpu_caches.entries_unchanged_except(&old(self).spec_index(alloc_ptr).cpu_caches, cpu_id),
-            final(self).spec_index(alloc_ptr).global_pool == old(self).spec_index(alloc_ptr).global_pool,
-            final(self).spec_index(alloc_ptr).quota == old(self).spec_index(alloc_ptr).quota,
-            final(self).spec_index(alloc_ptr).owning_container == old(self).spec_index(alloc_ptr).owning_container,
-            final(self).spec_index(alloc_ptr).total_free_pages == old(self).spec_index(alloc_ptr).total_free_pages,
-            *ret == old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view(),
-            final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view() == *final(ret),
-            final(self).typed_quota_lock_map_aligned(quota_locks, lctx.thread_id()),
-            final(self).typed_cache_lock_map_aligned(
-                cache_locks.insert((alloc_ptr, cpu_id), TypedHeldLock { lock_id: final(self).spec_index(alloc_ptr).cpu_caches.lock_id_by_index(cpu_id), mode: cache_locks.index((alloc_ptr, cpu_id)).mode }),
-                lctx.thread_id()),
-            final(self).typed_global_pool_lock_map_aligned(global_pool_locks, lctx.thread_id()),
-    {
-        proof { reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned); }
-        self.borrow_mut_cache(alloc_ptr, cpu_id, Tracked(lctx), lp)
     }
 
     pub fn push_cache_page_typed(
@@ -709,29 +546,14 @@ impl UnLockedMap<usize, PageAllocator> {
             old(self).dom().contains(alloc_ptr),
             old(self).spec_index(alloc_ptr).wf(),
             wlock_requires(old(self).spec_index(alloc_ptr).quota, old(lctx)),
-            old(lctx).lock_id_acyclic(LockId {
-                container: old(self).spec_index(alloc_ptr).quota.view().container_depth(),
-                process: old(self).spec_index(alloc_ptr).quota.view().process_depth(),
-                major: old(self).spec_index(alloc_ptr).quota.view().current_lock_major(),
-                minor: old(self).spec_index(alloc_ptr).quota.view().lock_minor(),
-            }),
+            old(lctx).lock_id_acyclic(old(self).spec_index(alloc_ptr).quota.lock_id()),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).wf(),
-            wlock_ensures(old(self).spec_index(alloc_ptr).quota, final(self).spec_index(alloc_ptr).quota, LockId {
-                container: old(self).spec_index(alloc_ptr).quota.view().container_depth(),
-                process: old(self).spec_index(alloc_ptr).quota.view().process_depth(),
-                major: old(self).spec_index(alloc_ptr).quota.view().current_lock_major(),
-                minor: old(self).spec_index(alloc_ptr).quota.view().lock_minor(),
-            }, final(lctx), ret.view()),
-            lock_ensures(old(lctx), final(lctx), LockId {
-                container: old(self).spec_index(alloc_ptr).quota.view().container_depth(),
-                process: old(self).spec_index(alloc_ptr).quota.view().process_depth(),
-                major: old(self).spec_index(alloc_ptr).quota.view().current_lock_major(),
-                minor: old(self).spec_index(alloc_ptr).quota.view().lock_minor(),
-            }, KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr)),
+            wlock_ensures(old(self).spec_index(alloc_ptr).quota, final(self).spec_index(alloc_ptr).quota, old(self).spec_index(alloc_ptr).quota.lock_id(), final(lctx), ret.view()),
+            lock_ensures(old(lctx), final(lctx), old(self).spec_index(alloc_ptr).quota.lock_id(), KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr)),
             final(self).spec_index(alloc_ptr).cpu_caches == old(self).spec_index(alloc_ptr).cpu_caches,
             final(self).spec_index(alloc_ptr).global_pool == old(self).spec_index(alloc_ptr).global_pool,
             final(self).spec_index(alloc_ptr).owning_container == old(self).spec_index(alloc_ptr).owning_container,
@@ -780,29 +602,14 @@ impl UnLockedMap<usize, PageAllocator> {
             old(self).spec_index(alloc_ptr).wf(),
             index_valid(NUM_CPUS, cpu_id),
             wlock_requires(old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view(), old(lctx)),
-            old(lctx).lock_id_acyclic(LockId {
-                container: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).container_depth(),
-                process: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).process_depth(),
-                major: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().current_lock_major(),
-                minor: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).lock_minor(),
-            }),
+            old(lctx).lock_id_acyclic(old(self).spec_index(alloc_ptr).cpu_caches.lock_id_by_index(cpu_id)),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).wf(),
-            wlock_ensures(old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view(), final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view(), LockId {
-                container: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).container_depth(),
-                process: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).process_depth(),
-                major: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().current_lock_major(),
-                minor: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).lock_minor(),
-            }, final(lctx), ret.view()),
-            lock_ensures(old(lctx), final(lctx), LockId {
-                container: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).container_depth(),
-                process: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).process_depth(),
-                major: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().view().current_lock_major(),
-                minor: old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).lock_minor(),
-            }, KernelObjId::AllocatorCache(page_size.view(), alloc_ptr, cpu_id)),
+            wlock_ensures(old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view(), final(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view(), old(self).spec_index(alloc_ptr).cpu_caches.lock_id_by_index(cpu_id), final(lctx), ret.view()),
+            lock_ensures(old(lctx), final(lctx), old(self).spec_index(alloc_ptr).cpu_caches.lock_id_by_index(cpu_id), KernelObjId::AllocatorCache(page_size.view(), alloc_ptr, cpu_id)),
             final(self).spec_index(alloc_ptr).cpu_caches.unchanged_except(&old(self).spec_index(alloc_ptr).cpu_caches, cpu_id),
             final(self).spec_index(alloc_ptr).global_pool == old(self).spec_index(alloc_ptr).global_pool,
             final(self).spec_index(alloc_ptr).quota == old(self).spec_index(alloc_ptr).quota,
@@ -849,29 +656,14 @@ impl UnLockedMap<usize, PageAllocator> {
             old(self).dom().contains(alloc_ptr),
             old(self).spec_index(alloc_ptr).wf(),
             wlock_requires(old(self).spec_index(alloc_ptr).global_pool, old(lctx)),
-            old(lctx).lock_id_acyclic(LockId {
-                container: old(self).spec_index(alloc_ptr).global_pool.view().container_depth(),
-                process: old(self).spec_index(alloc_ptr).global_pool.view().process_depth(),
-                major: old(self).spec_index(alloc_ptr).global_pool.view().current_lock_major(),
-                minor: old(self).spec_index(alloc_ptr).global_pool.view().lock_minor(),
-            }),
+            old(lctx).lock_id_acyclic(old(self).spec_index(alloc_ptr).global_pool.lock_id()),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), alloc_ptr),
             final(self).spec_index(alloc_ptr).wf(),
-            wlock_ensures(old(self).spec_index(alloc_ptr).global_pool, final(self).spec_index(alloc_ptr).global_pool, LockId {
-                container: old(self).spec_index(alloc_ptr).global_pool.view().container_depth(),
-                process: old(self).spec_index(alloc_ptr).global_pool.view().process_depth(),
-                major: old(self).spec_index(alloc_ptr).global_pool.view().current_lock_major(),
-                minor: old(self).spec_index(alloc_ptr).global_pool.view().lock_minor(),
-            }, final(lctx), ret.view()),
-            lock_ensures(old(lctx), final(lctx), LockId {
-                container: old(self).spec_index(alloc_ptr).global_pool.view().container_depth(),
-                process: old(self).spec_index(alloc_ptr).global_pool.view().process_depth(),
-                major: old(self).spec_index(alloc_ptr).global_pool.view().current_lock_major(),
-                minor: old(self).spec_index(alloc_ptr).global_pool.view().lock_minor(),
-            }, KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr)),
+            wlock_ensures(old(self).spec_index(alloc_ptr).global_pool, final(self).spec_index(alloc_ptr).global_pool, old(self).spec_index(alloc_ptr).global_pool.lock_id(), final(lctx), ret.view()),
+            lock_ensures(old(lctx), final(lctx), old(self).spec_index(alloc_ptr).global_pool.lock_id(), KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr)),
             final(self).spec_index(alloc_ptr).cpu_caches == old(self).spec_index(alloc_ptr).cpu_caches,
             final(self).spec_index(alloc_ptr).quota == old(self).spec_index(alloc_ptr).quota,
             final(self).spec_index(alloc_ptr).owning_container == old(self).spec_index(alloc_ptr).owning_container,

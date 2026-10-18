@@ -212,6 +212,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
             final(self).spec_index(key).view_ghost() == old(self).spec_index(key).view_ghost(),
             final(self).spec_index(key).locking_thread() == old(self).spec_index(key).locking_thread(),
             final(self).spec_index(key).being_killed() == old(self).spec_index(key).being_killed(),
+            final(self).spec_index(key).killer_info() == old(self).spec_index(key).killer_info(),
             // The `&mut T` linkage.
             *ret == old(self).spec_index(key).view(),
             final(self).spec_index(key).view() == *final(ret),
@@ -236,7 +237,6 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
             lock_perm.view().lock_id() == old(self).spec_index(key).locking_thread()->Write_lock_id,
         ensures
             final(self).perms_wf(),
-            final(self).dom() == old(self).dom(),
             final(self).unchanged_except(old(self), key),
             final(self).spec_index(key).is_init(),
             final(self).spec_index(key).wlocked_by(lctx),
@@ -245,11 +245,11 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
             final(self).spec_index(key).view_ghost() == old(self).spec_index(key).view_ghost(),
             final(self).spec_index(key).locking_thread() == old(self).spec_index(key).locking_thread(),
             final(self).spec_index(key).being_killed() == old(self).spec_index(key).being_killed(),
+            final(self).spec_index(key).killer_info() == old(self).spec_index(key).killer_info(),
             *ret == old(self).spec_index(key).view(),
             final(self).spec_index(key).view() == *final(ret),
             final(self).typed_lock_map_aligned(held_locks.insert(key, TypedHeldLock { lock_id: final(self).lock_id_by_key(key), mode: held_locks.index(key).mode }), lctx.thread_id()),
             held_locks.index(key).lock_id == old(self).lock_id_by_key(key),
-            typed_lock_map_contains_mode(held_locks, key, TypedLockMode::Write),
             final(self).lock_id_by_key(key) == old(self).lock_id_by_key(key) ==> final(self).typed_lock_map_aligned(held_locks, lctx.thread_id()),
     {
         proof { reveal(LockedMap::typed_lock_map_aligned); }
@@ -372,10 +372,6 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
                 container: old(self).spec_index(key).container_depth(), process: old(self).spec_index(key).process_depth(), major: old(self).spec_index(key).view().current_lock_major(), minor: key }, obj_id.view()),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        assert({
-            &&& perm.addr() == key
-            &&& LockId { container: perm.value().container_depth(), process: perm.value().process_depth(), major: perm.value().view().current_lock_major(), minor: perm.lock_minor() } == old(self).lock_id_by_key(key)
-        });
         let ret = wlock(&PPtr::<RwLock<T, ROT, GhostT, NO_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), obj_id);
         proof { self.map.borrow_mut().tracked_insert(key, perm); }
         return ret;
@@ -433,15 +429,75 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             },
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
-        assert({
-            &&& perm.addr() == key
-            &&& perm.lock_id() == old(self).lock_id_by_key(key)
-            &&& !perm.value().being_killed() ==> LockId { container: perm.value().container_depth(), process: perm.value().process_depth(), major: perm.value().view().current_lock_major(), minor: perm.lock_minor() } == old(self).lock_id_by_key(key)
-        });
-        proof { lctx.lemma_lock_id_eq_imply_acyclic_eq(); }
         let ret = wlock_unless_killed(&PPtr::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), obj_id);
         proof { self.map.borrow_mut().tracked_insert(key, perm); }
         return ret;
+    }
+
+    /// Write-lock `key` and mark it for its killer. On success the ledger holds the entry under the pre-mark id; the
+    /// caller moves it to the sunk id that a marked object reports.
+    pub fn try_wlock_and_mark_kill(&mut self, key: usize, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>, killer_info: KillerInfo) -> (ret: Option<Tracked<LockPerm>>)
+        requires
+            old(self).perms_wf(),
+            old(self).dom().contains(key),
+            wlock_requires(old(self).spec_index(key), old(lctx)),
+            !old(self).spec_index(key).being_killed() ==> old(lctx).lock_id_acyclic(old(self).lock_id_by_key(key)),
+        ensures
+            final(self).perms_wf(),
+            final(self).unchanged_except(old(self), key),
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
+            final(lctx).thread_id() == old(lctx).thread_id(),
+            ret is None ==> {
+                &&& old(self).spec_index(key).being_killed()
+                &&& final(self).spec_index(key) == old(self).spec_index(key)
+                &&& *final(lctx) == *old(lctx)
+            },
+            ret is Some ==> {
+                &&& !old(self).spec_index(key).being_killed()
+                &&& !old(self).spec_index(key).locked()
+                &&& final(self).spec_index(key).being_killed()
+                &&& final(self).spec_index(key).killer_info() == Some(killer_info)
+                &&& final(self).spec_index(key).locking_thread() == RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: ret.unwrap().view().lock_id() }
+                &&& final(self).spec_index(key).inv()
+                &&& final(self).spec_index(key).view() == old(self).spec_index(key).view()
+                &&& final(self).spec_index(key).view_rodata() == old(self).spec_index(key).view_rodata()
+                &&& final(self).spec_index(key).view_ghost() == old(self).spec_index(key).view_ghost()
+                &&& final(self).lock_id_by_key(key) == (LockId { container: LockOwnerId::High, process: LockOwnerId::High, major: KILLED_LOCK_MAJOR, minor: key })
+                &&& ret.unwrap().view().state() is WriteLock
+                &&& ret.unwrap().view().thread_id() == final(lctx).thread_id()
+                &&& final(lctx).kernel_view_locking_state() is Release
+                &&& typed_lock_maps_inserted(old(lctx), final(lctx), obj_id.view(), TypedHeldLock { lock_id: old(self).lock_id_by_key(key), mode: TypedLockMode::Write })
+            },
+    {
+        let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
+        let (marked, ret) = try_wlock_and_mark_kill(&PPtr::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), obj_id, killer_info);
+        proof { self.map.borrow_mut().tracked_insert(key, perm); }
+        if marked { ret } else { None }
+    }
+
+    /// Mark `key`, which this thread write-holds, for its killer. The ledger keeps the entry under the pre-mark id; the
+    /// caller moves it to the sunk id that a marked object reports.
+    pub fn mark_kill(&mut self, key: usize, Tracked(lctx): Tracked<&LocalContext>, killer_info: KillerInfo)
+        requires
+            old(self).perms_wf(),
+            old(self).dom().contains(key),
+            old(self).spec_index(key).wlocked_by(lctx),
+            !old(self).spec_index(key).being_killed(),
+            lctx.kernel_view_locking_state() is Release,
+        ensures
+            final(self).perms_wf(),
+            final(self).unchanged_except(old(self), key),
+            final(self).spec_index(key).being_killed(),
+            final(self).spec_index(key).locking_thread() == old(self).spec_index(key).locking_thread(),
+            final(self).spec_index(key).is_init() == old(self).spec_index(key).is_init(),
+            final(self).spec_index(key).view() == old(self).spec_index(key).view(),
+            final(self).spec_index(key).view_rodata() == old(self).spec_index(key).view_rodata(),
+            final(self).spec_index(key).view_ghost() == old(self).spec_index(key).view_ghost(),
+            final(self).lock_id_by_key(key) == (LockId { container: LockOwnerId::High, process: LockOwnerId::High, major: KILLED_LOCK_MAJOR, minor: key }),
+    {
+        let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
+        mark_kill(&PPtr::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), killer_info);
+        proof { self.map.borrow_mut().tracked_insert(key, perm); }
     }
 
     pub fn wunlock(&mut self, key: usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, obj_id: Ghost<KernelObjId>)

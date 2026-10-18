@@ -86,38 +86,36 @@ pub(super) proof fn new_container_enter_step_from_u(
     }));
 }
 
-/// The caller holding its context locks with an unlocked Off transfer cpu satisfies the publish precondition.
-pub(super) proof fn new_container_publish_step_pre_from_u(pre: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, record: NewContainerProgress)
+/// The caller's write-held context, its recorded progress, and an Off transfer cpu of its container at `krnl` give the publish
+/// step's precondition on its user view once the transfer cpu is unlocked, together with the objects that step binds.
+pub(super) proof fn new_container_publish_step_pre_from_k(
+    krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr,
+    record: NewContainerProgress,
+)
     requires
         index_valid(NUM_CPUS, cpu_id),
-        {
-            let cpu = pre.cpu_array[cpu_id as int];
-            let thread = pre.thread_map.spec_index(thread_ptr);
-            let container = pre.container_map.spec_index(container_ptr);
-            let process = pre.process_map.spec_index(process_ptr);
-            let transfer = pre.cpu_array[record.transfer_cpu as int];
-            &&& cpu.lock_state is WriteLocked
-            &&& cpu.current_thread == Some(thread_ptr)
-            &&& pre.thread_map.dom().contains(thread_ptr)
-            &&& thread.lock_state is WriteLocked
-            &&& thread.syscall_progress == Some(SyscallProgress::NewContainer(record))
-            &&& thread.owning_proc == process_ptr
-            &&& thread.owning_container == container_ptr
-            &&& pre.container_map.dom().contains(container_ptr)
-            &&& container.lock_state is WriteLocked
-            &&& container.cpu_set_lock is WriteLocked
-            &&& pre.process_map.dom().contains(process_ptr)
-            &&& process.lock_state is WriteLocked
-            &&& process.pagetable is Some
-            &&& process.pagetable->Some_0.lock_state is WriteLocked
-            &&& index_valid(NUM_CPUS, record.transfer_cpu)
-            &&& transfer.lock_state is Unlocked
-            &&& transfer.state is Off
-            &&& transfer.owning_container == container_ptr
-        },
+        index_valid(NUM_CPUS, record.transfer_cpu),
+        typed_lock_maps_aligned(krnl, lctx),
+        typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.container_lock_map(), container_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.cpu_set_lock_map(), krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.process_lock_map(), process_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), krnl.prc_mp.spec_index(process_ptr).view().pagetable, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
+        krnl.prc_mp.dom().contains(process_ptr),
+        !krnl.prc_mp.spec_index(process_ptr).view().zombie,
+        krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
+        krnl.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
+        krnl.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
+        krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::NewContainer(record)),
+        krnl.cpu_arr.spec_index(record.transfer_cpu).view().view().view().state is Off,
+        krnl.cpu_arr.spec_index(record.transfer_cpu).view().view().view().owning_container == container_ptr,
     ensures
-        new_container_publish_step_pre(pre, cpu_id),
-{ reveal(new_container_publish_step_pre); }
+        krnl.cpu_arr.spec_index(record.transfer_cpu).value.locking_thread() is None ==> new_container_publish_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
+        kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_thread == Some(thread_ptr),
+        kernel_k_to_kernel_u(*krnl).thread_map.spec_index(thread_ptr).syscall_progress == Some(SyscallProgress::NewContainer(record)),
+        kernel_k_to_kernel_u(*krnl).thread_map.spec_index(thread_ptr).owning_container == container_ptr,
+{ kernel_write_held_context_projection(krnl, lctx, cpu_id, process_ptr, thread_ptr, None); kernel_cpu_projection_at(krnl, record.transfer_cpu); reveal(new_container_publish_step_pre); }
 
 /// Creating the child container with its root process from `pre` to `post` is the publish step.
 pub(super) proof fn new_container_publish_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, child_ptr: RwLockContainerPtr, root_ptr: RwLockProcessPtr, record: NewContainerProgress)
@@ -133,53 +131,52 @@ pub(super) proof fn new_container_publish_step_from_u(pre: KernelU, post: Kernel
         new_container_publish_step(pre, post, cpu_id),
 { reveal(new_container_publish_step); }
 
-/// The caller holding every retained lock after the whole range is shared satisfies the finish precondition.
-pub(super) proof fn new_container_finish_step_pre_from_u(
-    pre: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, child_ptr: RwLockContainerPtr,
-    root_ptr: RwLockProcessPtr, endpoint_ptr: Option<RwLockEndpointPtr>,
+/// The caller's write-held context, both containers and processes with their page tables, the optional endpoint, and the fully
+/// shared progress at `krnl` give the finish step's precondition on its user view, together with the objects that step binds.
+pub(super) proof fn new_container_finish_step_pre_from_k(
+    krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr,
+    child_ptr: RwLockContainerPtr, root_ptr: RwLockProcessPtr, endpoint_ptr: Option<RwLockEndpointPtr>,
 )
     requires
+        krnl.inv(),
         index_valid(NUM_CPUS, cpu_id),
-        {
-            let cpu = pre.cpu_array[cpu_id as int];
-            let thread = pre.thread_map.spec_index(thread_ptr);
-            let progress = thread.syscall_progress->Some_0;
-            let record = progress->Share4k_origin->NewContainer_0;
-            let parent = pre.process_map.spec_index(process_ptr);
-            let root = pre.process_map.spec_index(root_ptr);
-            &&& cpu.lock_state is WriteLocked
-            &&& cpu.current_thread == Some(thread_ptr)
-            &&& pre.thread_map.dom().contains(thread_ptr)
-            &&& thread.lock_state is WriteLocked
-            &&& thread.syscall_progress is Some
-            &&& progress is Share4k
-            &&& progress->Share4k_origin is NewContainer
-            &&& progress->Share4k_origin->NewContainer_0.child_container == Some(child_ptr)
-            &&& progress->Share4k_shared == progress->Share4k_source_range.len
-            &&& thread.owning_proc == process_ptr
-            &&& thread.owning_container == container_ptr
-            &&& pre.container_map.dom().contains(container_ptr)
-            &&& pre.container_map.spec_index(container_ptr).lock_state is WriteLocked
-            &&& pre.container_map.dom().contains(child_ptr)
-            &&& pre.container_map.spec_index(child_ptr).lock_state is WriteLocked
-            &&& pre.container_map.spec_index(child_ptr).root_process == root_ptr
-            &&& pre.container_map.spec_index(child_ptr).parent == Some(container_ptr)
-            &&& pre.process_map.dom().contains(process_ptr)
-            &&& parent.lock_state is WriteLocked
-            &&& parent.pagetable is Some
-            &&& parent.pagetable->Some_0.lock_state is WriteLocked
-            &&& pre.process_map.dom().contains(root_ptr)
-            &&& root.lock_state is WriteLocked
-            &&& root.pagetable is Some
-            &&& root.pagetable->Some_0.lock_state is WriteLocked
-            &&& root.owning_container == child_ptr
-            &&& (record.endpoint_index is Some ==> edp_idx_valid(record.endpoint_index->Some_0))
-            &&& (record.endpoint_index is Some ==> endpoint_ptr is Some && thread.endpoint_descriptors[record.endpoint_index->Some_0 as int] == endpoint_ptr)
-            &&& (endpoint_ptr is Some ==> pre.endpoint_map.dom().contains(endpoint_ptr->Some_0) && pre.endpoint_map.spec_index(endpoint_ptr->Some_0).lock_state is WriteLocked)
-        },
+        typed_lock_maps_aligned(krnl, lctx),
+        typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.container_lock_map(), container_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.container_lock_map(), child_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.process_lock_map(), process_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.process_lock_map(), root_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), krnl.prc_mp.spec_index(process_ptr).view().pagetable, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), krnl.prc_mp.spec_index(root_ptr).view().pagetable, TypedLockMode::Write),
+        endpoint_ptr matches Some(e) ==> krnl.ep_mp.dom().contains(e) && typed_lock_map_contains_mode(lctx.endpoint_lock_map(), e, TypedLockMode::Write),
+        krnl.thr_mp.dom().contains(thread_ptr),
+        krnl.ctn_mp.dom().contains(child_ptr),
+        krnl.prc_mp.dom().contains(root_ptr),
+        !krnl.prc_mp.spec_index(root_ptr).view().zombie,
+        krnl.prc_mp.spec_index(root_ptr).view().iommu_table is None,
+        krnl.prc_mp.spec_index(root_ptr).view_rodata().view().owning_container == child_ptr,
+        krnl.ctn_mp.spec_index(child_ptr).view().root_process == root_ptr,
+        krnl.ctn_mp.spec_index(child_ptr).view_rodata().view().parent == Some(container_ptr),
+        krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
+        krnl.thr_mp.spec_index(thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        krnl.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
+        krnl.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
+        krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() matches Some(SyscallProgress::Share4k { source_range, shared, origin, .. })
+            && shared == source_range.len && origin is NewContainer && origin->NewContainer_0.child_container == Some(child_ptr)
+            && (origin->NewContainer_0.endpoint_index matches Some(i) ==> edp_idx_valid(i) && endpoint_ptr is Some && krnl.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.spec_index(i) == endpoint_ptr),
     ensures
-        new_container_finish_step_pre(pre, cpu_id),
-{ reveal(new_container_finish_step_pre); }
+        new_container_finish_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
+        kernel_k_to_kernel_u(*krnl).container_map.spec_index(child_ptr).root_process == root_ptr,
+        kernel_k_to_kernel_u(*krnl).process_map.spec_index(root_ptr).iommu_table is None,
+{
+    process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); reveal(share_4k_objects_k);
+    kernel_write_held_context_projection(krnl, lctx, cpu_id, process_ptr, thread_ptr, endpoint_ptr);
+    kernel_write_held_context_projection(krnl, lctx, cpu_id, root_ptr, thread_ptr, None);
+    kernel_share_4k_objects_projection(krnl, lctx, cpu_id);
+    kernel_cpu_thread_projection_at(krnl, cpu_id, process_ptr, thread_ptr, None);
+    reveal(new_container_finish_step_pre);
+}
 
 /// Creating the root process's first thread while releasing every retained lock is the finish step on `pre`/`post`.
 pub(super) proof fn new_container_finish_step_from_u(
@@ -272,6 +269,65 @@ pub(super) proof fn new_container_trace_finish_step(steps: &KernelSteps, before:
         new_container_commit_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, range, funding, process_quota, transfer_cpu, regs, endpoint_index),
 { reveal(new_container_trace_after_share); reveal(new_container_commit_trace); }
 
+/// The arguments and the caller's cpu, thread, container, process, page table, and transfer cpu at `krnl` decide the syscall result.
+pub(super) proof fn new_container_result_from_k(
+    krnl: &KernelK, cpu_id: CpuId, va: VAddr, range: usize, funding_page_count: usize, process_quota_4k: usize, transfer_cpu_id: CpuId,
+    endpoint_index: Option<EndpointIdx>, ret: RetValueType,
+)
+    requires
+        krnl.inv(),
+        index_valid(NUM_CPUS, cpu_id),
+        {
+            let cpu = krnl.cpu_arr.spec_index(cpu_id).view();
+            let c = cpu.view().view();
+            let thread = krnl.thr_mp.spec_index(c.current_thread->Some_0);
+            let t = thread.view();
+            let container = krnl.ctn_mp.spec_index(t.owning_container);
+            let process = krnl.prc_mp.spec_index(t.owning_proc);
+            let table = krnl.pt_mp.spec_index(process.view().pagetable).view();
+            let transfer = krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().view();
+            let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
+            let bad_args = range == 0 || range > usize::MAX / 4096 || range > (usize::MAX - 9) / 3 || !spec_va_4k_valid(va) || transfer_cpu_id >= NUM_CPUS
+                || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range) || process_quota_4k > funding_page_count
+                || funding_page_count > usize::MAX - 9 - 3 * range;
+            let live = !bad_args && c.state is Running && !cpu.being_killed();
+            let funded = live && !container.being_killed() && !container.view().zombie && container.view_rodata().view().depth < MAX_CONTAINER_TREE_DEPTH
+                && !process.being_killed() && !thread.being_killed() && !(endpoint_index is Some && t.endpoint_descriptors.spec_index(endpoint_index->Some_0) is None)
+                && t.quota_4k >= 9 + funding_page_count + 3 * range && t.quota_2m >= 2;
+            &&& live ==> krnl.thr_mp.dom().contains(c.current_thread->Some_0) && krnl.ctn_mp.dom().contains(t.owning_container) && krnl.prc_mp.dom().contains(t.owning_proc)
+            &&& funded ==> !process.view().zombie && krnl.pt_mp.dom().contains(process.view().pagetable) && table.leaves_present()
+            &&& ret == if bad_args { RetValueType::Error }
+                else if !(c.state is Running) || cpu.being_killed() { RetValueType::CpuIdle }
+                else if container.being_killed() { RetValueType::ErrorContainerKilled }
+                else if container.view().zombie { RetValueType::ErrorContainerZombie }
+                else if container.view_rodata().view().depth >= MAX_CONTAINER_TREE_DEPTH { RetValueType::Error }
+                else if process.being_killed() { RetValueType::ErrorProcessKilled }
+                else if thread.being_killed() { RetValueType::ErrorThreadKilled }
+                else if endpoint_index is Some && t.endpoint_descriptors.spec_index(endpoint_index->Some_0) is None { RetValueType::Error }
+                else if t.quota_4k < 9 + funding_page_count + 3 * range || t.quota_2m < 2 { RetValueType::ErrorNoQuota }
+                else if !(spec_v2l4index(va) >= table.kernel_l4_end && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range
+                    ==> table.mapping_4k().dom().contains(va_range.view()[j]) && table.mapping_4k()[va_range.view()[j]].present) { RetValueType::Error }
+                else if transfer.owning_container != t.owning_container { RetValueType::ErrorIpcCpuOwnerMismatch }
+                else if !(transfer.state is Off) { RetValueType::ErrorIpcCpuNotOff }
+                else { RetValueType::Success }
+        },
+    ensures
+        new_container_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index) == ret,
+{
+    let thread_ptr = krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0;
+    let t = krnl.thr_mp.spec_index(thread_ptr).view();
+    let process = krnl.prc_mp.spec_index(t.owning_proc).view();
+    kernel_cpu_projection_at(krnl, cpu_id);
+    if index_valid(NUM_CPUS, transfer_cpu_id) { kernel_cpu_projection_at(krnl, transfer_cpu_id); }
+    if krnl.ctn_mp.dom().contains(t.owning_container) { kernel_container_projection_at(krnl, t.owning_container); }
+    if krnl.thr_mp.dom().contains(thread_ptr) && krnl.prc_mp.dom().contains(t.owning_proc) {
+        kernel_cpu_thread_projection_at(krnl, cpu_id, t.owning_proc, thread_ptr, None);
+        if !process.zombie && krnl.pt_mp.dom().contains(process.pagetable) {
+            kernel_l4_end_projection_at(krnl, process.pagetable); kernel_pagetable_mappings_projection_at(krnl, t.owning_proc);
+        }
+    }
+}
+
 /// A rejected call records no step.
 pub(super) proof fn new_container_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, va: VAddr, range: usize, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, endpoint_index: Option<EndpointIdx>, ret: RetValueType)
     requires
@@ -292,6 +348,61 @@ pub(super) proof fn new_container_syscall_trace_from_commit(trace: Seq<KernelSte
     ensures
         new_container_syscall_trace(trace, pre, post, cpu_id, va, range, funding, process_quota, transfer_cpu, regs, endpoint_index, ret),
 { reveal(new_container_syscall_trace); }
+
+/// Publishing the staged container root from `staged` to `published`, where `staged` is `pre` with its transfer cpu write-locked
+/// and `post` is `published` with `progress` recorded, is the root publication on the user views of `pre` and `post`.
+pub(super) proof fn new_container_root_published_from_k(
+    pre: &KernelK, staged: &KernelK, published: &KernelK, post: &KernelK, parent: RwLockContainerPtr, thread: RwLockThreadPtr, transfer_cpu: CpuId,
+    container_page: PagePtr, pcid_allocator_page: PagePtr, pages: Seq<PagePtr>, funding: usize, funding_pages: Seq<PagePtr>, allocator_quota_4k: usize,
+    process_quota_4k: usize, progress: Option<SyscallProgress>,
+)
+    requires
+        pre.inv(),
+        post.inv(),
+        index_valid(NUM_CPUS, transfer_cpu),
+        page_ptr_2m_valid(container_page),
+        funding_pages.len() == funding,
+        pre.cpu_arr.spec_index(transfer_cpu).value.view().view().owning_container == parent,
+        publish_staged_container_root_kernel_state_framing(*staged, *published, parent, thread, container_page, pcid_allocator_page, pages[0], pages[1], pages[2],
+            pages[3], pages[8], pages[4], pages[5], pages[6], pages[7], funding_pages, allocator_quota_4k, process_quota_4k),
+        *staged == (KernelK { pg_arr: staged.pg_arr, cpu_arr: staged.cpu_arr, ..*pre }),
+        *post == (KernelK { pg_arr: post.pg_arr, thr_mp: post.thr_mp, ..*published }),
+        kernel_cpu_nonlock_fields_unchanged(pre.cpu_arr, staged.cpu_arr),
+        staged.cpu_arr.spec_index(transfer_cpu).value.view().view().state is Off,
+        staged.cpu_arr.spec_index(transfer_cpu).value.locking_thread() is Write,
+        forall|i: CpuId| #![trigger staged.cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) && i != transfer_cpu ==>
+            staged.cpu_arr.spec_index(i).value.locking_thread() == pre.cpu_arr.spec_index(i).value.locking_thread(),
+        post.thr_mp.unchanged_except(&published.thr_mp, thread),
+        post.thr_mp.spec_index(thread).view() == (Thread { syscall_progress: post.thr_mp.spec_index(thread).view().syscall_progress, ..published.thr_mp.spec_index(thread).view() }),
+        post.thr_mp.spec_index(thread).view().syscall_progress.view() == progress,
+        post.thr_mp.spec_index(thread).locking_thread() == published.thr_mp.spec_index(thread).locking_thread(),
+        post.thr_mp.spec_index(thread).being_killed() == published.thr_mp.spec_index(thread).being_killed(),
+        post.ctn_mp.spec_index(container_page).locking_thread() is Write,
+        post.pt_mp.spec_index(pages[5]).locking_thread() is Write,
+        post.cpu_set_mp.spec_index(pages[8]).locking_thread() is Write,
+    ensures
+        kernel_u_container_root_published(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), parent, container_page, pages[4], thread, transfer_cpu, funding,
+            process_quota_4k, new_container_moved_pages(container_page, pcid_allocator_page, pages[0], pages[1], pages[2], pages[3],
+                pages[8], pages[4], pages[5], pages[6]).union(funding_pages.to_set()), pages[7], progress),
+{
+    reveal(publish_staged_container_root_kernel_state_framing); reveal(container_cpu_offline_flags_wf); reveal(kernel_cpu_nonlock_fields_unchanged);
+    assert(cpu_offline_requests_of(post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_page))) == Seq::new(NUM_CPUS as nat, |i: int| false)) by {
+        reveal(cpu_offline_requests_of);
+        assert_seqs_equal!(cpu_offline_requests_of(post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_page))) == Seq::new(NUM_CPUS as nat, |i: int| false));
+    };
+    assert(scheduler_shards_of(post.sched_mp.spec_index(pages[3])) == Seq::new(NUM_CPUS as nat, |i: int| Seq::<RwLockThreadPtr>::empty())) by {
+        reveal(scheduler_shards_of);
+        assert_seqs_equal!(scheduler_shards_of(post.sched_mp.spec_index(pages[3])) == Seq::new(NUM_CPUS as nat, |i: int| Seq::<RwLockThreadPtr>::empty()));
+    };
+    let moved = new_container_moved_pages(container_page, pcid_allocator_page, pages[0], pages[1], pages[2], pages[3], pages[8], pages[4], pages[5], pages[6])
+        .union(funding_pages.to_set());
+    assert(moved.contains(container_page) && moved.contains(pages[4]) && moved.contains(pages[8])) by {
+        reveal(new_container_moved_pages); reveal(new_container_bootstrap_4k_pages); broadcast use vstd::seq_lib::lemma_seq_contains_after_push;
+        page_2m_all_ptrs_contains_head(page_ptr2page_index(container_page));
+    };
+    kernel_container_root_published_implies_u_step(pre, post, parent, container_page, pages[4], thread, transfer_cpu, funding, process_quota_4k, moved, pages[7], pcid_allocator_page, progress);
+}
+
 
 pub(super) proof fn kernel_container_publication_composes(
     pre: KernelU, published: KernelU, post: KernelU, parent: RwLockContainerPtr, child: RwLockContainerPtr, process: RwLockProcessPtr,

@@ -3,15 +3,6 @@ use crate::*;
 use vstd::simple_pptr::PointsTo;
 
 verus! {
-    pub struct NumContainers {
-        pub inner: usize,
-    }
-    impl NumContainers {
-        pub open spec fn view(&self) -> usize { self.inner }
-    }
-    impl LockInvTrait for NumContainers {
-        open spec fn inv(&self) -> bool { true }
-    }
     // Proof dependencies (confirmed): container_tree_fields_wf.
     #[verifier::opaque]
     pub open spec fn container_perms_wf(container_perms: ContainerLockedMap) -> bool {
@@ -37,6 +28,7 @@ verus! {
             container_perms.spec_index(container_ptr).view().inv(),
             container_perms.spec_index(container_ptr).view_ghost().uppertree_seq.view().no_duplicates(),
             container_perms.spec_index(container_ptr).view_ghost().uppertree_seq.view().len() == container_perms.spec_index(container_ptr).view_rodata().view().depth,
+            container_perms.spec_index(container_ptr).view_rodata().view().depth <= MAX_CONTAINER_TREE_DEPTH,
     { reveal(container_perms_wf); reveal(container_tree_fields_wf); }
 
     pub proof fn container_perms_wf_map(container_perms: ContainerLockedMap)
@@ -194,49 +186,6 @@ verus! {
     {
         reveal(container_root_wf); reveal(container_children_parent_wf); reveal(containers_linkedlist_wf); reveal(container_children_depth_wf);
         reveal(container_subtree_set_wf); reveal(container_uppertree_seq_wf); reveal(container_subtree_set_exclusive);
-    }
-
-    pub open spec fn container_add_child_ensures(root_container: RwLockContainerPtr, old_container_perms: ContainerLockedMap, new_container_perms: ContainerLockedMap, parent_ptr: RwLockContainerPtr, child_ptr: RwLockContainerPtr) -> bool {
-        &&& container_perms_wf(old_container_perms)
-        &&& container_perms_wf(new_container_perms)
-        &&& container_tree_wf(root_container, old_container_perms)
-        &&& old_container_perms.dom().contains(parent_ptr)
-        &&& !old_container_perms.dom().contains(child_ptr)
-        &&& old_container_perms.spec_index(parent_ptr).view_rodata().view().depth < usize::MAX
-        &&& new_container_perms.dom() == old_container_perms.dom().insert(child_ptr)
-        &&& new_container_perms.spec_index(child_ptr).view_rodata().view().parent == Some(parent_ptr)
-        &&& new_container_perms.spec_index(child_ptr).view_rodata().view().depth == old_container_perms.spec_index(parent_ptr).view_rodata().view().depth + 1
-        &&& new_container_perms.spec_index(child_ptr).view().children.view() == Seq::<RwLockContainerPtr>::empty()
-        &&& !new_container_perms.spec_index(child_ptr).view().parent_linkedlist_node.is_init()
-        &&& new_container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view() == old_container_perms.spec_index(parent_ptr).view_ghost().uppertree_seq.view().push(parent_ptr)
-        &&& new_container_perms.spec_index(child_ptr).view_ghost().subtree_set.view() == Set::<RwLockContainerPtr>::empty()
-        &&& forall|c_ptr: RwLockContainerPtr|
-            #![trigger old_container_perms.dom().contains(c_ptr)]
-            old_container_perms.dom().contains(c_ptr)
-                ==> new_container_perms.spec_index(c_ptr).view_rodata() == old_container_perms.spec_index(c_ptr).view_rodata()
-                && new_container_perms.spec_index(c_ptr).view().parent_linkedlist_node == old_container_perms.spec_index(c_ptr).view().parent_linkedlist_node
-                && (c_ptr != parent_ptr ==> new_container_perms.spec_index(c_ptr).view().children == old_container_perms.spec_index(c_ptr).view().children)
-        &&& forall|c_ptr: RwLockContainerPtr|
-            #![trigger old_container_perms.spec_index(c_ptr).view_ghost().uppertree_seq]
-            #![trigger new_container_perms.spec_index(c_ptr).view_ghost().uppertree_seq]
-            old_container_perms.dom().contains(c_ptr) ==> new_container_perms.spec_index(c_ptr).view_ghost().uppertree_seq == old_container_perms.spec_index(c_ptr).view_ghost().uppertree_seq
-        &&& forall|c_ptr: RwLockContainerPtr|
-            #![trigger new_container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().contains(c_ptr)]
-            new_container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().contains(c_ptr)
-                ==> new_container_perms.spec_index(c_ptr).view_ghost().subtree_set.view() == old_container_perms.spec_index(c_ptr).view_ghost().subtree_set.view().insert(child_ptr)
-        &&& forall|c_ptr: RwLockContainerPtr|
-            #![trigger old_container_perms.dom().contains(c_ptr)]
-            old_container_perms.dom().contains(c_ptr) && !new_container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().contains(c_ptr)
-                ==> new_container_perms.spec_index(c_ptr).view_ghost().subtree_set == old_container_perms.spec_index(c_ptr).view_ghost().subtree_set
-        &&& new_container_perms.spec_index(parent_ptr).view().children.view() == old_container_perms.spec_index(parent_ptr).view().children.view().push(child_ptr)
-        &&& new_container_perms.spec_index(parent_ptr).view().children.map().dom().contains(new_container_perms.spec_index(child_ptr).view().parent_linkedlist_node.addr())
-        &&& new_container_perms.spec_index(parent_ptr).view().children.map().spec_index(new_container_perms.spec_index(child_ptr).view().parent_linkedlist_node.addr()) == child_ptr
-        &&& forall|node_addr: usize|
-            #![trigger old_container_perms.spec_index(parent_ptr).view().children.map().dom().contains(node_addr)]
-            old_container_perms.spec_index(parent_ptr).view().children.map().dom().contains(node_addr) ==> {
-                &&& new_container_perms.spec_index(parent_ptr).view().children.map().dom().contains(node_addr)
-                &&& new_container_perms.spec_index(parent_ptr).view().children.map().spec_index(node_addr) == old_container_perms.spec_index(parent_ptr).view().children.map().spec_index(node_addr)
-            }
     }
 
     pub proof fn container_insert_child_into_ancestor_subtree_sets(tracked container_map: &mut ContainerLockedMap, ancestors: Seq<RwLockContainerPtr>, child_ptr: RwLockContainerPtr, held_locks: Map<RwLockContainerPtr, TypedHeldLock>, thread_id: LockThreadId)

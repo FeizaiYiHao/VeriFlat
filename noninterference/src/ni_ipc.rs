@@ -201,7 +201,14 @@ pub proof fn ipc_endpoint_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
         endpoint_iso(new_u, a, b),
         inflight_iso(new_u, a, b),
         inflight_iso(new_u, b, a),
-{ reveal(ipc_endpoint_finish_step_pre); reveal(ipc_endpoint_finish_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); reveal(kernel_u_container_tree_wf); }
+{
+    assert(forall|e: RwLockEndpointPtr, t: RwLockThreadPtr, i: EndpointIdx| #![trigger new_u.endpoint_map[e].owning_threads.contains((t, i))]
+        new_u.endpoint_map[e].owning_threads.contains((t, i)) ==> old_u.endpoint_map[e].owning_threads.contains((t, i))
+            || t == (if old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0->IpcEndpoint_caller_sends {
+                old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0->IpcEndpoint_peer
+            } else { old_u.cpu_array[cpu_id as int].current_thread->Some_0 })) by { reveal(ipc_endpoint_finish_step_pre); reveal(ipc_endpoint_finish_step); };
+    reveal(ipc_endpoint_finish_step_pre); reveal(ipc_endpoint_finish_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); reveal(kernel_u_container_tree_wf);
+}
 
 /// Entering a pages rendezvous on a cpu of `a` locks only objects of `a`, the queue head of a channel its
 /// running thread holds, which is outside `b`, and that channel, and records the head as its peer.

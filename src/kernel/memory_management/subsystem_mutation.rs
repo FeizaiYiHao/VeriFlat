@@ -439,6 +439,100 @@ pub fn iommu_table_map_unmap_4k_kernel(iommu_table_map: &mut IommuTableLockedMap
     proof { assert(iommu_table_perms_wf(*iommu_table_map)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }; }
 }
 
+/// Unlink the table page that `scan` names from the write-held page table `pagetable_ptr` and return its memory; every mapping stays.
+pub fn pagetable_map_remove_table_page(
+    pagetable_map: &mut PageTableLockedMap, pagetable_ptr: RwLockPageTableRoot, scan: StructureScan, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
+) -> (ret: Tracked<vstd::simple_pptr::PointsTo<PageMap>>)
+    requires
+        pagetable_perms_wf(*old(pagetable_map)),
+        old(pagetable_map).dom().contains(pagetable_ptr),
+        old(pagetable_map).typed_lock_map_aligned(old(lctx).pagetable_lock_map(), old(lctx).thread_id()),
+        typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
+        pagetable_lock_perm.state() is WriteLock,
+        pagetable_lock_perm.thread_id() == old(lctx).thread_id(),
+        pagetable_lock_perm.lock_id() == old(pagetable_map).spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
+        old(lctx).kernel_view_locking_state() is Acquire,
+        old(pagetable_map).spec_index(pagetable_ptr).view().spec_structure_scan_wf(scan),
+        scan.spec_table_page() is Some,
+    ensures
+        pagetable_perms_wf(*final(pagetable_map)),
+        final(pagetable_map).perms_wf(),
+        final(pagetable_map).unchanged_except(old(pagetable_map), pagetable_ptr),
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() is Release,
+        typed_lock_maps_unchanged(old(lctx), final(lctx)),
+        final(pagetable_map).typed_lock_map_aligned(final(lctx).pagetable_lock_map(), final(lctx).thread_id()),
+        final(pagetable_map).lock_id_by_key(pagetable_ptr) == old(pagetable_map).lock_id_by_key(pagetable_ptr),
+        final(pagetable_map).spec_index(pagetable_ptr).locking_thread() == old(pagetable_map).spec_index(pagetable_ptr).locking_thread(),
+        final(pagetable_map).spec_index(pagetable_ptr).being_killed() == old(pagetable_map).spec_index(pagetable_ptr).being_killed(),
+        final(pagetable_map).spec_index(pagetable_ptr).inv(),
+        final(pagetable_map).spec_index(pagetable_ptr).view().kernel_l4_end == old(pagetable_map).spec_index(pagetable_ptr).view().kernel_l4_end,
+        final(pagetable_map).spec_index(pagetable_ptr).view().page_closure() == old(pagetable_map).spec_index(pagetable_ptr).view().page_closure().remove(scan.spec_table_page()->Some_0),
+        final(pagetable_map).spec_index(pagetable_ptr).view().mapping_4k() == old(pagetable_map).spec_index(pagetable_ptr).view().mapping_4k(),
+        final(pagetable_map).spec_index(pagetable_ptr).view().mapping_2m() == old(pagetable_map).spec_index(pagetable_ptr).view().mapping_2m(),
+        final(pagetable_map).spec_index(pagetable_ptr).view().mapping_1g() == old(pagetable_map).spec_index(pagetable_ptr).view().mapping_1g(),
+        final(pagetable_map).spec_index(pagetable_ptr).view().kernel_entries == old(pagetable_map).spec_index(pagetable_ptr).view().kernel_entries,
+        final(pagetable_map).spec_index(pagetable_ptr).view().cr3 == old(pagetable_map).spec_index(pagetable_ptr).view().cr3,
+        final(pagetable_map).spec_index(pagetable_ptr).view().pcid == old(pagetable_map).spec_index(pagetable_ptr).view().pcid,
+        final(pagetable_map).spec_index(pagetable_ptr).view().proc_ptr == old(pagetable_map).spec_index(pagetable_ptr).view().proc_ptr,
+        ret.view().is_init(),
+        ret.view().addr() == scan.spec_table_page()->Some_0,
+{
+    assert(pagetable_map.perms_wf() && pagetable_map.spec_index(pagetable_ptr).inv()) by { pagetable_perms_wf_at(*pagetable_map, pagetable_ptr); };
+    let pagetable = pagetable_map.borrow_mut_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
+    let ret = pagetable.remove_structure_page(scan, Tracked(&mut *lctx));
+    proof { assert(pagetable_perms_wf(*pagetable_map)) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); }; }
+    ret
+}
+
+/// Unlink the table page that `scan` names from the write-held IOMMU table `iommu_table_ptr` and return its memory; every mapping stays.
+pub fn iommu_table_map_remove_table_page(
+    iommu_table_map: &mut IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot, scan: StructureScan, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(iommu_table_lock_perm): Tracked<&LockPerm>,
+) -> (ret: Tracked<vstd::simple_pptr::PointsTo<PageMap>>)
+    requires
+        iommu_table_perms_wf(*old(iommu_table_map)),
+        old(iommu_table_map).dom().contains(iommu_table_ptr),
+        old(iommu_table_map).typed_lock_map_aligned(old(lctx).iommu_table_lock_map(), old(lctx).thread_id()),
+        typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), iommu_table_ptr, TypedLockMode::Write),
+        iommu_table_lock_perm.state() is WriteLock,
+        iommu_table_lock_perm.thread_id() == old(lctx).thread_id(),
+        iommu_table_lock_perm.lock_id() == old(iommu_table_map).spec_index(iommu_table_ptr).locking_thread()->Write_lock_id,
+        old(lctx).kernel_view_locking_state() is Acquire,
+        old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_structure_scan_wf(scan),
+        scan.spec_table_page() is Some,
+    ensures
+        iommu_table_perms_wf(*final(iommu_table_map)),
+        final(iommu_table_map).perms_wf(),
+        final(iommu_table_map).unchanged_except(old(iommu_table_map), iommu_table_ptr),
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() is Release,
+        typed_lock_maps_unchanged(old(lctx), final(lctx)),
+        final(iommu_table_map).typed_lock_map_aligned(final(lctx).iommu_table_lock_map(), final(lctx).thread_id()),
+        final(iommu_table_map).lock_id_by_key(iommu_table_ptr) == old(iommu_table_map).lock_id_by_key(iommu_table_ptr),
+        final(iommu_table_map).spec_index(iommu_table_ptr).locking_thread() == old(iommu_table_map).spec_index(iommu_table_ptr).locking_thread(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).being_killed() == old(iommu_table_map).spec_index(iommu_table_ptr).being_killed(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).inv(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_l4_end == old(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_l4_end,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().page_closure() == old(iommu_table_map).spec_index(iommu_table_ptr).view().page_closure().remove(scan.spec_table_page()->Some_0),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_4k() == old(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_4k(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_2m() == old(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_2m(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_1g() == old(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_1g(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_entries == old(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_entries,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().cr3 == old(iommu_table_map).spec_index(iommu_table_ptr).view().cr3,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().pcid == old(iommu_table_map).spec_index(iommu_table_ptr).view().pcid,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr == old(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr,
+        ret.view().is_init(),
+        ret.view().addr() == scan.spec_table_page()->Some_0,
+{
+    assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).inv()) by { iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
+    let iommu_table = iommu_table_map.borrow_mut_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm));
+    let ret = iommu_table.remove_structure_page(scan, Tracked(&mut *lctx));
+    proof { assert(iommu_table_perms_wf(*iommu_table_map)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }; }
+    ret
+}
+
 pub fn page_array_remove_4k_iommu_mapping_without_free(page_array: &mut PageLockedArray, page_index: PageIndex, iommu_table_ptr: RwLockPageTableRoot, iova: VAddr, Tracked(lctx): Tracked<&LocalContext>, Tracked(page_lock_perm): Tracked<&LockPerm>)
     requires
         page_array_wf(*old(page_array)),
@@ -465,6 +559,8 @@ pub fn page_array_remove_4k_iommu_mapping_without_free(page_array: &mut PageLock
         final(page_array).spec_index(page_index).view().view_rodata() == old(page_array).spec_index(page_index).view().view_rodata(),
         final(page_array).spec_index(page_index).view().view_ghost() == old(page_array).spec_index(page_index).view().view_ghost(),
         final(page_array).spec_index(page_index).view().view().iommu_mappings() == old(page_array).spec_index(page_index).view().view().iommu_mappings().remove((iommu_table_ptr, iova)),
+        final(page_array).spec_index(page_index).view().view().mappings() == old(page_array).spec_index(page_index).view().view().mappings(),
+        final(page_array).spec_index(page_index).view().view().owning_container == old(page_array).spec_index(page_index).view().view().owning_container,
         final(page_array).spec_index(page_index).view().view().ref_count == old(page_array).spec_index(page_index).view().view().ref_count - 1,
         final(page_array).spec_index(page_index).view().view().state == if old(page_array).spec_index(page_index).view().view().ref_count > 1 { PageState::Mapped4k } else { PageState::Unavailable },
         forall|i: PageIndex| #![trigger old(page_array).spec_index(i).view().view().state] #![trigger final(page_array).spec_index(i).view().view().state]

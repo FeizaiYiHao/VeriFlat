@@ -22,7 +22,7 @@ proof fn rebalance_pull_eof_thread_endpoint_ref_counter(pre: KernelK, post: Kern
         thread_endpoint_ref_counter_wf(pre.thr_mp, pre.ep_mp),
         rebalance_pull_transition(pre, post, cpu_id, scheduler_ptr, victim, thread_ptr),
     ensures thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp),
-{ reveal(rebalance_pull_transition); reveal(thread_endpoint_ref_counter_wf); }
+{ reveal(rebalance_pull_transition); thread_endpoint_ref_counter_wf_preserved_for_descriptor_eq(pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); }
 
 proof fn rebalance_pull_eof_process_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, scheduler_ptr: RwLockSchedulerPtr, victim: CpuId, thread_ptr: RwLockThreadPtr)
     requires
@@ -41,6 +41,7 @@ proof fn rebalance_pull_eof_process_management_inv(pre: KernelK, post: KernelK, 
         assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_endpoint_waiting_eq(pre.thr_mp, post.thr_mp, post.ep_mp); };
         assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { container_thread_endpoint_wf_preserved_for_descriptor_owner_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
         assert(thread_caller_callee_wf(post.thr_mp)) by { thread_caller_callee_wf_preserved_for_call_link_eq(pre.thr_mp, post.thr_mp); };
+        assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
     };
 }
 

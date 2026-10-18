@@ -36,6 +36,7 @@ pub fn thread_map_consume_staged_4k(thread_map: &mut ThreadLockedMap, thread_ptr
         final(thread_map).lock_id_by_key(thread_ptr) == old(thread_map).lock_id_by_key(thread_ptr),
         final(thread_map).spec_index(thread_ptr).locking_thread() == old(thread_map).spec_index(thread_ptr).locking_thread(),
         final(thread_map).spec_index(thread_ptr).being_killed() == old(thread_map).spec_index(thread_ptr).being_killed(),
+        final(thread_map).spec_index(thread_ptr).killer_info() == old(thread_map).spec_index(thread_ptr).killer_info(),
 {
     assert(thread_map.perms_wf() && thread_map.spec_index(thread_ptr).is_init()
         && thread_map.spec_index(thread_ptr).inv()) by { thread_perms_wf_at(*thread_map, thread_ptr); };
@@ -72,6 +73,7 @@ pub fn thread_map_add_free_quota_pending_4k(thread_map: &mut ThreadLockedMap, th
         final(thread_map).spec_index(thread_ptr).wlocked_by(lctx),
         final(thread_map).spec_index(thread_ptr).locking_thread() == old(thread_map).spec_index(thread_ptr).locking_thread(),
         final(thread_map).spec_index(thread_ptr).being_killed() == old(thread_map).spec_index(thread_ptr).being_killed(),
+        final(thread_map).spec_index(thread_ptr).killer_info() == old(thread_map).spec_index(thread_ptr).killer_info(),
         final(thread_map).spec_index(thread_ptr).view_rodata() == old(thread_map).spec_index(thread_ptr).view_rodata(),
         final(thread_map).spec_index(thread_ptr).view_ghost() == old(thread_map).spec_index(thread_ptr).view_ghost(),
         final(thread_map).spec_index(thread_ptr).view() == (Thread { direct_free_quota_pending_4k: final(thread_map).spec_index(thread_ptr).view().direct_free_quota_pending_4k,
@@ -115,6 +117,7 @@ pub fn thread_map_clear_free_quota_pending_4k(thread_map: &mut ThreadLockedMap, 
         final(thread_map).spec_index(thread_ptr).wlocked_by(lctx),
         final(thread_map).spec_index(thread_ptr).locking_thread() == old(thread_map).spec_index(thread_ptr).locking_thread(),
         final(thread_map).spec_index(thread_ptr).being_killed() == old(thread_map).spec_index(thread_ptr).being_killed(),
+        final(thread_map).spec_index(thread_ptr).killer_info() == old(thread_map).spec_index(thread_ptr).killer_info(),
         final(thread_map).spec_index(thread_ptr).view_rodata() == old(thread_map).spec_index(thread_ptr).view_rodata(),
         final(thread_map).spec_index(thread_ptr).view_ghost() == old(thread_map).spec_index(thread_ptr).view_ghost(),
         final(thread_map).spec_index(thread_ptr).view() == (Thread { direct_free_quota_pending_4k: final(thread_map).spec_index(thread_ptr).view().direct_free_quota_pending_4k,
@@ -144,7 +147,7 @@ pub fn process_map_add_owned_thread(process_map: &mut ProcessLockedMap, process_
         process_lock_perm.state() is WriteLock,
         process_lock_perm.thread_id() == lctx.thread_id(),
         process_lock_perm.lock_id() == old(process_map).spec_index(process_ptr).locking_thread()->Write_lock_id,
-        !old(process_map).spec_index(process_ptr).view().zombie,
+        old(process_map).spec_index(process_ptr).view().state.view() is Creating || old(process_map).spec_index(process_ptr).view().state.view() is Running,
         node_perm.is_init(),
         node_perm.addr() == node_addr,
         !old(process_map).spec_index(process_ptr).view().owned_threads.view().contains(thread_ptr),
@@ -164,7 +167,7 @@ pub fn process_map_add_owned_thread(process_map: &mut ProcessLockedMap, process_
                 &&& final(process_map).spec_index(ptr).view_rodata() == old(process_map).spec_index(ptr).view_rodata()
             },
         final(process_map).typed_lock_map_aligned(lctx.process_lock_map(), lctx.thread_id()),
-        final(process_map).spec_index(process_ptr).view() == (Process { owned_threads: final(process_map).spec_index(process_ptr).view().owned_threads, ..old(process_map).spec_index(process_ptr).view() }),
+        final(process_map).spec_index(process_ptr).view() == (Process { owned_threads: final(process_map).spec_index(process_ptr).view().owned_threads, state: Ghost(ProcessState::Running), ..old(process_map).spec_index(process_ptr).view() }),
         final(process_map).spec_index(process_ptr).view().owned_threads.view() == old(process_map).spec_index(process_ptr).view().owned_threads.view().push(thread_ptr),
         final(process_map).spec_index(process_ptr).view().owned_threads.dom() == old(process_map).spec_index(process_ptr).view().owned_threads.dom().insert(node_addr),
         final(process_map).spec_index(process_ptr).view().owned_threads.map() == old(process_map).spec_index(process_ptr).view().owned_threads.map().insert(node_addr, thread_ptr),
@@ -236,6 +239,52 @@ pub fn scheduler_map_enqueue_scheduled_thread(
                 == scheduler_shards_of(old(scheduler_map).spec_index(scheduler_ptr)).update(cpu_id as int, scheduler_shards_of(old(scheduler_map).spec_index(scheduler_ptr))[cpu_id as int].push(thread_ptr)));
         };
     }
+}
+
+/// Removes the thread at `node_addr` from anywhere in shard `cpu_id` of `scheduler_ptr` and returns its node.
+pub fn scheduler_map_remove_scheduled_thread(scheduler_map: &mut SchedulerUnLockedMap, scheduler_ptr: RwLockSchedulerPtr, cpu_id: CpuId, node_addr: usize, Tracked(lctx): Tracked<&LocalContext>, Tracked(shard_lock_perm): Tracked<&LockPerm>)
+    -> (ret: Tracked<PointsTo<Node<RwLockThreadPtr>>>)
+    requires
+        scheduler_perms_wf(*old(scheduler_map)),
+        old(scheduler_map).dom().contains(scheduler_ptr),
+        index_valid(NUM_CPUS, cpu_id),
+        old(scheduler_map).typed_shard_lock_map_aligned(lctx.scheduler_lock_map(), lctx.thread_id()),
+        typed_lock_map_contains_mode(lctx.scheduler_lock_map(), (scheduler_ptr, cpu_id), TypedLockMode::Write),
+        shard_lock_perm.state() is WriteLock,
+        shard_lock_perm.thread_id() == lctx.thread_id(),
+        shard_lock_perm.lock_id() == old(scheduler_map).spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
+        old(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.dom().contains(node_addr),
+    ensures
+        scheduler_perms_wf(*final(scheduler_map)),
+        final(scheduler_map).unchanged_except(old(scheduler_map), scheduler_ptr),
+        final(scheduler_map).typed_shard_lock_map_aligned(lctx.scheduler_lock_map(), lctx.thread_id()),
+        final(scheduler_map).spec_index(scheduler_ptr).owning_container == old(scheduler_map).spec_index(scheduler_ptr).owning_container,
+        final(scheduler_map).spec_index(scheduler_ptr).shards.entries_unchanged_except(&old(scheduler_map).spec_index(scheduler_ptr).shards, cpu_id),
+        final(scheduler_map).spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().locking_thread() == old(scheduler_map).spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().locking_thread(),
+        final(scheduler_map).spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().being_killed() == old(scheduler_map).spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().being_killed(),
+        final(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.view() == old(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.view().remove_value(old(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.map().spec_index(node_addr)),
+        final(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.map() == old(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.map().remove(node_addr),
+        final(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.dom() == old(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.dom().remove(node_addr),
+        final(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.length == old(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.length - 1,
+        ret.view().is_init(),
+        ret.view().addr() == node_addr,
+        ret.view().value().view() == old(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.map().spec_index(node_addr),
+        scheduler_shards_of(final(scheduler_map).spec_index(scheduler_ptr)) == scheduler_shards_of(old(scheduler_map).spec_index(scheduler_ptr)).update(cpu_id as int,
+            scheduler_shards_of(old(scheduler_map).spec_index(scheduler_ptr))[cpu_id as int].remove_value(old(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.map().spec_index(node_addr))),
+{
+    proof { scheduler_perms_wf_at(*scheduler_map, scheduler_ptr); }
+    let shard = scheduler_map.borrow_mut_shard_typed(scheduler_ptr, cpu_id, Ghost(lctx.scheduler_lock_map()), Tracked(lctx), Tracked(shard_lock_perm));
+    let (_, node_perm) = shard.queue.remove(node_addr);
+    proof {
+        let thread_ptr = old(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.map().spec_index(node_addr);
+        assert(scheduler_perms_wf(*scheduler_map)) by { reveal(scheduler_perms_wf); };
+        assert(scheduler_shards_of(scheduler_map.spec_index(scheduler_ptr)) == scheduler_shards_of(old(scheduler_map).spec_index(scheduler_ptr)).update(cpu_id as int, scheduler_shards_of(old(scheduler_map).spec_index(scheduler_ptr))[cpu_id as int].remove_value(thread_ptr))) by {
+            reveal(scheduler_shards_of);
+            assert_seqs_equal!(scheduler_shards_of(scheduler_map.spec_index(scheduler_ptr))
+                == scheduler_shards_of(old(scheduler_map).spec_index(scheduler_ptr)).update(cpu_id as int, scheduler_shards_of(old(scheduler_map).spec_index(scheduler_ptr))[cpu_id as int].remove_value(thread_ptr)));
+        };
+    }
+    node_perm
 }
 
 /// Moves the head of shard `from` of `scheduler_ptr` to the tail of shard `to` and returns the head's node address.
@@ -325,6 +374,39 @@ pub proof fn container_map_add_owned_process(tracked container_map: &mut Contain
     assert(old(container_map).typed_lock_map_aligned(held_locks, thread_id) ==> container_map.typed_lock_map_aligned(held_locks, thread_id)) by { reveal(LockedMap::typed_lock_map_aligned); };
 }
 
+/// Removes `process_ptr` from the ghost process set of `container_ptr`; nothing else changes.
+pub proof fn container_map_remove_owned_process(tracked container_map: &mut ContainerLockedMap, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, held_locks: Map<RwLockContainerPtr, TypedHeldLock>, thread_id: LockThreadId)
+    requires
+        container_perms_wf(*old(container_map)),
+        old(container_map).dom().contains(container_ptr),
+    ensures
+        container_perms_wf(*final(container_map)),
+        final(container_map).perms_wf(),
+        final(container_map).unchanged_except(old(container_map), container_ptr),
+        final(container_map).dom() == old(container_map).dom(),
+        old(container_map).typed_lock_map_aligned(held_locks, thread_id) ==> final(container_map).typed_lock_map_aligned(held_locks, thread_id),
+        final(container_map).spec_index(container_ptr).view() == old(container_map).spec_index(container_ptr).view(),
+        final(container_map).spec_index(container_ptr).view_ghost() == (ContainerGhost { owned_processes: final(container_map).spec_index(container_ptr).view_ghost().owned_processes,
+            ..old(container_map).spec_index(container_ptr).view_ghost() }),
+        final(container_map).spec_index(container_ptr).view_ghost().owned_processes.view() == old(container_map).spec_index(container_ptr).view_ghost().owned_processes.view().remove(process_ptr),
+        final(container_map).spec_index(container_ptr).view_rodata() == old(container_map).spec_index(container_ptr).view_rodata(),
+        final(container_map).spec_index(container_ptr).locking_thread() == old(container_map).spec_index(container_ptr).locking_thread(),
+        final(container_map).spec_index(container_ptr).being_killed() == old(container_map).spec_index(container_ptr).being_killed(),
+        final(container_map).spec_index(container_ptr).inv(),
+        forall|ptr: RwLockContainerPtr|
+            #![trigger final(container_map).view().spec_index(ptr).is_init()]
+            old(container_map).dom().contains(ptr) ==> {
+                &&& final(container_map).view().spec_index(ptr).is_init() == old(container_map).view().spec_index(ptr).is_init()
+                &&& final(container_map).view().spec_index(ptr).addr() == old(container_map).view().spec_index(ptr).addr()
+            },
+{
+    assert(container_map.perms_wf() && container_map.spec_index(container_ptr).inv()) by { container_perms_wf_at(*container_map, container_ptr); };
+    let ghost pre_ghost = container_map.spec_index(container_ptr).view_ghost();
+    container_map.update_ghost(container_ptr, ContainerGhost { owned_processes: Ghost(pre_ghost.owned_processes.view().remove(process_ptr)), ..pre_ghost });
+    assert(container_perms_wf(*container_map)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
+    assert(old(container_map).typed_lock_map_aligned(held_locks, thread_id) ==> container_map.typed_lock_map_aligned(held_locks, thread_id)) by { reveal(LockedMap::typed_lock_map_aligned); };
+}
+
 /// Moves `bdf` from `sender`'s to `receiver`'s ghost PCI set; the held root-table lock serializes both sets.
 pub proof fn process_map_move_pci_function(
     tracked process_map: &mut ProcessLockedMap, sender: RwLockProcessPtr, receiver: RwLockProcessPtr, bdf: PciBdf,
@@ -349,6 +431,7 @@ pub proof fn process_map_move_pci_function(
             &&& after.view_rodata() == before.view_rodata()
             &&& after.locking_thread() == before.locking_thread()
             &&& after.being_killed() == before.being_killed()
+            &&& after.killer_info() == before.killer_info()
             &&& after.view_ghost().uppertree_seq == before.view_ghost().uppertree_seq
             &&& after.view_ghost().subtree_set == before.view_ghost().subtree_set
             &&& after.view_ghost().owned_pci_functions.view() == if key == sender { pci.remove(bdf) } else if key == receiver { pci.insert(bdf) } else { pci }
@@ -491,6 +574,7 @@ pub fn process_map_link_new_child(
                 &&& final(process_map).spec_index(ptr).locking_thread() == old(process_map).spec_index(ptr).locking_thread()
                 &&& final(process_map).spec_index(ptr).being_killed() == old(process_map).spec_index(ptr).being_killed()
                 &&& ptr != parent_ptr && ptr != child_ptr ==> final(process_map).spec_index(ptr).view() == old(process_map).spec_index(ptr).view()
+                &&& ptr != parent_ptr && ptr != child_ptr ==> final(process_map).spec_index(ptr).killer_info() == old(process_map).spec_index(ptr).killer_info()
             },
         forall|ptr: RwLockProcessPtr|
             #![trigger final(process_map).spec_index(ptr).view_ghost().subtree_set]
@@ -522,6 +606,82 @@ pub fn process_map_link_new_child(
         assert(process_map.typed_lock_map_aligned(lctx.process_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
         process_insert_child_into_ancestor_subtree_sets(process_map, ancestors, child_ptr, lctx.process_lock_map(), lctx.thread_id());
     }
+}
+
+/// Unlinks the retired leaf `child_ptr` from its write-held parent's child list and every ancestor's subtree set.
+pub fn process_map_unlink_child(
+    process_map: &mut ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr,
+    Ghost(ancestors): Ghost<Seq<RwLockProcessPtr>>, Tracked(lctx): Tracked<&LocalContext>,
+    Tracked(parent_lock_perm): Tracked<&LockPerm>, Tracked(child_lock_perm): Tracked<&LockPerm>,
+) -> (ret: Tracked<PointsTo<Node<RwLockProcessPtr>>>)
+    requires
+        process_perms_wf(*old(process_map)),
+        old(process_map).dom().contains(parent_ptr),
+        old(process_map).dom().contains(child_ptr),
+        parent_ptr != child_ptr,
+        old(process_map).typed_lock_map_aligned(lctx.process_lock_map(), lctx.thread_id()),
+        typed_lock_map_contains_mode(lctx.process_lock_map(), parent_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.process_lock_map(), child_ptr, TypedLockMode::Write),
+        parent_lock_perm.state() is WriteLock,
+        parent_lock_perm.thread_id() == lctx.thread_id(),
+        parent_lock_perm.lock_id() == old(process_map).spec_index(parent_ptr).locking_thread()->Write_lock_id,
+        child_lock_perm.state() is WriteLock,
+        child_lock_perm.thread_id() == lctx.thread_id(),
+        child_lock_perm.lock_id() == old(process_map).spec_index(child_ptr).locking_thread()->Write_lock_id,
+        old(process_map).spec_index(parent_ptr).view().children.map().dom().contains(old(process_map).spec_index(child_ptr).view().parent_linkedlist_node.addr()),
+        old(process_map).spec_index(parent_ptr).view().children.map().spec_index(old(process_map).spec_index(child_ptr).view().parent_linkedlist_node.addr()) == child_ptr,
+        ancestors == old(process_map).spec_index(child_ptr).view_ghost().uppertree_seq.view(),
+        ancestors.to_set().subset_of(old(process_map).dom()),
+        ancestors.no_duplicates(),
+    ensures
+        process_perms_wf(*final(process_map)),
+        final(process_map).perms_wf(),
+        final(process_map).spec_index(parent_ptr).inv(),
+        final(process_map).dom() == old(process_map).dom(),
+        final(process_map).typed_lock_map_aligned(lctx.process_lock_map(), lctx.thread_id()),
+        final(process_map).spec_index(parent_ptr).view() == (Process { children: final(process_map).spec_index(parent_ptr).view().children, ..old(process_map).spec_index(parent_ptr).view() }),
+        final(process_map).spec_index(parent_ptr).view().children.view() == old(process_map).spec_index(parent_ptr).view().children.view().remove_value(child_ptr),
+        final(process_map).spec_index(parent_ptr).view().children.dom() == old(process_map).spec_index(parent_ptr).view().children.dom().remove(old(process_map).spec_index(child_ptr).view().parent_linkedlist_node.addr()),
+        final(process_map).spec_index(parent_ptr).view().children.map() == old(process_map).spec_index(parent_ptr).view().children.map().remove(old(process_map).spec_index(child_ptr).view().parent_linkedlist_node.addr()),
+        forall|ptr: RwLockProcessPtr|
+            #![trigger final(process_map).spec_index(ptr)]
+            old(process_map).dom().contains(ptr) ==> {
+                &&& final(process_map).spec_index(ptr).is_init() == old(process_map).spec_index(ptr).is_init()
+                &&& final(process_map).spec_index(ptr).view_rodata() == old(process_map).spec_index(ptr).view_rodata()
+                &&& final(process_map).spec_index(ptr).view_ghost().uppertree_seq == old(process_map).spec_index(ptr).view_ghost().uppertree_seq
+                &&& final(process_map).spec_index(ptr).view_ghost().owned_pci_functions == old(process_map).spec_index(ptr).view_ghost().owned_pci_functions
+                &&& final(process_map).spec_index(ptr).locking_thread() == old(process_map).spec_index(ptr).locking_thread()
+                &&& final(process_map).spec_index(ptr).being_killed() == old(process_map).spec_index(ptr).being_killed()
+                &&& final(process_map).spec_index(ptr).killer_info() == old(process_map).spec_index(ptr).killer_info()
+                &&& ptr != parent_ptr ==> final(process_map).spec_index(ptr).view() == old(process_map).spec_index(ptr).view()
+            },
+        forall|ptr: RwLockProcessPtr|
+            #![trigger final(process_map).spec_index(ptr).view_ghost().subtree_set]
+            old(process_map).dom().contains(ptr) ==> {
+                &&& ancestors.to_set().contains(ptr) ==> final(process_map).spec_index(ptr).view_ghost().subtree_set.view() == old(process_map).spec_index(ptr).view_ghost().subtree_set.view().remove(child_ptr)
+                &&& !ancestors.to_set().contains(ptr) ==> final(process_map).spec_index(ptr).view_ghost().subtree_set == old(process_map).spec_index(ptr).view_ghost().subtree_set
+            },
+        forall|ptr: RwLockProcessPtr|
+            #![trigger final(process_map).view().spec_index(ptr).is_init()]
+            old(process_map).dom().contains(ptr) ==> {
+                &&& final(process_map).view().spec_index(ptr).is_init() == old(process_map).view().spec_index(ptr).is_init()
+                &&& final(process_map).view().spec_index(ptr).addr() == old(process_map).view().spec_index(ptr).addr()
+            },
+        ret.view().is_init(),
+        ret.view().addr() == old(process_map).spec_index(child_ptr).view().parent_linkedlist_node.addr(),
+        ret.view().value().view() == child_ptr,
+{
+    assert(process_map.perms_wf() && process_map.spec_index(child_ptr).is_init()) by { process_perms_wf_at(*process_map, child_ptr); };
+    let node_addr = process_map.borrow_typed(child_ptr, Ghost(lctx.process_lock_map()), Tracked(lctx), Tracked(child_lock_perm)).parent_linkedlist_node.addr();
+    assert(process_map.spec_index(parent_ptr).is_init() && process_map.spec_index(parent_ptr).inv() && process_map.spec_index(parent_ptr).view().children.dom().contains(node_addr)) by { process_perms_wf_at(*process_map, parent_ptr); reveal(LinkedList::wf_map); };
+    let parent = process_map.borrow_mut_typed(parent_ptr, Ghost(lctx.process_lock_map()), Tracked(lctx), Tracked(parent_lock_perm));
+    let node_perm = parent.remove_child(node_addr);
+    proof {
+        assert(process_map.spec_index(parent_ptr).view().children.view().no_duplicates()) by { reveal(LinkedList::wf_value_list); reveal(LinkedList::value_list_unique); };
+        assert(process_perms_wf(*process_map)) by { reveal(process_perms_wf); lemma_seq_remove_value_membership::<RwLockProcessPtr>(); };
+        process_remove_child_from_ancestor_subtree_sets(process_map, ancestors, child_ptr, lctx.process_lock_map(), lctx.thread_id());
+    }
+    node_perm
 }
 
 pub proof fn add_thread_to_container_sets(
@@ -660,7 +820,7 @@ pub open spec fn process_subsystem_create_scheduled_thread_transition_framing(
 ) -> bool {
     &&& post_process.dom() == pre_process.dom()
     &&& post_process.unchanged_except(&pre_process, process_ptr)
-    &&& post_process.spec_index(process_ptr).view() == (Process { owned_threads: post_process.spec_index(process_ptr).view().owned_threads, ..pre_process.spec_index(process_ptr).view() })
+    &&& post_process.spec_index(process_ptr).view() == (Process { owned_threads: post_process.spec_index(process_ptr).view().owned_threads, state: Ghost(ProcessState::Running), ..pre_process.spec_index(process_ptr).view() })
     &&& post_process.spec_index(process_ptr).view().owned_threads.view() == pre_process.spec_index(process_ptr).view().owned_threads.view().push(page_ptr)
     &&& post_process.spec_index(process_ptr).view().owned_threads.dom() == pre_process.spec_index(process_ptr).view().owned_threads.dom().insert(process_node_addr)
     &&& post_process.spec_index(process_ptr).view().owned_threads.map() == pre_process.spec_index(process_ptr).view().owned_threads.map().insert(process_node_addr, page_ptr)
@@ -683,6 +843,7 @@ pub open spec fn process_subsystem_create_scheduled_thread_transition_framing(
     &&& post_thread.spec_index(staging_thread_ptr).view().quota_4k == pre_thread.spec_index(staging_thread_ptr).view().quota_4k - 1
     &&& post_thread.spec_index(staging_thread_ptr).locking_thread() == pre_thread.spec_index(staging_thread_ptr).locking_thread()
     &&& post_thread.spec_index(staging_thread_ptr).being_killed() == pre_thread.spec_index(staging_thread_ptr).being_killed()
+    &&& post_thread.spec_index(staging_thread_ptr).killer_info() == pre_thread.spec_index(staging_thread_ptr).killer_info()
     &&& forall|ptr: RwLockThreadPtr|
         #![trigger post_thread.spec_index(ptr)]
         pre_thread.dom().contains(ptr) && ptr != staging_thread_ptr ==> post_thread.spec_index(ptr) == pre_thread.spec_index(ptr)
@@ -726,13 +887,13 @@ proof fn process_subsystem_create_scheduled_thread_eof_process_thread_wf(
         thread_value.container_depth == pre_process.spec_index(process_ptr).view_rodata().view().container_depth,
         thread_value.proc_pagetable_ptr == pre_process.spec_index(process_ptr).view().pagetable,
         thread_value.proc_linkedlist_node.addr() == process_node_addr,
+        !thread_value.proc_linkedlist_node.is_init(),
     ensures
         process_thread_wf(post_process, post_thread),
 {
     reveal(process_subsystem_create_scheduled_thread_transition_framing);
     reveal(process_thread_wf);
     seq_push_lemma::<RwLockThreadPtr>();
-    assert(process_empty_lists_wlocked(post_process)) by { reveal(process_perms_wf); reveal(process_empty_lists_wlocked); };
 }
 
 proof fn process_subsystem_create_scheduled_thread_eof_scheduler_wf(
@@ -796,7 +957,7 @@ pub fn process_subsystem_create_scheduled_thread(
         old(process_map).spec_index(process_ptr).view_rodata().view().owning_container == container_ptr,
         old(scheduler_map).spec_index(scheduler_ptr).owning_container == container_ptr,
         index_valid(NUM_CPUS, cpu_id),
-        !old(process_map).spec_index(process_ptr).view().zombie,
+        old(process_map).spec_index(process_ptr).view().state.view() is Creating || old(process_map).spec_index(process_ptr).view().state.view() is Running,
         !old(process_map).spec_index(process_ptr).view().owned_threads.view().contains(page_ptr),
         old(process_map).spec_index(process_ptr).view().owned_threads.view().len() < usize::MAX,
         !old(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.view().contains(page_ptr),
@@ -867,6 +1028,7 @@ pub fn process_subsystem_create_scheduled_thread(
         final(thread_map).spec_index(staging_thread_ptr).view() == (Thread { quota_4k: final(thread_map).spec_index(staging_thread_ptr).view().quota_4k,
             temp_alloc_cache_4k: final(thread_map).spec_index(staging_thread_ptr).view().temp_alloc_cache_4k, ..old(thread_map).spec_index(staging_thread_ptr).view() }),
         final(thread_map).spec_index(staging_thread_ptr).being_killed() == old(thread_map).spec_index(staging_thread_ptr).being_killed(),
+        final(thread_map).spec_index(staging_thread_ptr).killer_info() == old(thread_map).spec_index(staging_thread_ptr).killer_info(),
         final(thread_map).spec_index(staging_thread_ptr).locking_thread() == old(thread_map).spec_index(staging_thread_ptr).locking_thread(),
         final(thread_map).lock_id_by_key(staging_thread_ptr) == old(thread_map).lock_id_by_key(staging_thread_ptr),
         final(process_map).spec_index(process_ptr).view().owned_threads.view() == old(process_map).spec_index(process_ptr).view().owned_threads.view().push(page_ptr),
@@ -874,7 +1036,7 @@ pub fn process_subsystem_create_scheduled_thread(
         final(process_map).spec_index(process_ptr).view().owned_threads.map() == old(process_map).spec_index(process_ptr).view().owned_threads.map().insert(ret.2, page_ptr),
         !old(process_map).spec_index(process_ptr).view().owned_threads.dom().contains(ret.2),
         !old(process_map).spec_index(process_ptr).view().owned_threads.map().dom().contains(ret.2),
-        final(process_map).spec_index(process_ptr).view() == (Process { owned_threads: final(process_map).spec_index(process_ptr).view().owned_threads, ..old(process_map).spec_index(process_ptr).view() }),
+        final(process_map).spec_index(process_ptr).view() == (Process { owned_threads: final(process_map).spec_index(process_ptr).view().owned_threads, state: Ghost(ProcessState::Running), ..old(process_map).spec_index(process_ptr).view() }),
         final(process_map).spec_index(process_ptr).view_rodata() == old(process_map).spec_index(process_ptr).view_rodata(),
         final(process_map).spec_index(process_ptr).being_killed() == old(process_map).spec_index(process_ptr).being_killed(),
         final(process_map).spec_index(process_ptr).locking_thread() == old(process_map).spec_index(process_ptr).locking_thread(),
@@ -940,6 +1102,7 @@ pub fn process_subsystem_create_scheduled_thread(
     proof {
         assert(process_subsystem_create_scheduled_thread_transition_framing(*old(process_map), *process_map, *old(thread_map), *thread_map, *old(scheduler_map), *scheduler_map,
             old(lctx), &*lctx, page_ptr, process_ptr, staging_thread_ptr, scheduler_ptr, cpu_id, stored_thread, process_node_addr, sched_node_addr)) by { reveal(process_subsystem_create_scheduled_thread_transition_framing); };
+        assert(!old(process_map).spec_index(process_ptr).view().zombie) by { process_perms_wf_at(*old(process_map), process_ptr); };
         process_subsystem_create_scheduled_thread_eof_process_thread_wf(*old(process_map), *process_map, *old(thread_map), *thread_map, *old(scheduler_map),
             *scheduler_map, old(lctx), &*lctx, page_ptr, process_ptr, staging_thread_ptr, scheduler_ptr, cpu_id, stored_thread, process_node_addr, sched_node_addr);
         process_subsystem_create_scheduled_thread_eof_scheduler_wf(*container_map, *old(process_map), *process_map, *old(thread_map), *thread_map,
@@ -975,6 +1138,7 @@ pub fn thread_map_consume_new_container_staging(
         final(threads).typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
         final(threads).spec_index(current_thread_ptr).locking_thread() == old(threads).spec_index(current_thread_ptr).locking_thread(),
         final(threads).spec_index(current_thread_ptr).being_killed() == old(threads).spec_index(current_thread_ptr).being_killed(),
+        final(threads).spec_index(current_thread_ptr).killer_info() == old(threads).spec_index(current_thread_ptr).killer_info(),
         thread_quota_4k_fields_unchanged(*old(threads), *final(threads)),
         thread_quota_2m_fields_unchanged(*old(threads), *final(threads)),
         thread_quota_1g_fields_unchanged(*old(threads), *final(threads)),
@@ -1306,6 +1470,7 @@ pub fn thread_map_set_endpoint_descriptor(
         thread_lock_perm.lock_id() == old(thread_map).spec_index(thread_ptr).locking_thread()->Write_lock_id,
         edp_idx_valid(endpoint_index),
         !old(thread_map).spec_index(thread_ptr).view().state.is_endpoint_waiting(),
+        !(old(thread_map).spec_index(thread_ptr).view().state is DANGLING),
     ensures
         thread_perms_wf(*final(thread_map)),
         final(thread_map).perms_wf(),
@@ -1319,6 +1484,7 @@ pub fn thread_map_set_endpoint_descriptor(
         final(thread_map).lock_id_by_key(thread_ptr) == old(thread_map).lock_id_by_key(thread_ptr),
         final(thread_map).spec_index(thread_ptr).locking_thread() == old(thread_map).spec_index(thread_ptr).locking_thread(),
         final(thread_map).spec_index(thread_ptr).being_killed() == old(thread_map).spec_index(thread_ptr).being_killed(),
+        final(thread_map).spec_index(thread_ptr).killer_info() == old(thread_map).spec_index(thread_ptr).killer_info(),
 {
     assert(thread_map.perms_wf() && thread_map.spec_index(thread_ptr).is_init() && thread_map.spec_index(thread_ptr).inv()) by { thread_perms_wf_at(*thread_map, thread_ptr); };
     let thread = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(thread_lock_perm));

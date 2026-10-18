@@ -22,20 +22,21 @@ impl KernelK {
                     &&& old(lctx).holds_no_allocator_locks(PageSize::SZ2m)
                     &&& old(lctx).holds_no_allocator_locks(PageSize::SZ1g)
                 }
-                &&& major < MAPPED_PAGE_LOCK_MAJOR ==> {
+                &&& major < PAGETABLE_PAGE_MAJOR ==> {
                     &&& old(lctx).endpoint_lock_map().dom().is_empty()
                     &&& old(lctx).pagetable_lock_map().dom().is_empty()
                     &&& old(lctx).iommu_table_lock_map().dom().is_empty()
                     &&& old(lctx).iommu_root_table_lock_map().dom().is_empty()
                     &&& forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread) ==> {
                         let state = old(self).thr_mp.spec_index(held_thread).view().state;
-                        !(state.is_endpoint_waiting() || state is WAITING_REPLY || state is IPC_ENDPOINT_TRANSIT)
+                        !(state.is_endpoint_waiting() || state.is_reply_waiting() || state is IPC_ENDPOINT_TRANSIT)
                     }
                 }
             },
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
             !old(lctx).page_lock_map().dom().contains(page_index),
+            final(lctx).page_lock_map().dom().contains(page_index),
             // ---- Kernel-wide invariant re-established ----
             final(self).inv(),
             kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), final(self)),
@@ -80,7 +81,6 @@ impl KernelK {
         requires
             old(self).inv(),
             index_valid(NUM_PAGES, page_index),
-            old(self).pg_arr.spec_index(page_index).view().being_killed() == false,
             typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_index, TypedLockMode::Write),
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),

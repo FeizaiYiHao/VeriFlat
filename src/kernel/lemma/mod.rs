@@ -6,6 +6,7 @@ pub mod hugepage_page_state_eq;
 pub mod pages_wf_page_state_eq;
 pub mod staged_pages_wf_eq;
 pub mod container_page_owner_wf_eq;
+pub mod process_kernel_pages_owner_eq;
 pub mod page_pagetable_wf_eq;
 pub mod page_iommu_table_wf_eq;
 pub mod tlb_wf_eq;
@@ -35,6 +36,7 @@ pub use hugepage_page_state_eq::*;
 pub use pages_wf_page_state_eq::*;
 pub use staged_pages_wf_eq::*;
 pub use container_page_owner_wf_eq::*;
+pub use process_kernel_pages_owner_eq::*;
 pub use page_pagetable_wf_eq::*;
 pub use page_iommu_table_wf_eq::*;
 

@@ -10,7 +10,6 @@ impl KernelK {
             pcid_valid(pcid),
             index_valid(NUM_CPUS, old(lctx).cpu_id()),
             old(lctx).kernel_view_locking_state() is Acquire,
-            !typed_lock_map_contains_mode(old(lctx).pcid_needflush_lock_map(), (cpu_id, pcid), TypedLockMode::Write),
             old(lctx).pcid_needflush_lock_map().dom().is_empty(),
             forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
             typed_lock_maps_aligned(old(self), old(lctx)),
@@ -39,6 +38,7 @@ impl KernelK {
         assert({
             &&& self.pcid_needflush.spec_index(cpu_id, pcid).inv()
             &&& self.pcid_needflush.spec_index(cpu_id, pcid).view().index() == (cpu_id, pcid)
+            &&& !self.pcid_needflush.spec_index(cpu_id, pcid).locked_by_thread(lctx.thread_id())
             &&& wlock_requires(self.pcid_needflush.spec_index(cpu_id, pcid), &*lctx)
         }) by { reveal(pcid_needflush_wf); reveal(LockedArray2D::typed_lock_map_aligned); };
         assert(old(lctx).lock_id_acyclic(old(self).pcid_needflush.lock_id_by_index(cpu_id, pcid))) by {

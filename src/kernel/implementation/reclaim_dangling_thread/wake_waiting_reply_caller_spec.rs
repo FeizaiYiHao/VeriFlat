@@ -2,13 +2,12 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// Schedules the caller the exiting thread serves on shard `cpu_id` of the caller's scheduler with `ErrorIpcCalleeExited`
-/// and drops the exiting thread's caller link.
+/// Schedules the caller `thread_ptr` serves on shard `cpu_id` of the caller's scheduler with `ErrorIpcCalleeExited` and
+/// drops the callee's caller link. Shared by exit and kill.
 #[verifier::opaque]
-pub open spec fn thread_exit_wake_caller_transition(
+pub open spec fn wake_waiting_reply_caller_transition(
     pre: KernelK, post: KernelK, thread_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_id: CpuId,
 ) -> bool {
-    &&& pre.inv()
     &&& thread_ptr != caller_ptr
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& pre.thr_mp.dom().contains(thread_ptr)
@@ -36,6 +35,7 @@ pub open spec fn thread_exit_wake_caller_transition(
         &&& after.view_rodata() == before.view_rodata()
         &&& after.view_ghost() == before.view_ghost()
         &&& after.being_killed() == before.being_killed()
+        &&& after.killer_info() == before.killer_info()
         &&& after.locking_thread() == before.locking_thread()
         &&& after.view() == (Thread { caller: None, ..before.view() })
     }
@@ -46,6 +46,7 @@ pub open spec fn thread_exit_wake_caller_transition(
         &&& after.view_rodata() == before.view_rodata()
         &&& after.view_ghost() == before.view_ghost()
         &&& after.being_killed() == before.being_killed()
+        &&& after.killer_info() == before.killer_info()
         &&& after.locking_thread() == before.locking_thread()
         &&& after.view() == (Thread {
             state: ThreadState::SCHEDULED { cpu_id }, callee: None, error_code: Some(RetValueType::ErrorIpcCalleeExited),

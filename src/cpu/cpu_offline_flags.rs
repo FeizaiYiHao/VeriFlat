@@ -70,10 +70,6 @@ impl LockMajorTrait for OfflineFlag {
     open spec fn lock_major_default_predicate(&self) -> bool { false }
 }
 
-impl LockUserVisibilityTrait for OfflineFlag {
-    open spec fn is_user_visible() -> bool { false }
-}
-
 impl CpuOfflineFlags {
     pub open spec fn inv(&self) -> bool {
         &&& self.flags.inv()

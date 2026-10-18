@@ -9,7 +9,7 @@ verus! {
             requires
                 index_valid(NUM_CPUS, cpu_id),
                 old(krnl).inv(),
-                old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
+                cpu_id == old(lctx).cpu_id(),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).no_locks_held(),
                 old(krnl).all_objects_unlocked(old(lctx)),
@@ -41,6 +41,15 @@ verus! {
             proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
             proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
 
+            let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);
+            if cpu_lock_res.is_none() {
+                proof {
+                    alloc_quota_4k_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::CpuIdle);
+                    alloc_quota_4k_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::CpuIdle);
+                }
+                return RetValueType::CpuIdle;
+            }
+            let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
             assert(
                 {   &&& krnl.ctn_mp.dom().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container)
                     &&& krnl.ctn_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container).view_ghost().owned_processes.view()
@@ -50,9 +59,13 @@ verus! {
                     &&& krnl.prc_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap()).view_rodata().view().owning_container
                         == krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container
                 }
-            ) by { reveal(cpu_array_wf); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); reveal(process_cpu_wf); reveal(container_process_wf); };
+            ) by {
+                cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id);
+                container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id);
+                process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
+                container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap());
+            };
 
-            let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(lctx));
             let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
             let process_ptr = cpu.current_process().unwrap();
             let container_ptr = cpu.owning_container();
@@ -60,13 +73,9 @@ verus! {
             if container_res.is_none() {
                 krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
                 proof {
-                    assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-                    assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-                    steps.end_kernel_step_unchanged(&*krnl, &*lctx);
+                    steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), None, None, None, None, None);
                     alloc_quota_4k_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorContainerKilled);
-                    assert(alloc_quota_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is ErrorContainerKilled) by {
-                        kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_container_projection_at(&*old(krnl), container_ptr);
-                    };
+                    alloc_quota_4k_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::ErrorContainerKilled);
                 }
                 return RetValueType::ErrorContainerKilled;
             }
@@ -76,38 +85,31 @@ verus! {
                 krnl.wunlock_container(container_ptr, Tracked(lctx), Tracked(container_lock_perm));
                 krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
                 proof {
-                    assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-                    assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-                    steps.end_kernel_step_unchanged(&*krnl, &*lctx);
+                    steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), None, None, None, None, None);
                     alloc_quota_4k_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorContainerZombie);
-                    assert(alloc_quota_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is ErrorContainerZombie) by {
-                        kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_container_projection_at(&*old(krnl), container_ptr);
-                    };
+                    alloc_quota_4k_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::ErrorContainerZombie);
                 }
                 return RetValueType::ErrorContainerZombie;
             }
             let container_ro = krnl.ctn_mp.borrow_rodata(container_ptr);
             let alloc_ptr_4k = container_ro.borrow().allocator_ptr_4k;
-            assert(krnl.allc_4k_mp.dom().contains(alloc_ptr_4k) && krnl.allc_4k_mp.spec_index(alloc_ptr_4k).wf()) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); allocator_perms_wf_at(krnl.allc_4k_mp, alloc_ptr_4k); };
+            assert(krnl.allc_4k_mp.dom().contains(alloc_ptr_4k)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); };
 
             let process_res = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(lctx));
             if process_res.is_none() {
                 krnl.wunlock_container(container_ptr, Tracked(lctx), Tracked(container_lock_perm));
                 krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
                 proof {
-                    assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-                    assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-                    steps.end_kernel_step_unchanged(&*krnl, &*lctx);
+                    steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), Some(process_ptr), None, None, None, None);
                     alloc_quota_4k_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorProcessKilled);
-                    assert(alloc_quota_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is ErrorProcessKilled) by {
-                        kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_container_projection_at(&*old(krnl), container_ptr); kernel_process_projection_at(&*old(krnl), process_ptr);
-                    };
+                    alloc_quota_4k_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::ErrorProcessKilled);
                 }
                 return RetValueType::ErrorProcessKilled;
             }
             let Tracked(process_lock_perm) = process_res.unwrap();
-            proof { assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by {
+            proof { assert(krnl.prc_mp.spec_index(process_ptr).view().state.view() is Running) by {
                 thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap());
+                process_perms_wf_at(krnl.prc_mp, process_ptr);
             }; }
 
             let Tracked(quota_lock_perm) = krnl.wlock_allocator_quota_4k(alloc_ptr_4k, Tracked(lctx));
@@ -123,9 +125,7 @@ verus! {
                     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
                     steps.end_kernel_step_unchanged(&*krnl, &*lctx);
                     alloc_quota_4k_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorContainerQuotaInsufficient);
-                    assert(alloc_quota_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is ErrorContainerQuotaInsufficient) by {
-                        kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_container_projection_at(&*old(krnl), container_ptr); kernel_process_projection_at(&*old(krnl), process_ptr);
-                    };
+                    alloc_quota_4k_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::ErrorContainerQuotaInsufficient);
                 }
                 return RetValueType::ErrorContainerQuotaInsufficient;
             }
@@ -142,9 +142,7 @@ verus! {
                     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
                     steps.end_kernel_step_unchanged(&*krnl, &*lctx);
                     alloc_quota_4k_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorProcessQuotaOverflow);
-                    assert(alloc_quota_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is ErrorProcessQuotaOverflow) by {
-                        kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_container_projection_at(&*old(krnl), container_ptr); kernel_process_projection_at(&*old(krnl), process_ptr);
-                    };
+                    alloc_quota_4k_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::ErrorProcessQuotaOverflow);
                 }
                 return RetValueType::ErrorProcessQuotaOverflow;
             }
@@ -152,9 +150,7 @@ verus! {
             proof {
                 assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
                 assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-                assert(alloc_quota_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is Success) by {
-                    kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_container_projection_at(&*old(krnl), container_ptr); kernel_process_projection_at(&*old(krnl), process_ptr);
-                };
+                alloc_quota_4k_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::Success);
             }
             commit_alloc_quota_4k(krnl, Tracked(lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, alloc_ptr_4k, alloc_amount, Tracked(cpu_lock_perm), Tracked(container_lock_perm), Tracked(quota_lock_perm), Tracked(process_lock_perm));
             assert(krnl.all_objects_unlocked(lctx)) by { no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); };
@@ -170,7 +166,7 @@ verus! {
             requires
                 index_valid(NUM_CPUS, cpu_id),
                 old(krnl).inv(),
-                old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
+                cpu_id == old(lctx).cpu_id(),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).no_locks_held(),
                 old(krnl).all_objects_unlocked(old(lctx)),
@@ -201,12 +197,20 @@ verus! {
         {
             proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
 
+            let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);
+            if cpu_lock_res.is_none() {
+                proof {
+                    alloc_thread_quota_4k_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::CpuIdle);
+                    alloc_thread_quota_4k_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::CpuIdle);
+                }
+                return RetValueType::CpuIdle;
+            }
+            let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
             assert({
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process is Some
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread is Some
                 &&& krnl.thr_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0).view().state == (ThreadState::RUNNING { cpu_id })
             }) by { thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); };
-            let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(lctx));
             let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
             let process_ptr = cpu.current_process().unwrap();
             let thread_ptr = cpu.current_thread().unwrap();
@@ -224,9 +228,7 @@ verus! {
                 proof {
                     steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(process_ptr), None, None, None, None);
                     alloc_thread_quota_4k_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorProcessKilled);
-                    assert(alloc_thread_quota_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is ErrorProcessKilled) by {
-                        kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_process_projection_at(&*old(krnl), process_ptr);
-                    };
+                    alloc_thread_quota_4k_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::ErrorProcessKilled);
                 }
                 return RetValueType::ErrorProcessKilled;
             }
@@ -237,8 +239,11 @@ verus! {
                 &&& krnl.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr
                 &&& krnl.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr
                 &&& krnl.ctn_mp.spec_index(container_ptr).view_ghost().owned_threads.view().contains(thread_ptr)
-                &&& krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0
-            }) by { thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); reveal(process_thread_wf); reveal(container_thread_wf); };
+                &&& krnl.prc_mp.spec_index(process_ptr).view().state.view() is Running
+            }) by {
+                thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr);
+                process_perms_wf_at(krnl.prc_mp, process_ptr);
+            };
             let thread_res = krnl.wlock_thread_unless_killed(thread_ptr, Tracked(lctx));
             if thread_res.is_none() {
                 krnl.wunlock_process(process_ptr, Tracked(lctx), Tracked(process_lock_perm));
@@ -246,9 +251,7 @@ verus! {
                 proof {
                     steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(process_ptr), Some(thread_ptr), None, None, None);
                     alloc_thread_quota_4k_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorThreadKilled);
-                    assert(alloc_thread_quota_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is ErrorThreadKilled) by {
-                        kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, thread_ptr, None);
-                    };
+                    alloc_thread_quota_4k_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::ErrorThreadKilled);
                 }
                 return RetValueType::ErrorThreadKilled;
             }
@@ -262,9 +265,7 @@ verus! {
                 proof {
                     steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(process_ptr), Some(thread_ptr), None, None, None);
                     alloc_thread_quota_4k_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorNoQuota);
-                    assert(alloc_thread_quota_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is ErrorNoQuota) by {
-                        kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, thread_ptr, None); kernel_process_projection_at(&*old(krnl), process_ptr);
-                    };
+                    alloc_thread_quota_4k_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::ErrorNoQuota);
                 }
                 return RetValueType::ErrorNoQuota;
             }
@@ -277,18 +278,12 @@ verus! {
                 proof {
                     steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(process_ptr), Some(thread_ptr), None, None, None);
                     alloc_thread_quota_4k_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorThreadQuotaOverflow);
-                    assert(alloc_thread_quota_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is ErrorThreadQuotaOverflow) by {
-                        kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, thread_ptr, None); kernel_process_projection_at(&*old(krnl), process_ptr);
-                    };
+                    alloc_thread_quota_4k_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::ErrorThreadQuotaOverflow);
                 }
                 return RetValueType::ErrorThreadQuotaOverflow;
             }
 
-            proof {
-                assert(alloc_thread_quota_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is Success) by {
-                    kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, thread_ptr, None); kernel_process_projection_at(&*old(krnl), process_ptr);
-                };
-            }
+            proof { alloc_thread_quota_4k_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::Success); }
             if alloc_amount == 0 {
                 krnl.wunlock_thread(thread_ptr, Tracked(lctx), Tracked(thread_lock_perm));
                 krnl.wunlock_process(process_ptr, Tracked(lctx), Tracked(process_lock_perm));
@@ -311,7 +306,7 @@ verus! {
             requires
                 index_valid(NUM_CPUS, cpu_id),
                 old(krnl).inv(),
-                old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
+                cpu_id == old(lctx).cpu_id(),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).no_locks_held(),
                 old(krnl).all_objects_unlocked(old(lctx)),
@@ -343,6 +338,15 @@ verus! {
             proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
             proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
 
+            let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);
+            if cpu_lock_res.is_none() {
+                proof {
+                    alloc_quota_2m_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::CpuIdle);
+                    alloc_quota_2m_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::CpuIdle);
+                }
+                return RetValueType::CpuIdle;
+            }
+            let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
             assert(
                 {   &&& krnl.ctn_mp.dom().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container)
                     &&& krnl.ctn_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container).view_ghost().owned_processes.view()
@@ -359,7 +363,6 @@ verus! {
                 container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap());
             };
 
-            let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(lctx));
             let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
             let process_ptr = cpu.current_process().unwrap();
             let container_ptr = cpu.owning_container();
@@ -367,13 +370,9 @@ verus! {
             if container_res.is_none() {
                 krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
                 proof {
-                    assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-                    assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-                    steps.end_kernel_step_unchanged(&*krnl, &*lctx);
+                    steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), None, None, None, None, None);
                     alloc_quota_2m_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorContainerKilled);
-                    assert(alloc_quota_2m_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is ErrorContainerKilled) by {
-                        kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_container_projection_at(&*old(krnl), container_ptr);
-                    };
+                    alloc_quota_2m_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::ErrorContainerKilled);
                 }
                 return RetValueType::ErrorContainerKilled;
             }
@@ -383,37 +382,32 @@ verus! {
                 krnl.wunlock_container(container_ptr, Tracked(lctx), Tracked(container_lock_perm));
                 krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
                 proof {
-                    assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-                    assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-                    steps.end_kernel_step_unchanged(&*krnl, &*lctx);
+                    steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), None, None, None, None, None);
                     alloc_quota_2m_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorContainerZombie);
-                    assert(alloc_quota_2m_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is ErrorContainerZombie) by {
-                        kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_container_projection_at(&*old(krnl), container_ptr);
-                    };
+                    alloc_quota_2m_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::ErrorContainerZombie);
                 }
                 return RetValueType::ErrorContainerZombie;
             }
             let container_ro = krnl.ctn_mp.borrow_rodata(container_ptr);
             let alloc_ptr_2m = container_ro.borrow().allocator_ptr_2m;
-            assert(krnl.allc_2m_mp.dom().contains(alloc_ptr_2m) && krnl.allc_2m_mp.spec_index(alloc_ptr_2m).wf()) by { reveal(allocator_perms_wf); container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); };
+            assert(krnl.allc_2m_mp.dom().contains(alloc_ptr_2m)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); };
 
             let process_res = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(lctx));
             if process_res.is_none() {
                 krnl.wunlock_container(container_ptr, Tracked(lctx), Tracked(container_lock_perm));
                 krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
                 proof {
-                    assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-                    assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-                    steps.end_kernel_step_unchanged(&*krnl, &*lctx);
+                    steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), Some(process_ptr), None, None, None, None);
                     alloc_quota_2m_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorProcessKilled);
-                    assert(alloc_quota_2m_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is ErrorProcessKilled) by {
-                        kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_container_projection_at(&*old(krnl), container_ptr); kernel_process_projection_at(&*old(krnl), process_ptr);
-                    };
+                    alloc_quota_2m_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::ErrorProcessKilled);
                 }
                 return RetValueType::ErrorProcessKilled;
             }
             let Tracked(process_lock_perm) = process_res.unwrap();
-            proof { assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by { reveal(thread_cpu_wf); reveal(process_thread_wf); }; }
+            proof { assert(krnl.prc_mp.spec_index(process_ptr).view().state.view() is Running) by {
+                thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap());
+                process_perms_wf_at(krnl.prc_mp, process_ptr);
+            }; }
 
             let Tracked(quota_lock_perm) = krnl.wlock_allocator_quota_2m(alloc_ptr_2m, Tracked(lctx));
 
@@ -428,9 +422,7 @@ verus! {
                     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
                     steps.end_kernel_step_unchanged(&*krnl, &*lctx);
                     alloc_quota_2m_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorContainerQuotaInsufficient);
-                    assert(alloc_quota_2m_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is ErrorContainerQuotaInsufficient) by {
-                        kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_container_projection_at(&*old(krnl), container_ptr); kernel_process_projection_at(&*old(krnl), process_ptr);
-                    };
+                    alloc_quota_2m_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::ErrorContainerQuotaInsufficient);
                 }
                 return RetValueType::ErrorContainerQuotaInsufficient;
             }
@@ -447,9 +439,7 @@ verus! {
                     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
                     steps.end_kernel_step_unchanged(&*krnl, &*lctx);
                     alloc_quota_2m_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorProcessQuotaOverflow);
-                    assert(alloc_quota_2m_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is ErrorProcessQuotaOverflow) by {
-                        kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_container_projection_at(&*old(krnl), container_ptr); kernel_process_projection_at(&*old(krnl), process_ptr);
-                    };
+                    alloc_quota_2m_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::ErrorProcessQuotaOverflow);
                 }
                 return RetValueType::ErrorProcessQuotaOverflow;
             }
@@ -457,9 +447,7 @@ verus! {
             proof {
                 assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
                 assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-                assert(alloc_quota_2m_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is Success) by {
-                    kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_container_projection_at(&*old(krnl), container_ptr); kernel_process_projection_at(&*old(krnl), process_ptr);
-                };
+                alloc_quota_2m_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::Success);
             }
             commit_alloc_quota_2m(krnl, Tracked(lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, alloc_ptr_2m, alloc_amount, Tracked(cpu_lock_perm), Tracked(container_lock_perm), Tracked(quota_lock_perm), Tracked(process_lock_perm));
             assert(krnl.all_objects_unlocked(lctx)) by { no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); };
@@ -475,7 +463,7 @@ verus! {
             requires
                 index_valid(NUM_CPUS, cpu_id),
                 old(krnl).inv(),
-                old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
+                cpu_id == old(lctx).cpu_id(),
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).no_locks_held(),
                 old(krnl).all_objects_unlocked(old(lctx)),
@@ -506,12 +494,20 @@ verus! {
         {
             proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
 
+            let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);
+            if cpu_lock_res.is_none() {
+                proof {
+                    alloc_thread_quota_2m_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::CpuIdle);
+                    alloc_thread_quota_2m_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::CpuIdle);
+                }
+                return RetValueType::CpuIdle;
+            }
+            let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
             assert({
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process is Some
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread is Some
                 &&& krnl.thr_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0).view().state == (ThreadState::RUNNING { cpu_id })
             }) by { thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); };
-            let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(lctx));
             let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
             let process_ptr = cpu.current_process().unwrap();
             let thread_ptr = cpu.current_thread().unwrap();
@@ -529,9 +525,7 @@ verus! {
                 proof {
                     steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(process_ptr), None, None, None, None);
                     alloc_thread_quota_2m_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorProcessKilled);
-                    assert(alloc_thread_quota_2m_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is ErrorProcessKilled) by {
-                        kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_process_projection_at(&*old(krnl), process_ptr);
-                    };
+                    alloc_thread_quota_2m_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::ErrorProcessKilled);
                 }
                 return RetValueType::ErrorProcessKilled;
             }
@@ -542,8 +536,11 @@ verus! {
                 &&& krnl.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr
                 &&& krnl.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr
                 &&& krnl.ctn_mp.spec_index(container_ptr).view_ghost().owned_threads.view().contains(thread_ptr)
-                &&& krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0
-            }) by { thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); reveal(process_thread_wf); reveal(container_thread_wf); };
+                &&& krnl.prc_mp.spec_index(process_ptr).view().state.view() is Running
+            }) by {
+                thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr);
+                process_perms_wf_at(krnl.prc_mp, process_ptr);
+            };
             let thread_res = krnl.wlock_thread_unless_killed(thread_ptr, Tracked(lctx));
             if thread_res.is_none() {
                 krnl.wunlock_process(process_ptr, Tracked(lctx), Tracked(process_lock_perm));
@@ -551,9 +548,7 @@ verus! {
                 proof {
                     steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(process_ptr), Some(thread_ptr), None, None, None);
                     alloc_thread_quota_2m_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorThreadKilled);
-                    assert(alloc_thread_quota_2m_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is ErrorThreadKilled) by {
-                        kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, thread_ptr, None);
-                    };
+                    alloc_thread_quota_2m_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::ErrorThreadKilled);
                 }
                 return RetValueType::ErrorThreadKilled;
             }
@@ -567,9 +562,7 @@ verus! {
                 proof {
                     steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(process_ptr), Some(thread_ptr), None, None, None);
                     alloc_thread_quota_2m_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorNoQuota);
-                    assert(alloc_thread_quota_2m_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is ErrorNoQuota) by {
-                        kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, thread_ptr, None); kernel_process_projection_at(&*old(krnl), process_ptr);
-                    };
+                    alloc_thread_quota_2m_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::ErrorNoQuota);
                 }
                 return RetValueType::ErrorNoQuota;
             }
@@ -582,18 +575,12 @@ verus! {
                 proof {
                     steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(process_ptr), Some(thread_ptr), None, None, None);
                     alloc_thread_quota_2m_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorThreadQuotaOverflow);
-                    assert(alloc_thread_quota_2m_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is ErrorThreadQuotaOverflow) by {
-                        kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, thread_ptr, None); kernel_process_projection_at(&*old(krnl), process_ptr);
-                    };
+                    alloc_thread_quota_2m_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::ErrorThreadQuotaOverflow);
                 }
                 return RetValueType::ErrorThreadQuotaOverflow;
             }
 
-            proof {
-                assert(alloc_thread_quota_2m_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount) is Success) by {
-                    kernel_cpu_thread_projection_at(&*old(krnl), cpu_id, process_ptr, thread_ptr, None); kernel_process_projection_at(&*old(krnl), process_ptr);
-                };
-            }
+            proof { alloc_thread_quota_2m_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::Success); }
             if alloc_amount == 0 {
                 krnl.wunlock_thread(thread_ptr, Tracked(lctx), Tracked(thread_lock_perm));
                 krnl.wunlock_process(process_ptr, Tracked(lctx), Tracked(process_lock_perm));

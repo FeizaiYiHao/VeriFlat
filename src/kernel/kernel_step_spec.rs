@@ -136,6 +136,7 @@ pub open spec fn kernel_cpu_nonlock_fields_unchanged(pre: CpuLockedArray, post: 
             &&& post.spec_index(i).value.view().view().state == pre.spec_index(i).value.view().view().state
             &&& post.spec_index(i).value.view().view().current_process == pre.spec_index(i).value.view().view().current_process
             &&& post.spec_index(i).value.view().view().current_thread == pre.spec_index(i).value.view().view().current_thread
+            &&& post.spec_index(i).value.killer_info() == pre.spec_index(i).value.killer_info()
         }
 }
 
@@ -248,50 +249,11 @@ pub open spec fn kernel_container_quota_4k_changed(pre: &KernelK, post: &KernelK
     &&& *post == (KernelK { thr_mp: post.thr_mp, allc_4k_mp: post.allc_4k_mp, ..*pre })
     &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)] pre.thr_mp.dom().contains(t) ==>
         post.thr_mp.spec_index(t).locking_thread() == pre.thr_mp.spec_index(t).locking_thread()
-    &&& kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp)
-    &&& post.irt.view().owners() == pre.irt.view().owners()
-    &&& post.irt.view().iommu_roots() == pre.irt.view().iommu_roots()
-    &&& post.cpu_tlb.view() == pre.cpu_tlb.view()
-    &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
-    &&& kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post)
+    &&& kernel_thread_nonlock_fields_unchanged(pre.thr_mp, post.thr_mp)
     &&& pre.ctn_mp.dom().contains(container_ptr)
-    &&& post.ctn_mp.dom() == pre.ctn_mp.dom()
-    &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)]
-        pre.ctn_mp.dom().contains(c) ==> {
-            let a = pre.ctn_mp.spec_index(c);
-            let b = post.ctn_mp.spec_index(c);
-            let a_ro = a.view_rodata().view();
-            let b_ro = b.view_rodata().view();
-            &&& b.view().children.view() == a.view().children.view()
-            &&& b.view_ghost().uppertree_seq.view() == a.view_ghost().uppertree_seq.view()
-            &&& b.view_ghost().subtree_set.view() == a.view_ghost().subtree_set.view()
-            &&& b.view().root_process == a.view().root_process
-            &&& b.view().zombie == a.view().zombie
-            &&& b.view_ghost().owned_processes.view() == a.view_ghost().owned_processes.view()
-            &&& b.view_ghost().owned_threads.view() == a.view_ghost().owned_threads.view()
-            &&& b.view().owned_endpoints.view() == a.view().owned_endpoints.view()
-            &&& b.view().owned_pages.view() == a.view().owned_pages.view()
-            &&& b_ro.parent == a_ro.parent
-            &&& b_ro.depth == a_ro.depth
-            &&& b_ro.cpu_set == a_ro.cpu_set
-            &&& b_ro.scheduler == a_ro.scheduler
-            &&& b.being_killed() == a.being_killed()
-        }
-    &&& forall|c: RwLockContainerPtr| #![trigger post.sched_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().scheduler)]
-        pre.ctn_mp.dom().contains(c) ==> scheduler_shards_of(post.sched_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().scheduler))
-            == scheduler_shards_of(pre.sched_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().scheduler))
     &&& forall|c: RwLockContainerPtr| #![trigger post.allc_4k_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_4k)]
         pre.ctn_mp.dom().contains(c) ==> post.allc_4k_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_4k).quota.view().view() as int
             == pre.allc_4k_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_4k).quota.view().view() as int + if c == container_ptr { delta } else { 0 }
-    &&& forall|c: RwLockContainerPtr| #![trigger post.pcid_allc_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator)]
-        pre.ctn_mp.dom().contains(c) ==> PcidAllocator::free_pcids(post.pcid_allc_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator).view().ref_counters.view())
-            == PcidAllocator::free_pcids(pre.pcid_allc_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator).view().ref_counters.view())
-    &&& forall|c: RwLockContainerPtr| #![trigger post.allc_2m_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_2m)]
-        pre.ctn_mp.dom().contains(c) ==> post.allc_2m_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_2m).quota.view().view()
-            == pre.allc_2m_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_2m).quota.view().view()
-    &&& forall|c: RwLockContainerPtr| #![trigger post.allc_1g_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_1g)]
-        pre.ctn_mp.dom().contains(c) ==> post.allc_1g_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_1g).quota.view().view()
-            == pre.allc_1g_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_1g).quota.view().view()
 }
 
 /// One staging-thread quota funds a new scheduled thread of `process_ptr` and `container_ptr`,
@@ -369,6 +331,7 @@ pub open spec fn kernel_new_thread_fields(
             &&& post.cpu_arr.spec_index(i).value.view().view().state == pre.cpu_arr.spec_index(i).value.view().view().state
             &&& post.cpu_arr.spec_index(i).value.view().view().current_process == pre.cpu_arr.spec_index(i).value.view().view().current_process
             &&& post.cpu_arr.spec_index(i).value.view().view().current_thread == pre.cpu_arr.spec_index(i).value.view().view().current_thread
+            &&& post.cpu_arr.spec_index(i).value.killer_info() == pre.cpu_arr.spec_index(i).value.killer_info()
         }
     &&& post.prc_mp.dom() == pre.prc_mp.dom()
     &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
@@ -507,6 +470,7 @@ pub open spec fn kernel_context_switch_fields(pre: &KernelK, post: &KernelK, cpu
             &&& b.state == if i == cpu_id { CpuState::Running } else { a.state }
             &&& b.current_process == if i == cpu_id { Some(next_process) } else { a.current_process }
             &&& b.current_thread == if i == cpu_id { Some(next_thread) } else { a.current_thread }
+            &&& post.cpu_arr.spec_index(i).value.killer_info() == pre.cpu_arr.spec_index(i).value.killer_info()
         }
     &&& post.ctn_mp.dom() == pre.ctn_mp.dom()
     &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)]
@@ -654,6 +618,7 @@ pub open spec fn kernel_rebalance_pull_fields(pre: &KernelK, post: &KernelK, cpu
         index_valid(NUM_CPUS, i) ==> {
             &&& post.cpu_arr.spec_index(i).value.locking_thread() == pre.cpu_arr.spec_index(i).value.locking_thread()
             &&& post.cpu_arr.spec_index(i).value.view().view() == pre.cpu_arr.spec_index(i).value.view().view()
+            &&& post.cpu_arr.spec_index(i).value.killer_info() == pre.cpu_arr.spec_index(i).value.killer_info()
         }
     &&& forall|c: RwLockContainerPtr| #![trigger post.sched_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().scheduler)]
         pre.ctn_mp.dom().contains(c) ==> {
@@ -766,6 +731,7 @@ pub open spec fn kernel_ipc_block_fields(
             &&& b.state == if i == cpu_id { CpuState::Idle } else { a.state }
             &&& b.current_process == if i == cpu_id { None } else { a.current_process }
             &&& b.current_thread == if i == cpu_id { None } else { a.current_thread }
+            &&& post.cpu_arr.spec_index(i).value.killer_info() == pre.cpu_arr.spec_index(i).value.killer_info()
         }
     &&& post.thr_mp.dom() == pre.thr_mp.dom()
     &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)]
@@ -925,6 +891,7 @@ pub open spec fn kernel_ipc_call_handoff_fields(
             &&& b.state == a.state
             &&& b.current_process == if i == cpu_id { Some(callee.view().owning_proc) } else { a.current_process }
             &&& b.current_thread == if i == cpu_id { Some(callee_ptr) } else { a.current_thread }
+            &&& post.cpu_arr.spec_index(i).value.killer_info() == pre.cpu_arr.spec_index(i).value.killer_info()
         }
     &&& post.thr_mp.dom() == pre.thr_mp.dom()
     &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)]
@@ -1041,6 +1008,7 @@ pub open spec fn kernel_ipc_accept_call_fields(
             &&& b.state == a.state
             &&& b.current_process == a.current_process
             &&& b.current_thread == a.current_thread
+            &&& post.cpu_arr.spec_index(i).value.killer_info() == pre.cpu_arr.spec_index(i).value.killer_info()
         }
     &&& pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
     &&& cpu.state is Running
@@ -1223,6 +1191,7 @@ pub open spec fn kernel_ipc_reply_handoff_fields(
             &&& b.state == a.state
             &&& b.current_process == if i == cpu_id { Some(caller.view().owning_proc) } else { a.current_process }
             &&& b.current_thread == if i == cpu_id { Some(caller_ptr) } else { a.current_thread }
+            &&& post.cpu_arr.spec_index(i).value.killer_info() == pre.cpu_arr.spec_index(i).value.killer_info()
         }
     &&& post.thr_mp.dom() == pre.thr_mp.dom()
     &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)]
@@ -1410,6 +1379,7 @@ pub open spec fn kernel_ipc_rendezvous_fields(
             &&& b.state == a.state
             &&& b.current_process == a.current_process
             &&& b.current_thread == a.current_thread
+            &&& post.cpu_arr.spec_index(i).value.killer_info() == pre.cpu_arr.spec_index(i).value.killer_info()
         }
     &&& post.ctn_mp.dom() == pre.ctn_mp.dom()
     &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)]
@@ -1732,6 +1702,7 @@ pub open spec fn kernel_process_quota_4k_changed(pre: &KernelK, post: &KernelK, 
             &&& post.cpu_arr.spec_index(i).value.view().view().state == pre.cpu_arr.spec_index(i).value.view().view().state
             &&& post.cpu_arr.spec_index(i).value.view().view().current_process == pre.cpu_arr.spec_index(i).value.view().view().current_process
             &&& post.cpu_arr.spec_index(i).value.view().view().current_thread == pre.cpu_arr.spec_index(i).value.view().view().current_thread
+            &&& post.cpu_arr.spec_index(i).value.killer_info() == pre.cpu_arr.spec_index(i).value.killer_info()
         }
     &&& post.prc_mp.dom() == pre.prc_mp.dom()
     &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
@@ -1874,6 +1845,7 @@ pub open spec fn kernel_process_quota_2m_changed(pre: &KernelK, post: &KernelK, 
             &&& post.cpu_arr.spec_index(i).value.view().view().state == pre.cpu_arr.spec_index(i).value.view().view().state
             &&& post.cpu_arr.spec_index(i).value.view().view().current_process == pre.cpu_arr.spec_index(i).value.view().view().current_process
             &&& post.cpu_arr.spec_index(i).value.view().view().current_thread == pre.cpu_arr.spec_index(i).value.view().view().current_thread
+            &&& post.cpu_arr.spec_index(i).value.killer_info() == pre.cpu_arr.spec_index(i).value.killer_info()
         }
     &&& post.prc_mp.dom() == pre.prc_mp.dom()
     &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
@@ -1948,6 +1920,7 @@ pub open spec fn kernel_process2thread_quota_4k_changed(pre: &KernelK, post: &Ke
             &&& post.cpu_arr.spec_index(i).value.view().view().state == pre.cpu_arr.spec_index(i).value.view().view().state
             &&& post.cpu_arr.spec_index(i).value.view().view().current_process == pre.cpu_arr.spec_index(i).value.view().view().current_process
             &&& post.cpu_arr.spec_index(i).value.view().view().current_thread == pre.cpu_arr.spec_index(i).value.view().view().current_thread
+            &&& post.cpu_arr.spec_index(i).value.killer_info() == pre.cpu_arr.spec_index(i).value.killer_info()
         }
     &&& post.prc_mp.dom() == pre.prc_mp.dom()
     &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
@@ -2022,6 +1995,7 @@ pub open spec fn kernel_process2thread_quota_2m_changed(pre: &KernelK, post: &Ke
             &&& post.cpu_arr.spec_index(i).value.view().view().state == pre.cpu_arr.spec_index(i).value.view().view().state
             &&& post.cpu_arr.spec_index(i).value.view().view().current_process == pre.cpu_arr.spec_index(i).value.view().view().current_process
             &&& post.cpu_arr.spec_index(i).value.view().view().current_thread == pre.cpu_arr.spec_index(i).value.view().view().current_thread
+            &&& post.cpu_arr.spec_index(i).value.killer_info() == pre.cpu_arr.spec_index(i).value.killer_info()
         }
     &&& post.prc_mp.dom() == pre.prc_mp.dom()
     &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
@@ -2393,6 +2367,7 @@ pub open spec fn kernel_cpu_offline_request_changed(pre: &KernelK, post: &Kernel
     &&& *post == (KernelK { cpu_arr: post.cpu_arr, cpu_set_mp: post.cpu_set_mp, cpu_offline_mp: post.cpu_offline_mp, ctn_mp: post.ctn_mp, ..*pre })
     &&& post.cpu_arr.unchanged_except(&pre.cpu_arr, cpu_id)
     &&& post.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
+    &&& post.cpu_arr.spec_index(cpu_id).value.killer_info() == pre.cpu_arr.spec_index(cpu_id).value.killer_info()
     &&& post.ctn_mp.unchanged_except(&pre.ctn_mp, cpu.owning_container)
     &&& post.ctn_mp.spec_index(cpu.owning_container).view() == caller.view()
     &&& post.ctn_mp.spec_index(cpu.owning_container).view_rodata() == caller.view_rodata()
@@ -2431,8 +2406,10 @@ pub open spec fn kernel_cpu_online_changed(pre: &KernelK, post: &KernelK, cpu_id
     &&& forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) && i != cpu_id && i != target ==> post.cpu_arr.spec_index(i) == pre.cpu_arr.spec_index(i)
     &&& post.cpu_arr.spec_index(cpu_id).value.view() == pre.cpu_arr.spec_index(cpu_id).value.view()
     &&& post.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
+    &&& post.cpu_arr.spec_index(cpu_id).value.killer_info() == pre.cpu_arr.spec_index(cpu_id).value.killer_info()
     &&& post.cpu_arr.spec_index(target).value.view().view() == (CpuView { state: CpuState::Idle, ..target_cpu })
     &&& post.cpu_arr.spec_index(target).value.locking_thread() is None
+    &&& post.cpu_arr.spec_index(target).value.killer_info() == pre.cpu_arr.spec_index(target).value.killer_info()
     &&& post.ctn_mp.unchanged_except(&pre.ctn_mp, cpu.owning_container)
     &&& post.ctn_mp.spec_index(cpu.owning_container).view() == caller.view()
     &&& post.ctn_mp.spec_index(cpu.owning_container).view_rodata() == caller.view_rodata()
@@ -2557,6 +2534,7 @@ pub open spec fn kernel_cpu_went_off_fields(pre: &KernelK, post: &KernelK, cpu_i
             &&& b.state == if i == cpu_id { CpuState::Off } else { a.state }
             &&& b.current_process == if i == cpu_id { None } else { a.current_process }
             &&& b.current_thread == if i == cpu_id { None } else { a.current_thread }
+            &&& post.cpu_arr.spec_index(i).value.killer_info() == pre.cpu_arr.spec_index(i).value.killer_info()
         }
     &&& post.ctn_mp.dom() == pre.ctn_mp.dom()
     &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)]
@@ -2784,6 +2762,7 @@ pub open spec fn kernel_thread_exit_fields(pre: &KernelK, post: &KernelK, cpu_id
     &&& post_cpu.state == CpuState::Idle
     &&& post_cpu.current_process is None
     &&& post_cpu.current_thread is None
+    &&& post.cpu_arr.spec_index(cpu_id).value.killer_info() == pre.cpu_arr.spec_index(cpu_id).value.killer_info()
     &&& post.ctn_mp.dom() == pre.ctn_mp.dom()
     &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)]
         pre.ctn_mp.dom().contains(c) ==> {
@@ -2802,7 +2781,7 @@ pub open spec fn kernel_thread_exit_fields(pre: &KernelK, post: &KernelK, cpu_id
     &&& post.prc_mp.dom() == pre.prc_mp.dom()
     &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)] pre.prc_mp.dom().contains(p) && p != process_ptr ==> post.prc_mp.spec_index(p) == pre.prc_mp.spec_index(p)
     &&& post_process.view() == (Process {
-        zombie, quota_4k: (pre_process.view().quota_4k + thread.quota_4k) as usize, quota_2m: (pre_process.view().quota_2m + thread.quota_2m) as usize,
+        zombie, state: post_process.view().state, quota_4k: (pre_process.view().quota_4k + thread.quota_4k) as usize, quota_2m: (pre_process.view().quota_2m + thread.quota_2m) as usize,
         quota_1g: (pre_process.view().quota_1g + thread.quota_1g) as usize, owned_threads: post_process.view().owned_threads, ..pre_process.view()
     })
     &&& post_process.view().owned_threads.view() == pre_process.view().owned_threads.view().remove_value(thread_ptr)
@@ -2900,4 +2879,151 @@ pub open spec fn kernel_thread_exit_quota_returned(pre: &KernelK, post: &KernelK
         pre.ctn_mp.dom().contains(c) ==> post.allc_1g_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_1g).quota.view().view() as int
             == pre.allc_1g_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_1g).quota.view().view() as int + if c == container_ptr && size is SZ1g { process.view().quota_1g + thread.view().quota_1g } else { 0 }
 }
+
+/// The killed dangling thread `dangling_ptr`, write-held and linked to no thread, leaves the thread map and its container's
+/// thread set, and its page returns to a 4K allocator: the allocator of the container owning the page regains one quota.
+#[verifier::opaque]
+pub open spec fn kernel_dangling_thread_reclaimed_fields(pre: &KernelK, post: &KernelK, dangling_ptr: RwLockThreadPtr) -> bool {
+    let dangling = pre.thr_mp.spec_index(dangling_ptr);
+    &&& pre.thr_mp.dom().contains(dangling_ptr)
+    &&& dangling.view().state is KILLED
+    &&& dangling.locking_thread() is Write
+    &&& dangling.view().caller is None
+    &&& dangling.view().callee is None
+    &&& *post == (KernelK { ctn_mp: post.ctn_mp, thr_mp: post.thr_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..*pre })
+    &&& post.ctn_mp.dom() == pre.ctn_mp.dom()
+    &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)]
+        pre.ctn_mp.dom().contains(c) ==> {
+            let a = pre.ctn_mp.spec_index(c);
+            let b = post.ctn_mp.spec_index(c);
+            &&& b.view() == a.view()
+            &&& b.view_rodata() == a.view_rodata()
+            &&& b.view_ghost().uppertree_seq == a.view_ghost().uppertree_seq
+            &&& b.view_ghost().subtree_set == a.view_ghost().subtree_set
+            &&& b.view_ghost().owned_processes == a.view_ghost().owned_processes
+            &&& b.view_ghost().owned_threads.view() == if c == dangling.view().owning_container { a.view_ghost().owned_threads.view().remove(dangling_ptr) } else { a.view_ghost().owned_threads.view() }
+            &&& b.locking_thread() == a.locking_thread()
+            &&& b.being_killed() == a.being_killed()
+            &&& post.allc_4k_mp.spec_index(a.view_rodata().view().allocator_ptr_4k).quota.view().view() as int == pre.allc_4k_mp.spec_index(a.view_rodata().view().allocator_ptr_4k).quota.view().view() as int + if a.view().owned_pages.view().contains(dangling_ptr) { 1int } else { 0int }
+        }
+    &&& post.thr_mp.dom() == pre.thr_mp.dom().remove(dangling_ptr)
+    &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)] post.thr_mp.dom().contains(t) ==> post.thr_mp.spec_index(t) == pre.thr_mp.spec_index(t)
 }
+
+/// One killed dangling thread, write-locked and linked to no thread, leaves the thread map and its container's thread
+/// set, and the container owning its page regains one 4K quota; the kernel chooses the dangling thread (R1).
+#[verifier::opaque]
+pub open spec fn kernel_u_dangling_thread_reclaimed(old_u: KernelU, new_u: KernelU) -> bool {
+    let removed = old_u.thread_map.dom().difference(new_u.thread_map.dom());
+    &&& new_u.thread_map.dom().subset_of(old_u.thread_map.dom())
+    &&& removed.len() == 1
+    &&& forall|dangling_ptr: RwLockThreadPtr| #![trigger removed.contains(dangling_ptr)]
+        removed.contains(dangling_ptr) ==> {
+            let dangling = old_u.thread_map.spec_index(dangling_ptr);
+            &&& dangling.state is KILLED
+            &&& dangling.lock_state is WriteLocked
+            &&& dangling.caller is None
+            &&& dangling.callee is None
+            &&& new_u == (KernelU {
+                container_map: Map::new(old_u.container_map.dom(), |c: RwLockContainerPtr| {
+                    let container = old_u.container_map[c];
+                    ContainerU {
+                        owned_threads: if c == dangling.owning_container { container.owned_threads.remove(dangling_ptr) } else { container.owned_threads },
+                        quota_4k: if container.owned_pages.contains(dangling_ptr) { (container.quota_4k + 1) as usize } else { container.quota_4k }, ..container
+                    }
+                }),
+                thread_map: old_u.thread_map.remove(dangling_ptr),
+                ..old_u
+            })
+        }
+}
+
+/// One write-locked killed thread releases one descriptor: the descriptor is cleared and its unlocked endpoint drops the
+/// reference; the kernel chooses the thread and the descriptor (R1).
+#[verifier::opaque]
+pub open spec fn kernel_u_killed_descriptor_dropped(old_u: KernelU, new_u: KernelU) -> bool {
+    let changed = old_u.thread_map.dom().filter(|t: RwLockThreadPtr| new_u.thread_map[t] != old_u.thread_map[t]);
+    &&& changed.len() == 1
+    &&& forall|thread_ptr: RwLockThreadPtr| #![trigger changed.contains(thread_ptr)] changed.contains(thread_ptr) ==> {
+        let thread = old_u.thread_map[thread_ptr];
+        let dropped = Set::<int>::range(0, MAX_NUM_ENDPOINT_DESCRIPTORS as int).filter(|j: int| new_u.thread_map[thread_ptr].endpoint_descriptors[j] != thread.endpoint_descriptors[j]);
+        &&& thread.state is KILLED
+        &&& thread.lock_state is WriteLocked
+        &&& dropped.len() == 1
+        &&& forall|index: int| #![trigger dropped.contains(index)] dropped.contains(index) ==> {
+            let endpoint_ptr = thread.endpoint_descriptors[index]->Some_0;
+            let endpoint = old_u.endpoint_map[endpoint_ptr];
+            &&& thread.endpoint_descriptors[index] is Some
+            &&& old_u.endpoint_map.dom().contains(endpoint_ptr)
+            &&& endpoint.lock_state is Unlocked
+            &&& new_u == (KernelU {
+                thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { endpoint_descriptors: thread.endpoint_descriptors.update(index, None), ..thread }),
+                endpoint_map: old_u.endpoint_map.insert(endpoint_ptr, EndpointU { owning_threads: endpoint.owning_threads.remove((thread_ptr, index as EndpointIdx)), ..endpoint }),
+                ..old_u
+            })
+        }
+    }
+}
+
+/// The unlocked caller of one write-locked killed thread, waiting for its reply, is scheduled on shard `cpu_id` of its
+/// container with `ErrorIpcCalleeExited`, and the killed thread drops its caller; the kernel chooses the killed thread
+/// (R1).
+#[verifier::opaque]
+pub open spec fn kernel_u_killed_caller_woken(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    let woken = old_u.thread_map.dom().filter(|t: RwLockThreadPtr| old_u.thread_map[t].state is WAITING_REPLY && new_u.thread_map[t].state is SCHEDULED);
+    &&& woken.len() == 1
+    &&& forall|caller_ptr: RwLockThreadPtr| #![trigger woken.contains(caller_ptr)] woken.contains(caller_ptr) ==> {
+        let caller = old_u.thread_map[caller_ptr];
+        let thread_ptr = caller.callee->Some_0;
+        let thread = old_u.thread_map[thread_ptr];
+        let container = old_u.container_map[caller.owning_container];
+        &&& caller.callee is Some
+        &&& old_u.thread_map.dom().contains(thread_ptr)
+        &&& thread.state is KILLED
+        &&& thread.lock_state is WriteLocked
+        &&& thread.caller == Some(caller_ptr)
+        &&& caller.lock_state is Unlocked
+        &&& new_u == (KernelU {
+            container_map: old_u.container_map.insert(caller.owning_container, ContainerU {
+                scheduler: container.scheduler.update(cpu_id as int, container.scheduler[cpu_id as int].push(caller_ptr)), ..container
+            }),
+            thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { caller: None, ..thread }).insert(caller_ptr, ThreadU {
+                state: ThreadState::SCHEDULED { cpu_id }, callee: None, error_code: Some(RetValueType::ErrorIpcCalleeExited), ..caller
+            }),
+            ..old_u
+        })
+    }
+}
+
+/// The unlocked dangling thread of the killed caller of one write-locked killed thread is taken over as a write-locked killed thread
+/// without a callee, and the killed thread drops its caller; the kernel chooses the killed thread (R1).
+#[verifier::opaque]
+pub open spec fn kernel_u_killed_caller_taken_over(old_u: KernelU, new_u: KernelU) -> bool {
+    let taken = old_u.thread_map.dom().filter(|t: RwLockThreadPtr| old_u.thread_map[t].state is DANGLING && new_u.thread_map[t].state is KILLED);
+    &&& taken.len() == 1
+    &&& forall|caller_ptr: RwLockThreadPtr| #![trigger taken.contains(caller_ptr)] taken.contains(caller_ptr) ==> {
+        let caller = old_u.thread_map[caller_ptr];
+        let thread_ptr = caller.callee->Some_0;
+        let thread = old_u.thread_map[thread_ptr];
+        &&& caller.callee is Some
+        &&& old_u.thread_map.dom().contains(thread_ptr)
+        &&& thread.state is KILLED
+        &&& thread.lock_state is WriteLocked
+        &&& thread.caller == Some(caller_ptr)
+        &&& caller.lock_state is Unlocked
+        &&& new_u == (KernelU {
+            thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { caller: None, ..thread }) .insert(caller_ptr, ThreadU { state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked, ..caller }),
+            ..old_u
+        })
+    }
+}
+
+/// One step of reclaiming write-locked killed threads: releasing a descriptor, waking a caller waiting for a reply,
+/// taking over the dangling thread of a killed caller, or reclaiming a killed dangling thread.
+pub open spec fn kernel_u_killed_thread_reclaim_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    ||| kernel_u_killed_descriptor_dropped(old_u, new_u)
+    ||| kernel_u_killed_caller_woken(old_u, new_u, cpu_id)
+    ||| kernel_u_killed_caller_taken_over(old_u, new_u)
+    ||| kernel_u_dangling_thread_reclaimed(old_u, new_u)
+}
+} // verus!

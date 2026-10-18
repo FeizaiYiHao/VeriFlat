@@ -204,7 +204,6 @@ pub(super) fn build_staged_4k_global_pool(
         };
         proof {
             page_locks = page_locks.insert(page_index, TypedHeldLock { lock_id: pages.lock_id_by_index(page_index), mode: TypedLockMode::Write });
-            assert(pages.spec_index(page_index).view().inv());
             assert(pages.spec_index(page_index).view().view().addr == page_index2page_ptr(page_index)) by {
                 assert(pages_before_step.spec_index(page_index).view().view().addr == page_index2page_ptr(page_index)) by { reveal(page_array_wf); };
             };
@@ -222,7 +221,6 @@ pub(super) fn build_staged_4k_global_pool(
         remaining = remaining - 1;
     }
     proof {
-        assert(staged_4k_page_chain(*pages, page_ptrs));
         let mapped_page_indices = page_ptrs.map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr),);
         page_ptrs.to_set_ensures();
     }
@@ -895,6 +893,7 @@ pub(super) fn publish_new_container_process_and_pagetable(
         final(krnl).prc_mp.spec_index(child_process_ptr).view_ghost().owned_pci_functions.view().is_empty(),
         !final(krnl).prc_mp.spec_index(child_process_ptr).being_killed(),
         !final(krnl).prc_mp.spec_index(child_process_ptr).view().zombie,
+        final(krnl).prc_mp.spec_index(child_process_ptr).view().state.view() is Creating,
         final(krnl).prc_mp.spec_index(child_process_ptr).view().quota_4k == process_quota_4k,
         final(krnl).prc_mp.spec_index(child_process_ptr).view().quota_2m == 0,
         final(krnl).prc_mp.spec_index(child_process_ptr).view().quota_1g == 0,
@@ -985,7 +984,6 @@ pub(super) fn publish_new_container_process_and_pagetable(
     let Tracked(child_process_lock_perm) =
         krnl.retype_page_to_process_and_insert(child_process_ptr, process_value, process_rodata, process_ghost, Tracked(process_perm), Tracked(&mut *lctx),);
     proof {
-        assert(krnl.pt_mp.spec_index(child_pagetable_ptr).view().page_closure() == set![l4_page]);
         assert(!old(lctx).process_lock_map().dom().contains(child_process_ptr,)) by { reveal(LockedMap::typed_lock_map_aligned); };
         assert(held_processes_unchanged(old(krnl).prc_mp, krnl.prc_mp, old(lctx),)) by { reveal(LockedMap::typed_lock_map_aligned); };
         assert(!old(lctx).pagetable_lock_map().dom().contains(child_pagetable_ptr,)) by { reveal(LockedMap::typed_lock_map_aligned); };
@@ -1714,7 +1712,7 @@ pub(super) fn link_new_container_into_tree(
         let ghost original_children = base_containers.spec_index(parent_container_ptr).view().children.view();
         assert(original_children.no_duplicates()) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
         assert(original_children.len() <= NUM_PAGES * 4096) by { reveal(container_children_parent_wf); reveal(container_pages_wf); seq_unique_bounded_usize_len(original_children, (NUM_PAGES * 4096) as usize); };
-        assert(containers.spec_index(parent_container_ptr).view().children.length == original_children.len()) by { reveal(LinkedList::wf_value_list); };
+        assert(containers.spec_index(parent_container_ptr).view().children.length == original_children.len()) by { containers.spec_index(parent_container_ptr).view().children.lemma_len_view(); };
         assert(!original_children.contains(child_container_ptr)) by { if original_children.contains(child_container_ptr) { assert(base_containers.dom().contains(child_container_ptr)) by { reveal(container_children_parent_wf); }; } };
     }
     container_map_push_child(containers, parent_container_ptr, child_container_ptr, node_addr, node_perm, Tracked(lctx), Tracked(parent_container_lock_perm));

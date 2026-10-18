@@ -3,7 +3,7 @@ use crate::*;
 #[cfg(verus_keep_ghost)]
 use super::syscall_new_process_spec::{new_process_publish_step, new_process_publish_step_pre};
 #[cfg(verus_keep_ghost)]
-use super::syscall_new_process_trace::new_process_publish_step_from_u;
+use super::syscall_new_process_trace::{new_process_publish_step_from_u, new_process_publish_step_pre_from_k};
 
 verus! {
 pub(super) fn publish_staged_process(
@@ -20,17 +20,11 @@ pub(super) fn publish_staged_process(
         index_valid(NUM_CPUS, cpu_id),
         old(krnl).inv(),
         old(lctx).kernel_view_locking_state() is Acquire,
-        kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
-        kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
-        old(krnl).irt.view().owners() == old(steps).snapshot_k().irt.view().owners(),
-        old(krnl).irt.view().iommu_roots() == old(steps).snapshot_k().irt.view().iommu_roots(),
-        old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
-        old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
-        kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         cpu_lock_perm.state() is WriteLock,
         cpu_lock_perm.thread_id() == old(lctx).thread_id(),
         cpu_lock_perm.lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
+        !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
         old(krnl).ctn_mp.dom().contains(container_ptr),
         old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator == pcid_allocator_ptr,
         old(krnl).pcid_allc_mp.dom().contains(pcid_allocator_ptr),
@@ -43,6 +37,7 @@ pub(super) fn publish_staged_process(
         old(krnl).prc_mp.spec_index(parent_ptr).view_rodata().view().owning_container == container_ptr,
         typed_lock_map_contains_mode(old(lctx).process_lock_map(), parent_ptr, TypedLockMode::Write),
         !old(krnl).prc_mp.spec_index(parent_ptr).being_killed(),
+        old(krnl).prc_mp.spec_index(parent_ptr).view().state.view() is Running || old(krnl).prc_mp.spec_index(parent_ptr).view().state.view() is Zombie,
         parent_lock_perm.view().state() is WriteLock,
         parent_lock_perm.view().thread_id() == old(lctx).thread_id(),
         parent_lock_perm.view().lock_id() == old(krnl).prc_mp.spec_index(parent_ptr).locking_thread()->Write_lock_id,
@@ -120,9 +115,6 @@ pub(super) fn publish_staged_process(
         final(steps).nonlock_view().subrange(0, old(steps).nonlock_view().len() as int) == old(steps).nonlock_view(),
         final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
-        kernel_endpoint_nonlock_fields_unchanged(final(steps).snapshot_k().ep_mp, final(krnl).ep_mp),
-        kernel_cpu_process_thread_nonlock_fields_unchanged(&final(steps).snapshot_k(), final(krnl)),
-        kernel_container_nonlock_fields_and_quotas_unchanged(&final(steps).snapshot_k(), final(krnl)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).page_lock_map().dom().is_empty(),
         final(lctx).holds_no_allocator_locks(PageSize::SZ4k),
@@ -143,7 +135,6 @@ pub(super) fn publish_staged_process(
         held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
         final(lctx).endpoint_lock_map() == old(lctx).endpoint_lock_map(),
         typed_lock_map_contains_mode(final(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
-        !final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
         cpu_lock_perm.thread_id() == final(lctx).thread_id(),
         cpu_lock_perm.lock_id() == final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
         final(krnl).ctn_mp.dom().contains(container_ptr),
@@ -152,6 +143,7 @@ pub(super) fn publish_staged_process(
         final(krnl).prc_mp.dom().contains(ret.0),
         typed_lock_map_contains_mode(final(lctx).process_lock_map(), ret.0, TypedLockMode::Write),
         !final(krnl).prc_mp.spec_index(ret.0).being_killed(),
+        final(krnl).prc_mp.spec_index(ret.0).view().state.view() is Creating,
         !final(krnl).prc_mp.spec_index(ret.0).view().zombie,
         final(krnl).prc_mp.spec_index(ret.0).view_rodata().view().owning_container == container_ptr,
         final(krnl).prc_mp.spec_index(ret.0).view_rodata().view().pagetable == ret.1,
@@ -194,9 +186,7 @@ pub(super) fn publish_staged_process(
         ret.3.view().lock_id() == final(krnl).pt_mp.spec_index(ret.1).locking_thread()->Write_lock_id,
 {
     hide(Seq::contains);
-    assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-    proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
-
+    proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
     let tracked mut pcid_allocator_lock_perm = pcid_allocator_lock_perm.get();
     let tracked mut parent_lock_perm = parent_lock_perm.get();
     let tracked process_page_lock_perm = process_page_lock_perm.get();
@@ -222,7 +212,7 @@ pub(super) fn publish_staged_process(
     krnl.wunlock_page(page_ptr2page_index(l4_page_ptr), Tracked(&mut *lctx), Tracked(l4_page_lock_perm));
     krnl.wunlock_page(page_ptr2page_index(pagetable_page_ptr), Tracked(&mut *lctx), Tracked(pagetable_page_lock_perm));
     krnl.wunlock_page(page_ptr2page_index(process_page_ptr), Tracked(&mut *lctx), Tracked(process_page_lock_perm));
-    proof { assert(krnl.prc_mp.spec_index(parent_ptr).view().owned_threads.view().len() != 0) by { reveal(Seq::contains); process_thread_wf_at(old(krnl).prc_mp, old(krnl).thr_mp, current_thread_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); }; }
+    proof { assert(krnl.prc_mp.spec_index(parent_ptr).view().state.view() is Running || krnl.prc_mp.spec_index(parent_ptr).view().state.view() is Zombie) by { reveal(create_process_from_staged_pages_kernel_state_framing); }; }
     krnl.wunlock_process(parent_ptr, Tracked(&mut *lctx), Tracked(parent_lock_perm));
     krnl.wunlock_pcid_allocator(pcid_allocator_ptr, Tracked(&mut *lctx), Tracked(pcid_allocator_lock_perm));
     let ghost sharing = Some(SyscallProgress::Share4k {
@@ -231,17 +221,18 @@ pub(super) fn publish_staged_process(
     });
     krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(sharing), Tracked(&*lctx), Tracked(current_thread_lock_perm));
     proof {
-        use_type_invariant(&*steps);
-        assert(new_process_publish_step_pre(steps.snapshot_u(), cpu_id) && new_process_publish_step(steps.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id)) by {
-            reveal(create_process_from_staged_pages_kernel_state_framing); reveal(kernel_thread_quota_4k_changed); reveal(process_thread_wf);
-            kernel_write_held_context_projection(old(krnl), old(lctx), cpu_id, parent_ptr, current_thread_ptr, None);
-            kernel_process_published_and_parent_unlocked_implies_u_step(old(krnl), &*krnl, &*lctx, parent_ptr, child_ptr, current_thread_ptr, container_ptr,
+        let ghost published_k = *krnl;
+        let ghost published_lctx = *lctx;
+        assert(kernel_process_added(&steps.snapshot_k(), &*krnl, child_ptr)) by { reveal(kernel_process_added); };
+        krnl.kernel_step_boundary_process_added(&mut *lctx, &mut *steps, child_ptr, current_thread_ptr);
+        assert(new_process_publish_step_pre(steps.view().last().old_u, cpu_id) && new_process_publish_step(steps.view().last().old_u, steps.view().last().new_u, cpu_id)) by {
+            reveal(create_process_from_staged_pages_kernel_state_framing); reveal(kernel_thread_quota_4k_changed); process_thread_wf_at(old(krnl).prc_mp, old(krnl).thr_mp, current_thread_ptr);
+            new_process_publish_step_pre_from_k(old(krnl), old(lctx), cpu_id, parent_ptr, current_thread_ptr, container_ptr, *source_range, regs, endpoint_index, false);
+            kernel_process_published_and_parent_unlocked_implies_u_step(old(krnl), &published_k, &published_lctx, parent_ptr, child_ptr, current_thread_ptr, container_ptr,
                 target_pagetable_ptr, None, pcid_allocator_ptr, pcid, sharing);
-            new_process_publish_step_from_u(steps.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, parent_ptr, child_ptr, current_thread_ptr, container_ptr,
+            new_process_publish_step_from_u(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(published_k), cpu_id, parent_ptr, child_ptr, current_thread_ptr, container_ptr,
                 *source_range, regs, endpoint_index, false);
         };
-        assert(kernel_process_added(&steps.snapshot_k(), &*krnl, child_ptr)) by { reveal(kernel_process_added); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged); };
-        krnl.kernel_step_boundary_process_added(&mut *lctx, &mut *steps, child_ptr, current_thread_ptr);
     }
     proof {
         assert(krnl.ctn_mp.dom().contains(container_ptr)) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, current_thread_ptr); };
@@ -249,9 +240,6 @@ pub(super) fn publish_staged_process(
         assert(krnl.pt_mp.spec_index(target_pagetable_ptr).view().kernel_l4_end == old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end) by { reveal(KernelK::default_pagetable_wf); };
     }
     proof { assert(pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, target_pagetable_ptr, krnl.pt_mp.spec_index(target_pagetable_ptr).view())) by { reveal(tlb_wf_spec); }; }
-    assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-    assert(kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)) by { broadcast use kernel_endpoint_nonlock_fields_unchanged_for_equal; };
-    assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
     (child_ptr, target_pagetable_ptr, Tracked(child_lock_perm), Tracked(target_pagetable_lock_perm))
 }
 }

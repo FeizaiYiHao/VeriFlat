@@ -78,10 +78,6 @@ impl LockOwnerIdTrait for CpuSet {
     open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
     open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
 }
-
-impl LockUserVisibilityTrait for CpuSet {
-    open spec fn is_user_visible() -> bool { false }
-}
 }
 
 const ASSERT_CPU_SET_LOCK_FITS_4K: [(); 1] = [(); (core::mem::size_of::<RwLock<CpuSet, (), (), CPU_SET_HAS_KILL_STATE>>() <= PAGE_SZ_4K) as usize];

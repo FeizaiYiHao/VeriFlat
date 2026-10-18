@@ -37,10 +37,6 @@ impl LockIdTrait for GlobalPool {
     }
 }
 
-impl LockUserVisibilityTrait for GlobalPool {
-    open spec fn is_user_visible() -> bool { false }
-}
-
 impl GlobalPool {
     pub open spec fn wf(&self) -> bool {
         &&& self.linked_list.wf()

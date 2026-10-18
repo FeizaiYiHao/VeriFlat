@@ -14,7 +14,6 @@ pub fn syscall_cpu_offline_request_child(krnl: &mut KernelK, Tracked(lctx): Trac
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -52,8 +51,16 @@ pub fn syscall_cpu_offline_request_child(krnl: &mut KernelK, Tracked(lctx): Trac
         }
         return RetValueType::ErrorCpuOwnerMismatch;
     }
+    let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);
+    if cpu_lock_res.is_none() {
+        proof {
+            cpu_offline_request_child_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, target, RetValueType::CpuIdle);
+            cpu_offline_request_child_result_from_k(&*old(krnl), cpu_id, child, target, RetValueType::CpuIdle, false);
+        }
+        return RetValueType::CpuIdle;
+    }
+    let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
     proof { assert(krnl.ctn_mp.dom().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container)) by { container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); }; }
-    let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(lctx));
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
     let caller_ptr = cpu.owning_container();
     let container_res = krnl.wlock_container_unless_killed(caller_ptr, Tracked(&mut *lctx));
@@ -62,9 +69,7 @@ pub fn syscall_cpu_offline_request_child(krnl: &mut KernelK, Tracked(lctx): Trac
         proof {
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(caller_ptr), None, None, None, None, None);
             cpu_offline_request_child_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, target, RetValueType::ErrorContainerKilled);
-            assert(cpu_offline_request_child_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, child, target) is ErrorContainerKilled) by {
-                kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_container_projection_at(&*old(krnl), caller_ptr);
-            };
+            cpu_offline_request_child_result_from_k(&*old(krnl), cpu_id, child, target, RetValueType::ErrorContainerKilled, false);
         }
         return RetValueType::ErrorContainerKilled;
     }
@@ -77,9 +82,7 @@ pub fn syscall_cpu_offline_request_child(krnl: &mut KernelK, Tracked(lctx): Trac
         proof {
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(caller_ptr), None, None, None, None, None);
             cpu_offline_request_child_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, target, RetValueType::ErrorContainerZombie);
-            assert(cpu_offline_request_child_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, child, target) is ErrorContainerZombie) by {
-                kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_container_projection_at(&*old(krnl), caller_ptr);
-            };
+            cpu_offline_request_child_result_from_k(&*old(krnl), cpu_id, child, target, RetValueType::ErrorContainerZombie, false);
         }
         return RetValueType::ErrorContainerZombie;
     }
@@ -90,9 +93,7 @@ pub fn syscall_cpu_offline_request_child(krnl: &mut KernelK, Tracked(lctx): Trac
         proof {
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(caller_ptr), None, None, None, None, None);
             cpu_offline_request_child_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, target, RetValueType::ErrorCpuOwnerMismatch);
-            assert(cpu_offline_request_child_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, child, target) is ErrorCpuOwnerMismatch) by {
-                kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_container_projection_at(&*old(krnl), caller_ptr);
-            };
+            cpu_offline_request_child_result_from_k(&*old(krnl), cpu_id, child, target, RetValueType::ErrorCpuOwnerMismatch, false);
         }
         return RetValueType::ErrorCpuOwnerMismatch;
     }
@@ -121,20 +122,19 @@ pub fn syscall_cpu_offline_request_child(krnl: &mut KernelK, Tracked(lctx): Trac
         else { RetValueType::Success };
     let pending = krnl.cpu_offline_mp.read_flag(flags_ptr, target, Tracked(&flag_lock_perm));
     proof {
-        assert(result == cpu_offline_request_child_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, child, target)) by {
+        assert(result == cpu_offline_request_child_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, child, target)
+            && (result is Success ==> pending == cpu_offline_request_child_pending(kernel_k_to_kernel_u(*old(krnl)), target))) by {
             container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, target); container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, child_ptr, target);
             container_cpu_wf_cpu_at(old(krnl).ctn_mp, old(krnl).cpu_set_mp, old(krnl).cpu_arr, target); container_cpu_wf_container_at(old(krnl).ctn_mp, old(krnl).cpu_set_mp, old(krnl).cpu_arr, child_ptr, target);
-            kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_cpu_projection_at(&*old(krnl), target); kernel_container_projection_at(&*old(krnl), caller_ptr);
+            cpu_offline_request_child_result_from_k(&*old(krnl), cpu_id, child, target, result, pending);
         };
         assert(result is Success ==> {
             &&& krnl.cpu_arr.spec_index(target).view().view().view().owning_container == child_ptr
             &&& !(krnl.cpu_arr.spec_index(target).view().view().view().state is Off)
-            &&& pending == cpu_offline_request_child_pending(kernel_k_to_kernel_u(*old(krnl)), target)
             &&& target != cpu_id
         }) by {
             container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, target); container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, child_ptr, target);
-            container_cpu_wf_cpu_at(old(krnl).ctn_mp, old(krnl).cpu_set_mp, old(krnl).cpu_arr, target); container_cpu_wf_container_at(old(krnl).ctn_mp, old(krnl).cpu_set_mp, old(krnl).cpu_arr, child_ptr, target); reveal(cpu_offline_requests_of);
-            kernel_cpu_projection_at(&*old(krnl), target); kernel_container_projection_at(&*old(krnl), child_ptr);
+            container_cpu_wf_cpu_at(old(krnl).ctn_mp, old(krnl).cpu_set_mp, old(krnl).cpu_arr, target); container_cpu_wf_container_at(old(krnl).ctn_mp, old(krnl).cpu_set_mp, old(krnl).cpu_arr, child_ptr, target);
         };
     }
     let success = if let RetValueType::Success = result { true } else { false };

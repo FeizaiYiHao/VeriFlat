@@ -34,6 +34,7 @@ proof fn ipc_cpu_rendezvous_eof_process_management_inv(
 {
     reveal(ipc_cpu_rendezvous_transition);
     assert(post.process_management_inv()) by {
+        assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
         assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
         assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); };
         assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); };
@@ -41,7 +42,7 @@ proof fn ipc_cpu_rendezvous_eof_process_management_inv(
         assert({
             &&& container_endpoint_wf(post.ctn_mp, post.ep_mp)
             &&& thread_caller_callee_wf(post.thr_mp)
-        }) by { reveal(container_endpoint_wf); reveal(thread_caller_callee_wf); };
+        }) by { container_endpoint_wf_preserved_for_endpoint_owner_eq(pre.ctn_mp, post.ctn_mp, pre.ep_mp, post.ep_mp); thread_caller_callee_wf_preserved_for_call_link_eq(pre.thr_mp, post.thr_mp); };
         assert({
             &&& container_scheduler_wf(post.ctn_mp, post.sched_mp)
             &&& container_thread_wf(post.ctn_mp, post.thr_mp)

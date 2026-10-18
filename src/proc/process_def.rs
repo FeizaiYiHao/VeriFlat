@@ -3,9 +3,13 @@ use vstd::simple_pptr::*;
 verus! {
 use crate::*;
 
+/// K-only lifecycle of a process; not part of U.
+pub ghost enum ProcessState { Creating, Running, Killing, TablesEmptied, Zombie }
+
 pub struct Process {
     // Independent of the lock's kill state. Resource identifiers are historical when zombie.
     pub zombie: bool,
+    pub state: Ghost<ProcessState>,
     pub pcid: Pcid,
     pub pagetable: RwLockPageTableRoot,
     pub iommu_table: Option<RwLockPageTableRoot>,
@@ -81,6 +85,7 @@ impl Process {
         ensures
             ret.inv(),
             !ret.zombie,
+            ret.state.view() == ProcessState::Running,
             ret.pcid == 1,
             ret.pagetable == pagetable,
             ret.iommu_table == Some(iommu_table),
@@ -95,6 +100,7 @@ impl Process {
         let mut ret = Self::new_fresh(process_ptr, 1, pagetable, 0, 0);
         ret.iommu_table = Some(iommu_table);
         ret.owned_threads.push_tail(thread_node_addr, thread_node_perm);
+        ret.state = Ghost(ProcessState::Running);
         ret
     }
 
@@ -104,6 +110,7 @@ impl Process {
         ensures
             ret.inv(),
             !ret.zombie,
+            ret.state.view() == ProcessState::Creating,
             ret.pcid == pcid,
             ret.pagetable == pagetable,
             ret.iommu_table is None,
@@ -119,7 +126,7 @@ impl Process {
         let parent_linkedlist_node = ExternalNode::new(process_ptr);
         let children = LinkedList::new(Some(container_depth), Some(depth));
         let owned_threads = LinkedList::new(Some(container_depth), Some(depth));
-        Self { zombie: false, pcid, pagetable, iommu_table: None, quota_4k: 0, quota_2m: 0, quota_1g: 0, parent_linkedlist_node, children, owned_threads }
+        Self { zombie: false, state: Ghost(ProcessState::Creating), pcid, pagetable, iommu_table: None, quota_4k: 0, quota_2m: 0, quota_1g: 0, parent_linkedlist_node, children, owned_threads }
     }
 
     pub open spec fn wf(&self) -> bool {
@@ -127,6 +134,8 @@ impl Process {
         &&& self.children.inv()
         &&& self.owned_threads.wf()
         &&& self.pagetable_iommu_table_different()
+        &&& self.state.view() is Running ==> self.owned_threads.view().len() > 0
+        &&& self.zombie <==> self.state.view() is Zombie
         // A zombie has no thread and no quota left.
         &&& self.zombie ==> {
             &&& self.owned_threads.view().len() == 0
@@ -142,14 +151,14 @@ impl Process {
     pub fn add_owned_thread(&mut self, thread_ptr: RwLockThreadPtr, node_addr: usize, node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>)
         requires
             old(self).inv(),
-            !old(self).zombie,
+            old(self).state.view() is Creating || old(self).state.view() is Running,
             node_perm.is_init(),
             node_perm.addr() == node_addr,
             !old(self).owned_threads.view().contains(thread_ptr),
             old(self).owned_threads.view().len() < usize::MAX,
         ensures
             final(self).inv(),
-            *final(self) == (Process { owned_threads: final(self).owned_threads, ..*old(self) }),
+            *final(self) == (Process { owned_threads: final(self).owned_threads, state: Ghost(ProcessState::Running), ..*old(self) }),
             final(self).owned_threads.view() == old(self).owned_threads.view().push(thread_ptr),
             final(self).owned_threads.dom() == old(self).owned_threads.dom().insert(node_addr),
             final(self).owned_threads.map() == old(self).owned_threads.map().insert(node_addr, thread_ptr),
@@ -159,8 +168,9 @@ impl Process {
     {
         let mut node_perm = node_perm;
         node_update_value(node_addr, &mut node_perm, thread_ptr);
-        proof { assert(self.owned_threads.length != usize::MAX) by { reveal(LinkedList::wf_value_list); }; }
+        proof { assert(self.owned_threads.length != usize::MAX) by { self.owned_threads.lemma_len_view(); }; }
         self.owned_threads.push_tail(node_addr, node_perm);
+        self.state = Ghost(ProcessState::Running);
     }
 
     /// Remove an exiting thread through its list node, absorb the thread's quota, and become a zombie
@@ -173,11 +183,14 @@ impl Process {
             old(self).quota_2m + quota_2m <= usize::MAX,
             old(self).quota_1g + quota_1g <= usize::MAX,
             old(self).owned_threads.view().len() == 1 ==> old(self).quota_4k + quota_4k == 0 && old(self).quota_2m + quota_2m == 0 && old(self).quota_1g + quota_1g == 0,
+            old(self).owned_threads.view().len() == 1 ==> old(self).state.view() is TablesEmptied,
+            old(self).owned_threads.view().len() != 1 ==> old(self).state.view() is Running,
         ensures
             final(self).inv(),
             *final(self) == (Process {
-                zombie: final(self).owned_threads.view().len() == 0, quota_4k: (old(self).quota_4k + quota_4k) as usize, quota_2m: (old(self).quota_2m + quota_2m) as usize,
-                quota_1g: (old(self).quota_1g + quota_1g) as usize, owned_threads: final(self).owned_threads, ..*old(self)
+                zombie: final(self).owned_threads.view().len() == 0, state: if final(self).owned_threads.view().len() == 0 { Ghost(ProcessState::Zombie) } else { old(self).state },
+                quota_4k: (old(self).quota_4k + quota_4k) as usize, quota_2m: (old(self).quota_2m + quota_2m) as usize, quota_1g: (old(self).quota_1g + quota_1g) as usize,
+                owned_threads: final(self).owned_threads, ..*old(self)
             }),
             final(self).owned_threads.view() == old(self).owned_threads.view().remove_value(old(self).owned_threads.map().spec_index(node_addr)),
             final(self).owned_threads.dom() == old(self).owned_threads.dom().remove(node_addr),
@@ -186,13 +199,42 @@ impl Process {
             ret.view().addr() == node_addr,
             ret.view().value().view() == old(self).owned_threads.map().spec_index(node_addr),
     {
-        proof { assert(self.owned_threads.view().no_duplicates()) by { reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list); }; }
         let (_, node_perm) = self.owned_threads.remove(node_addr);
-        proof { assert(self.owned_threads.view().len() == self.owned_threads.length && old(self).owned_threads.view().len() == old(self).owned_threads.length) by { reveal(LinkedList::wf_value_list); }; }
+        proof { assert(self.owned_threads.view().len() == self.owned_threads.length && old(self).owned_threads.view().len() == old(self).owned_threads.length) by { self.owned_threads.lemma_len_view(); old(self).owned_threads.lemma_len_view(); }; }
         self.quota_4k = self.quota_4k + quota_4k;
         self.quota_2m = self.quota_2m + quota_2m;
         self.quota_1g = self.quota_1g + quota_1g;
         self.zombie = self.owned_threads.len() == 0;
+        if self.zombie { self.state = Ghost(ProcessState::Zombie); }
+        node_perm
+    }
+
+    /// A killer removes the killed thread at `node_addr` from this process, which absorbs the thread's quota.
+    pub fn remove_killed_thread(&mut self, node_addr: usize, quota_4k: usize, quota_2m: usize, quota_1g: usize) -> (ret: Tracked<PointsTo<Node<RwLockThreadPtr>>>)
+        requires
+            old(self).inv(),
+            old(self).state.view() is Killing,
+            old(self).owned_threads.dom().contains(node_addr),
+            old(self).quota_4k + quota_4k <= usize::MAX,
+            old(self).quota_2m + quota_2m <= usize::MAX,
+            old(self).quota_1g + quota_1g <= usize::MAX,
+        ensures
+            final(self).inv(),
+            *final(self) == (Process {
+                quota_4k: (old(self).quota_4k + quota_4k) as usize, quota_2m: (old(self).quota_2m + quota_2m) as usize, quota_1g: (old(self).quota_1g + quota_1g) as usize,
+                owned_threads: final(self).owned_threads, ..*old(self)
+            }),
+            final(self).owned_threads.view() == old(self).owned_threads.view().remove_value(old(self).owned_threads.map().spec_index(node_addr)),
+            final(self).owned_threads.dom() == old(self).owned_threads.dom().remove(node_addr),
+            final(self).owned_threads.map() == old(self).owned_threads.map().remove(node_addr),
+            ret.view().is_init(),
+            ret.view().addr() == node_addr,
+            ret.view().value().view() == old(self).owned_threads.map().spec_index(node_addr),
+    {
+        let (_, node_perm) = self.owned_threads.remove(node_addr);
+        self.quota_4k = self.quota_4k + quota_4k;
+        self.quota_2m = self.quota_2m + quota_2m;
+        self.quota_1g = self.quota_1g + quota_1g;
         node_perm
     }
 
@@ -215,8 +257,27 @@ impl Process {
     {
         let mut node_perm = node_perm;
         node_update_value(node_addr, &mut node_perm, child_ptr);
-        proof { assert(self.children.length != usize::MAX) by { reveal(LinkedList::wf_value_list); }; }
+        proof { assert(self.children.length != usize::MAX) by { self.children.lemma_len_view(); }; }
         self.children.push_tail(node_addr, node_perm);
+    }
+
+    /// Unlink the retired child at `node_addr` from this process's child list.
+    pub fn remove_child(&mut self, node_addr: usize) -> (ret: Tracked<PointsTo<Node<RwLockProcessPtr>>>)
+        requires
+            old(self).inv(),
+            old(self).children.dom().contains(node_addr),
+        ensures
+            final(self).inv(),
+            *final(self) == (Process { children: final(self).children, ..*old(self) }),
+            final(self).children.view() == old(self).children.view().remove_value(old(self).children.map().spec_index(node_addr)),
+            final(self).children.dom() == old(self).children.dom().remove(node_addr),
+            final(self).children.map() == old(self).children.map().remove(node_addr),
+            ret.view().is_init(),
+            ret.view().addr() == node_addr,
+            ret.view().value().view() == old(self).children.map().spec_index(node_addr),
+    {
+        let (_, node_perm) = self.children.remove(node_addr);
+        node_perm
     }
 }
 
@@ -229,10 +290,6 @@ impl LockMajorTrait for Process {
     open spec fn lock_major_2_predicate(&self) -> bool { true }
     open spec fn lock_major_3_predicate(&self) -> bool { true }
     open spec fn lock_major_default_predicate(&self) -> bool { true }
-}
-
-impl LockUserVisibilityTrait for Process {
-    open spec fn is_user_visible() -> bool { true }
 }
 
 impl LockOwnerIdTrait for Process {

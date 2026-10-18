@@ -8,8 +8,15 @@
 //!
 //! Per-CPU data is reached through the GS base. Ring 3 can reload `gs` and so zero that base, so
 //! every crossing executes `swapgs`: `sys_entry` and the interrupt trampolines (for frames from
-//! ring 3) on the way in, [`restore_frame`] and the trampolines on the way out. The NMI handler and
-//! the fatal-exception path may run with either base and use [`cpu::cpu_id_without_gs`] instead.
+//! ring 3) on the way in, [`restore_frame`], the only exit to ring 3, on the way out. The NMI handler
+//! and the fatal-exception path may run with either base and use [`cpu::cpu_id_without_gs`] instead.
+//!
+//! An eviction (`platform::veriflat_evict_ipi`) makes this CPU abandon its thread at another CPU's
+//! request. It is a maskable IPI, so this CPU takes it only with interrupts enabled: in ring 3 or
+//! at the `hlt` of [`run_idle`], never inside a syscall. It loads the kernel page table; from ring 3
+//! it also sets `Cpu::evicted`, and the trampoline's exit through [`restore_frame`] diverts to the
+//! idle loop, which clears the flag. The requester marked this CPU's lock first, so a syscall or
+//! idle-loop step of this CPU that would lock its own CPU returns at once and reaches the `hlt`.
 //!
 //! TODO: the frame is not the whole user-visible CPU state. The x87/MMX registers (CR0.EM is 0)
 //! and the `fs`/`gs` selectors are neither saved nor reset across a thread switch, so the next
@@ -31,6 +38,7 @@ use veriflat_monolith::kernel::implementation::syscall_cpu_hotplug::syscall_cpu_
 use veriflat_monolith::kernel::implementation::syscall_cpu_hotplug::syscall_cpu_online::syscall_cpu_online;
 use veriflat_monolith::kernel::implementation::syscall_cpu_hotplug::syscall_cpu_online_child::syscall_cpu_online_child;
 use veriflat_monolith::kernel::implementation::syscall_ipc::syscall_ipc::*;
+use veriflat_monolith::kernel::implementation::syscall_kill_process::syscall_kill_process::syscall_kill_process;
 use veriflat_monolith::kernel::implementation::syscall_mmap_4k::syscall_mmap_4k::syscall_mmap_4k;
 use veriflat_monolith::kernel::implementation::syscall_new_container::{syscall_new_container, syscall_new_container_with_endpoint};
 use veriflat_monolith::kernel::implementation::syscall_new_endpoint::syscall_new_endpoint::syscall_new_endpoint;
@@ -68,6 +76,16 @@ const MODEL_ERROR_BASE: i64 = 100;
 
 /// LAPIC timer cycles per scheduling tick (about 10 ms under KVM).
 const TICK: Cycles = Cycles(5_000_000);
+
+/// User addresses lie in the lower canonical half; a non-canonical read raises #GP, which
+/// [`copy_from_user`] has no fixup for.
+const USER_END: usize = 1 << 47;
+
+unsafe extern "C" {
+    /// The loop of [`copy_from_user`] and its exit.
+    static veriflat_user_copy_begin: u8;
+    static veriflat_user_copy_end: u8;
+}
 
 /// Initializes syscalls.
 ///
@@ -158,9 +176,14 @@ unsafe extern "C" fn sys_entry() -> ! {
 /// non-canonical address faults in ring 0 after the user `rsp` is already loaded. Interrupts stay
 /// off until `sysretq`; NMIs and machine checks taken after the user `rsp` is loaded run on IST stacks.
 /// The frame is always a ring 3 frame, so both returns `swapgs` unconditionally.
+///
+/// An evicted CPU goes to the idle loop instead. Interrupts stay off from the check to the return,
+/// so no eviction lands after it.
 #[unsafe(naked)]
-unsafe extern "C" fn restore_frame() -> ! {
+pub(crate) unsafe extern "C" fn restore_frame() -> ! {
     naked_asm!(
+        "cmp byte ptr gs:[{evicted}], 0",
+        "jne {evict}",
         // ZF = 1 selects sysretq. pop leaves the flags alone.
         "mov rcx, [rsp + {frame_rip}]",
         "mov r11, [rsp + {frame_rflags}]",
@@ -203,6 +226,9 @@ unsafe extern "C" fn restore_frame() -> ! {
         "swapgs",
         "iretq",
 
+        evicted = const offset_of!(Cpu, evicted),
+        evict = sym evict_to_idle_kernel_gs,
+
         frame_rip = const offset_of!(Registers, rip),
         frame_rflags = const offset_of!(Registers, flags),
         frame_rcx = const offset_of!(Registers, rcx),
@@ -226,6 +252,32 @@ unsafe extern "C" fn enter_frame(frame: *const Registers) -> ! {
         "jmp {restore}",
         restore = sym restore_frame,
     );
+}
+
+/// Abandons the current thread for the idle loop: restarts on this CPU's kernel stack below the
+/// frame slot. Entered with the kernel GS base and interrupts off.
+#[unsafe(naked)]
+unsafe extern "C" fn evict_to_idle_kernel_gs() -> ! {
+    naked_asm!(
+        "mov rsp, gs:{syscall_sp_offset}",
+        "sub rsp, {reserve}",
+        "call {entry}",
+        "ud2",
+        syscall_sp_offset = const offset_of!(Cpu, syscall_sp),
+        reserve = const cpu::FRAME_SLOT_RESERVE,
+        entry = sym evict_idle_entry,
+    );
+}
+
+/// The idle loop of an evicted CPU, then the thread it finds. Like [`enter_first_thread`], but the
+/// timer already runs.
+extern "C" fn evict_idle_entry() -> ! {
+    unsafe {
+        let frame = cpu::top_frame();
+        frame.write(Registers::zeroed());
+        run_idle(&mut *frame);
+        enter_frame(frame);
+    }
 }
 
 /// Runs the idle loop on the boot CPU until a thread is chosen, then enters it. Called once
@@ -347,6 +399,8 @@ fn error_index(ret: RetValueType) -> usize {
         ErrorThreadQuotaOverflow => 41,
         ErrorContainerZombie => 42,
         ErrorIpcCalleeExited => 43,
+        ErrorIpcCallerKilled => 44,
+        ErrorInvalidChild => 45,
     }
 }
 
@@ -467,6 +521,7 @@ extern "C" fn syscall_dispatch(regs: &mut Registers) {
             syscall_new_endpoint(k, t!(), t!(), cpu_id, a1)
         }
         vsys::NR_THREAD_EXIT => syscall_thread_exit(k, t!(), t!(), cpu_id),
+        vsys::NR_KILL_PROCESS => syscall_kill_process(k, t!(), t!(), cpu_id, a1),
         vsys::NR_MMAP_4K => syscall_mmap_4k(k, t!(), t!(), cpu_id, a1, a2),
         vsys::NR_UNMAP_4K => syscall_unmap_4k(k, t!(), t!(), cpu_id, a1, a2),
         vsys::NR_NEW_PROCESS => {
@@ -582,12 +637,46 @@ extern "C" fn syscall_dispatch(regs: &mut Registers) {
     }
 }
 
+/// Copies `len` bytes from `src` to `dst` and returns how many it copied: fewer when a read of `src`
+/// page faults, and `page_fault` resumes at the exit.
+#[unsafe(naked)]
+unsafe extern "C" fn copy_from_user(dst: *mut u8, src: *const u8, len: usize) -> usize {
+    naked_asm!(
+        "xor eax, eax",
+        ".globl veriflat_user_copy_begin",
+        "veriflat_user_copy_begin:",
+        "2:",
+        "cmp rax, rdx",
+        "je 3f",
+        "mov cl, byte ptr [rsi + rax]",
+        "mov byte ptr [rdi + rax], cl",
+        "inc rax",
+        "jmp 2b",
+        "3:",
+        ".globl veriflat_user_copy_end",
+        "veriflat_user_copy_end:",
+        "ret",
+    );
+}
+
+/// Where a kernel page fault at `regs.rip` resumes: the exit of [`copy_from_user`] for a fault in its loop.
+pub fn user_copy_fixup(regs: &Registers) -> Option<u64> {
+    let (begin, end) = (&raw const veriflat_user_copy_begin as u64, &raw const veriflat_user_copy_end as u64);
+    (!from_user(regs) && (begin..end).contains(&regs.rip)).then_some(end)
+}
+
 fn debug_print(data: usize, len: usize) {
-    // dom0 shares the kernel's identity map, and every user mapping is readable from ring 0.
-    let bytes = unsafe { core::slice::from_raw_parts(data as *const u8, len.min(4096)) };
-    match core::str::from_utf8(bytes) {
+    let len = len.min(4096);
+    if data.checked_add(len).is_none_or(|end| end > USER_END) {
+        return;
+    }
+    // The thread's page table is loaded, and every user mapping is readable from ring 0.
+    let mut buffer = [0u8; 4096];
+    let copied = unsafe { copy_from_user(buffer.as_mut_ptr(), data as *const u8, len) };
+    match core::str::from_utf8(&buffer[..copied]) {
+        _ if copied < len => log::info!("[user@{}] <page fault reading {:#x}>", cpu::get_cpu_id(), data + copied),
         Ok(s) => log::info!("[user@{}] {}", cpu::get_cpu_id(), s.trim_end()),
-        Err(_) => log::info!("[user@{}] <{} non-UTF-8 bytes>", cpu::get_cpu_id(), bytes.len()),
+        Err(_) => log::info!("[user@{}] <{} non-UTF-8 bytes>", cpu::get_cpu_id(), len),
     }
 }
 
@@ -616,8 +705,11 @@ fn schedule_from_running(regs: &mut Registers) {
 }
 
 /// The idle loop of a CPU without a running thread. Returns once `regs` holds the frame of the
-/// thread the CPU switched to.
+/// thread the CPU switched to. An eviction ends here: from ring 3 through [`restore_frame`], and
+/// from a syscall that found its CPU marked through the CpuIdle result; the eviction IPI itself
+/// then arrives at the `hlt` below.
 fn run_idle(regs: &mut Registers) {
+    cpu::clear_evicted();
     let cpu_id = cpu::get_cpu_id();
     let k = kernel();
     loop {

@@ -11,12 +11,27 @@ they must point to these canonical sources instead of redefining their rules.
 ## Scope and semantics
 
 - Read this file before editing.
-- One subagent may run at any time without asking, provided it obeys every
-  rule in this file and the routed skills: no concurrent heavy verification,
-  no edits to files under verification, the same approval, style, and
-  reporting rules. Give it explicit file ownership and require it to report
-  changed files plus verification run numbers. Larger fan-out still needs
-  explicit user permission.
+- The main agent only plans, talks with the user, and audits. It delegates
+  every code, proof, documentation, and verification task to subagents,
+  reviews their diffs and run results itself, and keeps read-only inspection
+  for planning and auditing in the main thread.
+- Use subagents (Opus 5.5) to go faster: spawn them freely, in any number,
+  without asking, whenever work splits into disjoint files or independent
+  diagnoses, and run them concurrently instead of serializing in the main
+  thread. Each must obey every rule in this file and the routed skills: the
+  machine-wide limit of two heavy verification jobs, no edits to files under
+  verification, the same approval, style, and reporting rules. Give each
+  explicit, disjoint file ownership and require it to report changed files
+  plus verification run numbers. Workflow orchestration still needs explicit
+  user permission.
+- A subagent verifies only its own scope: one module or one equation
+  (`./verify-workspace.sh --package <pkg> -- --verify-only-module <mod>` or
+  `--verify-function <fn>`), each under `systemd-run --user --scope -p
+  MemoryMax=30G`. Such focused runs are light and may run concurrently, so
+  many agents can develop in parallel. Whole-package, whole-workspace, and
+  monolith runs are heavy: they count toward the two-job limit, and one
+  integration subagent assigned by the main agent runs them once per
+  integration or handoff, after the agents' focused runs are green.
 - Do not reset, overwrite, restage, or clean unrelated changes. Freeze shared
   APIs before parallel verification.
 - Diagnose questions read-only. Implement only when asked. If a proof exposes
@@ -80,10 +95,21 @@ they must point to these canonical sources instead of redefining their rules.
   closure, and may not change model semantics. This exception does not authorize
   reusable or cross-operation framing abstractions.
 - Every new proof lemma requires explicit user approval unless it is an EOF
-  closure function, a step-wrapper-layer lemma in `kernel_step_wrappers.rs`,
-  or a fold-related lemma. Operation-local K→U bridging lemmas placed next to
-  an exec function are not exempt: state the generic K→U fact in the
-  step-wrapper layer and derive the operation's step predicates from it.
+  closure function, a fold-related lemma, a `*_wf_at` point lemma, or a K→U
+  lemma in one of two layers: a generic K→U fact in the step-wrapper layer
+  (`kernel_step_wrappers.rs`,
+  `src/kernel/kernel_step_wrappers/`), or an operation-local bridging lemma
+  in the operation's `*_trace.rs` (`<op>_<step>_pre_from_k`,
+  `<op>_<step>_from_u`, `<op>_result_from_k`, trace composition) whose
+  requires are K facts or wrapper ensures verbatim, whose ensures are existing
+  U specs of that operation, and which introduces no new spec. List every
+  added lemma in the report. New framing specs or framing lemmas, reusable
+  cross-operation abstractions, new invariants, and any change of model
+  semantics still require approval.
+- Exec equations and their own contracts contain no U reasoning: hold K facts
+  and call wrapper K→U step lemmas, step-boundary wrappers, and the
+  operation's trace lemmas. The full rule is in the proof skill's
+  `style-and-discipline.md`.
 - Ordinary edits to a function's `requires` and `ensures` do not require
   separate approval, including clauses that state which fields or lock-map
   entries are preserved. Do not classify a normal contract edit as a new
@@ -108,6 +134,15 @@ they must point to these canonical sources instead of redefining their rules.
   proof (one that fails although every sub-assertion passes, or that flips
   between the split workspace and the monolith). Find the cause — trigger
   shape, quantified context, missing direct fact — and fix the proof itself.
+- Every exec loop and every recursive exec function must carry a
+  `decreases` clause. `#[verifier::exec_allows_no_decreases_clause]` and
+  loops without `decreases` are forbidden outside code explicitly marked as
+  TCB. Exec recursion is allowed only when its depth has a physical upper
+  bound (container tree depth, page-table levels); a measure that is an
+  unbounded ghost quantity (a ghost `nat` such as a call-chain depth) must
+  drive a loop, never recursion, to protect the kernel stack. A loop whose
+  termination depends on another agent's progress is a model question:
+  report it to the user instead of adding the attribute.
 - A structurally large verification equation may use a higher rlimit; high
   rlimit alone is not a proof defect. Measure the uncapped equation and use the
   smallest practical ceiling. Any single equation exceeding 10 seconds of SMT
@@ -126,6 +161,18 @@ they must point to these canonical sources instead of redefining their rules.
   approval. S may be changed freely without approval, including adding,
   removing, strengthening, weakening, or reorganizing clauses, as long as the
   preceding completeness, semantic, and framing constraints are preserved.
+- EOF names carry `eof`: S is `<op>_eof_transition_framing`, EOF-only helper
+  framing is `<op>_eof_<what>`. S holds only transition/framing facts; operation
+  preconditions stay in the exec `requires`. S lives in the operation's
+  `*_eof*.rs` or `*_spec.rs`, never in the exec file. Non-EOF framing names state
+  what is preserved (`held_*_unchanged`, `kernel_*_nonlock_fields_unchanged`);
+  rename names that do not (`*_framed_fields_equal`, `*_kernel_state_framing`).
+- Exec equations, including `locker_unlocker/` primitives, are K-only
+  transition proofs: they establish S and lock-map alignment, prove callee
+  preconditions, and never `reveal` a `*_wf`/`*_inv` or reason about U. Point
+  facts come from `*_wf_at` lemmas (instantiated body at one index only, never a
+  map-level or quantified fact) or callee ensures; full rule in the proof
+  skill's `style-and-discipline.md`.
 - Ad-hoc tooling must never block the session. Run every temporary script and
   bulk text rewrite under `timeout`, test it on the largest target file before
   a batch run, avoid backtracking-prone regexes over whole files, start

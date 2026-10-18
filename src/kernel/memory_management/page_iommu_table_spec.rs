@@ -1,20 +1,26 @@
 use vstd::prelude::*;
 use crate::*;
 verus! {
-    /// IOMMU 4K leaves and the pages they map agree in both directions, and a page is mapped only by IOMMU tables of
-    /// processes inside its owner's subtree. Only 4K IOMMU leaves exist: there is no 2M or 1G IOMMU map path.
+    /// Every IOMMU mapping recorded on a mapped page is a leaf of its size in that table, 4K IOMMU leaves and the
+    /// pages they map agree in both directions, and a page is mapped only by IOMMU tables of processes inside its
+    /// owner's subtree. Only 4K IOMMU leaves are ever installed: there is no 2M or 1G IOMMU map path.
     // Proof dependency (confirmed): iommu_table_perms_wf.
     #[verifier::opaque]
     pub open spec fn page_iommu_table_wf(container_map: ContainerLockedMap, process_map: ProcessLockedMap, iommu_table_map: IommuTableLockedMap, page_array: PageLockedArray) -> bool {
         &&& forall|p_i: PageIndex|
             #![trigger page_array.spec_index(p_i)]
-            index_valid(NUM_PAGES, p_i) && page_array.spec_index(p_i).view().view().state == PageState::Mapped4k ==> forall|it_ptr: RwLockPageTableRoot, iova: VAddr|
+            index_valid(NUM_PAGES, p_i) && page_array.spec_index(p_i).view().view().is_mapped() ==> forall|it_ptr: RwLockPageTableRoot, iova: VAddr|
                 #![trigger page_array.spec_index(p_i).view().view().iommu_mappings().contains((it_ptr, iova))]
                 #![trigger iommu_table_map.spec_index(it_ptr).view().mapping_4k().spec_index(iova)]
                 page_array.spec_index(p_i).view().view().iommu_mappings().contains((it_ptr, iova)) ==> {
+                    let mapping = match page_array.spec_index(p_i).view().view().state {
+                        PageState::Mapped4k => iommu_table_map.spec_index(it_ptr).view().mapping_4k(),
+                        PageState::Mapped2m => iommu_table_map.spec_index(it_ptr).view().mapping_2m(),
+                        _ => iommu_table_map.spec_index(it_ptr).view().mapping_1g(),
+                    };
                     &&& iommu_table_map.dom().contains(it_ptr)
-                    &&& iommu_table_map.spec_index(it_ptr).view().mapping_4k().contains_key(iova)
-                    &&& iommu_table_map.spec_index(it_ptr).view().mapping_4k().spec_index(iova).addr == page_index2page_ptr(p_i)
+                    &&& mapping.contains_key(iova)
+                    &&& mapping.spec_index(iova).addr == page_index2page_ptr(p_i)
                 }
         &&& forall|it_ptr: RwLockPageTableRoot|
             #![trigger iommu_table_map.dom().contains(it_ptr)]

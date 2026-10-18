@@ -30,6 +30,7 @@ pub use pagetable_seq::*;
 pub use iommu::*;
 pub use kernel::*;
 pub use kernel::implementation::free_4k_page::*;
+pub use kernel::implementation::reclaim_dangling_thread::*;
 pub use kernel::implementation::allocate_free_4k_page::allocate_free_4k_impl_base::{allocate_free_4k_page, allocate_free_4k_page_k};
 pub use kernel::implementation::allocate_free_4k_page::allocate_free_4k_pages::allocate_free_4k_pages;
 #[cfg(verus_keep_ghost)]
@@ -48,6 +49,7 @@ use kernel::implementation::map_4k::unmap_4k_present::clear_4k_mapping_present;
 use kernel::implementation::map_4k::unmap_4k_reclaim_one::reclaim_unmapped_4k_page;
 use kernel::implementation::map_4k::unmap_iommu_4k_present::clear_iommu_4k_mapping_present;
 use kernel::implementation::map_4k::unmap_iommu_4k_reclaim_one::reclaim_unmapped_iommu_4k_page;
+use kernel::implementation::map_4k::unmap_4k_tlb::{mark_pcid_needflush_and_load, flush_remote_pcid_and_clear, flush_local_pcid_and_clear};
 
 use kernel::implementation::map_4k::unmap_4k_spec::*;
 pub use kernel::implementation::map_4k::share_mapping_4k_spec::*;

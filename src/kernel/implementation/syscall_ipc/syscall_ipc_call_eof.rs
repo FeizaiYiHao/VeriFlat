@@ -14,6 +14,7 @@ proof fn ipc_call_handoff_eof_process_management_inv(pre: KernelK, post: KernelK
 {
     reveal(ipc_call_handoff_transition);
     assert(post.process_management_inv()) by {
+        assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
         assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); reveal(container_thread_wf); reveal(container_process_wf); reveal(process_thread_wf); };
         assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); reveal(process_pagetable_match); reveal(process_thread_wf); };
         assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { reveal(thread_cpu_wf); };
@@ -58,11 +59,6 @@ pub(super) proof fn ipc_call_handoff_eof_memory(pre: KernelK, post: KernelK, cpu
     requires
         pre.inv(),
         ipc_call_handoff_transition(pre, post, cpu_id, caller_ptr, endpoint_ptr, endpoint_index, callee_ptr, entry_regs),
-        post.cpu_arr.inv(),
-        post.cpu_tlb.inv(),
-        post.cpu_published[cpu_id as int].inv(),
-        post.cpu_arr.spec_index(cpu_id).view().view().view().tlb_dirty_bitmap.inv(),
-        endpoint_perms_wf(post.ep_mp),
     ensures
         post.memory_management_inv(),
 {
@@ -104,6 +100,7 @@ proof fn ipc_accept_call_eof_process_management_inv(pre: KernelK, post: KernelK,
 {
     reveal(ipc_accept_call_transition);
     assert(post.process_management_inv()) by {
+        assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
         assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_thread_wf); reveal(process_thread_wf); };
         assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_running_thread_eq(pre.thr_mp, post.thr_mp, pre.cpu_arr, post.cpu_arr); };
         assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { container_thread_wf_preserved_for_container_thread_link_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp); };
@@ -147,6 +144,7 @@ proof fn ipc_reply_handoff_eof_process_management_inv(pre: KernelK, post: Kernel
 {
     reveal(ipc_reply_handoff_transition);
     assert(post.process_management_inv()) by {
+        assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
         assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); reveal(container_thread_wf); reveal(container_process_wf); reveal(process_thread_wf); };
         assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); reveal(process_pagetable_match); reveal(process_thread_wf); };
         assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { reveal(thread_cpu_wf); };
@@ -191,11 +189,6 @@ pub(super) proof fn ipc_reply_handoff_eof_memory(pre: KernelK, post: KernelK, cp
     requires
         pre.inv(),
         ipc_reply_handoff_transition(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, entry_regs),
-        post.cpu_arr.inv(),
-        post.cpu_tlb.inv(),
-        post.cpu_published[cpu_id as int].inv(),
-        post.cpu_arr.spec_index(cpu_id).view().view().view().tlb_dirty_bitmap.inv(),
-        endpoint_perms_wf(post.ep_mp),
     ensures
         post.memory_management_inv(),
 {

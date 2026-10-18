@@ -17,7 +17,6 @@ pub fn syscall_pci_attach_dma(
         cpu_id == old(lctx).cpu_id(),
         pci_bdf_valid(bus, device, function),
         old(krnl).inv(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -50,6 +49,15 @@ pub fn syscall_pci_attach_dma(
 {
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
     proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
+    let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);
+    if cpu_lock_res.is_none() {
+        proof {
+            pci_attach_dma_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, bus, device, function, RetValueType::CpuIdle);
+            pci_attach_dma_result_from_k(&*old(krnl), cpu_id, bus, device, function, RetValueType::CpuIdle);
+        }
+        return RetValueType::CpuIdle;
+    }
+    let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
     assert({
         let cpu = krnl.cpu_arr.spec_index(cpu_id).view().view().view();
         &&& cpu.current_process is Some
@@ -57,28 +65,25 @@ pub fn syscall_pci_attach_dma(
         &&& !krnl.prc_mp.spec_index(cpu.current_process.unwrap()).view().zombie
         &&& krnl.prc_mp.spec_index(cpu.current_process.unwrap()).view_rodata().view().owning_container == cpu.owning_container
     }) by { cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); };
-    let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(lctx));
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
     let process_ptr = cpu.current_process().unwrap();
     let process_res = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(lctx));
     if process_res.is_none() {
         krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
         proof {
-            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-            steps.end_kernel_step_unchanged(&*krnl, &*lctx);
+            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(process_ptr), None, None, None, None);
             pci_attach_dma_trace_stutter(
                 steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, bus, device, function,
                 RetValueType::ErrorProcessKilled,
             );
-            assert(pci_attach_dma_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, bus, device, function) is ErrorProcessKilled) by {
-                kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_process_projection_at(&*old(krnl), process_ptr);
-            };
+            pci_attach_dma_result_from_k(&*old(krnl), cpu_id, bus, device, function, RetValueType::ErrorProcessKilled);
         }
         return RetValueType::ErrorProcessKilled;
     }
     let Tracked(process_lock_perm) = process_res.unwrap();
-    proof { assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by { thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); reveal(process_thread_wf); }; }
+    proof { assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0) by {
+        thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap());
+    }; }
     let Tracked(irt_lock_perm) = krnl.wlock_iommu_root_table(Tracked(lctx));
     let owner = krnl.irt.borrow(Tracked(&irt_lock_perm)).owner(bus, device, function);
     let attached = krnl.irt.borrow(Tracked(&irt_lock_perm)).is_attached(bus, device, function);
@@ -89,9 +94,8 @@ pub fn syscall_pci_attach_dma(
         else { RetValueType::Success };
     proof {
         assert(result == pci_attach_dma_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, bus, device, function)) by {
-            reveal(process_pci_function_ownership_wf); reveal(process_iommu_table_match);
-            kernel_cpu_projection_at(&*old(krnl), cpu_id); kernel_process_projection_at(&*old(krnl), process_ptr);
-            kernel_iommu_root_table_projection_at(&*old(krnl), bus, device, function);
+            reveal(process_pci_function_ownership_wf); process_iommu_table_match_process_at(old(krnl).prc_mp, old(krnl).it_mp, process_ptr);
+            pci_attach_dma_result_from_k(&*old(krnl), cpu_id, bus, device, function, result);
         };
     }
     if owner != process_ptr || iommu_cr3.is_none() || attached {
@@ -111,14 +115,14 @@ pub fn syscall_pci_attach_dma(
     let root = iommu_cr3.unwrap();
     proof {
         assert(old(krnl).prc_mp.spec_index(process_ptr).view_ghost().owned_pci_functions.view().contains((bus, device, function))) by { reveal(process_pci_function_ownership_wf); };
-        assert(old(krnl).prc_mp.spec_index(process_ptr).view().iommu_table is Some && page_ptr_valid(root)) by { reveal(process_iommu_table_match); reveal(iommu_table_perms_wf); reveal(PageTable::table_pages_wf); };
+        assert(old(krnl).prc_mp.spec_index(process_ptr).view().iommu_table is Some && page_ptr_valid(root)) by {
+            process_iommu_table_match_process_at(old(krnl).prc_mp, old(krnl).it_mp, process_ptr); reveal(iommu_table_perms_wf); reveal(PageTable::table_pages_wf);
+        };
         let iommu_table = krnl.prc_mp.spec_index(process_ptr).view().iommu_table->Some_0;
-        assert(!lctx.iommu_table_lock_map().dom().contains(iommu_table));
         krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), process_ptr);
         assert(!(krnl.it_mp.spec_index(iommu_table).locking_thread() is Write)) by {
-            reveal(iommu_table_lock_wf); reveal(process_iommu_table_match);
+            reveal(iommu_table_lock_wf); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, process_ptr);
             if krnl.it_mp.spec_index(iommu_table).locking_thread() is Write {
-                assert(krnl.it_mp.spec_index(iommu_table).locked_by_thread(lctx.thread_id()));
                 assert(lctx.iommu_table_lock_map().dom().contains(iommu_table)) by { reveal(LockedMap::typed_lock_map_aligned); };
             }
         };

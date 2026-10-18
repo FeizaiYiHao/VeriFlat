@@ -20,8 +20,6 @@ verus! {
             old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None,
             old(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.spec_index(0) is None,
             old(krnl).ep_mp.dom().contains(endpoint_ptr),
-            old(krnl).ep_mp.spec_index(endpoint_ptr).is_init(),
-            old(krnl).ctn_mp.dom().contains(old(krnl).ep_mp.spec_index(endpoint_ptr).view().owning_container),
             {
                 ||| old(krnl).ep_mp.spec_index(endpoint_ptr).view().owning_container == old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container
                 ||| old(krnl).ctn_mp.spec_index(old(krnl).ep_mp.spec_index(endpoint_ptr).view().owning_container).view_ghost().subtree_set.view().contains(old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container)
@@ -41,7 +39,6 @@ verus! {
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(krnl).inv(),
-            final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.spec_index(0) == Some(endpoint_ptr),
             final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view() == old(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().update(0, Some(endpoint_ptr)),
             final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { endpoint_descriptors: final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
             final(krnl).ep_mp.spec_index(endpoint_ptr).view().owning_threads.view() == old(krnl).ep_mp.spec_index(endpoint_ptr).view().owning_threads.view().insert((thread_ptr, 0usize)),
@@ -51,10 +48,6 @@ verus! {
             final(krnl).ep_mp.spec_index(endpoint_ptr).being_killed() == old(krnl).ep_mp.spec_index(endpoint_ptr).being_killed(),
             final(krnl).ep_mp.spec_index(endpoint_ptr).view().rf_counter == old(krnl).ep_mp.spec_index(endpoint_ptr).view().rf_counter + 1,
             final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
-            final(krnl).thr_mp.spec_index(thread_ptr).view().state == old(krnl).thr_mp.spec_index(thread_ptr).view().state,
-            final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
-            final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
-            final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None,
             final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() is None,
             final(krnl).ep_mp.spec_index(endpoint_ptr).locking_thread() is None,
             final(krnl).thr_mp.lock_id_by_key(thread_ptr) == old(krnl).thr_mp.lock_id_by_key(thread_ptr),
@@ -62,10 +55,8 @@ verus! {
             final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, thread_ptr),
             kernel_k_to_nonlock_kernel_u(*final(krnl)).thread_map.dom().contains(thread_ptr),
             kernel_k_to_nonlock_kernel_u(*final(krnl)).thread_map == kernel_k_to_nonlock_kernel_u(*old(krnl)).thread_map.insert(thread_ptr, kernel_k_to_nonlock_kernel_u(*final(krnl)).thread_map.spec_index(thread_ptr)),
-            final(krnl).thr_mp.spec_index(current_thread_ptr) == old(krnl).thr_mp.spec_index(current_thread_ptr),
             final(krnl).ep_mp.unchanged_except(&old(krnl).ep_mp, endpoint_ptr),
             *final(krnl) == (KernelK { thr_mp: final(krnl).thr_mp, ep_mp: final(krnl).ep_mp, ..*old(krnl) }),
-            final(krnl).thr_mp.lock_id_by_key(current_thread_ptr) == old(krnl).thr_mp.lock_id_by_key(current_thread_ptr),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).page_lock_map() == old(lctx).page_lock_map(),
@@ -93,7 +84,7 @@ verus! {
                 &&& krnl.ep_mp.spec_index(endpoint_ptr).view().rf_counter < usize::MAX
             }) by { reveal(thread_endpoint_ref_counter_wf); endpoint_ref_counter_bounded(&*krnl, endpoint_ptr); };
         }
-        proof { assert(krnl.thr_mp.perms_wf()) by { reveal(thread_perms_wf); }; assert(krnl.ep_mp.perms_wf()) by { reveal(endpoint_perms_wf); }; }
+        proof { assert(krnl.thr_mp.perms_wf()) by { reveal(thread_perms_wf); }; assert(krnl.ep_mp.perms_wf() && krnl.ep_mp.spec_index(endpoint_ptr).is_init()) by { endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr); }; }
         {
             let thread_mut = krnl.thr_mp.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&thread_lock_perm));
             thread_mut.endpoint_descriptors.set(0, Some(endpoint_ptr));
@@ -115,21 +106,18 @@ verus! {
                 assert(container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)) by { container_endpoint_wf_preserved_for_endpoint_owner_eq(old(krnl).ctn_mp, krnl.ctn_mp, old(krnl).ep_mp, krnl.ep_mp); };
                 assert(thread_endpoint_ref_counter_wf(krnl.thr_mp, krnl.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); };
                 assert(thread_endpoint_queue_wf(krnl.thr_mp, krnl.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_queue_fields(old(krnl).thr_mp, krnl.thr_mp, old(krnl).ep_mp, krnl.ep_mp); };
-                assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by { reveal(container_thread_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); };
+                assert(container_thread_endpoint_wf(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp)) by {
+                    container_endpoint_wf_at(old(krnl).ctn_mp, old(krnl).ep_mp, endpoint_ptr); reveal(container_thread_endpoint_wf); reveal(thread_endpoint_ref_counter_wf);
+                };
                 assert(container_thread_scheduler_wf(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp)) by { container_thread_scheduler_wf_preserved_for_scheduled_thread_eq(old(krnl).ctn_mp, krnl.ctn_mp, old(krnl).thr_mp, krnl.thr_mp, krnl.sched_mp); };
                 assert(container_thread_wf(krnl.ctn_mp, krnl.thr_mp)) by { container_thread_wf_preserved_for_container_thread_link_eq(old(krnl).ctn_mp, krnl.ctn_mp, old(krnl).thr_mp, krnl.thr_mp); };
                 assert(process_thread_wf(krnl.prc_mp, krnl.thr_mp)) by { process_thread_wf_preserved_for_process_thread_link_eq(old(krnl).prc_mp, krnl.prc_mp, old(krnl).thr_mp, krnl.thr_mp); };
+                assert(process_emptied_threads_wf(krnl.prc_mp, krnl.thr_mp)) by { reveal(process_emptied_threads_wf); };
                 assert(thread_cpu_wf(krnl.thr_mp, krnl.cpu_arr)) by { thread_cpu_wf_preserved_for_running_thread_eq(old(krnl).thr_mp, krnl.thr_mp, old(krnl).cpu_arr, krnl.cpu_arr); };
             };
         }
         krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
         krnl.wunlock_endpoint(endpoint_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
-        proof {
-            assert({
-                &&& krnl.thr_mp.spec_index(current_thread_ptr) == old(krnl).thr_mp.spec_index(current_thread_ptr)
-                &&& krnl.thr_mp.lock_id_by_key(current_thread_ptr) == old(krnl).thr_mp.lock_id_by_key(current_thread_ptr)
-            });
-            kernel_thread_unchanged_except_implies_nonlock_u_thread_map_insert(old(krnl), &*krnl, thread_ptr);
-        }
+        proof { kernel_thread_unchanged_except_implies_nonlock_u_thread_map_insert(old(krnl), &*krnl, thread_ptr); }
     }
 }

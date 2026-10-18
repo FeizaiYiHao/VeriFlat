@@ -14,7 +14,6 @@ pub const CPU_LOCK_MAJOR_IDLE: LockMajorId = 2;
 // An Off CPU is terminal after its owning CPU-set lock proves the slot closed.
 pub const CPU_LOCK_MAJOR_OFF: LockMajorId = 30002;
 pub const PCID_NEEDFLUSH_LOCK_MAJOR: LockMajorId = 30001;
-pub const CPU_LOCK_MAJOR_DEFAULT: LockMajorId = 4;
 pub const CONTAINER_LOCK_MAJOR: LockMajorId = 101;
 // Per-container offline request cells: held through an entire self-offline, so it sits below the process,
 // thread, and cpu-set locks taken there; above the container lock so a parent can request a child's cpu.
@@ -24,15 +23,15 @@ pub const THREAD_LOCK_MAJOR: LockMajorId = 106;
 // Above the thread lock so a process's last exiting thread can release its PCID after locking P and T;
 // new_process therefore takes the allocator after T.
 pub const PCID_ALLOCATOR_LOCK_MAJOR: LockMajorId = THREAD_LOCK_MAJOR + 1;
-
-pub const ALLOCATOR_INNER_MAJOR: LockMajorId = 1000;
+// A KILLED thread stays write-held across sections; its id sits above the killer's own thread and the PCID allocator
+// and below pages, so the holder can still reclaim its page and allocator slots afterwards.
+pub const THREAD_KILLED_LOCK_MAJOR: LockMajorId = PCID_ALLOCATOR_LOCK_MAJOR + 1;
 
 pub const ALLOCATED_PAGE_MAJOR: LockMajorId = 1000;
 // Owned pages (Owned4k/Owned2m) are never actually wlock'd — they are retyped
 // immediately. Give them a very low major so they don't interfere with real
 // lock ordering.
 pub const OWNED_PAGE_LOCK_MAJOR: LockMajorId = 1;
-pub const PAGETABLE_PAGE_MAJOR: LockMajorId = 1001;
 
 pub const THREAD_IPC_TRANSIT_LOCK_MAJOR: LockMajorId = 10000;
 pub const ENDPOINT_LOCK_MAJOR: LockMajorId = 10001;
@@ -45,7 +44,9 @@ pub const PAGE_TABLE_LOCK_MAJOR: LockMajorId = THREAD_BLOCKED_LOCK_MAJOR + 1;
 // table and write-locks its own IOMMU table before it releases the root table.
 pub const IOMMU_ROOT_TABLE_LOCK_MAJOR: LockMajorId = PAGE_TABLE_LOCK_MAJOR + 1;
 pub const IOMMU_TABLE_LOCK_MAJOR: LockMajorId = IOMMU_ROOT_TABLE_LOCK_MAJOR + 1;
-pub const MAPPED_PAGE_LOCK_MAJOR: LockMajorId = IOMMU_TABLE_LOCK_MAJOR + 1;
+// A table's walk pages follow both table kinds, so the holder of a table can lock the walk pages it unlinks.
+pub const PAGETABLE_PAGE_MAJOR: LockMajorId = IOMMU_TABLE_LOCK_MAJOR + 1;
+pub const MAPPED_PAGE_LOCK_MAJOR: LockMajorId = PAGETABLE_PAGE_MAJOR + 1;
 
 // CPU sets are discovered through IPC peers; their locks follow mapped pages.
 pub const CPU_SET_LOCK_MAJOR: LockMajorId = MAPPED_PAGE_LOCK_MAJOR + 1;
@@ -180,17 +181,7 @@ impl LockId {
     }
 }
 
-pub trait ToLockId {
-    spec fn to_lock_id(&self) -> LockId;
-}
-
 // -------------------- End of lock id  -----------------------
-
-impl ToLockId for RwLockPageTableRoot {
-    open spec fn to_lock_id(&self) -> LockId {
-        LockId { container: LockOwnerId::none(), process: LockOwnerId::none(), major: PAGE_TABLE_LOCK_MAJOR, minor: *self }
-    }
-}
 
 // -------------------- Begin of kernel obj id ----------------
 //

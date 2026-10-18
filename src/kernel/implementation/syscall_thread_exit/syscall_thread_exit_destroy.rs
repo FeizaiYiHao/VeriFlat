@@ -3,15 +3,15 @@ use crate::*;
 #[cfg(verus_keep_ghost)]
 use super::syscall_thread_exit_destroy_spec::thread_exit_destroy_transition;
 #[cfg(verus_keep_ghost)]
-use super::syscall_thread_exit_destroy_eof::{thread_exit_destroy_eof, thread_exit_destroy_eof_fields, thread_exit_owner_allocator_bounded, thread_exit_quota_sums_bounded};
+use super::syscall_thread_exit_destroy_eof::{thread_exit_destroy_eof, thread_exit_destroy_eof_fields};
 
 verus! {
 /// Remove the running exiting thread and release every lock of the finish step: `cpu_id` goes idle on the default page
 /// table, the process drops the thread and absorbs its quotas, a zombie root process makes the container a zombie, the
-/// containers drop the thread, and the thread's page returns to shard `cpu_id` of the 4K allocator of its owner `owner`,
-/// whose quota grows by one; a zombie releases its PCID to the write-held PCID allocator `pcid_allocator_ptr` of the
-/// container. `start` is the state at the start of the step, before the PCID allocator, page, allocator, and needflush
-/// locks were taken.
+/// containers drop the thread, and the thread's page returns to shard `cpu_id` of the 4K allocator of its owner
+/// `owner`, whose quota grows by one; a zombie releases its PCID to the write-held PCID allocator `pcid_allocator_ptr`
+/// of the container. `start` is the state at the start of the step, before the PCID allocator, page, allocator, and
+/// needflush locks were taken.
 pub(super) fn thread_exit_destroy(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Ghost(start): Ghost<KernelK>, cpu_id: CpuId, container_ptr: RwLockContainerPtr,
     process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, allocator_ptr: RwLockPageAllocatorPtr, pcid_allocator_ptr: RwLockPcidAllocatorPtr,
@@ -42,6 +42,8 @@ pub(super) fn thread_exit_destroy(
         old(lctx).endpoint_lock_map().dom().is_empty(),
         old(lctx).scheduler_lock_map().dom().is_empty(),
         old(lctx).pcid_allocator_lock_map().dom() =~= if old(krnl).prc_mp.spec_index(process_ptr).view().owned_threads.view().len() == 1 { set![pcid_allocator_ptr] } else { Set::empty() },
+        old(krnl).prc_mp.spec_index(process_ptr).view().owned_threads.view().len() == 1 ==> old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is TablesEmptied,
+        old(krnl).prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 1 ==> old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Running,
         old(lctx).cpu_set_lock_map().dom().is_empty(),
         old(lctx).pagetable_lock_map().dom().is_empty(),
         old(lctx).iommu_table_lock_map().dom().is_empty(),
@@ -140,13 +142,13 @@ pub(super) fn thread_exit_destroy(
         container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr);
         container_perms_wf_at(krnl.ctn_mp, container_ptr);
         assert(krnl.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().contains(process_ptr)) by { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr); };
-        thread_exit_quota_sums_bounded(&*krnl, container_ptr, process_ptr, thread_ptr);
+        container_process_thread_quota_sums_bounded(&*krnl, container_ptr, process_ptr, thread_ptr);
         assert(page_ptr_valid(thread_ptr) && krnl.pg_arr.spec_index(page_index).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread })) by {
             reveal(thread_pages_wf);
         };
         page_array_wf_at(krnl.pg_arr, page_index);
         assert(krnl.ctn_mp.dom().contains(owner)) by { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_index); };
-        thread_exit_owner_allocator_bounded(&*krnl, owner);
+        lemma_container_allocator_4k_quota_bounded(&*krnl, owner);
         allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr);
         assert(!krnl.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().view().contains(thread_ptr)) by {
             reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf);
@@ -162,7 +164,7 @@ pub(super) fn thread_exit_destroy(
             &&& pcid_valid(krnl.prc_mp.spec_index(process_ptr).view().pcid)
             &&& !krnl.prc_mp.spec_index(process_ptr).view().zombie
             &&& krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().id_to_proc.view().spec_index(krnl.prc_mp.spec_index(process_ptr).view().pcid as int).contains(process_ptr)
-        }) by { process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, process_ptr); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, process_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); };
+        }) by { process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, process_ptr); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, process_ptr); };
     }
     let pcid = krnl.prc_mp.borrow_rodata(process_ptr).borrow().pcid;
     let root_process = krnl.ctn_mp.borrow_typed(container_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(&container_lock_perm)).root_process;

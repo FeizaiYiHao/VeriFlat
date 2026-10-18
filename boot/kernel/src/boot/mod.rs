@@ -48,12 +48,12 @@ pub fn get_raw_command_line() -> &'static str {
 /// Exits QEMU with status `(code << 1) | 1`.
 pub unsafe fn exit_qemu(code: u32) -> ! {
     use core::sync::atomic::Ordering::Relaxed;
-    use crate::platform::{NMI_FLUSHES, REMOTE_FLUSHES, WAKE_IPIS};
+    use crate::platform::{NMI_FLUSHES, REMOTE_EVICTIONS, REMOTE_FLUSHES, WAKE_IPIS};
     let high_water = (0..crate::cpu::present_cpus()).map(crate::cpu::kernel_stack_high_water).max().unwrap_or(0);
     let (sysret, iret) = crate::cpu::restore_frame_exits();
     log::info!(
-        "exit({}): kernel stack high-water {} KiB; remote flushes {} (served {}), wake IPIs {}; syscall-path returns: {} sysretq, {} iretq",
-        code, high_water / 1024, REMOTE_FLUSHES.load(Relaxed), NMI_FLUSHES.load(Relaxed), WAKE_IPIS.load(Relaxed), sysret, iret,
+        "exit({}): kernel stack high-water {} KiB; remote flushes {} (served {}), remote evictions {}, wake IPIs {}; ring-3 returns: {} sysretq, {} iretq",
+        code, high_water / 1024, REMOTE_FLUSHES.load(Relaxed), NMI_FLUSHES.load(Relaxed), REMOTE_EVICTIONS.load(Relaxed), WAKE_IPIS.load(Relaxed), sysret, iret,
     );
     outl(QEMU_DEBUG_EXIT_PORT, code);
     spin_forever();

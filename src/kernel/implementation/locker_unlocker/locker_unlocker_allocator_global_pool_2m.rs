@@ -7,7 +7,6 @@ impl KernelK {
         requires
             old(self).inv(),
             old(self).allc_2m_mp.dom().contains(alloc_ptr_2m),
-            !typed_lock_map_contains_mode(old(lctx).allocator_global_pool_2m_lock_map(), alloc_ptr_2m, TypedLockMode::Write),
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).pcid_needflush_lock_map().dom().is_empty(),
             forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
@@ -29,6 +28,7 @@ impl KernelK {
             typed_lock_maps_aligned(final(self), final(lctx)),
             *final(self) == (KernelK { allc_2m_mp: final(self).allc_2m_mp, ..*old(self) }),
             final(self).allc_2m_mp.unchanged_except(&old(self).allc_2m_mp, alloc_ptr_2m),
+            final(self).allc_2m_mp.perms_wf(),
             final(self).allc_2m_mp.spec_index(alloc_ptr_2m).wf(),
             final(self).allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches == old(self).allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches,
             final(self).allc_2m_mp.spec_index(alloc_ptr_2m).quota == old(self).allc_2m_mp.spec_index(alloc_ptr_2m).quota,
@@ -36,24 +36,18 @@ impl KernelK {
             final(self).allc_2m_mp.spec_index(alloc_ptr_2m).total_free_pages == old(self).allc_2m_mp.spec_index(alloc_ptr_2m).total_free_pages,
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-            wlock_ensures(old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool, final(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool,
-                LockId { container: old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().container_depth(),
-                    process: old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().process_depth(),
-                    major: old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().current_lock_major(),
-                    minor: old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().lock_minor() },
-                final(lctx), ret.view()),
+            wlock_ensures(old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool, final(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool, old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.lock_id(), final(lctx), ret.view()),
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::AllocatorGlobalPool(PageSize::SZ2m, alloc_ptr_2m), TypedHeldLock { lock_id: final(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.lock_id(), mode: TypedLockMode::Write }),
     {
         proof {
             assert(old(self).allc_2m_mp.perms_wf() && old(self).allc_2m_mp.spec_index(alloc_ptr_2m).wf()) by { allocator_perms_wf_at(old(self).allc_2m_mp, alloc_ptr_2m); };
-            assert(old(lctx).lock_id_acyclic(LockId { container: old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().container_depth(),
-                process: old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().process_depth(),
-                major: old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().current_lock_major(),
-                minor: old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().lock_minor() })) by {
+            assert(old(lctx).lock_id_acyclic(old(self).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.lock_id())) by {
                 reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned); reveal(UnLockedMap::typed_shard_lock_map_aligned);
                 reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned);
             };
-            assert(wlock_requires(self.allc_2m_mp.spec_index(alloc_ptr_2m).global_pool, &*lctx)) by { reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
+            assert(!self.allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.locked_by_thread(lctx.thread_id()) && wlock_requires(self.allc_2m_mp.spec_index(alloc_ptr_2m).global_pool, &*lctx)) by {
+                reveal(UnLockedMap::typed_global_pool_lock_map_aligned); assert(!lctx.allocator_global_pool_2m_lock_map().dom().contains(alloc_ptr_2m));
+            };
         }
         let ret = self.allc_2m_mp.wlock_global_pool(alloc_ptr_2m, Tracked(&mut *lctx), Ghost(PageSize::SZ2m));
         proof {
@@ -89,6 +83,7 @@ impl KernelK {
             typed_lock_maps_aligned(final(self), final(lctx)),
             *final(self) == (KernelK { allc_2m_mp: final(self).allc_2m_mp, ..*old(self) }),
             final(self).allc_2m_mp.unchanged_except(&old(self).allc_2m_mp, alloc_ptr_2m),
+            final(self).allc_2m_mp.perms_wf(),
             final(self).allc_2m_mp.spec_index(alloc_ptr_2m).wf(),
             final(self).allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches == old(self).allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches,
             final(self).allc_2m_mp.spec_index(alloc_ptr_2m).quota == old(self).allc_2m_mp.spec_index(alloc_ptr_2m).quota,

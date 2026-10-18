@@ -3,62 +3,6 @@ use crate::*;
 use super::*;
 
 verus! {
-/// User-view change predicate for publishing a process with empty CPU and IOMMU page tables.
-#[verifier::opaque]
-pub open spec fn kernel_u_create_process_with_iommu_changed(old_u: KernelU, new_u: KernelU, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr, staging_thread_ptr: RwLockThreadPtr) -> bool {
-    let child = new_u.process_map.spec_index(child_ptr);
-    let old_staging = old_u.thread_map.spec_index(staging_thread_ptr);
-    &&& new_u.endpoint_map == old_u.endpoint_map
-    &&& new_u.iommu_root_table == old_u.iommu_root_table
-    &&& new_u.cpu_array == old_u.cpu_array
-    &&& old_u.thread_map.dom().contains(staging_thread_ptr)
-    &&& old_staging.quota_4k >= 5
-    &&& new_u.thread_map == old_u.thread_map.insert(staging_thread_ptr, ThreadU { quota_4k: (old_staging.quota_4k as int - 5) as usize, ..old_staging })
-    &&& old_u.process_map.dom().contains(parent_ptr)
-    &&& !old_u.process_map.dom().contains(child_ptr)
-    &&& new_u.process_map.dom() == old_u.process_map.dom().insert(child_ptr)
-    &&& !child.zombie
-    &&& child.pagetable is Some
-    &&& child.pagetable.unwrap().mapping_4k.is_empty()
-    &&& child.pagetable.unwrap().mapping_2m.is_empty()
-    &&& child.pagetable.unwrap().mapping_1g.is_empty()
-    &&& child.iommu_table is Some
-    &&& child.iommu_table.unwrap().mapping_4k.is_empty()
-    &&& child.iommu_table.unwrap().mapping_2m.is_empty()
-    &&& child.iommu_table.unwrap().mapping_1g.is_empty()
-    &&& child.owned_pci_functions.is_empty()
-    &&& child.quota_4k == 0
-    &&& child.quota_2m == 0
-    &&& child.quota_1g == 0
-    &&& child.parent == Some(parent_ptr)
-    &&& child.children.len() == 0
-    &&& child.depth == old_u.process_map.spec_index(parent_ptr).depth + 1
-    &&& child.uppertree_seq == old_u.process_map.spec_index(parent_ptr).uppertree_seq.push(parent_ptr)
-    &&& child.subtree_set.is_empty()
-    &&& child.owned_threads.len() == 0
-    &&& !child.killed
-    &&& forall|p: RwLockProcessPtr|
-        #![trigger new_u.process_map.spec_index(p)]
-        old_u.process_map.dom().contains(p) ==> {
-            &&& new_u.process_map.spec_index(p).pagetable == old_u.process_map.spec_index(p).pagetable
-            &&& new_u.process_map.spec_index(p).iommu_table == old_u.process_map.spec_index(p).iommu_table
-            &&& new_u.process_map.spec_index(p).owned_pci_functions == old_u.process_map.spec_index(p).owned_pci_functions
-            &&& new_u.process_map.spec_index(p).quota_4k == old_u.process_map.spec_index(p).quota_4k
-            &&& new_u.process_map.spec_index(p).quota_2m == old_u.process_map.spec_index(p).quota_2m
-            &&& new_u.process_map.spec_index(p).quota_1g == old_u.process_map.spec_index(p).quota_1g
-            &&& new_u.process_map.spec_index(p).parent == old_u.process_map.spec_index(p).parent
-            &&& new_u.process_map.spec_index(p).depth == old_u.process_map.spec_index(p).depth
-            &&& new_u.process_map.spec_index(p).uppertree_seq == old_u.process_map.spec_index(p).uppertree_seq
-            &&& new_u.process_map.spec_index(p).owned_threads == old_u.process_map.spec_index(p).owned_threads
-            &&& new_u.process_map.spec_index(p).zombie == old_u.process_map.spec_index(p).zombie
-            &&& new_u.process_map.spec_index(p).killed == old_u.process_map.spec_index(p).killed
-            &&& p == parent_ptr ==> new_u.process_map.spec_index(p).children == old_u.process_map.spec_index(p).children.push(child_ptr)
-            &&& p != parent_ptr ==> new_u.process_map.spec_index(p).children == old_u.process_map.spec_index(p).children
-            &&& child.uppertree_seq.contains(p) ==> new_u.process_map.spec_index(p).subtree_set == old_u.process_map.spec_index(p).subtree_set.insert(child_ptr)
-            &&& !child.uppertree_seq.contains(p) ==> new_u.process_map.spec_index(p).subtree_set == old_u.process_map.spec_index(p).subtree_set
-        }
-}
-
 #[verifier::opaque]
 pub open spec fn create_process_with_iommu_from_staged_pages_kernel_state_framing(
     pre: KernelK, post: KernelK, process_page_ptr: PagePtr, pagetable_page_ptr: PagePtr, l4_page_ptr: PagePtr,
@@ -191,6 +135,7 @@ pub open spec fn create_process_with_iommu_from_staged_pages_kernel_state_framin
             &&& post.prc_mp.spec_index(p_ptr).is_init() == pre.prc_mp.spec_index(p_ptr).is_init()
             &&& post.prc_mp.spec_index(p_ptr).locking_thread() == pre.prc_mp.spec_index(p_ptr).locking_thread()
             &&& post.prc_mp.spec_index(p_ptr).being_killed() == pre.prc_mp.spec_index(p_ptr).being_killed()
+            &&& post.prc_mp.spec_index(p_ptr).killer_info() == pre.prc_mp.spec_index(p_ptr).killer_info()
             &&& post.prc_mp.spec_index(p_ptr).view_rodata() == pre.prc_mp.spec_index(p_ptr).view_rodata()
             &&& post.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq == pre.prc_mp.spec_index(p_ptr).view_ghost().uppertree_seq
             &&& post.prc_mp.spec_index(p_ptr).view_ghost().owned_pci_functions == pre.prc_mp.spec_index(p_ptr).view_ghost().owned_pci_functions
@@ -222,6 +167,7 @@ pub open spec fn create_process_with_iommu_from_staged_pages_kernel_state_framin
     &&& !post.prc_mp.spec_index(process_page_ptr).being_killed()
     &&& post.prc_mp.spec_index(process_page_ptr).wlocked()
     &&& !post.prc_mp.spec_index(process_page_ptr).view().zombie
+    &&& post.prc_mp.spec_index(process_page_ptr).view().state.view() is Creating
     &&& post.prc_mp.spec_index(process_page_ptr).view().pcid == pcid
     &&& post.prc_mp.spec_index(process_page_ptr).view().pagetable == pagetable_page_ptr
     &&& post.prc_mp.spec_index(process_page_ptr).view().iommu_table == Some(iommu_table_page_ptr)
@@ -266,6 +212,7 @@ pub open spec fn create_process_with_iommu_from_staged_pages_kernel_state_framin
     &&& post.thr_mp.spec_index(staging_thread_ptr).view().temp_alloc_cache_4k.view().is_empty()
     &&& post.thr_mp.spec_index(staging_thread_ptr).locking_thread() == pre.thr_mp.spec_index(staging_thread_ptr).locking_thread()
     &&& post.thr_mp.spec_index(staging_thread_ptr).being_killed() == pre.thr_mp.spec_index(staging_thread_ptr).being_killed()
+    &&& post.thr_mp.spec_index(staging_thread_ptr).killer_info() == pre.thr_mp.spec_index(staging_thread_ptr).killer_info()
     &&& forall|t_ptr: RwLockThreadPtr|
         #![trigger post.thr_mp.view().spec_index(t_ptr).is_init()]
         pre.thr_mp.dom().contains(t_ptr) ==> {
@@ -390,6 +337,7 @@ pub fn create_process_with_iommu_from_staged_pages(
         final(krnl).prc_mp.spec_index(parent_ptr).being_killed() == old(krnl).prc_mp.spec_index(parent_ptr).being_killed(),
         !final(krnl).prc_mp.spec_index(process_page_ptr).being_killed(),
         !final(krnl).prc_mp.spec_index(process_page_ptr).view().zombie,
+        final(krnl).prc_mp.spec_index(process_page_ptr).view().state.view() is Creating,
         final(krnl).prc_mp.spec_index(process_page_ptr).view_rodata().view().owning_container == container_ptr,
         final(krnl).prc_mp.spec_index(process_page_ptr).view_rodata().view().pagetable == pagetable_page_ptr,
         final(krnl).prc_mp.spec_index(process_page_ptr).view().iommu_table == Some(iommu_table_page_ptr),
@@ -413,8 +361,6 @@ pub fn create_process_with_iommu_from_staged_pages(
         final(krnl).it_mp.spec_index(iommu_table_page_ptr).view().is_empty(),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(krnl).inv(),
-        kernel_u_create_process_with_iommu_changed(kernel_k_to_nonlock_kernel_u(*old(krnl)), kernel_k_to_nonlock_kernel_u(*final(krnl)), parent_ptr, process_page_ptr, staging_thread_ptr,),
-        kernel_k_to_nonlock_kernel_u(*final(krnl)) != kernel_k_to_nonlock_kernel_u(*old(krnl)),
         ret.0 == process_page_ptr,
         ret.1 == pagetable_page_ptr,
         ret.2 == iommu_table_page_ptr,

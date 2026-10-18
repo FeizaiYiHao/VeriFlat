@@ -3,11 +3,11 @@ use crate::*;
 use super::cpu_offline_check::OfflineCheckResult;
 
 verus! {
-/// The result of `cpu_offline_check` from the state at entry: an Off cpu, a clear request bit, or a killed
-/// running process or thread continue to the scheduler; otherwise the cpu goes Off.
+/// The result of `cpu_offline_check` from the state at entry: an Off cpu, a cpu a killer marked, a clear request
+/// bit, or a killed running process or thread continue to the scheduler; otherwise the cpu goes Off.
 pub open spec fn cpu_offline_check_result(pre: KernelU, cpu_id: CpuId) -> OfflineCheckResult {
     let cpu = pre.cpu_array[cpu_id as int];
-    if cpu.state is Off || !pre.container_map[cpu.owning_container].cpu_offline_requests[cpu_id as int]
+    if cpu.state is Off || cpu.killed || !pre.container_map[cpu.owning_container].cpu_offline_requests[cpu_id as int]
         || (cpu.current_process is Some && (pre.process_map[cpu.current_process->Some_0].killed || pre.thread_map[cpu.current_thread->Some_0].killed)) {
         OfflineCheckResult::Continue
     } else { OfflineCheckResult::Off }
@@ -78,6 +78,8 @@ pub open spec fn cpu_went_off_transition(
     &&& cpu_after.view_rodata() == cpu_before.view_rodata()
     &&& cpu_after.view_ghost() == cpu_before.view_ghost()
     &&& cpu_after.being_killed() == cpu_before.being_killed()
+    &&& cpu_after.killer_info() == cpu_before.killer_info()
+    &&& !cpu_before.being_killed()
     &&& cpu_after.locking_thread() == cpu_before.locking_thread()
     &&& new_cpu == (CpuView {
         state: CpuState::Off, current_process: None, current_thread: None, current_pagetable: None, current_cr3: pre.dflt_pt.view().cr3,

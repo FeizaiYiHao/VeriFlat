@@ -210,9 +210,6 @@ pub open spec fn spec_va2index(va: usize) -> (L4Index, L3Index, L2Index, L1Index
     (spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))
 }
 
-pub open spec fn spec_va22mindex(va: usize) -> (L4Index, L3Index, L2Index) { (spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) }
-pub open spec fn spec_va21gindex(va: usize) -> (L4Index, L3Index) { (spec_v2l4index(va), spec_v2l3index(va)) }
-
 pub open spec fn spec_index2va(i: (L4Index, L3Index, L2Index, L1Index)) -> usize
     recommends
         i.0 <= 0x1ff,
@@ -284,29 +281,6 @@ pub fn v2l4index(va: usize) -> (ret: L4Index)
 {
     proof { mask_9_bits_le(va as u64 >> 39u64); }
     (va as u64 >> 39u64 & 0x1ffu64) as usize
-}
-
-pub fn va21gindex(va: usize) -> (ret: (L4Index, L3Index))
-    requires
-        va_4k_valid(va) || va_2m_valid(va) || va_1g_valid(va),
-    ensures
-        ret == spec_va21gindex(va),
-        KERNEL_MEM_END_L4INDEX <= ret.0 <= 0x1ff,
-        ret.1 <= 0x1ff,
-{
-    (v2l4index(va), v2l3index(va))
-}
-
-pub fn va22mindex(va: usize) -> (ret: (L4Index, L3Index, L2Index))
-    requires
-        va_4k_valid(va) || va_2m_valid(va) || va_1g_valid(va),
-    ensures
-        ret == spec_va22mindex(va),
-        KERNEL_MEM_END_L4INDEX <= ret.0 <= 0x1ff,
-        ret.1 <= 0x1ff,
-        ret.2 <= 0x1ff,
-{
-    (v2l4index(va), v2l3index(va), v2l2index(va))
 }
 
 pub fn va2index(va: usize) -> (ret: (L4Index, L3Index, L2Index, L1Index))
@@ -468,5 +442,73 @@ pub broadcast proof fn spec_va_4k_index_roundtrip_at(va: VAddr, l4i: L4Index, l3
 {
     assert(spec_va_4k_valid(va) && spec_v2l4index(va) == l4i && spec_v2l3index(va) == l3i && spec_v2l2index(va) == l2i && spec_v2l1index(va) == l1i
         <==> KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && spec_index2va((l4i, l3i, l2i, l1i)) == va) by (bit_vector);
+}
+
+/// A valid user 4K address has valid user page-table indices that rebuild it.
+pub broadcast proof fn spec_va_4k_valid_index_roundtrip(va: VAddr)
+    requires #[trigger] spec_va_4k_valid(va),
+    ensures
+        KERNEL_MEM_END_L4INDEX <= spec_v2l4index(va),
+        pei_valid(spec_v2l4index(va)) && pei_valid(spec_v2l3index(va)) && pei_valid(spec_v2l2index(va)) && pei_valid(spec_v2l1index(va)),
+        spec_index2va(spec_va2index(va)) == va,
+{
+    let index = spec_va2index(va);
+    spec_va_4k_index_roundtrip_at(va, index.0, index.1, index.2, index.3);
+}
+
+/// A valid user 2M address has valid user page-table indices that rebuild it.
+pub broadcast proof fn spec_va_2m_valid_index_roundtrip(va: VAddr)
+    requires #[trigger] spec_va_2m_valid(va),
+    ensures
+        KERNEL_MEM_END_L4INDEX <= spec_v2l4index(va),
+        pei_valid(spec_v2l4index(va)) && pei_valid(spec_v2l3index(va)) && pei_valid(spec_v2l2index(va)),
+        spec_index2va((spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), 0usize)) == va,
+{
+    assert(spec_va_2m_valid(va) ==> KERNEL_MEM_END_L4INDEX <= spec_v2l4index(va) && pei_valid(spec_v2l4index(va)) && pei_valid(spec_v2l3index(va)) && pei_valid(spec_v2l2index(va))
+        && spec_index2va((spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), 0usize)) == va) by (bit_vector);
+}
+
+/// A valid user 1G address has valid user page-table indices that rebuild it.
+pub broadcast proof fn spec_va_1g_valid_index_roundtrip(va: VAddr)
+    requires #[trigger] spec_va_1g_valid(va),
+    ensures
+        KERNEL_MEM_END_L4INDEX <= spec_v2l4index(va),
+        pei_valid(spec_v2l4index(va)) && pei_valid(spec_v2l3index(va)),
+        spec_index2va((spec_v2l4index(va), spec_v2l3index(va), 0usize, 0usize)) == va,
+{
+    assert(spec_va_1g_valid(va) ==> KERNEL_MEM_END_L4INDEX <= spec_v2l4index(va) && pei_valid(spec_v2l4index(va)) && pei_valid(spec_v2l3index(va))
+        && spec_index2va((spec_v2l4index(va), spec_v2l3index(va), 0usize, 0usize)) == va) by (bit_vector);
+}
+
+/// A valid 4K I/O virtual address has valid page-table indices that rebuild it.
+pub broadcast proof fn iova_4k_valid_index_roundtrip(va: VAddr)
+    requires #[trigger] iova_4k_valid(va),
+    ensures
+        pei_valid(spec_v2l4index(va)) && pei_valid(spec_v2l3index(va)) && pei_valid(spec_v2l2index(va)) && pei_valid(spec_v2l1index(va)),
+        spec_index2va((spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))) == va,
+{
+    assert(iova_4k_valid(va) ==> pei_valid(spec_v2l4index(va)) && pei_valid(spec_v2l3index(va)) && pei_valid(spec_v2l2index(va)) && pei_valid(spec_v2l1index(va))
+        && spec_index2va((spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va))) == va) by (bit_vector);
+}
+
+/// A valid 2M I/O virtual address has valid page-table indices that rebuild it.
+pub broadcast proof fn iova_2m_valid_index_roundtrip(va: VAddr)
+    requires #[trigger] iova_2m_valid(va),
+    ensures
+        pei_valid(spec_v2l4index(va)) && pei_valid(spec_v2l3index(va)) && pei_valid(spec_v2l2index(va)),
+        spec_index2va((spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), 0usize)) == va,
+{
+    assert(iova_2m_valid(va) ==> pei_valid(spec_v2l4index(va)) && pei_valid(spec_v2l3index(va)) && pei_valid(spec_v2l2index(va))
+        && spec_index2va((spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), 0usize)) == va) by (bit_vector);
+}
+
+/// A valid 1G I/O virtual address has valid page-table indices that rebuild it.
+pub broadcast proof fn iova_1g_valid_index_roundtrip(va: VAddr)
+    requires #[trigger] iova_1g_valid(va),
+    ensures
+        pei_valid(spec_v2l4index(va)) && pei_valid(spec_v2l3index(va)),
+        spec_index2va((spec_v2l4index(va), spec_v2l3index(va), 0usize, 0usize)) == va,
+{
+    assert(iova_1g_valid(va) ==> pei_valid(spec_v2l4index(va)) && pei_valid(spec_v2l3index(va)) && spec_index2va((spec_v2l4index(va), spec_v2l3index(va), 0usize, 0usize)) == va) by (bit_vector);
 }
 } // verus!

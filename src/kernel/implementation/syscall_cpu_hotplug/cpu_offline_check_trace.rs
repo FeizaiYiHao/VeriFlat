@@ -1,8 +1,36 @@
 use vstd::prelude::*;
 use crate::*;
 use super::cpu_offline_check_spec::*;
+use super::cpu_offline_check::OfflineCheckResult;
 
 verus! {
+/// Each return path's entry-state K facts give its value as the user-view result.
+pub(super) proof fn cpu_offline_check_result_from_k(krnl: &KernelK, cpu_id: CpuId, ret: OfflineCheckResult)
+    requires
+        index_valid(NUM_CPUS, cpu_id),
+        {
+            let cpu = krnl.cpu_arr.spec_index(cpu_id).view();
+            let c = cpu.view().view();
+            let process_ptr = c.current_process->Some_0;
+            let thread_ptr = c.current_thread->Some_0;
+            let requested = krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c.owning_container)).flags.spec_index(cpu_id).view().view().requested;
+            let dead = c.current_process is Some && (krnl.prc_mp.spec_index(process_ptr).being_killed() || krnl.thr_mp.spec_index(thread_ptr).being_killed());
+            &&& !(c.state is Off) && !cpu.being_killed() ==> krnl.ctn_mp.dom().contains(c.owning_container)
+            &&& !(c.state is Off) && !cpu.being_killed() && requested && c.current_process is Some ==> c.current_thread is Some && krnl.prc_mp.dom().contains(process_ptr)
+            &&& !(c.state is Off) && !cpu.being_killed() && requested && c.current_process is Some && !krnl.prc_mp.spec_index(process_ptr).being_killed() ==> krnl.thr_mp.dom().contains(thread_ptr)
+            &&& (ret is Continue) == (c.state is Off || cpu.being_killed() || !requested || dead)
+        },
+    ensures
+        cpu_offline_check_result(kernel_k_to_kernel_u(*krnl), cpu_id) == ret,
+{
+    let c = krnl.cpu_arr.spec_index(cpu_id).view().view().view();
+    kernel_cpu_projection_at(krnl, cpu_id);
+    reveal(cpu_offline_requests_of);
+    if krnl.ctn_mp.dom().contains(c.owning_container) { kernel_container_projection_at(krnl, c.owning_container); }
+    if krnl.prc_mp.dom().contains(c.current_process->Some_0) { kernel_process_projection_at(krnl, c.current_process->Some_0); }
+    if krnl.thr_mp.dom().contains(c.current_thread->Some_0) { kernel_thread_projection_at(krnl, c.current_thread->Some_0); }
+}
+
 /// The went-off wrapper's user-view facts are exactly the offline step on `pre`/`post`.
 pub(super) proof fn cpu_offline_check_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, regs: Registers, flushed_default_pcid: bool)
     requires

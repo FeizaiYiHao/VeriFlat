@@ -29,6 +29,23 @@ pub ghost enum Share4kOrigin {
     IpcPages { peer: RwLockThreadPtr },
 }
 
+/// Where a kill stands at the marked process it works on.
+pub ghost enum KillStage {
+    /// No thread of the process is marked: the kill descends into a child, marks a thread, or reclaims the process.
+    Walk,
+    /// The process's first thread `thread` is marked and write-held until it leaves the process.
+    Thread { thread: RwLockThreadPtr },
+    /// The process's page table and IOMMU table are write-locked while its leaves are reclaimed; `flushed` records that
+    /// the released translations are gone from every cpu.
+    Reclaim { flushed: bool },
+    /// The process's quota of size `returned` and of every smaller size went back to its container.
+    Quota { returned: PageSize },
+    /// The process's tables are empty and unlocked.
+    Zombie,
+    /// The process is a zombie whose table structure is being retired.
+    Retire,
+}
+
 /// Progress of a multi-step syscall owned by the write-locked thread.
 pub ghost enum SyscallProgress {
     Mmap4k { range: VaRange4K, mapped: usize, directory: Mmap4kDirectory },
@@ -60,6 +77,8 @@ pub ghost enum SyscallProgress {
 
     /// Exit of a process's last thread after its page table is empty and unlocked, before the thread is destroyed.
     ThreadExitZombie,
+    /// Kill of a child's subtree while the killer works on the marked process `process`.
+    KillProcess { process: RwLockProcessPtr, stage: KillStage },
 }
 
 pub struct Thread {
@@ -68,6 +87,8 @@ pub struct Thread {
     pub caller: Option<RwLockThreadPtr>,
     /// The downstream callee while this thread is waiting for a reply.
     pub callee: Option<RwLockThreadPtr>,
+    /// Position in the IPC call chain: one more than its caller's.
+    pub call_depth: Ghost<nat>,
 
     pub owning_container: RwLockContainerPtr,
     pub container_depth: usize,
@@ -189,6 +210,7 @@ impl Thread {
 
     pub open spec fn ipc_framed_fields_equal(&self, other: &Self) -> bool {
         &&& self.owning_container == other.owning_container
+        &&& self.call_depth == other.call_depth
         &&& self.syscall_progress == other.syscall_progress
         &&& self.container_depth == other.container_depth
         &&& self.scheduler_linkedlist_node.addr() == other.scheduler_linkedlist_node.addr()
@@ -197,6 +219,7 @@ impl Thread {
         &&& self.process_depth == other.process_depth
         &&& self.proc_pagetable_ptr == other.proc_pagetable_ptr
         &&& self.proc_linkedlist_node.addr() == other.proc_linkedlist_node.addr()
+        &&& self.proc_linkedlist_node.is_init() == other.proc_linkedlist_node.is_init()
         &&& self.quota_4k == other.quota_4k
         &&& self.quota_2m == other.quota_2m
         &&& self.quota_1g == other.quota_1g
@@ -278,7 +301,7 @@ impl Thread {
         endpoint_descriptors.init2none();
         proof { assert_seqs_equal!(endpoint_descriptors.view() == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| None), i => {}); }
         let ret = Self {
-            state: ThreadState::RUNNING { cpu_id: 0 }, caller: None, callee: None, owning_container, container_depth,
+            state: ThreadState::RUNNING { cpu_id: 0 }, caller: None, callee: None, call_depth: Ghost(0), owning_container, container_depth,
             scheduler_linkedlist_node: ExternalNode::new(0), last_cpu: 0, owning_proc, process_depth, proc_pagetable_ptr,
             proc_linkedlist_node: ExternalNode::new(0), quota_4k: 0, quota_2m: 0, quota_1g: 0, temp_alloc_cache_4k: Ghost(Set::empty()),
             temp_alloc_cache_2m: Ghost(Set::empty()), temp_alloc_cache_1g: Ghost(Set::empty()), endpoint_descriptors, blocking_endpoint_ptr: None,
@@ -597,7 +620,7 @@ impl Thread {
     }
 
     /// The currently running receive-call thread accepts a queued caller.
-    pub fn accept_queued_caller(&mut self, caller_ptr: RwLockThreadPtr, self_ptr: RwLockThreadPtr)
+    pub fn accept_queued_caller(&mut self, caller_ptr: RwLockThreadPtr, self_ptr: RwLockThreadPtr, caller_depth: Ghost<nat>)
         requires
             old(self).inv(),
             old(self).state is RUNNING,
@@ -606,9 +629,10 @@ impl Thread {
             caller_ptr != self_ptr,
         ensures
             final(self).inv(),
-            *final(self) == (Thread { caller: Some(caller_ptr), ..*old(self) }),
+            *final(self) == (Thread { caller: Some(caller_ptr), call_depth: Ghost(caller_depth.view() + 1), ..*old(self) }),
     {
         self.caller = Some(caller_ptr);
+        self.call_depth = Ghost(caller_depth.view() + 1);
     }
 
     /// The running caller waits for a reply while a previously blocked
@@ -632,7 +656,7 @@ impl Thread {
 
     /// A blocked receive-call thread becomes the running callee and restores
     /// the register image it saved when entering the endpoint.
-    pub fn endpoint_receiver_to_running(&mut self, thread_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr, cpu_id: CpuId, endpoint_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>, pt_regs: &mut Registers)
+    pub fn endpoint_receiver_to_running(&mut self, thread_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr, caller_depth: Ghost<nat>, cpu_id: CpuId, endpoint_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>, pt_regs: &mut Registers)
         requires
             old(self).inv(),
             old(self).state is RECEIVING_CALL,
@@ -646,8 +670,8 @@ impl Thread {
         ensures
             final(self).inv(),
             *final(self) == (Thread {
-                state: ThreadState::RUNNING { cpu_id }, caller: Some(caller_ptr), blocking_endpoint_ptr: None, blocking_endpoint_index: None,
-                endpoint_linkedlist_node: final(self).endpoint_linkedlist_node, last_cpu: cpu_id, trap_frame: final(self).trap_frame, ..*old(self)
+                state: ThreadState::RUNNING { cpu_id }, caller: Some(caller_ptr), call_depth: Ghost(caller_depth.view() + 1), blocking_endpoint_ptr: None,
+                blocking_endpoint_index: None, endpoint_linkedlist_node: final(self).endpoint_linkedlist_node, last_cpu: cpu_id, trap_frame: final(self).trap_frame, ..*old(self)
             }),
             final(self).endpoint_linkedlist_node.is_init(),
             final(self).endpoint_linkedlist_node.addr() == old(self).endpoint_linkedlist_node.addr(),
@@ -660,6 +684,7 @@ impl Thread {
         self.blocking_endpoint_ptr = None;
         self.blocking_endpoint_index = None;
         self.caller = Some(caller_ptr);
+        self.call_depth = Ghost(caller_depth.view() + 1);
         self.last_cpu = cpu_id;
         self.state = ThreadState::RUNNING { cpu_id };
     }
@@ -710,11 +735,12 @@ impl Thread {
         (node_addr, node_perm)
     }
 
-    /// The running callee drops its recorded caller after replying to it.
+    /// The running callee drops its recorded caller after replying to it; a killed callee, or a callee being turned into a
+    /// dangling thread, drops it once the caller is woken or reclaimed.
     pub fn release_caller(&mut self)
         requires
             old(self).inv(),
-            old(self).state is RUNNING,
+            old(self).state is RUNNING || old(self).state is KILLED || old(self).state is WAITING_REPLY,
             old(self).caller is Some,
         ensures
             final(self).inv(),
@@ -722,6 +748,138 @@ impl Thread {
     {
         self.caller = None;
     }
+
+    /// A killer took this thread off its scheduler shard.
+    pub fn scheduled_to_killed(&mut self, scheduler_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>)
+        requires
+            old(self).inv(),
+            old(self).state is SCHEDULED,
+            scheduler_node_perm.view().is_init(),
+            scheduler_node_perm.view().addr() == old(self).scheduler_linkedlist_node.addr(),
+        ensures
+            final(self).inv(),
+            *final(self) == (Thread { state: ThreadState::KILLED, error_code: None, scheduler_linkedlist_node: final(self).scheduler_linkedlist_node, ..*old(self) }),
+            final(self).scheduler_linkedlist_node.is_init(),
+            final(self).scheduler_linkedlist_node.addr() == old(self).scheduler_linkedlist_node.addr(),
+    {
+        self.scheduler_linkedlist_node.put(scheduler_node_perm);
+        self.error_code = None;
+        self.state = ThreadState::KILLED;
+    }
+
+    /// A killer took this thread out of its blocking endpoint's queue.
+    pub fn endpoint_waiter_to_killed(&mut self, endpoint_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>)
+        requires
+            old(self).inv(),
+            old(self).state.is_endpoint_waiting(),
+            endpoint_node_perm.view().is_init(),
+            endpoint_node_perm.view().addr() == old(self).endpoint_linkedlist_node.addr(),
+        ensures
+            final(self).inv(),
+            *final(self) == (Thread {
+                state: ThreadState::KILLED, blocking_endpoint_ptr: None, blocking_endpoint_index: None, endpoint_linkedlist_node: final(self).endpoint_linkedlist_node, ..*old(self)
+            }),
+            final(self).endpoint_linkedlist_node.is_init(),
+            final(self).endpoint_linkedlist_node.addr() == old(self).endpoint_linkedlist_node.addr(),
+    {
+        self.endpoint_linkedlist_node.put(endpoint_node_perm);
+        self.blocking_endpoint_ptr = None;
+        self.blocking_endpoint_index = None;
+        self.state = ThreadState::KILLED;
+    }
+
+    /// A killer evicted this thread from its CPU.
+    pub fn running_to_killed(&mut self)
+        requires
+            old(self).inv(),
+            old(self).state is RUNNING,
+        ensures
+            final(self).inv(),
+            *final(self) == (Thread { state: ThreadState::KILLED, ..*old(self) }),
+    {
+        self.state = ThreadState::KILLED;
+    }
+
+    /// A killed thread waiting for a reply leaves its process as a dangling thread that its callee reclaims: its quota went back
+    /// to the process and its process node returns to the thread page; it keeps its descriptors and its caller.
+    pub fn waiting_reply_to_dangling(&mut self, proc_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>)
+        requires
+            old(self).inv(),
+            old(self).state is WAITING_REPLY,
+            old(self).temp_alloc_clean(),
+            !old(self).proc_linkedlist_node.is_init(),
+            proc_node_perm.view().is_init(),
+            proc_node_perm.view().addr() == old(self).proc_linkedlist_node.addr(),
+        ensures
+            final(self).inv(),
+            *final(self) == (Thread { state: ThreadState::DANGLING, quota_4k: 0, quota_2m: 0, quota_1g: 0, proc_linkedlist_node: final(self).proc_linkedlist_node, ..*old(self) }),
+            final(self).proc_linkedlist_node.is_init(),
+            final(self).proc_linkedlist_node.addr() == old(self).proc_linkedlist_node.addr(),
+    {
+        self.proc_linkedlist_node.put(proc_node_perm);
+        self.quota_4k = 0;
+        self.quota_2m = 0;
+        self.quota_1g = 0;
+        self.state = ThreadState::DANGLING;
+    }
+
+    /// A killed dangling thread being destroyed hands back the process node it holds.
+    pub fn take_proc_node(&mut self) -> (ret: Tracked<PointsTo<Node<RwLockThreadPtr>>>)
+        requires
+            old(self).inv(),
+            old(self).state is KILLED,
+            old(self).proc_linkedlist_node.is_init(),
+        ensures
+            final(self).inv(),
+            *final(self) == (Thread { proc_linkedlist_node: final(self).proc_linkedlist_node, ..*old(self) }),
+            !final(self).proc_linkedlist_node.is_init(),
+            final(self).proc_linkedlist_node.addr() == old(self).proc_linkedlist_node.addr(),
+            ret.view().is_init(),
+            ret.view().addr() == old(self).proc_linkedlist_node.addr(),
+    {
+        let (_node_addr, node_perm) = self.proc_linkedlist_node.take();
+        node_perm
+    }
+
+    /// A killed thread leaving its process gives its quota to the process and takes back its process node.
+    pub fn killed_leave_process(&mut self, proc_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>)
+        requires
+            old(self).inv(),
+            old(self).state is KILLED,
+            old(self).temp_alloc_clean(),
+            !old(self).proc_linkedlist_node.is_init(),
+            proc_node_perm.view().is_init(),
+            proc_node_perm.view().addr() == old(self).proc_linkedlist_node.addr(),
+        ensures
+            final(self).inv(),
+            *final(self) == (Thread { quota_4k: 0, quota_2m: 0, quota_1g: 0, proc_linkedlist_node: final(self).proc_linkedlist_node, ..*old(self) }),
+            final(self).proc_linkedlist_node.is_init(),
+            final(self).proc_linkedlist_node.addr() == old(self).proc_linkedlist_node.addr(),
+    {
+        self.proc_linkedlist_node.put(proc_node_perm);
+        self.quota_4k = 0;
+        self.quota_2m = 0;
+        self.quota_1g = 0;
+    }
+
+    /// The callee reclaiming a dangling thread takes it over as a killed thread, and the dangling thread drops its callee.
+    pub fn dangling_to_killed(&mut self)
+        requires
+            old(self).inv(),
+            old(self).state is DANGLING,
+        ensures
+            final(self).inv(),
+            *final(self) == (Thread { state: ThreadState::KILLED, callee: None, ..*old(self) }),
+    {
+        self.callee = None;
+        self.state = ThreadState::KILLED;
+    }
+}
+
+/// A killed caller's dangling thread has left its process and container and holds its own process node: it either waits for its
+/// callee (DANGLING) or is being reclaimed by it (KILLED). A thread a killer marked is still linked into its process.
+pub open spec fn thread_is_dangling(thread_lock: ThreadRwLock) -> bool {
+    thread_lock.view().state is DANGLING || (thread_lock.view().state is KILLED && thread_lock.view().proc_linkedlist_node.is_init())
 }
 
 /// Free-quota pending counters must be zero unless the thread is write-locked.
@@ -751,7 +909,8 @@ impl LockInvTrait for Thread {
         &&& self.state.is_endpoint_waiting() ==> self.endpoint_descriptors.spec_index(self.blocking_endpoint_index.unwrap()).unwrap() == self.blocking_endpoint_ptr.unwrap()
         &&& self.state.is_endpoint_waiting() == !self.endpoint_linkedlist_node.is_init()
         &&& self.state is SCHEDULED == !self.scheduler_linkedlist_node.is_init()
-        &&& (self.state is WAITING_REPLY) == (self.callee is Some)
+        &&& self.state.is_reply_waiting() == (self.callee is Some)
+        &&& self.state is DANGLING ==> self.quota_4k == 0 && self.quota_2m == 0 && self.quota_1g == 0 && self.proc_linkedlist_node.is_init()
         &&& self.state is RECEIVING_CALL ==> self.caller is None
         &&& self.upper_container_seq.view().len() == self.container_depth
         &&& self.upper_container_seq.view().len() == self.indirect_free_quota_pending_4k.view().len()
@@ -818,117 +977,27 @@ impl IPCPayLoad {
             _ => true,
         }
     }
-
-    pub open spec fn is_some(&self) -> bool {
-        match self {
-            IPCPayLoad::Empty => false,
-            _ => true,
-        }
-    }
-
-    pub open spec fn is_none(&self) -> bool {
-        match self {
-            IPCPayLoad::Empty => true,
-            _ => false,
-        }
-    }
-
-    pub open spec fn spec_get_payload_as_message(&self) -> Option<(VAddr, usize)> {
-        match self {
-            IPCPayLoad::Message { va: va, len: len } => Some((*va, *len)),
-            _ => None,
-        }
-    }
-
-    #[verifier(when_used_as_spec(spec_get_payload_as_message))]
-    pub fn get_payload_as_message(&self) -> (ret: Option<(VAddr, usize)>)
-        ensures
-            ret == self.spec_get_payload_as_message(),
-    {
-        match self {
-            IPCPayLoad::Message { va: va, len: len } => Some((*va, *len)),
-            _ => None,
-        }
-    }
-
-    pub open spec fn spec_get_payload_as_va_range(&self) -> Option<VaRange4K> {
-        match self {
-            IPCPayLoad::Pages { va_range: va_range } => Some(*va_range),
-            _ => None,
-        }
-    }
-
-    #[verifier(when_used_as_spec(spec_get_payload_as_va_range))]
-    pub fn get_payload_as_va_range(&self) -> (ret: Option<VaRange4K>)
-        ensures
-            ret == self.spec_get_payload_as_va_range(),
-    {
-        match self {
-            IPCPayLoad::Pages { va_range: va_range } => Some(*va_range),
-            _ => None,
-        }
-    }
-
-    pub open spec fn spec_get_payload_as_endpoint(&self) -> Option<EndpointIdx> {
-        match self {
-            IPCPayLoad::Endpoint { endpoint_index: endpoint_index } => Some(*endpoint_index),
-            _ => None,
-        }
-    }
-
-    #[verifier(when_used_as_spec(spec_get_payload_as_endpoint))]
-    pub fn get_payload_as_endpoint(&self) -> (ret: Option<EndpointIdx>)
-        ensures
-            ret == self.spec_get_payload_as_endpoint(),
-    {
-        match self {
-            IPCPayLoad::Endpoint { endpoint_index: endpoint_index } => Some(*endpoint_index),
-            _ => None,
-        }
-    }
-
-    pub open spec fn spec_get_payload_as_pci(&self) -> Option<(u8, u8, u8)> {
-        match self {
-            IPCPayLoad::Pci { bus: bus, dev: dev, fun: fun } => Some((*bus, *dev, *fun)),
-            _ => None,
-        }
-    }
-
-    #[verifier(when_used_as_spec(spec_get_payload_as_pci))]
-    pub fn get_payload_as_pci(&self) -> (ret: Option<(u8, u8, u8)>)
-        ensures
-            ret == self.spec_get_payload_as_pci(),
-    {
-        match self {
-            IPCPayLoad::Pci { bus: bus, dev: dev, fun: fun } => Some((*bus, *dev, *fun)),
-            _ => None,
-        }
-    }
 }
 impl LockMajorTrait for Thread {
     open spec fn lock_major_1(&self) -> LockMajorId { THREAD_LOCK_MAJOR }
     open spec fn lock_major_2(&self) -> LockMajorId { THREAD_BLOCKED_LOCK_MAJOR }
     open spec fn lock_major_3(&self) -> LockMajorId { THREAD_SCHEDULED_LOCK_MAJOR }
-    open spec fn lock_major_default(&self) -> LockMajorId { THREAD_IPC_TRANSIT_LOCK_MAJOR }
+    open spec fn lock_major_default(&self) -> LockMajorId { if self.state is KILLED { THREAD_KILLED_LOCK_MAJOR } else { THREAD_IPC_TRANSIT_LOCK_MAJOR } }
     open spec fn lock_major_1_predicate(&self) -> bool { self.state is RUNNING }
-    open spec fn lock_major_2_predicate(&self) -> bool { self.state.is_endpoint_waiting() || self.state is WAITING_REPLY }
+    open spec fn lock_major_2_predicate(&self) -> bool { self.state.is_endpoint_waiting() || self.state.is_reply_waiting() }
     open spec fn lock_major_3_predicate(&self) -> bool { self.state is SCHEDULED }
-    open spec fn lock_major_default_predicate(&self) -> bool { self.state is IPC_ENDPOINT_TRANSIT }
+    open spec fn lock_major_default_predicate(&self) -> bool { self.state is IPC_ENDPOINT_TRANSIT || self.state is KILLED }
 }
 
 impl LockOwnerIdTrait for Thread {
     open spec fn container_depth(&self) -> LockOwnerId {
-        if self.state.is_endpoint_waiting() || self.state is WAITING_REPLY || self.state is IPC_ENDPOINT_TRANSIT { LockOwnerId::NotApp }
+        if self.state.is_endpoint_waiting() || self.state.is_reply_waiting() || self.state is IPC_ENDPOINT_TRANSIT { LockOwnerId::NotApp }
         else { LockOwnerId::Some(self.container_depth) }
     }
 
     open spec fn process_depth(&self) -> LockOwnerId {
-        if self.state.is_endpoint_waiting() || self.state is WAITING_REPLY || self.state is IPC_ENDPOINT_TRANSIT || self.state is SCHEDULED { LockOwnerId::NotApp }
+        if self.state.is_endpoint_waiting() || self.state.is_reply_waiting() || self.state is IPC_ENDPOINT_TRANSIT || self.state is SCHEDULED || self.state is KILLED { LockOwnerId::NotApp }
         else { LockOwnerId::Some(self.process_depth) }
     }
-}
-
-impl LockUserVisibilityTrait for Thread {
-    open spec fn is_user_visible() -> bool { false }
 }
 } // verus!

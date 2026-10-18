@@ -93,7 +93,7 @@ fn new_container_release_entry_locks(
         old(krnl).prc_mp.dom().contains(process_ptr),
         typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
         !old(krnl).prc_mp.spec_index(process_ptr).being_killed(),
-        old(krnl).prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 0,
+        old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Running || old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Zombie,
         process_lock_perm.state() is WriteLock && process_lock_perm.thread_id() == old(lctx).thread_id() && process_lock_perm.lock_id() == old(krnl).prc_mp.spec_index(process_ptr).locking_thread()->Write_lock_id,
         old(krnl).thr_mp.dom().contains(thread_ptr),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
@@ -131,7 +131,6 @@ fn new_container_release_entry_locks(
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).no_locks_held(),
 {
-    proof { use_type_invariant(&*steps); }
     krnl.wunlock_cpu_set(cpu_set_ptr, Tracked(&mut *lctx), Tracked(cpu_set_lock_perm));
     proof { container_nonlock_fields_and_quotas_unchanged_for_cpu_set_relock(&cpu_set_unlocked_k, &*krnl, cpu_set_ptr); }
     krnl.wunlock_pagetable(pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
@@ -163,7 +162,6 @@ fn new_container_lock_owners(
         endpoint_index is Some ==> edp_idx_valid(endpoint_index->Some_0),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -220,7 +218,7 @@ fn new_container_lock_owners(
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(e.current_thread_ptr)
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container == e.parent_container_ptr
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(e.parent_process_ptr)
-            &&& !final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed()
+            &&& !final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() && !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed()
             &&& final(krnl).cpu_published[cpu_id as int].view() == (final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid)
             &&& final(lctx).page_lock_map().dom().is_empty() && final(lctx).endpoint_lock_map().dom().is_empty() && final(lctx).pagetable_lock_map().dom().is_empty()
             &&& final(lctx).scheduler_lock_map().dom().is_empty() && final(lctx).pcid_allocator_lock_map().dom().is_empty() && final(lctx).cpu_set_lock_map().dom().is_empty()
@@ -252,7 +250,7 @@ fn new_container_lock_owners(
             &&& !final(krnl).prc_mp.spec_index(e.parent_process_ptr).being_killed()
             &&& !old(krnl).prc_mp.spec_index(e.parent_process_ptr).being_killed()
             &&& final(krnl).prc_mp.spec_index(e.parent_process_ptr).view_rodata().view().owning_container == e.parent_container_ptr
-            &&& final(krnl).prc_mp.spec_index(e.parent_process_ptr).view().owned_threads.view().len() != 0
+            &&& (final(krnl).prc_mp.spec_index(e.parent_process_ptr).view().state.view() is Running || final(krnl).prc_mp.spec_index(e.parent_process_ptr).view().state.view() is Zombie)
             &&& !old(krnl).prc_mp.spec_index(e.parent_process_ptr).view().zombie
             &&& e.process_lock_perm.view().state() is WriteLock
             &&& e.process_lock_perm.view().thread_id() == final(lctx).thread_id()
@@ -278,7 +276,6 @@ fn new_container_lock_owners(
             &&& e.thread_lock_perm.view().lock_id() == final(krnl).thr_mp.spec_index(e.current_thread_ptr).locking_thread()->Write_lock_id
         }),
 {
-    proof { use_type_invariant(&*steps); }
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
     if range == 0 || range > usize::MAX / 4096usize || range > (usize::MAX - 9usize) / 3usize || !va_4k_valid(va) || transfer_cpu_id >= NUM_CPUS {
         proof {
@@ -306,7 +303,15 @@ fn new_container_lock_owners(
         }
         return Err(RetValueType::Error);
     }
-    let Tracked(cpu_lock_perm) = krnl.wlock_cpu(cpu_id, Tracked(&mut *lctx));
+    let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);
+    if cpu_lock_res.is_none() {
+        proof {
+            new_container_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, endpoint_index, RetValueType::CpuIdle);
+            new_container_result_from_k(old(krnl), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index, RetValueType::CpuIdle);
+        }
+        return Err(RetValueType::CpuIdle);
+    }
+    let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
     let parent_container_ptr = cpu.owning_container();
     let parent_process_ptr = cpu.current_process().unwrap();
@@ -332,9 +337,7 @@ fn new_container_lock_owners(
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(parent_container_ptr), None, None, None, None, None);
             new_container_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, endpoint_index,
                 RetValueType::ErrorContainerKilled);
-            assert(new_container_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index) is ErrorContainerKilled) by {
-                kernel_cpu_thread_projection_at(old(krnl), cpu_id, parent_process_ptr, current_thread_ptr, None); kernel_container_projection_at(old(krnl), parent_container_ptr);
-            };
+            new_container_result_from_k(old(krnl), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index, RetValueType::ErrorContainerKilled);
         }
         return Err(RetValueType::ErrorContainerKilled);
     }
@@ -352,9 +355,7 @@ fn new_container_lock_owners(
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(parent_container_ptr), None, None, None, None, None);
             new_container_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, endpoint_index,
                 error);
-            assert(new_container_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index) == error) by {
-                kernel_cpu_thread_projection_at(old(krnl), cpu_id, parent_process_ptr, current_thread_ptr, None); kernel_container_projection_at(old(krnl), parent_container_ptr);
-            };
+            new_container_result_from_k(old(krnl), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index, error);
         }
         return Err(error);
     }
@@ -366,14 +367,11 @@ fn new_container_lock_owners(
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(parent_container_ptr), Some(parent_process_ptr), None, None, None, None);
             new_container_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, endpoint_index,
                 RetValueType::ErrorProcessKilled);
-            assert(new_container_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index) is ErrorProcessKilled) by {
-                kernel_cpu_thread_projection_at(old(krnl), cpu_id, parent_process_ptr, current_thread_ptr, None); kernel_container_projection_at(old(krnl), parent_container_ptr);
-            };
+            new_container_result_from_k(old(krnl), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index, RetValueType::ErrorProcessKilled);
         }
         return Err(RetValueType::ErrorProcessKilled);
     }
     let Tracked(process_lock_perm) = process_res.unwrap();
-    proof { assert(krnl.prc_mp.spec_index(parent_process_ptr).view().owned_threads.view().len() != 0) by { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); }; }
     let thread_res = krnl.wlock_thread_unless_killed(current_thread_ptr, Tracked(&mut *lctx));
     if thread_res.is_none() {
         krnl.wunlock_process(parent_process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
@@ -383,9 +381,7 @@ fn new_container_lock_owners(
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(parent_container_ptr), Some(parent_process_ptr), Some(current_thread_ptr), None, None, None);
             new_container_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, endpoint_index,
                 RetValueType::ErrorThreadKilled);
-            assert(new_container_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index) is ErrorThreadKilled) by {
-                kernel_cpu_thread_projection_at(old(krnl), cpu_id, parent_process_ptr, current_thread_ptr, None); kernel_container_projection_at(old(krnl), parent_container_ptr);
-            };
+            new_container_result_from_k(old(krnl), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index, RetValueType::ErrorThreadKilled);
         }
         return Err(RetValueType::ErrorThreadKilled);
     }
@@ -408,9 +404,7 @@ fn new_container_lock_owners(
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(parent_container_ptr), Some(parent_process_ptr), Some(current_thread_ptr), None, None, None);
             new_container_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, endpoint_index,
                 error);
-            assert(new_container_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index) == error) by {
-                kernel_cpu_thread_projection_at(old(krnl), cpu_id, parent_process_ptr, current_thread_ptr, None); kernel_container_projection_at(old(krnl), parent_container_ptr);
-            };
+            new_container_result_from_k(old(krnl), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index, error);
         }
         return Err(error);
     }
@@ -440,7 +434,6 @@ fn new_container_lock_entry(
         endpoint_index is Some ==> edp_idx_valid(endpoint_index->Some_0),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -528,7 +521,6 @@ fn new_container_lock_entry(
             &&& e.endpoint is None ==> final(lctx).endpoint_lock_map().dom().is_empty()
             &&& e.endpoint is Some ==> {
                 let endpoint_ptr = e.endpoint->Some_0;
-                let endpoint_owner = final(krnl).ep_mp.spec_index(endpoint_ptr).view().owning_container;
                 &&& edp_idx_valid(e.endpoint_slot)
                 &&& final(lctx).endpoint_lock_map().dom() =~= set![endpoint_ptr]
                 &&& final(krnl).thr_mp.spec_index(e.current_thread_ptr).view().endpoint_descriptors.wf()
@@ -538,8 +530,6 @@ fn new_container_lock_entry(
                 &&& typed_lock_map_contains_mode(final(lctx).endpoint_lock_map(), endpoint_ptr, TypedLockMode::Write)
                 &&& !final(krnl).ep_mp.spec_index(endpoint_ptr).being_killed()
                 &&& final(krnl).ep_mp.spec_index(endpoint_ptr).view().owning_threads.view().contains((e.current_thread_ptr, e.endpoint_slot))
-                &&& final(krnl).ctn_mp.dom().contains(endpoint_owner)
-                &&& endpoint_owner == e.parent_container_ptr || final(krnl).ctn_mp.spec_index(endpoint_owner).view_ghost().subtree_set.view().contains(e.parent_container_ptr)
                 &&& e.endpoint_lock_perm.view() is Some
                 &&& e.endpoint_lock_perm.view()->Some_0.state() is WriteLock
                 &&& e.endpoint_lock_perm.view()->Some_0.thread_id() == final(lctx).thread_id()
@@ -571,6 +561,7 @@ fn new_container_lock_entry(
             &&& typed_lock_map_contains_mode(final(lctx).process_lock_map(), e.parent_process_ptr, TypedLockMode::Write)
             &&& !final(krnl).prc_mp.spec_index(e.parent_process_ptr).being_killed()
             &&& final(krnl).prc_mp.spec_index(e.parent_process_ptr).view_rodata().view().owning_container == e.parent_container_ptr
+            &&& (final(krnl).prc_mp.spec_index(e.parent_process_ptr).view().state.view() is Running || final(krnl).prc_mp.spec_index(e.parent_process_ptr).view().state.view() is Zombie)
             &&& e.process_lock_perm.view().state() is WriteLock
             &&& e.process_lock_perm.view().thread_id() == final(lctx).thread_id()
             &&& e.process_lock_perm.view().lock_id() == final(krnl).prc_mp.spec_index(e.parent_process_ptr).locking_thread()->Write_lock_id
@@ -596,7 +587,6 @@ fn new_container_lock_entry(
             &&& e.source_pagetable_lock_perm.view().lock_id() == final(krnl).pt_mp.spec_index(e.source_pagetable_ptr).locking_thread()->Write_lock_id
         }),
 {
-    proof { use_type_invariant(&*steps); }
     let owners = match new_container_lock_owners(
         krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index, initial_regs,
     ) {
@@ -614,11 +604,6 @@ fn new_container_lock_entry(
             assert(krnl.ep_mp.dom().contains(endpoint_ptr) && krnl.ep_mp.spec_index(endpoint_ptr).view().owning_threads.view().contains((current_thread_ptr, endpoint_index->Some_0))) by {
                 thread_endpoint_ref_counter_wf_thread_at(krnl.thr_mp, krnl.ep_mp, current_thread_ptr, endpoint_index->Some_0);
             };
-            assert(krnl.ctn_mp.dom().contains(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container)) by { container_endpoint_wf_at(krnl.ctn_mp, krnl.ep_mp, endpoint_ptr); };
-            assert({
-                ||| krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container == parent_container_ptr
-                ||| krnl.ctn_mp.spec_index(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container).view_ghost().subtree_set.view().contains(parent_container_ptr)
-            }) by { reveal(container_thread_endpoint_wf); };
         }
         let Tracked(endpoint_lock_perm) = krnl.wlock_endpoint(endpoint_ptr, Tracked(&mut *lctx));
         proof { endpoint_lock_perm_opt = Some(endpoint_lock_perm); }
@@ -649,9 +634,7 @@ fn new_container_lock_entry(
         let error = if !source_ready { RetValueType::Error } else if !transfer_cpu_owned { RetValueType::ErrorIpcCpuOwnerMismatch } else { RetValueType::ErrorIpcCpuNotOff };
         proof {
             assert(new_container_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index) == error) by {
-                kernel_cpu_thread_projection_at(old(krnl), cpu_id, parent_process_ptr, current_thread_ptr, None); kernel_container_projection_at(old(krnl), parent_container_ptr);
-                kernel_l4_end_projection_at(old(krnl), source_pagetable_ptr); kernel_pagetable_mappings_projection_at(old(krnl), parent_process_ptr);
-                kernel_cpu_projection_at(old(krnl), transfer_cpu_id); reveal(container_cpu_wf);
+                reveal(container_cpu_wf); new_container_result_from_k(old(krnl), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index, error);
             };
         }
         new_container_release_entry_locks(
@@ -667,11 +650,7 @@ fn new_container_lock_entry(
     proof {
         assert(krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().view().state is Off
             && krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().view().owning_container == parent_container_ptr) by { container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, parent_container_ptr, transfer_cpu_id); };
-        assert(new_container_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index) is Success) by {
-            kernel_cpu_thread_projection_at(old(krnl), cpu_id, parent_process_ptr, current_thread_ptr, None); kernel_container_projection_at(old(krnl), parent_container_ptr);
-            kernel_l4_end_projection_at(old(krnl), source_pagetable_ptr); kernel_pagetable_mappings_projection_at(old(krnl), parent_process_ptr);
-            kernel_cpu_projection_at(old(krnl), transfer_cpu_id);
-        };
+        new_container_result_from_k(old(krnl), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index, RetValueType::Success);
     }
     let (endpoint, endpoint_slot) = match endpoint_index { Some(index) => (Some(endpoint_ptr), index), None => (None, 0) };
     Ok(NewContainerEntryLocked {
@@ -693,7 +672,6 @@ fn syscall_new_container_common(
         cpu_id == old(lctx).cpu_id(),
         endpoint_index is Some ==> edp_idx_valid(endpoint_index->Some_0),
         old(krnl).inv(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -717,7 +695,6 @@ fn syscall_new_container_common(
         (ret is SuccessThreeUsize) == (new_container_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index) is Success),
         !(ret is SuccessThreeUsize) ==> ret == new_container_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index),
 {
-    proof { use_type_invariant(&*steps); }
     let entry = match new_container_lock_entry(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index, initial_regs) {
         Ok(entry) => entry,
         Err(ret) => return ret,
@@ -748,7 +725,6 @@ pub fn syscall_new_container(
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -787,7 +763,6 @@ pub fn syscall_new_container_with_endpoint(
         cpu_id == old(lctx).cpu_id(),
         edp_idx_valid(endpoint_index),
         old(krnl).inv(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),

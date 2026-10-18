@@ -32,6 +32,7 @@ verus! {
             old(krnl).thr_mp.dom().contains(thread_ptr),
             typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
             old(krnl).thr_mp.spec_index(thread_ptr).being_killed() == false,
+            !thread_is_dangling(old(krnl).thr_mp.spec_index(thread_ptr)),
             old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
             old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
             thread_lock_perm.state() is WriteLock,
@@ -81,6 +82,7 @@ verus! {
             final(krnl).thr_mp.dom().contains(thread_ptr),
             typed_lock_map_contains_mode(final(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
             final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == false,
+            !thread_is_dangling(final(krnl).thr_mp.spec_index(thread_ptr)),
             final(krnl).thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
             final(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
             thread_lock_perm.thread_id() == final(lctx).thread_id(),
@@ -92,7 +94,6 @@ verus! {
             pagetable_lock_perm.lock_id() == final(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
             final(steps).nonlock_view().len() == old(steps).nonlock_view().len() + 1,
             final(steps).nonlock_view().subrange(0, old(steps).nonlock_view().len() as int) == old(steps).nonlock_view(),
-            final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
             final(lctx).page_lock_map().dom().is_empty(),
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
@@ -106,30 +107,15 @@ verus! {
             mmap_4k_leaf_step_pre(final(steps).view().last().old_u, cpu_id),
             mmap_4k_leaf_step(final(steps).view().last().old_u, final(steps).view().last().new_u, cpu_id),
             final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
-            held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
-            held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
-            held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
-            held_schedulers_unchanged(old(krnl).sched_mp, final(krnl).sched_mp, old(lctx)),
-            held_pcid_allocators_unchanged(old(krnl).pcid_allc_mp, final(krnl).pcid_allc_mp, old(lctx)),
-            held_cpu_sets_unchanged(old(krnl).cpu_set_mp, final(krnl).cpu_set_mp, old(lctx)),
-            held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
-            held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().wf(),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_4k() == old(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_4k().insert(va, final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_4k().spec_index(va)),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_2m() == old(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_2m(),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_1g() == old(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_1g(),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end == old(krnl).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end,
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
-                #![trigger final(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l2(l4i, l3i, l2i)]
-                final(krnl).pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
-                    ==> final(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l2(l4i, l3i, l2i) == old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_l2(l4i, l3i, l2i),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_4k().dom().contains(va),
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_4k().spec_index(va).present,
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_4k().spec_index(va).write,
             !final(krnl).pt_mp.spec_index(pagetable_ptr).view().mapping_4k().spec_index(va).execute_disable,
-            final(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_4k_l1(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, spec_va2index(va).3) is Some,
-            final(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_4k_l1(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, spec_va2index(va).3)->0.perm.present,
-            final(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_4k_l1(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, spec_va2index(va).3)->0.perm.kernel_present,
     {
         proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
         let (page_ptr, Tracked(page_lock_perm)) = allocate_free_4k_page(krnl, thread_ptr, container_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
@@ -153,12 +139,13 @@ verus! {
                 &&& krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr
                 &&& krnl.prc_mp.spec_index(process_ptr).view_rodata().view().pagetable == pagetable_ptr
             }) by { reveal(process_cpu_wf); reveal(process_pagetable_match); };
-            assert(mmap_4k_leaf_step_pre(kernel_k_to_kernel_u(section_start), cpu_id)
-                && mmap_4k_leaf_step(kernel_k_to_kernel_u(section_start), kernel_k_to_kernel_u(*krnl), cpu_id)) by {
-                kernel_thread_quota_4k_progress_and_4k_mapping_added_implies_u_step(&section_start, &*krnl, &*lctx, cpu_id, thread_ptr, process_ptr, pagetable_ptr, va);
-                mmap_4k_leaf_step_from_u(kernel_k_to_kernel_u(section_start), kernel_k_to_kernel_u(*krnl), cpu_id, process_ptr, thread_ptr, va);
-            };
+            let leaf_k = *krnl;
+            let leaf_lctx = *lctx;
             krnl.kernel_step_boundary_process_4k_mapping_changed(&mut *lctx, &mut *steps, process_ptr, pagetable_ptr, va, process_ptr, pagetable_ptr, thread_ptr, thread_ptr);
+            assert(mmap_4k_leaf_step_pre(steps.view().last().old_u, cpu_id) && mmap_4k_leaf_step(steps.view().last().old_u, steps.view().last().new_u, cpu_id)) by {
+                kernel_thread_quota_4k_progress_and_4k_mapping_added_implies_u_step(&section_start, &leaf_k, &leaf_lctx, cpu_id, thread_ptr, process_ptr, pagetable_ptr, va);
+                mmap_4k_leaf_step_from_u(kernel_k_to_kernel_u(section_start), kernel_k_to_kernel_u(leaf_k), cpu_id, process_ptr, thread_ptr, va);
+            };
             assert(krnl.ctn_mp.dom().contains(container_ptr) && krnl.prc_mp.dom().contains(process_ptr)) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); };
             assert(krnl.allc_4k_mp.dom().contains(alloc_ptr_4k)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); };
             assert(krnl.pt_mp.spec_index(pagetable_ptr).view().wf()) by { pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); };

@@ -44,4 +44,8 @@ pub mod container_cpu_offline_flags_spec;
 pub use container_cpu_set_spec::*;
 pub use container_cpu_offline_flags_spec::*;
 pub mod process_subsystem_mutation;
+pub mod process_kill_mark_spec;
+pub use process_kill_mark_spec::*;
+pub mod process_state_spec;
+pub use process_state_spec::*;
 pub use process_subsystem_mutation::*;

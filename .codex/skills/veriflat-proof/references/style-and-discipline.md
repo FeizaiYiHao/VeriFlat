@@ -44,8 +44,59 @@
   U projections, U field facts, or U step/trace predicates, directly or through
   a helper. Wrapper bodies and postconditions may derive generic K-to-U facts
   and record traces, but must not depend on syscall-specific step predicates.
-  Keep generic K-to-U lemmas in `kernel_step_wrappers.rs`; derive each syscall's
-  step predicates in its own layer.
+  Keep generic K-to-U lemmas in the step-wrapper layer
+  (`kernel_step_wrappers.rs`, `src/kernel/kernel_step_wrappers/`); they never
+  mention a syscall-specific step predicate, which crate dependencies forbid.
+  These need no approval.
+- Exec equations and their own contracts contain no U reasoning. Do not reveal a
+  U step, step_pre, trace, or result spec; call a K-to-U projection lemma
+  (`*_projection_at`, `kernel_write_held_context_projection`, ...); call
+  `use_type_invariant(&*steps)`; build `ThreadU{..}`/`KernelU{..}` literals or
+  `kernel_k_to_kernel_u(..).x =~= ..` compositions; or put field-level
+  `kernel_k_to_kernel_u(..)`/`kernel_k_to_nonlock_kernel_u(..)` clauses in an
+  exec fn's requires/ensures. Exec holds K facts and calls wrapper-layer K-to-U
+  step lemmas, step-boundary wrappers, and the operation's trace lemmas. The only
+  U in exec contracts is the public syscall trace/result ensures stated on
+  `steps.view()`/`nonlock_view()`, or on a whole
+  `kernel_k_to_kernel_u(*old(krnl))` or `*final(krnl)` passed to a trace or
+  result spec.
+- Exec equations are K-only transition proofs. An exec equation holds concrete
+  K facts, establishes S (which map entries and lock states changed) and
+  typed-lock-map alignment, and proves its callees' preconditions. It closes no
+  invariant and reasons about no U state. Hence it never contains
+  `reveal(<...>_wf)`, `reveal(<...>_inv)`, or a K-to-U construct: invariant
+  closure lives in the operation's EOF closure functions (every mutating
+  equation gets one), and K-to-U lives in the step-wrapper layer and
+  `*_trace.rs`. The only invariant use allowed in exec is a point fact a
+  callee's precondition needs, obtained from a `*_wf_at` point lemma or a
+  callee's ensures, never from a reveal. A point fact the exec cannot obtain
+  that way is a producer-contract gap: add the ensures to the producer or add a
+  `*_wf_at` point lemma (approval-free, like fold lemmas) instead of revealing
+  in exec. Lock/unlock primitives (`locker_unlocker/`) are exec equations too
+  and follow the same rule.
+- `*_wf_at` point lemmas have one shape: `requires <pred>_wf(<maps>)` plus the
+  index's domain membership, `ensures` only the quantified body instantiated at
+  that index, body `reveal(<pred>_wf)`. They never ensure a map-level or
+  quantified fact (`perms_wf()`, `inv()`, a forall); such a clause leaks the
+  invariant into the caller's context and is a defect to fix in the lemma, not a
+  convenience. Call a `*_wf_at` in exec only to discharge a callee's
+  precondition; a fact the just-executed callee can state goes in that callee's
+  ensures instead. Without the full-EOF boundary a `*_wf_at` chain in exec is
+  piecewise invariant closure, which is the same leak as a reveal: add the EOF
+  boundary first. The `_wf_at` lemmas that still ensure `perms_wf()` or `.inv()`
+  (thread/endpoint/allocator/pagetable/iommu-table perms, page_array,
+  cpu_array) are legacy exceptions to be narrowed.
+- Operation-local K-to-U bridging lemmas live in the operation's `*_trace.rs` and
+  need no approval: `<op>_<step>_pre_from_k(krnl, lctx, cpu_id, ..)` requires
+  only K facts the exec already holds and ensures the op's U step_pre on
+  `kernel_k_to_kernel_u(*krnl)`; `<op>_<step>_from_u(pre_u, [mid_u,] post_u, ..)`
+  requires verbatim the wrapper K-to-U lemma ensures form(s) and ensures the op's
+  U step; `<op>_result_from_k(krnl, cpu_id, .., ret)` ensures the op's result
+  spec; plus trace-composition lemmas. Their requires are K facts or wrapper
+  ensures verbatim, their ensures are existing U specs of that operation, and
+  their bodies hold only projection calls, reveals, `use_type_invariant`, and
+  `assert_maps_equal!`. They introduce no new spec. List every one added in the
+  report.
 - Describe an operation through its concrete inputs and results. Constructors
   may expose the exact value they already construct, including a deterministic
   ghost sequence, so consumers can use that fact across crate boundaries.
@@ -56,6 +107,21 @@
   are the documented exception: they need no separate approval and S may be
   reshaped freely within the semantic and proof-boundary constraints in
   `AGENTS.md` and `slow-equation.md`.
+- EOF naming. The operation-state summary S of a full-EOF equation and every
+  framing spec or lemma that exists only for an EOF closure carry `eof` in their
+  name: S is `<op>_eof_transition_framing` (e.g.
+  `create_process_from_staged_pages_eof_transition_framing`), EOF-only helper
+  framing is `<op>_eof_<what>`. S holds only transition/framing facts: which map
+  entries, pages, and lock states changed and what stayed equal. The
+  operation's preconditions stay in the exec contract's `requires`, not in S. S
+  lives in the operation's `*_eof*.rs` or `*_spec.rs` file, never in the exec
+  file. Framing names outside EOF state what is preserved (`held_*_unchanged`,
+  `kernel_*_nonlock_fields_unchanged`); names that do not, such as
+  `*_framed_fields_equal` or `*_kernel_state_framing`, are to be renamed. Legacy
+  names scheduled for this rename: the `*_kernel_state_framing` specs
+  (create_process ×2, create_thread, create_endpoint,
+  publish_staged_container_root) and the `*_transition_framing` specs
+  (cpu_offline_request_child, cpu_online_child, pop_stage_2m/4k).
 - Keep preconditions limited to safety, semantics, and direct callees. Before
   removing a parameter, inspect exec uses, proof consumers, and dependencies
   across kernel-step boundaries; an argument unused by exec may still be needed.
@@ -78,11 +144,13 @@
   outside the explicitly approved page-retype TCB boundary:
   `retype_4k_page_perm_to_allocator`, `retype_4k_page_perm_to_scheduler`,
   `retype_page_perm_2m_to_rwlock`, `retype_page_perm_to_rwlock`,
-  `retype_container_page_tail_to_offline_flags`, and the inverse
-  `retype_thread_rwlock_to_4k_page_perm` (an exclusively held, unreferenced
-  thread lock object back to its owned 4K page permission). Keep those
-  primitives limited to consuming an owned page permission and constructing
-  the corresponding kernel object, or the exact inverse for thread exit;
+  `retype_container_page_tail_to_offline_flags`, and the inverses
+  `retype_thread_rwlock_to_4k_page_perm` and
+  `retype_process_rwlock_to_4k_page_perm` (an exclusively held, unreferenced
+  thread or killed childless, threadless process lock object back to its owned
+  4K page permission). Keep those primitives limited to consuming an owned page
+  permission and constructing the corresponding kernel object, or the exact
+  inverse for thread exit or process reclaim;
   new variants or callers require explicit authorization. The other approved
   trusted primitives are the hardware TLB invalidations
   `CpuTLB::flush_all_local_pcids` and `IommuTLB::invalidate_domain`.

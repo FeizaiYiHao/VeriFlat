@@ -199,42 +199,16 @@ pub fn page_perm_to_page_map(page_ptr: PagePtr, Tracked(page_perm): Tracked<Page
     (page_ptr, Tracked::assume_new())
 }
 
-pub fn flush_tlb_4kentry(tlbmap_4k: Ghost<Seq<Map<VAddr, MapEntry>>>, va: Ghost<VAddr>) -> (ret: Ghost<Seq<Map<VAddr, MapEntry>>>)
+/// TCB: a table page that its page table no longer links is an ordinary 4K page again; its bytes stay as they are.
+#[verifier(external_body)]
+pub fn page_map_to_page_perm(page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<PageMap>>) -> (ret: Tracked<PagePerm4k>)
     requires
-        NUM_CPUS > 0,
-        tlbmap_4k.view().len() == NUM_CPUS,
+        page_map_perm.is_init(),
+        page_map_perm.addr() == page_map_ptr,
     ensures
-        ret.view().len() == NUM_CPUS,
-        forall|cpu_id: CpuId|
-            #![trigger ret.view().spec_index(cpu_id as int)]
-            index_valid(NUM_CPUS, cpu_id) ==> !(ret.view().spec_index(cpu_id as int).contains_key(va.view())),
-        forall|cpu_id: CpuId|
-            #![trigger ret.view().spec_index(cpu_id as int)]
-            #![trigger tlbmap_4k.view().spec_index(cpu_id as int)]
-            index_valid(NUM_CPUS, cpu_id) ==> ret.view().spec_index(cpu_id as int).submap_of(tlbmap_4k.view().spec_index(cpu_id as int)),
+        ret.view().is_init(),
+        ret.view().addr() == page_map_ptr,
 {
-    let mut ret_map = tlbmap_4k;
-
-    for cpu_id in 0..NUM_CPUS
-        invariant
-            0 <= cpu_id <= NUM_CPUS,
-            tlbmap_4k.view().len() == NUM_CPUS,
-            ret_map.view().len() == NUM_CPUS,
-            forall|cpu_i: CpuId|
-                #![auto]
-                0 <= cpu_i < cpu_id ==> ret_map.view().spec_index(cpu_i as int).contains_key(va.view()) == false,
-            forall|cpu_i: CpuId|
-                #![trigger ret_map.view().spec_index(cpu_i as int)]
-                index_valid(NUM_CPUS, cpu_i) ==> ret_map.view().spec_index(cpu_i as int).submap_of(tlbmap_4k.view().spec_index(cpu_i as int)),
-    {
-        proof {
-            let old_at_i = ret_map.view().spec_index(cpu_id as int);
-            let tlbmap = old_at_i.remove(va.view());
-            assert(tlbmap.submap_of(tlbmap_4k.view().spec_index(cpu_id as int))) by { vstd::map_lib::lemma_submap_of_trans(tlbmap, old_at_i, tlbmap_4k.view().spec_index(cpu_id as int)); };
-            let tlbseq = ret_map.view().update(cpu_id as int, tlbmap);
-            *ret_map.borrow_mut() = tlbseq;
-        }
-    }
-    ret_map
+    Tracked::assume_new()
 }
 } // verus!

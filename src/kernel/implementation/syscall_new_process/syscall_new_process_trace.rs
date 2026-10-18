@@ -8,42 +8,120 @@ use veriflat_kernel_core::kernel_u_new_thread_changed;
 #[cfg(verus_keep_ghost)]
 use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
 verus! {
-/// Acquiring the caller's context locks and recording the progress is the enter step on `pre`/`post`.
-pub(super) proof fn new_process_enter_step_from_u(
-    pre: KernelU, locked: KernelU, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
-    container_ptr: RwLockContainerPtr, endpoint_ptr: Option<RwLockEndpointPtr>, range: VaRange4K, regs: Registers, endpoint_index: Option<EndpointIdx>, with_iommu: bool,
-)
+/// Each return path's entry-state K facts give its value as the user-view result.
+pub(super) proof fn new_process_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAddr, range: usize, endpoint_index: Option<EndpointIdx>, with_iommu: bool, ret: RetValueType, pcid: Pcid)
     requires
+        krnl.inv(),
         index_valid(NUM_CPUS, cpu_id),
         {
-            let cpu = pre.cpu_array[cpu_id as int];
-            let thread = pre.thread_map.spec_index(thread_ptr);
-            let process = pre.process_map.spec_index(process_ptr);
             let base: usize = if with_iommu { 6 } else { 4 };
-            &&& cpu.lock_state is Unlocked
-            &&& cpu.state is Running
-            &&& cpu.current_thread == Some(thread_ptr)
-            &&& pre.thread_map.dom().contains(thread_ptr)
-            &&& thread.lock_state is Unlocked
-            &&& thread.syscall_progress is None
-            &&& !thread.killed
-            &&& thread.owning_proc == process_ptr
-            &&& thread.owning_container == container_ptr
-            &&& pre.container_map.dom().contains(container_ptr)
-            &&& !pre.container_map.spec_index(container_ptr).free_pcids.is_empty()
-            &&& pre.process_map.dom().contains(process_ptr)
-            &&& process.lock_state is Unlocked
-            &&& !process.killed
-            &&& process.pagetable is Some
-            &&& process.pagetable->Some_0.lock_state is Unlocked
+            let args_bad = range == 0 || range > usize::MAX / 4096 || range > (usize::MAX - base) / 3 || !spec_va_4k_valid(va) || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range);
+            let cpu = krnl.cpu_arr.spec_index(cpu_id).value;
+            let thread_ptr = cpu.view().view().current_thread->Some_0;
+            let thread = krnl.thr_mp.spec_index(thread_ptr);
+            let process_ptr = thread.view().owning_proc;
+            let process = krnl.prc_mp.spec_index(process_ptr);
+            let container_ptr = thread.view().owning_container;
+            let allocator = krnl.pcid_allc_mp.spec_index(krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator).view();
+            let free = PcidAllocator::free_pcids(allocator.ref_counters.view());
+            let has_pcid = allocator.pcid_is_free(pcid);
+            let table = krnl.pt_mp.spec_index(process.view().pagetable).view();
+            let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
+            let live = !args_bad && cpu.view().view().state is Running && !cpu.being_killed();
+            let unkilled = live && !process.being_killed() && !thread.being_killed();
+            let endpoint_missing = endpoint_index is Some && thread.view().endpoint_descriptors.spec_index(endpoint_index->Some_0) is None;
+            let funded = unkilled && has_pcid && !endpoint_missing && thread.view().quota_4k >= base + 3 * range;
+            let mapped = table.kernel_l4_end <= spec_v2l4index(va) && forall|j: int| #![trigger va_range.view().spec_index(j)] 0 <= j < range
+                ==> table.mapping_4k().dom().contains(va_range.view().spec_index(j)) && table.mapping_4k().spec_index(va_range.view().spec_index(j)).present;
+            &&& live ==> cpu.view().view().current_thread is Some && krnl.thr_mp.dom().contains(thread_ptr) && krnl.prc_mp.dom().contains(process_ptr)
+            &&& unkilled ==> krnl.ctn_mp.dom().contains(container_ptr)
+            &&& funded ==> !process.view().zombie && krnl.pt_mp.dom().contains(process.view().pagetable) && table.leaves_present()
+            &&& ret is CpuIdle ==> !args_bad && !live
+            &&& ret is ErrorProcessKilled ==> live && process.being_killed()
+            &&& ret is ErrorThreadKilled ==> live && !process.being_killed() && thread.being_killed()
+            &&& ret is ErrorNoPcid ==> unkilled && free.is_empty()
+            &&& ret is Error ==> args_bad || (unkilled && has_pcid && endpoint_missing) || (funded && !mapped)
+            &&& ret is ErrorNoQuota ==> unkilled && has_pcid && !endpoint_missing && thread.view().quota_4k < base + 3 * range
+            &&& ret is Success ==> funded && mapped
+            &&& ret is CpuIdle || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorNoPcid || ret is Error || ret is ErrorNoQuota || ret is Success
+        },
+    ensures
+        new_process_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, va, range, endpoint_index, with_iommu) == ret,
+{
+    let thread_ptr = krnl.cpu_arr.spec_index(cpu_id).value.view().view().current_thread->Some_0;
+    let process_ptr = krnl.thr_mp.spec_index(thread_ptr).view().owning_proc;
+    let container_ptr = krnl.thr_mp.spec_index(thread_ptr).view().owning_container;
+    assert(krnl.pcid_allc_mp.spec_index(krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator).view().pcid_is_free(pcid)
+        ==> PcidAllocator::free_pcids(krnl.pcid_allc_mp.spec_index(krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator).view().ref_counters.view()).contains(pcid));
+    kernel_cpu_projection_at(krnl, cpu_id);
+    if krnl.thr_mp.dom().contains(thread_ptr) && krnl.prc_mp.dom().contains(process_ptr) { kernel_cpu_thread_projection_at(krnl, cpu_id, process_ptr, thread_ptr, None); }
+    if !krnl.prc_mp.spec_index(process_ptr).view().zombie && krnl.prc_mp.dom().contains(process_ptr) && krnl.pt_mp.dom().contains(krnl.prc_mp.spec_index(process_ptr).view().pagetable) {
+        kernel_l4_end_projection_at(krnl, krnl.prc_mp.spec_index(process_ptr).view().pagetable); kernel_pagetable_mappings_projection_at(krnl, process_ptr);
+    }
+}
+
+/// The entry state's K facts give the enter precondition on its user view.
+pub(super) proof fn new_process_enter_step_pre_from_k(
+    krnl: &KernelK, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, pagetable_ptr: RwLockPageTableRoot,
+    endpoint_ptr: Option<RwLockEndpointPtr>, pcid_allocator_ptr: RwLockPcidAllocatorPtr, pcid: Pcid, range: VaRange4K, endpoint_index: Option<EndpointIdx>, with_iommu: bool,
+)
+    requires
+        krnl.inv(),
+        index_valid(NUM_CPUS, cpu_id),
+        {
+            let cpu = krnl.cpu_arr.spec_index(cpu_id).value;
+            let thread = krnl.thr_mp.spec_index(thread_ptr);
+            let process = krnl.prc_mp.spec_index(process_ptr);
+            let table = krnl.pt_mp.spec_index(pagetable_ptr);
+            let base: usize = if with_iommu { 6 } else { 4 };
+            &&& cpu.locking_thread() is None
+            &&& cpu.view().view().state is Running
+            &&& cpu.view().view().current_thread == Some(thread_ptr)
+            &&& krnl.thr_mp.dom().contains(thread_ptr)
+            &&& thread.locking_thread() is None
+            &&& thread.view().syscall_progress.view() is None
+            &&& !thread.being_killed()
+            &&& thread.view().owning_proc == process_ptr
+            &&& thread.view().owning_container == container_ptr
+            &&& thread.view().quota_4k >= base + 3 * range.len
+            &&& krnl.ctn_mp.dom().contains(container_ptr)
+            &&& krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator == pcid_allocator_ptr
+            &&& krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().pcid_is_free(pcid)
+            &&& krnl.prc_mp.dom().contains(process_ptr)
+            &&& process.locking_thread() is None
+            &&& !process.being_killed()
+            &&& !process.view().zombie
+            &&& process.view().pagetable == pagetable_ptr
+            &&& krnl.pt_mp.dom().contains(pagetable_ptr)
+            &&& table.locking_thread() is None
+            &&& table.view().leaves_present()
+            &&& table.view().kernel_l4_end <= spec_v2l4index(range.start)
+            &&& table.view().spec_mapping_4k_va_range_present(&range)
             &&& range.wf()
             &&& 0 < range.len <= (usize::MAX - base) / 3
-            &&& user_va_range(pre, range)
-            &&& thread.quota_4k >= base + 3 * range.len
-            &&& forall|i: int| #![trigger range.view()[i]] 0 <= i < range.len ==> process.pagetable->Some_0.mapping_4k.dom().contains(range.view()[i])
-            &&& (endpoint_index is Some ==> edp_idx_valid(endpoint_index->Some_0) && endpoint_ptr is Some && thread.endpoint_descriptors[endpoint_index->Some_0 as int] == endpoint_ptr)
+            &&& endpoint_index is Some ==> edp_idx_valid(endpoint_index->Some_0) && endpoint_ptr is Some && thread.view().endpoint_descriptors.spec_index(endpoint_index->Some_0) == endpoint_ptr
+            &&& endpoint_ptr is Some ==> krnl.ep_mp.dom().contains(endpoint_ptr->Some_0) && krnl.ep_mp.spec_index(endpoint_ptr->Some_0).locking_thread() is None
+        },
+    ensures
+        new_process_enter_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id, range, endpoint_index, with_iommu),
+{
+    reveal(new_process_enter_step_pre);
+    assert(PcidAllocator::free_pcids(krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().ref_counters.view()).contains(pcid));
+    kernel_cpu_thread_projection_at(krnl, cpu_id, process_ptr, thread_ptr, endpoint_ptr); kernel_l4_end_projection_at(krnl, pagetable_ptr); kernel_pagetable_mappings_projection_at(krnl, process_ptr);
+}
+
+/// Acquiring the caller's context locks and recording the progress is the enter step on `pre`/`post`.
+pub(super) proof fn new_process_enter_step_from_u(
+    pre: KernelU, locked: KernelU, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, endpoint_ptr: Option<RwLockEndpointPtr>,
+    range: VaRange4K, regs: Registers, endpoint_index: Option<EndpointIdx>, with_iommu: bool,
+)
+    requires
+        {
+            let thread = pre.thread_map.spec_index(thread_ptr);
+            &&& pre.cpu_array[cpu_id as int].current_thread == Some(thread_ptr)
+            &&& thread.owning_proc == process_ptr
+            &&& (endpoint_index is Some ==> endpoint_ptr is Some && thread.endpoint_descriptors[endpoint_index->Some_0 as int] == endpoint_ptr)
             &&& (endpoint_index is None ==> endpoint_ptr is None)
-            &&& (endpoint_ptr is Some ==> pre.endpoint_map.dom().contains(endpoint_ptr->Some_0) && pre.endpoint_map.spec_index(endpoint_ptr->Some_0).lock_state is Unlocked)
         },
         locked == (KernelU {
             cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre.cpu_array[cpu_id as int] }),
@@ -66,15 +144,36 @@ pub(super) proof fn new_process_enter_step_from_u(
             ..locked
         }),
     ensures
-        new_process_enter_step_pre(pre, cpu_id, range, endpoint_index, with_iommu),
         new_process_enter_step(pre, post, cpu_id, range, regs, endpoint_index, with_iommu),
 {
-    reveal(new_process_enter_step_pre); reveal(new_process_enter_step);
+    reveal(new_process_enter_step);
     assert_maps_equal!(post.thread_map, pre.thread_map.insert(thread_ptr, ThreadU {
         lock_state: LockStateU::WriteLocked, syscall_progress: Some(SyscallProgress::NewProcess(NewProcessProgress { range, regs, endpoint_index, with_iommu, child: None })),
         ..pre.thread_map.spec_index(thread_ptr)
     }));
 }
+
+/// The write-held context's K facts give the publish precondition and the running thread's recorded call on the user view.
+pub(super) proof fn new_process_publish_step_pre_from_k(
+    krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, parent_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr,
+    range: VaRange4K, regs: Registers, endpoint_index: Option<EndpointIdx>, with_iommu: bool,
+)
+    requires
+        index_valid(NUM_CPUS, cpu_id),
+        typed_lock_maps_aligned(krnl, lctx),
+        typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.process_lock_map(), parent_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), krnl.prc_mp.spec_index(parent_ptr).view().pagetable, TypedLockMode::Write),
+        krnl.cpu_arr.spec_index(cpu_id).value.view().view().current_thread == Some(thread_ptr),
+        krnl.thr_mp.spec_index(thread_ptr).view().owning_proc == parent_ptr,
+        krnl.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
+        krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::NewProcess(NewProcessProgress { range, regs, endpoint_index, with_iommu, child: None })),
+        krnl.ctn_mp.dom().contains(container_ptr),
+        !krnl.prc_mp.spec_index(parent_ptr).view().zombie,
+    ensures
+        new_process_publish_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
+{ reveal(new_process_publish_step_pre); kernel_write_held_context_projection(krnl, lctx, cpu_id, parent_ptr, thread_ptr, None); kernel_u_domains_projection(krnl); }
 
 /// Publishing the staged child while releasing the parent is the publish step on `pre`/`post`.
 pub(super) proof fn new_process_publish_step_from_u(
@@ -82,23 +181,12 @@ pub(super) proof fn new_process_publish_step_from_u(
     container_ptr: RwLockContainerPtr, range: VaRange4K, regs: Registers, endpoint_index: Option<EndpointIdx>, with_iommu: bool,
 )
     requires
-        index_valid(NUM_CPUS, cpu_id),
         {
-            let cpu = pre.cpu_array[cpu_id as int];
             let thread = pre.thread_map.spec_index(thread_ptr);
-            let parent = pre.process_map.spec_index(parent_ptr);
-            &&& cpu.lock_state is WriteLocked
-            &&& cpu.current_thread == Some(thread_ptr)
-            &&& pre.thread_map.dom().contains(thread_ptr)
-            &&& thread.lock_state is WriteLocked
+            &&& pre.cpu_array[cpu_id as int].current_thread == Some(thread_ptr)
             &&& thread.syscall_progress == Some(SyscallProgress::NewProcess(NewProcessProgress { range, regs, endpoint_index, with_iommu, child: None }))
             &&& thread.owning_proc == parent_ptr
             &&& thread.owning_container == container_ptr
-            &&& pre.container_map.dom().contains(container_ptr)
-            &&& pre.process_map.dom().contains(parent_ptr)
-            &&& parent.lock_state is WriteLocked
-            &&& parent.pagetable is Some
-            &&& parent.pagetable->Some_0.lock_state is WriteLocked
         },
         {
             let ancestors = pre.process_map[parent_ptr].uppertree_seq.push(parent_ptr);
@@ -106,7 +194,10 @@ pub(super) proof fn new_process_publish_step_from_u(
             let cost: usize = if with_iommu { 5 } else { 3 };
             let origin = Share4kOrigin::NewProcess(NewProcessProgress { range, regs, endpoint_index, with_iommu, child: Some(child_ptr) });
             let sharing = SyscallProgress::Share4k { source_range: range, target_range: range, shared: 0, origin };
+            &&& pre.process_map.dom().contains(parent_ptr)
             &&& !pre.process_map.dom().contains(child_ptr)
+            &&& pre.thread_map.dom().contains(thread_ptr)
+            &&& pre.container_map.dom().contains(container_ptr)
             &&& pre.thread_map[thread_ptr].quota_4k >= cost
             &&& post.container_map[container_ptr].free_pcids.subset_of(pre.container_map[container_ptr].free_pcids)
             &&& pre.container_map[container_ptr].free_pcids.difference(post.container_map[container_ptr].free_pcids).len() == 1
@@ -137,48 +228,51 @@ pub(super) proof fn new_process_publish_step_from_u(
             })
         },
     ensures
-        new_process_publish_step_pre(pre, cpu_id),
         new_process_publish_step(pre, post, cpu_id),
-{ reveal(new_process_publish_step_pre); reveal(new_process_publish_step); }
+{ reveal(new_process_publish_step); }
 
-/// The caller holding every retained lock after the whole range is shared satisfies the finish precondition.
-pub(super) proof fn new_process_finish_step_pre_from_u(pre: KernelU, cpu_id: CpuId, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, endpoint_ptr: Option<RwLockEndpointPtr>)
+/// The write-held context's K facts after the whole range is shared give the finish precondition and the running
+/// thread's recorded child, registers, and endpoint on the user view.
+pub(super) proof fn new_process_finish_step_pre_from_k(
+    krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
+    container_ptr: RwLockContainerPtr, endpoint_ptr: Option<RwLockEndpointPtr>, endpoint_index: EndpointIdx, regs: Registers, with_iommu: bool,
+)
     requires
         index_valid(NUM_CPUS, cpu_id),
-        {
-            let cpu = pre.cpu_array[cpu_id as int];
-            let thread = pre.thread_map.spec_index(thread_ptr);
-            let parent = pre.process_map.spec_index(parent_ptr);
-            let child = pre.process_map.spec_index(child_ptr);
-            let progress = thread.syscall_progress->Some_0;
-            let record = progress->Share4k_origin->NewProcess_0;
-            &&& cpu.lock_state is WriteLocked
-            &&& cpu.current_thread == Some(thread_ptr)
-            &&& pre.thread_map.dom().contains(thread_ptr)
-            &&& thread.lock_state is WriteLocked
-            &&& thread.syscall_progress is Some
-            &&& progress is Share4k
-            &&& progress->Share4k_origin is NewProcess
-            &&& progress->Share4k_shared == progress->Share4k_source_range.len
-            &&& record.child == Some(child_ptr)
-            &&& thread.owning_proc == parent_ptr
-            &&& pre.container_map.dom().contains(thread.owning_container)
-            &&& pre.process_map.dom().contains(parent_ptr)
-            &&& parent.pagetable is Some
-            &&& parent.pagetable->Some_0.lock_state is WriteLocked
-            &&& pre.process_map.dom().contains(child_ptr)
-            &&& child.lock_state is WriteLocked
-            &&& child.pagetable is Some
-            &&& child.pagetable->Some_0.lock_state is WriteLocked
-            &&& (child.iommu_table is Some ==> child.iommu_table->Some_0.lock_state is WriteLocked)
-            &&& child.owning_container == thread.owning_container
-            &&& (record.endpoint_index is Some ==> edp_idx_valid(record.endpoint_index->Some_0))
-            &&& (record.endpoint_index is Some ==> endpoint_ptr is Some && thread.endpoint_descriptors[record.endpoint_index->Some_0 as int] == endpoint_ptr)
-            &&& (endpoint_ptr is Some ==> pre.endpoint_map.dom().contains(endpoint_ptr->Some_0) && pre.endpoint_map.spec_index(endpoint_ptr->Some_0).lock_state is WriteLocked)
+        typed_lock_maps_aligned(krnl, lctx),
+        typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.process_lock_map(), child_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), krnl.prc_mp.spec_index(parent_ptr).view().pagetable, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), krnl.prc_mp.spec_index(child_ptr).view().pagetable, TypedLockMode::Write),
+        krnl.prc_mp.spec_index(child_ptr).view().iommu_table matches Some(t) ==> typed_lock_map_contains_mode(lctx.iommu_table_lock_map(), t, TypedLockMode::Write),
+        krnl.cpu_arr.spec_index(cpu_id).value.view().view().current_thread == Some(thread_ptr),
+        krnl.thr_mp.dom().contains(thread_ptr),
+        krnl.thr_mp.spec_index(thread_ptr).view().owning_proc == parent_ptr,
+        krnl.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
+        krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() matches Some(SyscallProgress::Share4k { source_range, shared, origin, .. })
+            && shared == source_range.len && origin == Share4kOrigin::NewProcess(NewProcessProgress {
+                range: source_range, regs, endpoint_index: if endpoint_ptr is Some { Some(endpoint_index) } else { None }, with_iommu, child: Some(child_ptr),
+            }),
+        endpoint_ptr is Some ==> {
+            &&& edp_idx_valid(endpoint_index)
+            &&& krnl.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == endpoint_ptr
+            &&& krnl.ep_mp.dom().contains(endpoint_ptr->Some_0)
+            &&& typed_lock_map_contains_mode(lctx.endpoint_lock_map(), endpoint_ptr->Some_0, TypedLockMode::Write)
         },
+        krnl.ctn_mp.dom().contains(container_ptr),
+        krnl.prc_mp.dom().contains(parent_ptr),
+        !krnl.prc_mp.spec_index(parent_ptr).view().zombie,
+        krnl.prc_mp.dom().contains(child_ptr),
+        !krnl.prc_mp.spec_index(child_ptr).view().zombie,
+        krnl.prc_mp.spec_index(child_ptr).view_rodata().view().owning_container == container_ptr,
     ensures
-        new_process_finish_step_pre(pre, cpu_id),
-{ reveal(new_process_finish_step_pre); }
+        new_process_finish_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
+{
+    reveal(new_process_finish_step_pre);
+    kernel_write_held_context_projection(krnl, lctx, cpu_id, child_ptr, thread_ptr, endpoint_ptr); kernel_cpu_thread_projection_at(krnl, cpu_id, child_ptr, thread_ptr, None);
+    kernel_process_projection_at(krnl, child_ptr);
+}
 
 /// Creating the child's first thread while releasing every retained lock is the finish step on `pre`/`post`.
 pub(super) proof fn new_process_finish_step_from_u(

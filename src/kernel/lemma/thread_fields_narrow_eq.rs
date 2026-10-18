@@ -12,7 +12,8 @@ pub proof fn thread_caller_callee_wf_preserved_for_call_link_eq(old_thread_map: 
                 &&& new_thread_map.spec_index(t_ptr).view().caller == old_thread_map.spec_index(t_ptr).view().caller
                 &&& new_thread_map.spec_index(t_ptr).view().callee == old_thread_map.spec_index(t_ptr).view().callee
                 &&& new_thread_map.spec_index(t_ptr).view().owning_container == old_thread_map.spec_index(t_ptr).view().owning_container
-                &&& (new_thread_map.spec_index(t_ptr).view().state is WAITING_REPLY) == (old_thread_map.spec_index(t_ptr).view().state is WAITING_REPLY)
+                &&& new_thread_map.spec_index(t_ptr).view().state.is_reply_waiting() == old_thread_map.spec_index(t_ptr).view().state.is_reply_waiting()
+                &&& new_thread_map.spec_index(t_ptr).view().call_depth == old_thread_map.spec_index(t_ptr).view().call_depth
             },
     ensures
         thread_caller_callee_wf(new_thread_map),
@@ -25,7 +26,7 @@ pub proof fn thread_endpoint_ref_counter_wf_preserved_for_descriptor_eq(old_thre
         new_endpoint_map.dom() == old_endpoint_map.dom(),
         forall|t_ptr: RwLockThreadPtr|
             #![trigger new_thread_map.spec_index(t_ptr)]
-            new_thread_map.dom().contains(t_ptr) ==> new_thread_map.spec_index(t_ptr).view().endpoint_descriptors == old_thread_map.spec_index(t_ptr).view().endpoint_descriptors,
+            new_thread_map.dom().contains(t_ptr) ==> new_thread_map.spec_index(t_ptr).view().endpoint_descriptors.view() == old_thread_map.spec_index(t_ptr).view().endpoint_descriptors.view(),
         forall|e_ptr: RwLockEndpointPtr|
             #![trigger new_endpoint_map.spec_index(e_ptr)]
             new_endpoint_map.dom().contains(e_ptr) ==> new_endpoint_map.spec_index(e_ptr).view().owning_threads == old_endpoint_map.spec_index(e_ptr).view().owning_threads,
@@ -117,6 +118,7 @@ pub proof fn container_thread_wf_preserved_for_container_thread_link_eq(old_cont
                 &&& new_thread_map.spec_index(t_ptr).view().owning_container == old_thread_map.spec_index(t_ptr).view().owning_container
                 &&& new_thread_map.spec_index(t_ptr).view().container_depth == old_thread_map.spec_index(t_ptr).view().container_depth
                 &&& new_thread_map.spec_index(t_ptr).view().upper_container_seq == old_thread_map.spec_index(t_ptr).view().upper_container_seq
+                &&& thread_is_dangling(new_thread_map.spec_index(t_ptr)) == thread_is_dangling(old_thread_map.spec_index(t_ptr))
             },
     ensures
         container_thread_wf(new_container_map, new_thread_map),
@@ -146,11 +148,14 @@ pub proof fn process_thread_wf_preserved_for_process_thread_link_eq(old_process_
                 &&& new_thread_map.spec_index(t_ptr).view().process_depth == old_thread_map.spec_index(t_ptr).view().process_depth
                 &&& new_thread_map.spec_index(t_ptr).view().proc_pagetable_ptr == old_thread_map.spec_index(t_ptr).view().proc_pagetable_ptr
                 &&& new_thread_map.spec_index(t_ptr).view().proc_linkedlist_node.addr() == old_thread_map.spec_index(t_ptr).view().proc_linkedlist_node.addr()
+                &&& new_thread_map.spec_index(t_ptr).view().proc_linkedlist_node.is_init() == old_thread_map.spec_index(t_ptr).view().proc_linkedlist_node.is_init()
+                &&& thread_is_dangling(new_thread_map.spec_index(t_ptr)) == thread_is_dangling(old_thread_map.spec_index(t_ptr))
                 &&& new_thread_map.spec_index(t_ptr).being_killed() ==> old_thread_map.spec_index(t_ptr).being_killed() && new_thread_map.spec_index(t_ptr).locking_thread() == old_thread_map.spec_index(t_ptr).locking_thread()
+                    && (new_thread_map.spec_index(t_ptr).view().state.is_reply_waiting() ==> old_thread_map.spec_index(t_ptr).view().state.is_reply_waiting())
             },
     ensures
         process_thread_wf(new_process_map, new_thread_map),
-{ reveal(process_thread_wf); reveal(process_empty_lists_wlocked); }
+{ reveal(process_thread_wf); }
 
 pub proof fn thread_cpu_wf_preserved_for_running_thread_eq(old_thread_map: ThreadLockedMap, new_thread_map: ThreadLockedMap, old_cpu_array: CpuLockedArray, new_cpu_array: CpuLockedArray)
     requires
@@ -169,6 +174,14 @@ pub proof fn thread_cpu_wf_preserved_for_running_thread_eq(old_thread_map: Threa
                 &&& new_cpu_array.spec_index(cpu_i).view().view().view().current_thread == old_cpu_array.spec_index(cpu_i).view().view().view().current_thread
                 &&& new_cpu_array.spec_index(cpu_i).view().view().view().current_process == old_cpu_array.spec_index(cpu_i).view().view().view().current_process
             },
+        forall|cpu_i: CpuId| #![trigger new_cpu_array.spec_index(cpu_i).view().being_killed()]
+            index_valid(NUM_CPUS, cpu_i) && new_cpu_array.spec_index(cpu_i).view().being_killed() ==> old_cpu_array.spec_index(cpu_i).view().being_killed()
+                && new_cpu_array.spec_index(cpu_i).view().killer_info() == old_cpu_array.spec_index(cpu_i).view().killer_info()
+                && new_cpu_array.spec_index(cpu_i).view().locking_thread() == old_cpu_array.spec_index(cpu_i).view().locking_thread(),
+        forall|t_ptr: RwLockThreadPtr| #![trigger new_thread_map.spec_index(t_ptr).killer_info()]
+            old_thread_map.dom().contains(t_ptr) && old_thread_map.spec_index(t_ptr).view().state is RUNNING && old_thread_map.spec_index(t_ptr).being_killed()
+                ==> new_thread_map.spec_index(t_ptr).killer_info() == old_thread_map.spec_index(t_ptr).killer_info()
+                && new_thread_map.spec_index(t_ptr).locking_thread() == old_thread_map.spec_index(t_ptr).locking_thread(),
     ensures
         thread_cpu_wf(new_thread_map, new_cpu_array),
 { reveal(thread_cpu_wf); }

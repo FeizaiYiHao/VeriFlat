@@ -336,27 +336,7 @@ pub fn wlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(lc
             lctx.allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),
             lctx.allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
             lctx.allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
-            krnl.pt_mp == old(krnl).pt_mp,
-            krnl.it_mp == old(krnl).it_mp,
-            krnl.irt == old(krnl).irt,
-            krnl.cpu_arr == old(krnl).cpu_arr,
-            krnl.pcid_needflush == old(krnl).pcid_needflush,
-            krnl.cpu_published == old(krnl).cpu_published,
-            krnl.cpu_tlb == old(krnl).cpu_tlb,
-            krnl.iommu_tlb == old(krnl).iommu_tlb,
-            krnl.rt_ctn == old(krnl).rt_ctn,
-            krnl.ctn_mp == old(krnl).ctn_mp,
-            krnl.sched_mp == old(krnl).sched_mp,
-            krnl.pcid_allc_mp == old(krnl).pcid_allc_mp,
-            krnl.cpu_set_mp == old(krnl).cpu_set_mp,
-            krnl.prc_mp == old(krnl).prc_mp,
-            krnl.thr_mp == old(krnl).thr_mp,
-            krnl.ep_mp == old(krnl).ep_mp,
-            krnl.allc_4k_mp == old(krnl).allc_4k_mp,
-            krnl.allc_2m_mp == old(krnl).allc_2m_mp,
-            krnl.allc_1g_mp == old(krnl).allc_1g_mp,
-            krnl.cpu_offline_mp == old(krnl).cpu_offline_mp,
-            krnl.dflt_pt == old(krnl).dflt_pt,
+            *krnl == (KernelK { pg_arr: krnl.pg_arr, ..*old(krnl) }),
             forall|index: PageIndex|
                 #![trigger krnl.pg_arr.spec_index(index).view().view()]
                 index_valid(NUM_PAGES, index) ==> krnl.pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
@@ -599,7 +579,6 @@ pub fn wunlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(krnl).inv(),
-        kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
@@ -664,27 +643,7 @@ pub fn wunlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(
             lctx.allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),
             lctx.allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
             lctx.allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
-            krnl.pt_mp == old(krnl).pt_mp,
-            krnl.it_mp == old(krnl).it_mp,
-            krnl.irt == old(krnl).irt,
-            krnl.cpu_arr == old(krnl).cpu_arr,
-            krnl.pcid_needflush == old(krnl).pcid_needflush,
-            krnl.cpu_published == old(krnl).cpu_published,
-            krnl.cpu_tlb == old(krnl).cpu_tlb,
-            krnl.iommu_tlb == old(krnl).iommu_tlb,
-            krnl.rt_ctn == old(krnl).rt_ctn,
-            krnl.ctn_mp == old(krnl).ctn_mp,
-            krnl.sched_mp == old(krnl).sched_mp,
-            krnl.pcid_allc_mp == old(krnl).pcid_allc_mp,
-            krnl.cpu_set_mp == old(krnl).cpu_set_mp,
-            krnl.prc_mp == old(krnl).prc_mp,
-            krnl.thr_mp == old(krnl).thr_mp,
-            krnl.ep_mp == old(krnl).ep_mp,
-            krnl.allc_4k_mp == old(krnl).allc_4k_mp,
-            krnl.allc_2m_mp == old(krnl).allc_2m_mp,
-            krnl.allc_1g_mp == old(krnl).allc_1g_mp,
-            krnl.cpu_offline_mp == old(krnl).cpu_offline_mp,
-            krnl.dflt_pt == old(krnl).dflt_pt,
+            *krnl == (KernelK { pg_arr: krnl.pg_arr, ..*old(krnl) }),
             forall|index: PageIndex|
                 #![trigger krnl.pg_arr.spec_index(index).view().view()]
                 index_valid(NUM_PAGES, index) ==> krnl.pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
@@ -725,12 +684,6 @@ pub fn wunlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(
     proof {
         assert(page_2m_tail_prefix_indices(head, 511) == page_2m_tail_indices(head)) by { assert_sets_equal!(page_2m_tail_prefix_indices(head, 511) == page_2m_tail_indices(head), index => {}); };
         held_pages_unchanged_except_for_changed_set(old(krnl).pg_arr, krnl.pg_arr, old(lctx), page_2m_tail_indices(head));
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-        assert(kernel_k_to_nonlock_kernel_u(*krnl) == kernel_k_to_nonlock_kernel_u(*old(krnl))) by {
-            assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use kernel_endpoint_nonlock_fields_unchanged_for_equal; };
-            broadcast use kernel_pagetable_nonlock_fields_unchanged_for_equal;
-            kernel_no_change_to_nonlock_fields_imply_kernel_u_nonlock_eq(old(krnl), krnl);
-        };
     }
 }
 }

@@ -3,12 +3,13 @@ use crate::*;
 
 verus! {
 /// The result of `syscall_alloc_quota_4k` from the state at entry, in the implementation's check order:
-/// a killed or zombie container, a killed process, too little container 4K quota, and process 4K quota overflow.
+/// a cpu no longer Running or marked by a killer, a killed or zombie container, a killed process, too little container 4K quota, and process 4K quota overflow.
 pub open spec fn alloc_quota_4k_syscall_result(pre: KernelU, cpu_id: CpuId, alloc_amount: usize) -> RetValueType {
     let cpu = pre.cpu_array[cpu_id as int];
     let container = pre.container_map[cpu.owning_container];
     let process = pre.process_map[cpu.current_process->Some_0];
-    if container.killed { RetValueType::ErrorContainerKilled }
+    if !(cpu.state is Running) || cpu.killed { RetValueType::CpuIdle }
+    else if container.killed { RetValueType::ErrorContainerKilled }
     else if container.zombie { RetValueType::ErrorContainerZombie }
     else if process.killed { RetValueType::ErrorProcessKilled }
     else if container.quota_4k < alloc_amount { RetValueType::ErrorContainerQuotaInsufficient }
@@ -60,12 +61,13 @@ pub open spec fn alloc_quota_4k_syscall_trace(trace: Seq<KernelStep>, pre: Kerne
 }
 
 /// The result of `syscall_alloc_thread_quota_4k` from the state at entry, in the implementation's check order:
-/// a killed process or thread, too little process 4K quota, and thread 4K quota overflow.
+/// a cpu no longer Running or marked by a killer, a killed process or thread, too little process 4K quota, and thread 4K quota overflow.
 pub open spec fn alloc_thread_quota_4k_syscall_result(pre: KernelU, cpu_id: CpuId, alloc_amount: usize) -> RetValueType {
     let cpu = pre.cpu_array[cpu_id as int];
     let process = pre.process_map[cpu.current_process->Some_0];
     let thread = pre.thread_map[cpu.current_thread->Some_0];
-    if process.killed { RetValueType::ErrorProcessKilled }
+    if !(cpu.state is Running) || cpu.killed { RetValueType::CpuIdle }
+    else if process.killed { RetValueType::ErrorProcessKilled }
     else if thread.killed { RetValueType::ErrorThreadKilled }
     else if process.quota_4k < alloc_amount { RetValueType::ErrorNoQuota }
     else if alloc_amount > usize::MAX - thread.quota_4k { RetValueType::ErrorThreadQuotaOverflow }
@@ -116,12 +118,13 @@ pub open spec fn alloc_thread_quota_4k_syscall_trace(trace: Seq<KernelStep>, pre
 }
 
 /// The result of `syscall_alloc_quota_2m` from the state at entry, in the implementation's check order:
-/// a killed or zombie container, a killed process, too little container 2M quota, and process 2M quota overflow.
+/// a cpu no longer Running or marked by a killer, a killed or zombie container, a killed process, too little container 2M quota, and process 2M quota overflow.
 pub open spec fn alloc_quota_2m_syscall_result(pre: KernelU, cpu_id: CpuId, alloc_amount: usize) -> RetValueType {
     let cpu = pre.cpu_array[cpu_id as int];
     let container = pre.container_map[cpu.owning_container];
     let process = pre.process_map[cpu.current_process->Some_0];
-    if container.killed { RetValueType::ErrorContainerKilled }
+    if !(cpu.state is Running) || cpu.killed { RetValueType::CpuIdle }
+    else if container.killed { RetValueType::ErrorContainerKilled }
     else if container.zombie { RetValueType::ErrorContainerZombie }
     else if process.killed { RetValueType::ErrorProcessKilled }
     else if container.quota_2m < alloc_amount { RetValueType::ErrorContainerQuotaInsufficient }
@@ -173,12 +176,13 @@ pub open spec fn alloc_quota_2m_syscall_trace(trace: Seq<KernelStep>, pre: Kerne
 }
 
 /// The result of `syscall_alloc_thread_quota_2m` from the state at entry, in the implementation's check order:
-/// a killed process or thread, too little process 2M quota, and thread 2M quota overflow.
+/// a cpu no longer Running or marked by a killer, a killed process or thread, too little process 2M quota, and thread 2M quota overflow.
 pub open spec fn alloc_thread_quota_2m_syscall_result(pre: KernelU, cpu_id: CpuId, alloc_amount: usize) -> RetValueType {
     let cpu = pre.cpu_array[cpu_id as int];
     let process = pre.process_map[cpu.current_process->Some_0];
     let thread = pre.thread_map[cpu.current_thread->Some_0];
-    if process.killed { RetValueType::ErrorProcessKilled }
+    if !(cpu.state is Running) || cpu.killed { RetValueType::CpuIdle }
+    else if process.killed { RetValueType::ErrorProcessKilled }
     else if thread.killed { RetValueType::ErrorThreadKilled }
     else if process.quota_2m < alloc_amount { RetValueType::ErrorNoQuota }
     else if alloc_amount > usize::MAX - thread.quota_2m { RetValueType::ErrorThreadQuotaOverflow }

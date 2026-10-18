@@ -251,19 +251,6 @@ impl LocalContext {
         }
     }
 
-    pub proof fn lemma_lock_id_eq_imply_acyclic_eq(&self)
-        ensures
-            forall|lock_id1: LockId, lock_id2: LockId|
-                #![trigger self.lock_id_acyclic(lock_id1), self.lock_id_acyclic(lock_id2)]
-                {
-                    &&& lock_id1.container == lock_id2.container
-                    &&& lock_id1.process == lock_id2.process
-                    &&& lock_id1.major == lock_id2.major
-                    &&& lock_id1.minor == lock_id2.minor
-                }
-                ==> self.lock_id_acyclic(lock_id1) == self.lock_id_acyclic(lock_id2)
-    {}
-
     /// TCB: close the Acquire phase without changing either held-lock representation.
     #[verifier::external_body]
     pub proof fn enter_kernel_view_release(tracked &mut self)

@@ -281,6 +281,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         assert(self.user_only()) by { reveal(PageTable::user_only); };
         assert(self.rwx_upper_level_entries()) by { reveal(PageTable::rwx_upper_level_entries); };
         assert(self.table_pages_wf()) by { reveal(PageTable::table_pages_wf); };
+        assert(self.tables_reachable_wf()) by { reveal(PageTable::tables_reachable_wf); reveal(PageTable::wf_l4); };
         assert(self.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
     }
 
@@ -372,6 +373,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         assert(self.user_only()) by { reveal(PageTable::user_only); };
         assert(self.rwx_upper_level_entries()) by { reveal(PageTable::rwx_upper_level_entries); };
         assert(self.table_pages_wf()) by { reveal(PageTable::table_pages_wf); };
+        assert(self.tables_reachable_wf()) by { reveal(PageTable::tables_reachable_wf); reveal(PageTable::wf_l4); reveal(PageTable::wf_l3); reveal(PageTable::disjoint_l4); };
         assert(self.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
     }
 
@@ -462,6 +464,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         assert(self.user_only()) by { reveal(PageTable::user_only); };
         assert(self.rwx_upper_level_entries()) by { reveal(PageTable::rwx_upper_level_entries); };
         assert(self.table_pages_wf()) by { reveal(PageTable::table_pages_wf); };
+        assert(self.tables_reachable_wf()) by { reveal(PageTable::tables_reachable_wf); reveal(PageTable::wf_l4); reveal(PageTable::wf_l3); reveal(PageTable::wf_l2); broadcast use PageTable::resolve_l3_addr_unique_at; };
         assert(self.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
     }
 
@@ -546,6 +549,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         assert(self.user_only()) by { reveal(PageTable::user_only); };
         assert(self.rwx_upper_level_entries()) by { reveal(PageTable::rwx_upper_level_entries); };
         assert(self.table_pages_wf()) by { reveal(PageTable::table_pages_wf); };
+        assert(self.tables_reachable_wf()) by { reveal(PageTable::tables_reachable_wf); self.resolve_l2_unchanged(old(self)); };
         assert(self.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
     }
 }
