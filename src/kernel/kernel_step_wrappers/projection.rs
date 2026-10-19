@@ -2397,7 +2397,7 @@ pub(super) proof fn kernel_ipc_rendezvous_fields_implies_u_step(
     reveal(kernel_u_ipc_rendezvous_changed); reveal(kernel_ipc_rendezvous_fields);
     kernel_ipc_rendezvous_fields_implies_u_cpu_array(pre, post, cpu_id, caller_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer, pci_transfer, include_lock_state);
     kernel_ipc_rendezvous_fields_implies_u_container_map(pre, post, cpu_id, caller_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer, pci_transfer, include_lock_state);
-    kernel_ipc_rendezvous_fields_implies_u_process_map(pre, post, cpu_id, caller_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer, pci_transfer, include_lock_state);
+    kernel_ipc_rendezvous_fields_implies_u_process_map(pre, post, pci_transfer, include_lock_state);
     kernel_ipc_rendezvous_fields_implies_u_iommu_root_table(pre, post, cpu_id, caller_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer, pci_transfer, include_lock_state);
     kernel_ipc_rendezvous_fields_implies_u_thread_map(pre, post, cpu_id, caller_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer, pci_transfer, include_lock_state);
     kernel_ipc_rendezvous_fields_implies_u_endpoint_map(pre, post, cpu_id, caller_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer, pci_transfer, include_lock_state);
@@ -2481,16 +2481,43 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_container_map(
 
 /// The rendezvous fields project to the process map with only a handed-over PCI function moved from the sender to the
 /// receiver process.
-#[verifier::spinoff_prover]
 proof fn kernel_ipc_rendezvous_fields_implies_u_process_map(
-    pre: &KernelK, post: &KernelK, cpu_id: CpuId, caller_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
-    endpoint_index: EndpointIdx, waiting_state: ThreadState, peer_thread_ptr: RwLockThreadPtr, peer_result: RetValueType,
-    cpu_transfer: Option<(CpuId, RwLockThreadPtr)>, pci_transfer: Option<(PciBdf, RwLockProcessPtr, RwLockProcessPtr)>, include_lock_state: bool,
+    pre: &KernelK, post: &KernelK, pci_transfer: Option<(PciBdf, RwLockProcessPtr, RwLockProcessPtr)>, include_lock_state: bool,
 )
     requires
         process_pagetable_match(post.prc_mp, post.pt_mp),
         process_iommu_table_match(post.prc_mp, post.it_mp),
-        kernel_ipc_rendezvous_fields(pre, post, cpu_id, caller_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer, pci_transfer),
+        kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, post.pt_mp),
+        kernel_pagetable_nonlock_fields_unchanged(pre.it_mp, post.it_mp),
+        pci_transfer is None ==> kernel_process_nonlock_fields_unchanged(pre.prc_mp, post.prc_mp),
+        pci_transfer matches Some((bdf, sender, receiver)) ==> {
+            &&& pre.prc_mp.dom().contains(sender)
+            &&& pre.prc_mp.dom().contains(receiver)
+            &&& sender != receiver
+            &&& post.prc_mp.dom() == pre.prc_mp.dom()
+            &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
+                pre.prc_mp.dom().contains(p) ==> {
+                    let a = pre.prc_mp.spec_index(p);
+                    let b = post.prc_mp.spec_index(p);
+                    let pci = a.view_ghost().owned_pci_functions.view();
+                    &&& b.view().zombie == a.view().zombie
+                    &&& b.view().pagetable == a.view().pagetable
+                    &&& b.view().iommu_table == a.view().iommu_table
+                    &&& b.view_ghost().owned_pci_functions.view() == if p == sender { pci.remove(bdf) } else if p == receiver { pci.insert(bdf) } else { pci }
+                    &&& b.view().quota_4k == a.view().quota_4k
+                    &&& b.view().quota_2m == a.view().quota_2m
+                    &&& b.view().quota_1g == a.view().quota_1g
+                    &&& b.view().children.view() == a.view().children.view()
+                    &&& b.view_rodata().view().parent == a.view_rodata().view().parent
+                    &&& b.view_rodata().view().depth == a.view_rodata().view().depth
+                    &&& b.view_rodata().view().pcid == a.view_rodata().view().pcid
+                    &&& b.view_rodata().view().owning_container == a.view_rodata().view().owning_container
+                    &&& b.view_ghost().uppertree_seq.view() == a.view_ghost().uppertree_seq.view()
+                    &&& b.view_ghost().subtree_set.view() == a.view_ghost().subtree_set.view()
+                    &&& b.being_killed() == a.being_killed()
+                    &&& b.view().owned_threads.view() == a.view().owned_threads.view()
+                }
+        },
         forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
             pre.prc_mp.dom().contains(p) && post.prc_mp.dom().contains(p) ==> post.prc_mp.spec_index(p).locking_thread() == pre.prc_mp.spec_index(p).locking_thread(),
         forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
@@ -2511,24 +2538,94 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_process_map(
             }
         }),
 {
-    reveal(kernel_ipc_rendezvous_fields); reveal(kernel_process_nonlock_fields_unchanged);
+    match pci_transfer {
+        Some((bdf, sender, receiver)) => { kernel_ipc_rendezvous_fields_implies_u_process_map_pci_moved(pre, post, bdf, sender, receiver, include_lock_state); },
+        None => { kernel_ipc_rendezvous_fields_implies_u_process_map_unchanged(pre, post, include_lock_state); },
+    }
+}
+
+/// Unchanged process nonlock fields project to an unchanged process map.
+proof fn kernel_ipc_rendezvous_fields_implies_u_process_map_unchanged(pre: &KernelK, post: &KernelK, include_lock_state: bool)
+    requires
+        process_pagetable_match(post.prc_mp, post.pt_mp),
+        process_iommu_table_match(post.prc_mp, post.it_mp),
+        kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, post.pt_mp),
+        kernel_pagetable_nonlock_fields_unchanged(pre.it_mp, post.it_mp),
+        kernel_process_nonlock_fields_unchanged(pre.prc_mp, post.prc_mp),
+        forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
+            pre.prc_mp.dom().contains(p) && post.prc_mp.dom().contains(p) ==> post.prc_mp.spec_index(p).locking_thread() == pre.prc_mp.spec_index(p).locking_thread(),
+        forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
+            pre.pt_mp.dom().contains(p) && post.pt_mp.dom().contains(p) ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread(),
+        forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
+            pre.it_mp.dom().contains(p) && post.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread(),
+    ensures kernel_k_user_projection(*post, include_lock_state).process_map == kernel_k_user_projection(*pre, include_lock_state).process_map,
+{
+    reveal(kernel_process_nonlock_fields_unchanged);
     let pre_u = kernel_k_user_projection(*pre, include_lock_state);
     let post_u = kernel_k_user_projection(*post, include_lock_state);
-    match pci_transfer {
-        Some((bdf, sender, receiver)) => {
+    assert_maps_equal!(post_u.process_map, pre_u.process_map, p => {
+        process_pagetable_match_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, p); reveal(kernel_pagetable_nonlock_fields_unchanged);
+    });
+}
+
+/// Process fields equal except the PCI function `bdf` moved from `sender` to `receiver` project to that process-map update.
+proof fn kernel_ipc_rendezvous_fields_implies_u_process_map_pci_moved(
+    pre: &KernelK, post: &KernelK, bdf: PciBdf, sender: RwLockProcessPtr, receiver: RwLockProcessPtr, include_lock_state: bool,
+)
+    requires
+        process_pagetable_match(post.prc_mp, post.pt_mp),
+        process_iommu_table_match(post.prc_mp, post.it_mp),
+        kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, post.pt_mp),
+        kernel_pagetable_nonlock_fields_unchanged(pre.it_mp, post.it_mp),
+        pre.prc_mp.dom().contains(sender),
+        pre.prc_mp.dom().contains(receiver),
+        sender != receiver,
+        post.prc_mp.dom() == pre.prc_mp.dom(),
+        forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
+            pre.prc_mp.dom().contains(p) ==> {
+                let a = pre.prc_mp.spec_index(p);
+                let b = post.prc_mp.spec_index(p);
+                let pci = a.view_ghost().owned_pci_functions.view();
+                &&& b.view().zombie == a.view().zombie
+                &&& b.view().pagetable == a.view().pagetable
+                &&& b.view().iommu_table == a.view().iommu_table
+                &&& b.view_ghost().owned_pci_functions.view() == if p == sender { pci.remove(bdf) } else if p == receiver { pci.insert(bdf) } else { pci }
+                &&& b.view().quota_4k == a.view().quota_4k
+                &&& b.view().quota_2m == a.view().quota_2m
+                &&& b.view().quota_1g == a.view().quota_1g
+                &&& b.view().children.view() == a.view().children.view()
+                &&& b.view_rodata().view().parent == a.view_rodata().view().parent
+                &&& b.view_rodata().view().depth == a.view_rodata().view().depth
+                &&& b.view_rodata().view().pcid == a.view_rodata().view().pcid
+                &&& b.view_rodata().view().owning_container == a.view_rodata().view().owning_container
+                &&& b.view_ghost().uppertree_seq.view() == a.view_ghost().uppertree_seq.view()
+                &&& b.view_ghost().subtree_set.view() == a.view_ghost().subtree_set.view()
+                &&& b.being_killed() == a.being_killed()
+                &&& b.view().owned_threads.view() == a.view().owned_threads.view()
+            },
+        forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
+            pre.prc_mp.dom().contains(p) && post.prc_mp.dom().contains(p) ==> post.prc_mp.spec_index(p).locking_thread() == pre.prc_mp.spec_index(p).locking_thread(),
+        forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
+            pre.pt_mp.dom().contains(p) && post.pt_mp.dom().contains(p) ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread(),
+        forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
+            pre.it_mp.dom().contains(p) && post.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread(),
+    ensures
+        ({
+            let pre_u = kernel_k_user_projection(*pre, include_lock_state);
+            let post_u = kernel_k_user_projection(*post, include_lock_state);
             let s = pre_u.process_map.spec_index(sender);
             let r = pre_u.process_map.spec_index(receiver);
-            assert_maps_equal!(post_u.process_map, pre_u.process_map.insert(sender, ProcessU { owned_pci_functions: s.owned_pci_functions.remove(bdf), ..s })
-                .insert(receiver, ProcessU { owned_pci_functions: r.owned_pci_functions.insert(bdf), ..r }), p => {
-                process_pagetable_match_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, p); reveal(kernel_pagetable_nonlock_fields_unchanged);
-            });
-        },
-        None => {
-            assert_maps_equal!(post_u.process_map, pre_u.process_map, p => {
-                process_pagetable_match_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, p); reveal(kernel_pagetable_nonlock_fields_unchanged);
-            });
-        },
-    }
+            &&& post_u.process_map == pre_u.process_map.insert(sender, ProcessU { owned_pci_functions: s.owned_pci_functions.remove(bdf), ..s }).insert(receiver, ProcessU { owned_pci_functions: r.owned_pci_functions.insert(bdf), ..r })
+        }),
+{
+    let pre_u = kernel_k_user_projection(*pre, include_lock_state);
+    let post_u = kernel_k_user_projection(*post, include_lock_state);
+    let s = pre_u.process_map.spec_index(sender);
+    let r = pre_u.process_map.spec_index(receiver);
+    assert_maps_equal!(post_u.process_map, pre_u.process_map.insert(sender, ProcessU { owned_pci_functions: s.owned_pci_functions.remove(bdf), ..s })
+        .insert(receiver, ProcessU { owned_pci_functions: r.owned_pci_functions.insert(bdf), ..r }), p => {
+        process_pagetable_match_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, p); reveal(kernel_pagetable_nonlock_fields_unchanged);
+    });
 }
 
 /// The rendezvous fields project to the root table with only a handed-over PCI function owned, detached, by the receiver.
