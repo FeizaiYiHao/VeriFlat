@@ -2,10 +2,145 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_ipc_spec::*;
 use super::syscall_ipc_trace::*;
+use super::syscall_ipc_queue::{ipc_dequeue_endpoint_waiter, ipc_schedule_endpoint_waiter};
 #[cfg(verus_keep_ghost)]
-use super::syscall_ipc_transition_spec::ipc_block_current_eof_transition_framing;
+use super::syscall_ipc_transition_spec::{ipc_block_current_eof_transition_framing, ipc_schedule_waiting_peer_eof_transition_framing};
+#[cfg(verus_keep_ghost)]
+use super::syscall_ipc_transition_eof::ipc_schedule_waiting_peer_eof;
 
 verus! {
+/// Write-locks the peer's scheduler shard, dequeues the peer from the endpoint, and schedules it on `wake_cpu` with `result`;
+/// returns the shard lock.
+pub(super) fn ipc_schedule_peer_on_shard(
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, cpu_id: CpuId, current_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
+    peer_thread_ptr: RwLockThreadPtr, result: RetValueType, peer_scheduler_ptr: RwLockSchedulerPtr, wake_cpu: CpuId,
+    Tracked(endpoint_lock_perm): Tracked<&LockPerm>, Tracked(peer_thread_lock_perm): Tracked<&LockPerm>,
+) -> (ret: Tracked<LockPerm>)
+    requires
+        old(krnl).inv(),
+        typed_lock_maps_aligned(old(krnl), old(lctx)),
+        old(lctx).kernel_view_locking_state() is Acquire,
+        index_valid(NUM_CPUS, cpu_id),
+        index_valid(NUM_CPUS, wake_cpu),
+        current_thread_ptr != peer_thread_ptr,
+        typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
+        old(krnl).thr_mp.dom().contains(current_thread_ptr),
+        typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
+        old(krnl).thr_mp.spec_index(current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        old(krnl).thr_mp.dom().contains(peer_thread_ptr),
+        typed_lock_map_contains_mode(old(lctx).thread_lock_map(), peer_thread_ptr, TypedLockMode::Write),
+        old(krnl).thr_mp.spec_index(peer_thread_ptr).being_killed() == false,
+        peer_thread_lock_perm.state() is WriteLock,
+        peer_thread_lock_perm.thread_id() == old(lctx).thread_id(),
+        peer_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(peer_thread_ptr).locking_thread()->Write_lock_id,
+        old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state.is_endpoint_waiting(),
+        old(krnl).thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
+        old(krnl).ep_mp.dom().contains(endpoint_ptr),
+        typed_lock_map_contains_mode(old(lctx).endpoint_lock_map(), endpoint_ptr, TypedLockMode::Write),
+        endpoint_lock_perm.state() is WriteLock,
+        endpoint_lock_perm.thread_id() == old(lctx).thread_id(),
+        endpoint_lock_perm.lock_id() == old(krnl).ep_mp.spec_index(endpoint_ptr).locking_thread()->Write_lock_id,
+        old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.len() != 0,
+        old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.view().spec_index(0) == peer_thread_ptr,
+        old(krnl).sched_mp.dom().contains(peer_scheduler_ptr),
+        old(krnl).ctn_mp.dom().contains(old(krnl).thr_mp.spec_index(peer_thread_ptr).view().owning_container),
+        old(krnl).ctn_mp.spec_index(old(krnl).thr_mp.spec_index(peer_thread_ptr).view().owning_container).view_rodata().view().scheduler == peer_scheduler_ptr,
+        old(lctx).page_lock_map().dom().is_empty(),
+        old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
+        old(lctx).container_lock_map().dom().is_empty(),
+        old(lctx).process_lock_map().dom().is_empty(),
+        old(lctx).thread_lock_map().dom() =~= set![current_thread_ptr, peer_thread_ptr],
+        old(lctx).endpoint_lock_map().dom() =~= set![endpoint_ptr],
+        old(lctx).scheduler_lock_map().dom().is_empty(),
+        old(lctx).pcid_allocator_lock_map().dom().is_empty(),
+        old(lctx).cpu_set_lock_map().dom().is_empty(),
+        old(lctx).pagetable_lock_map().dom().is_empty(),
+        old(lctx).iommu_table_lock_map().dom().is_empty(),
+        old(lctx).iommu_root_table_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
+        old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
+        old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+        old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
+        old(lctx).pcid_needflush_lock_map().dom().is_empty(),
+    ensures
+        ipc_schedule_waiting_peer_eof_transition_framing(*old(krnl), *final(krnl), current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, result, old(lctx).thread_id()),
+        final(krnl).inv(),
+        typed_lock_maps_aligned(final(krnl), final(lctx)),
+        final(lctx).kernel_view_locking_state() is Release,
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        typed_lock_map_contains_mode(final(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(final(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(final(lctx).thread_lock_map(), peer_thread_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(final(lctx).endpoint_lock_map(), endpoint_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(final(lctx).scheduler_lock_map(), (peer_scheduler_ptr, wake_cpu), TypedLockMode::Write),
+        final(lctx).page_lock_map().dom().is_empty(),
+        final(lctx).cpu_lock_map().dom() =~= set![cpu_id],
+        final(lctx).container_lock_map().dom().is_empty(),
+        final(lctx).process_lock_map().dom().is_empty(),
+        final(lctx).thread_lock_map().dom() =~= set![current_thread_ptr, peer_thread_ptr],
+        final(lctx).endpoint_lock_map().dom() =~= set![endpoint_ptr],
+        final(lctx).scheduler_lock_map().dom() =~= set![(peer_scheduler_ptr, wake_cpu)],
+        final(lctx).pcid_allocator_lock_map().dom().is_empty(),
+        final(lctx).cpu_set_lock_map().dom().is_empty(),
+        final(lctx).pagetable_lock_map().dom().is_empty(),
+        final(lctx).iommu_table_lock_map().dom().is_empty(),
+        final(lctx).iommu_root_table_lock_map().dom().is_empty(),
+        final(lctx).holds_no_allocator_locks(PageSize::SZ4k),
+        final(lctx).holds_no_allocator_locks(PageSize::SZ2m),
+        final(lctx).holds_no_allocator_locks(PageSize::SZ1g),
+        final(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
+        final(lctx).pcid_needflush_lock_map().dom().is_empty(),
+        ret.view().state() is WriteLock,
+        ret.view().thread_id() == old(lctx).thread_id(),
+        ret.view().lock_id() == final(krnl).sched_mp.spec_index(peer_scheduler_ptr).shards.spec_index(wake_cpu).view().locking_thread()->Write_lock_id,
+        *final(krnl) == (KernelK { thr_mp: final(krnl).thr_mp, ep_mp: final(krnl).ep_mp, sched_mp: final(krnl).sched_mp, ..*old(krnl) }),
+        final(krnl).thr_mp.dom() == old(krnl).thr_mp.dom(),
+        final(krnl).ep_mp.dom() == old(krnl).ep_mp.dom(),
+        final(krnl).sched_mp.dom() == old(krnl).sched_mp.dom(),
+        forall|p: RwLockThreadPtr| #![trigger final(krnl).thr_mp.spec_index(p)] old(krnl).thr_mp.dom().contains(p) ==> final(krnl).thr_mp.spec_index(p).locking_thread() == old(krnl).thr_mp.spec_index(p).locking_thread(),
+        forall|p: RwLockEndpointPtr| #![trigger final(krnl).ep_mp.spec_index(p)] old(krnl).ep_mp.dom().contains(p) ==> final(krnl).ep_mp.spec_index(p).locking_thread() == old(krnl).ep_mp.spec_index(p).locking_thread(),
+        final(krnl).thr_mp.spec_index(current_thread_ptr) == old(krnl).thr_mp.spec_index(current_thread_ptr),
+        final(krnl).thr_mp.spec_index(peer_thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(peer_thread_ptr).being_killed(),
+        final(krnl).thr_mp.spec_index(peer_thread_ptr).view().state == (ThreadState::SCHEDULED { cpu_id: wake_cpu }),
+        final(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress == old(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress,
+        final(krnl).thr_mp.spec_index(peer_thread_ptr).view().free_quota_pending_clean() == old(krnl).thr_mp.spec_index(peer_thread_ptr).view().free_quota_pending_clean(),
+        final(krnl).thr_mp.spec_index(peer_thread_ptr).view().temp_alloc_clean() == old(krnl).thr_mp.spec_index(peer_thread_ptr).view().temp_alloc_clean(),
+{
+    let Tracked(peer_scheduler_lock_perm) = krnl.wlock_scheduler_shard(peer_scheduler_ptr, wake_cpu, Tracked(&mut *lctx));
+    proof { container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp, peer_scheduler_ptr, wake_cpu, peer_thread_ptr); }
+    let ghost old_peer_thread_lock_id = krnl.thr_mp.lock_id_by_key(peer_thread_ptr);
+    assert(krnl.sched_mp.spec_index(peer_scheduler_ptr).shard(wake_cpu).queue.length != usize::MAX) by { scheduler_queue_len_bounded(&*krnl, peer_scheduler_ptr, wake_cpu); };
+    let (_, Tracked(endpoint_node_perm)) = ipc_dequeue_endpoint_waiter(&mut krnl.ep_mp, Tracked(&*lctx), endpoint_ptr, peer_thread_ptr, Tracked(endpoint_lock_perm));
+    proof {
+        assert({
+            let peer_node_addr = old(krnl).thr_mp.spec_index(peer_thread_ptr).view().endpoint_linkedlist_node.addr();
+            &&& old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.map().dom().contains(peer_node_addr)
+            &&& old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.map().spec_index(peer_node_addr) == peer_thread_ptr
+            &&& endpoint_node_perm.addr() == peer_node_addr
+        }) by { thread_endpoint_queue_wf_thread_at(old(krnl).thr_mp, old(krnl).ep_mp, peer_thread_ptr); endpoint_perms_wf_at(old(krnl).ep_mp, endpoint_ptr); reveal(LinkedList::wf_map); };
+    }
+    let (scheduler_node_addr, scheduler_node_perm) = ipc_schedule_endpoint_waiter(&mut krnl.thr_mp, Tracked(&*lctx), peer_thread_ptr, wake_cpu, current_thread_ptr, result, Tracked(endpoint_node_perm), Tracked(peer_thread_lock_perm));
+    scheduler_map_enqueue_scheduled_thread(&mut krnl.sched_mp, peer_scheduler_ptr, wake_cpu, peer_thread_ptr, scheduler_node_addr, scheduler_node_perm, Tracked(&*lctx), Tracked(&peer_scheduler_lock_perm));
+    proof {
+        lctx.enter_kernel_view_release();
+        lctx.update_lock_id(KernelObjId::Thread(peer_thread_ptr), old_peer_thread_lock_id, krnl.thr_mp.lock_id_by_key(peer_thread_ptr));
+        scheduler_perms_wf_map(old(krnl).sched_mp); scheduler_perms_wf_at(old(krnl).sched_mp, peer_scheduler_ptr); scheduler_perms_wf_map(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, peer_scheduler_ptr);
+        assert(ipc_schedule_waiting_peer_eof_transition_framing(*old(krnl), *krnl, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, result, lctx.thread_id())) by {
+            reveal(ipc_schedule_waiting_peer_eof_transition_framing);
+        };
+        ipc_schedule_waiting_peer_eof(*old(krnl), *krnl, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, result, lctx.thread_id());
+    }
+    Tracked(peer_scheduler_lock_perm)
+}
+
 /// Releases the default-pcid needflush, endpoint, current-thread, and cpu locks after the blocking transition
 /// `locked_k` → `*old(krnl)` summarized by `ipc_block_current_eof_transition_framing`, where `locked_k` is `entry_k` with the
 /// needflush entry write-locked, and records the block step and the ordinary syscall trace from `steps.snapshot_k()`.

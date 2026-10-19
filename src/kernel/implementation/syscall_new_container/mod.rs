@@ -7,6 +7,7 @@ mod syscall_new_container_allocation_eof;
 mod syscall_new_container_allocation_2m;
 mod syscall_new_container_publish;
 mod syscall_new_container_publish_release;
+mod syscall_new_container_publish_indices;
 mod syscall_new_container_finish;
 mod syscall_new_container_finish_eof;
 mod syscall_new_container_finish_release;
