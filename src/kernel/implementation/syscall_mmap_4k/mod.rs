@@ -6,3 +6,4 @@ mod mmap_4k_map_owned_eof;
 mod mmap_4k_map_one_leaf;
 mod mmap_4k_map_range;
 mod syscall_mmap_4k_trace;
+mod syscall_mmap_4k_lock_helpers;

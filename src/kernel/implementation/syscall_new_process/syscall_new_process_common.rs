@@ -9,6 +9,7 @@ use super::syscall_new_process_helpers::commit_new_process;
 use super::syscall_new_process_with_iommu_helpers::commit_new_process_with_iommu_and_endpoint;
 use super::syscall_new_process_spec::*;
 use super::syscall_new_process_trace::*;
+use super::syscall_new_process_lock_helpers::*;
 
 verus! {
 /// Exec state handed from the lock-and-check prefix of `syscall_new_process_common` to its commit.
@@ -182,95 +183,19 @@ fn new_process_lock_entry(
             &&& typed_lock_maps_aligned(final(krnl), final(lctx))
         }),
 {
+    let owner = match new_process_lock_cpu_owner(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, endpoint_index, with_iommu, Ghost(*initial_regs)) {
+        Ok(owner) => owner,
+        Err(ret) => return Err(ret),
+    };
+    let NewProcessOwnerLocked {
+        container_ptr, parent_ptr, current_thread_ptr, scheduler_ptr, allocator_ptr, pcid_allocator_ptr, source_range, cpu_lock_perm, parent_lock_perm,
+        current_thread_lock_perm, pcid_allocator_lock_perm,
+    } = owner;
+    let Tracked(cpu_lock_perm) = cpu_lock_perm;
+    let Tracked(parent_lock_perm) = parent_lock_perm;
+    let Tracked(current_thread_lock_perm) = current_thread_lock_perm;
+    let Tracked(pcid_allocator_lock_perm) = pcid_allocator_lock_perm;
     let base_quota: usize = if with_iommu { 6usize } else { 4usize };
-    if range == 0 || range > usize::MAX / 4096usize || range > (usize::MAX - base_quota) / 3usize || !va_4k_valid(va)
-        || va >= usize::MAX - range * 4096usize || !va_4k_range_valid(va, range)
-    {
-        proof {
-            enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
-            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, None, None, None, None, None);
-            new_process_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, *initial_regs, endpoint_index, with_iommu, RetValueType::Error);
-        }
-        return Err(RetValueType::Error);
-    }
-    let source_range = VaRange4K::new(va, range);
-    let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);
-    if cpu_lock_res.is_none() {
-        proof {
-            new_process_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, *initial_regs, endpoint_index, with_iommu, RetValueType::CpuIdle);
-            new_process_result_from_k(old(krnl), cpu_id, va, range, endpoint_index, with_iommu, RetValueType::CpuIdle, 0);
-        }
-        return Err(RetValueType::CpuIdle);
-    }
-    let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
-
-    let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
-    let parent_ptr = cpu.current_process().unwrap();
-    let current_thread_ptr = cpu.current_thread().unwrap();
-    let container_ptr = cpu.owning_container();
-    proof {
-        assert({
-            &&& krnl.prc_mp.dom().contains(parent_ptr)
-            &&& krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().owning_container == container_ptr
-            &&& !krnl.prc_mp.spec_index(parent_ptr).view().zombie
-            &&& krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().depth == krnl.cpu_arr.spec_index(cpu_id).view().view().view().process_depth
-        }) by { process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); };
-        assert({
-            &&& krnl.thr_mp.dom().contains(current_thread_ptr)
-            &&& krnl.thr_mp.spec_index(current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id })
-            &&& krnl.thr_mp.spec_index(current_thread_ptr).view().owning_proc == parent_ptr
-            &&& krnl.thr_mp.spec_index(current_thread_ptr).view().owning_container == container_ptr
-            &&& krnl.thr_mp.spec_index(current_thread_ptr).view().container_depth == krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().container_depth
-            &&& krnl.thr_mp.spec_index(current_thread_ptr).view().process_depth == krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().depth
-        }) by { thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); };
-        assert({
-            &&& krnl.ctn_mp.dom().contains(container_ptr)
-            &&& krnl.ctn_mp.view().spec_index(container_ptr).is_init()
-            &&& krnl.ctn_mp.view().spec_index(container_ptr).addr() == container_ptr
-            &&& krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().container_depth == krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().depth
-            &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth == krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().depth
-        }) by {
-            container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, parent_ptr); container_perms_wf_at(krnl.ctn_mp, container_ptr); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id);
-        };
-    }
-    let container_rodata = krnl.ctn_mp.borrow_rodata(container_ptr);
-    let pcid_allocator_ptr = container_rodata.borrow().pcid_allocator;
-    let scheduler_ptr = container_rodata.borrow().scheduler;
-    let allocator_ptr = container_rodata.borrow().allocator_ptr_4k;
-    proof {
-        assert(krnl.pcid_allc_mp.dom().contains(pcid_allocator_ptr) && krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().wf()
-            && krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().owning_container.view() == container_ptr
-            && krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().container_depth.view() == krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().depth) by {
-            container_pcid_allocator_wf_container_at(krnl.ctn_mp, krnl.pcid_allc_mp, container_ptr); pcid_allocator_perms_wf_at(krnl.pcid_allc_mp, pcid_allocator_ptr);
-        };
-    }
-    let process_res = krnl.wlock_process_unless_killed(parent_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
-
-    if process_res.is_none() {
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-        proof {
-            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(parent_ptr), None, None, None, None);
-            new_process_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, *initial_regs, endpoint_index, with_iommu, RetValueType::ErrorProcessKilled);
-            new_process_result_from_k(old(krnl), cpu_id, va, range, endpoint_index, with_iommu, RetValueType::ErrorProcessKilled, 0);
-        }
-        return Err(RetValueType::ErrorProcessKilled);
-    }
-    let Tracked(parent_lock_perm) = process_res.unwrap();
-    let thread_res = krnl.wlock_thread_unless_killed(current_thread_ptr, Tracked(&mut *lctx));
-
-    if thread_res.is_none() {
-        krnl.wunlock_process(parent_ptr, Tracked(&mut *lctx), Tracked(parent_lock_perm));
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-        proof {
-            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(parent_ptr), Some(current_thread_ptr), None, None, None);
-            new_process_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, *initial_regs, endpoint_index, with_iommu, RetValueType::ErrorThreadKilled);
-            new_process_result_from_k(old(krnl), cpu_id, va, range, endpoint_index, with_iommu, RetValueType::ErrorThreadKilled, 0);
-        }
-        return Err(RetValueType::ErrorThreadKilled);
-    }
-    let Tracked(current_thread_lock_perm) = thread_res.unwrap();
-    proof { assert(krnl.thr_mp.spec_index(current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id })) by { thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); }; }
-    let Tracked(pcid_allocator_lock_perm) = krnl.wlock_pcid_allocator(pcid_allocator_ptr, Tracked(&mut *lctx));
     let pcid_allocator = krnl.pcid_allc_mp.borrow_typed(pcid_allocator_ptr, Ghost(lctx.pcid_allocator_lock_map()), Tracked(&*lctx), Tracked(&pcid_allocator_lock_perm));
     let free_pcid = pcid_allocator.find_lowest_free_nonzero();
     let thread_ref = krnl.thr_mp.borrow_typed(current_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&current_thread_lock_perm));
@@ -279,35 +204,31 @@ fn new_process_lock_entry(
     let endpoint_missing = endpoint_index.is_some() && endpoint_option.is_none();
     if free_pcid.is_none() || endpoint_missing || thread_ref.quota_4k < base_quota + 3 * range {
         let error = if free_pcid.is_none() { RetValueType::ErrorNoPcid } else if endpoint_missing { RetValueType::Error } else { RetValueType::ErrorNoQuota };
-        krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
-        krnl.wunlock_process(parent_ptr, Tracked(&mut *lctx), Tracked(parent_lock_perm));
-        krnl.wunlock_pcid_allocator(pcid_allocator_ptr, Tracked(&mut *lctx), Tracked(pcid_allocator_lock_perm));
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-        proof {
-            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(parent_ptr), Some(current_thread_ptr), None, None, Some(pcid_allocator_ptr));
-            new_process_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, *initial_regs, endpoint_index, with_iommu, error);
-            new_process_result_from_k(old(krnl), cpu_id, va, range, endpoint_index, with_iommu, error, if free_pcid is Some { free_pcid->Some_0 } else { 0 });
-        }
+        new_process_unlock_and_stutter(
+            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, parent_ptr, current_thread_ptr, pcid_allocator_ptr, None, None, Tracked(cpu_lock_perm), Tracked(parent_lock_perm),
+            Tracked(current_thread_lock_perm), Tracked(pcid_allocator_lock_perm), Tracked(None), Tracked(None), Ghost(va), Ghost(range), Ghost(*initial_regs), Ghost(endpoint_index),
+            Ghost(with_iommu), Ghost(error),
+        );
+        proof { new_process_result_from_k(old(krnl), cpu_id, va, range, endpoint_index, with_iommu, error, if free_pcid is Some { free_pcid->Some_0 } else { 0 }); }
         return Err(error);
     }
     let pcid = free_pcid.unwrap();
     let endpoint_ptr = match endpoint_option { Some(ptr) => ptr, None => 0 };
-    let tracked mut endpoint_lock_perm_opt: Option<LockPerm> = None;
-    if endpoint_index.is_some() {
-        proof {
+    proof {
+        if endpoint_index is Some {
             assert(krnl.ep_mp.dom().contains(endpoint_ptr) && krnl.ep_mp.spec_index(endpoint_ptr).view().owning_threads.view().contains((current_thread_ptr, endpoint_index->Some_0))) by {
                 thread_endpoint_ref_counter_wf_thread_at(krnl.thr_mp, krnl.ep_mp, current_thread_ptr, endpoint_index->Some_0);
             };
         }
-        let Tracked(endpoint_lock_perm) = krnl.wlock_endpoint(endpoint_ptr, Tracked(&mut *lctx));
-        proof { endpoint_lock_perm_opt = Some(endpoint_lock_perm); }
-    }
-    proof {
-        assert(krnl.pt_mp.dom().contains(source_pagetable_ptr) && !lctx.pagetable_lock_map().dom().contains(source_pagetable_ptr) && krnl.prc_mp.spec_index(parent_ptr).view().pagetable == source_pagetable_ptr) by {
+        assert(krnl.pt_mp.dom().contains(source_pagetable_ptr) && krnl.prc_mp.spec_index(parent_ptr).view().pagetable == source_pagetable_ptr) by {
             process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, parent_ptr);
         };
     }
-    let Tracked(source_pagetable_lock_perm) = krnl.wlock_pagetable(source_pagetable_ptr, Tracked(&mut *lctx));
+    let (endpoint_lock_perm_opt, source_pagetable_lock_perm) = new_process_lock_endpoint_and_source(
+        krnl, Tracked(&mut *lctx), cpu_id, parent_ptr, current_thread_ptr, pcid_allocator_ptr, endpoint_option, source_pagetable_ptr,
+    );
+    let Tracked(endpoint_lock_perm_opt) = endpoint_lock_perm_opt;
+    let Tracked(source_pagetable_lock_perm) = source_pagetable_lock_perm;
 
     let source_start_indices = va2index(va);
     proof { assert(krnl.pt_mp.perms_wf()) by { pagetable_perms_wf_map(krnl.pt_mp); }; }
@@ -318,20 +239,12 @@ fn new_process_lock_entry(
         share_mapping_4k_source_precheck(krnl, &source_range, source_pagetable_ptr, Tracked(&*lctx), Tracked(&source_pagetable_lock_perm))
     };
     if !source_ready {
-        krnl.wunlock_pagetable(source_pagetable_ptr, Tracked(&mut *lctx), Tracked(source_pagetable_lock_perm));
-        if endpoint_index.is_some() {
-            let tracked endpoint_lock_perm = endpoint_lock_perm_opt.tracked_unwrap();
-            krnl.wunlock_endpoint(endpoint_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
-        }
-        krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
-        krnl.wunlock_process(parent_ptr, Tracked(&mut *lctx), Tracked(parent_lock_perm));
-        krnl.wunlock_pcid_allocator(pcid_allocator_ptr, Tracked(&mut *lctx), Tracked(pcid_allocator_lock_perm));
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-        proof {
-            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(parent_ptr), Some(current_thread_ptr), endpoint_option, Some(source_pagetable_ptr), Some(pcid_allocator_ptr));
-            new_process_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, *initial_regs, endpoint_index, with_iommu, RetValueType::Error);
-            new_process_result_from_k(old(krnl), cpu_id, va, range, endpoint_index, with_iommu, RetValueType::Error, pcid);
-        }
+        new_process_unlock_and_stutter(
+            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, parent_ptr, current_thread_ptr, pcid_allocator_ptr, endpoint_option, Some(source_pagetable_ptr),
+            Tracked(cpu_lock_perm), Tracked(parent_lock_perm), Tracked(current_thread_lock_perm), Tracked(pcid_allocator_lock_perm), Tracked(endpoint_lock_perm_opt),
+            Tracked(Some(source_pagetable_lock_perm)), Ghost(va), Ghost(range), Ghost(*initial_regs), Ghost(endpoint_index), Ghost(with_iommu), Ghost(RetValueType::Error),
+        );
+        proof { new_process_result_from_k(old(krnl), cpu_id, va, range, endpoint_index, with_iommu, RetValueType::Error, pcid); }
         return Err(RetValueType::Error);
     }
     proof {
