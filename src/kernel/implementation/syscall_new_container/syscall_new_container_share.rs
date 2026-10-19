@@ -1,10 +1,11 @@
 use vstd::prelude::*;
-use vstd::assert_seqs_equal;
 use crate::*;
 #[cfg(verus_keep_ghost)]
 use super::syscall_new_container_spec::{new_container_finish_step, new_container_finish_step_pre};
 #[cfg(verus_keep_ghost)]
 use super::syscall_new_container_trace::{new_container_finish_step_from_u, new_container_finish_step_pre_from_k};
+#[cfg(verus_keep_ghost)]
+use super::syscall_new_container_share_eof::{create_new_container_root_thread_and_unlock_eof, create_new_container_root_thread_and_unlock_eof_transition_framing};
 use super::syscall_new_container_cpu::transfer_new_container_cpu;
 #[cfg(not(feature = "split-crates"))]
 use crate::implementation::create_thread_from_staged_page::create_thread_from_staged_page_merged;
@@ -360,7 +361,7 @@ pub(super) fn share_new_container_range(
         };
         assert(krnl.pt_mp.spec_index(child_pagetable_ptr).view().spec_mapping_4k_va_range_empty(source_range.start, source_range.view().spec_index((source_range.len - 1) as int))) by { reveal(PageTable::spec_mapping_4k_va_range_empty); };
         assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable_ptr, parent_container_ptr, source_range)) by {
-            reveal(mapped_4k_page_pagetable_wf); reveal(container_process_page_pagetable_wf); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); reveal(container_subtree_set_exclusive);
+            process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); share_mapping_4k_range_owner_compatible_own_container(krnl, source_pagetable_ptr, parent_container_ptr, source_range);
         };
         assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable_ptr, child_container_ptr, source_range)) by { broadcast use vstd::seq_lib::lemma_seq_contains_after_push; };
         assert({
@@ -548,6 +549,7 @@ fn create_new_container_root_thread_and_unlock(
         Tracked(&thread_page_lock_perm), Tracked(&child_process_lock_perm), Tracked(&current_thread_lock_perm),
         Tracked(&child_scheduler_lock_perm), initial_regs,
     );
+    let ghost mid_k = *krnl;
     krnl.wunlock_process(child_process_ptr, Tracked(&mut *lctx), Tracked(child_process_lock_perm));
     krnl.wunlock_pagetable(child_pagetable_ptr, Tracked(&mut *lctx), Tracked(child_pagetable_lock_perm));
     krnl.wunlock_pagetable(source_pagetable_ptr, Tracked(&mut *lctx), Tracked(source_pagetable_lock_perm));
@@ -567,14 +569,11 @@ fn create_new_container_root_thread_and_unlock(
     krnl.wunlock_container(parent_container_ptr, Tracked(&mut *lctx), Tracked(parent_container_lock_perm));
     krnl.wunlock_cpu(caller_cpu_id, Tracked(&mut *lctx), Tracked(caller_cpu_lock_perm));
     proof {
-        assert(kernel_new_thread_fields(old(krnl), krnl, child_process_ptr, current_thread_ptr, child_container_ptr, caller_cpu_id, new_thread_ptr, *initial_regs, endpoint, None)) by {
-            reveal(kernel_new_thread_fields); reveal(container_scheduler_wf);
-            if endpoint is Some {
-                let endpoint_ptr = endpoint->Some_0;
-                assert(krnl.thr_mp.spec_index(new_thread_ptr).view().endpoint_descriptors.wf()) by { thread_perms_wf_at(krnl.thr_mp, new_thread_ptr); };
-                assert_seqs_equal!(krnl.thr_mp.spec_index(new_thread_ptr).view().endpoint_descriptors.view() == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| if i == 0 { Some(endpoint_ptr) } else { None }), i => {});
-            }
+        assert(create_new_container_root_thread_and_unlock_eof_transition_framing(*old(krnl), mid_k, *krnl, child_process_ptr, current_thread_ptr, child_container_ptr, caller_cpu_id, new_thread_ptr, *initial_regs, endpoint)) by {
+            reveal(create_new_container_root_thread_and_unlock_eof_transition_framing); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
+            broadcast use kernel_process_nonlock_fields_unchanged_transitive;
         };
+        create_new_container_root_thread_and_unlock_eof(*old(krnl), mid_k, *krnl, child_process_ptr, current_thread_ptr, child_container_ptr, caller_cpu_id, new_thread_ptr, *initial_regs, endpoint);
     }
     new_thread_ptr
 }

@@ -181,6 +181,19 @@ verus! {
             }
     }
 
+    /// Subtree member `sub_p_ptr` of member `p_ptr` is a member whose upper-tree sequence holds `p_ptr` at `p_ptr`'s depth.
+    pub proof fn process_subtree_set_wf_at(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap, p_ptr: RwLockProcessPtr, sub_p_ptr: RwLockProcessPtr)
+        requires
+            process_subtree_set_wf(root_process, process_tree_dom, process_perms),
+            process_tree_dom.contains(p_ptr),
+        ensures
+            process_perms.spec_index(p_ptr).view_ghost().subtree_set.view().contains(sub_p_ptr) ==> {
+                &&& process_tree_dom.contains(sub_p_ptr)
+                &&& process_perms.spec_index(sub_p_ptr).view_ghost().uppertree_seq.view().len() > process_perms.spec_index(p_ptr).view_rodata().view().depth
+                &&& process_perms.spec_index(sub_p_ptr).view_ghost().uppertree_seq.view().spec_index(process_perms.spec_index(p_ptr).view_rodata().view().depth as int) == p_ptr
+            },
+    { reveal(process_subtree_set_wf); }
+
     #[verifier::opaque]
     pub open spec fn process_uppertree_seq_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, process_perms: ProcessLockedMap) -> bool {
         forall|p_ptr: RwLockProcessPtr, u_ptr: RwLockProcessPtr|

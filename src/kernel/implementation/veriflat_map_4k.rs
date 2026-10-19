@@ -16,6 +16,8 @@ pub use map_4k::share_mapping_4k::{
     share_mapping_4k_build_and_share, share_mapping_4k_target_map_with_shared_prefix, share_mapping_4k_leaf_owner_compatible,
     share_mapping_4k_range_owner_compatible, share_mapping_4k_source_owner_precheck, share_mapping_4k_source_precheck, share_mapping_4k_source_range_present,
 };
+#[cfg(verus_keep_ghost)]
+pub use map_4k::share_mapping_4k::{share_mapping_4k_range_owner_compatible_own_container, share_mapping_4k_source_range_present_from_wf};
 
 verus! {
 global size_of usize == 8;

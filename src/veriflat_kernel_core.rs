@@ -53,6 +53,8 @@ pub use kernel::implementation::create_process_with_iommu_from_staged_pages::*;
 pub use kernel::implementation::lock_owned_2m_page_tails::*;
 pub use kernel::implementation::create_container_from_staged_pages::*;
 pub use kernel::implementation::transfer_staged_4k_page::*;
+#[cfg(verus_keep_ghost)]
+pub use kernel::implementation::locker_unlocker::container_nonlock_fields_and_quotas_unchanged_for_cpu_set_relock;
 
 verus! {
 global size_of usize == 8;

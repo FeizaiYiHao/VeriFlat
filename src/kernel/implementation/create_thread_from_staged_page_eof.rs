@@ -42,6 +42,7 @@ pub open spec fn create_thread_from_staged_page_eof_transition_framing(
                 uppertree_seq: pre_ghost.uppertree_seq, subtree_set: pre_ghost.subtree_set, owned_processes: pre_ghost.owned_processes,
                 owned_threads: if c == container_ptr { Ghost(pre_ghost.owned_threads.view().insert(page_ptr)) } else { pre_ghost.owned_threads },
                 owned_indirect_threads: if uppers.to_set().contains(c) { Ghost(pre_ghost.owned_indirect_threads.view().insert(page_ptr)) } else { pre_ghost.owned_indirect_threads },
+                owned_endpoints: pre_ghost.owned_endpoints,
             })
         }
     &&& post.prc_mp.dom() == pre.prc_mp.dom()
@@ -350,7 +351,7 @@ pub(super) proof fn eof_create_thread_new_thread_fields(
     ensures
         kernel_new_thread_fields(&pre, &post, process_ptr, staging_thread_ptr, container_ptr, cpu_id, page_ptr, initial_regs, None, pre.thr_mp.spec_index(staging_thread_ptr).view().syscall_progress.view()),
 {
-    reveal(create_thread_from_staged_page_eof_transition_framing); reveal(kernel_new_thread_fields); reveal(container_scheduler_wf);
+    reveal(create_thread_from_staged_page_eof_transition_framing); reveal(kernel_new_thread_fields);
     assert_seqs_equal!(Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| None::<RwLockEndpointPtr>) == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| if i == 0 { None } else { None }), i => {});
 }
 }

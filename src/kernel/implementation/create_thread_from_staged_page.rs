@@ -100,6 +100,8 @@ pub fn create_thread_from_staged_page_merged(
         final(krnl).thr_mp.spec_index(staging_thread_ptr).view().syscall_progress == old(krnl).thr_mp.spec_index(staging_thread_ptr).view().syscall_progress,
         final(krnl).thr_mp.spec_index(staging_thread_ptr).view().quota_4k == old(krnl).thr_mp.spec_index(staging_thread_ptr).view().quota_4k - 1,
         final(krnl).thr_mp.spec_index(staging_thread_ptr).view().state == old(krnl).thr_mp.spec_index(staging_thread_ptr).view().state,
+        final(krnl).thr_mp.spec_index(staging_thread_ptr).view().owning_container == old(krnl).thr_mp.spec_index(staging_thread_ptr).view().owning_container,
+        final(krnl).thr_mp.spec_index(staging_thread_ptr).view().endpoint_descriptors == old(krnl).thr_mp.spec_index(staging_thread_ptr).view().endpoint_descriptors,
         final(krnl).thr_mp.dom().contains(staging_thread_ptr),
         final(krnl).thr_mp.spec_index(staging_thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(staging_thread_ptr).being_killed(),
         typed_lock_map_contains_mode(final(lctx).thread_lock_map(), staging_thread_ptr, TypedLockMode::Write),
@@ -145,6 +147,7 @@ pub fn create_thread_from_staged_page_merged(
                 &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
                 &&& final(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq
                 &&& final(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
+                &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_endpoints == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_endpoints
                 &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_threads.view() == if c == container_ptr { old(krnl).ctn_mp.spec_index(c).view_ghost().owned_threads.view().insert(page_ptr) }
                         else { old(krnl).ctn_mp.spec_index(c).view_ghost().owned_threads.view() }
                 &&& final(krnl).ctn_mp.spec_index(c).being_killed() == old(krnl).ctn_mp.spec_index(c).being_killed()

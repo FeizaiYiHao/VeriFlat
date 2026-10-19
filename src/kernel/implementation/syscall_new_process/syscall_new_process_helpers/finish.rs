@@ -1,10 +1,11 @@
 use vstd::prelude::*;
-use vstd::assert_seqs_equal;
 use crate::*;
 #[cfg(verus_keep_ghost)]
 use super::super::syscall_new_process_spec::{new_process_finish_step, new_process_finish_step_pre};
 #[cfg(verus_keep_ghost)]
 use super::super::syscall_new_process_trace::{new_process_finish_step_from_u, new_process_finish_step_pre_from_k};
+#[cfg(verus_keep_ghost)]
+use super::finish_eof::{create_initial_thread_and_finish_new_process_eof, create_initial_thread_and_finish_new_process_eof_transition_framing};
 #[cfg(feature = "split-crates")]
 use veriflat_kernel_core::{attach_endpoint_reference_and_unlock, create_thread_from_staged_page_merged, kernel_u_new_thread_changed};
 #[cfg(not(feature = "split-crates"))]
@@ -216,6 +217,7 @@ pub(in super::super) fn create_initial_thread_and_finish_new_process(
         krnl, thread_page_ptr, child_ptr, current_thread_ptr, container_ptr, scheduler_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&thread_page_lock_perm),
         Tracked(&child_lock_perm), Tracked(&current_thread_lock_perm), Tracked(&scheduler_lock_perm), initial_regs,
     );
+    let ghost mid_k = *krnl;
     proof { assert(iommu_table is Some ==> krnl.prc_mp.spec_index(child_ptr).view().iommu_table == iommu_table) by { reveal(process_iommu_table_match); }; }
     wunlock_new_process_iommu_table(krnl, iommu_table, Tracked(&mut *lctx), Tracked(iommu_table_lock_perm));
     krnl.wunlock_process(child_ptr, Tracked(&mut *lctx), Tracked(child_lock_perm));
@@ -231,7 +233,7 @@ pub(in super::super) fn create_initial_thread_and_finish_new_process(
                 assert({
                     ||| krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container == container_ptr
                     ||| krnl.ctn_mp.spec_index(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container).view_ghost().subtree_set.view().contains(container_ptr)
-                }) by { container_endpoint_wf_at(krnl.ctn_mp, krnl.ep_mp, endpoint_ptr); reveal(container_thread_endpoint_wf); };
+                }) by { container_endpoint_wf_at(krnl.ctn_mp, krnl.ep_mp, endpoint_ptr); container_thread_endpoint_wf_at(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp, current_thread_ptr, endpoint_index); };
             }
             attach_endpoint_reference_and_unlock(krnl, new_thread_ptr, endpoint_ptr, current_thread_ptr, Tracked(&mut *lctx), Tracked(new_thread_lock_perm), Tracked(endpoint_lock_perm));
         },
@@ -240,14 +242,10 @@ pub(in super::super) fn create_initial_thread_and_finish_new_process(
     krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
-        assert(kernel_new_thread_fields(&steps.snapshot_k(), krnl, child_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, *initial_regs, endpoint, None)) by {
-            reveal(kernel_new_thread_fields); reveal(container_scheduler_wf);
-            if endpoint is Some {
-                let endpoint_ptr = endpoint->Some_0;
-                assert(krnl.thr_mp.spec_index(new_thread_ptr).view().endpoint_descriptors.wf()) by { thread_perms_wf_at(krnl.thr_mp, new_thread_ptr); };
-                assert_seqs_equal!(krnl.thr_mp.spec_index(new_thread_ptr).view().endpoint_descriptors.view() == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| if i == 0 { Some(endpoint_ptr) } else { None }), i => {});
-            }
+        assert(create_initial_thread_and_finish_new_process_eof_transition_framing(finish_k, mid_k, *krnl, child_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, *initial_regs, endpoint)) by {
+            reveal(create_initial_thread_and_finish_new_process_eof_transition_framing); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
         };
+        create_initial_thread_and_finish_new_process_eof(finish_k, mid_k, *krnl, child_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, *initial_regs, endpoint);
         steps.end_kernel_step_new_thread(&*krnl, &*lctx, child_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, *initial_regs, endpoint, None);
         assert(new_process_finish_step_pre(steps.view().last().old_u, cpu_id) && new_process_finish_step(steps.view().last().old_u, steps.view().last().new_u, cpu_id)) by {
             reveal(kernel_new_thread_fields);

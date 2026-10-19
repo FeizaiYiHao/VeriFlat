@@ -141,11 +141,11 @@ pub(super) proof fn eof_container_relations_wf(
     reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
     assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by {
         assert(forall|c: RwLockContainerPtr|
-            #![trigger post.ctn_mp.spec_index(c).view().owned_endpoints]
-            post.ctn_mp.dom().contains(c) && c != container_page ==> post.ctn_mp.spec_index(c).view().owned_endpoints == pre.ctn_mp.spec_index(c).view().owned_endpoints);
+            #![trigger post.ctn_mp.spec_index(c).view_ghost().owned_endpoints]
+            post.ctn_mp.dom().contains(c) && c != container_page ==> post.ctn_mp.spec_index(c).view_ghost().owned_endpoints == pre.ctn_mp.spec_index(c).view_ghost().owned_endpoints);
         assert(forall|e: RwLockEndpointPtr|
-            #![trigger post.ctn_mp.spec_index(container_page).view().owned_endpoints.view().contains(e)]
-            !post.ctn_mp.spec_index(container_page).view().owned_endpoints.view().contains(e));
+            #![trigger post.ctn_mp.spec_index(container_page).view_ghost().owned_endpoints.view().contains(e)]
+            !post.ctn_mp.spec_index(container_page).view_ghost().owned_endpoints.view().contains(e));
         reveal(container_endpoint_wf);
     };
     assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); };

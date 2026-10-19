@@ -124,7 +124,7 @@ pub(crate) fn kill_dequeue_scheduled_victim(krnl: &mut KernelK, Tracked(lctx): T
         thread_perms_wf_at(krnl.thr_mp, victim_ptr); container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, victim_ptr);
         container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, krnl.thr_mp.spec_index(victim_ptr).view().owning_container);
         container_perms_wf_at(krnl.ctn_mp, krnl.thr_mp.spec_index(victim_ptr).view().owning_container);
-        assert(index_valid(NUM_CPUS, krnl.thr_mp.spec_index(victim_ptr).view().state->SCHEDULED_cpu_id)) by { reveal(container_thread_scheduler_wf); };
+        assert(index_valid(NUM_CPUS, krnl.thr_mp.spec_index(victim_ptr).view().state->SCHEDULED_cpu_id)) by { container_thread_scheduler_wf_thread_at(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp, victim_ptr); };
     }
     let (container_ptr, shard, node_addr) = {
         let victim = krnl.thr_mp.borrow_typed(victim_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(victim_lock_perm));
@@ -138,8 +138,8 @@ pub(crate) fn kill_dequeue_scheduled_victim(krnl: &mut KernelK, Tracked(lctx): T
         thread_perms_wf_map(krnl.thr_mp);
         thread_perms_wf_at(krnl.thr_mp, victim_ptr);
         assert(krnl.sched_mp.spec_index(scheduler_ptr).shard(shard).queue.map().dom().contains(node_addr) && krnl.sched_mp.spec_index(scheduler_ptr).shard(shard).queue.map().spec_index(node_addr) == victim_ptr)
-            by { reveal(container_thread_scheduler_wf); };
-        assert(krnl.sched_mp.spec_index(scheduler_ptr).shard(shard).queue.dom().contains(node_addr)) by { reveal(scheduler_perms_wf); reveal(LinkedList::wf_map); };
+            by { container_thread_scheduler_wf_thread_at(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp, victim_ptr); };
+        assert(krnl.sched_mp.spec_index(scheduler_ptr).shard(shard).queue.dom().contains(node_addr)) by { scheduler_perms_wf_at(krnl.sched_mp, scheduler_ptr); reveal(LinkedList::wf_map); };
     }
     let node_perm = scheduler_map_remove_scheduled_thread(&mut krnl.sched_mp, scheduler_ptr, shard, node_addr, Tracked(&*lctx), Tracked(&shard_lock_perm));
     {
@@ -298,7 +298,7 @@ pub(crate) fn kill_evict_running_victim(krnl: &mut KernelK, Tracked(lctx): Track
             &&& cpu.process_depth == krnl.thr_mp.spec_index(victim_ptr).view().process_depth
         }) by {
             let remote = krnl.thr_mp.spec_index(victim_ptr).view().state->RUNNING_cpu_id;
-            reveal(thread_cpu_wf); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, remote); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, remote);
+            thread_cpu_wf_thread_at(krnl.thr_mp, krnl.cpu_arr, victim_ptr); thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, remote); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, remote); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, remote);
             process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, victim_ptr); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.thr_mp.spec_index(victim_ptr).view().owning_proc);
         };
     }
@@ -308,18 +308,20 @@ pub(crate) fn kill_evict_running_victim(krnl: &mut KernelK, Tracked(lctx): Track
     };
     proof {
         let cpu = krnl.cpu_arr.spec_index(remote).view();
-        assert(cpu.being_killed() ==> cpu.wlocked_by_thread(lctx.thread_id())) by { reveal(thread_cpu_wf); reveal(LockedMap::typed_lock_map_aligned); };
+        assert(cpu.being_killed() ==> cpu.wlocked_by_thread(lctx.thread_id())) by { thread_cpu_wf_killed_cpu_at(krnl.thr_mp, krnl.cpu_arr, remote); reveal(LockedMap::typed_lock_map_aligned); };
         assert(!cpu.being_killed()) by { reveal(LockedArray::typed_lock_map_aligned); };
     }
     let Tracked(cpu_lock_perm) = krnl.wlock_cpu(remote, Tracked(&mut *lctx)).unwrap();
     let ghost pre = *krnl;
     let ghost old_cpu_lock_id = krnl.cpu_arr.lock_id_by_index(remote);
     proof {
-        assert(krnl.cpu_arr.inv() && krnl.cpu_arr.spec_index(remote).view().is_init() && krnl.cpu_arr.spec_index(remote).view().view().wf()) by { reveal(cpu_array_wf); };
-        assert(krnl.cpu_published[remote as int].owner_cpu() == remote) by { reveal(cpu_published_wf); };
+        assert(krnl.cpu_arr.inv() && krnl.cpu_arr.spec_index(remote).view().is_init() && krnl.cpu_arr.spec_index(remote).view().view().wf()) by {
+            cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), remote);
+        };
+        assert(krnl.cpu_published[remote as int].owner_cpu() == remote) by { cpu_published_wf_at(krnl.cpu_published, krnl.cpu_arr, krnl.pcid_needflush, remote); };
     }
     let default_cr3 = krnl.dflt_pt.borrow().cr3;
-    assert(page_ptr_valid(default_cr3)) by { krnl.default_pagetable_view_inv(); reveal(PageTable::table_pages_wf); };
+    assert(page_ptr_valid(default_cr3)) by { krnl.default_pagetable_view_inv(); };
     krnl.cpu_arr.evict_remote(remote, default_cr3, killer_info, &mut krnl.cpu_published, Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
     proof { lctx.update_lock_id(KernelObjId::Cpu(remote), old_cpu_lock_id, krnl.cpu_arr.lock_id_by_index(remote)); }
     {

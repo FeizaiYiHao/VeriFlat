@@ -141,12 +141,14 @@
   `retype_4k_page_perm_to_allocator`, `retype_4k_page_perm_to_scheduler`,
   `retype_page_perm_2m_to_rwlock`, `retype_page_perm_to_rwlock`,
   `retype_container_page_tail_to_offline_flags`, and the inverses
-  `retype_thread_rwlock_to_4k_page_perm` and
-  `retype_process_rwlock_to_4k_page_perm` (an exclusively held, unreferenced
-  thread or killed childless, threadless process lock object back to its owned
-  4K page permission). Keep those primitives limited to consuming an owned page
-  permission and constructing the corresponding kernel object, or the exact
-  inverse for thread exit or process reclaim;
+  `retype_thread_rwlock_to_4k_page_perm`,
+  `retype_process_rwlock_to_4k_page_perm`, and
+  `retype_endpoint_rwlock_to_4k_page_perm` (an exclusively held lock object
+  back to its owned 4K page permission: an unreferenced thread, a killed
+  childless and threadless process, or an unqueued endpoint whose last
+  descriptor reference is gone). Keep those primitives limited to consuming an
+  owned page permission and constructing the corresponding kernel object, or
+  the exact inverse for thread exit, process reclaim, or endpoint release;
   new variants or callers require explicit authorization. The other approved
   trusted primitives are the hardware TLB invalidations
   `CpuTLB::flush_all_local_pcids` and `IommuTLB::invalidate_domain`.

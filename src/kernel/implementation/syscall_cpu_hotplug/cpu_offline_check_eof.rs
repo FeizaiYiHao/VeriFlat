@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::cpu_offline_check_spec::cpu_went_off_eof_transition_framing;
+use super::cpu_offline_check_spec::{cpu_went_off_eof_transition_framing, cpu_offline_check_flushed_default_pcid};
 
 verus! {
 proof fn cpu_went_off_eof_container_thread_scheduler(pre: KernelK, post: KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, entry_regs: Registers)
@@ -163,5 +163,93 @@ pub(super) proof fn cpu_went_off_eof(pre: KernelK, post: KernelK, cpu_id: CpuId,
         reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
     };
     assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
+}
+
+/// The committed offline, between the lock acquisitions that follow the check's start `snapshot` and the releases that end
+/// the step, gives the went-off fields from `snapshot`.
+pub(super) proof fn cpu_went_off_eof_fields(
+    snapshot: KernelK, entry: KernelK, pre: KernelK, mid: KernelK, post: KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr,
+    cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, current_process: Option<RwLockProcessPtr>, current_thread: Option<RwLockThreadPtr>, entry_regs: Registers,
+)
+    requires
+        entry.inv(),
+        entry == (KernelK {
+            cpu_arr: entry.cpu_arr, prc_mp: entry.prc_mp, thr_mp: entry.thr_mp, sched_mp: entry.sched_mp, cpu_set_mp: entry.cpu_set_mp, cpu_offline_mp: entry.cpu_offline_mp, ..snapshot
+        }),
+        entry.cpu_arr.unchanged_except(&snapshot.cpu_arr, cpu_id),
+        snapshot.cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
+        forall|p: RwLockProcessPtr| #![trigger entry.prc_mp.spec_index(p)]
+            snapshot.prc_mp.dom().contains(p) ==> if current_process == Some(p) {
+                snapshot.prc_mp.spec_index(p).locking_thread() is None
+            } else { entry.prc_mp.spec_index(p).locking_thread() == snapshot.prc_mp.spec_index(p).locking_thread() },
+        forall|t: RwLockThreadPtr| #![trigger entry.thr_mp.spec_index(t)]
+            snapshot.thr_mp.dom().contains(t) ==> if current_thread == Some(t) {
+                snapshot.thr_mp.spec_index(t).locking_thread() is None
+            } else { entry.thr_mp.spec_index(t).locking_thread() == snapshot.thr_mp.spec_index(t).locking_thread() },
+        entry.sched_mp.unchanged_except(&snapshot.sched_mp, scheduler_ptr),
+        entry.cpu_set_mp.unchanged_except(&snapshot.cpu_set_mp, cpu_set_ptr),
+        snapshot.cpu_set_mp.spec_index(cpu_set_ptr).locking_thread() is None,
+        entry.cpu_offline_mp.unchanged_except(&snapshot.cpu_offline_mp, flags_ptr),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(&snapshot, &entry),
+        kernel_endpoint_nonlock_fields_unchanged(snapshot.ep_mp, entry.ep_mp),
+        entry.irt.view().owners() == snapshot.irt.view().owners(),
+        entry.irt.view().iommu_roots() == snapshot.irt.view().iommu_roots(),
+        entry.cpu_tlb.view() == snapshot.cpu_tlb.view(),
+        entry.iommu_tlb.view() == snapshot.iommu_tlb.view(),
+        scheduler_shards_of(entry.sched_mp.spec_index(scheduler_ptr)) == scheduler_shards_of(snapshot.sched_mp.spec_index(scheduler_ptr)),
+        cpu_offline_requests_of(entry.cpu_offline_mp.spec_index(flags_ptr)) == cpu_offline_requests_of(snapshot.cpu_offline_mp.spec_index(flags_ptr)),
+        index_valid(NUM_CPUS, cpu_id),
+        {
+            let cpu = entry.cpu_arr.spec_index(cpu_id).view().view().view();
+            &&& !(cpu.state is Off)
+            &&& cpu.current_process == current_process
+            &&& cpu.current_thread == current_thread
+            &&& cpu.owning_container == container_ptr
+            &&& entry.ctn_mp.dom().contains(container_ptr)
+            &&& entry.ctn_mp.spec_index(container_ptr).view_rodata().view().scheduler == scheduler_ptr
+            &&& entry.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set == cpu_set_ptr
+            &&& flags_ptr == cpu_offline_flags_ptr(container_ptr)
+        },
+        current_process is Some == current_thread is Some,
+        entry.sched_mp.dom().contains(scheduler_ptr),
+        entry.cpu_set_mp.dom().contains(cpu_set_ptr),
+        entry.cpu_offline_mp.dom().contains(flags_ptr),
+        entry.cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_id).view().view().requested,
+        current_process is Some ==> entry.prc_mp.dom().contains(current_process.unwrap()) && !entry.prc_mp.spec_index(current_process.unwrap()).being_killed(),
+        current_thread is Some ==> {
+            let thread = entry.thr_mp.spec_index(current_thread.unwrap());
+            &&& entry.thr_mp.dom().contains(current_thread.unwrap())
+            &&& !thread.being_killed()
+            &&& thread.view().state == (ThreadState::RUNNING { cpu_id })
+            &&& thread.view().owning_proc == current_process.unwrap()
+        },
+        pre == (KernelK { pcid_needflush: pre.pcid_needflush, ..entry }),
+        pre.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID).view() == entry.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID).view(),
+        cpu_went_off_eof_transition_framing(pre, mid, cpu_id, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, entry_regs),
+        post == (KernelK {
+            cpu_arr: post.cpu_arr, prc_mp: post.prc_mp, thr_mp: post.thr_mp, sched_mp: post.sched_mp, cpu_set_mp: post.cpu_set_mp, cpu_offline_mp: post.cpu_offline_mp,
+            pcid_needflush: post.pcid_needflush, ..mid
+        }),
+        post.cpu_arr.unchanged_except(&mid.cpu_arr, cpu_id),
+        wunlock_ensures(mid.cpu_arr.spec_index(cpu_id).view(), post.cpu_arr.spec_index(cpu_id).view()),
+        current_process is Some ==> post.prc_mp.unchanged_except(&mid.prc_mp, current_process.unwrap()) && wunlock_ensures(mid.prc_mp.spec_index(current_process.unwrap()), post.prc_mp.spec_index(current_process.unwrap())),
+        current_process is None ==> post.prc_mp == mid.prc_mp,
+        current_thread is Some ==> post.thr_mp.unchanged_except(&mid.thr_mp, current_thread.unwrap()) && wunlock_ensures(mid.thr_mp.spec_index(current_thread.unwrap()), post.thr_mp.spec_index(current_thread.unwrap())),
+        current_thread is None ==> post.thr_mp == mid.thr_mp,
+        post.sched_mp.unchanged_except(&mid.sched_mp, scheduler_ptr),
+        scheduler_shards_of(post.sched_mp.spec_index(scheduler_ptr)) == scheduler_shards_of(mid.sched_mp.spec_index(scheduler_ptr)),
+        post.cpu_set_mp.unchanged_except(&mid.cpu_set_mp, cpu_set_ptr),
+        wunlock_ensures(mid.cpu_set_mp.spec_index(cpu_set_ptr), post.cpu_set_mp.spec_index(cpu_set_ptr)),
+        post.cpu_offline_mp.unchanged_except(&mid.cpu_offline_mp, flags_ptr),
+        cpu_offline_requests_of(post.cpu_offline_mp.spec_index(flags_ptr)) == cpu_offline_requests_of(mid.cpu_offline_mp.spec_index(flags_ptr)),
+    ensures kernel_cpu_went_off_fields(&snapshot, &post, cpu_id, entry_regs, cpu_offline_check_flushed_default_pcid(entry, cpu_id)),
+{
+    reveal(cpu_went_off_eof_transition_framing);
+    assert(scheduler_shards_of(mid.sched_mp.spec_index(scheduler_ptr)) =~= match current_thread {
+        Some(prev) => scheduler_shards_of(pre.sched_mp.spec_index(scheduler_ptr)).update(cpu_id as int, scheduler_shards_of(pre.sched_mp.spec_index(scheduler_ptr))[cpu_id as int].push(prev)),
+        None => scheduler_shards_of(pre.sched_mp.spec_index(scheduler_ptr)),
+    }) by { reveal(scheduler_shards_of); };
+    reveal(kernel_cpu_went_off_fields); reveal(container_scheduler_wf); reveal(container_cpu_offline_flags_wf); reveal(cpu_offline_requests_of);
+    reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
 }
 }

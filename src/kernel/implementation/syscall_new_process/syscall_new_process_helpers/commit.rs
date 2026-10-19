@@ -178,7 +178,7 @@ pub(in super::super) fn commit_new_process(
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, current_thread_ptr);
         assert(new_process_trace_after_enter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), entry_u, cpu_id,
             *source_range, *initial_regs, endpoint_index_opt, false)) by {
-            reveal(process_thread_wf); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
+            process_thread_wf_at(old(krnl).prc_mp, old(krnl).thr_mp, current_thread_ptr); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
             kernel_cpu_process_thread_endpoint_lock_modes_changed_implies_u_step(&old(steps).snapshot_k(), old(krnl), old(lctx),
                 cpu_id, parent_ptr, current_thread_ptr, endpoint, true, None, true, None);
             kernel_thread_syscall_progress_changed_implies_u_step(old(krnl), &entered_k, current_thread_ptr);
@@ -192,7 +192,7 @@ pub(in super::super) fn commit_new_process(
         krnl, Tracked(&mut *lctx), Tracked(&mut *steps), current_thread_ptr, container_ptr, cpu_id, Tracked(&current_thread_lock_perm),
     );
     proof {
-        assert(!krnl.prc_mp.dom().contains(process_page_ptr)) by { reveal(process_pages_wf); };
+        assert(!krnl.prc_mp.dom().contains(process_page_ptr)) by { if krnl.prc_mp.dom().contains(process_page_ptr) { process_pages_wf_process_entry_at(krnl.pg_arr, krnl.prc_mp, process_page_ptr); } };
         assert(!krnl.pt_mp.dom().contains(pagetable_page_ptr)) by { if krnl.pt_mp.dom().contains(pagetable_page_ptr) { pagetable_pages_wf_root_entry_at(krnl.pt_mp, krnl.pg_arr, pagetable_page_ptr); } };
     }
     let ghost publish_before = steps.view();
@@ -209,11 +209,12 @@ pub(in super::super) fn commit_new_process(
             new_process_trace_publish_step(&*steps, publish_before, old(steps).view().len() as int, entry_u, cpu_id, *source_range, *initial_regs, endpoint_index_opt, false);
         };
         assert(krnl.allc_4k_mp.dom().contains(allocator_ptr)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); };
-        assert(share_mapping_4k_source_range_present(krnl, source_pagetable_ptr, source_range)) by { reveal(mapped_4k_page_pagetable_wf); source_range.va_range_lemma(); };
+        assert(share_mapping_4k_source_range_present(krnl, source_pagetable_ptr, source_range)) by { share_mapping_4k_source_range_present_from_wf(krnl, source_pagetable_ptr, source_range); source_range.va_range_lemma(); };
     }
     proof {
         assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable_ptr, container_ptr, source_range)) by {
-            source_range.va_range_lemma(); reveal(mapped_4k_page_pagetable_wf); reveal(container_process_page_pagetable_wf); reveal(process_thread_wf); reveal(container_subtree_set_exclusive);
+            process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, parent_ptr);
+            share_mapping_4k_range_owner_compatible_own_container(krnl, source_pagetable_ptr, container_ptr, source_range);
         };
         assert(krnl.pt_mp.spec_index(target_pagetable_ptr).view().spec_mapping_4k_va_range_empty(source_range.start, source_range.view().spec_index((source_range.len - 1) as int))) by { reveal(PageTable::spec_mapping_4k_va_range_empty); };
     }

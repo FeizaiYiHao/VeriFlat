@@ -462,13 +462,13 @@ pub(super) fn publish_staged_container_root_mutation(
     );
     let container_ghost = ContainerGhost {
         uppertree_seq: Ghost(child_uppers), subtree_set: Ghost(Set::empty()), owned_processes: Ghost(Set::empty().insert(child_process_ptr)),
-        owned_threads: Ghost(Set::empty()), owned_indirect_threads: Ghost(Set::empty()),
+        owned_threads: Ghost(Set::empty()), owned_indirect_threads: Ghost(Set::empty()), owned_endpoints: Ghost(Set::empty()),
     };
     proof {
-        assert(old(krnl).cpu_offline_mp.perms_wf()) by { reveal(cpu_offline_flags_wf); };
+        assert(old(krnl).cpu_offline_mp.perms_wf()) by { cpu_offline_flags_wf_map(old(krnl).cpu_offline_mp, old(krnl).cpu_arr); };
         staged_4k_page_chain_page_ptrs_valid(pre_krnl.pg_arr, funding_pages);
         assert(!old(krnl).cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(child_container_ptr))) by {
-            reveal(container_cpu_offline_flags_wf);
+            container_cpu_offline_flags_wf_flags_at(old(krnl).ctn_mp, old(krnl).cpu_offline_mp, cpu_offline_flags_ptr(child_container_ptr));
             let owner = old(krnl).cpu_offline_mp.spec_index(cpu_offline_flags_ptr(child_container_ptr)).owning_container.view();
             assert(old(krnl).cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(child_container_ptr)) ==> old(krnl).ctn_mp.dom().contains(owner) && page_ptr_2m_valid(owner) && cpu_offline_flags_ptr(owner) == cpu_offline_flags_ptr(child_container_ptr)) by {
                 container_pages_backward_at(old(krnl).pg_arr, old(krnl).ctn_mp, owner);

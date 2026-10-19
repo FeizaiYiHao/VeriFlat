@@ -118,7 +118,7 @@ pub open spec fn thread_exit_drop_step_pre(old_u: KernelU, cpu_id: CpuId) -> boo
 }
 
 /// The running thread releases its first descriptor at or after its recorded position: the descriptor is cleared, its
-/// unlocked endpoint drops the reference, and the thread records the position after it.
+/// unlocked endpoint, still held elsewhere, drops the reference, and the thread records the position after it.
 #[verifier::opaque]
 pub open spec fn thread_exit_drop_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
@@ -132,12 +132,29 @@ pub open spec fn thread_exit_drop_step(old_u: KernelU, new_u: KernelU, cpu_id: C
     &&& thread.endpoint_descriptors[index as int] is Some
     &&& old_u.endpoint_map.dom().contains(endpoint_ptr)
     &&& endpoint.lock_state is Unlocked
+    &&& endpoint.owning_threads.len() > 1
     &&& new_u == (KernelU {
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU {
             endpoint_descriptors: thread.endpoint_descriptors.update(index as int, None), syscall_progress: Some(SyscallProgress::ThreadExit { next: (index + 1) as EndpointIdx }), ..thread
         }),
         endpoint_map: old_u.endpoint_map.insert(endpoint_ptr, EndpointU { owning_threads: endpoint.owning_threads.remove((thread_ptr, index)), ..endpoint }),
         ..old_u
+    })
+}
+
+/// The running thread releases its first descriptor at or after its recorded position, which holds the last reference of
+/// its unlocked endpoint: the descriptor is cleared, the endpoint is released, and the thread records the position after it.
+#[verifier::opaque]
+pub open spec fn thread_exit_release_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map.spec_index(thread_ptr);
+    let next = thread.syscall_progress->Some_0->ThreadExit_next;
+    let index = (new_u.thread_map.spec_index(thread_ptr).syscall_progress->Some_0->ThreadExit_next - 1) as EndpointIdx;
+    &&& next <= index < MAX_NUM_ENDPOINT_DESCRIPTORS
+    &&& forall|j: int| #![trigger thread.endpoint_descriptors[j]] next <= j < index ==> thread.endpoint_descriptors[j] is None
+    &&& kernel_u_endpoint_released(old_u, new_u, thread_ptr, index as int)
+    &&& new_u.thread_map == old_u.thread_map.insert(thread_ptr, ThreadU {
+        endpoint_descriptors: thread.endpoint_descriptors.update(index as int, None), syscall_progress: Some(SyscallProgress::ThreadExit { next: (index + 1) as EndpointIdx }), ..thread
     })
 }
 
@@ -364,7 +381,7 @@ pub open spec fn thread_exit_unlock_table_step(old_u: KernelU, new_u: KernelU, c
 }
 
 /// A step between entering and finishing: reclaiming the dangling thread of a killed caller and the killed callers it takes over,
-/// releasing a descriptor, or, for a process's last
+/// releasing a descriptor, releasing an endpoint with its last descriptor, or, for a process's last
 /// thread, locking the process's tables, clearing one user 4K leaf, flushing one cpu's TLB for the process's PCID,
 /// recording the flush, clearing one IOMMU 4K leaf, refunding 4K quota to the thread's container chain, returning one
 /// size of quota, or unlocking the tables.
@@ -374,6 +391,7 @@ pub open spec fn thread_exit_middle_step(step: KernelStep, cpu_id: CpuId) -> boo
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
     ||| thread_exit_drop_step_pre(old_u, cpu_id) && kernel_u_killed_thread_reclaim_step(old_u, new_u, cpu_id)
     ||| thread_exit_drop_step_pre(old_u, cpu_id) && thread_exit_drop_step(old_u, new_u, cpu_id)
+    ||| thread_exit_drop_step_pre(old_u, cpu_id) && thread_exit_release_step(old_u, new_u, cpu_id)
     ||| thread_exit_lock_table_step_pre(old_u, cpu_id) && thread_exit_lock_table_step(old_u, new_u, cpu_id)
     ||| thread_exit_reclaim_step_pre(old_u, cpu_id, false) && thread_exit_leaf_step(old_u, new_u, cpu_id)
     ||| thread_exit_flush_step_pre(old_u, cpu_id) && kernel_u_cpu_tlb_cleared(old_u, new_u, old_u.process_map.spec_index(thread.owning_proc).pcid)

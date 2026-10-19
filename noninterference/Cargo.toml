@@ -8,6 +8,7 @@ members = [".", "u_facts"]
 [package]
 name = "veriflat_noninterference"
 version = "0.1.0"
+license = "MIT"
 edition = "2024"
 
 [lib]

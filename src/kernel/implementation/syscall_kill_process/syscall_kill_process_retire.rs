@@ -5,6 +5,7 @@ use super::syscall_kill_process_trace::*;
 use super::syscall_kill_process_walk::*;
 use super::syscall_kill_process_retire_pages::*;
 use super::syscall_kill_process_retire_pages_lock::*;
+use super::syscall_kill_process_retire_roots::kill_retire_hold_roots;
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_process_retire_spec::*;
 #[cfg(verus_keep_ghost)]
@@ -192,65 +193,33 @@ pub(crate) fn kill_retire_process(
     proof {
         process_perms_wf_map(krnl.prc_mp);
         process_perms_wf_at(krnl.prc_mp, target);
-        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target);
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr);
         assert(krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(process_ptr)) by {
-            per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container); reveal(process_subtree_set_wf);
+            let owner = krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container;
+            let tree = krnl.ctn_mp.spec_index(owner).view_ghost().owned_processes.view();
+            let root = krnl.ctn_mp.spec_index(owner).view().root_process;
+            per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, owner); process_subtree_set_wf_at(root, tree, krnl.prc_mp, process_ptr, target);
         };
     }
-    let tracked target_perm = chain_perms.tracked_remove(target);
-    let tracked parent_perm = if chain.len() == 1 { process_perm } else { chain_perms.tracked_borrow(chain[chain.len() - 2]) };
     let (pagetable, iommu_table) = {
-        let process = krnl.prc_mp.borrow_typed(target, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(&target_perm));
+        let tracked target_perm = chain_perms.tracked_borrow(target);
+        let process = krnl.prc_mp.borrow_typed(target, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(target_perm));
         (process.pagetable, process.iommu_table)
     };
     let (container_ptr, parent, cr3, iommu_cr3) = {
         let target_ro = krnl.prc_mp.borrow_rodata(target).borrow();
-        (target_ro.owning_container, target_ro.parent.unwrap(), target_ro.cr3, target_ro.iommu_cr3)
+        (target_ro.owning_container, target_ro.parent, target_ro.cr3, target_ro.iommu_cr3)
     };
-    proof { container_perms_wf_at(krnl.ctn_mp, container_ptr); }
+    let (pages, Tracked(page_lock_perms)) = kill_retire_hold_roots(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, Ghost(chain),
+        Tracked(&*chain_perms), Tracked(cpu_perm), Tracked(process_perm), Tracked(thread_perm), Tracked(page_perms), Tracked(&pt_perm), Tracked(&it_perm), pagetable, iommu_table, cr3,
+        iommu_cr3, container_ptr, Ghost(scope));
+    let tracked target_perm = chain_perms.tracked_remove(target);
+    let tracked parent_perm = if chain.len() == 1 { process_perm } else { chain_perms.tracked_borrow(chain[chain.len() - 2]) };
+    let parent = parent.unwrap();
+    proof { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target); container_perms_wf_at(krnl.ctn_mp, container_ptr); }
     let allocator_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_4k;
     proof {
-        let pt = krnl.pt_mp.spec_index(pagetable).view();
-        pagetable_perms_wf_at(krnl.pt_mp, pagetable);
-        assert(page_ptr_valid(target) && krnl.pg_arr.spec_index(page_ptr2page_index(target)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsProcess })) by { process_pages_wf_process_entry_at(krnl.pg_arr, krnl.prc_mp, target); };
-        pagetable_pages_wf_root_entry_at(krnl.pt_mp, krnl.pg_arr, pagetable);
-        assert(pt.page_closure().contains(pt.cr3)) by { reveal(PageTable::wf_l4); };
-        pagetable_pages_wf_closure_entry_at(krnl.pt_mp, krnl.pg_arr, pagetable, pt.cr3);
-        if let Some(it) = iommu_table {
-            let it_view = krnl.it_mp.spec_index(it).view();
-            iommu_table_perms_wf_at(krnl.it_mp, it);
-            pagetable_pages_wf_root_entry_at(krnl.it_mp, krnl.pg_arr, it);
-            assert(it_view.page_closure().contains(it_view.cr3)) by { reveal(PageTable::wf_l4); };
-            pagetable_pages_wf_closure_entry_at(krnl.it_mp, krnl.pg_arr, it, it_view.cr3);
-        }
-    }
-    let mut pages: ArrayVec<PageIndex, 5> = ArrayVec::new();
-    let mut roots: ArrayVec<PageIndex, 5> = ArrayVec::new();
-    pages.push(page_ptr2page_index(target));
-    pages.push(page_ptr2page_index(pagetable));
-    pages.push(page_ptr2page_index(cr3));
-    roots.push(page_ptr2page_index(cr3));
-    if let Some(it) = iommu_table {
-        let it_root = page_ptr2page_index(iommu_cr3.unwrap());
-        pages.push(page_ptr2page_index(it));
-        pages.push(it_root);
-        roots.push(it_root);
-    }
-    proof { assert(pages.view() =~= kill_retire_pages(*krnl, target)); }
-    let sorted_roots = kill_retire_sort_pages(&roots);
-    let Tracked(page_lock_perms) = wlock_kill_retire_pages(krnl, &sorted_roots, Ghost(PAGETABLE_PAGE_MAJOR), Tracked(&mut *lctx), Tracked(page_perms));
-    proof {
-        assert(lctx.page_lock_map().dom() =~= pages.view().to_set()) by { broadcast use vstd::seq_lib::lemma_seq_contains_after_push; };
-        assert(index_valid(NUM_PAGES, pages.view()[0]) && lctx.page_lock_map().dom().contains(pages.view()[0])
-            && krnl.pg_arr.spec_index(pages.view()[0]).view().view().owning_container == container_ptr) by { reveal(process_kernel_pages_owner_wf); page_ptr_roundtrip(); };
-        enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
-        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-        kernel_lock_states_unchanged_except_tables_of_implies_u_eq(&steps.snapshot_k(), &*krnl, Some(target));
-        krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
         assert(krnl.pt_mp.spec_index(pagetable).view().kernel_l4_end == KERNEL_MEM_END_L4INDEX) by { krnl.default_pagetable_wf_at(pagetable); };
-        container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target);
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr);
     }
     let Tracked(cache_lock_perm) = kill_retire_lock_cache(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), allocator_ptr, cpu_id, pages.len(), Ghost(pages.view()[0]));

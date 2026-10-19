@@ -56,6 +56,10 @@ pub use kernel::implementation::map_4k::share_mapping_4k_spec::*;
 pub use kernel::implementation::map_4k::share_mapping_4k::{share_mapping_4k_build_and_share, share_mapping_4k_source_owner_precheck, share_mapping_4k_source_precheck};
 #[cfg(verus_keep_ghost)]
 pub use kernel::implementation::map_4k::share_mapping_4k::{share_mapping_4k_leaf_owner_compatible, share_mapping_4k_range_owner_compatible, share_mapping_4k_source_range_present};
+#[cfg(verus_keep_ghost)]
+pub use kernel::implementation::map_4k::share_mapping_4k::{share_mapping_4k_range_owner_compatible_own_container, share_mapping_4k_source_range_present_from_wf};
+#[cfg(verus_keep_ghost)]
+pub use kernel::implementation::locker_unlocker::container_nonlock_fields_and_quotas_unchanged_for_cpu_set_relock;
 pub use kernel::implementation::transfer_staged_4k_page::*;
 
 verus! {

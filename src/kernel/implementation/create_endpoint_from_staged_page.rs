@@ -65,7 +65,10 @@ pub fn create_endpoint_from_staged_page(
         final(krnl).thr_mp.lock_id_by_key(staging_thread_ptr) == old(krnl).thr_mp.lock_id_by_key(staging_thread_ptr),
         final(krnl).ctn_mp.unchanged_except(&old(krnl).ctn_mp, container_ptr),
         final(krnl).ctn_mp.spec_index(container_ptr).being_killed() == old(krnl).ctn_mp.spec_index(container_ptr).being_killed(),
-        final(krnl).ctn_mp.spec_index(container_ptr).view_ghost() == old(krnl).ctn_mp.spec_index(container_ptr).view_ghost(),
+        final(krnl).ctn_mp.spec_index(container_ptr).view() == old(krnl).ctn_mp.spec_index(container_ptr).view(),
+        final(krnl).ctn_mp.spec_index(container_ptr).view_ghost() == (ContainerGhost {
+            owned_endpoints: Ghost(old(krnl).ctn_mp.spec_index(container_ptr).view_ghost().owned_endpoints.view().insert(page_ptr)), ..old(krnl).ctn_mp.spec_index(container_ptr).view_ghost()
+        }),
         typed_lock_map_contains_mode(final(lctx).container_lock_map(), container_ptr, TypedLockMode::Write),
         container_lock_perm.lock_id() == final(krnl).ctn_mp.spec_index(container_ptr).locking_thread()->Write_lock_id,
         final(krnl).ctn_mp.lock_id_by_key(container_ptr) == old(krnl).ctn_mp.lock_id_by_key(container_ptr),
@@ -105,7 +108,7 @@ pub fn create_endpoint_from_staged_page(
     let Tracked(page_perm) = page_array_retype_owned_4k(&mut krnl.pg_arr, page_index, PageState::Allocated4k { state: Allocated4KPageState::AsEndpoint }, Ghost(page_locks), Tracked(&*lctx), Tracked(page_lock_perm));
     thread_map_consume_staged_4k(&mut krnl.thr_mp, staging_thread_ptr, page_ptr, Tracked(&*lctx), Tracked(staging_thread_lock_perm));
     thread_map_set_endpoint_descriptor(&mut krnl.thr_mp, staging_thread_ptr, endpoint_index, Some(page_ptr), Tracked(&*lctx), Tracked(staging_thread_lock_perm));
-    container_map_add_owned_endpoint(&mut krnl.ctn_mp, container_ptr, page_ptr, Tracked(&*lctx), Tracked(container_lock_perm));
+    proof { insert_endpoint_into_container_set(&mut krnl.ctn_mp, container_ptr, page_ptr, lctx.container_lock_map(), lctx.thread_id()); }
     let endpoint_value = Endpoint::new_held(page_ptr, container_ptr, staging_thread_ptr, endpoint_index);
     let endpoint_lock_perm = endpoint_map_insert_new_4k(&mut krnl.ep_mp, page_ptr, endpoint_value, Tracked(page_perm), Tracked(&mut *lctx));
     proof {

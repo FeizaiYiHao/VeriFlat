@@ -57,4 +57,17 @@ verus! {
                     == cpu_array.spec_index(cpu_i).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr
             }
     }
+
+    /// Point fact at one CPU: when CPU `c` runs `pcid` and its dirty bitmap maps `pcid` to `pagetable`, it runs the table's process with the table's cr3.
+    pub proof fn cpu_current_pcid_pagetable_match_at(cpu_arr: CpuLockedArray, kernel_pagetable: PageTable<PT_TYPE>, prc_mp: ProcessLockedMap, pt_mp: PageTableLockedMap, c: CpuId, pcid: Pcid, pagetable: RwLockPageTableRoot)
+        requires
+            cpu_array_wf(cpu_arr, kernel_pagetable),
+            process_cpu_wf(prc_mp, cpu_arr),
+            process_pagetable_match(prc_mp, pt_mp),
+            index_valid(NUM_CPUS, c),
+            pcid != KERNEL_DEFAULT_PCID,
+        ensures
+            cpu_arr.spec_index(c).view().view().view().current_pcid == pcid && cpu_arr.spec_index(c).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some && cpu_arr.spec_index(c).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr == pagetable
+                ==> cpu_arr.spec_index(c).view().view().view().current_process == Some(pt_mp.spec_index(pagetable).view().proc_ptr) && cpu_arr.spec_index(c).view().view().view().current_cr3 == pt_mp.spec_index(pagetable).view().cr3,
+    { reveal(cpu_array_wf); reveal(process_cpu_wf); reveal(process_pagetable_match); }
 }

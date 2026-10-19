@@ -475,6 +475,7 @@ pub proof fn lemma_container_process_thread_quota_folds_insert_zero_forall(
                         } else {
                             pre_ctn.spec_index(c).view_ghost().owned_indirect_threads
                         },
+                        owned_endpoints: pre_ctn.spec_index(c).view_ghost().owned_endpoints,
                     }
             },
         pre_prc.dom().subset_of(post_prc.dom()),
@@ -650,6 +651,7 @@ pub proof fn lemma_container_process_thread_quota_folds_remove_thread_forall(
                     owned_indirect_threads: if pre_ctn.spec_index(dc).view_ghost().uppertree_seq.view().to_set().contains(c) {
                         Ghost(pre_ctn.spec_index(c).view_ghost().owned_indirect_threads.view().remove(old_t))
                     } else { pre_ctn.spec_index(c).view_ghost().owned_indirect_threads },
+                    owned_endpoints: pre_ctn.spec_index(c).view_ghost().owned_endpoints,
                 }
             },
         post_prc.dom() == pre_prc.dom(),
@@ -820,6 +822,7 @@ pub proof fn lemma_container_thread_quota_folds_remove_empty_thread_forall(
                     owned_indirect_threads: if pre_ctn.spec_index(dc).view_ghost().uppertree_seq.view().to_set().contains(c) {
                         Ghost(pre_ctn.spec_index(c).view_ghost().owned_indirect_threads.view().remove(old_t))
                     } else { pre_ctn.spec_index(c).view_ghost().owned_indirect_threads },
+                    owned_endpoints: pre_ctn.spec_index(c).view_ghost().owned_endpoints,
                 }
             },
         post_thr.dom() == pre_thr.dom().remove(old_t),

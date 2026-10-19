@@ -12,7 +12,6 @@ pub struct Container {
     pub children: LinkedList<RwLockContainerPtr, 233>,
 
     pub root_process: RwLockProcessPtr, // Not Option Maybe? Container with no process should be killed
-    pub owned_endpoints: Ghost<Set<RwLockEndpointPtr>>,
     pub owned_pages: Ghost<Set<PagePtr>>,
 }
 pub struct ContainerRO {
@@ -33,6 +32,7 @@ pub struct ContainerGhost {
     pub owned_processes: Ghost<Set<RwLockProcessPtr>>,
     pub owned_threads: Ghost<Set<RwLockThreadPtr>>,
     pub owned_indirect_threads: Ghost<Set<RwLockThreadPtr>>,
+    pub owned_endpoints: Ghost<Set<RwLockEndpointPtr>>,
 }
 
 pub ghost struct ContainerU {
@@ -66,7 +66,7 @@ impl LockInvTrait for Container {
 }
 
 impl Container {
-    pub fn new_boot_root(container_ptr: RwLockContainerPtr, root_process: RwLockProcessPtr, root_endpoint: RwLockEndpointPtr, owned_pages: Ghost<Set<PagePtr>>) -> (ret: Self)
+    pub fn new_boot_root(container_ptr: RwLockContainerPtr, root_process: RwLockProcessPtr, owned_pages: Ghost<Set<PagePtr>>) -> (ret: Self)
         ensures
             ret.inv(),
             !ret.zombie,
@@ -74,11 +74,9 @@ impl Container {
             ret.children.view() == Seq::<RwLockContainerPtr>::empty(),
             ret.children.map() == Map::<usize, RwLockContainerPtr>::empty(),
             ret.root_process == root_process,
-            ret.owned_endpoints.view() =~= set![root_endpoint],
             ret.owned_pages == owned_pages,
     {
         let mut ret = Self::new_staged(container_ptr, root_process, 0);
-        ret.owned_endpoints = Ghost(Set::empty().insert(root_endpoint));
         ret.owned_pages = owned_pages;
         ret
     }
@@ -91,11 +89,10 @@ impl Container {
             ret.children.view() == Seq::<RwLockContainerPtr>::empty(),
             ret.children.map() == Map::<usize, RwLockContainerPtr>::empty(),
             ret.root_process == root_process,
-            ret.owned_endpoints.view() == Set::<RwLockEndpointPtr>::empty(),
             ret.owned_pages.view() == Set::<PagePtr>::empty(),
     {
         Self { zombie: false, parent_linkedlist_node: ExternalNode::new(container_ptr), children: LinkedList::new(Some(depth), Some(container_ptr)), root_process,
-            owned_endpoints: Ghost(Set::empty()), owned_pages: Ghost(Set::empty()) }
+            owned_pages: Ghost(Set::empty()) }
     }
 
     pub open spec fn wf(&self) -> bool { self.children.inv() }

@@ -86,4 +86,22 @@ verus! {
                 &&& process.view().owned_threads.map().spec_index(thread.proc_linkedlist_node.addr()) == thread_ptr
             }),
     { reveal(process_thread_wf); }
+
+    /// A thread `t_ptr` being killed is write-held and not reply-waiting; unless dangling, its killer also write-holds its process.
+    pub proof fn process_thread_wf_killed_thread_at(process_map: ProcessLockedMap, thread_map: ThreadLockedMap, t_ptr: RwLockThreadPtr)
+        requires
+            process_thread_wf(process_map, thread_map),
+            thread_map.dom().contains(t_ptr),
+        ensures
+            thread_map.spec_index(t_ptr).being_killed() ==> {
+                let process = process_map.spec_index(thread_map.spec_index(t_ptr).view().owning_proc);
+                &&& thread_map.spec_index(t_ptr).locking_thread() is Write
+                &&& !thread_map.spec_index(t_ptr).view().state.is_reply_waiting()
+                &&& !thread_is_dangling(thread_map.spec_index(t_ptr)) ==> {
+                    &&& process.being_killed()
+                    &&& process.locking_thread() is Write
+                    &&& thread_map.spec_index(t_ptr).locking_thread()->Write_thread_id == process.locking_thread()->Write_thread_id
+                }
+            },
+    { reveal(process_thread_wf); }
 }

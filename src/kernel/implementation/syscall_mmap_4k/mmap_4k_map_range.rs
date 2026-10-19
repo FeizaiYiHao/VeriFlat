@@ -288,9 +288,7 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
             mmap_4k_build_one_structure(krnl, current_va, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, None, Ghost(thread_ptr), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(None), Tracked(None));
             proof {
                 assert(!krnl.prc_mp.spec_index(process_ptr).view().zombie) by { process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); };
-                assert(forall|j: int| #![trigger steps.view()[j]] old(steps).view().len() <= j < steps.view().len() ==> mmap_4k_range_step(steps.view()[j], cpu_id)) by {
-                    mmap_4k_range_steps_from_directory(&*steps, build_before, old(steps).view().len() as int, cpu_id);
-                };
+                mmap_4k_range_steps_from_directory(&*steps, build_before, old(steps).view().len() as int, cpu_id);
             }
             let ghost leaf_before = steps.view();
             map_one_mmap_4k_page(krnl, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, current_va, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm));
@@ -299,9 +297,7 @@ pub open spec fn mmap_4k_leaf_range_mapped_prefix(pagetable: PageTable<PT_TYPE>,
                     vstd::seq::lemma_seq_subrange_composition(steps.nonlock_view(), 0, (steps.nonlock_view().len() - 1) as int, 0, old(steps).nonlock_view().len() as int);
                 };
                 assert(!krnl.prc_mp.spec_index(process_ptr).view().zombie) by { process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); };
-                assert(forall|j: int| #![trigger steps.view()[j]] old(steps).view().len() <= j < steps.view().len() ==> mmap_4k_range_step(steps.view()[j], cpu_id)) by {
-                    mmap_4k_range_steps_from_leaf(&*steps, leaf_before, old(steps).view().len() as int, cpu_id);
-                };
+                mmap_4k_range_steps_from_leaf(&*steps, leaf_before, old(steps).view().len() as int, cpu_id);
             }
             i = i + 1;
         }

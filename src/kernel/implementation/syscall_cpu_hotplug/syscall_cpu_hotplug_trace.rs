@@ -185,27 +185,28 @@ pub(super) proof fn cpu_online_child_result_from_k(krnl: &KernelK, cpu_id: CpuId
     requires
         index_valid(NUM_CPUS, cpu_id),
         index_valid(NUM_CPUS, target),
+        container_cpu_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr),
         {
             let cpu = krnl.cpu_arr.spec_index(cpu_id).view();
             let caller = krnl.ctn_mp.spec_index(cpu.view().view().owning_container);
             let children = caller.view().children.view();
-            let t = krnl.cpu_arr.spec_index(target).view().view().view();
+            let child_set = krnl.cpu_set_mp.spec_index(krnl.ctn_mp.spec_index(children[child as int]).view_rodata().view().cpu_set).view().owned_cpus;
             let live = !caller.being_killed() && !caller.view().zombie;
-            let owned = child < children.len() && t.owning_container == children[child as int];
+            let owned = child < children.len() && krnl.ctn_mp.dom().contains(children[child as int]) && child_set.view().contains(target);
             &&& ret is CpuIdle ==> !(cpu.view().view().state is Running) || cpu.being_killed()
             &&& !(ret is CpuIdle) ==> cpu.view().view().state is Running && !cpu.being_killed() && krnl.ctn_mp.dom().contains(cpu.view().view().owning_container)
             &&& ret is ErrorContainerKilled ==> caller.being_killed()
             &&& ret is ErrorContainerZombie ==> !caller.being_killed() && caller.view().zombie
             &&& ret is ErrorCpuOwnerMismatch ==> live && !owned
-            &&& ret is ErrorCpuNotOff ==> live && owned && !(t.state is Off)
-            &&& ret is Success ==> live && owned && t.state is Off
+            &&& ret is ErrorCpuNotOff ==> live && owned && !child_set.closed_view().contains(target)
+            &&& ret is Success ==> live && owned && child_set.closed_view().contains(target)
             &&& ret is CpuIdle || ret is ErrorContainerKilled || ret is ErrorContainerZombie || ret is ErrorCpuOwnerMismatch || ret is ErrorCpuNotOff || ret is Success
         },
     ensures
         cpu_online_child_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, child, target) == ret,
 {
     let container_ptr = krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container;
-    kernel_cpu_projection_at(krnl, cpu_id); kernel_cpu_projection_at(krnl, target);
+    reveal(container_cpu_wf); kernel_cpu_projection_at(krnl, cpu_id); kernel_cpu_projection_at(krnl, target);
     if krnl.ctn_mp.dom().contains(container_ptr) { kernel_container_projection_at(krnl, container_ptr); }
 }
 

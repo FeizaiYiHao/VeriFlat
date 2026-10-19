@@ -165,6 +165,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
             &&& post.ctn_mp.spec_index(ptr).view_ghost().owned_threads == pre.ctn_mp.spec_index(ptr).view_ghost().owned_threads
             &&& post.ctn_mp.spec_index(ptr).view_ghost().owned_processes == pre.ctn_mp.spec_index(ptr).view_ghost().owned_processes
             &&& post.ctn_mp.spec_index(ptr).view_ghost().owned_indirect_threads == pre.ctn_mp.spec_index(ptr).view_ghost().owned_indirect_threads
+            &&& post.ctn_mp.spec_index(ptr).view_ghost().owned_endpoints == pre.ctn_mp.spec_index(ptr).view_ghost().owned_endpoints
             &&& ptr != parent_container_ptr ==> post.ctn_mp.spec_index(ptr).view() == pre.ctn_mp.spec_index(ptr).view()
         }
     &&& forall|ptr: RwLockContainerPtr|
@@ -195,7 +196,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& !post.ctn_mp.spec_index(container_page).view().zombie
     &&& !post.ctn_mp.spec_index(container_page).being_killed()
     &&& post.ctn_mp.spec_index(container_page).view_ghost().owned_processes.view() == set![process_page]
-    &&& post.ctn_mp.spec_index(container_page).view().owned_endpoints.view().is_empty()
+    &&& post.ctn_mp.spec_index(container_page).view_ghost().owned_endpoints.view().is_empty()
     &&& post.ctn_mp.spec_index(container_page).view().owned_pages.view() == moved_pages
     &&& post.ctn_mp.spec_index(container_page).view_rodata().view().parent == Some(parent_container_ptr)
     &&& post.ctn_mp.spec_index(container_page).view_rodata().view().depth == pre.ctn_mp.spec_index(parent_container_ptr).view_rodata().view().depth + 1

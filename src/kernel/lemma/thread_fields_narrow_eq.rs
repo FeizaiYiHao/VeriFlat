@@ -193,7 +193,7 @@ pub proof fn container_endpoint_wf_preserved_for_endpoint_owner_eq(old_container
         new_endpoint_map.dom() == old_endpoint_map.dom(),
         forall|c_ptr: RwLockContainerPtr|
             #![trigger new_container_map.spec_index(c_ptr)]
-            new_container_map.dom().contains(c_ptr) ==> new_container_map.spec_index(c_ptr).view().owned_endpoints == old_container_map.spec_index(c_ptr).view().owned_endpoints,
+            new_container_map.dom().contains(c_ptr) ==> new_container_map.spec_index(c_ptr).view_ghost().owned_endpoints == old_container_map.spec_index(c_ptr).view_ghost().owned_endpoints,
         forall|e_ptr: RwLockEndpointPtr|
             #![trigger new_endpoint_map.spec_index(e_ptr)]
             new_endpoint_map.dom().contains(e_ptr) ==> new_endpoint_map.spec_index(e_ptr).view().owning_container == old_endpoint_map.spec_index(e_ptr).view().owning_container,

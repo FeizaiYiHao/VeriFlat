@@ -15,6 +15,7 @@ pub(crate) mod syscall_kill_process_retire_pages;
 pub(crate) mod syscall_kill_process_retire_pages_eof;
 pub(crate) mod syscall_kill_process_retire_pages_lock;
 pub(crate) mod syscall_kill_process_retire_pages_spec;
+pub(crate) mod syscall_kill_process_retire_roots;
 pub(crate) mod syscall_kill_process_victim;
 pub(crate) mod syscall_kill_process_victim_eof;
 pub(crate) mod syscall_kill_process_victim_spec;

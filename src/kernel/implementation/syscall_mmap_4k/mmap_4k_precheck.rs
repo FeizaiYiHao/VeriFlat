@@ -54,7 +54,7 @@ pub(super) enum Mmap4kPrecheck {
         let end_va = range.index(end_index);
         assert(end_va == spec_va_add_range(range_start, end_index)) by { range.va_range_lemma(); };
         let start_indices = va2index(range_start);
-        proof { assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable_ptr).inv()) by { reveal(pagetable_perms_wf); }; }
+        proof { assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable_ptr).inv()) by { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); }; }
         let pagetable = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
         if start_indices.0 < pagetable.kernel_l4_end { return Mmap4kPrecheck::Invalid; }
         if !pagetable.mapping_4k_va_range_empty(range_start, end_va) { return Mmap4kPrecheck::InUse; }

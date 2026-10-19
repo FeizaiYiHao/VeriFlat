@@ -128,7 +128,9 @@ pub(crate) fn kill_reassign_functions(
         let before_u = kernel_k_to_kernel_u(before);
         if moved {
             kill_step_pre_from_k(&before, &before_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Walk); kill_reassign_pre_from_k(&before, target);
-            assert(before.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view().contains((witness.0, witness.1, witness.2))) by { reveal(process_pci_function_ownership_wf); };
+            assert(before.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view().contains((witness.0, witness.1, witness.2))) by {
+                process_pci_function_ownership_wf_at(before.irt.view(), before.prc_mp, (witness.0, witness.1, witness.2), target);
+            };
             reveal(kill_reassign_eof_transition_framing);
             kernel_process_functions_reassigned_implies_u_step(&before, &after, target, process_ptr);
             krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);

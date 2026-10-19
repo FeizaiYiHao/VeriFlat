@@ -164,9 +164,6 @@ verus! {
             held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
             held_threads_unchanged_except(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx), set![quota_thread_ptr]),
             held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
-            held_schedulers_unchanged(old(krnl).sched_mp, final(krnl).sched_mp, old(lctx)),
-            held_pcid_allocators_unchanged(old(krnl).pcid_allc_mp, final(krnl).pcid_allc_mp, old(lctx)),
-            held_cpu_sets_unchanged(old(krnl).cpu_set_mp, final(krnl).cpu_set_mp, old(lctx)),
             held_pagetables_unchanged_except(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx), set![pagetable_ptr]),
             held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
             held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
@@ -265,8 +262,6 @@ verus! {
                 if transfer_source is None { held_containers_unchanged_transitive(old(krnl).ctn_mp, before_lower.ctn_mp, krnl.ctn_mp, old(lctx), &lctx_lower); }
                 held_processes_unchanged_transitive(old(krnl).prc_mp, before_lower.prc_mp, krnl.prc_mp, old(lctx), &lctx_lower);
                 held_endpoints_unchanged_transitive(old(krnl).ep_mp, before_lower.ep_mp, krnl.ep_mp, old(lctx), &lctx_lower);
-                held_schedulers_unchanged_transitive(old(krnl).sched_mp, before_lower.sched_mp, krnl.sched_mp, old(lctx), &lctx_lower);
-                held_pcid_allocators_unchanged_transitive(old(krnl).pcid_allc_mp, before_lower.pcid_allc_mp, krnl.pcid_allc_mp, old(lctx), &lctx_lower);
                 held_iommu_tables_unchanged_transitive(old(krnl).it_mp, before_lower.it_mp, krnl.it_mp, old(lctx), &lctx_lower);
                 held_cpus_unchanged_transitive(old(krnl).cpu_arr, before_lower.cpu_arr, krnl.cpu_arr, old(lctx), &lctx_lower);
                 held_threads_unchanged_except_transitive(old(krnl).thr_mp, before_lower.thr_mp, krnl.thr_mp, old(lctx), &lctx_lower, set![quota_thread_ptr]);

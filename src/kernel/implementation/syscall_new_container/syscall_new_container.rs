@@ -5,16 +5,6 @@ use super::syscall_new_container_spec::*;
 use super::syscall_new_container_trace::*;
 
 verus! {
-/// Relocking one cpu set back to its original lock mode keeps every container field, quota, and cpu-set lock mode.
-proof fn container_nonlock_fields_and_quotas_unchanged_for_cpu_set_relock(pre: &KernelK, post: &KernelK, cpu_set_ptr: RwLockCpuSetPtr)
-    requires
-        container_cpu_set_wf(pre.ctn_mp, pre.cpu_set_mp),
-        *post == (KernelK { cpu_set_mp: post.cpu_set_mp, ..*pre }),
-        post.cpu_set_mp.unchanged_except(&pre.cpu_set_mp, cpu_set_ptr),
-        post.cpu_set_mp.spec_index(cpu_set_ptr).lock_state_u() == pre.cpu_set_mp.spec_index(cpu_set_ptr).lock_state_u(),
-    ensures kernel_container_nonlock_fields_and_quotas_unchanged(pre, post),
-{ reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_cpu_set_wf); }
-
 /// Exec state handed from the lock-and-check prefix of `syscall_new_container` to its commit.
 pub(super) struct NewContainerEntryLocked {
     pub parent_container_ptr: RwLockContainerPtr, pub parent_process_ptr: RwLockProcessPtr, pub current_thread_ptr: RwLockThreadPtr,

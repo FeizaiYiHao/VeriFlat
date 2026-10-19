@@ -140,7 +140,7 @@ verus! {
                 assert({
                     ||| krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container == container_ptr
                     ||| krnl.ctn_mp.spec_index(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container).view_ghost().subtree_set.view().contains(container_ptr)
-                }) by { container_endpoint_wf_at(krnl.ctn_mp, krnl.ep_mp, endpoint_ptr); reveal(container_thread_endpoint_wf); };
+                }) by { container_endpoint_wf_at(krnl.ctn_mp, krnl.ep_mp, endpoint_ptr); container_thread_endpoint_wf_at(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp, current_thread_ptr, endpoint_index); };
             }
             attach_endpoint_reference_and_unlock(krnl, new_thread_ptr, endpoint_ptr, current_thread_ptr, Tracked(&mut *lctx), Tracked(new_thread_lock_perm), Tracked(endpoint_lock_perm));
             krnl.wunlock_page(page_index, Tracked(&mut *lctx), Tracked(page_lock_perm));

@@ -153,6 +153,7 @@ impl LockMajorTrait for Page {
     open spec fn lock_major_default(&self) -> LockMajorId {
         if self.is_owned() { OWNED_PAGE_LOCK_MAJOR }
         else if self.state is Allocated4k && self.state->Allocated4k_state is PageTable { PAGETABLE_PAGE_MAJOR }
+        else if self.state is Allocated4k && self.state->Allocated4k_state is AsEndpoint { ENDPOINT_PAGE_MAJOR }
         else { Self::allocated_page_lock_major() }
     }
     open spec fn lock_major_1_predicate(&self) -> bool { self.is_free() }

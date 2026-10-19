@@ -84,7 +84,7 @@ verus! {
                     lock_state: if include_lock_state { krnl.ctn_mp.spec_index(ptr).lock_state_u() } else { LockStateU::Unlocked }, zombie: c.zombie,
                     children: c.children.view(), uppertree_seq: c_ghost.uppertree_seq.view(), subtree_set: c_ghost.subtree_set.view(),
                     root_process: c.root_process, owned_processes: c_ghost.owned_processes.view(), owned_threads: c_ghost.owned_threads.view(),
-                    owned_endpoints: c.owned_endpoints.view(), owned_pages: c.owned_pages.view(),
+                    owned_endpoints: c_ghost.owned_endpoints.view(), owned_pages: c.owned_pages.view(),
                     parent: c_ro.parent, depth: c_ro.depth, cpu_set: c_ro.cpu_set,
                     cpu_set_lock: if include_lock_state { krnl.cpu_set_mp.spec_index(c_ro.cpu_set).lock_state_u() } else { LockStateU::Unlocked },
                     cpu_offline_requests: cpu_offline_requests_of(krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(ptr))),
