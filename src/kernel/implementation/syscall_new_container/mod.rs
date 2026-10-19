@@ -8,6 +8,7 @@ mod syscall_new_container_publish;
 mod syscall_new_container_finish;
 mod syscall_new_container_finish_eof;
 mod syscall_new_container_commit;
+mod syscall_new_container_commit_share;
 mod syscall_new_container_share;
 mod syscall_new_container_share_eof;
 pub mod syscall_new_container_spec;

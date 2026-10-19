@@ -292,10 +292,6 @@ pub open spec fn kernel_new_thread_fields(
         pre.ctn_mp.dom().contains(c) ==> {
             &&& post.ctn_mp.spec_index(c).view() == pre.ctn_mp.spec_index(c).view()
             &&& post.ctn_mp.spec_index(c).view_rodata() == pre.ctn_mp.spec_index(c).view_rodata()
-            &&& scheduler_shards_of(post.sched_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().scheduler)) == if c == container_ptr {
-                    scheduler_shards_of(pre.sched_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().scheduler)).update(cpu_id as int,
-                        scheduler_shards_of(pre.sched_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().scheduler))[cpu_id as int].push(new_thread_ptr))
-                } else { scheduler_shards_of(pre.sched_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().scheduler)) }
             &&& PcidAllocator::free_pcids(post.pcid_allc_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator).view().ref_counters.view())
                 == PcidAllocator::free_pcids(pre.pcid_allc_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().pcid_allocator).view().ref_counters.view())
             &&& post.ctn_mp.spec_index(c).view_ghost().uppertree_seq == pre.ctn_mp.spec_index(c).view_ghost().uppertree_seq
@@ -305,6 +301,10 @@ pub open spec fn kernel_new_thread_fields(
                     else { pre.ctn_mp.spec_index(c).view_ghost().owned_threads.view() }
             &&& post.ctn_mp.spec_index(c).being_killed() == pre.ctn_mp.spec_index(c).being_killed()
         }
+    &&& forall|s: RwLockSchedulerPtr| #![trigger post.sched_mp.spec_index(s)]
+        post.sched_mp.dom().contains(s) ==> scheduler_shards_of(post.sched_mp.spec_index(s)) == if s == pre.ctn_mp.spec_index(container_ptr).view_rodata().view().scheduler {
+            scheduler_shards_of(pre.sched_mp.spec_index(s)).update(cpu_id as int, scheduler_shards_of(pre.sched_mp.spec_index(s))[cpu_id as int].push(new_thread_ptr))
+        } else { scheduler_shards_of(pre.sched_mp.spec_index(s)) }
     &&& post.allc_4k_mp == pre.allc_4k_mp
     &&& post.allc_2m_mp == pre.allc_2m_mp
     &&& post.allc_1g_mp == pre.allc_1g_mp
@@ -494,10 +494,10 @@ pub open spec fn kernel_context_switch_fields(pre: &KernelK, post: &KernelK, cpu
             &&& b_ro.cpu_set == a_ro.cpu_set
             &&& b.being_killed() == a.being_killed()
         }
-    &&& forall|c: RwLockContainerPtr| #![trigger post.sched_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().scheduler)]
-        pre.ctn_mp.dom().contains(c) ==> {
-            let queue = scheduler_shards_of(pre.sched_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().scheduler));
-            scheduler_shards_of(post.sched_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().scheduler)) == if c == cpu.owning_container {
+    &&& forall|s: RwLockSchedulerPtr| #![trigger post.sched_mp.spec_index(s)]
+        post.sched_mp.dom().contains(s) ==> {
+            let queue = scheduler_shards_of(pre.sched_mp.spec_index(s));
+            scheduler_shards_of(post.sched_mp.spec_index(s)) == if s == pre.ctn_mp.spec_index(cpu.owning_container).view_rodata().view().scheduler {
                 queue.update(cpu_id as int, match previous { Some(prev) => queue[cpu_id as int].skip(1).push(prev), None => queue[cpu_id as int].skip(1) })
             } else { queue }
         }
@@ -620,10 +620,10 @@ pub open spec fn kernel_rebalance_pull_fields(pre: &KernelK, post: &KernelK, cpu
             &&& post.cpu_arr.spec_index(i).value.view().view() == pre.cpu_arr.spec_index(i).value.view().view()
             &&& post.cpu_arr.spec_index(i).value.killer_info() == pre.cpu_arr.spec_index(i).value.killer_info()
         }
-    &&& forall|c: RwLockContainerPtr| #![trigger post.sched_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().scheduler)]
-        pre.ctn_mp.dom().contains(c) ==> {
-            let q = scheduler_shards_of(pre.sched_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().scheduler));
-            scheduler_shards_of(post.sched_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().scheduler)) == if c == cpu.owning_container {
+    &&& forall|s: RwLockSchedulerPtr| #![trigger post.sched_mp.spec_index(s)]
+        post.sched_mp.dom().contains(s) ==> {
+            let q = scheduler_shards_of(pre.sched_mp.spec_index(s));
+            scheduler_shards_of(post.sched_mp.spec_index(s)) == if s == pre.ctn_mp.spec_index(cpu.owning_container).view_rodata().view().scheduler {
                 q.update(victim as int, q[victim as int].skip(1)).update(cpu_id as int, q[cpu_id as int].push(thread))
             } else { q }
         }

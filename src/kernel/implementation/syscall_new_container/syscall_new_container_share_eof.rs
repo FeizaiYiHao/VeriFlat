@@ -25,6 +25,7 @@ pub(super) open spec fn create_new_container_root_thread_and_unlock_eof_transiti
     &&& forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)] mid.pt_mp.dom().contains(p) ==> post.pt_mp.spec_index(p).view() == mid.pt_mp.spec_index(p).view()
     &&& kernel_cpu_nonlock_fields_unchanged(mid.cpu_arr, post.cpu_arr)
     &&& kernel_process_nonlock_fields_unchanged(mid.prc_mp, post.prc_mp)
+    &&& post.sched_mp.dom() == mid.sched_mp.dom()
     &&& forall|s: RwLockSchedulerPtr| #![trigger scheduler_shards_of(post.sched_mp.spec_index(s))]
         mid.sched_mp.dom().contains(s) ==> scheduler_shards_of(post.sched_mp.spec_index(s)) == scheduler_shards_of(mid.sched_mp.spec_index(s))
     &&& post.thr_mp.dom() == mid.thr_mp.dom()
@@ -58,12 +59,10 @@ pub(super) proof fn create_new_container_root_thread_and_unlock_eof(
     pre: KernelK, mid: KernelK, post: KernelK, child_process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr,
     child_container_ptr: RwLockContainerPtr, caller_cpu_id: CpuId, new_thread_ptr: RwLockThreadPtr, initial_regs: Registers, endpoint: Option<RwLockEndpointPtr>,
 )
-    requires
-        container_scheduler_wf(mid.ctn_mp, mid.sched_mp),
-        create_new_container_root_thread_and_unlock_eof_transition_framing(pre, mid, post, child_process_ptr, current_thread_ptr, child_container_ptr, caller_cpu_id, new_thread_ptr, initial_regs, endpoint),
+    requires create_new_container_root_thread_and_unlock_eof_transition_framing(pre, mid, post, child_process_ptr, current_thread_ptr, child_container_ptr, caller_cpu_id, new_thread_ptr, initial_regs, endpoint),
     ensures kernel_new_thread_fields(&pre, &post, child_process_ptr, current_thread_ptr, child_container_ptr, caller_cpu_id, new_thread_ptr, initial_regs, endpoint, None),
 {
-    reveal(create_new_container_root_thread_and_unlock_eof_transition_framing); reveal(kernel_new_thread_fields); reveal(container_scheduler_wf);
+    reveal(create_new_container_root_thread_and_unlock_eof_transition_framing); reveal(kernel_new_thread_fields);
     reveal(kernel_cpu_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged);
     assert_seqs_equal!(post.thr_mp.spec_index(new_thread_ptr).view().endpoint_descriptors.view() == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| if i == 0 { endpoint } else { None }), i => {});
 }

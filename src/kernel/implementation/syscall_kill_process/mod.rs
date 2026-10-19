@@ -15,6 +15,7 @@ mod syscall_kill_process_retire_pages;
 mod syscall_kill_process_retire_pages_eof;
 mod syscall_kill_process_retire_pages_lock;
 mod syscall_kill_process_retire_pages_spec;
+mod syscall_kill_process_retire_roots;
 mod syscall_kill_process_victim;
 mod syscall_kill_process_victim_eof;
 mod syscall_kill_process_victim_spec;
