@@ -1300,9 +1300,7 @@ pub fn share_mapping_4k_build_and_share(
             Tracked(transfer_source_lock_perm), Tracked(transfer_target_lock_perm),
         );
         proof {
-            assert(forall|j: int| #![trigger steps.view()[j]] old(steps).view().len() <= j < steps.view().len() ==> share_4k_range_step(steps.view()[j], cpu_id)) by {
-                share_4k_range_steps_from_directory(&*steps, build_before, old(steps).view().len() as int, cpu_id);
-            };
+            share_4k_range_steps_from_directory(&*steps, build_before, old(steps).view().len() as int, cpu_id);
             assert(share_mapping_4k_leaf_ready(krnl, source_pagetable, target_pagetable, target_container, source_va, target_va)) by {
                 assert(share_mapping_4k_leaf_owner_compatible(krnl, source_pagetable, target_container, source_va)) by {
                     let source_page = page_ptr2page_index(krnl.pt_mp.spec_index(source_pagetable).view().mapping_4k().spec_index(source_va).addr);
@@ -1329,9 +1327,7 @@ pub fn share_mapping_4k_build_and_share(
             old(krnl).pt_mp.spec_index(source_pagetable).view().user_view(LockStateU::Unlocked).mapping_4k,
             old(krnl).pt_mp.spec_index(target_pagetable).view().user_view(LockStateU::Unlocked).mapping_4k, source_range, target_range, (i + 1) as nat,
         )) by { reveal(share_mapping_4k_target_map_with_shared_prefix); };
-        assert(forall|j: int| #![trigger steps.view()[j]] old(steps).view().len() <= j < steps.view().len() ==> share_4k_range_step(steps.view()[j], cpu_id)) by {
-            share_4k_range_steps_from_leaf(&*steps, leaf_before, old(steps).view().len() as int, cpu_id);
-        };
+        proof { share_4k_range_steps_from_leaf(&*steps, leaf_before, old(steps).view().len() as int, cpu_id); }
         i = i + 1;
     }
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }

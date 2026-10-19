@@ -110,7 +110,7 @@ pub fn syscall_cpu_online_child(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut 
         else { RetValueType::Success };
     proof {
         assert(result == cpu_online_child_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, child, target)) by {
-            reveal(container_cpu_wf); cpu_online_child_result_from_k(&*old(krnl), cpu_id, child, target, result);
+            cpu_online_child_result_from_k(&*old(krnl), cpu_id, child, target, result);
         };
     }
     let success = if let RetValueType::Success = result { true } else { false };

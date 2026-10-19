@@ -243,4 +243,142 @@ pub proof fn unmap_4k_range_steps_from_refund(steps: &KernelSteps, before: Seq<K
     ensures
         forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> unmap_4k_range_step(steps.view()[j], cpu_id),
 { reveal(unmap_4k_range_step); reveal(unmap_4k_refund_step_pre); }
+
+/// Clearing `va`, the `unmapped`-th page of the range, from `pre` to `post` under the unmap locks and recording it after
+/// range steps that start at `start` leaves only range steps.
+pub proof fn unmap_4k_leaf_range_steps_from_k(
+    steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: &KernelK, post: &KernelK, lctx: &LocalContext, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
+    thread_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot, range: VaRange4K, unmapped: usize, va: VAddr,
+)
+    requires
+        0 <= start <= before.len(),
+        forall|j: int| #![trigger before[j]] start <= j < before.len() ==> unmap_4k_range_step(before[j], cpu_id),
+        steps.view() == before.push(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*post) }),
+        typed_lock_maps_aligned(pre, lctx),
+        index_valid(NUM_CPUS, cpu_id),
+        typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.process_lock_map(), process_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.container_lock_map(), pre.thr_mp.spec_index(thread_ptr).view().owning_container, TypedLockMode::Write),
+        !pre.prc_mp.spec_index(process_ptr).view().zombie,
+        pre.prc_mp.spec_index(process_ptr).view().pagetable == pagetable,
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
+        pre.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
+        pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Unmap4k { range, unmapped, flushed: false }),
+        unmapped < range.len,
+        range.view().contains(va),
+        pre.pt_mp.spec_index(pagetable).view().proc_ptr == process_ptr,
+        process_pagetable_match(pre.prc_mp, pre.pt_mp),
+        process_pagetable_match(post.prc_mp, post.pt_mp),
+        pre.pt_mp.dom().contains(pagetable),
+        *post == (KernelK { pt_mp: post.pt_mp, thr_mp: post.thr_mp, ..*pre }),
+        post.pt_mp.unchanged_except(&pre.pt_mp, pagetable),
+        post.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread(),
+        post.pt_mp.spec_index(pagetable).view().proc_ptr == pre.pt_mp.spec_index(pagetable).view().proc_ptr,
+        pre.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va),
+        pre.pt_mp.spec_index(pagetable).view().mapping_4k()[va].present,
+        post.pt_mp.spec_index(pagetable).view().mapping_4k() == pre.pt_mp.spec_index(pagetable).view().mapping_4k().insert(va, MapEntry { present: false, ..pre.pt_mp.spec_index(pagetable).view().mapping_4k()[va] }),
+        post.pt_mp.spec_index(pagetable).view().mapping_2m() == pre.pt_mp.spec_index(pagetable).view().mapping_2m(),
+        post.pt_mp.spec_index(pagetable).view().mapping_1g() == pre.pt_mp.spec_index(pagetable).view().mapping_1g(),
+        pre.thr_mp.dom().contains(thread_ptr),
+        post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr),
+        post.thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: post.thr_mp.spec_index(thread_ptr).view().syscall_progress, ..pre.thr_mp.spec_index(thread_ptr).view() }),
+        post.thr_mp.spec_index(thread_ptr).locking_thread() == pre.thr_mp.spec_index(thread_ptr).locking_thread(),
+        post.thr_mp.spec_index(thread_ptr).being_killed() == pre.thr_mp.spec_index(thread_ptr).being_killed(),
+        post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Unmap4k { range, unmapped: (unmapped + 1) as usize, flushed: false }),
+    ensures
+        forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> unmap_4k_range_step(steps.view()[j], cpu_id),
+{
+    kernel_pagetable_4k_present_cleared_and_progress_changed_implies_u_step(pre, post, pagetable, va, thread_ptr);
+    unmap_4k_leaf_trace_step_pre_from_k(pre, lctx, cpu_id, process_ptr, thread_ptr, pagetable, range, unmapped);
+    unmap_4k_leaf_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, process_ptr, thread_ptr, va, range, unmapped, post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view());
+    unmap_4k_range_steps_from_leaf(steps, before, start, kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, va);
+}
+
+/// TLB flushes of the caller's PCID recorded from `entry` after range steps that start at `start`, while the caller
+/// write-holds its cpu, thread, process, pagetable, and container with the whole range cleared, leave only range steps.
+pub proof fn unmap_4k_tlb_flush_range_steps_from_k(
+    steps: &KernelSteps, before: Seq<KernelStep>, start: int, entry: &KernelK, lctx: &LocalContext, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
+    container_ptr: RwLockContainerPtr, pagetable: RwLockPageTableRoot, pcid: Pcid, range: VaRange4K,
+)
+    requires
+        0 <= start <= before.len() <= steps.view().len(),
+        forall|j: int| #![trigger before[j]] start <= j < before.len() ==> unmap_4k_range_step(before[j], cpu_id),
+        forall|j: int| #![trigger steps.view()[j]] 0 <= j < before.len() ==> steps.view()[j] == before[j],
+        typed_lock_maps_aligned(entry, lctx),
+        index_valid(NUM_CPUS, cpu_id),
+        typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.process_lock_map(), process_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.container_lock_map(), container_ptr, TypedLockMode::Write),
+        !entry.prc_mp.spec_index(process_ptr).view().zombie,
+        entry.prc_mp.spec_index(process_ptr).view().pagetable == pagetable,
+        entry.prc_mp.spec_index(process_ptr).view_rodata().view().pcid == pcid,
+        entry.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
+        entry.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
+        entry.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
+        entry.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Unmap4k { range, unmapped: range.len, flushed: false }),
+        forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
+            let old_u = steps.view()[j].old_u;
+            let entry_u = kernel_k_to_kernel_u(*entry);
+            &&& kernel_u_cpu_tlb_cleared(old_u, steps.view()[j].new_u, pcid)
+            &&& old_u.cpu_array[cpu_id as int].lock_state is WriteLocked
+            &&& old_u.cpu_array[cpu_id as int].current_thread == Some(thread_ptr)
+            &&& old_u.thread_map.dom().contains(thread_ptr)
+            &&& old_u.thread_map[thread_ptr] == entry_u.thread_map[thread_ptr]
+            &&& old_u.process_map.dom().contains(process_ptr)
+            &&& old_u.process_map[process_ptr].lock_state == entry_u.process_map[process_ptr].lock_state
+            &&& old_u.process_map[process_ptr].pagetable == entry_u.process_map[process_ptr].pagetable
+            &&& old_u.process_map[process_ptr].pcid == entry_u.process_map[process_ptr].pcid
+            &&& old_u.container_map.dom().contains(container_ptr)
+            &&& old_u.container_map[container_ptr].lock_state is WriteLocked
+        },
+    ensures
+        forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> unmap_4k_range_step(steps.view()[j], cpu_id),
+{
+    unmap_4k_flush_step_pre_from_k(entry, lctx, cpu_id, process_ptr, thread_ptr, container_ptr, pagetable, pcid, range);
+    unmap_4k_range_steps_from_tlb_flush(steps, before, start, kernel_k_to_kernel_u(*entry), cpu_id, thread_ptr, process_ptr, container_ptr, pcid);
+}
+
+/// Recording the flush in the progress from `pre` to `post` after range steps that start at `start`, while the caller
+/// write-holds its cpu, thread, process, pagetable, and container with the whole range cleared, leaves only range steps.
+pub proof fn unmap_4k_flushed_range_steps_from_k(
+    steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: &KernelK, post: &KernelK, lctx: &LocalContext, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
+    thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, pagetable: RwLockPageTableRoot, pcid: Pcid, range: VaRange4K,
+)
+    requires
+        0 <= start <= before.len(),
+        forall|j: int| #![trigger before[j]] start <= j < before.len() ==> unmap_4k_range_step(before[j], cpu_id),
+        steps.view() == before.push(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*post) }),
+        typed_lock_maps_aligned(pre, lctx),
+        index_valid(NUM_CPUS, cpu_id),
+        typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.process_lock_map(), process_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.container_lock_map(), container_ptr, TypedLockMode::Write),
+        !pre.prc_mp.spec_index(process_ptr).view().zombie,
+        pre.prc_mp.spec_index(process_ptr).view().pagetable == pagetable,
+        pre.prc_mp.spec_index(process_ptr).view_rodata().view().pcid == pcid,
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
+        pre.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
+        pre.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
+        pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Unmap4k { range, unmapped: range.len, flushed: false }),
+        *post == (KernelK { thr_mp: post.thr_mp, ..*pre }),
+        pre.thr_mp.dom().contains(thread_ptr),
+        post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr),
+        post.thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: post.thr_mp.spec_index(thread_ptr).view().syscall_progress, ..pre.thr_mp.spec_index(thread_ptr).view() }),
+        post.thr_mp.spec_index(thread_ptr).locking_thread() == pre.thr_mp.spec_index(thread_ptr).locking_thread(),
+        post.thr_mp.spec_index(thread_ptr).being_killed() == pre.thr_mp.spec_index(thread_ptr).being_killed(),
+        post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Unmap4k { range, unmapped: range.len, flushed: true }),
+    ensures
+        forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> unmap_4k_range_step(steps.view()[j], cpu_id),
+{
+    kernel_thread_syscall_progress_changed_implies_u_step(pre, post, thread_ptr);
+    unmap_4k_flush_step_pre_from_k(pre, lctx, cpu_id, process_ptr, thread_ptr, container_ptr, pagetable, pcid, range);
+    unmap_4k_flushed_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, thread_ptr, range, range.len, post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view());
+    unmap_4k_range_steps_from_flushed(steps, before, start, kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id);
+}
 } // verus!

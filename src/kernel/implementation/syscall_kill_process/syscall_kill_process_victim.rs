@@ -321,7 +321,7 @@ pub(super) fn kill_evict_running_victim(krnl: &mut KernelK, Tracked(lctx): Track
         assert(krnl.cpu_published[remote as int].owner_cpu() == remote) by { cpu_published_wf_at(krnl.cpu_published, krnl.cpu_arr, krnl.pcid_needflush, remote); };
     }
     let default_cr3 = krnl.dflt_pt.borrow().cr3;
-    assert(page_ptr_valid(default_cr3)) by { krnl.default_pagetable_view_inv(); reveal(PageTable::table_pages_wf); };
+    assert(page_ptr_valid(default_cr3)) by { krnl.default_pagetable_view_inv(); };
     krnl.cpu_arr.evict_remote(remote, default_cr3, killer_info, &mut krnl.cpu_published, Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
     proof { lctx.update_lock_id(KernelObjId::Cpu(remote), old_cpu_lock_id, krnl.cpu_arr.lock_id_by_index(remote)); }
     {

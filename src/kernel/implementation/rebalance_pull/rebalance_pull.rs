@@ -412,7 +412,7 @@ fn rebalance_pull_move_head(
     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         let ghost pull_before = steps.view();
-        assert(kernel_rebalance_pull_fields(&steps.snapshot_k(), &*krnl, cpu_id, victim, thread_ptr)) by { reveal(kernel_rebalance_pull_fields); reveal(rebalance_pull_eof_transition_framing); reveal(container_scheduler_wf); };
+        assert(kernel_rebalance_pull_fields(&steps.snapshot_k(), &*krnl, cpu_id, victim, thread_ptr)) by { reveal(kernel_rebalance_pull_fields); reveal(rebalance_pull_eof_transition_framing); };
         steps.end_kernel_step_rebalance_pull(&*krnl, &*lctx, cpu_id, victim, thread_ptr);
         no_locks_held_imply_all_objects_unlocked(krnl, lctx);
         assert(rebalance_pull_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()),

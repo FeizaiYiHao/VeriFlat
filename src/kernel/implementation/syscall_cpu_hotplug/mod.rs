@@ -1,5 +1,6 @@
 pub mod cpu_offline_check;
 pub mod cpu_offline_check_spec;
+mod cpu_offline_check_locked;
 pub mod cpu_online_resume;
 mod cpu_online_resume_eof;
 mod cpu_offline_check_eof;

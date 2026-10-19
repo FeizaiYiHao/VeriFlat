@@ -13,6 +13,7 @@ pub(super) proof fn kernel_new_thread_fields_implies_u_step(
     requires
         process_pagetable_match(post.prc_mp, post.pt_mp),
         process_iommu_table_match(post.prc_mp, post.it_mp),
+        container_scheduler_wf(post.ctn_mp, post.sched_mp),
         kernel_new_thread_fields(pre, post, process_ptr, staging_thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, initial_endpoint, staging_progress),
     ensures
         kernel_u_new_thread_changed(kernel_k_to_nonlock_kernel_u(*pre), kernel_k_to_nonlock_kernel_u(*post),
@@ -37,7 +38,7 @@ pub(super) proof fn kernel_new_thread_fields_implies_u_step(
         owned_threads: pre_u.container_map.spec_index(container_ptr).owned_threads.insert(new_thread_ptr),
         scheduler: pre_u.container_map.spec_index(container_ptr).scheduler.update(cpu_id as int, pre_u.container_map.spec_index(container_ptr).scheduler[cpu_id as int].push(new_thread_ptr)),
         ..pre_u.container_map.spec_index(container_ptr)
-    }), c => {});
+    }), c => { reveal(container_scheduler_wf); });
     assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(staging_thread_ptr, ThreadU {
         quota_4k: (staging.quota_4k as int - 1) as usize, syscall_progress: staging_progress, ..staging
     }).insert(new_thread_ptr, post_u.thread_map.spec_index(new_thread_ptr)), t => {});

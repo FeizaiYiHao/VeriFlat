@@ -351,7 +351,7 @@ pub(super) proof fn eof_create_thread_new_thread_fields(
     ensures
         kernel_new_thread_fields(&pre, &post, process_ptr, staging_thread_ptr, container_ptr, cpu_id, page_ptr, initial_regs, None, pre.thr_mp.spec_index(staging_thread_ptr).view().syscall_progress.view()),
 {
-    reveal(create_thread_from_staged_page_eof_transition_framing); reveal(kernel_new_thread_fields); reveal(container_scheduler_wf);
+    reveal(create_thread_from_staged_page_eof_transition_framing); reveal(kernel_new_thread_fields);
     assert_seqs_equal!(Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| None::<RwLockEndpointPtr>) == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| if i == 0 { None } else { None }), i => {});
 }
 }

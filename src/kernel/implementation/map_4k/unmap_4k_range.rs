@@ -200,14 +200,8 @@ pub fn unmap_4k_range(
             let ghost leaf_before = steps.view();
             let ghost leaf_k = *krnl;
             krnl.kernel_step_boundary_process_4k_mapping_changed(&mut *lctx, &mut *steps, process_ptr, pagetable, va, process_ptr, pagetable, thread_ptr, thread_ptr);
-            assert(forall|j: int| #![trigger steps.view()[j]] old(steps).view().len() <= j < steps.view().len() ==> unmap_4k_range_step(steps.view()[j], cpu_id)) by {
-                range.va_range_lemma();
-                assert(range.view().contains(va)) by { assert(range.view()[i as int] == va); };
-                kernel_pagetable_4k_present_cleared_and_progress_changed_implies_u_step(&leaf_pre, &leaf_k, pagetable, va, thread_ptr);
-                unmap_4k_leaf_trace_step_pre_from_k(&leaf_pre, &leaf_lctx, cpu_id, process_ptr, thread_ptr, pagetable, *range, i);
-                unmap_4k_leaf_step_from_u(kernel_k_to_kernel_u(leaf_pre), kernel_k_to_kernel_u(leaf_k), cpu_id, process_ptr, thread_ptr, va, *range, i, leaf_k.thr_mp.spec_index(thread_ptr).view().syscall_progress.view());
-                unmap_4k_range_steps_from_leaf(&*steps, leaf_before, old(steps).view().len() as int, kernel_k_to_kernel_u(leaf_pre), kernel_k_to_kernel_u(leaf_k), cpu_id, va);
-            };
+            assert(range.view().contains(va)) by { range.va_range_lemma(); assert(range.view()[i as int] == va); };
+            unmap_4k_leaf_range_steps_from_k(&*steps, leaf_before, old(steps).view().len() as int, &leaf_pre, &leaf_k, &leaf_lctx, cpu_id, process_ptr, thread_ptr, pagetable, *range, i, va);
         }
         i = i + 1;
     }
@@ -216,10 +210,7 @@ pub fn unmap_4k_range(
     let ghost flush_lctx = *lctx;
     flush_pagetable_tlbs(krnl, pagetable, cr3, pcid, cpu_id, thread_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm);
     proof {
-        assert(forall|j: int| #![trigger steps.view()[j]] old(steps).view().len() <= j < steps.view().len() ==> unmap_4k_range_step(steps.view()[j], cpu_id)) by {
-            unmap_4k_flush_step_pre_from_k(&flush_entry, &flush_lctx, cpu_id, process_ptr, thread_ptr, container_ptr, pagetable, pcid, *range);
-            unmap_4k_range_steps_from_tlb_flush(&*steps, flush_before, old(steps).view().len() as int, kernel_k_to_kernel_u(flush_entry), cpu_id, thread_ptr, process_ptr, container_ptr, pcid);
-        };
+        unmap_4k_tlb_flush_range_steps_from_k(&*steps, flush_before, old(steps).view().len() as int, &flush_entry, &flush_lctx, cpu_id, process_ptr, thread_ptr, container_ptr, pagetable, pcid, *range);
     }
     let ghost flushed_pre = *krnl;
     let ghost flushed_lctx = *lctx;
@@ -229,12 +220,7 @@ pub fn unmap_4k_range(
         let ghost flushed_k = *krnl;
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
-        assert(forall|j: int| #![trigger steps.view()[j]] old(steps).view().len() <= j < steps.view().len() ==> unmap_4k_range_step(steps.view()[j], cpu_id)) by {
-            kernel_thread_syscall_progress_changed_implies_u_step(&flushed_pre, &flushed_k, thread_ptr);
-            unmap_4k_flush_step_pre_from_k(&flushed_pre, &flushed_lctx, cpu_id, process_ptr, thread_ptr, container_ptr, pagetable, pcid, *range);
-            unmap_4k_flushed_step_from_u(kernel_k_to_kernel_u(flushed_pre), kernel_k_to_kernel_u(flushed_k), cpu_id, thread_ptr, *range, range.len, flushed_k.thr_mp.spec_index(thread_ptr).view().syscall_progress.view());
-            unmap_4k_range_steps_from_flushed(&*steps, flushed_before, old(steps).view().len() as int, kernel_k_to_kernel_u(flushed_pre), kernel_k_to_kernel_u(flushed_k), cpu_id);
-        };
+        unmap_4k_flushed_range_steps_from_k(&*steps, flushed_before, old(steps).view().len() as int, &flushed_pre, &flushed_k, &flushed_lctx, cpu_id, process_ptr, thread_ptr, container_ptr, pagetable, pcid, *range);
     }
     assert(krnl.thr_mp.spec_index(thread_ptr).inv()) by { thread_perms_wf_at(krnl.thr_mp, thread_ptr); };
     assert(krnl.thr_mp.spec_index(thread_ptr).view().container_depth <= MAX_CONTAINER_TREE_DEPTH) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); container_perms_wf_at(krnl.ctn_mp, krnl.thr_mp.spec_index(thread_ptr).view().owning_container); };
@@ -339,9 +325,7 @@ pub fn unmap_4k_range(
     refund_unmap_4k_quota(krnl, thread_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), thread_perm);
     proof {
         assert(krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view() =~= old(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view()) by { thread_perms_wf_at(krnl.thr_mp, thread_ptr); };
-        assert(forall|j: int| #![trigger steps.view()[j]] old(steps).view().len() <= j < steps.view().len() ==> unmap_4k_range_step(steps.view()[j], cpu_id)) by {
-            unmap_4k_range_steps_from_refund(&*steps, refund_before, old(steps).view().len() as int, cpu_id, thread_ptr, process_ptr, container_ptr, refund_progress);
-        };
+        unmap_4k_range_steps_from_refund(&*steps, refund_before, old(steps).view().len() as int, cpu_id, thread_ptr, process_ptr, container_ptr, refund_progress);
     }
 }
 }

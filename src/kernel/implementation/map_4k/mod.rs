@@ -20,6 +20,7 @@ mod unmap_4k_reclaim_eof;
 mod unmap_4k_reclaim_spec;
 pub mod unmap_4k_flush_all;
 pub mod unmap_4k_reclaim_one;
+mod unmap_4k_reclaim_last;
 pub mod unmap_4k_range;
 pub mod unmap_iommu_4k_present;
 mod unmap_iommu_4k_present_eof;
