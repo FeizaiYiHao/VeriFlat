@@ -105,7 +105,8 @@ verus! {
             &&& self.ctn_mp.spec_index(self.rt_ctn).view_ghost().owned_processes.view().contains(self.ctn_mp.spec_index(self.rt_ctn).view().root_process)
             &&& container_process_wf(self.ctn_mp, self.prc_mp)
             &&& per_container_process_tree_wf(self.ctn_mp, self.prc_mp)
-            &&& process_kill_mark_wf(self.prc_mp)
+            &&& process_kill_mark_wf(self.ctn_mp, self.prc_mp)
+            &&& container_kill_mark_wf(self.ctn_mp, self.prc_mp)
             &&& process_state_lock_wf(self.prc_mp)
             &&& container_endpoint_wf(self.ctn_mp, self.ep_mp)
             &&& container_cpu_wf(self.ctn_mp, self.cpu_set_mp, self.cpu_arr)
@@ -409,6 +410,7 @@ verus! {
         &&& lctx.pcid_needflush_lock_map().dom().is_empty()
         &&& lctx.cpu_offline_flag_lock_map().dom().is_empty()
         &&& lctx.container_lock_map().dom() =~= containers
+        &&& forall|c: RwLockContainerPtr| #![trigger lctx.container_lock_map().dom().contains(c)] lctx.container_lock_map().dom().contains(c) && c != cpu.owning_container ==> k.ctn_mp.spec_index(c).being_killed()
         &&& lctx.endpoint_lock_map().dom().is_empty()
         &&& lctx.scheduler_lock_map().dom().is_empty()
         &&& lctx.pcid_allocator_lock_map().dom().is_empty()

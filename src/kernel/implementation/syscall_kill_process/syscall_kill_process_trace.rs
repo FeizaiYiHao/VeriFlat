@@ -406,13 +406,13 @@ pub(crate) proof fn kill_iommu_unmapped_pre_from_k(krnl: &KernelK, target: RwLoc
         kill_process_iommu_4k_unmapped(kernel_k_to_kernel_u(*krnl).process_map[target].iommu_table->Some_0),
 { kernel_iommu_table_4k_unmapped_projection_at(krnl, target); }
 
-/// The killer's cpu, owned by `container_ptr` on `krnl`, is owned by it on the projection.
-pub(crate) proof fn kill_refund_pre_from_k(krnl: &KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr)
+/// The target, owned by `container_ptr` on `krnl`, is owned by it on the projection.
+pub(crate) proof fn kill_refund_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr, container_ptr: RwLockContainerPtr)
     requires
-        index_valid(NUM_CPUS, cpu_id),
-        krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container == container_ptr,
-    ensures kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].owning_container == container_ptr,
-{ kernel_cpu_projection_at(krnl, cpu_id); }
+        krnl.prc_mp.dom().contains(target),
+        krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == container_ptr,
+    ensures kernel_k_to_kernel_u(*krnl).process_map[target].owning_container == container_ptr,
+{ kernel_process_projection_at(krnl, target); }
 
 
 /// Write-locking the cpu, the process, and the thread, marking and write-locking the live child at `child_index`, and
@@ -467,6 +467,7 @@ pub(crate) proof fn kill_mark_child_step_from_u(pre: KernelU, marked: KernelU, p
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
+        pre.thread_map[thread_ptr].syscall_progress->Some_0 is KillProcess,
         kill_target(pre, cpu_id) == target,
         kill_stage(pre, cpu_id) is Walk,
         0 < pre.process_map[target].children.len(),
@@ -510,6 +511,7 @@ pub(crate) proof fn kill_mark_thread_step_from_u(
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
+        pre.thread_map[thread_ptr].syscall_progress->Some_0 is KillProcess,
         kill_target(pre, cpu_id) == target,
         kill_stage(pre, cpu_id) is Walk,
         pre.process_map[target].children.len() == 0,
@@ -591,6 +593,7 @@ pub(crate) proof fn kill_unlink_step_from_u(
         kill_process_step_pre(pre, cpu_id),
         kill_process_victim_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
+        pre.thread_map[thread_ptr].syscall_progress->Some_0 is KillProcess,
         kill_target(pre, cpu_id) == target,
         kill_stage(pre, cpu_id) == (KillStage::Thread { thread: victim_ptr }),
         pre.thread_map[victim_ptr].state is KILLED,
@@ -667,6 +670,7 @@ pub(crate) proof fn kill_lock_table_step_from_u(pre: KernelU, post: KernelU, cpu
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
+        pre.thread_map[thread_ptr].syscall_progress->Some_0 is KillProcess,
         kill_target(pre, cpu_id) == target,
         kill_stage(pre, cpu_id) is Walk,
         pre.process_map[target].children.len() == 0,
@@ -719,6 +723,7 @@ pub(crate) proof fn kill_flushed_step_from_u(pre: KernelU, post: KernelU, cpu_id
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
+        pre.thread_map[thread_ptr].syscall_progress->Some_0 is KillProcess,
         kill_target(pre, cpu_id) == target,
         kill_process_flush_step_pre(pre, cpu_id),
         post == (KernelU {
@@ -757,6 +762,7 @@ pub(crate) proof fn kill_quota_step_from_u(pre: KernelU, returned: KernelU, post
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
+        pre.thread_map[thread_ptr].syscall_progress->Some_0 is KillProcess,
         kill_target(pre, cpu_id) == target,
         kill_process_reclaim_step_pre(pre, cpu_id, kill_process_quota_stage_before(size)),
         pre.container_map.dom().contains(pre.process_map[target].owning_container),
@@ -789,6 +795,7 @@ pub(crate) proof fn kill_unlock_table_step_from_u(pre: KernelU, post: KernelU, c
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
+        pre.thread_map[thread_ptr].syscall_progress->Some_0 is KillProcess,
         kill_target(pre, cpu_id) == target,
         kill_process_reclaim_step_pre(pre, cpu_id, KillStage::Quota { returned: PageSize::SZ1g }),
         kill_process_user_4k_unmapped(pre, pre.process_map[target].pagetable->Some_0),
@@ -811,6 +818,7 @@ pub(crate) proof fn kill_zombify_step_from_u(pre: KernelU, zombified: KernelU, p
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
+        pre.thread_map[thread_ptr].syscall_progress->Some_0 is KillProcess,
         kill_target(pre, cpu_id) == target,
         kill_stage(pre, cpu_id) is Zombie,
         !pre.process_map[target].zombie,
@@ -836,6 +844,7 @@ pub(crate) proof fn kill_zombie_retire_step_from_u(pre: KernelU, post: KernelU, 
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
+        pre.thread_map[thread_ptr].syscall_progress->Some_0 is KillProcess,
         kill_target(pre, cpu_id) == target,
         kill_stage(pre, cpu_id) is Walk,
         pre.process_map[target].children.len() == 0,
@@ -866,6 +875,7 @@ pub(crate) proof fn kill_retire_step_from_u(
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
+        pre.thread_map[thread_ptr].syscall_progress->Some_0 is KillProcess,
         kill_target(pre, cpu_id) == target,
         kill_stage(pre, cpu_id) is Retire,
         pre.process_map[target].children.len() == 0,
@@ -920,6 +930,7 @@ pub(crate) proof fn kill_trace_from_killed_thread_reclaim(
         kill_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id, ctx),
         kernel_steps_prefix_unchanged(before, steps.view()),
         kill_process_step_pre(entry, cpu_id),
+        entry.thread_map[kill_killer(entry, cpu_id)].syscall_progress->Some_0 is KillProcess,
         entry.cpu_array[cpu_id as int].current_process == Some(process_ptr),
         kill_target(entry, cpu_id) == target,
         forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
@@ -966,7 +977,7 @@ pub(crate) proof fn kill_trace_push_tlb_flush(
 
 /// Refund steps, recorded after the partial trace that starts at `start` while the killer's cpu and the lock modes and
 /// kill marks of the killer's process and the target keep their projection at `entry` and the killer keeps its lock
-/// mode and its progress at `stage`, each growing the 4K quota of the killer's container `container_ptr`, extend it.
+/// mode and its progress at `stage`, each growing the 4K quota of the target's container `container_ptr`, extend it.
 pub(crate) proof fn kill_trace_from_refund(
     steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, entry: KernelU, cpu_id: CpuId, ctx: KillTraceCtx, process_ptr: RwLockProcessPtr,
     thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, stage: KillStage, container_ptr: RwLockContainerPtr,
@@ -978,7 +989,7 @@ pub(crate) proof fn kill_trace_from_refund(
         kill_process_step_pre(entry, cpu_id),
         entry.cpu_array[cpu_id as int].current_process == Some(process_ptr),
         entry.cpu_array[cpu_id as int].current_thread == Some(thread_ptr),
-        entry.cpu_array[cpu_id as int].owning_container == container_ptr,
+        entry.process_map[target].owning_container == container_ptr,
         kill_target(entry, cpu_id) == target,
         forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
             let old_u = steps.view()[j].old_u;
@@ -992,6 +1003,7 @@ pub(crate) proof fn kill_trace_from_refund(
             &&& old_u.process_map.dom().contains(target)
             &&& old_u.process_map[target].lock_state == entry.process_map[target].lock_state
             &&& old_u.process_map[target].killed == entry.process_map[target].killed
+            &&& old_u.process_map[target].owning_container == entry.process_map[target].owning_container
         },
     ensures kill_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, ctx),
 {

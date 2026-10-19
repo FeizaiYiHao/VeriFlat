@@ -38,6 +38,7 @@ pub open spec fn create_thread_from_staged_page_eof_transition_framing(
             &&& post.ctn_mp.spec_index(c).view_rodata() == pre.ctn_mp.spec_index(c).view_rodata()
             &&& post.ctn_mp.spec_index(c).locking_thread() == pre.ctn_mp.spec_index(c).locking_thread()
             &&& post.ctn_mp.spec_index(c).being_killed() == pre.ctn_mp.spec_index(c).being_killed()
+            &&& post.ctn_mp.spec_index(c).killer_info() == pre.ctn_mp.spec_index(c).killer_info()
             &&& post.ctn_mp.spec_index(c).view_ghost() == (ContainerGhost {
                 uppertree_seq: pre_ghost.uppertree_seq, subtree_set: pre_ghost.subtree_set, owned_processes: pre_ghost.owned_processes,
                 owned_threads: if c == container_ptr { Ghost(pre_ghost.owned_threads.view().insert(page_ptr)) } else { pre_ghost.owned_threads },
@@ -277,7 +278,8 @@ proof fn eof_create_thread_process_management_inv(
     assert(container_pcid_allocator_wf(post.ctn_mp, post.pcid_allc_mp)) by { reveal(container_pcid_allocator_wf); };
     assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { reveal(process_pcid_allocator_wf); };
     assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { reveal(container_thread_wf); pre.ctn_mp.spec_index(container_ptr).view_ghost().uppertree_seq.view().to_set_ensures(); };
-    assert(process_kill_mark_wf(post.prc_mp)) by { reveal(process_kill_mark_wf); };
+    assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
+    assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
     assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
     assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
     assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { lemma_process_cpu_wf_preserved_for_process_pagetable_fields_forall(); };

@@ -75,7 +75,8 @@ pub(super) proof fn commit_alloc_quota_4k_eof(pre: &KernelK, post: &KernelK, con
         assert(container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by { lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(*pre, *post); };
     };
     assert(post.process_management_inv()) by {
-        assert(process_kill_mark_wf(post.prc_mp)) by { reveal(process_kill_mark_wf); };
+        assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
+        assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
         assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
         assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { lemma_process_pcid_allocator_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
@@ -165,7 +166,8 @@ pub(super) proof fn commit_alloc_quota_2m_eof(pre: &KernelK, post: &KernelK, con
         assert(container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr)) by { lemma_container_allocator_free_2m_page_wf_preserved_for_lock_op(*pre, *post); };
     };
     assert(post.process_management_inv()) by {
-        assert(process_kill_mark_wf(post.prc_mp)) by { reveal(process_kill_mark_wf); };
+        assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
+        assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
         assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
         assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { lemma_process_pcid_allocator_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
@@ -262,7 +264,8 @@ pub(super) proof fn commit_alloc_thread_quota_4k_eof(pre: &KernelK, post: &Kerne
         };
     };
     assert(post.process_management_inv()) by {
-        assert(process_kill_mark_wf(post.prc_mp)) by { reveal(process_kill_mark_wf); };
+        assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
+        assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
         assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
         assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { lemma_process_pcid_allocator_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
@@ -365,7 +368,8 @@ pub(super) proof fn commit_alloc_thread_quota_2m_eof(pre: &KernelK, post: &Kerne
         };
     };
     assert(post.process_management_inv()) by {
-        assert(process_kill_mark_wf(post.prc_mp)) by { reveal(process_kill_mark_wf); };
+        assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
+        assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
         assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
         assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { lemma_process_pcid_allocator_wf_preserved_for_process_invariant_fields_except_quota_forall(); };

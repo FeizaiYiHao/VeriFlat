@@ -153,6 +153,7 @@ pub open spec fn create_process_from_staged_pages_eof_transition_framing(
     &&& post.ctn_mp.spec_index(container_ptr).view_ghost() == (ContainerGhost { owned_processes: post.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes, ..pre.ctn_mp.spec_index(container_ptr).view_ghost() })
     &&& post.ctn_mp.spec_index(container_ptr).locking_thread() == pre.ctn_mp.spec_index(container_ptr).locking_thread()
     &&& post.ctn_mp.spec_index(container_ptr).being_killed() == pre.ctn_mp.spec_index(container_ptr).being_killed()
+    &&& post.ctn_mp.spec_index(container_ptr).killer_info() == pre.ctn_mp.spec_index(container_ptr).killer_info()
     &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)]
         pre.ctn_mp.dom().contains(c) ==> post.ctn_mp.spec_index(c).view_ghost().owned_threads == pre.ctn_mp.spec_index(c).view_ghost().owned_threads
     &&& forall|c_ptr: RwLockContainerPtr|
@@ -300,6 +301,46 @@ pub(super) proof fn eof_page_table_relations(
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.it_mp)) by { reveal(process_emptied_tables_wf); reveal(process_pagetable_match); };
 }
 
+broadcast proof fn eof_thread_staged_pages_4k_backward(
+    pre: KernelK, post: KernelK, process_page_ptr: PagePtr, pagetable_page_ptr: PagePtr, l4_page_ptr: PagePtr, parent_ptr: RwLockProcessPtr,
+    staging_thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, pcid_allocator_ptr: RwLockPcidAllocatorPtr, pcid: Pcid,
+    thread_ptr: RwLockThreadPtr, page_ptr: PagePtr,
+)
+    requires
+        thread_staged_pages_4k_wf(pre.thr_mp, pre.pg_arr),
+        pre.thr_mp.dom().contains(staging_thread_ptr),
+        pre.thr_mp.spec_index(staging_thread_ptr).view().temp_alloc_cache_4k.view() =~= set![process_page_ptr, pagetable_page_ptr, l4_page_ptr],
+        create_process_from_staged_pages_eof_transition_framing(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid),
+        post.thr_mp.dom().contains(thread_ptr),
+        post.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr),
+    ensures
+        #![trigger create_process_from_staged_pages_eof_transition_framing(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid),
+            post.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr)]
+        page_ptr_valid(page_ptr) && post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Owned4k { thread_ptr }),
+{
+    reveal(create_process_from_staged_pages_eof_transition_framing);
+    if thread_ptr != staging_thread_ptr {
+        thread_staged_pages_4k_wf_at(pre.thr_mp, pre.pg_arr, thread_ptr, page_ptr);
+        thread_staged_pages_4k_wf_at(pre.thr_mp, pre.pg_arr, staging_thread_ptr, process_page_ptr);
+        thread_staged_pages_4k_wf_at(pre.thr_mp, pre.pg_arr, staging_thread_ptr, pagetable_page_ptr);
+        thread_staged_pages_4k_wf_at(pre.thr_mp, pre.pg_arr, staging_thread_ptr, l4_page_ptr);
+        page_ptr_valid_imply_page_index_valid();
+    }
+}
+
+proof fn eof_thread_staged_pages_4k(
+    pre: KernelK, post: KernelK, process_page_ptr: PagePtr, pagetable_page_ptr: PagePtr, l4_page_ptr: PagePtr, parent_ptr: RwLockProcessPtr,
+    staging_thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, pcid_allocator_ptr: RwLockPcidAllocatorPtr, pcid: Pcid,
+)
+    requires
+        thread_staged_pages_4k_wf(pre.thr_mp, pre.pg_arr),
+        pre.thr_mp.dom().contains(staging_thread_ptr),
+        pre.thr_mp.spec_index(staging_thread_ptr).view().temp_alloc_cache_4k.view() =~= set![process_page_ptr, pagetable_page_ptr, l4_page_ptr],
+        create_process_from_staged_pages_eof_transition_framing(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid),
+    ensures
+        thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr),
+{ broadcast use eof_thread_staged_pages_4k_backward; reveal(create_process_from_staged_pages_eof_transition_framing); reveal(thread_staged_pages_4k_wf); }
+
 proof fn eof_thread_staged_pages_1g(pre: KernelK, post: KernelK, staging_thread_ptr: RwLockThreadPtr)
     requires
         thread_staged_pages_1g_wf(pre.thr_mp, pre.pg_arr),
@@ -372,7 +413,7 @@ pub(super) proof fn eof_memory_relations(
     assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { scheduler_pages_wf_preserved_for_page_state_eq(pre.sched_mp, post.sched_mp, pre.pg_arr, post.pg_arr); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
     assert(pcid_allocator_pages_wf(post.pg_arr, post.pcid_allc_mp)) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.pcid_allc_mp, post.pcid_allc_mp); };
-    assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_4k_wf); };
+    assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by { eof_thread_staged_pages_4k(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid); };
     assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
     assert(thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr)) by { eof_thread_staged_pages_1g(pre, post, staging_thread_ptr); };
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
@@ -595,7 +636,8 @@ pub(super) proof fn eof_process_management_inv(
         assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { reveal(process_pcid_allocator_wf); reveal(container_pcid_allocator_wf); };
         assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { container_thread_scheduler_wf_preserved_for_scheduled_thread_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, post.sched_mp); reveal(container_thread_wf); };
         assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { container_thread_wf_preserved_for_container_thread_link_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp); };
-        assert(process_kill_mark_wf(post.prc_mp)) by { reveal(process_kill_mark_wf); };
+        assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
+        assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
         assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
         assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); };
         assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(Seq::contains); reveal(process_thread_wf); };
@@ -671,6 +713,7 @@ pub(super) proof fn eof_inv(
         post.ctn_mp.dom() == pre.ctn_mp.dom(),
         post.ctn_mp.spec_index(container_ptr).view_rodata() == pre.ctn_mp.spec_index(container_ptr).view_rodata(),
         post.ctn_mp.spec_index(container_ptr).being_killed() == pre.ctn_mp.spec_index(container_ptr).being_killed(),
+        post.ctn_mp.spec_index(container_ptr).killer_info() == pre.ctn_mp.spec_index(container_ptr).killer_info(),
         post.thr_mp.dom() == pre.thr_mp.dom(),
         post.thr_mp.spec_index(staging_thread_ptr).view() == (Thread {
             quota_4k: (pre.thr_mp.spec_index(staging_thread_ptr).view().quota_4k - 3) as usize,

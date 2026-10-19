@@ -65,6 +65,7 @@ pub open spec fn kill_retire_eof_transition_framing(
         owned_processes: Ghost(pre.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().remove(target)), ..pre.ctn_mp.spec_index(container_ptr).view_ghost() })
     &&& post.ctn_mp.spec_index(container_ptr).locking_thread() == pre.ctn_mp.spec_index(container_ptr).locking_thread()
     &&& post.ctn_mp.spec_index(container_ptr).being_killed() == pre.ctn_mp.spec_index(container_ptr).being_killed()
+    &&& post.ctn_mp.spec_index(container_ptr).killer_info() == pre.ctn_mp.spec_index(container_ptr).killer_info()
     &&& post.ctn_mp.unchanged_except(&pre.ctn_mp, container_ptr)
     &&& post.pt_mp.dom() =~= pre.pt_mp.dom().remove(pagetable)
     &&& forall|t: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(t)] post.pt_mp.dom().contains(t) ==> post.pt_mp.spec_index(t) == pre.pt_mp.spec_index(t)

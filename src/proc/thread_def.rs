@@ -46,7 +46,22 @@ pub ghost enum KillStage {
     Retire,
 }
 
+/// Where a container kill stands at the marked container it works on.
+pub ghost enum ContainerKillStage {
+    /// The kill descends into a child container, marks the container's root process, or moves on to its cpus.
+    Walk,
+    /// The kill works on the marked process `process` of the container at `stage`.
+    Process { process: RwLockProcessPtr, stage: KillStage },
+    /// The container owns neither children nor processes: its cpus move to the killer's container.
+    Cpus,
+    /// No cpu belongs to the container: its free pages move to the killer's container.
+    Pages,
+    /// The container has no free page left and is being retired.
+    Retire,
+}
+
 /// Progress of a multi-step syscall owned by the write-locked thread.
+#[allow(inconsistent_fields)]
 pub ghost enum SyscallProgress {
     Mmap4k { range: VaRange4K, mapped: usize, directory: Mmap4kDirectory },
     Unmap4k { range: VaRange4K, unmapped: usize, flushed: bool },
@@ -79,6 +94,8 @@ pub ghost enum SyscallProgress {
     ThreadExitZombie,
     /// Kill of a child's subtree while the killer works on the marked process `process`.
     KillProcess { process: RwLockProcessPtr, stage: KillStage },
+    /// Kill of a child container's subtree while the killer works on the marked container `container`.
+    KillContainer { container: RwLockContainerPtr, stage: ContainerKillStage },
 }
 
 pub struct Thread {

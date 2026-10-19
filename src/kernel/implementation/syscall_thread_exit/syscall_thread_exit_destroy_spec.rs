@@ -72,6 +72,7 @@ pub open spec fn thread_exit_destroy_eof_transition_framing(
             &&& after.view_rodata() == before.view_rodata()
             &&& after.locking_thread() == before.locking_thread()
             &&& after.being_killed() == before.being_killed()
+            &&& after.killer_info() == before.killer_info()
             &&& after.view_ghost() == (ContainerGhost {
                 owned_threads: if c == container_ptr { Ghost(before.view_ghost().owned_threads.view().remove(thread_ptr)) } else { before.view_ghost().owned_threads },
                 owned_indirect_threads: if uppers.to_set().contains(c) { Ghost(before.view_ghost().owned_indirect_threads.view().remove(thread_ptr)) }
@@ -94,6 +95,7 @@ pub open spec fn thread_exit_destroy_eof_transition_framing(
     &&& post_process.view_ghost() == pre_process.view_ghost()
     &&& post_process.locking_thread() == pre_process.locking_thread()
     &&& post_process.being_killed() == pre_process.being_killed()
+    &&& post_process.killer_info() == pre_process.killer_info()
     &&& zombie ==> pre_process.view().state.view() is TablesEmptied
     &&& post.thr_mp.dom() == pre.thr_mp.dom().remove(thread_ptr)
     &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)] post.thr_mp.dom().contains(t) ==> post.thr_mp.spec_index(t) == pre.thr_mp.spec_index(t)

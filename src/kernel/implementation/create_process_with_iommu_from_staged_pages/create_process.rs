@@ -122,6 +122,7 @@ pub fn create_process_with_iommu_from_staged_pages(
         final(krnl).ctn_mp.dom() == old(krnl).ctn_mp.dom(),
         final(krnl).ctn_mp.spec_index(container_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(container_ptr).view_rodata(),
         final(krnl).ctn_mp.spec_index(container_ptr).being_killed() == old(krnl).ctn_mp.spec_index(container_ptr).being_killed(),
+        final(krnl).ctn_mp.spec_index(container_ptr).killer_info() == old(krnl).ctn_mp.spec_index(container_ptr).killer_info(),
         final(krnl).thr_mp.dom() == old(krnl).thr_mp.dom(),
         final(krnl).thr_mp.spec_index(staging_thread_ptr).view() == (Thread {
             quota_4k: (old(krnl).thr_mp.spec_index(staging_thread_ptr).view().quota_4k - 5) as usize,

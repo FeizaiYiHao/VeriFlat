@@ -274,7 +274,8 @@ proof fn thread_exit_destroy_eof_thread_relations(
         post.ctn_mp.spec_index(post.rt_ctn).view_ghost().owned_processes.view().contains(post.ctn_mp.spec_index(post.rt_ctn).view().root_process),
         container_process_wf(post.ctn_mp, post.prc_mp),
         per_container_process_tree_wf(post.ctn_mp, post.prc_mp),
-        process_kill_mark_wf(post.prc_mp),
+        process_kill_mark_wf(post.ctn_mp, post.prc_mp),
+        container_kill_mark_wf(post.ctn_mp, post.prc_mp),
         process_state_lock_wf(post.prc_mp),
         process_emptied_threads_wf(post.prc_mp, post.thr_mp),
         container_endpoint_wf(post.ctn_mp, post.ep_mp),
@@ -303,7 +304,8 @@ proof fn thread_exit_destroy_eof_thread_relations(
         per_container_process_tree_wf_preserved_for_tree_fields_eq(pre.ctn_mp, pre.prc_mp, post.prc_mp);
         reveal(per_container_process_tree_wf);
     };
-    assert(process_kill_mark_wf(post.prc_mp)) by { reveal(process_kill_mark_wf); };
+    assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
+    assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
     assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
     assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); reveal(process_thread_wf); };
     assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { container_endpoint_wf_preserved_for_endpoint_owner_eq(pre.ctn_mp, post.ctn_mp, pre.ep_mp, post.ep_mp); };

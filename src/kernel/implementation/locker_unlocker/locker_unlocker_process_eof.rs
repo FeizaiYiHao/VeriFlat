@@ -22,7 +22,8 @@ pub(super) proof fn wlock_process_eof(pre: KernelK, post: KernelK, process_ptr: 
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.it_mp)) by { reveal(process_emptied_tables_wf); };
     assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_process_invariant_fields(pre, post); };
     assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(process_thread_wf); };
-    assert(process_kill_mark_wf(post.prc_mp)) by { reveal(process_kill_mark_wf); };
+    assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
+    assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
     assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
     assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
     assert(post.process_management_inv()) by { process_management_inv_preserved_for_process_invariant_fields(pre, post); };
@@ -72,11 +73,12 @@ pub(super) proof fn mark_kill_process_eof(pre: KernelK, post: KernelK, pre_lctx:
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.it_mp)) by { reveal(process_emptied_tables_wf); };
     assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_process_invariant_fields(pre, post); };
     assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(process_thread_wf); };
-    assert(process_kill_mark_wf(post.prc_mp)) by {
+    assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by {
         reveal(process_kill_mark_wf);
         pre.prc_mp.typed_lock_map_aligned_write_at(pre_lctx.process_lock_map(), pre_lctx.thread_id(), killer_process);
         pre.prc_mp.typed_lock_map_aligned_write_at(pre_lctx.process_lock_map(), pre_lctx.thread_id(), pre.prc_mp.spec_index(process_ptr).view_rodata().view().parent->Some_0);
     };
+    assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
     assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
     assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
     assert(post.process_management_inv()) by { process_management_inv_preserved_for_process_invariant_fields(pre, post); };
@@ -96,6 +98,8 @@ pub(super) proof fn wunlock_process_eof(pre: KernelK, post: KernelK, pre_lctx: L
         pre.prc_mp.spec_index(process_ptr).being_killed() == false,
         forall|d: RwLockProcessPtr| #![trigger pre_lctx.process_lock_map().dom().contains(d)] pre_lctx.process_lock_map().dom().contains(d) && pre.prc_mp.spec_index(d).killer_info() is Some
             ==> pre.prc_mp.spec_index(d).killer_info()->Some_0.process != process_ptr && pre.prc_mp.spec_index(d).view_rodata().view().parent != Some(process_ptr),
+        forall|c: RwLockContainerPtr| #![trigger pre_lctx.container_lock_map().dom().contains(c)] pre_lctx.container_lock_map().dom().contains(c) && pre.ctn_mp.spec_index(c).killer_info() is Some
+            ==> pre.ctn_mp.spec_index(c).killer_info()->Some_0.process != process_ptr,
         pre.prc_mp.spec_index(process_ptr).view().state.view() is Running || pre.prc_mp.spec_index(process_ptr).view().state.view() is Zombie,
         pre.prc_mp.spec_index(process_ptr).view().iommu_table is Some ==> !pre_lctx.iommu_table_lock_map().dom().contains(pre.prc_mp.spec_index(process_ptr).view().iommu_table->Some_0),
         typed_lock_map_contains_mode(pre_lctx.process_lock_map(), process_ptr, TypedLockMode::Write),
@@ -113,7 +117,8 @@ pub(super) proof fn wunlock_process_eof(pre: KernelK, post: KernelK, pre_lctx: L
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.it_mp)) by { reveal(process_emptied_tables_wf); };
     assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_process_invariant_fields(pre, post); };
     assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(process_thread_wf); };
-    assert(process_kill_mark_wf(post.prc_mp)) by { reveal(process_kill_mark_wf); reveal(LockedMap::typed_lock_map_aligned); };
+    assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); reveal(LockedMap::typed_lock_map_aligned); };
+    assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); reveal(LockedMap::typed_lock_map_aligned); };
     assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
     assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
     assert(post.process_management_inv()) by { process_management_inv_preserved_for_process_invariant_fields(pre, post); };

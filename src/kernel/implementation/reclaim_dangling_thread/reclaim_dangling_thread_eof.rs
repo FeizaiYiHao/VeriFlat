@@ -161,6 +161,8 @@ proof fn reclaim_dangling_thread_eof_thread_relations(
         post.ctn_mp.spec_index(post.rt_ctn).view_ghost().owned_processes.view().contains(post.ctn_mp.spec_index(post.rt_ctn).view().root_process),
         container_process_wf(post.ctn_mp, post.prc_mp),
         per_container_process_tree_wf(post.ctn_mp, post.prc_mp),
+        process_kill_mark_wf(post.ctn_mp, post.prc_mp),
+        container_kill_mark_wf(post.ctn_mp, post.prc_mp),
         container_endpoint_wf(post.ctn_mp, post.ep_mp),
         container_scheduler_wf(post.ctn_mp, post.sched_mp),
         container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp),
@@ -184,6 +186,8 @@ proof fn reclaim_dangling_thread_eof_thread_relations(
     assert(post.ctn_mp.spec_index(post.rt_ctn).view_ghost().owned_processes.view().contains(post.ctn_mp.spec_index(post.rt_ctn).view().root_process)) by { reveal(container_root_wf); };
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { reveal(per_container_process_tree_wf); };
+    assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
+    assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
     assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { container_endpoint_wf_preserved_for_endpoint_owner_eq(pre.ctn_mp, post.ctn_mp, pre.ep_mp, post.ep_mp); };
     assert(container_scheduler_wf(post.ctn_mp, post.sched_mp)) by { container_scheduler_wf_preserved_for_scheduler_owner_eq(pre.ctn_mp, post.ctn_mp, pre.sched_mp, post.sched_mp); };
     assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
@@ -295,6 +299,7 @@ pub(super) proof fn reclaim_dangling_thread_eof_fields(
             &&& post.ctn_mp.spec_index(c).view_rodata() == start.ctn_mp.spec_index(c).view_rodata()
             &&& post.ctn_mp.spec_index(c).locking_thread() == start.ctn_mp.spec_index(c).locking_thread()
             &&& post.ctn_mp.spec_index(c).being_killed() == start.ctn_mp.spec_index(c).being_killed()
+            &&& post.ctn_mp.spec_index(c).killer_info() == start.ctn_mp.spec_index(c).killer_info()
         },
 {
     reveal(reclaim_dangling_thread_eof_transition_framing); reveal(kernel_dangling_thread_reclaimed_fields); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);

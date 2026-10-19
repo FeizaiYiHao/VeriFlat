@@ -65,6 +65,7 @@ pub fn create_endpoint_from_staged_page(
         final(krnl).thr_mp.lock_id_by_key(staging_thread_ptr) == old(krnl).thr_mp.lock_id_by_key(staging_thread_ptr),
         final(krnl).ctn_mp.unchanged_except(&old(krnl).ctn_mp, container_ptr),
         final(krnl).ctn_mp.spec_index(container_ptr).being_killed() == old(krnl).ctn_mp.spec_index(container_ptr).being_killed(),
+        final(krnl).ctn_mp.spec_index(container_ptr).killer_info() == old(krnl).ctn_mp.spec_index(container_ptr).killer_info(),
         final(krnl).ctn_mp.spec_index(container_ptr).view() == old(krnl).ctn_mp.spec_index(container_ptr).view(),
         final(krnl).ctn_mp.spec_index(container_ptr).view_ghost() == (ContainerGhost {
             owned_endpoints: Ghost(old(krnl).ctn_mp.spec_index(container_ptr).view_ghost().owned_endpoints.view().insert(page_ptr)), ..old(krnl).ctn_mp.spec_index(container_ptr).view_ghost()

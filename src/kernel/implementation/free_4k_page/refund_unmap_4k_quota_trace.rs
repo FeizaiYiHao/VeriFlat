@@ -47,6 +47,7 @@ pub proof fn refund_unmap_4k_step_pre_from_k(krnl: &KernelK, entry: &KernelK, lc
                 &&& u.process_map.dom().contains(p)
                 &&& u.process_map[p].lock_state == entry_u.process_map[p].lock_state
                 &&& u.process_map[p].killed == entry_u.process_map[p].killed
+                &&& u.process_map[p].owning_container == entry_u.process_map[p].owning_container
             }
         }),
 {

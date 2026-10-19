@@ -65,6 +65,8 @@ pub proof fn process_management_inv_preserved_for_container_invariant_fields(pre
     requires
         pre.process_management_inv(),
         container_process_wf(post.ctn_mp, post.prc_mp),
+        process_kill_mark_wf(post.ctn_mp, post.prc_mp),
+        container_kill_mark_wf(post.ctn_mp, post.prc_mp),
         container_invariant_fields_unchanged(pre.ctn_mp, post.ctn_mp),
         post.cpu_arr == pre.cpu_arr,
         post.sched_mp == pre.sched_mp,

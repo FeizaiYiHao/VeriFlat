@@ -59,6 +59,7 @@ pub fn reclaim_dangling_thread(
             &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == final(steps).snapshot_k().ctn_mp.spec_index(c).view_rodata()
             &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == final(steps).snapshot_k().ctn_mp.spec_index(c).locking_thread()
             &&& final(krnl).ctn_mp.spec_index(c).being_killed() == final(steps).snapshot_k().ctn_mp.spec_index(c).being_killed()
+            &&& final(krnl).ctn_mp.spec_index(c).killer_info() == final(steps).snapshot_k().ctn_mp.spec_index(c).killer_info()
         },
         held_containers_unchanged(old(krnl).ctn_mp, final(steps).snapshot_k().ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(steps).snapshot_k().prc_mp, old(lctx)),

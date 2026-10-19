@@ -313,6 +313,8 @@ pub(crate) fn kill_retire_commit(
         typed_lock_map_contains_mode(old(lctx).allocator_cache_4k_lock_map(), (allocator_ptr, cpu_id), TypedLockMode::Write),
         forall|d: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(d)] old(lctx).process_lock_map().dom().contains(d) && old(krnl).prc_mp.spec_index(d).killer_info() is Some
             ==> old(krnl).prc_mp.spec_index(d).killer_info()->Some_0.process != target && old(krnl).prc_mp.spec_index(d).view_rodata().view().owning_container == container_ptr,
+        forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) && old(krnl).ctn_mp.spec_index(c).killer_info() is Some
+            ==> old(krnl).ctn_mp.spec_index(c).killer_info()->Some_0.process != target,
         cache_lock_perm.state() is WriteLock,
         cache_lock_perm.thread_id() == old(lctx).thread_id(),
         cache_lock_perm.lock_id() == old(krnl).allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
@@ -402,6 +404,7 @@ pub(crate) fn kill_retire_commit(
             owned_processes: Ghost(base.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().remove(target)), ..base.ctn_mp.spec_index(container_ptr).view_ghost() }),
         final(krnl).ctn_mp.spec_index(container_ptr).locking_thread() == base.ctn_mp.spec_index(container_ptr).locking_thread(),
         final(krnl).ctn_mp.spec_index(container_ptr).being_killed() == base.ctn_mp.spec_index(container_ptr).being_killed(),
+        final(krnl).ctn_mp.spec_index(container_ptr).killer_info() == base.ctn_mp.spec_index(container_ptr).killer_info(),
         forall|a: RwLockPageAllocatorPtr| #![trigger final(krnl).allc_4k_mp.spec_index(a)]
             base.allc_4k_mp.dom().contains(a) && a != allocator_ptr ==> final(krnl).allc_4k_mp.spec_index(a).quota.view() == base.allc_4k_mp.spec_index(a).quota.view(),
         base.allc_4k_mp.spec_index(allocator_ptr).quota.view().view() < final(krnl).allc_4k_mp.spec_index(allocator_ptr).quota.view().view(),
@@ -516,6 +519,7 @@ pub(crate) fn kill_retire_unlink_process(
             owned_processes: Ghost(old(krnl).ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().remove(target)), ..old(krnl).ctn_mp.spec_index(container_ptr).view_ghost() }),
         final(krnl).ctn_mp.spec_index(container_ptr).locking_thread() == old(krnl).ctn_mp.spec_index(container_ptr).locking_thread(),
         final(krnl).ctn_mp.spec_index(container_ptr).being_killed() == old(krnl).ctn_mp.spec_index(container_ptr).being_killed(),
+        final(krnl).ctn_mp.spec_index(container_ptr).killer_info() == old(krnl).ctn_mp.spec_index(container_ptr).killer_info(),
         ret.view().is_init(),
         ret.view().addr() == target,
 {

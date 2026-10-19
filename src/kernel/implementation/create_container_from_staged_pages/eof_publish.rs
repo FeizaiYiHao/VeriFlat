@@ -161,6 +161,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
             &&& post.ctn_mp.spec_index(ptr).view_rodata() == pre.ctn_mp.spec_index(ptr).view_rodata()
             &&& post.ctn_mp.spec_index(ptr).locking_thread() == pre.ctn_mp.spec_index(ptr).locking_thread()
             &&& post.ctn_mp.spec_index(ptr).being_killed() == pre.ctn_mp.spec_index(ptr).being_killed()
+            &&& post.ctn_mp.spec_index(ptr).killer_info() == pre.ctn_mp.spec_index(ptr).killer_info()
             &&& post.ctn_mp.spec_index(ptr).view().parent_linkedlist_node == pre.ctn_mp.spec_index(ptr).view().parent_linkedlist_node
             &&& post.ctn_mp.spec_index(ptr).view_ghost().owned_threads == pre.ctn_mp.spec_index(ptr).view_ghost().owned_threads
             &&& post.ctn_mp.spec_index(ptr).view_ghost().owned_processes == pre.ctn_mp.spec_index(ptr).view_ghost().owned_processes

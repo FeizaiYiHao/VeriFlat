@@ -51,3 +51,5 @@ pub use process_kill_mark_spec::*;
 pub mod process_state_spec;
 pub use process_state_spec::*;
 pub use process_subsystem_mutation::*;
+pub mod container_kill_mark_spec;
+pub use container_kill_mark_spec::*;

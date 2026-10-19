@@ -359,6 +359,7 @@ pub proof fn container_map_add_owned_process(tracked container_map: &mut Contain
         final(container_map).spec_index(container_ptr).view_rodata() == old(container_map).spec_index(container_ptr).view_rodata(),
         final(container_map).spec_index(container_ptr).locking_thread() == old(container_map).spec_index(container_ptr).locking_thread(),
         final(container_map).spec_index(container_ptr).being_killed() == old(container_map).spec_index(container_ptr).being_killed(),
+        final(container_map).spec_index(container_ptr).killer_info() == old(container_map).spec_index(container_ptr).killer_info(),
         final(container_map).spec_index(container_ptr).inv(),
         forall|ptr: RwLockContainerPtr|
             #![trigger final(container_map).view().spec_index(ptr).is_init()]
@@ -392,6 +393,7 @@ pub proof fn container_map_remove_owned_process(tracked container_map: &mut Cont
         final(container_map).spec_index(container_ptr).view_rodata() == old(container_map).spec_index(container_ptr).view_rodata(),
         final(container_map).spec_index(container_ptr).locking_thread() == old(container_map).spec_index(container_ptr).locking_thread(),
         final(container_map).spec_index(container_ptr).being_killed() == old(container_map).spec_index(container_ptr).being_killed(),
+        final(container_map).spec_index(container_ptr).killer_info() == old(container_map).spec_index(container_ptr).killer_info(),
         final(container_map).spec_index(container_ptr).inv(),
         forall|ptr: RwLockContainerPtr|
             #![trigger final(container_map).view().spec_index(ptr).is_init()]
@@ -714,6 +716,7 @@ pub proof fn add_thread_to_container_sets(
                 &&& final(container_map).spec_index(c).view_rodata() == old(container_map).spec_index(c).view_rodata()
                 &&& final(container_map).spec_index(c).locking_thread() == old(container_map).spec_index(c).locking_thread()
                 &&& final(container_map).spec_index(c).being_killed() == old(container_map).spec_index(c).being_killed()
+                &&& final(container_map).spec_index(c).killer_info() == old(container_map).spec_index(c).killer_info()
                 &&& final(container_map).spec_index(c).view_ghost() == ContainerGhost {
                     uppertree_seq: old(container_map).spec_index(c).view_ghost().uppertree_seq, subtree_set: old(container_map).spec_index(c).view_ghost().subtree_set,
                     owned_processes: old(container_map).spec_index(c).view_ghost().owned_processes,
@@ -775,6 +778,7 @@ pub proof fn remove_thread_from_container_sets(
                 &&& final(container_map).spec_index(c).view_rodata() == old(container_map).spec_index(c).view_rodata()
                 &&& final(container_map).spec_index(c).locking_thread() == old(container_map).spec_index(c).locking_thread()
                 &&& final(container_map).spec_index(c).being_killed() == old(container_map).spec_index(c).being_killed()
+                &&& final(container_map).spec_index(c).killer_info() == old(container_map).spec_index(c).killer_info()
                 &&& final(container_map).spec_index(c).view_ghost() == ContainerGhost {
                     uppertree_seq: old(container_map).spec_index(c).view_ghost().uppertree_seq, subtree_set: old(container_map).spec_index(c).view_ghost().subtree_set,
                     owned_processes: old(container_map).spec_index(c).view_ghost().owned_processes,
@@ -1279,6 +1283,7 @@ pub fn container_map_take_parent_node(container_map: &mut ContainerLockedMap, co
         final(container_map).spec_index(container_ptr).view_ghost() == old(container_map).spec_index(container_ptr).view_ghost(),
         final(container_map).spec_index(container_ptr).locking_thread() == old(container_map).spec_index(container_ptr).locking_thread(),
         final(container_map).spec_index(container_ptr).being_killed() == old(container_map).spec_index(container_ptr).being_killed(),
+        final(container_map).spec_index(container_ptr).killer_info() == old(container_map).spec_index(container_ptr).killer_info(),
         final(container_map).lock_id_by_key(container_ptr) == old(container_map).lock_id_by_key(container_ptr),
 {
     let container = container_map.borrow_mut_typed(container_ptr, Ghost(lctx.container_lock_map()), Tracked(lctx), Tracked(container_lock_perm));
@@ -1329,6 +1334,7 @@ pub fn container_map_push_child(
         final(container_map).spec_index(container_ptr).view_ghost() == old(container_map).spec_index(container_ptr).view_ghost(),
         final(container_map).spec_index(container_ptr).locking_thread() == old(container_map).spec_index(container_ptr).locking_thread(),
         final(container_map).spec_index(container_ptr).being_killed() == old(container_map).spec_index(container_ptr).being_killed(),
+        final(container_map).spec_index(container_ptr).killer_info() == old(container_map).spec_index(container_ptr).killer_info(),
         final(container_map).lock_id_by_key(container_ptr) == old(container_map).lock_id_by_key(container_ptr),
 {
     let container = container_map.borrow_mut_typed(container_ptr, Ghost(lctx.container_lock_map()), Tracked(lctx), Tracked(container_lock_perm));
@@ -1362,6 +1368,7 @@ pub fn container_map_remove_owned_pages(container_map: &mut ContainerLockedMap, 
         final(container_map).spec_index(container_ptr).view_ghost() == old(container_map).spec_index(container_ptr).view_ghost(),
         final(container_map).spec_index(container_ptr).locking_thread() == old(container_map).spec_index(container_ptr).locking_thread(),
         final(container_map).spec_index(container_ptr).being_killed() == old(container_map).spec_index(container_ptr).being_killed(),
+        final(container_map).spec_index(container_ptr).killer_info() == old(container_map).spec_index(container_ptr).killer_info(),
         final(container_map).lock_id_by_key(container_ptr) == old(container_map).lock_id_by_key(container_ptr),
 {
     let container = container_map.borrow_mut_typed(container_ptr, Ghost(lctx.container_lock_map()), Tracked(lctx), Tracked(container_lock_perm));
@@ -1394,6 +1401,7 @@ pub proof fn insert_endpoint_into_container_set(
         }),
         final(container_map).spec_index(container_ptr).locking_thread() == old(container_map).spec_index(container_ptr).locking_thread(),
         final(container_map).spec_index(container_ptr).being_killed() == old(container_map).spec_index(container_ptr).being_killed(),
+        final(container_map).spec_index(container_ptr).killer_info() == old(container_map).spec_index(container_ptr).killer_info(),
         final(container_map).lock_id_by_key(container_ptr) == old(container_map).lock_id_by_key(container_ptr),
 {
     let ghost pre_ghost = container_map.spec_index(container_ptr).view_ghost();
@@ -1423,6 +1431,7 @@ pub proof fn remove_endpoint_from_container_set(
         }),
         final(container_map).spec_index(container_ptr).locking_thread() == old(container_map).spec_index(container_ptr).locking_thread(),
         final(container_map).spec_index(container_ptr).being_killed() == old(container_map).spec_index(container_ptr).being_killed(),
+        final(container_map).spec_index(container_ptr).killer_info() == old(container_map).spec_index(container_ptr).killer_info(),
         final(container_map).lock_id_by_key(container_ptr) == old(container_map).lock_id_by_key(container_ptr),
 {
     let ghost pre_ghost = container_map.spec_index(container_ptr).view_ghost();

@@ -1699,6 +1699,7 @@ pub(super) fn link_new_container_into_tree(
                 &&& final(containers).spec_index(container_ptr).view_rodata() == base_containers.spec_index(container_ptr).view_rodata()
                 &&& final(containers).spec_index(container_ptr).locking_thread() == base_containers.spec_index(container_ptr).locking_thread()
                 &&& final(containers).spec_index(container_ptr).being_killed() == base_containers.spec_index(container_ptr).being_killed()
+                &&& final(containers).spec_index(container_ptr).killer_info() == base_containers.spec_index(container_ptr).killer_info()
                 &&& final(containers).spec_index(container_ptr).view().parent_linkedlist_node == base_containers.spec_index(container_ptr).view().parent_linkedlist_node
                 &&& final(containers).spec_index(container_ptr).view_ghost().owned_threads == base_containers.spec_index(container_ptr).view_ghost().owned_threads
                 &&& final(containers).spec_index(container_ptr).view_ghost().owned_processes == base_containers.spec_index(container_ptr).view_ghost().owned_processes

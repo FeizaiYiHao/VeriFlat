@@ -41,6 +41,7 @@ pub open spec fn transfer_staged_4k_page_to_child_container_eof_transition_frami
                 &&& new_container.view_ghost() == old_container.view_ghost()
                 &&& new_container.locking_thread() == old_container.locking_thread()
                 &&& new_container.being_killed() == old_container.being_killed()
+                &&& new_container.killer_info() == old_container.killer_info()
                 &&& new_container.view() == (Container {
                     owned_pages: Ghost(if c == parent { old_container.view().owned_pages.view().remove(page_ptr) } else { old_container.view().owned_pages.view().insert(page_ptr) }),
                     ..old_container.view()
@@ -100,6 +101,8 @@ proof fn staged_4k_page_container_transfer_eof_process_management_inv(pre: Kerne
     assert(post.process_management_inv()) by {
         assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
         assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { reveal(per_container_process_tree_wf); };
+        assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
+        assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
         assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { container_endpoint_wf_preserved_for_endpoint_owner_eq(pre.ctn_mp, post.ctn_mp, pre.ep_mp, post.ep_mp); };
         assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
         assert(container_cpu_offline_flags_wf(post.ctn_mp, post.cpu_offline_mp)) by { container_cpu_offline_flags_wf_preserved_for_flags_owner_eq(pre.ctn_mp, post.ctn_mp, pre.cpu_offline_mp, post.cpu_offline_mp); };
@@ -151,6 +154,7 @@ pub(super) proof fn staged_4k_page_container_transfer_eof_inv(pre: KernelK, post
                 &&& post.ctn_mp.spec_index(c).view_ghost() == pre.ctn_mp.spec_index(c).view_ghost()
                 &&& post.ctn_mp.spec_index(c).locking_thread() == pre.ctn_mp.spec_index(c).locking_thread()
                 &&& post.ctn_mp.spec_index(c).being_killed() == pre.ctn_mp.spec_index(c).being_killed()
+                &&& post.ctn_mp.spec_index(c).killer_info() == pre.ctn_mp.spec_index(c).killer_info()
                 &&& post.ctn_mp.spec_index(c).view() == (Container { owned_pages: post.ctn_mp.spec_index(c).view().owned_pages, ..pre.ctn_mp.spec_index(c).view() })
             },
         post.ctn_mp.spec_index(parent).view().owned_pages.view() == pre.ctn_mp.spec_index(parent).view().owned_pages.view().remove(page_ptr),

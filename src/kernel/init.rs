@@ -1253,7 +1253,8 @@ proof fn boot_process_management_inv_eof(
         reveal(process_subtree_set_exclusive);
         reveal(per_container_process_tree_wf);
     };
-    assert(process_kill_mark_wf(krnl.prc_mp)) by { reveal(process_kill_mark_wf); };
+    assert(process_kill_mark_wf(krnl.ctn_mp, krnl.prc_mp)) by { reveal(process_kill_mark_wf); };
+    assert(container_kill_mark_wf(krnl.ctn_mp, krnl.prc_mp)) by { reveal(container_kill_mark_wf); };
     assert(process_state_lock_wf(krnl.prc_mp)) by { reveal(process_state_lock_wf); };
     assert(container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)) by { reveal(container_endpoint_wf); };
     assert(container_cpu_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr)) by { reveal(container_cpu_wf); };

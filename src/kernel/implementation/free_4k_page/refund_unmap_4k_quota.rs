@@ -251,6 +251,7 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
                 &&& old_u.process_map.dom().contains(p)
                 &&& old_u.process_map[p].lock_state == kernel_k_to_kernel_u(*old(krnl)).process_map[p].lock_state
                 &&& old_u.process_map[p].killed == kernel_k_to_kernel_u(*old(krnl)).process_map[p].killed
+                &&& old_u.process_map[p].owning_container == kernel_k_to_kernel_u(*old(krnl)).process_map[p].owning_container
             }
         },
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
@@ -326,6 +327,7 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
                     &&& old_u.process_map.dom().contains(p)
                     &&& old_u.process_map[p].lock_state == kernel_k_to_kernel_u(*old(krnl)).process_map[p].lock_state
                     &&& old_u.process_map[p].killed == kernel_k_to_kernel_u(*old(krnl)).process_map[p].killed
+                    &&& old_u.process_map[p].owning_container == kernel_k_to_kernel_u(*old(krnl)).process_map[p].owning_container
                 }
             },
             index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> krnl.cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),

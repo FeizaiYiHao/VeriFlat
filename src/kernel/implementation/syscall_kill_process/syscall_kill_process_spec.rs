@@ -21,18 +21,35 @@ pub open spec fn kill_process_syscall_result(pre: KernelU, cpu_id: CpuId, child_
 /// The killing thread: the thread running on `cpu_id`.
 pub open spec fn kill_killer(u: KernelU, cpu_id: CpuId) -> RwLockThreadPtr { u.cpu_array[cpu_id as int].current_thread->Some_0 }
 
+/// The marked process a process kill, or a container kill inside its marked container, works on, and where it stands.
+pub open spec fn kill_process_record(u: KernelU, cpu_id: CpuId) -> (RwLockProcessPtr, KillStage) {
+    match u.thread_map[kill_killer(u, cpu_id)].syscall_progress->Some_0 {
+        SyscallProgress::KillProcess { process, stage } => (process, stage),
+        SyscallProgress::KillContainer { stage: ContainerKillStage::Process { process, stage }, .. } => (process, stage),
+        _ => arbitrary(),
+    }
+}
+
 /// The marked process the kill works on.
-pub open spec fn kill_target(u: KernelU, cpu_id: CpuId) -> RwLockProcessPtr { u.thread_map[kill_killer(u, cpu_id)].syscall_progress->Some_0->KillProcess_process }
+pub open spec fn kill_target(u: KernelU, cpu_id: CpuId) -> RwLockProcessPtr { kill_process_record(u, cpu_id).0 }
 
 /// Where the kill stands at its target.
-pub open spec fn kill_stage(u: KernelU, cpu_id: CpuId) -> KillStage { u.thread_map[kill_killer(u, cpu_id)].syscall_progress->Some_0->KillProcess_stage }
+pub open spec fn kill_stage(u: KernelU, cpu_id: CpuId) -> KillStage { kill_process_record(u, cpu_id).1 }
 
 /// The killer's progress after moving to `process` at `stage`.
 pub open spec fn kill_progress(process: RwLockProcessPtr, stage: KillStage) -> Option<SyscallProgress> { Some(SyscallProgress::KillProcess { process, stage }) }
 
+/// The killer's progress after moving to `process` at `stage`, inside the marked container a container kill records.
+pub open spec fn kill_progress_at(u: KernelU, cpu_id: CpuId, process: RwLockProcessPtr, stage: KillStage) -> Option<SyscallProgress> {
+    match u.thread_map[kill_killer(u, cpu_id)].syscall_progress->Some_0 {
+        SyscallProgress::KillContainer { container, .. } => Some(SyscallProgress::KillContainer { container, stage: ContainerKillStage::Process { process, stage } }),
+        _ => kill_progress(process, stage),
+    }
+}
+
 /// The killer's thread with its progress replaced by the kill at `process` in `stage`.
 pub open spec fn kill_killer_at(u: KernelU, cpu_id: CpuId, process: RwLockProcessPtr, stage: KillStage) -> ThreadU {
-    ThreadU { syscall_progress: kill_progress(process, stage), ..u.thread_map[kill_killer(u, cpu_id)] }
+    ThreadU { syscall_progress: kill_progress_at(u, cpu_id, process, stage), ..u.thread_map[kill_killer(u, cpu_id)] }
 }
 
 /// The cpu runs a live thread of a live process that has no syscall in progress, and the process's child at
@@ -80,12 +97,14 @@ pub open spec fn kill_process_enter_step(old_u: KernelU, new_u: KernelU, cpu_id:
     })
 }
 
-/// Every step after entering runs while the killer holds its cpu, its process, and itself, records a kill, and holds
-/// the marked target of the kill.
+/// Every step after entering runs while the killer holds its cpu, its process, and itself, records a process kill or a
+/// container kill working on a process, and holds the marked target of the kill; inside a container kill it also holds
+/// the target's marked container.
 #[verifier::opaque]
 pub open spec fn kill_process_step_pre(u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = u.cpu_array[cpu_id as int];
     let killer = u.thread_map[kill_killer(u, cpu_id)];
+    let progress = killer.syscall_progress->Some_0;
     let target = u.process_map[kill_target(u, cpu_id)];
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.lock_state is WriteLocked
@@ -96,10 +115,12 @@ pub open spec fn kill_process_step_pre(u: KernelU, cpu_id: CpuId) -> bool {
     &&& u.thread_map.dom().contains(kill_killer(u, cpu_id))
     &&& killer.lock_state is WriteLocked
     &&& killer.syscall_progress is Some
-    &&& killer.syscall_progress->Some_0 is KillProcess
+    &&& progress is KillProcess || (progress is KillContainer && progress->KillContainer_stage is Process)
     &&& u.process_map.dom().contains(kill_target(u, cpu_id))
     &&& target.lock_state is WriteLocked
     &&& target.killed
+    &&& progress is KillContainer ==> u.container_map.dom().contains(target.owning_container)
+    &&& progress is KillContainer ==> u.container_map[target.owning_container].lock_state is WriteLocked && u.container_map[target.owning_container].killed
 }
 
 /// The kill descends from its target into the target's first child, which it marks and write-locks.
@@ -403,12 +424,9 @@ pub open spec fn kill_process_quota_step(old_u: KernelU, new_u: KernelU, cpu_id:
     let process_ptr = kill_target(old_u, cpu_id);
     let target = old_u.process_map[process_ptr];
     let container = old_u.container_map[target.owning_container];
-    let progress = new_u.thread_map[kill_killer(old_u, cpu_id)].syscall_progress;
-    let size = progress->Some_0->KillProcess_stage->Quota_returned;
+    let size = kill_stage(new_u, cpu_id)->Quota_returned;
     &&& old_u.container_map.dom().contains(target.owning_container)
-    &&& progress is Some
-    &&& progress->Some_0 is KillProcess
-    &&& progress->Some_0->KillProcess_stage is Quota
+    &&& kill_stage(new_u, cpu_id) is Quota
     &&& kill_process_reclaim_step_pre(old_u, cpu_id, kill_process_quota_stage_before(size))
     &&& new_u == (KernelU {
         container_map: old_u.container_map.insert(target.owning_container, match size {
@@ -508,7 +526,7 @@ pub open spec fn kill_process_retire_step(old_u: KernelU, new_u: KernelU, cpu_id
 /// A step between entering and finishing: descending into a child, turning a thread waiting for a reply into a dangling thread,
 /// marking, dequeuing, evicting, or unlinking a thread, reclaiming killed threads, and, for an empty target,
 /// reassigning its PCI functions, locking its tables, clearing one 4K leaf, flushing one cpu's TLB for its PCID,
-/// recording the flush, clearing one IOMMU 4K leaf, returning quota of freed pages to the killer's container chain,
+/// recording the flush, clearing one IOMMU 4K leaf, returning quota of freed pages to the target's container chain,
 /// returning one size of its quota, unlocking its tables, making it a zombie, or retiring it.
 pub open spec fn kill_process_middle_step(step: KernelStep, cpu_id: CpuId) -> bool {
     let old_u = step.old_u;
@@ -529,7 +547,7 @@ pub open spec fn kill_process_middle_step(step: KernelStep, cpu_id: CpuId) -> bo
         ||| kill_process_flush_step_pre(old_u, cpu_id) && kernel_u_cpu_tlb_cleared(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].pcid)
         ||| kill_process_flush_step_pre(old_u, cpu_id) && kill_process_flushed_step(old_u, new_u, cpu_id)
         ||| kill_process_iommu_leaf_step(old_u, new_u, cpu_id)
-        ||| kernel_u_container_quota_4k_increased(old_u, new_u, old_u.cpu_array[cpu_id as int].owning_container)
+        ||| kernel_u_container_quota_4k_increased(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].owning_container)
         ||| kill_process_quota_step(old_u, new_u, cpu_id)
         ||| kill_process_unlock_table_step(old_u, new_u, cpu_id)
         ||| kill_process_zombify_step(old_u, new_u, cpu_id)

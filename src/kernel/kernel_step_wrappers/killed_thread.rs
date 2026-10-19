@@ -261,13 +261,15 @@ pub proof fn kernel_dangling_thread_reclaimed_implies_u_step(before: &KernelK, a
     reveal(kernel_u_dangling_thread_reclaimed);
 }
 
-/// The lock mode and kill mark of process `ptr` in the user projection, without unfolding the rest of its entry.
+/// The lock mode, kill mark, and owning container of process `ptr` in the user projection, without unfolding the rest
+/// of its entry.
 pub broadcast proof fn kernel_process_lock_state_projection_at(krnl: &KernelK, ptr: RwLockProcessPtr)
     requires krnl.prc_mp.dom().contains(ptr),
     ensures
         kernel_k_to_kernel_u(*krnl).process_map.dom().contains(ptr),
         (#[trigger] kernel_k_to_kernel_u(*krnl).process_map[ptr]).lock_state == krnl.prc_mp.spec_index(ptr).lock_state_u(),
         kernel_k_to_kernel_u(*krnl).process_map[ptr].killed == krnl.prc_mp.spec_index(ptr).being_killed(),
+        kernel_k_to_kernel_u(*krnl).process_map[ptr].owning_container == krnl.prc_mp.spec_index(ptr).view_rodata().view().owning_container,
 { kernel_process_projection_at(krnl, ptr); }
 
 /// The lock mode of container `ptr` in the user projection, without unfolding the rest of its entry.

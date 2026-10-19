@@ -19,7 +19,8 @@ proof fn thread_exit_tables_emptied_eof_process(pre: KernelK, post: KernelK, pro
     reveal(thread_exit_tables_emptied_eof_transition_framing);
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { per_container_process_tree_wf_preserved_for_tree_fields_eq(pre.ctn_mp, pre.prc_mp, post.prc_mp); reveal(per_container_process_tree_wf); };
-    assert(process_kill_mark_wf(post.prc_mp)) by { reveal(process_kill_mark_wf); };
+    assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
+    assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
     assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { reveal(process_pcid_allocator_wf); };
     assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); };
     assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(process_thread_wf); };

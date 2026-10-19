@@ -195,6 +195,7 @@ pub open spec fn create_process_with_iommu_from_staged_pages_eof_transition_fram
     &&& post.ctn_mp.spec_index(container_ptr).view_ghost() == (ContainerGhost { owned_processes: post.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes, ..pre.ctn_mp.spec_index(container_ptr).view_ghost() })
     &&& post.ctn_mp.spec_index(container_ptr).locking_thread() == pre.ctn_mp.spec_index(container_ptr).locking_thread()
     &&& post.ctn_mp.spec_index(container_ptr).being_killed() == pre.ctn_mp.spec_index(container_ptr).being_killed()
+    &&& post.ctn_mp.spec_index(container_ptr).killer_info() == pre.ctn_mp.spec_index(container_ptr).killer_info()
     &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)]
         pre.ctn_mp.dom().contains(c) ==> post.ctn_mp.spec_index(c).view_ghost().owned_threads == pre.ctn_mp.spec_index(c).view_ghost().owned_threads
     &&& forall|c_ptr: RwLockContainerPtr|
@@ -841,7 +842,8 @@ pub(super) proof fn eof_process_management_inv(
         assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { reveal(process_pcid_allocator_wf); reveal(container_pcid_allocator_wf); };
         assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { container_thread_scheduler_wf_preserved_for_scheduled_thread_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, post.sched_mp); reveal(container_thread_wf); };
         assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { container_thread_wf_preserved_for_container_thread_link_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp); };
-        assert(process_kill_mark_wf(post.prc_mp)) by { reveal(process_kill_mark_wf); };
+        assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
+        assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
         assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
         assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); };
         assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(Seq::contains); reveal(process_thread_wf); };
@@ -936,6 +938,7 @@ pub(super) proof fn eof_inv(
         post.ctn_mp.dom() == pre.ctn_mp.dom(),
         post.ctn_mp.spec_index(container_ptr).view_rodata() == pre.ctn_mp.spec_index(container_ptr).view_rodata(),
         post.ctn_mp.spec_index(container_ptr).being_killed() == pre.ctn_mp.spec_index(container_ptr).being_killed(),
+        post.ctn_mp.spec_index(container_ptr).killer_info() == pre.ctn_mp.spec_index(container_ptr).killer_info(),
         post.thr_mp.dom() == pre.thr_mp.dom(),
         post.thr_mp.spec_index(staging_thread_ptr).view() == (Thread {
             quota_4k: (pre.thr_mp.spec_index(staging_thread_ptr).view().quota_4k - 5) as usize,

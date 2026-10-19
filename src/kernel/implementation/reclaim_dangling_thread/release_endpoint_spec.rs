@@ -39,6 +39,7 @@ pub open spec fn release_endpoint_eof_transition_framing(
             &&& b.view_rodata() == a.view_rodata()
             &&& b.locking_thread() == a.locking_thread()
             &&& b.being_killed() == a.being_killed()
+            &&& b.killer_info() == a.killer_info()
             &&& b.view_ghost() == if c == endpoint_owner { ContainerGhost { owned_endpoints: Ghost(a.view_ghost().owned_endpoints.view().remove(endpoint_ptr)), ..a.view_ghost() } }
                 else { a.view_ghost() }
         }

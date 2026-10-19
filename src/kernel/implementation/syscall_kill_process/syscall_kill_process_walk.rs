@@ -169,7 +169,7 @@ pub(crate) fn kill_mark_child(
             assert(uppers.contains(target)) by { process_children_depth_wf_at(root, tree, krnl.prc_mp, child_ptr); };
             assert(uppers.contains(process_ptr)) by { process_subtree_set_wf_at(root, tree, krnl.prc_mp, process_ptr, target); };
         };
-        assert(!krnl.prc_mp.spec_index(child_ptr).being_killed()) by { process_kill_mark_wf_at(krnl.prc_mp, child_ptr); krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), target); };
+        assert(!krnl.prc_mp.spec_index(child_ptr).being_killed()) by { process_kill_mark_wf_at(krnl.ctn_mp, krnl.prc_mp, child_ptr); krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), target); };
     }
     let Tracked(child_perm) = krnl.try_wlock_process_and_mark_kill(child_ptr, process_ptr, thread_ptr, killer_info, Tracked(&mut *lctx)).unwrap();
     let ghost marked_k = *krnl;

@@ -160,6 +160,8 @@ proof fn release_endpoint_eof_process_relations(
     assert(post.ctn_mp.spec_index(post.rt_ctn).view_ghost().owned_processes.view().contains(post.ctn_mp.spec_index(post.rt_ctn).view().root_process)) by { reveal(container_root_wf); };
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { reveal(per_container_process_tree_wf); };
+    assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
+    assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
     assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { reveal(container_endpoint_wf); };
     assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { container_cpu_wf_preserved_for_container_cpu_fields_eq(pre.ctn_mp, post.ctn_mp, post.cpu_set_mp, post.cpu_arr); };
     assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { thread_perms_wf_at(pre.thr_mp, thread_ptr); reveal(thread_endpoint_ref_counter_wf); };
@@ -258,6 +260,7 @@ pub(super) proof fn release_endpoint_eof_fields(
                 &&& b.view_rodata() == a.view_rodata()
                 &&& b.locking_thread() == a.locking_thread()
                 &&& b.being_killed() == a.being_killed()
+                &&& b.killer_info() == a.killer_info()
                 &&& b.view_ghost() == if c == start.ep_mp.spec_index(endpoint_ptr).view().owning_container {
                         ContainerGhost { owned_endpoints: Ghost(a.view_ghost().owned_endpoints.view().remove(endpoint_ptr)), ..a.view_ghost() }
                     } else { a.view_ghost() }

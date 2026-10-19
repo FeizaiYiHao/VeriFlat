@@ -29,6 +29,7 @@ pub open spec fn create_endpoint_from_staged_page_eof_transition_framing(
     &&& post_container.view_ghost() == (ContainerGhost { owned_endpoints: Ghost(pre_container.view_ghost().owned_endpoints.view().insert(page_ptr)), ..pre_container.view_ghost() })
     &&& post_container.locking_thread() == pre_container.locking_thread()
     &&& post_container.being_killed() == pre_container.being_killed()
+    &&& post_container.killer_info() == pre_container.killer_info()
     &&& post.thr_mp.unchanged_except(&pre.thr_mp, staging_thread_ptr)
     &&& post_staging.view() == (Thread {
         quota_4k: post_staging.view().quota_4k, temp_alloc_cache_4k: post_staging.view().temp_alloc_cache_4k,
@@ -163,6 +164,8 @@ proof fn eof_create_endpoint_process_management_inv(
     assert(post.ctn_mp.spec_index(post.rt_ctn).view_ghost().owned_processes.view().contains(post.ctn_mp.spec_index(post.rt_ctn).view().root_process)) by { reveal(container_root_wf); };
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { reveal(per_container_process_tree_wf); };
+    assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
+    assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
     assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { reveal(container_endpoint_wf); };
     assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { container_cpu_wf_preserved_for_container_cpu_fields_eq(pre.ctn_mp, post.ctn_mp, post.cpu_set_mp, post.cpu_arr); };
     assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by {

@@ -98,8 +98,7 @@ pub(crate) fn kill_retire_structure_pages(
     let ghost refund_before = steps.view();
     proof {
         thread_perms_wf_at(krnl.thr_mp, thread_ptr);
-        assert(entry_thread.owning_container == krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container) by { process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); };
-        kill_step_pre_from_k(&refund_k, &refund_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Retire); kill_refund_pre_from_k(&refund_k, cpu_id, entry_thread.owning_container);
+        kill_step_pre_from_k(&refund_k, &refund_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Retire); kill_refund_pre_from_k(&refund_k, target, entry_thread.owning_container);
     }
     refund_unmap_4k_quota(krnl, thread_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_perm));
     proof {

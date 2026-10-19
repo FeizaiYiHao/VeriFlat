@@ -117,6 +117,8 @@ impl KernelK {
             old(self).inv(),
             old(self).ctn_mp.dom().contains(container_ptr),
             old(self).ctn_mp.spec_index(container_ptr).being_killed() == false,
+            forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) && old(self).ctn_mp.spec_index(c).killer_info() is Some
+                ==> old(self).ctn_mp.spec_index(c).view_rodata().view().parent != Some(container_ptr),
             !old(self).ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().is_empty(),
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),
@@ -150,7 +152,7 @@ impl KernelK {
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-            wunlock_container_eof(*old(self), *self, container_ptr);
+            wunlock_container_eof(*old(self), *self, *old(lctx), container_ptr);
         }
     }
 }
