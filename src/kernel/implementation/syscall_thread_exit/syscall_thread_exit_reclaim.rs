@@ -3,6 +3,7 @@ use crate::*;
 use super::syscall_thread_exit_spec::*;
 use super::syscall_thread_exit_trace::*;
 use super::syscall_thread_exit_reclaim_release::*;
+use super::syscall_thread_exit_reclaim_leaf::thread_exit_reclaim_clear_leaf;
 #[cfg(verus_keep_ghost)]
 use super::syscall_thread_exit_reclaim_spec::thread_exit_detach_process_functions_eof_transition_framing;
 #[cfg(verus_keep_ghost)]
@@ -741,22 +742,8 @@ fn thread_exit_reclaim_clear_leaves(
         }
         let resolved = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_lock_perm)).resolve_mapping_4k_l1(next.0, next.1, next.2, next.3);
         if resolved.2.is_some() && resolved.2.unwrap().present {
-            let ghost leaf_k = *krnl;
-            let ghost leaf_lctx = *lctx;
-            let ghost leaf_before = steps.view();
-            proof { assert(lctx.pagetable_lock_map().dom().contains(pagetable) && lctx.thread_lock_map().dom().contains(thread_ptr)); }
-            clear_4k_mapping_present(krnl, pagetable, va, Tracked(&mut *lctx), Tracked(&pagetable_lock_perm));
-            proof {
-                let leaf_post = *krnl;
-                assert(kernel_process_4k_mapping_changed(&leaf_k, &leaf_post, process_ptr, pagetable, va)) by { reveal(kernel_process_4k_mapping_changed); };
-                krnl.kernel_step_boundary_process_4k_mapping_changed(&mut *lctx, &mut *steps, process_ptr, pagetable, va, process_ptr, pagetable, thread_ptr, thread_ptr);
-                assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
-                    thread_exit_leaf_step_pre_from_k(&leaf_k, &leaf_lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, va);
-                    kernel_pagetable_4k_present_cleared_and_progress_changed_implies_u_step(&leaf_k, &leaf_post, pagetable, va, thread_ptr);
-                    thread_exit_leaf_step_from_u(kernel_k_to_kernel_u(leaf_k), kernel_k_to_kernel_u(leaf_post), cpu_id, process_ptr, thread_ptr, va);
-                    thread_exit_trace_push(&*steps, leaf_before, start, pre, kernel_k_to_kernel_u(leaf_k), kernel_k_to_kernel_u(leaf_post), cpu_id);
-                };
-            }
+            thread_exit_reclaim_clear_leaf(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), Ghost(cpu_id), Ghost(container_ptr), Ghost(process_ptr), Ghost(thread_ptr), pagetable, va,
+                Ghost(iommu_table), Tracked(pagetable_lock_perm), Ghost(start), Ghost(pre));
         } else {
             proof { assert(!krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va) || !krnl.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(va).present) by { reveal(PageTable::wf_mapping_4k); }; }
         }

@@ -3,6 +3,7 @@ use crate::*;
 use super::syscall_thread_exit_spec::*;
 use super::syscall_thread_exit_trace::*;
 use super::syscall_thread_exit_entry::ThreadExitEntered;
+use super::syscall_thread_exit_entry_progress::thread_exit_enter_record_progress;
 
 verus! {
 /// Lock phase of the entry of thread exit: write-locks cpu `cpu_id`, its container, process, and running thread,
@@ -320,6 +321,8 @@ pub(super) fn thread_exit_enter_with_caller(
             }
         }),
 {
+    let ghost held_k = *krnl;
+    let ghost held_lctx = *lctx;
     proof { thread_perms_wf_at(krnl.thr_mp, thread_ptr); }
     let caller = krnl.thr_mp.borrow_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&thread_lock_perm)).caller;
     proof {
@@ -355,24 +358,9 @@ pub(super) fn thread_exit_enter_with_caller(
     } else {
         proof { enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx); }
     }
-    let ghost woken_k = *krnl;
-    krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::ThreadExit { next: 0 })), Tracked(&*lctx), Tracked(&thread_lock_perm));
-    proof {
-        let entered_k = *krnl;
-        let enter_before = steps.view();
-        krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
-        assert(thread_exit_partial_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(pre), cpu_id)) by {
-            thread_exit_enter_step_pre_from_k(&pre, cpu_id, container_ptr, process_ptr, thread_ptr, caller, dangling is Some);
-            kernel_cpu_process_thread_endpoint_lock_modes_changed_implies_u_step(&pre, old(krnl), old(lctx), cpu_id, process_ptr, thread_ptr, None, true, Some(container_ptr), false, None);
-            if let Some(caller_ptr) = caller {
-                if dangling is Some { kernel_dangling_caller_taken_over_implies_u_step(old(krnl), &woken_k, thread_ptr, caller_ptr, None); } else { kernel_caller_woken_implies_u_step(old(krnl), &woken_k, cpu_id, thread_ptr, caller_ptr); }
-            }
-            kernel_thread_syscall_progress_changed_implies_u_step(&woken_k, &entered_k, thread_ptr);
-            thread_exit_enter_step_from_u(kernel_k_to_kernel_u(pre), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(woken_k), kernel_k_to_kernel_u(entered_k), cpu_id, container_ptr, process_ptr, thread_ptr, caller, dangling is Some);
-            thread_exit_trace_enter_step(&*steps, enter_before, kernel_k_to_kernel_u(pre), kernel_k_to_kernel_u(entered_k), cpu_id);
-        };
-        thread_exit_syscall_result_from_k(&pre, cpu_id, RetValueType::CpuIdle);
-    }
+    thread_exit_enter_record_progress(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), thread_ptr, Ghost(cpu_id), Ghost(container_ptr), Ghost(process_ptr), Tracked(thread_lock_perm),
+        Ghost(pre), Ghost(held_k), Ghost(held_lctx), Ghost(caller), Ghost(dangling is Some));
+    proof { thread_exit_syscall_result_from_k(&pre, cpu_id, RetValueType::CpuIdle); }
     Some((dangling, Tracked(dangling_lock_perm)))
 }
 } // verus!
