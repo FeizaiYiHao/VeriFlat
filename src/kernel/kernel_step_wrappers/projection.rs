@@ -2141,25 +2141,99 @@ pub(super) proof fn kernel_ipc_reply_handoff_fields_implies_u_step(
     reveal(kernel_u_ipc_reply_handoff_changed);
     let pre_u = kernel_k_user_projection(*pre, include_lock_state);
     let post_u = kernel_k_user_projection(*post, include_lock_state);
-    reveal(kernel_ipc_reply_handoff_fields); reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(kernel_process_nonlock_fields_unchanged);
-    let cpu = pre_u.cpu_array[cpu_id as int];
-    let callee = pre_u.thread_map.spec_index(callee_ptr);
-    let caller = pre_u.thread_map.spec_index(caller_ptr);
+    kernel_ipc_reply_handoff_fields_implies_u_cpu_array(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, regs, flushed_pcid, include_lock_state);
+    kernel_ipc_reply_handoff_fields_implies_u_thread_map(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, regs, flushed_pcid, include_lock_state);
+    kernel_ipc_reply_handoff_fields_implies_u_process_map(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, regs, flushed_pcid, include_lock_state);
+    kernel_ipc_reply_handoff_fields_implies_u_container_map(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, regs, flushed_pcid, include_lock_state);
+    reveal(kernel_ipc_reply_handoff_fields);
     let endpoint = pre_u.endpoint_map.spec_index(endpoint_ptr);
     assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { pre.irt.view().user_view_unfold(); post.irt.view().user_view_unfold(); };
-    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU {
-        current_process: Some(caller.owning_proc), current_thread: Some(caller_ptr), ..cpu
-    }));
-    assert_maps_equal!(post_u.container_map, pre_u.container_map, c => {});
-    assert_maps_equal!(post_u.process_map, pre_u.process_map, p => {
-        reveal(process_pagetable_match); reveal(process_iommu_table_match); reveal(kernel_pagetable_nonlock_fields_unchanged);
-    });
-    assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(callee_ptr, ThreadU {
-        state: ThreadState::RECEIVING_CALL, caller: None, blocking_endpoint_ptr: Some(endpoint_ptr), ipc_payload: IPCPayLoad::Empty, trap_frame: Some(regs), ..callee
-    }).insert(caller_ptr, ThreadU { state: ThreadState::RUNNING { cpu_id }, callee: None, last_cpu: cpu_id, trap_frame: None, ..caller }), t => {});
     assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map.insert(endpoint_ptr, EndpointU {
         queue: endpoint.queue.push(callee_ptr), queue_state: if endpoint.queue.len() == 0 { EndpointState::RECEIVE } else { endpoint.queue_state }, ..endpoint
     }), e => {});
+}
+
+/// The reply-handoff fields project to the cpu array with only `cpu_id` switched to the caller.
+proof fn kernel_ipc_reply_handoff_fields_implies_u_cpu_array(
+    pre: &KernelK, post: &KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx,
+    caller_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>, include_lock_state: bool,
+)
+    requires kernel_ipc_reply_handoff_fields(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, regs, flushed_pcid),
+    ensures
+        ({
+            let pre_u = kernel_k_user_projection(*pre, include_lock_state);
+            let post_u = kernel_k_user_projection(*post, include_lock_state);
+            let cpu = pre_u.cpu_array[cpu_id as int];
+            post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { current_process: Some(pre_u.thread_map.spec_index(caller_ptr).owning_proc), current_thread: Some(caller_ptr), ..cpu })
+        }),
+{
+    reveal(kernel_ipc_reply_handoff_fields);
+    let pre_u = kernel_k_user_projection(*pre, include_lock_state);
+    let post_u = kernel_k_user_projection(*post, include_lock_state);
+    let cpu = pre_u.cpu_array[cpu_id as int];
+    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU {
+        current_process: Some(pre_u.thread_map.spec_index(caller_ptr).owning_proc), current_thread: Some(caller_ptr), ..cpu
+    }));
+}
+
+/// The reply-handoff fields project to the thread map with the callee waiting on the endpoint and the caller running.
+proof fn kernel_ipc_reply_handoff_fields_implies_u_thread_map(
+    pre: &KernelK, post: &KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx,
+    caller_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>, include_lock_state: bool,
+)
+    requires kernel_ipc_reply_handoff_fields(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, regs, flushed_pcid),
+    ensures
+        ({
+            let pre_u = kernel_k_user_projection(*pre, include_lock_state);
+            let post_u = kernel_k_user_projection(*post, include_lock_state);
+            let callee = pre_u.thread_map.spec_index(callee_ptr);
+            let caller = pre_u.thread_map.spec_index(caller_ptr);
+            post_u.thread_map == pre_u.thread_map.insert(callee_ptr, ThreadU {
+                state: ThreadState::RECEIVING_CALL, caller: None, blocking_endpoint_ptr: Some(endpoint_ptr), ipc_payload: IPCPayLoad::Empty, trap_frame: Some(regs), ..callee
+            }).insert(caller_ptr, ThreadU { state: ThreadState::RUNNING { cpu_id }, callee: None, last_cpu: cpu_id, trap_frame: None, ..caller })
+        }),
+{
+    reveal(kernel_ipc_reply_handoff_fields);
+    let pre_u = kernel_k_user_projection(*pre, include_lock_state);
+    let post_u = kernel_k_user_projection(*post, include_lock_state);
+    let callee = pre_u.thread_map.spec_index(callee_ptr);
+    let caller = pre_u.thread_map.spec_index(caller_ptr);
+    assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(callee_ptr, ThreadU {
+        state: ThreadState::RECEIVING_CALL, caller: None, blocking_endpoint_ptr: Some(endpoint_ptr), ipc_payload: IPCPayLoad::Empty, trap_frame: Some(regs), ..callee
+    }).insert(caller_ptr, ThreadU { state: ThreadState::RUNNING { cpu_id }, callee: None, last_cpu: cpu_id, trap_frame: None, ..caller }), t => {});
+}
+
+/// The reply-handoff fields leave the process map projection unchanged.
+proof fn kernel_ipc_reply_handoff_fields_implies_u_process_map(
+    pre: &KernelK, post: &KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx,
+    caller_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>, include_lock_state: bool,
+)
+    requires
+        process_pagetable_match(post.prc_mp, post.pt_mp),
+        process_iommu_table_match(post.prc_mp, post.it_mp),
+        kernel_ipc_reply_handoff_fields(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, regs, flushed_pcid),
+    ensures kernel_k_user_projection(*post, include_lock_state).process_map == kernel_k_user_projection(*pre, include_lock_state).process_map,
+{
+    reveal(kernel_ipc_reply_handoff_fields); reveal(kernel_process_nonlock_fields_unchanged);
+    let pre_u = kernel_k_user_projection(*pre, include_lock_state);
+    let post_u = kernel_k_user_projection(*post, include_lock_state);
+    assert_maps_equal!(post_u.process_map, pre_u.process_map, p => {
+        reveal(process_pagetable_match); reveal(process_iommu_table_match); reveal(kernel_pagetable_nonlock_fields_unchanged);
+    });
+}
+
+/// The reply-handoff fields leave the container map projection unchanged.
+proof fn kernel_ipc_reply_handoff_fields_implies_u_container_map(
+    pre: &KernelK, post: &KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx,
+    caller_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>, include_lock_state: bool,
+)
+    requires kernel_ipc_reply_handoff_fields(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, regs, flushed_pcid),
+    ensures kernel_k_user_projection(*post, include_lock_state).container_map == kernel_k_user_projection(*pre, include_lock_state).container_map,
+{
+    reveal(kernel_ipc_reply_handoff_fields); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
+    let pre_u = kernel_k_user_projection(*pre, include_lock_state);
+    let post_u = kernel_k_user_projection(*post, include_lock_state);
+    assert_maps_equal!(post_u.container_map, pre_u.container_map, c => {});
 }
 
 #[verifier::spinoff_prover]

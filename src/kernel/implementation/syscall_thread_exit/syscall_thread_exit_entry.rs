@@ -234,27 +234,87 @@ pub(super) fn thread_exit_lock_entry(krnl: &mut KernelK, Tracked(lctx): Tracked<
         };
         thread_exit_syscall_result_from_k(&*old(krnl), cpu_id, RetValueType::CpuIdle);
     }
-    let ghost start = old(steps).view().len() as int;
-    let ghost pre = kernel_k_to_kernel_u(*old(krnl));
     if let Some(dangling_ptr) = dangling {
-        let ghost reclaim_k = *krnl;
-        let ghost reclaim_lctx = *lctx;
-        let ghost reclaim_before = steps.view();
         let tracked dangling_perm = dangling_lock_perm.tracked_unwrap();
-        proof {
-            assert(kernel_steps_prefix_unchanged(reclaim_before, reclaim_before)) by { reveal(kernel_steps_prefix_unchanged); };
-        }
-        reclaim_killed_thread_chain(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, dangling_ptr, Tracked(dangling_perm));
-        proof {
-            assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
-                thread_exit_drop_step_pre_from_k(&reclaim_k, &reclaim_lctx, cpu_id, container_ptr, process_ptr, thread_ptr, 0);
-                thread_exit_trace_from_killed_thread_reclaim(&*steps, reclaim_before, start, pre, kernel_k_to_kernel_u(reclaim_k), cpu_id, container_ptr, process_ptr);
-            };
-        }
+        thread_exit_reclaim_dangling_caller(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, thread_ptr, dangling_ptr, Tracked(dangling_perm),
+            Ghost(old(steps).view().len() as int), Ghost(kernel_k_to_kernel_u(*old(krnl))));
     }
     Ok(ThreadExitEntered {
         container_ptr, process_ptr, thread_ptr, cpu_lock_perm: Tracked(cpu_lock_perm), container_lock_perm: Tracked(container_lock_perm),
         process_lock_perm: Tracked(process_lock_perm), thread_lock_perm: Tracked(thread_lock_perm),
     })
+}
+
+/// Reclaims the dangling thread `dangling_ptr` taken over from the killed caller of the running `thread_ptr` and every
+/// killed caller it takes over, extending the partial trace that starts at `start`.
+fn thread_exit_reclaim_dangling_caller(
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, container_ptr: RwLockContainerPtr,
+    process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, dangling_ptr: RwLockThreadPtr, Tracked(dangling_lock_perm): Tracked<LockPerm>, Ghost(start): Ghost<int>,
+    Ghost(pre): Ghost<KernelU>,
+)
+    requires
+        old(krnl).inv(),
+        typed_lock_maps_aligned(old(krnl), old(lctx)),
+        old(lctx).kernel_view_locking_state() is Acquire,
+        index_valid(NUM_CPUS, cpu_id),
+        cpu_id == old(lctx).cpu_id(),
+        old(steps).snapshot_k() == *old(krnl),
+        killed_thread_reclaim_lock_context(*old(krnl), *old(lctx)),
+        old(krnl).thr_mp.dom().contains(dangling_ptr),
+        old(krnl).thr_mp.spec_index(dangling_ptr).view().state is KILLED,
+        typed_lock_map_contains_mode(old(lctx).thread_lock_map(), dangling_ptr, TypedLockMode::Write),
+        dangling_lock_perm.state() is WriteLock,
+        dangling_lock_perm.thread_id() == old(lctx).thread_id(),
+        dangling_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(dangling_ptr).locking_thread()->Write_lock_id,
+        old(krnl).thr_mp.spec_index(dangling_ptr).view().callee is None,
+        old(krnl).thr_mp.spec_index(dangling_ptr).view().proc_linkedlist_node.is_init(),
+        old(krnl).thr_mp.spec_index(dangling_ptr).view().temp_alloc_clean(),
+        old(krnl).thr_mp.spec_index(dangling_ptr).view().free_quota_pending_clean(),
+        old(krnl).thr_mp.spec_index(dangling_ptr).view().quota_4k == 0,
+        old(krnl).thr_mp.spec_index(dangling_ptr).view().quota_2m == 0,
+        old(krnl).thr_mp.spec_index(dangling_ptr).view().quota_1g == 0,
+        typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(old(lctx).container_lock_map(), container_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container == container_ptr,
+        old(krnl).prc_mp.dom().contains(process_ptr),
+        old(krnl).thr_mp.dom().contains(thread_ptr),
+        old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
+        old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExit { next: 0 }),
+        0 <= start <= old(steps).view().len(),
+        thread_exit_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id),
+    ensures
+        final(krnl).inv(),
+        typed_lock_maps_aligned(final(krnl), final(lctx)),
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() is Acquire,
+        final(steps).snapshot_k() == *final(krnl),
+        old(steps).view().len() < final(steps).view().len(),
+        forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+        final(krnl).cpu_published[cpu_id as int].view() == old(krnl).cpu_published[cpu_id as int].view(),
+        held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
+        held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
+        forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] #![trigger final(krnl).ctn_mp.spec_index(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
+            &&& final(krnl).ctn_mp.dom().contains(c)
+            &&& final(krnl).ctn_mp.spec_index(c).view() == old(krnl).ctn_mp.spec_index(c).view()
+            &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
+            &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
+            &&& final(krnl).ctn_mp.spec_index(c).being_killed() == old(krnl).ctn_mp.spec_index(c).being_killed()
+        },
+        typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::Thread(dangling_ptr)),
+        held_threads_unchanged_except(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx), set![dangling_ptr]),
+        thread_exit_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id),
+{
+    let ghost reclaim_before = steps.view();
+    proof { assert(kernel_steps_prefix_unchanged(reclaim_before, reclaim_before)) by { reveal(kernel_steps_prefix_unchanged); }; }
+    reclaim_killed_thread_chain(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, dangling_ptr, Tracked(dangling_lock_perm));
+    assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
+        thread_exit_drop_step_pre_from_k(old(krnl), old(lctx), cpu_id, container_ptr, process_ptr, thread_ptr, 0);
+        thread_exit_trace_from_killed_thread_reclaim(&*steps, reclaim_before, start, pre, kernel_k_to_kernel_u(*old(krnl)), cpu_id, container_ptr, process_ptr);
+    };
 }
 } // verus!

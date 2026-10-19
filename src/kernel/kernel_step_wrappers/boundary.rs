@@ -1247,10 +1247,6 @@ impl KernelK {
                             && (!final(self).pcid_needflush.spec_index(cpu_id, pcid).view().needflush || final(self).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid)))
                     ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(self).cpu_tlb.spec_index((cpu_id, pcid)), final(self).pt_mp.spec_index(pagetable_ptr).view())
                 },
-            forall|cpu_id: CpuId, pcid: Pcid|
-                #![trigger old(lctx).pcid_needflush_lock_map().dom().contains((cpu_id, pcid))]
-                old(lctx).pcid_needflush_lock_map().dom().contains((cpu_id, pcid))
-                ==> final(self).pcid_needflush.spec_index(cpu_id, pcid) == old(self).pcid_needflush.spec_index(cpu_id, pcid),
             forall|cpu_id: CpuId|
                 #![trigger old(lctx).cpu_lock_map().dom().contains(cpu_id)]
                 old(lctx).cpu_lock_map().dom().contains(cpu_id) ==> final(self).cpu_arr.spec_index(cpu_id).view() == old(self).cpu_arr.spec_index(cpu_id).view(),
@@ -1302,20 +1298,12 @@ impl KernelK {
             final(self).dflt_pt == old(self).dflt_pt,
             containers_rodata_unchanged(old(self).ctn_mp, final(self).ctn_mp),
             processes_rodata_unchanged(old(self).prc_mp, final(self).prc_mp),
-            held_containers_unchanged(old(self).ctn_mp, final(self).ctn_mp, old(lctx)),
-            held_processes_unchanged(old(self).prc_mp, final(self).prc_mp, old(lctx)),
-            held_threads_unchanged(old(self).thr_mp, final(self).thr_mp, old(lctx)),
             held_endpoints_unchanged(old(self).ep_mp, final(self).ep_mp, old(lctx)),
             held_schedulers_unchanged(old(self).sched_mp, final(self).sched_mp, old(lctx)),
             held_pcid_allocators_unchanged(old(self).pcid_allc_mp, final(self).pcid_allc_mp, old(lctx)),
             held_cpu_sets_unchanged(old(self).cpu_set_mp, final(self).cpu_set_mp, old(lctx)),
-            held_pagetables_unchanged(old(self).pt_mp, final(self).pt_mp, old(lctx)),
             held_iommu_tables_unchanged(old(self).it_mp, final(self).it_mp, old(lctx)),
             held_pages_unchanged(old(self).pg_arr, final(self).pg_arr, old(lctx)),
-            held_cpus_unchanged(old(self).cpu_arr, final(self).cpu_arr, old(lctx)),
-            held_allocator_objects_unchanged(old(self).allc_4k_mp, final(self).allc_4k_mp, old(lctx), PageSize::SZ4k),
-            held_allocator_objects_unchanged(old(self).allc_2m_mp, final(self).allc_2m_mp, old(lctx), PageSize::SZ2m),
-            held_allocator_objects_unchanged(old(self).allc_1g_mp, final(self).allc_1g_mp, old(lctx), PageSize::SZ1g),
     {
         use_type_invariant(&*steps);
         reveal(KernelSteps::nonlock_view);
