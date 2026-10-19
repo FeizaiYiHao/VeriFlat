@@ -2,6 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_thread_exit_spec::*;
 use super::syscall_thread_exit_trace::*;
+use super::syscall_thread_exit_entry_helpers::{thread_exit_lock_running_thread, thread_exit_enter_with_caller};
 
 verus! {
 pub(super) struct ThreadExitEntered {
@@ -95,145 +96,32 @@ pub(super) fn thread_exit_lock_entry(krnl: &mut KernelK, Tracked(lctx): Tracked<
             &&& thread.syscall_progress.view() == Some(SyscallProgress::ThreadExit { next: 0 })
         }),
 {
-    let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);
-    if cpu_lock_res.is_none() {
-        proof {
-            thread_exit_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id);
-            thread_exit_syscall_result_from_k(&*old(krnl), cpu_id, RetValueType::CpuIdle);
-        }
-        return Err(RetValueType::CpuIdle);
-    }
-    let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
-    assert({
-        let cpu = krnl.cpu_arr.spec_index(cpu_id).view().view();
-        &&& cpu.current_process() is Some
-        &&& cpu.current_thread() is Some
-        &&& krnl.ctn_mp.dom().contains(cpu.owning_container())
-        &&& krnl.prc_mp.dom().contains(cpu.current_process().unwrap())
-        &&& krnl.thr_mp.dom().contains(cpu.current_thread().unwrap())
-        &&& krnl.prc_mp.spec_index(cpu.current_process().unwrap()).view_rodata().view().owning_container == cpu.owning_container()
-        &&& krnl.ctn_mp.spec_index(cpu.owning_container()).view_ghost().owned_processes.view().contains(cpu.current_process().unwrap())
-        &&& krnl.thr_mp.spec_index(cpu.current_thread().unwrap()).view().owning_proc == cpu.current_process().unwrap()
-        &&& krnl.thr_mp.spec_index(cpu.current_thread().unwrap()).view().owning_container == cpu.owning_container()
-        &&& krnl.thr_mp.spec_index(cpu.current_thread().unwrap()).view().state == (ThreadState::RUNNING { cpu_id })
-        &&& krnl.prc_mp.spec_index(cpu.current_process().unwrap()).view().owned_threads.view().len() != 0
-        &&& !krnl.prc_mp.spec_index(cpu.current_process().unwrap()).view().zombie
-        &&& krnl.ctn_mp.spec_index(cpu.owning_container()).view_rodata().view().depth == cpu.view().container_depth
-        &&& krnl.prc_mp.spec_index(cpu.current_process().unwrap()).view_rodata().view().container_depth == cpu.view().container_depth
-        &&& krnl.prc_mp.spec_index(cpu.current_process().unwrap()).view_rodata().view().depth == cpu.view().process_depth
-        &&& krnl.thr_mp.spec_index(cpu.current_thread().unwrap()).view().container_depth == cpu.view().container_depth
-        &&& krnl.thr_mp.spec_index(cpu.current_thread().unwrap()).view().process_depth == cpu.view().process_depth
-    }) by {
-        thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id);
-        process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap());
-        container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap());
+    let locked = match thread_exit_lock_running_thread(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id) {
+        Ok(e) => e,
+        Err(r) => { return Err(r); },
     };
-    let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
-    let process_ptr = cpu.current_process().unwrap();
-    let thread_ptr = cpu.current_thread().unwrap();
-    let container_ptr = cpu.owning_container();
-    let container_res = krnl.wlock_container_unless_killed(container_ptr, Tracked(&mut *lctx));
-    if container_res.is_none() {
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-        proof {
-            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), None, None, None, None, None);
-            thread_exit_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id);
-            thread_exit_syscall_result_from_k(&*old(krnl), cpu_id, RetValueType::ErrorContainerKilled);
-        }
-        return Err(RetValueType::ErrorContainerKilled);
-    }
-    let Tracked(container_lock_perm) = container_res.unwrap();
-    let process_res = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
-    if process_res.is_none() {
-        krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-        proof {
-            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), Some(process_ptr), None, None, None, None);
-            thread_exit_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id);
-            thread_exit_syscall_result_from_k(&*old(krnl), cpu_id, RetValueType::ErrorProcessKilled);
-        }
-        return Err(RetValueType::ErrorProcessKilled);
-    }
-    let Tracked(process_lock_perm) = process_res.unwrap();
-    let thread_res = krnl.wlock_thread_unless_killed(thread_ptr, Tracked(&mut *lctx));
-    if thread_res.is_none() {
+    let container_ptr = locked.container_ptr;
+    let process_ptr = locked.process_ptr;
+    let thread_ptr = locked.thread_ptr;
+    let Tracked(cpu_lock_perm) = locked.cpu_lock_perm;
+    let Tracked(container_lock_perm) = locked.container_lock_perm;
+    let Tracked(process_lock_perm) = locked.process_lock_perm;
+    let Tracked(thread_lock_perm) = locked.thread_lock_perm;
+    let entered = thread_exit_enter_with_caller(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, thread_ptr, Tracked(&thread_lock_perm),
+        Ghost(*old(krnl)));
+    if entered.is_none() {
+        krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
         krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), Some(process_ptr), Some(thread_ptr), None, None, None);
             thread_exit_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id);
-            thread_exit_syscall_result_from_k(&*old(krnl), cpu_id, RetValueType::ErrorThreadKilled);
         }
-        return Err(RetValueType::ErrorThreadKilled);
+        return Err(RetValueType::ErrorIpcPeerKilled);
     }
-    let Tracked(thread_lock_perm) = thread_res.unwrap();
-    let ghost locked_k = *krnl;
-    let ghost locked_lctx = *lctx;
-    proof { thread_perms_wf_at(krnl.thr_mp, thread_ptr); }
-    let caller = krnl.thr_mp.borrow_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&thread_lock_perm)).caller;
-    proof {
-        assert(krnl.thr_mp.spec_index(thread_ptr).view().callee is None && (caller matches Some(caller_ptr) ==> {
-            &&& krnl.thr_mp.dom().contains(caller_ptr)
-            &&& caller_ptr != thread_ptr
-            &&& krnl.thr_mp.spec_index(caller_ptr).view().state.is_reply_waiting()
-            &&& krnl.thr_mp.spec_index(caller_ptr).view().callee == Some(thread_ptr)
-            &&& krnl.thr_mp.spec_index(caller_ptr).view().owning_container == container_ptr
-        })) by { thread_caller_callee_wf_at(krnl.thr_mp, thread_ptr); };
-        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &locked_k)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &locked_k)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-        assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, locked_k.ep_mp)) by { broadcast use kernel_endpoint_nonlock_fields_unchanged_for_equal; };
-    }
-    let mut dangling: Option<RwLockThreadPtr> = None;
-    let tracked mut dangling_lock_perm: Option<LockPerm> = None;
-    if let Some(caller_ptr) = caller {
-        let caller_res = krnl.wlock_thread_unless_killed(caller_ptr, Tracked(&mut *lctx));
-        if caller_res.is_none() {
-            krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
-            krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
-            krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
-            krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-            proof {
-                steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), Some(process_ptr), Some(thread_ptr), None, None, None);
-                thread_exit_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id);
-                thread_exit_syscall_result_from_k(&*old(krnl), cpu_id, RetValueType::ErrorIpcPeerKilled);
-            }
-            return Err(RetValueType::ErrorIpcPeerKilled);
-        }
-        let Tracked(caller_lock_perm) = caller_res.unwrap();
-        proof { thread_perms_wf_at(krnl.thr_mp, caller_ptr); }
-        let caller_dangling = match krnl.thr_mp.borrow_typed(caller_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&caller_lock_perm)).state {
-            ThreadState::DANGLING => true,
-            _ => false,
-        };
-        if caller_dangling {
-            take_over_dangling_caller(krnl, Tracked(&mut *lctx), thread_ptr, caller_ptr, Tracked(&thread_lock_perm), Tracked(&caller_lock_perm));
-            dangling = Some(caller_ptr);
-            proof { dangling_lock_perm = Some(caller_lock_perm); }
-        } else {
-            wake_waiting_reply_caller(krnl, Tracked(&mut *lctx), cpu_id, container_ptr, thread_ptr, caller_ptr, Tracked(&thread_lock_perm), Tracked(caller_lock_perm));
-        }
-    } else {
-        proof { enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx); }
-    }
-    let ghost woken_k = *krnl;
-    krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::ThreadExit { next: 0 })), Tracked(&*lctx), Tracked(&thread_lock_perm));
-    proof {
-        let entered_k = *krnl;
-        let enter_before = steps.view();
-        krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
-        assert(thread_exit_partial_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id)) by {
-            thread_exit_enter_step_pre_from_k(old(krnl), cpu_id, container_ptr, process_ptr, thread_ptr, caller, dangling is Some);
-            kernel_cpu_process_thread_endpoint_lock_modes_changed_implies_u_step(old(krnl), &locked_k, &locked_lctx, cpu_id, process_ptr, thread_ptr, None, true, Some(container_ptr), false, None);
-            if let Some(caller_ptr) = caller {
-                if dangling is Some { kernel_dangling_caller_taken_over_implies_u_step(&locked_k, &woken_k, thread_ptr, caller_ptr, None); } else { kernel_caller_woken_implies_u_step(&locked_k, &woken_k, cpu_id, thread_ptr, caller_ptr); }
-            }
-            kernel_thread_syscall_progress_changed_implies_u_step(&woken_k, &entered_k, thread_ptr);
-            thread_exit_enter_step_from_u(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(locked_k), kernel_k_to_kernel_u(woken_k), kernel_k_to_kernel_u(entered_k), cpu_id, container_ptr, process_ptr, thread_ptr, caller, dangling is Some);
-            thread_exit_trace_enter_step(&*steps, enter_before, kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(entered_k), cpu_id);
-        };
-        thread_exit_syscall_result_from_k(&*old(krnl), cpu_id, RetValueType::CpuIdle);
-    }
+    let (dangling, dangling_lock_perm) = entered.unwrap();
+    let Tracked(dangling_lock_perm) = dangling_lock_perm;
     if let Some(dangling_ptr) = dangling {
         let tracked dangling_perm = dangling_lock_perm.tracked_unwrap();
         thread_exit_reclaim_dangling_caller(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, thread_ptr, dangling_ptr, Tracked(dangling_perm),
