@@ -182,6 +182,7 @@ pub(super) proof fn thread_exit_drop_step_from_u(
             &&& thread.endpoint_descriptors[index as int] == Some(endpoint_ptr)
             &&& pre.endpoint_map.dom().contains(endpoint_ptr)
             &&& pre.endpoint_map.spec_index(endpoint_ptr).lock_state is Unlocked
+            &&& pre.endpoint_map.spec_index(endpoint_ptr).owning_threads.len() > 1
         },
         post == (KernelU {
             thread_map: pre.thread_map.insert(thread_ptr, ThreadU {
@@ -196,6 +197,26 @@ pub(super) proof fn thread_exit_drop_step_from_u(
     ensures
         thread_exit_drop_step(pre, post, cpu_id),
 { reveal(thread_exit_drop_step); }
+
+/// Releasing the endpoint whose last reference is descriptor `index`, the first one at or after the recorded position
+/// `next`, is the release step on `pre`/`post`.
+pub(super) proof fn thread_exit_release_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, next: EndpointIdx, index: EndpointIdx)
+    requires
+        next <= index < MAX_NUM_ENDPOINT_DESCRIPTORS,
+        pre.cpu_array[cpu_id as int].current_thread == Some(thread_ptr),
+        {
+            let thread = pre.thread_map.spec_index(thread_ptr);
+            &&& thread.syscall_progress == Some(SyscallProgress::ThreadExit { next })
+            &&& forall|j: int| #![trigger thread.endpoint_descriptors[j]] next <= j < index ==> thread.endpoint_descriptors[j] is None
+        },
+        kernel_u_endpoint_released(pre, post, thread_ptr, index as int),
+        post.thread_map == pre.thread_map.insert(thread_ptr, ThreadU {
+            endpoint_descriptors: pre.thread_map[thread_ptr].endpoint_descriptors.update(index as int, None),
+            syscall_progress: Some(SyscallProgress::ThreadExit { next: (index + 1) as EndpointIdx }), ..pre.thread_map[thread_ptr]
+        }),
+    ensures
+        thread_exit_release_step(pre, post, cpu_id),
+{ reveal(thread_exit_release_step); }
 
 /// A state holding the cpu, `container_ptr`, `process_ptr`, and the running `thread_ptr` that has released every
 /// descriptor and has no caller gives the finish step precondition.

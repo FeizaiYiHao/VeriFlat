@@ -42,6 +42,7 @@ pub open spec fn create_thread_from_staged_page_eof_transition_framing(
                 uppertree_seq: pre_ghost.uppertree_seq, subtree_set: pre_ghost.subtree_set, owned_processes: pre_ghost.owned_processes,
                 owned_threads: if c == container_ptr { Ghost(pre_ghost.owned_threads.view().insert(page_ptr)) } else { pre_ghost.owned_threads },
                 owned_indirect_threads: if uppers.to_set().contains(c) { Ghost(pre_ghost.owned_indirect_threads.view().insert(page_ptr)) } else { pre_ghost.owned_indirect_threads },
+                owned_endpoints: pre_ghost.owned_endpoints,
             })
         }
     &&& post.prc_mp.dom() == pre.prc_mp.dom()

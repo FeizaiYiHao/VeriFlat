@@ -69,7 +69,10 @@ pub(super) fn thread_exit_drop_descriptors(
         final(krnl).cpu_published[cpu_id as int].view() == old(krnl).cpu_published[cpu_id as int].view(),
         final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
         final(krnl).ctn_mp.dom().contains(container_ptr),
-        final(krnl).ctn_mp.spec_index(container_ptr) == old(krnl).ctn_mp.spec_index(container_ptr),
+        final(krnl).ctn_mp.spec_index(container_ptr).view() == old(krnl).ctn_mp.spec_index(container_ptr).view(),
+        final(krnl).ctn_mp.spec_index(container_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(container_ptr).view_rodata(),
+        final(krnl).ctn_mp.spec_index(container_ptr).locking_thread() == old(krnl).ctn_mp.spec_index(container_ptr).locking_thread(),
+        final(krnl).ctn_mp.spec_index(container_ptr).being_killed() == old(krnl).ctn_mp.spec_index(container_ptr).being_killed(),
         final(krnl).prc_mp.dom().contains(process_ptr),
         final(krnl).prc_mp.spec_index(process_ptr) == old(krnl).prc_mp.spec_index(process_ptr),
         final(krnl).thr_mp.dom().contains(thread_ptr),
@@ -137,7 +140,10 @@ pub(super) fn thread_exit_drop_descriptors(
             krnl.cpu_published[cpu_id as int].view() == old(krnl).cpu_published[cpu_id as int].view(),
             krnl.cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
             krnl.ctn_mp.dom().contains(container_ptr),
-            krnl.ctn_mp.spec_index(container_ptr) == old(krnl).ctn_mp.spec_index(container_ptr),
+            krnl.ctn_mp.spec_index(container_ptr).view() == old(krnl).ctn_mp.spec_index(container_ptr).view(),
+            krnl.ctn_mp.spec_index(container_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(container_ptr).view_rodata(),
+            krnl.ctn_mp.spec_index(container_ptr).locking_thread() == old(krnl).ctn_mp.spec_index(container_ptr).locking_thread(),
+            krnl.ctn_mp.spec_index(container_ptr).being_killed() == old(krnl).ctn_mp.spec_index(container_ptr).being_killed(),
             krnl.prc_mp.dom().contains(process_ptr),
             krnl.prc_mp.spec_index(process_ptr) == old(krnl).prc_mp.spec_index(process_ptr),
             krnl.thr_mp.dom().contains(thread_ptr),
@@ -159,17 +165,20 @@ pub(super) fn thread_exit_drop_descriptors(
             let ghost drop_pre = *krnl;
             let ghost drop_lctx = *lctx;
             let ghost drop_before = steps.view();
-            let Tracked(endpoint_lock_perm) = krnl.wlock_endpoint(endpoint_ptr, Tracked(&mut *lctx));
-            drop_endpoint_descriptor(krnl, Tracked(&mut *lctx), thread_ptr, endpoint_ptr, index, Tracked(thread_lock_perm), Tracked(endpoint_lock_perm));
+            let released = drop_endpoint_descriptor(krnl, Tracked(&mut *lctx), cpu_id, thread_ptr, endpoint_ptr, index, Tracked(thread_lock_perm));
             krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::ThreadExit { next: (index + 1) as EndpointIdx })), Tracked(&*lctx), Tracked(thread_lock_perm));
             proof {
                 let drop_post = *krnl;
-                assert(lctx.endpoint_lock_map() =~= old(lctx).endpoint_lock_map());
                 krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
                 assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
                     thread_exit_drop_step_pre_from_k(&drop_pre, &drop_lctx, cpu_id, container_ptr, process_ptr, thread_ptr, recorded);
-                    kernel_descriptor_dropped_implies_u_step(&drop_pre, &drop_post, thread_ptr, endpoint_ptr, index);
-                    thread_exit_drop_step_from_u(kernel_k_to_kernel_u(drop_pre), kernel_k_to_kernel_u(drop_post), cpu_id, thread_ptr, endpoint_ptr, recorded, index);
+                    if released {
+                        kernel_endpoint_released_implies_u_step(&drop_pre, &drop_post, thread_ptr, endpoint_ptr, index);
+                        thread_exit_release_step_from_u(kernel_k_to_kernel_u(drop_pre), kernel_k_to_kernel_u(drop_post), cpu_id, thread_ptr, recorded, index);
+                    } else {
+                        kernel_descriptor_dropped_implies_u_step(&drop_pre, &drop_post, thread_ptr, endpoint_ptr, index);
+                        thread_exit_drop_step_from_u(kernel_k_to_kernel_u(drop_pre), kernel_k_to_kernel_u(drop_post), cpu_id, thread_ptr, endpoint_ptr, recorded, index);
+                    }
                     thread_exit_trace_push(&*steps, drop_before, start, pre, kernel_k_to_kernel_u(drop_pre), kernel_k_to_kernel_u(drop_post), cpu_id);
                 };
                 recorded = (index + 1) as EndpointIdx;

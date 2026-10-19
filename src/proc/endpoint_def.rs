@@ -24,6 +24,7 @@ impl LockInvTrait for Endpoint {
     open spec fn inv(&self) -> bool {
         &&& self.queue.wf()
         &&& self.rf_counter == self.owning_threads.view().len()
+        &&& self.rf_counter != 0
     }
 }
 

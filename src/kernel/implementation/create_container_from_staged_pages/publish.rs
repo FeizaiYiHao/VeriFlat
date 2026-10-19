@@ -462,7 +462,7 @@ pub(super) fn publish_staged_container_root_mutation(
     );
     let container_ghost = ContainerGhost {
         uppertree_seq: Ghost(child_uppers), subtree_set: Ghost(Set::empty()), owned_processes: Ghost(Set::empty().insert(child_process_ptr)),
-        owned_threads: Ghost(Set::empty()), owned_indirect_threads: Ghost(Set::empty()),
+        owned_threads: Ghost(Set::empty()), owned_indirect_threads: Ghost(Set::empty()), owned_endpoints: Ghost(Set::empty()),
     };
     proof {
         assert(old(krnl).cpu_offline_mp.perms_wf()) by { cpu_offline_flags_wf_map(old(krnl).cpu_offline_mp, old(krnl).cpu_arr); };

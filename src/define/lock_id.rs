@@ -35,7 +35,10 @@ pub const OWNED_PAGE_LOCK_MAJOR: LockMajorId = 1;
 
 pub const THREAD_IPC_TRANSIT_LOCK_MAJOR: LockMajorId = 10000;
 pub const ENDPOINT_LOCK_MAJOR: LockMajorId = 10001;
-pub const THREAD_BLOCKED_LOCK_MAJOR: LockMajorId = 10002;
+// The page of an endpoint follows the endpoint lock, so the holder of an endpoint's last reference can lock its page
+// to release it. Allocator caches and quotas still follow.
+pub const ENDPOINT_PAGE_MAJOR: LockMajorId = ENDPOINT_LOCK_MAJOR + 1;
+pub const THREAD_BLOCKED_LOCK_MAJOR: LockMajorId = ENDPOINT_PAGE_MAJOR + 1;
 // A rendezvous discovers and pins its blocked peer before it can discover the
 // two process address spaces.  Page tables therefore follow blocked threads;
 // mapped pages still follow both page-table kinds.

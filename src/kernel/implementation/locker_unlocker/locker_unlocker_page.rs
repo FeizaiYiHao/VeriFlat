@@ -24,8 +24,8 @@ impl KernelK {
                     &&& old(lctx).holds_no_allocator_locks(PageSize::SZ2m)
                     &&& old(lctx).holds_no_allocator_locks(PageSize::SZ1g)
                 }
+                &&& major < ENDPOINT_PAGE_MAJOR ==> old(lctx).endpoint_lock_map().dom().is_empty()
                 &&& major < PAGETABLE_PAGE_MAJOR ==> {
-                    &&& old(lctx).endpoint_lock_map().dom().is_empty()
                     &&& old(lctx).pagetable_lock_map().dom().is_empty()
                     &&& old(lctx).iommu_table_lock_map().dom().is_empty()
                     &&& old(lctx).iommu_root_table_lock_map().dom().is_empty()

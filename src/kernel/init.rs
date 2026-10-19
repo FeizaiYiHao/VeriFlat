@@ -637,7 +637,6 @@ pub open spec fn boot_kernel_state(
     &&& krnl.ctn_mp.spec_index(layout.root_container).view().children.map() == Map::<usize, RwLockContainerPtr>::empty()
     &&& krnl.ctn_mp.spec_index(layout.root_container).view().root_process == layout.root_process
     &&& !krnl.ctn_mp.spec_index(layout.root_container).view().zombie
-    &&& krnl.ctn_mp.spec_index(layout.root_container).view().owned_endpoints.view() =~= set![layout.root_endpoint]
     &&& krnl.ctn_mp.spec_index(layout.root_container).view().owned_pages.view() == owned_pages
     &&& krnl.ctn_mp.spec_index(layout.root_container).view_rodata().owner_addr() == layout.root_container
     &&& krnl.ctn_mp.spec_index(layout.root_container).view_rodata().view() == (ContainerRO {
@@ -646,7 +645,7 @@ pub open spec fn boot_kernel_state(
     })
     &&& krnl.ctn_mp.spec_index(layout.root_container).view_ghost() == (ContainerGhost {
         uppertree_seq: Ghost(Seq::empty()), subtree_set: Ghost(Set::empty()), owned_processes: Ghost(Set::empty().insert(layout.root_process)),
-        owned_threads: Ghost(Set::empty().insert(layout.root_thread)), owned_indirect_threads: Ghost(Set::empty()),
+        owned_threads: Ghost(Set::empty().insert(layout.root_thread)), owned_indirect_threads: Ghost(Set::empty()), owned_endpoints: Ghost(Set::empty().insert(layout.root_endpoint)),
     })
     &&& krnl.sched_mp.perms_wf()
     &&& krnl.sched_mp.dom() =~= set![layout.scheduler]
@@ -1422,7 +1421,7 @@ pub fn finish_init_from_boot(
     let endpoint = Endpoint::new_root(layout.root_endpoint, layout.root_container, layout.root_thread);
     let cpu_set = CpuSet::new_root(layout.root_container);
     let pcid_allocator = PcidAllocator::new_boot_root(layout.root_container, layout.root_process);
-    let container = Container::new_boot_root(layout.root_container, layout.root_process, layout.root_endpoint, owned_pages);
+    let container = Container::new_boot_root(layout.root_container, layout.root_process, owned_pages);
     let quota_4k = free_4k_pool.length;
     let quota_2m = free_2m_pool.length;
     let quota_1g = free_1g_pool.length;
@@ -1455,7 +1454,7 @@ pub fn finish_init_from_boot(
     let ghost root_threads = Set::<RwLockThreadPtr>::empty().insert(layout.root_thread);
     let container_ghost = ContainerGhost {
         uppertree_seq: Ghost(Seq::empty()), subtree_set: Ghost(Set::empty()), owned_processes: Ghost(Set::empty().insert(layout.root_process)),
-        owned_threads: Ghost(root_threads), owned_indirect_threads: Ghost(Set::empty()),
+        owned_threads: Ghost(root_threads), owned_indirect_threads: Ghost(Set::empty()), owned_endpoints: Ghost(Set::empty().insert(layout.root_endpoint)),
     };
 
     let mut pt_mp = PageTableLockedMap::new_empty();

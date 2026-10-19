@@ -8,6 +8,7 @@ pub mod pcid_allocator;
 pub mod trap_frame_def;
 pub mod thread_util_t;
 pub mod process_util_t;
+pub mod endpoint_util_t;
 
 pub use container_def::*;
 pub use process_def::*;
@@ -19,6 +20,7 @@ pub use pcid_allocator::*;
 pub use trap_frame_def::*;
 pub use thread_util_t::*;
 pub use process_util_t::*;
+pub use endpoint_util_t::*;
 pub mod cpu_set;
 pub use cpu_set::*;
 

@@ -1687,7 +1687,7 @@ pub(super) fn link_new_container_into_tree(
         !final(containers).spec_index(child_container_ptr).view().zombie,
         final(containers).spec_index(child_container_ptr).view_ghost().owned_processes.view() == set![child_process_ptr],
         final(containers).spec_index(child_container_ptr).view_ghost().uppertree_seq == old(containers).spec_index(child_container_ptr).view_ghost().uppertree_seq,
-        final(containers).spec_index(child_container_ptr).view().owned_endpoints == old(containers).spec_index(child_container_ptr).view().owned_endpoints,
+        final(containers).spec_index(child_container_ptr).view_ghost().owned_endpoints == old(containers).spec_index(child_container_ptr).view_ghost().owned_endpoints,
         final(containers).spec_index(child_container_ptr).view_ghost().owned_threads == old(containers).spec_index(child_container_ptr).view_ghost().owned_threads,
         final(containers).spec_index(child_container_ptr).view_ghost().owned_indirect_threads == old(containers).spec_index(child_container_ptr).view_ghost().owned_indirect_threads,
         parent_container_lock_perm.lock_id() == final(containers).spec_index(parent_container_ptr).locking_thread()->Write_lock_id,
@@ -1703,6 +1703,7 @@ pub(super) fn link_new_container_into_tree(
                 &&& final(containers).spec_index(container_ptr).view_ghost().owned_threads == base_containers.spec_index(container_ptr).view_ghost().owned_threads
                 &&& final(containers).spec_index(container_ptr).view_ghost().owned_processes == base_containers.spec_index(container_ptr).view_ghost().owned_processes
                 &&& final(containers).spec_index(container_ptr).view_ghost().owned_indirect_threads == base_containers.spec_index(container_ptr).view_ghost().owned_indirect_threads
+                &&& final(containers).spec_index(container_ptr).view_ghost().owned_endpoints == base_containers.spec_index(container_ptr).view_ghost().owned_endpoints
                 &&& container_ptr != parent_container_ptr ==> final(containers).spec_index(container_ptr).view() == base_containers.spec_index(container_ptr).view()
             },
 {

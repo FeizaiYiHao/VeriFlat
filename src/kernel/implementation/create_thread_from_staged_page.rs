@@ -147,6 +147,7 @@ pub fn create_thread_from_staged_page_merged(
                 &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
                 &&& final(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq
                 &&& final(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
+                &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_endpoints == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_endpoints
                 &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_threads.view() == if c == container_ptr { old(krnl).ctn_mp.spec_index(c).view_ghost().owned_threads.view().insert(page_ptr) }
                         else { old(krnl).ctn_mp.spec_index(c).view_ghost().owned_threads.view() }
                 &&& final(krnl).ctn_mp.spec_index(c).being_killed() == old(krnl).ctn_mp.spec_index(c).being_killed()

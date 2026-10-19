@@ -21,6 +21,7 @@ pub proof fn kernel_killed_descriptor_dropped_implies_u_step(before: &KernelK, a
         after.thr_mp.spec_index(thread_ptr).being_killed() == before.thr_mp.spec_index(thread_ptr).being_killed(),
         before.ep_mp.dom().contains(endpoint_ptr),
         before.ep_mp.spec_index(endpoint_ptr).locking_thread() is None,
+        before.ep_mp.spec_index(endpoint_ptr).view().owning_threads.view().len() > 1,
         after.ep_mp.unchanged_except(&before.ep_mp, endpoint_ptr),
         after.ep_mp.spec_index(endpoint_ptr).view().queue.view() == before.ep_mp.spec_index(endpoint_ptr).view().queue.view(),
         after.ep_mp.spec_index(endpoint_ptr).view().queue_state == before.ep_mp.spec_index(endpoint_ptr).view().queue_state,
