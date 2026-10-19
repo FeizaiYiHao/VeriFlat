@@ -105,6 +105,98 @@ fn refund_unmap_4k_quota_level(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, 
     }
 }
 
+/// Refunds `thread_ptr`'s pending 4K quota at `depth` to `owner`, clears that pending counter, and returns `owner`'s parent (or `owner` at depth 0).
+fn refund_unmap_4k_quota_at_depth(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, depth: usize, thread_depth: usize, indirect: &mut [usize; MAX_CONTAINER_TREE_DEPTH], direct: &mut usize,
+    Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, thread_perm: Tracked<&LockPerm>) -> (next_owner: RwLockContainerPtr)
+    requires
+        old(steps).snapshot_k() == *old(krnl),
+        old(krnl).inv(),
+        typed_lock_maps_aligned(old(krnl), old(lctx)),
+        old(lctx).kernel_view_locking_state() is Acquire,
+        old(lctx).pcid_needflush_lock_map().dom().is_empty(),
+        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.lock_id_by_index(held_page).major < QUOTA_MAJOR,
+        old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
+        old(krnl).thr_mp.dom().contains(thread_ptr),
+        typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
+        thread_perm.view().state() is WriteLock,
+        thread_perm.view().thread_id() == old(lctx).thread_id(),
+        thread_perm.view().lock_id() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
+        thread_depth == old(krnl).thr_mp.spec_index(thread_ptr).view().container_depth,
+        old(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().len() == thread_depth,
+        depth <= thread_depth <= MAX_CONTAINER_TREE_DEPTH,
+        *old(direct) == old(krnl).thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k.view(),
+        forall|d: int| #![trigger old(indirect)[d]] #![trigger old(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().spec_index(d)] 0 <= d < old(krnl).thr_mp.spec_index(thread_ptr).view().container_depth
+            ==> old(indirect)[d] == old(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().spec_index(d),
+        depth < thread_depth ==> *old(direct) == 0,
+        forall|d: int| #![trigger old(indirect)[d]] depth < d < thread_depth ==> old(indirect)[d] == 0,
+        old(krnl).ctn_mp.dom().contains(owner),
+        old(krnl).ctn_mp.spec_index(owner).view_rodata().view().depth == depth,
+        if depth == thread_depth { owner == old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container } else { old(krnl).thr_mp.spec_index(thread_ptr).view().upper_container_seq.view().spec_index(depth as int) == owner },
+    ensures
+        final(steps).snapshot_k() == *final(krnl),
+        old(steps).view().len() <= final(steps).view().len() <= old(steps).view().len() + 1,
+        final(steps).view().len() == old(steps).view().len() ==> final(steps).view() == old(steps).view(),
+        final(steps).view().len() == old(steps).view().len() + 1 ==> {
+            &&& final(steps).view() == old(steps).view().push(final(steps).view().last())
+            &&& final(steps).view().last().old_u == kernel_k_to_kernel_u(*old(krnl))
+            &&& kernel_u_container_quota_4k_increased(final(steps).view().last().old_u, final(steps).view().last().new_u, old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container)
+        },
+        forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+        old(steps).nonlock_view().len() <= final(steps).nonlock_view().len() <= old(steps).nonlock_view().len() + 1,
+        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
+        final(krnl).inv(),
+        typed_lock_maps_aligned(final(krnl), final(lctx)),
+        typed_lock_maps_unchanged(old(lctx), final(lctx)),
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() is Acquire,
+        forall|held_cpu_id: CpuId| #![trigger final(lctx).cpu_lock_map().dom().contains(held_cpu_id)] final(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(final(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+        forall|held_page: PageIndex| #![trigger final(lctx).page_lock_map().dom().contains(held_page)] final(lctx).page_lock_map().dom().contains(held_page) ==> final(krnl).pg_arr.lock_id_by_index(held_page).major < QUOTA_MAJOR,
+        held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
+        held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
+        held_pagetables_unchanged(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx)),
+        held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
+        held_pages_unchanged(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx)),
+        held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
+        forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view())]
+            old(lctx).pagetable_lock_map().dom().contains(pt) && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
+                ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
+        final(krnl).thr_mp.dom().contains(thread_ptr),
+        final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { direct_free_quota_pending_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k,
+            indirect_free_quota_pending_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
+        final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread(),
+        final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
+        final(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().len() == thread_depth,
+        *final(direct) == 0,
+        *final(direct) == final(krnl).thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k.view(),
+        forall|d: int| #![trigger final(indirect)[d]] #![trigger final(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().spec_index(d)] 0 <= d < final(krnl).thr_mp.spec_index(thread_ptr).view().container_depth
+            ==> final(indirect)[d] == final(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().spec_index(d),
+        forall|d: int| #![trigger final(indirect)[d]] depth <= d < thread_depth ==> final(indirect)[d] == 0,
+        final(krnl).ctn_mp.dom().contains(next_owner),
+        depth > 0 ==> final(krnl).ctn_mp.spec_index(next_owner).view_rodata().view().depth == depth - 1,
+        depth > 0 ==> final(krnl).thr_mp.spec_index(thread_ptr).view().upper_container_seq.view().spec_index(depth as int - 1) == next_owner,
+{
+    assert(krnl.ctn_mp.view().spec_index(owner).is_init() && krnl.ctn_mp.view().spec_index(owner).addr() == owner) by { container_perms_wf_at(krnl.ctn_mp, owner); };
+    let ro = krnl.ctn_mp.borrow_rodata(owner).borrow();
+    let parent = ro.parent;
+    let allocator_ptr = ro.allocator_ptr_4k;
+    assert(depth > 0 ==> parent is Some && krnl.ctn_mp.dom().contains(parent.unwrap()) && krnl.ctn_mp.spec_index(parent.unwrap()).view_rodata().view().depth == depth - 1
+        && krnl.thr_mp.spec_index(thread_ptr).view().upper_container_seq.view().spec_index(depth as int - 1) == parent.unwrap()) by {
+        if depth > 0 { refund_unmap_4k_quota_parent_facts(*krnl, thread_ptr, owner, depth); }
+    };
+    let counter = if depth == thread_depth { *direct } else { indirect[depth] };
+    if counter != 0 {
+        refund_unmap_4k_quota_level(krnl, thread_ptr, owner, depth, allocator_ptr, counter, Tracked(&mut *lctx), Tracked(&mut *steps), thread_perm);
+    } else {
+        proof { held_kernel_objects_unchanged_reflexive(krnl, lctx); }
+    }
+    if depth == thread_depth { *direct = 0; } else { indirect[depth] = 0; }
+    if depth > 0 { parent.unwrap() } else { owner }
+}
+
 pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, indirect: &mut [usize; MAX_CONTAINER_TREE_DEPTH], direct: &mut usize, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, thread_perm: Tracked<&LockPerm>)
     requires
         old(steps).snapshot_k() == *old(krnl),
@@ -190,7 +282,6 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
             old(lctx).pagetable_lock_map().dom().contains(pt) && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
                 ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
 {
-    hide(Seq::contains);
     assert(krnl.thr_mp.perms_wf() && krnl.thr_mp.spec_index(thread_ptr).inv() && krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().len() == krnl.thr_mp.spec_index(thread_ptr).view().container_depth) by {
         thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, thread_ptr);
     };
@@ -292,21 +383,8 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
         decreases remaining,
     {
         let depth = remaining - 1;
-        assert(krnl.ctn_mp.perms_wf()) by { container_perms_wf_map(krnl.ctn_mp); };
-        let ro = krnl.ctn_mp.borrow_rodata(owner).borrow();
-        let parent = ro.parent;
-        let allocator_ptr = ro.allocator_ptr_4k;
-        assert(depth > 0 ==> parent is Some && krnl.ctn_mp.dom().contains(parent.unwrap()) && krnl.ctn_mp.spec_index(parent.unwrap()).view_rodata().view().depth == depth - 1
-            && krnl.thr_mp.spec_index(thread_ptr).view().upper_container_seq.view().spec_index(depth as int - 1) == parent.unwrap()) by {
-            if depth > 0 { refund_unmap_4k_quota_parent_facts(*krnl, thread_ptr, owner, depth); }
-        };
-        let counter = if depth == thread_depth { *direct } else { indirect[depth] };
-        if counter != 0 {
-            proof { refund_unmap_4k_step_pre_from_k(&*krnl, &*old(krnl), &*lctx, &*old(lctx), thread_ptr); }
-            refund_unmap_4k_quota_level(krnl, thread_ptr, owner, depth, allocator_ptr, counter, Tracked(&mut *lctx), Tracked(&mut *steps), thread_perm);
-        }
-        if depth == thread_depth { *direct = 0; } else { indirect[depth] = 0; }
-        if depth > 0 { owner = parent.unwrap(); }
+        proof { refund_unmap_4k_step_pre_from_k(&*krnl, &*old(krnl), &*lctx, &*old(lctx), thread_ptr); }
+        owner = refund_unmap_4k_quota_at_depth(krnl, thread_ptr, owner, depth, thread_depth, indirect, direct, Tracked(&mut *lctx), Tracked(&mut *steps), thread_perm);
         remaining = depth;
     }
 }

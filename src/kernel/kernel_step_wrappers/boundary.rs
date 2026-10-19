@@ -1224,11 +1224,7 @@ impl KernelK {
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
-            index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> {
-                &&& final(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view().current_cr3 == old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view().current_cr3
-                &&& final(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view().current_pcid == old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view().current_pcid
-                &&& final(self).cpu_published[old(lctx).cpu_id() as int].view() == old(self).cpu_published[old(lctx).cpu_id() as int].view()
-            },
+            index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(self).cpu_published[old(lctx).cpu_id() as int].view() == old(self).cpu_published[old(lctx).cpu_id() as int].view(),
             final(self).inv(),
             final(lctx).kernel_view_locking_state() is Acquire,
             final(lctx).thread_id() == old(lctx).thread_id(),
@@ -1236,17 +1232,6 @@ impl KernelK {
             forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, pt, final(self).pt_mp.spec_index(pt).view())]
                 old(lctx).pagetable_lock_map().dom().contains(pt) && pagetable_tlb_entries_present(old(self).cpu_tlb, old(self).cpu_arr, old(self).pcid_needflush, pt, old(self).pt_mp.spec_index(pt).view())
                     ==> pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, pt, final(self).pt_mp.spec_index(pt).view()),
-            forall|pagetable_ptr: RwLockPageTableRoot, cpu_id: CpuId, pcid: Pcid|
-                #![trigger old(lctx).pagetable_lock_map().dom().contains(pagetable_ptr), final(self).cpu_tlb.spec_index((cpu_id, pcid))]
-                old(lctx).pagetable_lock_map().dom().contains(pagetable_ptr) && index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID ==> {
-                    let before = old(self).cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
-                    let after = final(self).cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
-                    after is Some && after.unwrap().pagetable_ptr == pagetable_ptr && (before is None || before.unwrap().pagetable_ptr != pagetable_ptr
-                        || single_cpu_single_pcid_tlb_subset_of_present_pagetable(old(self).cpu_tlb.spec_index((cpu_id, pcid)), old(self).pt_mp.spec_index(pagetable_ptr).view())
-                        || (old(self).pcid_needflush.spec_index(cpu_id, pcid).view().needflush && old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid
-                            && (!final(self).pcid_needflush.spec_index(cpu_id, pcid).view().needflush || final(self).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid)))
-                    ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(self).cpu_tlb.spec_index((cpu_id, pcid)), final(self).pt_mp.spec_index(pagetable_ptr).view())
-                },
             forall|cpu_id: CpuId|
                 #![trigger old(lctx).cpu_lock_map().dom().contains(cpu_id)]
                 old(lctx).cpu_lock_map().dom().contains(cpu_id) ==> final(self).cpu_arr.spec_index(cpu_id).view() == old(self).cpu_arr.spec_index(cpu_id).view(),
@@ -1290,12 +1275,6 @@ impl KernelK {
             kernel_cpu_process_thread_nonlock_fields_unchanged(&final(steps).snapshot_k(), final(self)),
             kernel_endpoint_nonlock_fields_unchanged(final(steps).snapshot_k().ep_mp, final(self).ep_mp),
             kernel_container_nonlock_fields_and_quotas_unchanged(&final(steps).snapshot_k(), final(self)),
-            final(steps).nonlock_view().last().new_u.thread_map.spec_index(thread_ptr) == (ThreadU {
-                quota_4k: (final(steps).nonlock_view().last().old_u.thread_map.spec_index(thread_ptr).quota_4k as int + delta) as usize,
-                syscall_progress: final(steps).nonlock_view().last().new_u.thread_map.spec_index(thread_ptr).syscall_progress,
-                ..final(steps).nonlock_view().last().old_u.thread_map.spec_index(thread_ptr)
-            }),
-            final(self).dflt_pt == old(self).dflt_pt,
             containers_rodata_unchanged(old(self).ctn_mp, final(self).ctn_mp),
             processes_rodata_unchanged(old(self).prc_mp, final(self).prc_mp),
             held_endpoints_unchanged(old(self).ep_mp, final(self).ep_mp, old(lctx)),
@@ -1308,6 +1287,7 @@ impl KernelK {
         use_type_invariant(&*steps);
         reveal(KernelSteps::nonlock_view);
         kernel_thread_quota_4k_changed_implies_u_step(&steps.snapshot_k(), &*self, thread_ptr, delta);
+        assert(steps.snapshot_u() != kernel_k_to_kernel_u(*self)) by { kernel_nonlock_projection_is_u_nonlock_fields(steps.snapshot_k()); kernel_nonlock_projection_is_u_nonlock_fields(*self); };
         steps.end_kernel_step_raw(&*self, &*lctx);
         self.kernel_step_boundary_raw(lctx, steps);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*self);
