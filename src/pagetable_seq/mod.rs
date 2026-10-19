@@ -5,6 +5,7 @@ pub mod pagetable_spec;
 pub mod pagetable_lemma;
 pub mod pagetable_impl_base;
 pub mod pagetable_impl_remove_base;
+mod pagetable_remove_eof;
 pub mod pagetable_util;
 pub mod pagetable_util_t;
 pub mod pagetable_structure_scan;

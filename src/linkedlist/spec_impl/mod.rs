@@ -485,3 +485,4 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
 } // verus!
 
 mod remove_impl;
+mod remove_helper_eof;

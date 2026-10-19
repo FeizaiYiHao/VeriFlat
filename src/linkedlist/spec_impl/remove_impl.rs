@@ -63,18 +63,11 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
         self.map = Ghost(self.map.view().remove(addr));
         self.length = self.length - 1;
 
-        assert(self.wf_perms()) by { seq_remove_lemma::<usize>(); reveal(LinkedList::wf_perms); reveal(LinkedList::wf_addr_list); };
-        assert(self.wf_addr_list()) by { reveal(LinkedList::wf_addr_list); };
-        assert(self.wf_value_list()) by { reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_value_list); };
-        assert(self.wf_head()) by { reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_head); };
-        assert(self.wf_tail()) by { reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_tail); };
-        assert(self.wf_prev()) by { reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_prev); };
-        assert(self.wf_next()) by { reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_next); };
-        assert({
-            &&& self.map().dom() == self.perms.view().dom()
-            &&& self.wf_map()
-        }) by { reveal(LinkedList::wf_map); };
-        assert(self.value_list_unique()) by { reveal(LinkedList::value_list_unique); old(self).value_list.view().remove_ensures(ghost_index.view()); };
+        proof {
+            Self::remove_helper_eof_lists(*old(self), *self, addr, ghost_index.view(), prev, next);
+            Self::remove_helper_eof_prev(*old(self), *self, addr, ghost_index.view(), prev, next);
+            Self::remove_helper_eof_next(*old(self), *self, addr, ghost_index.view(), prev, next);
+        }
         assert(old(self).view().no_duplicates() ==> self.view() == old(self).view().remove_value(old(self).map().spec_index(addr))) by { seq_remove_lemma::<T>(); };
 
         (addr, Tracked(old_perm))
