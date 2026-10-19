@@ -80,6 +80,21 @@ verus! {
             }),
     { reveal(thread_endpoint_queue_wf); }
 
+    pub proof fn thread_endpoint_queue_wf_endpoint_at(thread_map: ThreadLockedMap, endpoint_map: EndpointLockedMap, e_ptr: RwLockEndpointPtr, t_ptr: RwLockThreadPtr)
+        requires
+            thread_endpoint_queue_wf(thread_map, endpoint_map),
+        ensures
+            endpoint_map.dom().contains(e_ptr) && endpoint_map.spec_index(e_ptr).view().queue.view().contains(t_ptr) ==> {
+                &&& thread_map.dom().contains(t_ptr)
+                &&& thread_map.spec_index(t_ptr).view().state.is_endpoint_waiting()
+                &&& thread_map.spec_index(t_ptr).view().blocking_endpoint_ptr.unwrap() == e_ptr
+                &&& match endpoint_map.spec_index(e_ptr).view().queue_state {
+                    EndpointState::SEND => thread_map.spec_index(t_ptr).view().state.is_endpoint_send_waiting(),
+                    EndpointState::RECEIVE => thread_map.spec_index(t_ptr).view().state.is_endpoint_receive_waiting(),
+                }
+            },
+    { reveal(thread_endpoint_queue_wf); }
+
     // Proof dependencies (confirmed): thread_perms_wf,
     // thread_endpoint_ref_counter_wf, container_endpoint_wf.
     #[verifier::opaque]

@@ -215,7 +215,7 @@ pub open spec fn kernel_container_nonlock_fields_and_quotas_unchanged(pre: &Kern
             &&& b.view().zombie == a.view().zombie
             &&& b.view_ghost().owned_processes.view() == a.view_ghost().owned_processes.view()
             &&& b.view_ghost().owned_threads.view() == a.view_ghost().owned_threads.view()
-            &&& b.view().owned_endpoints.view() == a.view().owned_endpoints.view()
+            &&& b.view_ghost().owned_endpoints.view() == a.view_ghost().owned_endpoints.view()
             &&& b.view().owned_pages.view() == a.view().owned_pages.view()
             &&& b_ro.parent == a_ro.parent
             &&& b_ro.depth == a_ro.depth
@@ -297,6 +297,7 @@ pub open spec fn kernel_new_thread_fields(
             &&& post.ctn_mp.spec_index(c).view_ghost().uppertree_seq == pre.ctn_mp.spec_index(c).view_ghost().uppertree_seq
             &&& post.ctn_mp.spec_index(c).view_ghost().subtree_set == pre.ctn_mp.spec_index(c).view_ghost().subtree_set
             &&& post.ctn_mp.spec_index(c).view_ghost().owned_processes == pre.ctn_mp.spec_index(c).view_ghost().owned_processes
+            &&& post.ctn_mp.spec_index(c).view_ghost().owned_endpoints == pre.ctn_mp.spec_index(c).view_ghost().owned_endpoints
             &&& post.ctn_mp.spec_index(c).view_ghost().owned_threads.view() == if c == container_ptr { pre.ctn_mp.spec_index(c).view_ghost().owned_threads.view().insert(new_thread_ptr) }
                     else { pre.ctn_mp.spec_index(c).view_ghost().owned_threads.view() }
             &&& post.ctn_mp.spec_index(c).being_killed() == pre.ctn_mp.spec_index(c).being_killed()
@@ -486,7 +487,7 @@ pub open spec fn kernel_context_switch_fields(pre: &KernelK, post: &KernelK, cpu
             &&& b.view().zombie == a.view().zombie
             &&& b.view_ghost().owned_processes.view() == a.view_ghost().owned_processes.view()
             &&& b.view_ghost().owned_threads.view() == a.view_ghost().owned_threads.view()
-            &&& b.view().owned_endpoints.view() == a.view().owned_endpoints.view()
+            &&& b.view_ghost().owned_endpoints.view() == a.view_ghost().owned_endpoints.view()
             &&& b.view().owned_pages.view() == a.view().owned_pages.view()
             &&& b_ro.parent == a_ro.parent
             &&& b_ro.depth == a_ro.depth
@@ -1395,7 +1396,7 @@ pub open spec fn kernel_ipc_rendezvous_fields(
             &&& b.view().zombie == a.view().zombie
             &&& b.view_ghost().owned_processes.view() == a.view_ghost().owned_processes.view()
             &&& b.view_ghost().owned_threads.view() == a.view_ghost().owned_threads.view()
-            &&& b.view().owned_endpoints.view() == a.view().owned_endpoints.view()
+            &&& b.view_ghost().owned_endpoints.view() == a.view_ghost().owned_endpoints.view()
             &&& b.view().owned_pages.view() == a.view().owned_pages.view()
             &&& b_ro.parent == a_ro.parent
             &&& b_ro.depth == a_ro.depth
@@ -1652,7 +1653,7 @@ pub open spec fn kernel_process_quota_4k_changed(pre: &KernelK, post: &KernelK, 
             &&& b.view().zombie == a.view().zombie
             &&& b.view_ghost().owned_processes.view() == a.view_ghost().owned_processes.view()
             &&& b.view_ghost().owned_threads.view() == a.view_ghost().owned_threads.view()
-            &&& b.view().owned_endpoints.view() == a.view().owned_endpoints.view()
+            &&& b.view_ghost().owned_endpoints.view() == a.view_ghost().owned_endpoints.view()
             &&& b.view().owned_pages.view() == a.view().owned_pages.view()
             &&& b_ro.parent == a_ro.parent
             &&& b_ro.depth == a_ro.depth
@@ -1795,7 +1796,7 @@ pub open spec fn kernel_process_quota_2m_changed(pre: &KernelK, post: &KernelK, 
             &&& b.view().zombie == a.view().zombie
             &&& b.view_ghost().owned_processes.view() == a.view_ghost().owned_processes.view()
             &&& b.view_ghost().owned_threads.view() == a.view_ghost().owned_threads.view()
-            &&& b.view().owned_endpoints.view() == a.view().owned_endpoints.view()
+            &&& b.view_ghost().owned_endpoints.view() == a.view_ghost().owned_endpoints.view()
             &&& b.view().owned_pages.view() == a.view().owned_pages.view()
             &&& b_ro.parent == a_ro.parent
             &&& b_ro.depth == a_ro.depth
@@ -2550,7 +2551,7 @@ pub open spec fn kernel_cpu_went_off_fields(pre: &KernelK, post: &KernelK, cpu_i
             &&& b.view().zombie == a.view().zombie
             &&& b.view_ghost().owned_processes.view() == a.view_ghost().owned_processes.view()
             &&& b.view_ghost().owned_threads.view() == a.view_ghost().owned_threads.view()
-            &&& b.view().owned_endpoints.view() == a.view().owned_endpoints.view()
+            &&& b.view_ghost().owned_endpoints.view() == a.view_ghost().owned_endpoints.view()
             &&& b.view().owned_pages.view() == a.view().owned_pages.view()
             &&& b_ro.parent == a_ro.parent
             &&& b_ro.depth == a_ro.depth
@@ -2644,11 +2645,11 @@ pub open spec fn kernel_new_endpoint_fields(
     &&& post.ctn_mp.dom() == pre.ctn_mp.dom()
     &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)]
         pre.ctn_mp.dom().contains(c) ==> {
-            &&& post.ctn_mp.spec_index(c).view() == if c == container_ptr {
-                    Container { owned_endpoints: Ghost(pre.ctn_mp.spec_index(c).view().owned_endpoints.view().insert(new_endpoint_ptr)), ..pre.ctn_mp.spec_index(c).view() }
-                } else { pre.ctn_mp.spec_index(c).view() }
+            &&& post.ctn_mp.spec_index(c).view() == pre.ctn_mp.spec_index(c).view()
             &&& post.ctn_mp.spec_index(c).view_rodata() == pre.ctn_mp.spec_index(c).view_rodata()
-            &&& post.ctn_mp.spec_index(c).view_ghost() == pre.ctn_mp.spec_index(c).view_ghost()
+            &&& post.ctn_mp.spec_index(c).view_ghost() == if c == container_ptr {
+                    ContainerGhost { owned_endpoints: Ghost(pre.ctn_mp.spec_index(c).view_ghost().owned_endpoints.view().insert(new_endpoint_ptr)), ..pre.ctn_mp.spec_index(c).view_ghost() }
+                } else { pre.ctn_mp.spec_index(c).view_ghost() }
             &&& post.ctn_mp.spec_index(c).being_killed() == pre.ctn_mp.spec_index(c).being_killed()
         }
     &&& post.sched_mp == pre.sched_mp
@@ -2774,6 +2775,7 @@ pub open spec fn kernel_thread_exit_fields(pre: &KernelK, post: &KernelK, cpu_id
             &&& b.view_ghost().uppertree_seq == a.view_ghost().uppertree_seq
             &&& b.view_ghost().subtree_set == a.view_ghost().subtree_set
             &&& b.view_ghost().owned_processes == a.view_ghost().owned_processes
+            &&& b.view_ghost().owned_endpoints == a.view_ghost().owned_endpoints
             &&& b.view_ghost().owned_threads.view() == if c == container_ptr { a.view_ghost().owned_threads.view().remove(thread_ptr) } else { a.view_ghost().owned_threads.view() }
             &&& b.being_killed() == a.being_killed()
             &&& post.allc_4k_mp.spec_index(a.view_rodata().view().allocator_ptr_4k).quota.view().view() as int == quota + if a.view().owned_pages.view().contains(thread_ptr) { 1int } else { 0int }
@@ -2901,6 +2903,7 @@ pub open spec fn kernel_dangling_thread_reclaimed_fields(pre: &KernelK, post: &K
             &&& b.view_ghost().uppertree_seq == a.view_ghost().uppertree_seq
             &&& b.view_ghost().subtree_set == a.view_ghost().subtree_set
             &&& b.view_ghost().owned_processes == a.view_ghost().owned_processes
+            &&& b.view_ghost().owned_endpoints == a.view_ghost().owned_endpoints
             &&& b.view_ghost().owned_threads.view() == if c == dangling.view().owning_container { a.view_ghost().owned_threads.view().remove(dangling_ptr) } else { a.view_ghost().owned_threads.view() }
             &&& b.locking_thread() == a.locking_thread()
             &&& b.being_killed() == a.being_killed()
@@ -2938,8 +2941,32 @@ pub open spec fn kernel_u_dangling_thread_reclaimed(old_u: KernelU, new_u: Kerne
         }
 }
 
-/// One write-locked killed thread releases one descriptor: the descriptor is cleared and its unlocked endpoint drops the
-/// reference; the kernel chooses the thread and the descriptor (R1).
+/// Thread `thread_ptr` drops the last reference of the unlocked, unqueued endpoint at its descriptor `index`: the endpoint
+/// leaves the endpoint map and its owner's endpoint set, and the container owning the endpoint's page regains one 4K quota.
+/// The caller fixes the thread entry.
+#[verifier::opaque]
+pub open spec fn kernel_u_endpoint_released(old_u: KernelU, new_u: KernelU, thread_ptr: RwLockThreadPtr, index: int) -> bool {
+    let thread = old_u.thread_map[thread_ptr];
+    let endpoint_ptr = thread.endpoint_descriptors[index]->Some_0;
+    let endpoint = old_u.endpoint_map[endpoint_ptr];
+    &&& thread.endpoint_descriptors[index] is Some
+    &&& old_u.endpoint_map.dom().contains(endpoint_ptr)
+    &&& endpoint.lock_state is Unlocked
+    &&& endpoint.owning_threads == set![(thread_ptr, index as EndpointIdx)]
+    &&& endpoint.queue == Seq::<RwLockThreadPtr>::empty()
+    &&& new_u.endpoint_map == old_u.endpoint_map.remove(endpoint_ptr)
+    &&& new_u.container_map == Map::new(old_u.container_map.dom(), |c: RwLockContainerPtr| {
+        let container = old_u.container_map[c];
+        ContainerU {
+            owned_endpoints: if c == endpoint.owning_container { container.owned_endpoints.remove(endpoint_ptr) } else { container.owned_endpoints },
+            quota_4k: if container.owned_pages.contains(endpoint_ptr) { (container.quota_4k + 1) as usize } else { container.quota_4k }, ..container
+        }
+    })
+    &&& new_u == (KernelU { container_map: new_u.container_map, thread_map: new_u.thread_map, endpoint_map: new_u.endpoint_map, ..old_u })
+}
+
+/// One write-locked killed thread releases one descriptor: the descriptor is cleared and its unlocked endpoint, still held
+/// elsewhere, drops the reference; the kernel chooses the thread and the descriptor (R1).
 #[verifier::opaque]
 pub open spec fn kernel_u_killed_descriptor_dropped(old_u: KernelU, new_u: KernelU) -> bool {
     let changed = old_u.thread_map.dom().filter(|t: RwLockThreadPtr| new_u.thread_map[t] != old_u.thread_map[t]);
@@ -2956,11 +2983,31 @@ pub open spec fn kernel_u_killed_descriptor_dropped(old_u: KernelU, new_u: Kerne
             &&& thread.endpoint_descriptors[index] is Some
             &&& old_u.endpoint_map.dom().contains(endpoint_ptr)
             &&& endpoint.lock_state is Unlocked
+            &&& endpoint.owning_threads.len() > 1
             &&& new_u == (KernelU {
                 thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { endpoint_descriptors: thread.endpoint_descriptors.update(index, None), ..thread }),
                 endpoint_map: old_u.endpoint_map.insert(endpoint_ptr, EndpointU { owning_threads: endpoint.owning_threads.remove((thread_ptr, index as EndpointIdx)), ..endpoint }),
                 ..old_u
             })
+        }
+    }
+}
+
+/// One write-locked killed thread releases the descriptor holding the last reference of its unlocked endpoint: the
+/// descriptor is cleared and the endpoint is released; the kernel chooses the thread and the descriptor (R1).
+#[verifier::opaque]
+pub open spec fn kernel_u_killed_endpoint_released(old_u: KernelU, new_u: KernelU) -> bool {
+    let changed = old_u.thread_map.dom().filter(|t: RwLockThreadPtr| new_u.thread_map[t] != old_u.thread_map[t]);
+    &&& changed.len() == 1
+    &&& forall|thread_ptr: RwLockThreadPtr| #![trigger changed.contains(thread_ptr)] changed.contains(thread_ptr) ==> {
+        let thread = old_u.thread_map[thread_ptr];
+        let dropped = Set::<int>::range(0, MAX_NUM_ENDPOINT_DESCRIPTORS as int).filter(|j: int| new_u.thread_map[thread_ptr].endpoint_descriptors[j] != thread.endpoint_descriptors[j]);
+        &&& thread.state is KILLED
+        &&& thread.lock_state is WriteLocked
+        &&& dropped.len() == 1
+        &&& forall|index: int| #![trigger dropped.contains(index)] dropped.contains(index) ==> {
+            &&& kernel_u_endpoint_released(old_u, new_u, thread_ptr, index)
+            &&& new_u.thread_map == old_u.thread_map.insert(thread_ptr, ThreadU { endpoint_descriptors: thread.endpoint_descriptors.update(index, None), ..thread })
         }
     }
 }
@@ -3019,11 +3066,13 @@ pub open spec fn kernel_u_killed_caller_taken_over(old_u: KernelU, new_u: Kernel
 }
 
 /// One step of reclaiming write-locked killed threads: releasing a descriptor, waking a caller waiting for a reply,
-/// taking over the dangling thread of a killed caller, or reclaiming a killed dangling thread.
+/// taking over the dangling thread of a killed caller, reclaiming a killed dangling thread, or releasing an endpoint with
+/// its last descriptor.
 pub open spec fn kernel_u_killed_thread_reclaim_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     ||| kernel_u_killed_descriptor_dropped(old_u, new_u)
     ||| kernel_u_killed_caller_woken(old_u, new_u, cpu_id)
     ||| kernel_u_killed_caller_taken_over(old_u, new_u)
     ||| kernel_u_dangling_thread_reclaimed(old_u, new_u)
+    ||| kernel_u_killed_endpoint_released(old_u, new_u)
 }
 } // verus!

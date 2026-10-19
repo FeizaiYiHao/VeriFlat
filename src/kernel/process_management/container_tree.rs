@@ -261,6 +261,8 @@ verus! {
                 old(container_map).dom().contains(c) ==> final(container_map).spec_index(c).view_ghost().owned_processes == old(container_map).spec_index(c).view_ghost().owned_processes,
             forall|c: RwLockContainerPtr| #![trigger final(container_map).spec_index(c).view_ghost().owned_indirect_threads]
                 old(container_map).dom().contains(c) ==> final(container_map).spec_index(c).view_ghost().owned_indirect_threads == old(container_map).spec_index(c).view_ghost().owned_indirect_threads,
+            forall|c: RwLockContainerPtr| #![trigger final(container_map).spec_index(c).view_ghost().owned_endpoints]
+                old(container_map).dom().contains(c) ==> final(container_map).spec_index(c).view_ghost().owned_endpoints == old(container_map).spec_index(c).view_ghost().owned_endpoints,
             forall|c: RwLockContainerPtr| #![trigger final(container_map).spec_index(c).locking_thread()]
                 old(container_map).dom().contains(c) ==> final(container_map).spec_index(c).locking_thread() == old(container_map).spec_index(c).locking_thread(),
             forall|c: RwLockContainerPtr| #![trigger final(container_map).spec_index(c).being_killed()]
@@ -274,7 +276,8 @@ verus! {
             assert(ancestors.to_set().contains(c0)) by { ancestors.to_set_ensures(); };
             container_map.update_ghost(c0, ContainerGhost { uppertree_seq: container_map.spec_index(c0).view_ghost().uppertree_seq,
                 subtree_set: Ghost(container_map.spec_index(c0).view_ghost().subtree_set.view().insert(child_ptr)), owned_processes: container_map.spec_index(c0).view_ghost().owned_processes,
-                owned_threads: container_map.spec_index(c0).view_ghost().owned_threads, owned_indirect_threads: container_map.spec_index(c0).view_ghost().owned_indirect_threads });
+                owned_threads: container_map.spec_index(c0).view_ghost().owned_threads, owned_indirect_threads: container_map.spec_index(c0).view_ghost().owned_indirect_threads,
+                owned_endpoints: container_map.spec_index(c0).view_ghost().owned_endpoints });
             assert(container_map.typed_lock_map_aligned(held_locks, thread_id)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(ancestors.drop_first().to_set().subset_of(container_map.dom())) by { ancestors.to_set_ensures(); ancestors.drop_first().to_set_ensures(); };
             container_insert_child_into_ancestor_subtree_sets(container_map, ancestors.drop_first(), child_ptr, held_locks, thread_id);

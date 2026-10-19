@@ -21,6 +21,8 @@ pub mod kill_reclaim;
 pub mod kill_retire;
 /// Generic K->U bindings of projected entries, the stored snapshot, and root-table detaches.
 pub mod bindings;
+/// K->U lemmas for the step that releases an endpoint with its last descriptor.
+pub mod endpoint_release;
 
 pub use projection::*;
 pub use boundary::*;
@@ -30,6 +32,7 @@ pub use kill::*;
 pub use kill_reclaim::*;
 pub use kill_retire::*;
 pub use bindings::*;
+pub use endpoint_release::*;
 
 verus! {
 /// Each boundary refreshes both stored snapshots after recording its own section.

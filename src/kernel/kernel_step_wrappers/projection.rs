@@ -714,6 +714,7 @@ pub proof fn kernel_container_root_published_implies_u_step(
             &&& after.ctn_mp.spec_index(c).view_ghost().uppertree_seq == before.ctn_mp.spec_index(c).view_ghost().uppertree_seq
             &&& after.ctn_mp.spec_index(c).view_ghost().owned_threads == before.ctn_mp.spec_index(c).view_ghost().owned_threads
             &&& after.ctn_mp.spec_index(c).view_ghost().owned_processes == before.ctn_mp.spec_index(c).view_ghost().owned_processes
+            &&& after.ctn_mp.spec_index(c).view_ghost().owned_endpoints == before.ctn_mp.spec_index(c).view_ghost().owned_endpoints
             &&& after.ctn_mp.spec_index(c).view_ghost().subtree_set.view() == if before.ctn_mp.spec_index(parent).view_ghost().uppertree_seq.view().push(parent).contains(c) {
                 before.ctn_mp.spec_index(c).view_ghost().subtree_set.view().insert(child)
             } else { before.ctn_mp.spec_index(c).view_ghost().subtree_set.view() }
@@ -741,7 +742,7 @@ pub proof fn kernel_container_root_published_implies_u_step(
         after.ctn_mp.spec_index(child).view().root_process == process,
         after.ctn_mp.spec_index(child).view_ghost().owned_processes.view() == set![process],
         after.ctn_mp.spec_index(child).view_ghost().owned_threads.view().is_empty(),
-        after.ctn_mp.spec_index(child).view().owned_endpoints.view().is_empty(),
+        after.ctn_mp.spec_index(child).view_ghost().owned_endpoints.view().is_empty(),
         after.ctn_mp.spec_index(child).view().owned_pages.view() == moved,
         after.ctn_mp.spec_index(child).view_rodata().view().parent == Some(parent),
         after.ctn_mp.spec_index(child).view_rodata().view().depth == before.ctn_mp.spec_index(parent).view_rodata().view().depth + 1,
@@ -1083,7 +1084,7 @@ pub proof fn kernel_container_projection_at(krnl: &KernelK, ptr: RwLockContainer
                 lock_state: krnl.ctn_mp.spec_index(ptr).lock_state_u(), zombie: c.zombie,
                 children: c.children.view(), uppertree_seq: c_ghost.uppertree_seq.view(), subtree_set: c_ghost.subtree_set.view(),
                 root_process: c.root_process, owned_processes: c_ghost.owned_processes.view(), owned_threads: c_ghost.owned_threads.view(),
-                owned_endpoints: c.owned_endpoints.view(), owned_pages: c.owned_pages.view(),
+                owned_endpoints: c_ghost.owned_endpoints.view(), owned_pages: c.owned_pages.view(),
                 parent: c_ro.parent, depth: c_ro.depth, cpu_set: c_ro.cpu_set,
                 cpu_set_lock: krnl.cpu_set_mp.spec_index(c_ro.cpu_set).lock_state_u(),
                 cpu_offline_requests: cpu_offline_requests_of(krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(ptr))),

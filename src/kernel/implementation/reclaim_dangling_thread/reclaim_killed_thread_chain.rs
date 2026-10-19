@@ -38,7 +38,13 @@ fn release_killed_thread_descriptors(
         final(krnl).cpu_published[cpu_id as int].view() == old(krnl).cpu_published[cpu_id as int].view(),
         held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
-        held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
+        forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] #![trigger final(krnl).ctn_mp.spec_index(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
+            &&& final(krnl).ctn_mp.dom().contains(c)
+            &&& final(krnl).ctn_mp.spec_index(c).view() == old(krnl).ctn_mp.spec_index(c).view()
+            &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
+            &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
+            &&& final(krnl).ctn_mp.spec_index(c).being_killed() == old(krnl).ctn_mp.spec_index(c).being_killed()
+        },
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
         killed_thread_reclaim_lock_context(*final(krnl), *final(lctx)),
         held_threads_unchanged_except(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx), set![thread_ptr]),
@@ -66,7 +72,13 @@ fn release_killed_thread_descriptors(
             krnl.cpu_published[cpu_id as int].view() == old(krnl).cpu_published[cpu_id as int].view(),
             held_cpus_unchanged(old(krnl).cpu_arr, krnl.cpu_arr, old(lctx)),
             held_processes_unchanged(old(krnl).prc_mp, krnl.prc_mp, old(lctx)),
-            held_containers_unchanged(old(krnl).ctn_mp, krnl.ctn_mp, old(lctx)),
+            forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] #![trigger krnl.ctn_mp.spec_index(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
+                &&& krnl.ctn_mp.dom().contains(c)
+                &&& krnl.ctn_mp.spec_index(c).view() == old(krnl).ctn_mp.spec_index(c).view()
+                &&& krnl.ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
+                &&& krnl.ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
+                &&& krnl.ctn_mp.spec_index(c).being_killed() == old(krnl).ctn_mp.spec_index(c).being_killed()
+            },
             typed_lock_maps_unchanged(old(lctx), lctx),
             killed_thread_reclaim_lock_context(*krnl, *lctx),
             held_threads_unchanged_except(old(krnl).thr_mp, krnl.thr_mp, old(lctx), set![thread_ptr]),
@@ -97,13 +109,15 @@ fn release_killed_thread_descriptors(
             proof { assert(krnl.ep_mp.dom().contains(endpoint_ptr)) by { thread_endpoint_ref_counter_wf_thread_at(krnl.thr_mp, krnl.ep_mp, thread_ptr, index); }; }
             let ghost drop_pre = *krnl;
             let ghost drop_lctx = *lctx;
-            let Tracked(endpoint_lock_perm) = krnl.wlock_endpoint(endpoint_ptr, Tracked(&mut *lctx));
-            drop_endpoint_descriptor(krnl, Tracked(&mut *lctx), thread_ptr, endpoint_ptr, index, Tracked(thread_lock_perm), Tracked(endpoint_lock_perm));
+            let released = drop_endpoint_descriptor(krnl, Tracked(&mut *lctx), cpu_id, thread_ptr, endpoint_ptr, index, Tracked(thread_lock_perm));
             proof {
                 drop_pre.thr_mp.typed_lock_map_aligned_write_at(drop_lctx.thread_lock_map(), drop_lctx.thread_id(), thread_ptr);
                 thread_perms_wf_at(drop_pre.thr_mp, thread_ptr);
-                kernel_killed_descriptor_dropped_implies_u_step(&drop_pre, &*krnl, thread_ptr, endpoint_ptr, index);
-                assert(lctx.endpoint_lock_map() =~= old(lctx).endpoint_lock_map());
+                if released {
+                    kernel_killed_endpoint_released_implies_u_step(&drop_pre, &*krnl, thread_ptr, endpoint_ptr, index);
+                } else {
+                    kernel_killed_descriptor_dropped_implies_u_step(&drop_pre, &*krnl, thread_ptr, endpoint_ptr, index);
+                }
                 krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
                 assert(killed_thread_reclaim_partial_trace(steps.view(), old(steps).view().len() as int, kernel_k_to_kernel_u(*old(krnl)), cpu_id, old(lctx).process_lock_map().dom(), old(lctx).container_lock_map().dom())) by {
                     held_kernel_objects_unchanged_reflexive(old(krnl), old(lctx));
