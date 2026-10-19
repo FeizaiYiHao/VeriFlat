@@ -3,6 +3,7 @@ pub mod syscall_thread_exit_spec;
 pub(crate) mod syscall_thread_exit_trace;
 mod syscall_thread_exit_destroy;
 mod syscall_thread_exit_destroy_eof;
+mod syscall_thread_exit_destroy_helpers;
 mod syscall_thread_exit_destroy_spec;
 mod syscall_thread_exit_drop;
 mod syscall_thread_exit_entry;
