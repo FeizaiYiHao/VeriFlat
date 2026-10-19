@@ -9,6 +9,7 @@ mod syscall_new_container_publish;
 mod syscall_new_container_publish_release;
 mod syscall_new_container_finish;
 mod syscall_new_container_finish_eof;
+mod syscall_new_container_finish_release;
 mod syscall_new_container_tail_unlock;
 mod syscall_new_container_commit;
 mod syscall_new_container_enter;
