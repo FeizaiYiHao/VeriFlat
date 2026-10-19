@@ -7,6 +7,8 @@ pub mod pagetable_impl_base;
 pub mod pagetable_impl_remove_base;
 mod pagetable_remove_eof;
 mod pagetable_create_eof;
+mod pagetable_unmap_eof;
+mod pagetable_map_eof;
 pub mod pagetable_util;
 pub mod pagetable_util_t;
 pub mod pagetable_structure_scan;

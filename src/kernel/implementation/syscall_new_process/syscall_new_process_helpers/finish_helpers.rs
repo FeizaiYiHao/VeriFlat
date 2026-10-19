@@ -1,13 +1,10 @@
 use vstd::prelude::*;
 use crate::*;
-#[cfg(feature = "split-crates")]
-use veriflat_kernel_core::attach_endpoint_reference_and_unlock;
-#[cfg(not(feature = "split-crates"))]
-use crate::kernel::implementation::attach_endpoint_reference_and_unlock::attach_endpoint_reference_and_unlock;
+use super::finish_release::{release_new_process_child_locks, release_new_process_thread_locks_and_attach_endpoint};
 
 verus! {
 /// Releases the child's IOMMU table when the process has one; a single call keeps the caller's later proof on one path.
-fn wunlock_new_process_iommu_table(krnl: &mut KernelK, iommu_table: Option<RwLockPageTableRoot>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(lock_perm): Tracked<Option<LockPerm>>)
+pub(super) fn wunlock_new_process_iommu_table(krnl: &mut KernelK, iommu_table: Option<RwLockPageTableRoot>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(lock_perm): Tracked<Option<LockPerm>>)
     requires
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
@@ -213,26 +210,13 @@ pub(super) fn release_new_process_locks_and_attach_endpoint(
                 &&& b.being_killed() == a.being_killed()
             },
 {
-    wunlock_new_process_iommu_table(krnl, iommu_table, Tracked(&mut *lctx), Tracked(iommu_table_lock_perm));
-    krnl.wunlock_process(child_ptr, Tracked(&mut *lctx), Tracked(child_lock_perm));
-    krnl.wunlock_pagetable(target_pagetable_ptr, Tracked(&mut *lctx), Tracked(target_pagetable_lock_perm));
-    krnl.wunlock_pagetable(source_pagetable_ptr, Tracked(&mut *lctx), Tracked(source_pagetable_lock_perm));
-    krnl.wunlock_page(page_ptr2page_index(new_thread_ptr), Tracked(&mut *lctx), Tracked(thread_page_lock_perm));
-    krnl.wunlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));
-    krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(None), Tracked(&*lctx), Tracked(&current_thread_lock_perm));
-    match endpoint {
-        Some(endpoint_ptr) => {
-            let tracked endpoint_lock_perm = endpoint_lock_perm.tracked_unwrap();
-            attach_endpoint_reference_and_unlock(krnl, new_thread_ptr, endpoint_ptr, current_thread_ptr, Tracked(&mut *lctx), Tracked(new_thread_lock_perm), Tracked(endpoint_lock_perm));
-        },
-        None => krnl.wunlock_thread(new_thread_ptr, Tracked(&mut *lctx), Tracked(new_thread_lock_perm)),
-    }
-    krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
-    krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-    proof {
-        assert(kernel_cpu_nonlock_fields_unchanged(old(krnl).cpu_arr, krnl.cpu_arr) && kernel_process_nonlock_fields_unchanged(old(krnl).prc_mp, krnl.prc_mp)) by {
-            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
-        };
-    }
+    release_new_process_child_locks(
+        krnl, Tracked(&mut *lctx), cpu_id, child_ptr, new_thread_ptr, scheduler_ptr, source_pagetable_ptr, target_pagetable_ptr, iommu_table, Tracked(child_lock_perm),
+        Tracked(thread_page_lock_perm), Tracked(scheduler_lock_perm), Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm), Tracked(iommu_table_lock_perm),
+    );
+    release_new_process_thread_locks_and_attach_endpoint(
+        krnl, Tracked(&mut *lctx), cpu_id, container_ptr, current_thread_ptr, new_thread_ptr, endpoint, Tracked(cpu_lock_perm), Tracked(current_thread_lock_perm),
+        Tracked(new_thread_lock_perm), Tracked(endpoint_lock_perm),
+    );
 }
 }

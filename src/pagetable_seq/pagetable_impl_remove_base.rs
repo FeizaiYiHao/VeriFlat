@@ -44,7 +44,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             final(self).kernel_entries =~= old(self).kernel_entries,
     {
         let va = Ghost(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)));
-        assert(self.mapping_4k.view().dom().contains(va.view())) by { reveal(PageTable::wf_mapping_4k); };
         assert({
             &&& self.l1_tables.view().dom().contains(target_l1_p)
             &&& self.l1_tables.view().spec_index(target_l1_p).addr() == target_l1_p
@@ -71,31 +70,10 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
                 owning_container: old(self).mapping_4k.view().spec_index(va.view()).owning_container }));
         }
 
-        assert(self.wf_l4()) by { reveal(PageTable::wf_l4); };
-        assert(self.wf_l3()) by { reveal(PageTable::wf_l3); };
-        assert(self.wf_l2()) by { reveal(PageTable::wf_l2); };
-        assert(self.wf_l1()) by { reveal(PageTable::wf_l1); };
-        assert(self.disjoint_l4()) by { reveal(PageTable::disjoint_l4); };
-        assert(self.disjoint_l3()) by { reveal(PageTable::disjoint_l3); };
-        assert(self.disjoint_l2()) by { reveal(PageTable::disjoint_l2); };
-        assert(self.wf_mapping_4k()) by {
-            spec_index2va_injective();
-            assert(forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L2Index| #![trigger self.spec_resolve_mapping_4k_l1(l4i,l3i,l2i,l1i)] #![trigger old(self).spec_resolve_mapping_4k_l1(l4i,l3i,l2i,l1i)]
-                self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && (target_l4i, target_l3i, target_l2i) != (l4i, l3i, l2i)
-                ==> self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) == old(self).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)) by {
-                self.resolve_l2_unchanged(old(self));
-                broadcast use PageTable::resolve_l2_addr_unique_at;
-                broadcast use PageTable::resolve_l2_target_exists;
-            };
-            reveal(PageTable::wf_mapping_4k);
-        };
-        assert(self.wf_mapping_2m()) by { reveal(PageTable::wf_mapping_2m); };
-        assert(self.wf_mapping_1g()) by { reveal(PageTable::wf_mapping_1g); };
-        assert(self.user_only()) by { reveal(PageTable::user_only); };
-        assert(self.rwx_upper_level_entries()) by { reveal(PageTable::rwx_upper_level_entries); };
-        assert(self.table_pages_wf()) by { reveal(PageTable::table_pages_wf); };
-        assert(self.tables_reachable_wf()) by { reveal(PageTable::tables_reachable_wf); self.resolve_l2_unchanged(old(self)); };
-        assert(self.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
+        proof {
+            assert(Self::unmap_4k_page_user_view_eof_transition_framing(*old(self), *self, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p)) by { reveal(PageTable::unmap_4k_page_user_view_eof_transition_framing); };
+            Self::unmap_4k_page_user_view_eof(*old(self), *self, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
+        }
     }
 
     /// Final half of 4K unmap: remove the kernel mapping only after its user
