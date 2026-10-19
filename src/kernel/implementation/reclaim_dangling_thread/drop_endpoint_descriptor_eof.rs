@@ -54,7 +54,7 @@ pub(super) proof fn drop_endpoint_descriptor_eof(pre: KernelK, post: KernelK, th
     reveal(drop_endpoint_descriptor_eof_transition_framing);
     assert(post.subsystems_inv()) by {
         assert(thread_perms_wf(post.thr_mp)) by {
-            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
         };
         assert(endpoint_perms_wf(post.ep_mp)) by { reveal(endpoint_perms_wf); };
         reveal(KernelK::default_pagetable_wf);
@@ -62,6 +62,7 @@ pub(super) proof fn drop_endpoint_descriptor_eof(pre: KernelK, post: KernelK, th
     assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_thread_endpoint_memory_fields(pre, post); };
     assert(post.process_management_inv()) by {
         assert(thread_caller_callee_wf(post.thr_mp)) by { thread_caller_callee_wf_preserved_for_call_link_eq(pre.thr_mp, post.thr_mp); };
+        assert(thread_dangling_chain_end_wf(post.thr_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thr_mp, post.thr_mp); };
         assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { container_endpoint_wf_preserved_for_endpoint_owner_eq(pre.ctn_mp, post.ctn_mp, pre.ep_mp, post.ep_mp); };
         assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); };
         assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_queue_fields(pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };

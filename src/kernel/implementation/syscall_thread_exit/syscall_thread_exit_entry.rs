@@ -148,6 +148,8 @@ fn thread_exit_reclaim_dangling_caller(
         cpu_id == old(lctx).cpu_id(),
         old(steps).snapshot_k() == *old(krnl),
         killed_thread_reclaim_lock_context(*old(krnl), *old(lctx)),
+        old(lctx).thread_lock_map().dom() =~= set![thread_ptr, dangling_ptr],
+        old(krnl).thr_mp.spec_index(thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
         old(krnl).thr_mp.dom().contains(dangling_ptr),
         old(krnl).thr_mp.spec_index(dangling_ptr).view().state is KILLED,
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), dangling_ptr, TypedLockMode::Write),

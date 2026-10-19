@@ -1,6 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 use super::unmap_4k_tlb::*;
+#[cfg(verus_keep_ghost)]
 use super::unmap_4k_trace::unmap_4k_tlb_flush_step_pre_from_k;
 
 verus! {

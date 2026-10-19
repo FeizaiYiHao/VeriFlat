@@ -239,7 +239,12 @@ pub open spec fn kernel_container_nonlock_fields_and_quotas_unchanged(pre: &Kern
         pre.ctn_mp.dom().contains(c) ==> post.allc_1g_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_1g).quota.view().view()
             == pre.allc_1g_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().allocator_ptr_1g).quota.view().view()
     &&& forall|c: RwLockContainerPtr| #![trigger post.cpu_set_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().cpu_set)]
-        pre.ctn_mp.dom().contains(c) ==> post.cpu_set_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().cpu_set).lock_state_u() == pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().cpu_set).lock_state_u()
+        pre.ctn_mp.dom().contains(c) ==> {
+            let b = post.cpu_set_mp.spec_index(post.ctn_mp.spec_index(c).view_rodata().view().cpu_set);
+            let a = pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(c).view_rodata().view().cpu_set);
+            &&& b.lock_state_u() == a.lock_state_u()
+            &&& b.being_killed() == a.being_killed()
+        }
     &&& forall|c: RwLockContainerPtr| #![trigger post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c))]
         pre.ctn_mp.dom().contains(c) ==> cpu_offline_requests_of(post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c))) == cpu_offline_requests_of(pre.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c)))
 }
@@ -2124,7 +2129,7 @@ pub open spec fn kernel_u_container_root_published(
         parent: Some(parent), depth: (pre.container_map[parent].depth + 1) as usize, scheduler: Seq::new(NUM_CPUS as nat, |i: int| Seq::<RwLockThreadPtr>::empty()),
         cpu_set: post.container_map[child].cpu_set, cpu_set_lock: LockStateU::WriteLocked,
         cpu_offline_requests: Seq::new(NUM_CPUS as nat, |i: int| false), free_pcids: Set::range(1usize, PCID_MAX).remove(1usize),
-        quota_4k: (funding - process_quota) as usize, quota_2m: 0, quota_1g: 0, killed: false,
+        quota_4k: (funding - process_quota) as usize, quota_2m: 0, quota_1g: 0, killed: false, cpu_set_killed: false,
     })
     &&& post == (KernelU {
         cpu_array: pre.cpu_array.update(transfer_cpu as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre.cpu_array[transfer_cpu as int] }),
@@ -2187,7 +2192,7 @@ pub open spec fn kernel_u_container_root_created(
         parent: Some(parent), depth: (pre.container_map[parent].depth + 1) as usize, scheduler: Seq::new(NUM_CPUS as nat, |i: int| Seq::<RwLockThreadPtr>::empty()),
         cpu_set: post.container_map[child].cpu_set, cpu_set_lock: LockStateU::Unlocked,
         cpu_offline_requests: Seq::new(NUM_CPUS as nat, |i: int| false), free_pcids: Set::range(1usize, PCID_MAX).remove(1usize),
-        quota_4k: (funding - process_quota) as usize, quota_2m: 0, quota_1g: 0, killed: false,
+        quota_4k: (funding - process_quota) as usize, quota_2m: 0, quota_1g: 0, killed: false, cpu_set_killed: false,
     })
     &&& post == (KernelU {
         cpu_array: pre.cpu_array.update(transfer_cpu as int, CpuU { lock_state: LockStateU::Unlocked, owning_container: child, ..pre.cpu_array[transfer_cpu as int] }),
@@ -2377,6 +2382,7 @@ pub open spec fn kernel_cpu_offline_request_changed(pre: &KernelK, post: &Kernel
     &&& post.ctn_mp.spec_index(cpu.owning_container).locking_thread() == caller.locking_thread()
     &&& post.cpu_set_mp.unchanged_except(&pre.cpu_set_mp, cpu_set_ptr)
     &&& post.cpu_set_mp.spec_index(cpu_set_ptr).locking_thread() is None
+    &&& post.cpu_set_mp.spec_index(cpu_set_ptr).being_killed() == pre.cpu_set_mp.spec_index(cpu_set_ptr).being_killed()
     &&& post.cpu_offline_mp.unchanged_except(&pre.cpu_offline_mp, flags_ptr)
     &&& cpu_offline_requests_of(post.cpu_offline_mp.spec_index(flags_ptr)) == cpu_offline_requests_of(pre.cpu_offline_mp.spec_index(flags_ptr)).update(target as int, true)
 }
@@ -2419,6 +2425,7 @@ pub open spec fn kernel_cpu_online_changed(pre: &KernelK, post: &KernelK, cpu_id
     &&& post.ctn_mp.spec_index(cpu.owning_container).locking_thread() == caller.locking_thread()
     &&& post.cpu_set_mp.unchanged_except(&pre.cpu_set_mp, cpu_set_ptr)
     &&& post.cpu_set_mp.spec_index(cpu_set_ptr).locking_thread() is None
+    &&& post.cpu_set_mp.spec_index(cpu_set_ptr).being_killed() == pre.cpu_set_mp.spec_index(cpu_set_ptr).being_killed()
 }
 
 /// `cpu_id`'s TLB entries after it went Off: the default-PCID entry is flushed when `flushed_default_pcid`,
@@ -2498,7 +2505,7 @@ pub open spec fn kernel_cpu_went_off_fields(pre: &KernelK, post: &KernelK, cpu_i
         index_valid(NUM_CPUS, i) ==> post.cpu_arr.spec_index(i).value.locking_thread() == pre.cpu_arr.spec_index(i).value.locking_thread()
     &&& post.cpu_set_mp.dom() == pre.cpu_set_mp.dom()
     &&& forall|p: RwLockCpuSetPtr| #![trigger post.cpu_set_mp.spec_index(p)]
-        pre.cpu_set_mp.dom().contains(p) ==> post.cpu_set_mp.spec_index(p).locking_thread() == pre.cpu_set_mp.spec_index(p).locking_thread()
+        pre.cpu_set_mp.dom().contains(p) ==> post.cpu_set_mp.spec_index(p).locking_thread() == pre.cpu_set_mp.spec_index(p).locking_thread() && post.cpu_set_mp.spec_index(p).being_killed() == pre.cpu_set_mp.spec_index(p).being_killed()
     &&& kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, post.pt_mp)
     &&& kernel_pagetable_nonlock_fields_unchanged(pre.it_mp, post.it_mp)
     &&& kernel_process_nonlock_fields_unchanged(pre.prc_mp, post.prc_mp)

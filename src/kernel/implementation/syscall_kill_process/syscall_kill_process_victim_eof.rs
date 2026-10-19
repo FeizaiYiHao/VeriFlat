@@ -4,10 +4,10 @@ use crate::*;
 use super::syscall_kill_process_victim_spec::*;
 
 verus! {
-proof fn kill_leave_process_eof_memory(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, victim_ptr: RwLockThreadPtr)
+proof fn kill_leave_process_eof_memory(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, victim_ptr: RwLockThreadPtr, callers: Set<RwLockThreadPtr>)
     requires
         pre.inv(),
-        kill_leave_process_eof_transition_framing(pre, post, process_ptr, victim_ptr),
+        kill_leave_process_eof_transition_framing(pre, post, process_ptr, victim_ptr, callers),
         pre.prc_mp.dom().contains(process_ptr),
         pre.thr_mp.dom().contains(victim_ptr),
         pre.prc_mp.spec_index(process_ptr).view().owned_threads.view().contains(victim_ptr),
@@ -34,6 +34,7 @@ proof fn kill_leave_process_eof_memory(pre: KernelK, post: KernelK, process_ptr:
         assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { lemma_process_pages_wf_preserved_for_process_domain_eq_forall(); };
         assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
         assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
+        assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
         assert(thread_staged_pages_wf(post.thr_mp, post.pg_arr)) by {
             thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
             thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
@@ -53,10 +54,10 @@ proof fn kill_leave_process_eof_memory(pre: KernelK, post: KernelK, process_ptr:
     };
 }
 
-proof fn kill_leave_process_eof_process(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, victim_ptr: RwLockThreadPtr)
+proof fn kill_leave_process_eof_process(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, victim_ptr: RwLockThreadPtr, callers: Set<RwLockThreadPtr>)
     requires
         pre.inv(),
-        kill_leave_process_eof_transition_framing(pre, post, process_ptr, victim_ptr),
+        kill_leave_process_eof_transition_framing(pre, post, process_ptr, victim_ptr, callers),
         pre.prc_mp.dom().contains(process_ptr),
         pre.thr_mp.dom().contains(victim_ptr),
         pre.prc_mp.spec_index(process_ptr).view().owned_threads.view().contains(victim_ptr),
@@ -64,6 +65,7 @@ proof fn kill_leave_process_eof_process(pre: KernelK, post: KernelK, process_ptr
         pre.prc_mp.spec_index(process_ptr).locking_thread() is Write,
         pre.thr_mp.spec_index(victim_ptr).view().state is WAITING_REPLY || pre.thr_mp.spec_index(victim_ptr).view().state is KILLED,
         post.subsystems_inv(),
+        thread_dangling_chain_end_wf(post.thr_mp),
     ensures post.process_management_inv(),
 {
     reveal(kill_leave_process_eof_transition_framing);
@@ -78,6 +80,7 @@ proof fn kill_leave_process_eof_process(pre: KernelK, post: KernelK, process_ptr
         assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { reveal(process_pcid_allocator_wf); };
         assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
         assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
+        assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by { reveal(cpu_set_kill_mark_wf); };
         assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
         assert(thread_caller_callee_wf(post.thr_mp)) by { thread_caller_callee_wf_preserved_for_call_link_eq(pre.thr_mp, post.thr_mp); };
         assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_descriptor_eq(pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
@@ -89,17 +92,192 @@ proof fn kill_leave_process_eof_process(pre: KernelK, post: KernelK, process_ptr
             container_thread_scheduler_wf_preserved_for_scheduled_thread_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, post.sched_mp);
         };
         assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { reveal(container_thread_wf); };
-        assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(process_thread_wf); };
+        assert(process_thread_wf(post.prc_mp, post.thr_mp)) by {
+            process_thread_wf_process_at(pre.prc_mp, pre.thr_mp, process_ptr, victim_ptr);
+            if pre.thr_mp.spec_index(victim_ptr).being_killed() { process_thread_wf_killed_thread_at(pre.prc_mp, pre.thr_mp, victim_ptr); }
+            reveal(process_thread_wf);
+        };
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
         assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_running_thread_eq(pre.thr_mp, post.thr_mp, pre.cpu_arr, post.cpu_arr); };
     };
 }
 
+/// Every dangling thread that no killer holds and that ends its chain at the thread leaving its process is one of that thread's
+/// dangling callers `callers`.
+proof fn kill_leave_process_eof_chain_callers(pre: KernelK, victim_ptr: RwLockThreadPtr, callers: Set<RwLockThreadPtr>, holder: LockThreadId)
+    requires
+        thread_perms_wf(pre.thr_mp),
+        thread_caller_callee_wf(pre.thr_mp),
+        thread_dangling_chain_end_wf(pre.thr_mp),
+        pre.thr_mp.dom().contains(victim_ptr),
+        pre.thr_mp.spec_index(victim_ptr).wlocked_by_thread(holder),
+        forall|t: RwLockThreadPtr| #![trigger pre.thr_mp.spec_index(t).locking_thread()]
+            pre.thr_mp.dom().contains(t) && pre.thr_mp.spec_index(t).locked_by_thread(holder) ==> !(pre.thr_mp.spec_index(t).view().state is KILLED) || pre.thr_mp.spec_index(t).being_killed(),
+        pre.thr_mp.spec_index(victim_ptr).view().caller is Some && thread_is_dangling(pre.thr_mp.spec_index(pre.thr_mp.spec_index(victim_ptr).view().caller.unwrap()))
+            ==> callers.contains(pre.thr_mp.spec_index(victim_ptr).view().caller.unwrap()),
+        forall|v: RwLockThreadPtr| #![trigger callers.contains(v)]
+            callers.contains(v) && pre.thr_mp.dom().contains(v) && pre.thr_mp.spec_index(v).view().caller is Some
+                && thread_is_dangling(pre.thr_mp.spec_index(pre.thr_mp.spec_index(v).view().caller.unwrap())) ==> callers.contains(pre.thr_mp.spec_index(v).view().caller.unwrap()),
+    ensures
+        forall|t: RwLockThreadPtr| #![trigger pre.thr_mp.spec_index(t).view_ghost()]
+            pre.thr_mp.dom().contains(t) && thread_is_dangling(pre.thr_mp.spec_index(t)) && !pre.thr_mp.spec_index(t).being_killed()
+                && pre.thr_mp.spec_index(t).view_ghost().chain_end == Some(victim_ptr) ==> callers.contains(t),
+{
+    reveal(thread_perms_wf);
+    thread_dangling_chain_end_on_caller_chain(pre.thr_mp, victim_ptr, callers, pre.thr_mp.spec_index(victim_ptr).view().call_depth.view());
+}
+
+/// A killed thread without a caller leaving its process ends no dangling thread's chain, so every chain end stays live.
+proof fn kill_leave_process_eof_chain_end_killed(
+    pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, victim_ptr: RwLockThreadPtr, callers: Set<RwLockThreadPtr>, holder: LockThreadId,
+)
+    requires
+        thread_perms_wf(pre.thr_mp),
+        thread_caller_callee_wf(pre.thr_mp),
+        thread_dangling_chain_end_wf(pre.thr_mp),
+        kill_leave_process_eof_transition_framing(pre, post, process_ptr, victim_ptr, callers),
+        pre.thr_mp.dom().contains(victim_ptr),
+        pre.thr_mp.spec_index(victim_ptr).view().state is KILLED,
+        pre.thr_mp.spec_index(victim_ptr).being_killed(),
+        pre.thr_mp.spec_index(victim_ptr).view().caller is None,
+        pre.thr_mp.spec_index(victim_ptr).wlocked_by_thread(holder),
+        forall|t: RwLockThreadPtr| #![trigger pre.thr_mp.spec_index(t).locking_thread()]
+            pre.thr_mp.dom().contains(t) && pre.thr_mp.spec_index(t).locked_by_thread(holder) ==> !(pre.thr_mp.spec_index(t).view().state is KILLED) || pre.thr_mp.spec_index(t).being_killed(),
+    ensures thread_dangling_chain_end_wf(post.thr_mp),
+{
+    reveal(kill_leave_process_eof_transition_framing);
+    kill_leave_process_eof_chain_callers(pre, victim_ptr, Set::<RwLockThreadPtr>::empty(), holder);
+    reveal(thread_dangling_chain_end_wf);
+}
+
+/// Thread map `post` redirects to `end` the chain of the waiting thread `victim_ptr` of `pre`, which became dangling, and of its
+/// dangling callers `callers`, which are exactly the dangling threads no killer holds that ended their chains at `victim_ptr`.
+proof fn kill_leave_process_eof_chain_end_redirect(
+    pre: ThreadLockedMap, post: ThreadLockedMap, victim_ptr: RwLockThreadPtr, callers: Set<RwLockThreadPtr>, end: RwLockThreadPtr,
+)
+    requires
+        thread_caller_callee_wf(pre),
+        thread_dangling_chain_end_wf(pre),
+        pre.dom().contains(victim_ptr),
+        !thread_is_dangling(pre.spec_index(victim_ptr)),
+        pre.spec_index(victim_ptr).view().callee is Some,
+        ({
+            let callee_ptr = pre.spec_index(victim_ptr).view().callee.unwrap();
+            let callee = pre.spec_index(callee_ptr);
+            end == if thread_is_dangling(callee) && !callee.being_killed() { callee.view_ghost().chain_end.unwrap() } else { callee_ptr }
+        }),
+        callers.contains(victim_ptr),
+        forall|v: RwLockThreadPtr| #![trigger callers.contains(v)]
+            callers.contains(v) ==> {
+                let thread = pre.spec_index(v).view();
+                &&& pre.dom().contains(v)
+                &&& thread.owning_container == pre.spec_index(victim_ptr).view().owning_container
+                &&& thread.caller is Some && thread_is_dangling(pre.spec_index(thread.caller.unwrap())) ==> callers.contains(thread.caller.unwrap())
+                &&& v != victim_ptr ==> {
+                    &&& thread_is_dangling(pre.spec_index(v))
+                    &&& thread.callee is Some
+                    &&& callers.contains(thread.callee.unwrap())
+                    &&& thread.call_depth.view() < pre.spec_index(victim_ptr).view().call_depth.view()
+                }
+            },
+        forall|t: RwLockThreadPtr| #![trigger pre.spec_index(t).view_ghost()]
+            pre.dom().contains(t) && thread_is_dangling(pre.spec_index(t)) && !pre.spec_index(t).being_killed() && pre.spec_index(t).view_ghost().chain_end == Some(victim_ptr)
+                ==> callers.contains(t),
+        post.dom() == pre.dom(),
+        forall|t: RwLockThreadPtr| #![trigger post.spec_index(t)]
+            pre.dom().contains(t) && t != victim_ptr && !callers.contains(t) ==> post.spec_index(t) == pre.spec_index(t),
+        forall|t: RwLockThreadPtr| #![trigger post.spec_index(t)]
+            callers.contains(t) && t != victim_ptr ==> {
+                &&& update_ghost_ensures(pre.spec_index(t), post.spec_index(t), ThreadGhost { chain_end: Some(end), ..pre.spec_index(t).view_ghost() })
+                &&& post.spec_index(t).being_killed() == pre.spec_index(t).being_killed()
+            },
+        ({
+            let victim = pre.spec_index(victim_ptr);
+            let after = post.spec_index(victim_ptr);
+            &&& thread_is_dangling(after)
+            &&& !after.being_killed()
+            &&& after.view_ghost() == (ThreadGhost { chain_end: Some(end), ..victim.view_ghost() })
+            &&& after.view().callee == victim.view().callee
+            &&& after.view().caller == victim.view().caller
+            &&& after.view().call_depth == victim.view().call_depth
+            &&& after.view().owning_container == victim.view().owning_container
+        }),
+    ensures thread_dangling_chain_end_wf(post),
+{
+    let callee_ptr = pre.spec_index(victim_ptr).view().callee.unwrap();
+    thread_caller_callee_wf_at(pre, victim_ptr); thread_caller_callee_wf_at(pre, callee_ptr);
+    if thread_is_dangling(pre.spec_index(callee_ptr)) {
+        if pre.spec_index(callee_ptr).being_killed() { thread_dangling_chain_end_wf_killed_at(pre, callee_ptr); } else { thread_dangling_chain_end_wf_at(pre, callee_ptr); }
+    }
+    reveal(thread_caller_callee_wf); reveal(thread_dangling_chain_end_wf);
+}
+
+/// Every dangling thread that ended its chain at the waiting thread leaving its process, and that thread itself, now ends it at
+/// that thread's end, which no other dangling thread records: only its dangling callers, all updated, end their chains there.
+proof fn kill_leave_process_eof_chain_end_waiting(
+    pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, victim_ptr: RwLockThreadPtr, callers: Set<RwLockThreadPtr>, holder: LockThreadId,
+)
+    requires
+        thread_perms_wf(pre.thr_mp),
+        thread_caller_callee_wf(pre.thr_mp),
+        thread_dangling_chain_end_wf(pre.thr_mp),
+        process_thread_wf(pre.prc_mp, pre.thr_mp),
+        kill_leave_process_eof_transition_framing(pre, post, process_ptr, victim_ptr, callers),
+        pre.thr_mp.dom().contains(victim_ptr),
+        pre.thr_mp.spec_index(victim_ptr).view().state is WAITING_REPLY,
+        pre.thr_mp.spec_index(victim_ptr).wlocked_by_thread(holder),
+        forall|t: RwLockThreadPtr| #![trigger pre.thr_mp.spec_index(t).locking_thread()]
+            pre.thr_mp.dom().contains(t) && pre.thr_mp.spec_index(t).locked_by_thread(holder) ==> !(pre.thr_mp.spec_index(t).view().state is KILLED) || pre.thr_mp.spec_index(t).being_killed(),
+        callers.contains(victim_ptr),
+        forall|v: RwLockThreadPtr| #![trigger callers.contains(v)]
+            callers.contains(v) ==> {
+                let thread = pre.thr_mp.spec_index(v).view();
+                &&& pre.thr_mp.dom().contains(v)
+                &&& thread.owning_container == pre.thr_mp.spec_index(victim_ptr).view().owning_container
+                &&& thread.caller is Some && thread_is_dangling(pre.thr_mp.spec_index(thread.caller.unwrap())) ==> callers.contains(thread.caller.unwrap())
+                &&& v != victim_ptr ==> {
+                    &&& thread_is_dangling(pre.thr_mp.spec_index(v))
+                    &&& thread.callee is Some
+                    &&& callers.contains(thread.callee.unwrap())
+                    &&& thread.call_depth.view() < pre.thr_mp.spec_index(victim_ptr).view().call_depth.view()
+                }
+            },
+    ensures thread_dangling_chain_end_wf(post.thr_mp),
+{
+    reveal(kill_leave_process_eof_transition_framing);
+    let victim = pre.thr_mp.spec_index(victim_ptr);
+    let callee = pre.thr_mp.spec_index(victim.view().callee.unwrap());
+    let end = if thread_is_dangling(callee) && !callee.being_killed() { callee.view_ghost().chain_end.unwrap() } else { victim.view().callee.unwrap() };
+    kill_leave_process_eof_chain_callers(pre, victim_ptr, callers, holder);
+    thread_perms_wf_at(pre.thr_mp, victim_ptr); process_thread_wf_killed_thread_at(pre.prc_mp, pre.thr_mp, victim_ptr);
+    kill_leave_process_eof_chain_end_redirect(pre.thr_mp, post.thr_mp, victim_ptr, callers, end);
+}
+
 /// The thread that left its marked process, which absorbed its quota, keeps the kernel invariant.
-pub(crate) proof fn kill_leave_process_eof(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, victim_ptr: RwLockThreadPtr)
+pub(crate) proof fn kill_leave_process_eof(
+    pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, victim_ptr: RwLockThreadPtr, callers: Set<RwLockThreadPtr>, holder: LockThreadId,
+)
     requires
         pre.inv(),
-        kill_leave_process_eof_transition_framing(pre, post, process_ptr, victim_ptr),
+        kill_leave_process_eof_transition_framing(pre, post, process_ptr, victim_ptr, callers),
+        pre.thr_mp.spec_index(victim_ptr).wlocked_by_thread(holder),
+        forall|t: RwLockThreadPtr| #![trigger pre.thr_mp.spec_index(t).locking_thread()]
+            pre.thr_mp.dom().contains(t) && pre.thr_mp.spec_index(t).locked_by_thread(holder) ==> !(pre.thr_mp.spec_index(t).view().state is KILLED) || pre.thr_mp.spec_index(t).being_killed(),
+        pre.thr_mp.spec_index(victim_ptr).view().state is KILLED ==> pre.thr_mp.spec_index(victim_ptr).being_killed() && pre.thr_mp.spec_index(victim_ptr).view().caller is None,
+        pre.thr_mp.spec_index(victim_ptr).view().state is WAITING_REPLY ==> callers.contains(victim_ptr),
+        forall|v: RwLockThreadPtr| #![trigger callers.contains(v)]
+            callers.contains(v) ==> {
+                let thread = pre.thr_mp.spec_index(v).view();
+                &&& pre.thr_mp.dom().contains(v)
+                &&& thread.owning_container == pre.thr_mp.spec_index(victim_ptr).view().owning_container
+                &&& thread.caller is Some && thread_is_dangling(pre.thr_mp.spec_index(thread.caller.unwrap())) ==> callers.contains(thread.caller.unwrap())
+                &&& v != victim_ptr ==> {
+                    &&& thread_is_dangling(pre.thr_mp.spec_index(v))
+                    &&& thread.callee is Some
+                    &&& callers.contains(thread.callee.unwrap())
+                    &&& thread.call_depth.view() < pre.thr_mp.spec_index(victim_ptr).view().call_depth.view()
+                }
+            },
         pre.prc_mp.dom().contains(process_ptr),
         pre.thr_mp.dom().contains(victim_ptr),
         pre.prc_mp.spec_index(process_ptr).view().owned_threads.view().contains(victim_ptr),
@@ -118,12 +296,14 @@ pub(crate) proof fn kill_leave_process_eof(pre: KernelK, post: KernelK, process_
     assert(post.subsystems_inv()) by {
         assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };
         assert(thread_perms_wf(post.thr_mp)) by {
-            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
         };
         reveal(KernelK::default_pagetable_wf);
     };
-    kill_leave_process_eof_memory(pre, post, process_ptr, victim_ptr);
-    kill_leave_process_eof_process(pre, post, process_ptr, victim_ptr);
+    kill_leave_process_eof_memory(pre, post, process_ptr, victim_ptr, callers);
+    if pre.thr_mp.spec_index(victim_ptr).view().state is KILLED { kill_leave_process_eof_chain_end_killed(pre, post, process_ptr, victim_ptr, callers, holder); }
+    else { kill_leave_process_eof_chain_end_waiting(pre, post, process_ptr, victim_ptr, callers, holder); }
+    kill_leave_process_eof_process(pre, post, process_ptr, victim_ptr, callers);
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
     assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
     assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
@@ -148,6 +328,7 @@ proof fn kill_victim_killed_eof_memory(pre: KernelK, post: KernelK)
             &&& post.thr_mp.spec_index(t).view().temp_alloc_cache_1g == pre.thr_mp.spec_index(t).view().temp_alloc_cache_1g
             &&& post.thr_mp.spec_index(t).view().owning_container == pre.thr_mp.spec_index(t).view().owning_container
             &&& post.thr_mp.spec_index(t).view().free_quota_pending_fields_unchanged(&pre.thr_mp.spec_index(t).view())
+            &&& post.thr_mp.spec_index(t).locking_thread() == pre.thr_mp.spec_index(t).locking_thread()
         },
         forall|s: RwLockSchedulerPtr| #![trigger post.sched_mp.spec_index(s)] pre.sched_mp.dom().contains(s) ==> post.sched_mp.spec_index(s).owning_container == pre.sched_mp.spec_index(s).owning_container,
         forall|e: RwLockEndpointPtr| #![trigger post.ep_mp.spec_index(e)] pre.ep_mp.dom().contains(e) ==> post.ep_mp.spec_index(e).view().owning_container == pre.ep_mp.spec_index(e).view().owning_container,
@@ -157,6 +338,7 @@ proof fn kill_victim_killed_eof_memory(pre: KernelK, post: KernelK)
         assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { reveal(scheduler_pages_wf); };
         assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { reveal(endpoint_pages_wf); };
         assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
+        assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
         assert(thread_staged_pages_wf(post.thr_mp, post.pg_arr)) by {
             thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
             thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
@@ -191,7 +373,7 @@ pub(crate) proof fn kill_dequeue_scheduled_eof(pre: KernelK, post: KernelK, vict
     lemma_seq_remove_value_membership::<RwLockThreadPtr>();
     assert(post.subsystems_inv()) by {
         assert(thread_perms_wf(post.thr_mp)) by {
-            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
         };
         reveal(KernelK::default_pagetable_wf);
     };
@@ -211,6 +393,11 @@ pub(crate) proof fn kill_dequeue_scheduled_eof(pre: KernelK, post: KernelK, vict
         assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(process_thread_wf); };
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
         assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_running_thread_eq(pre.thr_mp, post.thr_mp, pre.cpu_arr, post.cpu_arr); };
+        assert(thread_dangling_chain_end_wf(post.thr_mp)) by {
+            process_thread_wf_at(pre.prc_mp, pre.thr_mp, victim_ptr);
+            process_thread_wf_process_at(pre.prc_mp, pre.thr_mp, pre.thr_mp.spec_index(victim_ptr).view().owning_proc, victim_ptr);
+            thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thr_mp, post.thr_mp);
+        };
     };
 }
 
@@ -237,7 +424,7 @@ pub(crate) proof fn kill_dequeue_endpoint_eof(pre: KernelK, post: KernelK, victi
     lemma_seq_remove_value_membership::<RwLockThreadPtr>();
     assert(post.subsystems_inv()) by {
         assert(thread_perms_wf(post.thr_mp)) by {
-            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
         };
         assert(endpoint_perms_wf(post.ep_mp)) by { reveal(endpoint_perms_wf); };
         reveal(KernelK::default_pagetable_wf);
@@ -258,6 +445,11 @@ pub(crate) proof fn kill_dequeue_endpoint_eof(pre: KernelK, post: KernelK, victi
         assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(process_thread_wf); };
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
         assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_running_thread_eq(pre.thr_mp, post.thr_mp, pre.cpu_arr, post.cpu_arr); };
+        assert(thread_dangling_chain_end_wf(post.thr_mp)) by {
+            process_thread_wf_at(pre.prc_mp, pre.thr_mp, victim_ptr);
+            process_thread_wf_process_at(pre.prc_mp, pre.thr_mp, pre.thr_mp.spec_index(victim_ptr).view().owning_proc, victim_ptr);
+            thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thr_mp, post.thr_mp);
+        };
     };
 }
 
@@ -303,7 +495,7 @@ pub(crate) proof fn kill_evict_eof(pre: KernelK, post: KernelK, victim_ptr: RwLo
         assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
         assert(cpu_published_wf(post.cpu_published, post.cpu_arr, post.pcid_needflush)) by { reveal(cpu_published_wf); reveal(KernelK::default_pagetable_wf); reveal(PageTable::table_pages_wf); };
         assert(thread_perms_wf(post.thr_mp)) by {
-            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
         };
         reveal(KernelK::default_pagetable_wf);
     };
@@ -323,6 +515,11 @@ pub(crate) proof fn kill_evict_eof(pre: KernelK, post: KernelK, victim_ptr: RwLo
         assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { reveal(container_thread_wf); };
         assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(process_thread_wf); };
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
+        assert(thread_dangling_chain_end_wf(post.thr_mp)) by {
+            process_thread_wf_at(pre.prc_mp, pre.thr_mp, victim_ptr);
+            process_thread_wf_process_at(pre.prc_mp, pre.thr_mp, pre.thr_mp.spec_index(victim_ptr).view().owning_proc, victim_ptr);
+            thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thr_mp, post.thr_mp);
+        };
     };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
         reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match);

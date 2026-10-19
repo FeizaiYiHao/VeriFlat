@@ -214,6 +214,7 @@ pub open spec fn create_process_with_iommu_from_staged_pages_eof_transition_fram
     &&& post.thr_mp.spec_index(staging_thread_ptr).locking_thread() == pre.thr_mp.spec_index(staging_thread_ptr).locking_thread()
     &&& post.thr_mp.spec_index(staging_thread_ptr).being_killed() == pre.thr_mp.spec_index(staging_thread_ptr).being_killed()
     &&& post.thr_mp.spec_index(staging_thread_ptr).killer_info() == pre.thr_mp.spec_index(staging_thread_ptr).killer_info()
+    &&& post.thr_mp.spec_index(staging_thread_ptr).view_ghost() == pre.thr_mp.spec_index(staging_thread_ptr).view_ghost()
     &&& forall|t_ptr: RwLockThreadPtr|
         #![trigger post.thr_mp.view().spec_index(t_ptr).is_init()]
         pre.thr_mp.dom().contains(t_ptr) ==> {
@@ -316,7 +317,7 @@ pub(super) proof fn eof_subsystems_inv(
     };
     assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };
     assert(container_perms_wf(post.ctn_mp)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
-    assert(thread_perms_wf(post.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_free_quota_pending_empty_unless_wlocked); };
+    assert(thread_perms_wf(post.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); reveal(thread_free_quota_pending_empty_unless_wlocked); };
     assert(pcid_allocator_perms_wf(post.pcid_allc_mp)) by { reveal(pcid_allocator_perms_wf); };
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
 }
@@ -674,6 +675,8 @@ pub(super) proof fn eof_memory_management_inv(
         !pre.prc_mp.dom().contains(process_page_ptr),
         !pre.pt_mp.dom().contains(pagetable_page_ptr),
         !pre.it_mp.dom().contains(iommu_table_page_ptr),
+        pre.prc_mp.dom().contains(parent_ptr),
+        pre.prc_mp.spec_index(parent_ptr).view_rodata().view().owning_container == container_ptr,
         pre.ctn_mp.dom().contains(container_ptr),
         pre.thr_mp.dom().contains(staging_thread_ptr),
         pre.thr_mp.spec_index(staging_thread_ptr).view().quota_4k >= 5,
@@ -696,6 +699,11 @@ pub(super) proof fn eof_memory_management_inv(
     eof_memory_relations(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid);
     eof_allocator_quota_wf(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid);
     eof_process_kernel_pages_owner_wf(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid);
+    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(create_process_with_iommu_from_staged_pages_eof_transition_framing); reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
+    assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
+        reveal(create_process_with_iommu_from_staged_pages_eof_transition_framing); container_process_wf_process_at(pre.ctn_mp, pre.prc_mp, parent_ptr);
+        reveal(container_kill_retire_wf);
+    };
 }
 
 /// The new process's object page, both root pages, and both L4 pages belong to its container; every other page keeps its
@@ -830,6 +838,7 @@ pub(super) proof fn eof_process_management_inv(
         assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.ep_mp); };
         assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.ep_mp); };
         assert(thread_caller_callee_wf(post.thr_mp)) by { thread_caller_callee_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp); };
+        assert(thread_dangling_chain_end_wf(post.thr_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thr_mp, post.thr_mp); };
         assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by {
             container_thread_endpoint_wf_preserved_for_descriptor_owner_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp);
             reveal(container_endpoint_wf);
@@ -844,6 +853,7 @@ pub(super) proof fn eof_process_management_inv(
         assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { container_thread_wf_preserved_for_container_thread_link_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp); };
         assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
         assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
+        assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by { reveal(cpu_set_kill_mark_wf); container_process_wf_process_at(pre.ctn_mp, pre.prc_mp, parent_ptr); };
         assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
         assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); };
         assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(Seq::contains); reveal(process_thread_wf); };

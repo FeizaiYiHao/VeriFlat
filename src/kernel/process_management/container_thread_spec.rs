@@ -63,6 +63,16 @@ verus! {
             }),
     { reveal(container_thread_wf); }
 
+    /// Indirect thread `t_ptr` of container `c_ptr` is in the thread map and has `c_ptr` among its upper containers.
+    pub proof fn container_thread_wf_indirect_thread_at(container_map: ContainerLockedMap, thread_map: ThreadLockedMap, c_ptr: RwLockContainerPtr, t_ptr: RwLockThreadPtr)
+        requires
+            container_thread_wf(container_map, thread_map),
+            container_map.dom().contains(c_ptr),
+        ensures
+            container_map.spec_index(c_ptr).view_ghost().owned_indirect_threads.view().contains(t_ptr)
+                ==> thread_map.dom().contains(t_ptr) && thread_map.spec_index(t_ptr).view().upper_container_seq.view().contains(c_ptr),
+    { reveal(container_thread_wf); }
+
     /// Thread `t_ptr`'s owning container exists and its uppertree is the thread's recorded upper-container sequence.
     pub proof fn container_thread_wf_uppertree_at(container_map: ContainerLockedMap, thread_map: ThreadLockedMap, t_ptr: RwLockThreadPtr)
         requires

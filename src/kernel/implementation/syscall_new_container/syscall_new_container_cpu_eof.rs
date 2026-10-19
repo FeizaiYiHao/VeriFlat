@@ -18,6 +18,7 @@ pub(super) proof fn new_container_cpu_transfer_eof(pre: KernelK, post: KernelK, 
         pre.ctn_mp.spec_index(child_container).view_rodata().view().cpu_set == child_cpu_set,
         pre.cpu_set_mp.spec_index(parent_cpu_set).view().owned_cpus.closed_view().contains(transfer_cpu_id),
         !pre.cpu_set_mp.spec_index(child_cpu_set).view().owned_cpus.view().contains(transfer_cpu_id),
+        !pre.cpu_set_mp.spec_index(parent_cpu_set).being_killed() && !pre.cpu_set_mp.spec_index(child_cpu_set).being_killed(),
         pre.cpu_arr.spec_index(transfer_cpu_id).view().view().view().state is Off,
         pre.cpu_arr.spec_index(transfer_cpu_id).view().view().view().owning_container == parent_container,
         post.cpu_arr.inv(),
@@ -32,6 +33,7 @@ pub(super) proof fn new_container_cpu_transfer_eof(pre: KernelK, post: KernelK, 
     assert(post.memory_management_inv()) by { assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); }; };
     assert(post.process_management_inv()) by {
         assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
+        assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by { reveal(cpu_set_kill_mark_wf); };
         assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); };
         assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); };
         assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { reveal(thread_cpu_wf); };

@@ -24,6 +24,7 @@ proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_process_management_inv(
         assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { process_thread_wf_preserved_for_thread_process_management_fields(post.prc_mp, pre.thr_mp, post.thr_mp); };
         assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.cpu_arr); };
         assert(thread_caller_callee_wf(post.thr_mp)) by { thread_caller_callee_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp); };
+        assert(thread_dangling_chain_end_wf(post.thr_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thr_mp, post.thr_mp); };
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
     };
 }
@@ -71,6 +72,7 @@ proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_page_relations(
         container_pages_wf(post.pg_arr, post.ctn_mp),
         process_pages_wf(post.pg_arr, post.prc_mp),
         process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp),
+        page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp),
         pagetable_pages_wf(post.pt_mp, post.pg_arr),
         pagetable_pages_wf(post.it_mp, post.pg_arr),
         thread_pages_wf(post.thr_mp, post.pg_arr),
@@ -106,6 +108,7 @@ proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_page_relations(
     assert(container_pages_wf(post.pg_arr, post.ctn_mp)) by { container_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.ctn_mp, post.ctn_mp); };
     assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { process_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.prc_mp, post.prc_mp); };
     assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
+    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
     assert(hugepage_2m_wf(post.pg_arr)) by { hugepage_2m_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); };
     assert(hugepage_1g_wf(post.pg_arr)) by { hugepage_1g_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); };
     assert(pagetable_pages_wf(post.it_mp, post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.it_mp, post.it_mp, pre.pg_arr, post.pg_arr); };
@@ -224,6 +227,16 @@ proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_memory_management_inv(
 {
     reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_page_relations(pre, post, iommu_table, indices, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr);
     reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_allocator_quota_wf(pre, post, iommu_table, indices, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr);
+    assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
+        let thread = pre.thr_mp.spec_index(thread_ptr).view();
+        reveal(reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing);
+        container_thread_wf_at(pre.ctn_mp, pre.thr_mp, thread_ptr); container_thread_wf_uppertree_at(pre.ctn_mp, pre.thr_mp, thread_ptr);
+        if depth < thread.container_depth {
+            container_perms_wf_at(pre.ctn_mp, thread.owning_container); assert(thread.upper_container_seq.view().contains(owner));
+            container_uppertree_seq_wf_at(pre.rt_ctn, pre.ctn_mp, thread.owning_container, owner);
+        }
+        reveal(container_kill_retire_wf); reveal(container_allocator_wf);
+    };
 }
 
 pub(super) proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof(
@@ -315,7 +328,7 @@ pub(super) proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof(
 {
     reveal(reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing);
     assert(post.subsystems_inv()) by {
-        reveal(pagetable_perms_wf); reveal(page_array_wf); reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+        reveal(pagetable_perms_wf); reveal(page_array_wf); reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
         reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(allocator_perms_wf); reveal(KernelK::default_pagetable_wf);
     };
     reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_memory_management_inv(pre, post, iommu_table, indices, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr);

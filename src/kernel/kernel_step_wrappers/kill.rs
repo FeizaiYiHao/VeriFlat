@@ -85,7 +85,8 @@ pub proof fn kernel_thread_locked_and_marked_implies_u_step(before: &KernelK, af
 }
 
 /// The thread `thread_ptr` leaving the process `process_ptr`, which absorbs its quota, changes only that process's
-/// threads and quota and that thread's state and quota; a changed state changes both projections.
+/// threads and quota and that thread's state and quota, whatever proof-only state other threads carry; a changed state changes
+/// both projections.
 pub proof fn kernel_thread_left_process_implies_u_step(before: &KernelK, after: &KernelK, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr)
     requires
         *after == (KernelK { prc_mp: after.prc_mp, thr_mp: after.thr_mp, ..*before }),
@@ -103,7 +104,12 @@ pub proof fn kernel_thread_left_process_implies_u_step(before: &KernelK, after: 
         after.prc_mp.spec_index(process_ptr).view_ghost() == before.prc_mp.spec_index(process_ptr).view_ghost(),
         after.prc_mp.spec_index(process_ptr).locking_thread() == before.prc_mp.spec_index(process_ptr).locking_thread(),
         after.prc_mp.spec_index(process_ptr).being_killed() == before.prc_mp.spec_index(process_ptr).being_killed(),
-        after.thr_mp.unchanged_except(&before.thr_mp, thread_ptr),
+        after.thr_mp.dom() == before.thr_mp.dom(),
+        forall|t: RwLockThreadPtr| #![trigger after.thr_mp.spec_index(t)] before.thr_mp.dom().contains(t) && t != thread_ptr ==> {
+            &&& after.thr_mp.spec_index(t).view() == before.thr_mp.spec_index(t).view()
+            &&& after.thr_mp.spec_index(t).locking_thread() == before.thr_mp.spec_index(t).locking_thread()
+            &&& after.thr_mp.spec_index(t).being_killed() == before.thr_mp.spec_index(t).being_killed()
+        },
         after.thr_mp.spec_index(thread_ptr).view() == (Thread {
             state: after.thr_mp.spec_index(thread_ptr).view().state, quota_4k: 0, quota_2m: 0, quota_1g: 0,
             proc_linkedlist_node: after.thr_mp.spec_index(thread_ptr).view().proc_linkedlist_node, ..before.thr_mp.spec_index(thread_ptr).view()

@@ -232,8 +232,10 @@ pub(super) proof fn eof_process_management_inv(
     assert(post.ctn_mp.spec_index(post.rt_ctn).view_ghost().owned_processes.view().contains(post.ctn_mp.spec_index(post.rt_ctn).view().root_process)) by { reveal(container_root_wf); };
     assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.ep_mp); };
     assert(thread_caller_callee_wf(post.thr_mp)) by { thread_caller_callee_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp); };
+    assert(thread_dangling_chain_end_wf(post.thr_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thr_mp, post.thr_mp); };
     assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); reveal(publish_staged_container_root_eof_preconditions); };
     assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); reveal(publish_staged_container_root_eof_preconditions); };
+    assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by { reveal(cpu_set_kill_mark_wf); reveal(publish_staged_container_root_eof_preconditions); };
     assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
     assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
     assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); };
@@ -602,6 +604,15 @@ pub(super) proof fn eof_memory_management_inv(
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k,
     );
+    eof_page_object_owner_wf(
+        pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+        allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+        allocator_quota_4k, process_quota_4k,
+    );
+    assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
+        reveal(publish_staged_container_root_eof_preconditions); reveal(container_kill_retire_wf); reveal(container_uppertree_seq_wf);
+        broadcast use vstd::seq_lib::lemma_seq_contains_after_push;
+    };
 }
 
 /// The root process's object page, page-table root page, and L4 page belong to the new container; every other process
@@ -641,5 +652,111 @@ pub(super) proof fn eof_process_kernel_pages_owner_wf(
     broadcast use eof_unmodified_object_page_state_eq;
     page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
     reveal(process_kernel_pages_owner_wf); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match);
+}
+
+/// The new container's object pages are named by the new container; every other object page keeps its state, its owner,
+/// and the owner's object fields.
+pub(super) proof fn eof_page_object_owner_wf(
+    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
+    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize,
+)
+    requires
+        pre.inv(),
+        page_ptr_2m_valid(container_page),
+        page_ptr_2m_valid(pcid_allocator_page),
+        page_ptr_valid(allocator_4k_page),
+        page_ptr_valid(allocator_2m_page),
+        page_ptr_valid(allocator_1g_page),
+        page_ptr_valid(scheduler_page),
+        page_ptr_valid(cpu_set_page),
+        page_ptr_valid(process_page),
+        page_ptr_valid(pagetable_page),
+        page_ptr_valid(l4_page),
+        publish_staged_container_root_eof_transition_framing(
+            pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+        publish_staged_container_root_eof_preconditions(
+            pre, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+        page_array_wf(post.pg_arr),
+    ensures
+        page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp),
+{
+    broadcast use eof_page_object_owner_at;
+    reveal(page_object_owner_wf);
+}
+
+pub(super) broadcast proof fn eof_page_object_owner_at(
+    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
+    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize, page_index: PageIndex,
+)
+    requires
+        pre.inv(),
+        page_ptr_2m_valid(container_page),
+        page_ptr_2m_valid(pcid_allocator_page),
+        page_ptr_valid(allocator_4k_page),
+        page_ptr_valid(allocator_2m_page),
+        page_ptr_valid(allocator_1g_page),
+        page_ptr_valid(scheduler_page),
+        page_ptr_valid(cpu_set_page),
+        page_ptr_valid(process_page),
+        page_ptr_valid(pagetable_page),
+        page_ptr_valid(l4_page),
+        publish_staged_container_root_eof_transition_framing(
+            pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+        publish_staged_container_root_eof_preconditions(
+            pre, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+        page_array_wf(post.pg_arr),
+        index_valid(NUM_PAGES, page_index),
+    ensures
+        #![trigger
+            publish_staged_container_root_eof_transition_framing(
+                pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page,
+                allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page,
+                funding_pages, allocator_quota_4k, process_quota_4k,
+            ),
+            post.pg_arr.spec_index(page_index).view().view().owning_container
+        ]
+        ({
+            let page = post.pg_arr.spec_index(page_index).view().view();
+            let ptr = page_index2page_ptr(page_index);
+            let container = post.ctn_mp.spec_index(page.owning_container);
+            &&& page.state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread }) ==> container.view_ghost().owned_threads.view().contains(ptr)
+            &&& page.state == (PageState::Allocated4k { state: Allocated4KPageState::AsEndpoint }) ==> container.view_ghost().owned_endpoints.view().contains(ptr)
+            &&& page.state == (PageState::Allocated4k { state: Allocated4KPageState::AsScheduler }) ==> container.view_rodata().view().scheduler == ptr
+            &&& page.state == (PageState::Allocated4k { state: Allocated4KPageState::AsCpuSet }) ==> container.view_rodata().view().cpu_set == ptr
+            &&& page.state == (PageState::Allocated4k { state: Allocated4KPageState::As4KAllocator }) ==> container.view_rodata().view().allocator_ptr_4k == ptr
+            &&& page.state == (PageState::Allocated4k { state: Allocated4KPageState::As2MAllocator }) ==> container.view_rodata().view().allocator_ptr_2m == ptr
+            &&& page.state == (PageState::Allocated4k { state: Allocated4KPageState::As1GAllocator }) ==> container.view_rodata().view().allocator_ptr_1g == ptr
+            &&& page.state == (PageState::Allocated2m { state: Allocated2MPageState::AsContainer }) ==> page.owning_container == ptr
+            &&& page.state == (PageState::Allocated2m { state: Allocated2MPageState::AsPcidAllocator }) ==> container.view_rodata().view().pcid_allocator == ptr
+            &&& page.state is Unavailable || page.is_io_page ==> container.view_rodata().view().parent is None
+            &&& page.state is Owned4k || page.state is Owned2m || page.state is Owned1g ==> {
+                let thread_ptr = if page.state is Owned4k { page.state->Owned4k_thread_ptr } else if page.state is Owned2m { page.state->Owned2m_thread_ptr } else { page.state->Owned1g_thread_ptr };
+                let thread = post.thr_mp.spec_index(thread_ptr);
+                &&& post.thr_mp.dom().contains(thread_ptr)
+                &&& page.owning_container == thread.view().owning_container || container.locking_thread() is Write && thread.locking_thread() is Write
+                    && container.locking_thread()->Write_thread_id == thread.locking_thread()->Write_thread_id && !container.being_killed()
+            }
+        }),
+{
+    reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
+    broadcast use eof_unmodified_object_page_state_eq;
+    page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip();
+    page_object_owner_wf_at(pre.pg_arr, pre.ctn_mp, pre.thr_mp, page_index); container_page_owner_backward_at(pre.ctn_mp, pre.pg_arr, page_index); page_array_wf_at(post.pg_arr, page_index);
 }
 }

@@ -128,6 +128,7 @@ pub(super) fn commit_new_container_share_and_finish(
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_4k.view() == set![thread_page_ptr],
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_2m.view().is_empty(),
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_1g.view().is_empty(),
+        !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k {
             source_range: *source_range, target_range: *source_range, shared: 0,
             origin: Share4kOrigin::NewContainer(NewContainerProgress { child_container: Some(child_container_ptr), ..record }),

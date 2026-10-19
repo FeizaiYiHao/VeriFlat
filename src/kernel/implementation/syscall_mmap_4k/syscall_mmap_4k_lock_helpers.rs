@@ -98,6 +98,7 @@ pub(super) fn mmap_4k_lock_current_thread(
             &&& thread.view().free_quota_pending_clean()
             &&& thread.view().temp_alloc_clean()
             &&& thread.view().syscall_progress.view() is None
+            &&& !thread.view_ghost().exited
             &&& !(thread.view().quota_4k >= 4 * range) ==> RetValueType::ErrorNoQuota == mmap_4k_syscall_result(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, va, range)
             &&& typed_lock_map_contains_mode(final(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write)
             &&& typed_lock_map_contains_mode(final(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write)
@@ -205,6 +206,7 @@ pub(super) fn mmap_4k_unlock_and_finish(
         old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
         old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
         old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None,
+        !old(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited,
         match pagetable_lock_perm {
             Some(perm) => {
                 &&& old(krnl).pt_mp.dom().contains(pagetable_ptr)
@@ -309,6 +311,7 @@ pub(super) fn mmap_4k_map_and_finish(
         old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
         old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
         old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None,
+        !old(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited,
         old(krnl).pt_mp.dom().contains(pagetable_ptr),
         old(krnl).pt_mp.unchanged_except(&old(steps).snapshot_k().pt_mp, pagetable_ptr),
         wlock_ensures(old(steps).snapshot_k().pt_mp.spec_index(pagetable_ptr), old(krnl).pt_mp.spec_index(pagetable_ptr), old(steps).snapshot_k().pt_mp.lock_id_by_key(pagetable_ptr), old(lctx), pagetable_lock_perm),
@@ -423,6 +426,7 @@ pub(super) fn mmap_4k_finish(
         old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
         old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
         old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Mmap4k { range: *va_range, mapped: range, directory: Mmap4kDirectory::None }),
+        !old(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited,
         thread_lock_perm.state() is WriteLock,
         thread_lock_perm.thread_id() == old(lctx).thread_id(),
         thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
@@ -537,6 +541,7 @@ pub(super) fn mmap_4k_lock_pagetable_and_map(
         old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
         old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
         old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None,
+        !old(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited,
         old(krnl).pt_mp.dom().contains(pagetable_ptr),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),

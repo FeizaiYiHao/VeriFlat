@@ -11,7 +11,7 @@ verus! {
 pub(crate) fn kill_leave_process(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&LocalContext>, process_ptr: RwLockProcessPtr, victim_ptr: RwLockThreadPtr, Tracked(process_lock_perm): Tracked<&LockPerm>,
     Tracked(victim_lock_perm): Tracked<&LockPerm>,
-)
+) -> (callers: Ghost<Set<RwLockThreadPtr>>)
     requires
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), lctx),
@@ -28,11 +28,14 @@ pub(crate) fn kill_leave_process(
         victim_lock_perm.thread_id() == lctx.thread_id(),
         victim_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(victim_ptr).locking_thread()->Write_lock_id,
         old(krnl).thr_mp.spec_index(victim_ptr).view().state is WAITING_REPLY || old(krnl).thr_mp.spec_index(victim_ptr).view().state is KILLED,
+        old(krnl).thr_mp.spec_index(victim_ptr).view().state is KILLED ==> old(krnl).thr_mp.spec_index(victim_ptr).being_killed() && old(krnl).thr_mp.spec_index(victim_ptr).view().caller is None,
         old(krnl).thr_mp.spec_index(victim_ptr).view().temp_alloc_clean(),
+        forall|t: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(t)]
+            lctx.thread_lock_map().dom().contains(t) ==> !(old(krnl).thr_mp.spec_index(t).view().state is KILLED) || old(krnl).thr_mp.spec_index(t).being_killed(),
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), lctx),
-        kill_leave_process_eof_transition_framing(*old(krnl), *final(krnl), process_ptr, victim_ptr),
+        kill_leave_process_eof_transition_framing(*old(krnl), *final(krnl), process_ptr, victim_ptr, callers@),
         final(krnl).thr_mp.lock_id_by_key(victim_ptr) == old(krnl).thr_mp.lock_id_by_key(victim_ptr),
         final(krnl).prc_mp.lock_id_by_key(process_ptr) == old(krnl).prc_mp.lock_id_by_key(process_ptr),
 {
@@ -59,14 +62,26 @@ pub(crate) fn kill_leave_process(
         let process = krnl.prc_mp.borrow_mut_typed(process_ptr, Ghost(lctx.process_lock_map()), Tracked(lctx), Tracked(process_lock_perm));
         process.remove_killed_thread(node_addr, quota_4k, quota_2m, quota_1g)
     };
+    let ghost mut callers = Set::<RwLockThreadPtr>::empty();
+    proof {
+        if waiting_reply {
+            let victim = pre.thr_mp.spec_index(victim_ptr).view();
+            let callee = pre.thr_mp.spec_index(victim.callee.unwrap());
+            let end = if thread_is_dangling(callee) && !callee.being_killed() { callee.view_ghost().chain_end.unwrap() } else { victim.callee.unwrap() };
+            callers = thread_map_set_chain_end_up_dangling_callers(&mut krnl.thr_mp, victim_ptr, end);
+            assert(krnl.thr_mp.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
+        }
+    }
     {
         let victim = krnl.thr_mp.borrow_mut_typed(victim_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(victim_lock_perm));
         if waiting_reply { victim.waiting_reply_to_dangling(node_perm); } else { victim.killed_leave_process(node_perm); }
     }
     proof {
-        assert(kill_leave_process_eof_transition_framing(pre, *krnl, process_ptr, victim_ptr)) by { reveal(kill_leave_process_eof_transition_framing); };
-        kill_leave_process_eof(pre, *krnl, process_ptr, victim_ptr);
+        assert(kill_leave_process_eof_transition_framing(pre, *krnl, process_ptr, victim_ptr, callers)) by { reveal(kill_leave_process_eof_transition_framing); };
+        reveal(LockedMap::typed_lock_map_aligned);
+        kill_leave_process_eof(pre, *krnl, process_ptr, victim_ptr, callers, lctx.thread_id());
     }
+    Ghost(callers)
 }
 
 /// Take the write-held marked thread `victim_ptr` off the scheduler shard it is queued on and kill it, write-locking and

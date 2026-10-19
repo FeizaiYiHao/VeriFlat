@@ -78,6 +78,7 @@ verus! {
                 &&& typed_lock_map_contains_mode(final(lctx).allocator_global_pool_2m_lock_map(), alloc_ptr_2m, TypedLockMode::Write)
             },
             final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == false,
+            final(krnl).thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
             final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { temp_alloc_cache_2m: final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
             final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, thread_ptr),
             held_threads_unchanged_except(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx), set![thread_ptr]),

@@ -6,7 +6,7 @@ use super::syscall_thread_exit_quota::thread_exit_return_quota;
 #[cfg(verus_keep_ghost)]
 use super::syscall_thread_exit_reclaim_spec::thread_exit_tables_emptied_eof_transition_framing;
 #[cfg(verus_keep_ghost)]
-use super::syscall_thread_exit_reclaim_eof::thread_exit_tables_emptied_eof;
+use super::syscall_thread_exit_reclaim_eof::{thread_exit_tables_emptied_eof, thread_exit_mark_exited_eof};
 
 verus! {
 /// Return the `size` quota of the exiting last thread and of its process to their container as one recorded step,
@@ -195,6 +195,7 @@ pub(super) fn thread_exit_reclaim_release_tables(
         final(krnl).prc_mp.spec_index(process_ptr).being_killed() == old(krnl).prc_mp.spec_index(process_ptr).being_killed(),
         final(krnl).thr_mp.dom().contains(thread_ptr),
         final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: Ghost(Some(SyscallProgress::ThreadExitZombie)), ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
+        final(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited,
         final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread(),
         final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
 {
@@ -202,6 +203,13 @@ pub(super) fn thread_exit_reclaim_release_tables(
     let ghost unlock_k = *krnl;
     let ghost unlock_lctx = *lctx;
     krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::ThreadExitZombie)), Tracked(&*lctx), Tracked(thread_lock_perm));
+    proof {
+        let zombie = *krnl;
+        krnl.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr); thread_perms_wf_map(krnl.thr_mp);
+        krnl.thr_mp.update_ghost(thread_ptr, ThreadGhost { exited: true, ..zombie.thr_mp.spec_index(thread_ptr).view_ghost() });
+        thread_exit_mark_exited_eof(zombie, *krnl, thread_ptr);
+        assert(typed_lock_maps_aligned(&*krnl, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
+    }
     let ghost progressed = *krnl;
     proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, process_ptr); }
     {

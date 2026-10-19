@@ -82,6 +82,8 @@ pub open spec fn thread_exit_destroy_eof_transition_framing(
         }
     &&& post.prc_mp.dom() == pre.prc_mp.dom()
     &&& post.prc_mp.unchanged_except(&pre.prc_mp, process_ptr)
+    &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p).view_ghost()]
+        post.prc_mp.dom().contains(p) ==> post.prc_mp.spec_index(p).view_ghost() == pre.prc_mp.spec_index(p).view_ghost()
     &&& post_process.view() == (Process {
         zombie, state: if zombie { Ghost(ProcessState::Zombie) } else { pre_process.view().state }, quota_4k: (pre_process.view().quota_4k + thread.quota_4k) as usize,
         quota_2m: (pre_process.view().quota_2m + thread.quota_2m) as usize, quota_1g: (pre_process.view().quota_1g + thread.quota_1g) as usize,

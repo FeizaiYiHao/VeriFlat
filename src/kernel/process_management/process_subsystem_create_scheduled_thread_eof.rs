@@ -35,6 +35,7 @@ pub open spec fn process_subsystem_create_scheduled_thread_eof_transition_framin
     &&& post_thread.spec_index(staging_thread_ptr).locking_thread() == pre_thread.spec_index(staging_thread_ptr).locking_thread()
     &&& post_thread.spec_index(staging_thread_ptr).being_killed() == pre_thread.spec_index(staging_thread_ptr).being_killed()
     &&& post_thread.spec_index(staging_thread_ptr).killer_info() == pre_thread.spec_index(staging_thread_ptr).killer_info()
+    &&& post_thread.spec_index(staging_thread_ptr).view_ghost() == pre_thread.spec_index(staging_thread_ptr).view_ghost()
     &&& forall|ptr: RwLockThreadPtr|
         #![trigger post_thread.spec_index(ptr)]
         pre_thread.dom().contains(ptr) && ptr != staging_thread_ptr ==> post_thread.spec_index(ptr) == pre_thread.spec_index(ptr)

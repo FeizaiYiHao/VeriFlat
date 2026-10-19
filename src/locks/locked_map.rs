@@ -95,6 +95,14 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
             forall|key: usize| #[trigger] held_locks.dom().contains(key) ==> self.dom().contains(key),
     { reveal(LockedMap::typed_lock_map_aligned); }
 
+    pub proof fn typed_lock_map_aligned_locked_at(&self, held_locks: Map<usize, TypedHeldLock>, thread_id: LockThreadId, key: usize)
+        where T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
+        requires
+            self.typed_lock_map_aligned(held_locks, thread_id),
+        ensures
+            self.dom().contains(key) && self.spec_index(key).locked_by_thread(thread_id) ==> held_locks.dom().contains(key),
+    { reveal(LockedMap::typed_lock_map_aligned); }
+
     pub proof fn typed_lock_map_aligned_write_at(&self, held_locks: Map<usize, TypedHeldLock>, thread_id: LockThreadId, key: usize)
         where T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
         requires
@@ -270,6 +278,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
     }
 
     pub proof fn update_ghost(tracked &mut self, key: usize, new_ghost: GhostT)
+        where T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
         requires
             old(self).perms_wf(),
             old(self).dom().contains(key),
@@ -286,6 +295,10 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
             forall|k: usize, thread_id: LockThreadId|
                 #![trigger final(self).spec_index(k).wlocked_by_thread(thread_id)]
                 old(self).dom().contains(k) ==> final(self).spec_index(k).wlocked_by_thread(thread_id) == old(self).spec_index(k).wlocked_by_thread(thread_id),
+            forall|k: usize|
+                #![trigger old(self).lock_id_by_key(k)]
+                #![trigger final(self).lock_id_by_key(k)]
+                old(self).dom().contains(k) ==> final(self).lock_id_by_key(k) == old(self).lock_id_by_key(k),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
         update_ghost(&mut perm, new_ghost);

@@ -57,6 +57,8 @@ pub(crate) proof fn kill_retire_eof(
         pre.ctn_mp.typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id()),
         forall|c: RwLockContainerPtr| #![trigger lctx.container_lock_map().dom().contains(c)] lctx.container_lock_map().dom().contains(c) && pre.ctn_mp.spec_index(c).killer_info() is Some
             ==> pre.ctn_mp.spec_index(c).killer_info()->Some_0.process != target,
+        forall|u: RwLockThreadPtr| #![trigger pre.thr_mp.spec_index(u).locking_thread()]
+            pre.thr_mp.dom().contains(u) && pre.thr_mp.spec_index(u).wlocked_by_thread(lctx.thread_id()) ==> !pre.thr_mp.spec_index(u).being_killed(),
     ensures post.inv(),
 {
     kill_retire_pages_held_and_owned(pre, target, kill_retire_pages(pre, target).to_set(), allocator_ptr, cpu_id);

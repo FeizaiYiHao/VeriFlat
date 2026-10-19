@@ -5,6 +5,8 @@ use vstd::assert_seqs_equal;
 use crate::*;
 
 verus! {
+
+
 impl KernelK {
     pub fn wlock_cpu_offline_flag(&mut self, flags_ptr: RwLockCpuOfflineFlagsPtr, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
         requires
@@ -12,9 +14,43 @@ impl KernelK {
             old(self).cpu_offline_mp.dom().contains(flags_ptr),
             index_valid(NUM_CPUS, cpu_id),
             old(lctx).kernel_view_locking_state() is Acquire,
-            old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
-            old(lctx).held_lock_majors_lt(CPU_OFFLINE_FLAG_LOCK_MAJOR),
             typed_lock_maps_aligned(old(self), old(lctx)),
+            // An ordinary caller holds only cpus and containers no deeper than the table. A killer of a deeper table
+            // holds its own cpu, Idle cpus no deeper than the table, its process, thread, and container, objects it
+            // marked, and flags below this one.
+            ({
+                let depth = old(self).cpu_offline_mp.spec_index(flags_ptr).container_depth.view();
+                let cpu_i = old(lctx).cpu_id();
+                let cpu = old(self).cpu_arr.spec_index(cpu_i).view().view().view();
+                ||| {
+                    &&& old(lctx).cpu_offline_flag_lock_map().dom().is_empty()
+                    &&& old(lctx).held_lock_majors_lt(CPU_OFFLINE_FLAG_LOCK_MAJOR)
+                    &&& old(lctx).process_lock_map().dom().is_empty() && old(lctx).thread_lock_map().dom().is_empty() && old(lctx).cpu_set_lock_map().dom().is_empty()
+                    &&& old(lctx).page_lock_map().dom().is_empty() && old(lctx).pcid_needflush_lock_map().dom().is_empty() && old(lctx).endpoint_lock_map().dom().is_empty()
+                    &&& old(lctx).scheduler_lock_map().dom().is_empty() && old(lctx).pcid_allocator_lock_map().dom().is_empty() && old(lctx).pagetable_lock_map().dom().is_empty()
+                    &&& old(lctx).iommu_table_lock_map().dom().is_empty() && old(lctx).iommu_root_table_lock_map().dom().is_empty()
+                    &&& old(lctx).holds_no_allocator_locks(PageSize::SZ4k) && old(lctx).holds_no_allocator_locks(PageSize::SZ2m) && old(lctx).holds_no_allocator_locks(PageSize::SZ1g)
+                    &&& forall|i: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(i)] old(lctx).cpu_lock_map().dom().contains(i) ==> old(self).cpu_arr.spec_index(i).view().view().view().container_depth <= depth
+                    &&& forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> old(self).ctn_mp.spec_index(c).view_rodata().view().depth <= depth
+                }
+                ||| {
+                    &&& index_valid(NUM_CPUS, cpu_i)
+                    &&& old(lctx).cpu_lock_map().dom().contains(cpu_i)
+                    &&& forall|i: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(i)] old(lctx).cpu_lock_map().dom().contains(i) && i != cpu_i
+                        ==> old(self).cpu_arr.spec_index(i).view().view().view().state is Idle && old(self).cpu_arr.spec_index(i).view().view().view().container_depth <= depth
+                    &&& cpu.state is Running
+                    &&& cpu.container_depth < depth
+                    &&& forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)] old(lctx).process_lock_map().dom().contains(p) && cpu.current_process != Some(p) ==> old(self).prc_mp.spec_index(p).being_killed()
+                    &&& forall|t: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(t)] old(lctx).thread_lock_map().dom().contains(t) && cpu.current_thread != Some(t) ==> old(self).thr_mp.spec_index(t).being_killed()
+                    &&& forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) && c != cpu.owning_container ==> old(self).ctn_mp.spec_index(c).being_killed()
+                    &&& forall|s: RwLockCpuSetPtr| #![trigger old(lctx).cpu_set_lock_map().dom().contains(s)] old(lctx).cpu_set_lock_map().dom().contains(s) ==> old(self).cpu_set_mp.spec_index(s).being_killed()
+                    &&& typed_lock_map_2d_ids_lt(old(lctx).cpu_offline_flag_lock_map(), old(self).cpu_offline_mp.spec_index(flags_ptr).flags.lock_id_by_index(cpu_id))
+                    &&& old(lctx).page_lock_map().dom().is_empty() && old(lctx).pcid_needflush_lock_map().dom().is_empty() && old(lctx).endpoint_lock_map().dom().is_empty()
+                    &&& old(lctx).scheduler_lock_map().dom().is_empty() && old(lctx).pcid_allocator_lock_map().dom().is_empty() && old(lctx).pagetable_lock_map().dom().is_empty()
+                    &&& old(lctx).iommu_table_lock_map().dom().is_empty() && old(lctx).iommu_root_table_lock_map().dom().is_empty()
+                    &&& old(lctx).holds_no_allocator_locks(PageSize::SZ4k) && old(lctx).holds_no_allocator_locks(PageSize::SZ2m) && old(lctx).holds_no_allocator_locks(PageSize::SZ1g)
+                }
+            }),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).inv(),
@@ -27,8 +63,10 @@ impl KernelK {
             final(self).cpu_offline_mp.perms_wf(),
             final(self).cpu_offline_mp.spec_index(flags_ptr).inv(),
             final(self).cpu_offline_mp.spec_index(flags_ptr).owning_container == old(self).cpu_offline_mp.spec_index(flags_ptr).owning_container,
+            final(self).cpu_offline_mp.spec_index(flags_ptr).container_depth == old(self).cpu_offline_mp.spec_index(flags_ptr).container_depth,
             final(self).cpu_offline_mp.spec_index(flags_ptr).flags.unchanged_except(&old(self).cpu_offline_mp.spec_index(flags_ptr).flags, cpu_id),
             final(self).cpu_offline_mp.spec_index(flags_ptr).flags.lock_id_by_index(cpu_id) == old(self).cpu_offline_mp.spec_index(flags_ptr).flags.lock_id_by_index(cpu_id),
+            final(self).cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_id).view().view().container_depth == old(self).cpu_offline_mp.spec_index(flags_ptr).container_depth,
             cpu_offline_requests_of(final(self).cpu_offline_mp.spec_index(flags_ptr)) == cpu_offline_requests_of(old(self).cpu_offline_mp.spec_index(flags_ptr)),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
@@ -38,7 +76,18 @@ impl KernelK {
     {
         proof {
             cpu_offline_flags_wf_map(old(self).cpu_offline_mp, old(self).cpu_arr); cpu_offline_flags_wf_at(old(self).cpu_offline_mp, old(self).cpu_arr, flags_ptr);
-            assert(old(lctx).lock_id_acyclic(old(self).cpu_offline_mp.spec_index(flags_ptr).flags.lock_id_by_index(cpu_id))) by { reveal(LocalContext::lock_id_acyclic); };
+            let cpu_i = old(lctx).cpu_id();
+            let cpu = old(self).cpu_arr.spec_index(cpu_i).view().view().view();
+            thread_cpu_wf_cpu_at(old(self).thr_mp, old(self).cpu_arr, cpu_i); process_cpu_wf_at(old(self).prc_mp, old(self).cpu_arr, cpu_i);
+            container_cpu_wf_cpu_at(old(self).ctn_mp, old(self).cpu_set_mp, old(self).cpu_arr, cpu_i);
+            if index_valid(NUM_CPUS, cpu_i) && cpu.state is Running {
+                thread_perms_wf_at(old(self).thr_mp, cpu.current_thread->Some_0); process_thread_wf_at(old(self).prc_mp, old(self).thr_mp, cpu.current_thread->Some_0);
+                container_process_wf_process_at(old(self).ctn_mp, old(self).prc_mp, cpu.current_process->Some_0);
+            }
+            assert(old(lctx).lock_id_acyclic(old(self).cpu_offline_mp.spec_index(flags_ptr).flags.lock_id_by_index(cpu_id))) by {
+                reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned);
+                reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
+            };
             assert(!old(self).cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_id).view().locked_by_thread(old(lctx).thread_id())) by { reveal(UnLockedMap::typed_flag_lock_map_aligned); };
         }
         let ret = self.cpu_offline_mp.wlock_flag(flags_ptr, cpu_id, Tracked(&mut *lctx));
@@ -76,6 +125,7 @@ impl KernelK {
             final(self).cpu_offline_mp.perms_wf(),
             final(self).cpu_offline_mp.spec_index(flags_ptr).inv(),
             final(self).cpu_offline_mp.spec_index(flags_ptr).owning_container == old(self).cpu_offline_mp.spec_index(flags_ptr).owning_container,
+            final(self).cpu_offline_mp.spec_index(flags_ptr).container_depth == old(self).cpu_offline_mp.spec_index(flags_ptr).container_depth,
             final(self).cpu_offline_mp.spec_index(flags_ptr).flags.unchanged_except(&old(self).cpu_offline_mp.spec_index(flags_ptr).flags, cpu_id),
             cpu_offline_requests_of(final(self).cpu_offline_mp.spec_index(flags_ptr)) == cpu_offline_requests_of(old(self).cpu_offline_mp.spec_index(flags_ptr)),
             wunlock_ensures(old(self).cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_id).view(), final(self).cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_id).view()),

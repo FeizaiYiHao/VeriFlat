@@ -68,7 +68,8 @@ pub fn syscall_cpu_offline_request(krnl: &mut KernelK, Tracked(lctx): Tracked<&m
         assert({
             &&& krnl.cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(container_ptr))
             &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_ptr)).owning_container.view() == container_ptr
-        }) by { container_cpu_offline_flags_wf_container_at(krnl.ctn_mp, krnl.cpu_offline_mp, container_ptr); };
+            &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_ptr)).container_depth.view() == krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth
+        }) by { container_cpu_offline_flags_wf_container_at(krnl.ctn_mp, krnl.cpu_offline_mp, container_ptr); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); };
     }
     let flags_ptr = container_ptr + 4096;
     let Tracked(flag_lock_perm) = krnl.wlock_cpu_offline_flag(flags_ptr, target, Tracked(lctx));
@@ -76,6 +77,13 @@ pub fn syscall_cpu_offline_request(krnl: &mut KernelK, Tracked(lctx): Tracked<&m
     let container_ro = krnl.ctn_mp.borrow_rodata(container_ptr);
     let cpu_set_ptr = container_ro.borrow().cpu_set;
     proof { assert(krnl.cpu_set_mp.dom().contains(cpu_set_ptr) && krnl.cpu_set_mp.spec_index(cpu_set_ptr).inv()) by { container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, container_ptr); cpu_set_perms_wf_at(krnl.cpu_set_mp, cpu_set_ptr); }; }
+    proof {
+        // The running caller's process lives in the container, so its cpu set is not marked.
+        assert(!krnl.cpu_set_mp.spec_index(cpu_set_ptr).being_killed()) by {
+            thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id);
+            container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, container_ptr); cpu_set_kill_mark_wf_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, cpu_set_ptr);
+        };
+    }
     let Tracked(cpu_set_lock_perm) = krnl.wlock_cpu_set(cpu_set_ptr, Tracked(lctx));
     let cpu_set = krnl.cpu_set_mp.borrow_typed(cpu_set_ptr, Ghost(lctx.cpu_set_lock_map()), Tracked(&*lctx), Tracked(&cpu_set_lock_perm));
     let result = if !cpu_set.owned_cpus.contains(target) { RetValueType::ErrorCpuOwnerMismatch }

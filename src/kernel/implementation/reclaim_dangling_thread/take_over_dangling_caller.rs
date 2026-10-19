@@ -42,6 +42,7 @@ pub fn take_over_dangling_caller(
         final(krnl).thr_mp.dom() == old(krnl).thr_mp.dom(),
         forall|t: RwLockThreadPtr| #![trigger final(krnl).thr_mp.spec_index(t)]
             old(krnl).thr_mp.dom().contains(t) && t != thread_ptr && t != dangling_ptr ==> final(krnl).thr_mp.spec_index(t) == old(krnl).thr_mp.spec_index(t),
+        final(krnl).thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
         final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { caller: None, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
         final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread(),
         final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
@@ -58,6 +59,7 @@ pub fn take_over_dangling_caller(
     proof {
         thread_perms_wf_at(krnl.thr_mp, thread_ptr); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, dangling_ptr);
         krnl.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), dangling_ptr);
+        krnl.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr);
     }
     let ghost pre = *krnl;
     {

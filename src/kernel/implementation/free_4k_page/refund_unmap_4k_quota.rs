@@ -1,6 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 use super::free_quota_4k::return_free_quota_4k;
+#[cfg(verus_keep_ghost)]
 use super::refund_unmap_4k_quota_trace::refund_unmap_4k_step_pre_from_k;
 #[cfg(verus_keep_ghost)]
 use super::refund_unmap_4k_quota_eof::refund_unmap_4k_quota_parent_facts;
@@ -16,7 +17,7 @@ fn refund_unmap_4k_quota_level(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, 
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
-        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.lock_id_by_index(held_page).major < QUOTA_MAJOR,
+        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.lock_id_by_index(held_page).major < QUOTA_4K_MAJOR,
         old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
         old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
         old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
@@ -62,6 +63,7 @@ fn refund_unmap_4k_quota_level(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, 
             old(lctx).pagetable_lock_map().dom().contains(pt) && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
                 ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
         final(krnl).thr_mp.dom().contains(thread_ptr),
+        final(krnl).thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
         final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { direct_free_quota_pending_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k,
             indirect_free_quota_pending_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
         final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread(),
@@ -115,7 +117,7 @@ fn refund_unmap_4k_quota_at_depth(krnl: &mut KernelK, thread_ptr: RwLockThreadPt
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
-        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.lock_id_by_index(held_page).major < QUOTA_MAJOR,
+        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.lock_id_by_index(held_page).major < QUOTA_4K_MAJOR,
         old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
         old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
         old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
@@ -154,7 +156,7 @@ fn refund_unmap_4k_quota_at_depth(krnl: &mut KernelK, thread_ptr: RwLockThreadPt
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Acquire,
         forall|held_cpu_id: CpuId| #![trigger final(lctx).cpu_lock_map().dom().contains(held_cpu_id)] final(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(final(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
-        forall|held_page: PageIndex| #![trigger final(lctx).page_lock_map().dom().contains(held_page)] final(lctx).page_lock_map().dom().contains(held_page) ==> final(krnl).pg_arr.lock_id_by_index(held_page).major < QUOTA_MAJOR,
+        forall|held_page: PageIndex| #![trigger final(lctx).page_lock_map().dom().contains(held_page)] final(lctx).page_lock_map().dom().contains(held_page) ==> final(krnl).pg_arr.lock_id_by_index(held_page).major < QUOTA_4K_MAJOR,
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
         held_pagetables_unchanged(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx)),
@@ -165,6 +167,7 @@ fn refund_unmap_4k_quota_at_depth(krnl: &mut KernelK, thread_ptr: RwLockThreadPt
             old(lctx).pagetable_lock_map().dom().contains(pt) && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
                 ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view()),
         final(krnl).thr_mp.dom().contains(thread_ptr),
+        final(krnl).thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
         final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { direct_free_quota_pending_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k,
             indirect_free_quota_pending_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
         final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread(),
@@ -206,7 +209,7 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
-        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.lock_id_by_index(held_page).major < QUOTA_MAJOR,
+        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.lock_id_by_index(held_page).major < QUOTA_4K_MAJOR,
         old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
         old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
         old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
@@ -270,6 +273,7 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
         held_pages_unchanged(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx)),
         held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
         final(krnl).thr_mp.dom().contains(thread_ptr),
+        final(krnl).thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
         final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { direct_free_quota_pending_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k,
             indirect_free_quota_pending_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
         final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread(),
@@ -346,7 +350,7 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
             lctx.pcid_needflush_lock_map().dom().is_empty(),
             lctx.cpu_offline_flag_lock_map().dom().is_empty(),
             forall|held_cpu_id: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(held_cpu_id)] lctx.cpu_lock_map().dom().contains(held_cpu_id) ==> !(krnl.cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
-            forall|held_page: PageIndex| #![trigger lctx.page_lock_map().dom().contains(held_page)] lctx.page_lock_map().dom().contains(held_page) ==> krnl.pg_arr.lock_id_by_index(held_page).major < QUOTA_MAJOR,
+            forall|held_page: PageIndex| #![trigger lctx.page_lock_map().dom().contains(held_page)] lctx.page_lock_map().dom().contains(held_page) ==> krnl.pg_arr.lock_id_by_index(held_page).major < QUOTA_4K_MAJOR,
             lctx.allocator_quota_4k_lock_map().dom().is_empty(),
             lctx.allocator_quota_2m_lock_map().dom().is_empty(),
             lctx.allocator_quota_1g_lock_map().dom().is_empty(),
@@ -369,6 +373,7 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
             held_iommu_tables_unchanged(old(krnl).it_mp, krnl.it_mp, old(lctx)),
             held_pages_unchanged(old(krnl).pg_arr, krnl.pg_arr, old(lctx)),
             held_cpus_unchanged(old(krnl).cpu_arr, krnl.cpu_arr, old(lctx)),
+            krnl.thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
             krnl.thr_mp.spec_index(thread_ptr).view() == (Thread { direct_free_quota_pending_4k: krnl.thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k,
                 indirect_free_quota_pending_4k: krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
             krnl.thr_mp.spec_index(thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread(),

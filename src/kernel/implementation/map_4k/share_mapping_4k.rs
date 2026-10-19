@@ -189,7 +189,7 @@ fn share_one_mapping_4k(
         old(krnl).prc_mp.spec_index(target_process).view_rodata().view().owning_container == target_container,
         old(krnl).prc_mp.spec_index(target_process).view_rodata().view().pagetable == target_pagetable,
         ((old(krnl).thr_mp.spec_index(target_thread).view().owning_proc == target_process && old(krnl).thr_mp.spec_index(target_thread).view().proc_pagetable_ptr == target_pagetable
-            && old(krnl).thr_mp.spec_index(target_thread).view().syscall_progress.view() != Some(SyscallProgress::ThreadExitZombie))
+            && !old(krnl).thr_mp.spec_index(target_thread).view_ghost().exited)
             || (typed_lock_map_contains_mode(old(lctx).process_lock_map(), target_process, TypedLockMode::Write) && !old(krnl).prc_mp.spec_index(target_process).view().zombie && !(old(krnl).prc_mp.spec_index(target_process).view().state.view() is TablesEmptied))),
         source_thread_lock_perm.state() is WriteLock,
         source_thread_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -256,7 +256,7 @@ fn share_one_mapping_4k(
         final(krnl).prc_mp.spec_index(target_process).view_rodata().view().owning_container == target_container,
         final(krnl).prc_mp.spec_index(target_process).view_rodata().view().pagetable == target_pagetable,
         ((final(krnl).thr_mp.spec_index(target_thread).view().owning_proc == target_process && final(krnl).thr_mp.spec_index(target_thread).view().proc_pagetable_ptr == target_pagetable
-            && final(krnl).thr_mp.spec_index(target_thread).view().syscall_progress.view() != Some(SyscallProgress::ThreadExitZombie))
+            && !final(krnl).thr_mp.spec_index(target_thread).view_ghost().exited)
             || (typed_lock_map_contains_mode(final(lctx).process_lock_map(), target_process, TypedLockMode::Write) && !final(krnl).prc_mp.spec_index(target_process).view().zombie && !(final(krnl).prc_mp.spec_index(target_process).view().state.view() is TablesEmptied))),
         source_thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(source_thread).locking_thread()->Write_lock_id,
         target_thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(target_thread).locking_thread()->Write_lock_id,
@@ -298,6 +298,9 @@ fn share_one_mapping_4k(
         held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
         final(krnl).thr_mp.spec_index(progress_thread).view() == (Thread { syscall_progress: final(krnl).thr_mp.spec_index(progress_thread).view().syscall_progress, ..old(krnl).thr_mp.spec_index(progress_thread).view() }),
         final(krnl).thr_mp.spec_index(progress_thread).view().syscall_progress.view() == share_4k_progress_after_leaf(old(krnl).thr_mp.spec_index(progress_thread).view().syscall_progress.view()),
+        final(krnl).thr_mp.spec_index(progress_thread).view_ghost() == old(krnl).thr_mp.spec_index(progress_thread).view_ghost(),
+        final(krnl).thr_mp.spec_index(target_thread).view_ghost() == old(krnl).thr_mp.spec_index(target_thread).view_ghost(),
+        final(krnl).thr_mp.spec_index(source_thread).view_ghost() == old(krnl).thr_mp.spec_index(source_thread).view_ghost(),
         progress_thread != target_thread ==> final(krnl).thr_mp.spec_index(target_thread).view() == old(krnl).thr_mp.spec_index(target_thread).view(),
         progress_thread != source_thread ==> final(krnl).thr_mp.spec_index(source_thread).view() == old(krnl).thr_mp.spec_index(source_thread).view(),
         final(krnl).ctn_mp.dom().contains(target_container),
@@ -391,7 +394,7 @@ fn share_one_mapping_4k(
             &&& krnl.prc_mp.spec_index(target_process).view_rodata().view().owning_container == target_container
             &&& krnl.prc_mp.spec_index(target_process).view_rodata().view().pagetable == target_pagetable
             &&& ((krnl.thr_mp.spec_index(target_thread).view().owning_proc == target_process && krnl.thr_mp.spec_index(target_thread).view().proc_pagetable_ptr == target_pagetable
-                && krnl.thr_mp.spec_index(target_thread).view().syscall_progress.view() != Some(SyscallProgress::ThreadExitZombie))
+                && !krnl.thr_mp.spec_index(target_thread).view_ghost().exited)
                 || (typed_lock_map_contains_mode(lctx.process_lock_map(), target_process, TypedLockMode::Write) && !krnl.prc_mp.spec_index(target_process).view().zombie && !(krnl.prc_mp.spec_index(target_process).view().state.view() is TablesEmptied)))
         }) by { process_pagetable_match_pagetable_at(krnl.prc_mp, krnl.pt_mp, target_pagetable); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target_process); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target_process); };
         assert(krnl.thr_mp.lock_id_by_key(target_thread) == old(krnl).thr_mp.lock_id_by_key(target_thread)) by { thread_lock_id_preserved_for_typed_maps_unchanged(old(krnl), &*krnl, old(lctx), &*lctx, target_thread); };
@@ -540,6 +543,8 @@ pub fn share_mapping_4k_source_owner_precheck(
         final(krnl).pt_mp.spec_index(target_pagetable).view() == old(krnl).pt_mp.spec_index(target_pagetable).view(),
         final(krnl).thr_mp.spec_index(source_thread).view() == old(krnl).thr_mp.spec_index(source_thread).view(),
         final(krnl).thr_mp.spec_index(target_thread).view() == old(krnl).thr_mp.spec_index(target_thread).view(),
+        final(krnl).thr_mp.spec_index(source_thread).view_ghost() == old(krnl).thr_mp.spec_index(source_thread).view_ghost(),
+        final(krnl).thr_mp.spec_index(target_thread).view_ghost() == old(krnl).thr_mp.spec_index(target_thread).view_ghost(),
         share_mapping_4k_source_range_present(final(krnl), source_pagetable, source_range),
         ret == share_mapping_4k_range_owner_compatible(final(krnl), source_pagetable, target_container, source_range),
 {
@@ -799,7 +804,7 @@ pub fn share_mapping_4k_build_and_share(
         old(krnl).prc_mp.spec_index(target_process).view_rodata().view().owning_container == target_container,
         old(krnl).prc_mp.spec_index(target_process).view_rodata().view().pagetable == target_pagetable,
         ((old(krnl).thr_mp.spec_index(quota_thread).view().owning_proc == target_process && old(krnl).thr_mp.spec_index(quota_thread).view().proc_pagetable_ptr == target_pagetable
-            && old(krnl).thr_mp.spec_index(quota_thread).view().syscall_progress.view() != Some(SyscallProgress::ThreadExitZombie))
+            && !old(krnl).thr_mp.spec_index(quota_thread).view_ghost().exited)
             || (typed_lock_map_contains_mode(old(lctx).process_lock_map(), target_process, TypedLockMode::Write) && !old(krnl).prc_mp.spec_index(target_process).view().zombie && !(old(krnl).prc_mp.spec_index(target_process).view().state.view() is TablesEmptied))),
         source_thread_lock_perm.state() is WriteLock,
         source_thread_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -950,6 +955,9 @@ pub fn share_mapping_4k_build_and_share(
         progress_thread != source_thread ==> final(krnl).thr_mp.spec_index(source_thread).view() == old(krnl).thr_mp.spec_index(source_thread).view(),
         source_thread != quota_thread ==> final(krnl).thr_mp.spec_index(source_thread).view() == (Thread { syscall_progress: final(krnl).thr_mp.spec_index(source_thread).view().syscall_progress, ..old(krnl).thr_mp.spec_index(source_thread).view() }),
         final(krnl).thr_mp.spec_index(progress_thread).view().syscall_progress.view() == Some(SyscallProgress::Share4k { source_range: *source_range, target_range: *target_range, shared: source_range.len, origin }),
+        final(krnl).thr_mp.spec_index(progress_thread).view_ghost() == old(krnl).thr_mp.spec_index(progress_thread).view_ghost(),
+        final(krnl).thr_mp.spec_index(quota_thread).view_ghost() == old(krnl).thr_mp.spec_index(quota_thread).view_ghost(),
+        final(krnl).thr_mp.spec_index(source_thread).view_ghost() == old(krnl).thr_mp.spec_index(source_thread).view_ghost(),
         final(krnl).thr_mp.spec_index(quota_thread).view().temp_alloc_cache_4k.view() == old(krnl).thr_mp.spec_index(quota_thread).view().temp_alloc_cache_4k.view(),
         final(krnl).thr_mp.spec_index(quota_thread).view().temp_alloc_cache_2m.view().len() == 0,
         final(krnl).thr_mp.spec_index(quota_thread).view().temp_alloc_cache_1g.view().len() == 0,
@@ -1044,7 +1052,7 @@ pub fn share_mapping_4k_build_and_share(
             krnl.prc_mp.dom().contains(target_process),
             krnl.prc_mp.spec_index(target_process).view_rodata().view().owning_container == target_container,
             krnl.prc_mp.spec_index(target_process).view_rodata().view().pagetable == target_pagetable,
-            ((krnl.thr_mp.spec_index(quota_thread).view().owning_proc == target_process && krnl.thr_mp.spec_index(quota_thread).view().proc_pagetable_ptr == target_pagetable && krnl.thr_mp.spec_index(quota_thread).view().syscall_progress.view() != Some(SyscallProgress::ThreadExitZombie))
+            ((krnl.thr_mp.spec_index(quota_thread).view().owning_proc == target_process && krnl.thr_mp.spec_index(quota_thread).view().proc_pagetable_ptr == target_pagetable && !krnl.thr_mp.spec_index(quota_thread).view_ghost().exited)
                 || (typed_lock_map_contains_mode(lctx.process_lock_map(), target_process, TypedLockMode::Write) && !krnl.prc_mp.spec_index(target_process).view().zombie && !(krnl.prc_mp.spec_index(target_process).view().state.view() is TablesEmptied))),
             source_thread_lock_perm.state() is WriteLock,
             source_thread_lock_perm.thread_id() == lctx.thread_id(),
@@ -1140,6 +1148,9 @@ pub fn share_mapping_4k_build_and_share(
             progress_thread != source_thread ==> krnl.thr_mp.spec_index(source_thread).view() == old(krnl).thr_mp.spec_index(source_thread).view(),
             source_thread != quota_thread ==> krnl.thr_mp.spec_index(source_thread).view() == (Thread { syscall_progress: krnl.thr_mp.spec_index(source_thread).view().syscall_progress, ..old(krnl).thr_mp.spec_index(source_thread).view() }),
             krnl.thr_mp.spec_index(progress_thread).view().syscall_progress.view() == Some(SyscallProgress::Share4k { source_range: *source_range, target_range: *target_range, shared: i, origin }),
+            krnl.thr_mp.spec_index(progress_thread).view_ghost() == old(krnl).thr_mp.spec_index(progress_thread).view_ghost(),
+            krnl.thr_mp.spec_index(quota_thread).view_ghost() == old(krnl).thr_mp.spec_index(quota_thread).view_ghost(),
+            krnl.thr_mp.spec_index(source_thread).view_ghost() == old(krnl).thr_mp.spec_index(source_thread).view_ghost(),
             krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(progress_thread),
             share_4k_objects_k(*krnl, cpu_id).source_thread == source_thread && share_4k_objects_k(*krnl, cpu_id).quota_thread == quota_thread,
             share_4k_objects_k(*krnl, cpu_id).target == target_process && share_4k_objects_k(*krnl, cpu_id).target_container == target_container,

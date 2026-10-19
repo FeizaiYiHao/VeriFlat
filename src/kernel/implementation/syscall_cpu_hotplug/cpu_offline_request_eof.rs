@@ -12,6 +12,7 @@ pub(super) open spec fn cpu_offline_request_eof_transition_framing(pre: KernelK,
     &&& post == (KernelK { cpu_offline_mp: post.cpu_offline_mp, ..pre })
     &&& post.cpu_offline_mp.unchanged_except(&pre.cpu_offline_mp, flags_ptr)
     &&& new_table.owning_container == old_table.owning_container
+    &&& new_table.container_depth == old_table.container_depth
     &&& new_table.flags.entries_unchanged_except(&old_table.flags, target)
     &&& new_cell.view().requested
     &&& new_cell.view().index() == old_cell.view().index()

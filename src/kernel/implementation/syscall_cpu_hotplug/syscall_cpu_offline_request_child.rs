@@ -107,11 +107,15 @@ pub fn syscall_cpu_offline_request_child(krnl: &mut KernelK, Tracked(lctx): Trac
             &&& krnl.ctn_mp.dom().contains(child_ptr)
             &&& krnl.ctn_mp.spec_index(child_ptr).view_rodata().view().parent == Some(caller_ptr)
             &&& child_ptr != caller_ptr
-        }) by { container_children_parent_wf_at(krnl.rt_ctn, krnl.ctn_mp, caller_ptr, child_ptr); container_root_wf_at(krnl.rt_ctn, krnl.ctn_mp, child_ptr); container_root_wf_at(krnl.rt_ctn, krnl.ctn_mp, krnl.rt_ctn); };
+            &&& krnl.ctn_mp.spec_index(child_ptr).view_rodata().view().depth == krnl.ctn_mp.spec_index(caller_ptr).view_rodata().view().depth + 1
+            &&& krnl.ctn_mp.spec_index(caller_ptr).view_rodata().view().depth == krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth
+        }) by {
+            container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); container_children_parent_wf_at(krnl.rt_ctn, krnl.ctn_mp, caller_ptr, child_ptr); container_root_wf_at(krnl.rt_ctn, krnl.ctn_mp, child_ptr); container_root_wf_at(krnl.rt_ctn, krnl.ctn_mp, krnl.rt_ctn); };
         assert(page_ptr_2m_valid(child_ptr)) by { container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, child_ptr); };
         assert({
             &&& krnl.cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(child_ptr))
             &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(child_ptr)).owning_container.view() == child_ptr
+            &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(child_ptr)).container_depth.view() == krnl.ctn_mp.spec_index(child_ptr).view_rodata().view().depth
         }) by { container_cpu_offline_flags_wf_container_at(krnl.ctn_mp, krnl.cpu_offline_mp, child_ptr); };
     }
     let flags_ptr = child_ptr + 4096;
@@ -119,6 +123,17 @@ pub fn syscall_cpu_offline_request_child(krnl: &mut KernelK, Tracked(lctx): Trac
     let child_ro = krnl.ctn_mp.borrow_rodata(child_ptr);
     let cpu_set_ptr = child_ro.borrow().cpu_set;
     proof { assert(krnl.cpu_set_mp.dom().contains(cpu_set_ptr) && krnl.cpu_set_mp.spec_index(cpu_set_ptr).inv()) by { container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, child_ptr); cpu_set_perms_wf_at(krnl.cpu_set_mp, cpu_set_ptr); }; }
+    proof {
+        // A marked set belongs to a marked child, whose killer write-holds the caller container held here; that
+        // killer's process lock would then be held here too.
+        assert(!krnl.cpu_set_mp.spec_index(cpu_set_ptr).being_killed()) by {
+            container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, child_ptr); cpu_set_kill_mark_wf_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, cpu_set_ptr);
+            container_kill_mark_wf_at(krnl.ctn_mp, krnl.prc_mp, child_ptr); krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), caller_ptr);
+            if krnl.cpu_set_mp.spec_index(cpu_set_ptr).being_killed() {
+                krnl.prc_mp.typed_lock_map_aligned_locked_at(lctx.process_lock_map(), lctx.thread_id(), krnl.ctn_mp.spec_index(child_ptr).killer_info()->Some_0.process);
+            }
+        };
+    }
     let Tracked(cpu_set_lock_perm) = krnl.wlock_cpu_set(cpu_set_ptr, Tracked(lctx));
     let cpu_set = krnl.cpu_set_mp.borrow_typed(cpu_set_ptr, Ghost(lctx.cpu_set_lock_map()), Tracked(&*lctx), Tracked(&cpu_set_lock_perm));
     let result = if !cpu_set.owned_cpus.contains(target) { RetValueType::ErrorCpuOwnerMismatch }

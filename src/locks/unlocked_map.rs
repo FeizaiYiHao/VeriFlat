@@ -61,6 +61,19 @@ impl<T> UnLockedMap<usize, T> {
         proof { self.map.borrow_mut().tracked_insert(key, perm); }
     }
 
+    /// Remove an entry together with its permission so that the caller can retire the object.
+    pub fn remove_with_perm(&mut self, key: usize) -> (ret: Tracked<PointsTo<T>>)
+        requires old(self).dom().contains(key),
+        ensures
+            old(self).perms_wf() ==> final(self).perms_wf() && ret.view().is_init() && ret.view().addr() == key,
+            final(self).dom() =~= old(self).dom().remove(key),
+            forall|k: usize| #![trigger final(self).spec_index(k)] final(self).dom().contains(k) ==> final(self).spec_index(k) == old(self).spec_index(k),
+            ret.view().value() == old(self).spec_index(key),
+    {
+        let tracked perm = self.map.borrow_mut().tracked_remove(key);
+        Tracked(perm)
+    }
+
     pub fn borrow<'a>(&'a self, key: usize) -> (ret: &'a T)
         requires
             self.perms_wf(),

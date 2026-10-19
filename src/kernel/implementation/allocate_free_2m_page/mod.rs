@@ -2,3 +2,7 @@ pub mod allocate_free_2m_impl_base;
 mod allocate_free_2m_page_pop_impl;
 mod allocate_free_2m_page_pop_eof;
 mod allocate_free_2m_page_pop_postconditions;
+pub mod kill_container_move_free_page_2m;
+mod kill_container_move_free_page_2m_eof;
+pub mod move_cache_page_to_pool_2m;
+mod move_cache_page_to_pool_2m_eof;

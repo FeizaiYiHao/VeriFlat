@@ -2,7 +2,9 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_kill_process_spec::*;
 use super::syscall_kill_process_trace::*;
-use super::syscall_kill_process_walk::{KillScope, kill_scope_progress};
+use super::syscall_kill_process_walk::KillScope;
+#[cfg(verus_keep_ghost)]
+use super::syscall_kill_process_walk::kill_scope_progress;
 use super::syscall_kill_process_reclaim_scoped_last::{kill_reclaim_last_4k_mapping_scoped, kill_reclaim_last_iommu_4k_mapping_scoped};
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_process_reclaim_spec::*;
@@ -140,7 +142,7 @@ pub(crate) fn kill_reclaim_unmapped_4k_page_scoped(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).page_lock_map().dom().is_empty(),
-        held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_MAJOR),
+        held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         old(lctx).scheduler_lock_map().dom().is_empty(),
         old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         old(lctx).cpu_set_lock_map().dom().is_empty(),
@@ -369,7 +371,7 @@ pub(crate) fn kill_reclaim_unmapped_iommu_4k_page_scoped(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).page_lock_map().dom().is_empty(),
-        held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_MAJOR),
+        held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         old(lctx).scheduler_lock_map().dom().is_empty(),
         old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         old(lctx).cpu_set_lock_map().dom().is_empty(),

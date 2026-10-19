@@ -88,6 +88,7 @@ pub(super) fn cpu_offline_check_locked(
         assert({
             &&& krnl.ctn_mp.dom().contains(container_ptr)
             &&& krnl.cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(container_ptr))
+            &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_ptr)).container_depth.view() == krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth
         }) by { container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); container_cpu_offline_flags_wf_container_at(krnl.ctn_mp, krnl.cpu_offline_mp, container_ptr); };
         assert(page_ptr_2m_valid(container_ptr)) by { container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, container_ptr); };
         assert({
@@ -126,17 +127,23 @@ pub(super) fn cpu_offline_check_locked(
             locked = thread_lock_perm.is_some();
         }
     }
-    proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
+    proof {
+        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+    }
     if !locked {
-        proof { assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; }; }
         cpu_offline_check_continue(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, pt_regs, flags_ptr, current_process, process_lock_perm, Tracked(cpu_lock_perm), Tracked(flag_lock_perm));
         proof { cpu_offline_check_result_from_k(&old(steps).snapshot_k(), cpu_id, OfflineCheckResult::Continue); }
         return OfflineCheckResult::Continue;
     }
-    cpu_offline_check_lock_and_commit(
+    let committed = cpu_offline_check_lock_and_commit(
         krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, pt_regs, container_ptr, flags_ptr, current_process, current_thread, process_lock_perm, thread_lock_perm,
         Tracked(cpu_lock_perm), Tracked(flag_lock_perm),
     );
+    if !committed {
+        proof { cpu_offline_check_result_from_k(&old(steps).snapshot_k(), cpu_id, OfflineCheckResult::Continue); }
+        return OfflineCheckResult::Continue;
+    }
     proof { cpu_offline_check_result_from_k(&old(steps).snapshot_k(), cpu_id, OfflineCheckResult::Off); }
     OfflineCheckResult::Off
 }

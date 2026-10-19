@@ -22,6 +22,7 @@ pub open spec fn ipc_block_current_eof_transition_framing(
     &&& post.thr_mp.unchanged_except(&pre.thr_mp, current_thread_ptr)
     &&& thread_after.locking_thread() == thread_before.locking_thread()
     &&& thread_after.being_killed() == thread_before.being_killed()
+    &&& thread_after.view_ghost() == thread_before.view_ghost()
     &&& thread_after.view().non_ipc_fields_unchanged(&thread_before.view())
     &&& thread_after.view().caller == thread_before.view().caller
     &&& thread_after.view().syscall_progress == thread_before.view().syscall_progress

@@ -94,6 +94,7 @@ verus! {
                     quota_2m: krnl.allc_2m_mp.spec_index(c_ro.allocator_ptr_2m).quota.view().view(),
                     quota_1g: krnl.allc_1g_mp.spec_index(c_ro.allocator_ptr_1g).quota.view().view(),
                     killed: krnl.ctn_mp.spec_index(ptr).being_killed(),
+                    cpu_set_killed: krnl.cpu_set_mp.spec_index(c_ro.cpu_set).being_killed(),
                 }
             }),
             process_map: Map::new(krnl.prc_mp.dom(), |ptr: RwLockProcessPtr| {

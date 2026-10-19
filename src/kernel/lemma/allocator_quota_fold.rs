@@ -219,7 +219,7 @@ pub proof fn lemma_thread_indirect_pending_2m_fold_nonneg(s: Set<RwLockThreadPtr
     assert(value_fold =~= direct_fold && s.fold(0int, value_fold) >= 0) by { lemma_set_fold_int_sum_nonneg(s, value); };
 }
 
-pub proof fn container_process_allocator_quota_2m_wf_preserved_for_process_2m_fields(container_map: ContainerLockedMap, thread_map: ThreadLockedMap, allocator_2m_map: PageAllocatorUnLockedMap, old_process_map: ProcessLockedMap, new_process_map: ProcessLockedMap)
+pub proof fn container_process_allocator_quota_2m_wf_preserved_for_process_2m_fields(container_map: ContainerLockedMap, thread_map: ThreadLockedMap, allocator_2m_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_2M>, old_process_map: ProcessLockedMap, new_process_map: ProcessLockedMap)
     requires
         container_process_allocator_quota_2m_wf(container_map, old_process_map, thread_map, allocator_2m_map),
         container_process_wf(container_map, old_process_map),
@@ -230,7 +230,7 @@ pub proof fn container_process_allocator_quota_2m_wf_preserved_for_process_2m_fi
         container_process_allocator_quota_2m_wf(container_map, new_process_map, thread_map, allocator_2m_map),
 { reveal(container_process_allocator_quota_2m_wf); reveal(container_process_wf); lemma_process_effective_quota_2m_fold_sum_eq_forall(); }
 
-pub proof fn container_process_allocator_quota_1g_wf_preserved_for_process_1g_fields(container_map: ContainerLockedMap, thread_map: ThreadLockedMap, allocator_1g_map: PageAllocatorUnLockedMap, old_process_map: ProcessLockedMap, new_process_map: ProcessLockedMap)
+pub proof fn container_process_allocator_quota_1g_wf_preserved_for_process_1g_fields(container_map: ContainerLockedMap, thread_map: ThreadLockedMap, allocator_1g_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_1G>, old_process_map: ProcessLockedMap, new_process_map: ProcessLockedMap)
     requires
         container_process_allocator_quota_1g_wf(container_map, old_process_map, thread_map, allocator_1g_map),
         container_process_wf(container_map, old_process_map),
@@ -241,7 +241,7 @@ pub proof fn container_process_allocator_quota_1g_wf_preserved_for_process_1g_fi
         container_process_allocator_quota_1g_wf(container_map, new_process_map, thread_map, allocator_1g_map),
 { reveal(container_process_allocator_quota_1g_wf); reveal(container_process_wf); lemma_process_effective_quota_1g_fold_sum_eq_forall(); }
 
-pub proof fn container_process_allocator_quota_4k_wf_preserved_for_process_4k_fields(container_map: ContainerLockedMap, thread_map: ThreadLockedMap, allocator_4k_map: PageAllocatorUnLockedMap, old_process_map: ProcessLockedMap, new_process_map: ProcessLockedMap)
+pub proof fn container_process_allocator_quota_4k_wf_preserved_for_process_4k_fields(container_map: ContainerLockedMap, thread_map: ThreadLockedMap, allocator_4k_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>, old_process_map: ProcessLockedMap, new_process_map: ProcessLockedMap)
     requires
         container_process_allocator_quota_4k_wf(container_map, old_process_map, thread_map, allocator_4k_map),
         container_process_wf(container_map, old_process_map),
@@ -255,7 +255,7 @@ pub proof fn container_process_allocator_quota_4k_wf_preserved_for_process_4k_fi
 // container_allocator_wf(old) is needed only to know each container's allocator_ptr_4k is in the old allocator dom.
 pub proof fn container_process_allocator_quota_4k_wf_preserved_for_container_allocator_eq(
     old_container_map: ContainerLockedMap, new_container_map: ContainerLockedMap, process_map: ProcessLockedMap, thread_map: ThreadLockedMap,
-    old_allocator_4k_map: PageAllocatorUnLockedMap, new_allocator_4k_map: PageAllocatorUnLockedMap, allocator_2m_map: PageAllocatorUnLockedMap, allocator_1g_map: PageAllocatorUnLockedMap,
+    old_allocator_4k_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>, new_allocator_4k_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>, allocator_2m_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_2M>, allocator_1g_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_1G>,
 )
     requires
         container_process_allocator_quota_4k_wf(old_container_map, process_map, thread_map, old_allocator_4k_map),
@@ -283,7 +283,7 @@ pub proof fn container_process_allocator_quota_4k_wf_preserved_for_container_all
 // container_allocator_wf(old) is needed only to know each container's allocator_ptr_2m is in the old allocator dom.
 pub proof fn container_process_allocator_quota_2m_wf_preserved_for_container_allocator_eq(
     old_container_map: ContainerLockedMap, new_container_map: ContainerLockedMap, process_map: ProcessLockedMap, thread_map: ThreadLockedMap,
-    old_allocator_2m_map: PageAllocatorUnLockedMap, new_allocator_2m_map: PageAllocatorUnLockedMap, allocator_4k_map: PageAllocatorUnLockedMap, allocator_1g_map: PageAllocatorUnLockedMap,
+    old_allocator_2m_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_2M>, new_allocator_2m_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_2M>, allocator_4k_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>, allocator_1g_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_1G>,
 )
     requires
         container_process_allocator_quota_2m_wf(old_container_map, process_map, thread_map, old_allocator_2m_map),
@@ -492,7 +492,7 @@ pub proof fn lemma_container_process_thread_quota_folds_insert_zero_forall(
                         } else {
                             pre_ctn.spec_index(c).view_ghost().owned_indirect_threads
                         },
-                        owned_endpoints: pre_ctn.spec_index(c).view_ghost().owned_endpoints,
+                        owned_endpoints: pre_ctn.spec_index(c).view_ghost().owned_endpoints, retire_ready: pre_ctn.spec_index(c).view_ghost().retire_ready,
                     }
             },
         pre_prc.dom().subset_of(post_prc.dom()),
@@ -668,7 +668,7 @@ pub proof fn lemma_container_process_thread_quota_folds_remove_thread_forall(
                     owned_indirect_threads: if pre_ctn.spec_index(dc).view_ghost().uppertree_seq.view().to_set().contains(c) {
                         Ghost(pre_ctn.spec_index(c).view_ghost().owned_indirect_threads.view().remove(old_t))
                     } else { pre_ctn.spec_index(c).view_ghost().owned_indirect_threads },
-                    owned_endpoints: pre_ctn.spec_index(c).view_ghost().owned_endpoints,
+                    owned_endpoints: pre_ctn.spec_index(c).view_ghost().owned_endpoints, retire_ready: pre_ctn.spec_index(c).view_ghost().retire_ready,
                 }
             },
         post_prc.dom() == pre_prc.dom(),
@@ -839,7 +839,7 @@ pub proof fn lemma_container_thread_quota_folds_remove_empty_thread_forall(
                     owned_indirect_threads: if pre_ctn.spec_index(dc).view_ghost().uppertree_seq.view().to_set().contains(c) {
                         Ghost(pre_ctn.spec_index(c).view_ghost().owned_indirect_threads.view().remove(old_t))
                     } else { pre_ctn.spec_index(c).view_ghost().owned_indirect_threads },
-                    owned_endpoints: pre_ctn.spec_index(c).view_ghost().owned_endpoints,
+                    owned_endpoints: pre_ctn.spec_index(c).view_ghost().owned_endpoints, retire_ready: pre_ctn.spec_index(c).view_ghost().retire_ready,
                 }
             },
         post_thr.dom() == pre_thr.dom().remove(old_t),
@@ -1406,7 +1406,7 @@ pub proof fn lemma_container_allocator_4k_quota_bounded(krnl: &KernelK, owner: R
             reveal(LinkedList::value_list_unique); allocator.global_pool.view().linked_list.lemma_len_view();
             seq_unique_bounded_usize_len(allocator.global_pool.view().view(), (NUM_PAGES * 4096) as usize);
         };
-        assert(allocator.cpu_caches.view().fold_left(0int, |sum: int, cache: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| sum + cache.view().linked_list.len()) <= NUM_CPUS * ALLOCATOR_MAX_WATERMARK) by { lemma_cache_len_fold_upper_bound(allocator.cpu_caches); };
+        assert(allocator.cpu_caches.view().fold_left(0int, |sum: int, cache: RwLock<AllocatorCache<ALLOCATOR_SIZE_4K>, (), (), NO_KILL_STATE>| sum + cache.view().linked_list.len()) <= NUM_CPUS * ALLOCATOR_MAX_WATERMARK) by { lemma_cache_len_fold_upper_bound(allocator.cpu_caches); };
     };
 }
 

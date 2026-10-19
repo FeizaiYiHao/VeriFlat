@@ -24,6 +24,7 @@ pub(super) proof fn wlock_process_eof(pre: KernelK, post: KernelK, process_ptr: 
     assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(process_thread_wf); };
     assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
     assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
+    assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by { reveal(cpu_set_kill_mark_wf); };
     assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
     assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
     assert(post.process_management_inv()) by { process_management_inv_preserved_for_process_invariant_fields(pre, post); };
@@ -92,6 +93,7 @@ pub(super) proof fn mark_kill_process_eof(pre: KernelK, post: KernelK, pre_lctx:
         }
     };
     assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
+    assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by { reveal(cpu_set_kill_mark_wf); };
     assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
     assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
     assert(post.process_management_inv()) by { process_management_inv_preserved_for_process_invariant_fields(pre, post); };
@@ -132,6 +134,7 @@ pub(super) proof fn wunlock_process_eof(pre: KernelK, post: KernelK, pre_lctx: L
     assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(process_thread_wf); };
     assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); reveal(LockedMap::typed_lock_map_aligned); };
     assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); reveal(LockedMap::typed_lock_map_aligned); };
+    assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by { reveal(cpu_set_kill_mark_wf); reveal(container_kill_mark_wf); reveal(LockedMap::typed_lock_map_aligned); };
     assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
     assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
     assert(post.process_management_inv()) by { process_management_inv_preserved_for_process_invariant_fields(pre, post); };

@@ -79,6 +79,7 @@ pub(super) fn unmap_4k_lock_running_thread(krnl: &mut KernelK, Tracked(lctx): Tr
             &&& final(krnl).thr_mp.dom().contains(e.thread_ptr) && !final(krnl).thr_mp.spec_index(e.thread_ptr).being_killed()
             &&& thread.state == (ThreadState::RUNNING { cpu_id }) && thread.owning_proc == e.process_ptr && thread.owning_container == e.container_ptr
             &&& thread.syscall_progress.view() is None && thread.free_quota_pending_clean() && thread.temp_alloc_clean()
+            &&& !final(krnl).thr_mp.spec_index(e.thread_ptr).view_ghost().exited
             &&& final(krnl).prc_mp.spec_index(e.process_ptr).view().state.view() is Running
             &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, ctn_mp: final(krnl).ctn_mp, prc_mp: final(krnl).prc_mp, thr_mp: final(krnl).thr_mp, ..*old(krnl) })
             &&& final(krnl).cpu_arr.unchanged_except(&old(krnl).cpu_arr, cpu_id)
@@ -230,6 +231,7 @@ pub(super) fn unmap_4k_unmap_and_finish(
         old(krnl).thr_mp.spec_index(thread_ptr).view().proc_pagetable_ptr == pagetable,
         old(krnl).thr_mp.spec_index(thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
         old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None,
+        !old(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited,
         old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
         old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
         old(krnl).pt_mp.dom().contains(pagetable),

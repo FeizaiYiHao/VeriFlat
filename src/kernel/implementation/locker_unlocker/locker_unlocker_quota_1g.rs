@@ -12,7 +12,7 @@ impl KernelK {
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).pcid_needflush_lock_map().dom().is_empty(),
             forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
-            forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(self).pg_arr.lock_id_by_index(held_page).major < QUOTA_MAJOR,
+            forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(self).pg_arr.lock_id_by_index(held_page).major < QUOTA_4K_MAJOR,
             old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
             old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
             old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),

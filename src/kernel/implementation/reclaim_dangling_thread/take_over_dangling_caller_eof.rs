@@ -14,6 +14,7 @@ proof fn take_over_dangling_caller_eof_memory_management_inv(pre: KernelK, post:
     reveal(take_over_dangling_caller_eof_transition_framing);
     assert(post.memory_management_inv()) by {
         assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
+        assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
         assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
         assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_2m_wf); };
         assert(thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_1g_wf); };
@@ -44,6 +45,11 @@ proof fn take_over_dangling_caller_eof_process_management_inv(pre: KernelK, post
         pre.thr_mp.spec_index(thread_ptr).view().caller == Some(dangling_ptr),
         pre.thr_mp.spec_index(dangling_ptr).view().state is DANGLING,
         pre.thr_mp.spec_index(dangling_ptr).locking_thread() is Write,
+        !pre.thr_mp.spec_index(dangling_ptr).being_killed(),
+        pre.thr_mp.spec_index(thread_ptr).locking_thread() is Write,
+        pre.thr_mp.spec_index(thread_ptr).view().state is RUNNING || pre.thr_mp.spec_index(thread_ptr).view().state is KILLED
+            || pre.thr_mp.spec_index(thread_ptr).view().state is WAITING_REPLY,
+        pre.thr_mp.spec_index(thread_ptr).locking_thread()->Write_thread_id == pre.thr_mp.spec_index(dangling_ptr).locking_thread()->Write_thread_id,
         take_over_dangling_caller_eof_transition_framing(pre, post, thread_ptr, dangling_ptr),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
@@ -52,6 +58,13 @@ proof fn take_over_dangling_caller_eof_process_management_inv(pre: KernelK, post
     assert(post.process_management_inv()) by {
         assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_descriptor_eq(pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
         assert(thread_caller_callee_wf(post.thr_mp)) by { reveal(thread_caller_callee_wf); };
+        assert(thread_dangling_chain_end_wf(post.thr_mp)) by {
+            let thread = pre.thr_mp.spec_index(thread_ptr);
+            thread_perms_wf_at(pre.thr_mp, thread_ptr); thread_perms_wf_at(pre.thr_mp, dangling_ptr); thread_caller_callee_wf_at(pre.thr_mp, thread_ptr);
+            thread_dangling_chain_end_wf_at(pre.thr_mp, dangling_ptr);
+            if thread_is_dangling(thread) && !thread.being_killed() { thread_dangling_chain_end_wf_at(pre.thr_mp, thread_ptr); }
+            reveal(thread_dangling_chain_end_wf);
+        };
         assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { reveal(container_thread_wf); };
         assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { thread_perms_wf_at(pre.thr_mp, dangling_ptr); reveal(process_thread_wf); };
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
@@ -72,6 +85,11 @@ pub(super) proof fn take_over_dangling_caller_eof(pre: KernelK, post: KernelK, t
         pre.thr_mp.spec_index(thread_ptr).view().caller == Some(dangling_ptr),
         pre.thr_mp.spec_index(dangling_ptr).view().state is DANGLING,
         pre.thr_mp.spec_index(dangling_ptr).locking_thread() is Write,
+        !pre.thr_mp.spec_index(dangling_ptr).being_killed(),
+        pre.thr_mp.spec_index(thread_ptr).locking_thread() is Write,
+        pre.thr_mp.spec_index(thread_ptr).view().state is RUNNING || pre.thr_mp.spec_index(thread_ptr).view().state is KILLED
+            || pre.thr_mp.spec_index(thread_ptr).view().state is WAITING_REPLY,
+        pre.thr_mp.spec_index(thread_ptr).locking_thread()->Write_thread_id == pre.thr_mp.spec_index(dangling_ptr).locking_thread()->Write_thread_id,
         take_over_dangling_caller_eof_transition_framing(pre, post, thread_ptr, dangling_ptr),
         post.thr_mp.perms_wf(),
     ensures post.inv(),
@@ -79,7 +97,7 @@ pub(super) proof fn take_over_dangling_caller_eof(pre: KernelK, post: KernelK, t
     reveal(take_over_dangling_caller_eof_transition_framing);
     assert(post.subsystems_inv()) by {
         assert(thread_perms_wf(post.thr_mp)) by {
-            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
         };
         reveal(KernelK::default_pagetable_wf);
     };

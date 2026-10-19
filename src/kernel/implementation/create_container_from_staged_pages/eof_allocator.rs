@@ -103,6 +103,57 @@ pub(super) broadcast proof fn eof_allocator_free_4k_global_backward(
     }
 }
 
+pub(super) broadcast proof fn eof_allocator_free_4k_global_forward(
+    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
+    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize, page_index: PageIndex
+)
+    requires
+        container_allocator_global_free_4k_forward_wf(pre.allc_4k_mp, pre.pg_arr,),
+        forall|ptr: PagePtr|
+            #![trigger funding_pages.to_set().contains(ptr)]
+            funding_pages.to_set().contains(ptr) ==> page_ptr_valid(ptr),
+        publish_staged_container_root_eof_transition_framing(
+            pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k
+        ),
+        index_valid(NUM_PAGES, page_index),
+        post.pg_arr.spec_index(page_index).view().view().state matches PageState::Free4k { allocator_ptr: _, state: FreePageAllocatorState::GlobalList },
+    ensures
+        #![trigger
+            publish_staged_container_root_eof_transition_framing(
+                pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page,
+                allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page,
+                funding_pages, allocator_quota_4k, process_quota_4k
+            ),
+            post.pg_arr.spec_index(page_index).view().view().state
+        ]
+        ({
+            let allocator_ptr_4k = post.pg_arr.spec_index(page_index).view().view().state->Free4k_allocator_ptr.view();
+            let node_addr = post.pg_arr.spec_index(page_index).view().view().free_list_node_storage.addr();
+            &&& post.allc_4k_mp.dom().contains(allocator_ptr_4k)
+            &&& post.allc_4k_mp.spec_index(allocator_ptr_4k).owning_container == post.pg_arr.spec_index(page_index).view().view().owning_container
+            &&& post.allc_4k_mp.spec_index(allocator_ptr_4k).global_pool.view().view().contains(page_index2page_ptr(page_index))
+            &&& post.allc_4k_mp.spec_index(allocator_ptr_4k).global_pool.view().map().dom().contains(node_addr)
+            &&& post.allc_4k_mp.spec_index(allocator_ptr_4k).global_pool.view().map().spec_index(node_addr) == page_index2page_ptr(page_index)
+        }),
+{
+    reveal(publish_staged_container_root_eof_transition_framing);
+    page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
+    let page_ptr = page_index2page_ptr(page_index);
+    if funding_pages.to_set().contains(page_ptr) {
+        funding_pages.to_set_ensures();
+    } else {
+        assert(!funding_pages.map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).to_set().contains(page_index)) by {
+            funding_pages.lemma_to_set_map_commutes(|page_ptr: PagePtr| page_ptr2page_index(page_ptr));
+            funding_pages.to_set().lemma_map_contains(|page_ptr: PagePtr| page_ptr2page_index(page_ptr), page_index);
+        };
+        assert(pre.pg_arr.spec_index(page_index).view().view().state == post.pg_arr.spec_index(page_index).view().view().state);
+    }
+}
+
 pub(super) proof fn eof_allocator_quota_wf(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
@@ -196,7 +247,7 @@ pub(super) proof fn eof_allocator_free_pages_wf(
     assert(container_allocator_global_free_4k_forward_wf(pre.allc_4k_mp, pre.pg_arr,)) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); };
     assert(container_allocator_global_free_4k_backward_wf(pre.allc_4k_mp, pre.pg_arr,)) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); };
     assert(container_allocator_global_free_4k_page_wf(post.allc_4k_mp, post.pg_arr,)) by {
-        assert(container_allocator_global_free_4k_forward_wf(post.allc_4k_mp, post.pg_arr,)) by { page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); };
+        assert(container_allocator_global_free_4k_forward_wf(post.allc_4k_mp, post.pg_arr,)) by { broadcast use eof_allocator_free_4k_global_forward; };
         assert(container_allocator_global_free_4k_backward_wf(post.allc_4k_mp, post.pg_arr,)) by { broadcast use eof_allocator_free_4k_global_backward; };
         reveal(container_allocator_global_free_4k_page_wf);
     };

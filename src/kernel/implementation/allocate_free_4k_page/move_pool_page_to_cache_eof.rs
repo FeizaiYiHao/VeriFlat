@@ -1,5 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
+#[cfg(verus_keep_ghost)]
+use crate::free_4k_page::kill_container_quota_fold::lemma_container_allocator_quota_eq_total_free_without_users;
 
 verus! {
 #[verifier::opaque]
@@ -36,6 +38,28 @@ pub(super) open spec fn move_pool_page_to_cache_eof_transition_framing(pre: Kern
     &&& new_cache.locking_thread() == old_cache.locking_thread()
     &&& new_cache.being_killed() == old_cache.being_killed()
     &&& new_allocator.cpu_caches.spec_index(cpu_id).lock_id() == old_allocator.cpu_caches.spec_index(cpu_id).lock_id()
+}
+
+/// The refilled allocator's owner holds a pooled free page, so it is not retire-ready: a retire-ready container has no
+/// user and zero quota, hence no free page.
+proof fn move_pool_page_to_cache_eof_kill_retire_wf(pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, cpu_id: CpuId, page_ptr: PagePtr, node: usize)
+    requires
+        pre.inv(),
+        move_pool_page_to_cache_eof_transition_framing(pre, post, allocator, cpu_id, page_ptr, node),
+        pre.allc_4k_mp.dom().contains(allocator),
+        pre.allc_4k_mp.spec_index(allocator).global_pool.view().view().len() > 0,
+    ensures
+        container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
+{
+    reveal(move_pool_page_to_cache_eof_transition_framing);
+    let owner = pre.allc_4k_mp.spec_index(allocator).owning_container;
+    assert(pre.ctn_mp.dom().contains(owner) && pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator) by { reveal(container_allocator_wf); };
+    if pre.ctn_mp.spec_index(owner).view_ghost().retire_ready {
+        container_kill_retire_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, owner); lemma_container_allocator_quota_eq_total_free_without_users(pre, owner);
+        allocator_perms_wf_at(pre.allc_4k_mp, allocator); lemma_cache_len_fold_nonneg(pre.allc_4k_mp.spec_index(allocator).cpu_caches.view());
+        pre.allc_4k_mp.spec_index(allocator).global_pool.view().lemma_len_view();
+    }
+    reveal(container_kill_retire_wf); reveal(container_allocator_wf);
 }
 
 pub(super) proof fn move_pool_page_to_cache_eof(pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, cpu_id: CpuId, page_ptr: PagePtr, node: usize)
@@ -79,7 +103,9 @@ pub(super) proof fn move_pool_page_to_cache_eof(pre: KernelK, post: KernelK, all
         assert(container_pages_wf(post.pg_arr, post.ctn_mp)) by { container_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.ctn_mp, post.ctn_mp); };
         assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { process_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.prc_mp, post.prc_mp); };
         assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
+        assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
         assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(container_allocator_wf); };
+        move_pool_page_to_cache_eof_kill_retire_wf(pre, post, allocator, cpu_id, page_ptr, node);
         assert(allocator_free_page_ptrs_wf(post.allc_4k_mp)) by { reveal(allocator_free_page_ptrs_wf); };
         assert(hugepage_2m_wf(post.pg_arr)) by { hugepage_2m_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); };
         assert(hugepage_1g_wf(post.pg_arr)) by { hugepage_1g_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); };

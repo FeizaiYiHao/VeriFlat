@@ -17,8 +17,9 @@ impl KernelK {
                 let cpu = old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view();
                 let target = old(self).cpu_arr.spec_index(cpu_id).view().view().view();
                 &&& killer_held_context(*old(self), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0, old(lctx).container_lock_map().dom())
-                &&& target.state is Running
-                &&& target.container_depth > cpu.container_depth || (target.container_depth == cpu.container_depth && target.process_depth > cpu.process_depth && !old(lctx).container_lock_map().dom().contains(cpu.owning_container))
+                &&& target.state is Running || target.state is Idle
+                &&& target.container_depth > cpu.container_depth || (target.state is Running && target.container_depth == cpu.container_depth && target.process_depth > cpu.process_depth
+                    && !old(lctx).container_lock_map().dom().contains(cpu.owning_container))
             },
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures

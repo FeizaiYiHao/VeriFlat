@@ -99,12 +99,14 @@ verus! {
             old(krnl).thr_mp.spec_index(caller_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(caller_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(caller_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thr_mp.spec_index(caller_ptr).view_ghost().exited,
             old(krnl).thr_mp.spec_index(callee_ptr).view().state is RECEIVING_CALL,
             old(krnl).thr_mp.spec_index(callee_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
             old(krnl).thr_mp.spec_index(callee_ptr).view().owning_container == old(krnl).thr_mp.spec_index(caller_ptr).view().owning_container,
             old(krnl).thr_mp.spec_index(callee_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(callee_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(callee_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thr_mp.spec_index(callee_ptr).view_ghost().exited,
             old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.len() != 0,
             old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.view().spec_index(0) == callee_ptr,
             old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue_state is RECEIVE,
@@ -205,6 +207,8 @@ verus! {
         proof {
             lctx.update_lock_id(KernelObjId::Thread(callee_ptr), before_switch.thr_mp.lock_id_by_key(callee_ptr), krnl.thr_mp.lock_id_by_key(callee_ptr));
             assert(ipc_call_handoff_eof_transition_framing(before_switch, *krnl, cpu_id, caller_ptr, endpoint_ptr, endpoint_index, callee_ptr, *old(pt_regs))) by { reveal(ipc_call_handoff_eof_transition_framing); };
+            old(krnl).thr_mp.typed_lock_map_aligned_write_at(old(lctx).thread_lock_map(), old(lctx).thread_id(), callee_ptr);
+            reveal(LockedMap::typed_lock_map_aligned);
             ipc_call_handoff_eof(before_switch, *krnl, cpu_id, caller_ptr, endpoint_ptr, endpoint_index, callee_ptr, *old(pt_regs));
         }
         krnl.wunlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx), Tracked(needflush_perm));
@@ -308,12 +312,14 @@ verus! {
             old(krnl).thr_mp.spec_index(callee_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(callee_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(callee_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thr_mp.spec_index(callee_ptr).view_ghost().exited,
             old(krnl).thr_mp.spec_index(caller_ptr).view().state is CALLING,
             old(krnl).thr_mp.spec_index(caller_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
             old(krnl).thr_mp.spec_index(caller_ptr).view().owning_container == old(krnl).thr_mp.spec_index(callee_ptr).view().owning_container,
             old(krnl).thr_mp.spec_index(caller_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(caller_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(caller_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thr_mp.spec_index(caller_ptr).view_ghost().exited,
             old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.len() != 0,
             old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.view().spec_index(0) == caller_ptr,
             old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue_state is SEND,
@@ -394,6 +400,8 @@ verus! {
         proof {
             lctx.update_lock_id(KernelObjId::Thread(callee_ptr), old(krnl).thr_mp.lock_id_by_key(callee_ptr), krnl.thr_mp.lock_id_by_key(callee_ptr));
             assert(ipc_accept_call_eof_transition_framing(*old(krnl), *krnl, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr)) by { reveal(ipc_accept_call_eof_transition_framing); };
+            old(krnl).thr_mp.typed_lock_map_aligned_write_at(old(lctx).thread_lock_map(), old(lctx).thread_id(), callee_ptr);
+            reveal(LockedMap::typed_lock_map_aligned);
             ipc_accept_call_eof(*old(krnl), *krnl, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr);
         }
         krnl.wunlock_thread(caller_ptr, Tracked(&mut *lctx), Tracked(caller_lock_perm));
@@ -494,12 +502,14 @@ verus! {
             old(krnl).thr_mp.spec_index(callee_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(callee_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(callee_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thr_mp.spec_index(callee_ptr).view_ghost().exited,
             old(krnl).thr_mp.spec_index(caller_ptr).view().state is WAITING_REPLY,
             old(krnl).thr_mp.spec_index(caller_ptr).view().callee == Some(callee_ptr),
             old(krnl).thr_mp.spec_index(caller_ptr).view().owning_container == old(krnl).thr_mp.spec_index(callee_ptr).view().owning_container,
             old(krnl).thr_mp.spec_index(caller_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(caller_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(caller_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thr_mp.spec_index(caller_ptr).view_ghost().exited,
             old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.len() == 0 || old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue_state is RECEIVE,
             old(lctx).page_lock_map().dom().is_empty(),
             old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
@@ -691,6 +701,7 @@ verus! {
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
             old(lctx).page_lock_map().dom().is_empty(),
             old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
             old(lctx).container_lock_map().dom().is_empty(),
@@ -1117,6 +1128,7 @@ verus! {
             old(krnl).thr_mp.spec_index(callee_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(callee_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(callee_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thr_mp.spec_index(callee_ptr).view_ghost().exited,
             old(krnl).thr_mp.spec_index(caller_ptr).view().state is DANGLING,
             old(krnl).thr_mp.spec_index(caller_ptr).view().callee == Some(callee_ptr),
             old(krnl).thr_mp.spec_index(caller_ptr).view().free_quota_pending_clean(),
@@ -1300,12 +1312,14 @@ verus! {
             old(krnl).thr_mp.spec_index(callee_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(callee_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(callee_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thr_mp.spec_index(callee_ptr).view_ghost().exited,
             old(krnl).thr_mp.spec_index(caller_ptr).view().state.is_reply_waiting(),
             old(krnl).thr_mp.spec_index(caller_ptr).view().callee == Some(callee_ptr),
             old(krnl).thr_mp.spec_index(caller_ptr).view().owning_container == old(krnl).thr_mp.spec_index(callee_ptr).view().owning_container,
             old(krnl).thr_mp.spec_index(caller_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(caller_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(caller_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thr_mp.spec_index(caller_ptr).view_ghost().exited,
             old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.len() == 0 || old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue_state is RECEIVE,
             old(lctx).page_lock_map().dom().is_empty(),
             old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
@@ -1458,6 +1472,7 @@ verus! {
                 &&& thread.state == (ThreadState::RUNNING { cpu_id }) && thread.owning_proc == process_ptr && thread.owning_container == cpu.owning_container
                 &&& thread.endpoint_descriptors.wf() && thread.endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr)
                 &&& thread.free_quota_pending_clean() && thread.temp_alloc_clean() && thread.syscall_progress.view() is None
+                &&& !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited
                 &&& thread.caller is Some
                 &&& old(krnl).cpu_published[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
                 &&& !endpoint.queue.view().contains(current_thread_ptr)

@@ -39,6 +39,7 @@ pub fn return_free_quota_4k(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, own
         final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
         final(krnl).thr_mp.dom() == old(krnl).thr_mp.dom(),
         final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, thread_ptr),
+        final(krnl).thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
         final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { direct_free_quota_pending_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k,
             indirect_free_quota_pending_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
         final(krnl).thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k.view() == if depth == old(krnl).thr_mp.spec_index(thread_ptr).view().container_depth { 0usize } else { old(krnl).thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k.view() },

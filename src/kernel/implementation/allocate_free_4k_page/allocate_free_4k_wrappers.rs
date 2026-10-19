@@ -28,7 +28,7 @@ verus! {
             thread_effective_quota_4k(old(krnl).thr_mp.spec_index(thread_ptr)) >= 1,
             typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
-            held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_MAJOR),
+            held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         ensures
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
             forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view())]
@@ -37,6 +37,7 @@ verus! {
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(krnl).inv(),
             final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == false,
+            final(krnl).thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
             final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { temp_alloc_cache_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
             final(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc == old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc,
             final(krnl).thr_mp.spec_index(thread_ptr).view().owning_container == old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container,

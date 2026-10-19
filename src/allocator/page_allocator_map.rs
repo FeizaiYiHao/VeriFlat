@@ -7,7 +7,7 @@ verus! {
 /// that physical page as a `PageAllocator`. Keep the raw retype private; callers
 /// use `retype_page_to_allocator_and_insert`.
 #[verifier::external_body]
-fn retype_4k_page_perm_to_allocator(page_ptr: PagePtr, allocator: PageAllocator, Tracked(page_perm): Tracked<PagePerm4k>) -> (ret: Tracked<PointsTo<PageAllocator>>)
+fn retype_4k_page_perm_to_allocator<const SIZE: usize>(page_ptr: PagePtr, allocator: PageAllocator<SIZE>, Tracked(page_perm): Tracked<PagePerm4k>) -> (ret: Tracked<PointsTo<PageAllocator<SIZE>>>)
     requires
         page_perm.is_init(),
         page_perm.addr() == page_ptr,
@@ -17,12 +17,12 @@ fn retype_4k_page_perm_to_allocator(page_ptr: PagePtr, allocator: PageAllocator,
         ret.view().addr() == page_ptr,
         ret.view().value() == allocator,
 {
-    unsafe { (page_ptr as *mut PageAllocator).write(allocator); }
+    unsafe { (page_ptr as *mut PageAllocator<SIZE>).write(allocator); }
     Tracked::assume_new()
 }
 
-impl UnLockedMap<usize, PageAllocator> {
-    pub fn retype_page_to_allocator_and_insert(&mut self, page_ptr: PagePtr, allocator: PageAllocator, Tracked(page_perm): Tracked<PagePerm4k>, Tracked(lctx): Tracked<&LocalContext>)
+impl<const SIZE: usize> UnLockedMap<usize, PageAllocator<SIZE>> {
+    pub fn retype_page_to_allocator_and_insert(&mut self, page_ptr: PagePtr, allocator: PageAllocator<SIZE>, Tracked(page_perm): Tracked<PagePerm4k>, Tracked(lctx): Tracked<&LocalContext>)
         requires
             old(self).perms_wf(),
             !old(self).dom().contains(page_ptr),
@@ -130,7 +130,7 @@ impl UnLockedMap<usize, PageAllocator> {
             })
     }
 
-    pub fn borrow_quota<'a>(&'a self, alloc_ptr: usize, lp: Tracked<&'a LockPerm>) -> (ret: &'a AllocatorQuota)
+    pub fn borrow_quota<'a>(&'a self, alloc_ptr: usize, lp: Tracked<&'a LockPerm>) -> (ret: &'a AllocatorQuota<SIZE>)
         requires
             self.perms_wf(),
             self.dom().contains(alloc_ptr),
@@ -144,7 +144,7 @@ impl UnLockedMap<usize, PageAllocator> {
         alloc.quota.borrow(lp)
     }
 
-    pub fn borrow_quota_typed<'a>(&'a self, alloc_ptr: usize, Ghost(held_locks): Ghost<Map<RwLockPageAllocatorPtr, TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&'a LockPerm>) -> (ret: &'a AllocatorQuota)
+    pub fn borrow_quota_typed<'a>(&'a self, alloc_ptr: usize, Ghost(held_locks): Ghost<Map<RwLockPageAllocatorPtr, TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&'a LockPerm>) -> (ret: &'a AllocatorQuota<SIZE>)
         requires
             self.perms_wf(),
             self.dom().contains(alloc_ptr),
@@ -165,7 +165,7 @@ impl UnLockedMap<usize, PageAllocator> {
         self.borrow_quota(alloc_ptr, lock_perm)
     }
 
-    pub fn borrow_mut_quota<'a>(&'a mut self, alloc_ptr: usize, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a mut AllocatorQuota)
+    pub fn borrow_mut_quota<'a>(&'a mut self, alloc_ptr: usize, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a mut AllocatorQuota<SIZE>)
         requires
             old(self).dom().contains(alloc_ptr),
             old(self).view().spec_index(alloc_ptr).is_init(),
@@ -203,7 +203,7 @@ impl UnLockedMap<usize, PageAllocator> {
         &'a mut self, alloc_ptr: usize, Ghost(quota_locks): Ghost<Map<RwLockPageAllocatorPtr, TypedHeldLock>>,
         Ghost(cache_locks): Ghost<Map<(RwLockPageAllocatorPtr, CpuId), TypedHeldLock>>,
         Ghost(global_pool_locks): Ghost<Map<RwLockPageAllocatorPtr, TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>,
-    ) -> (ret: &'a mut AllocatorQuota)
+    ) -> (ret: &'a mut AllocatorQuota<SIZE>)
         requires
             old(self).perms_wf(),
             old(self).typed_quota_lock_map_aligned(quota_locks, lctx.thread_id()),
@@ -242,7 +242,7 @@ impl UnLockedMap<usize, PageAllocator> {
         self.borrow_mut_quota(alloc_ptr, Tracked(lctx), lp)
     }
 
-    pub fn borrow_global_pool<'a>(&'a self, alloc_ptr: usize, lp: Tracked<&'a LockPerm>) -> (ret: &'a GlobalPool)
+    pub fn borrow_global_pool<'a>(&'a self, alloc_ptr: usize, lp: Tracked<&'a LockPerm>) -> (ret: &'a GlobalPool<SIZE>)
         requires
             self.perms_wf(),
             self.dom().contains(alloc_ptr),
@@ -256,7 +256,7 @@ impl UnLockedMap<usize, PageAllocator> {
         alloc.global_pool.borrow(lp)
     }
 
-    pub fn borrow_global_pool_typed<'a>(&'a self, alloc_ptr: usize, Ghost(held_locks): Ghost<Map<RwLockPageAllocatorPtr, TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&'a LockPerm>) -> (ret: &'a GlobalPool)
+    pub fn borrow_global_pool_typed<'a>(&'a self, alloc_ptr: usize, Ghost(held_locks): Ghost<Map<RwLockPageAllocatorPtr, TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&'a LockPerm>) -> (ret: &'a GlobalPool<SIZE>)
         requires
             self.perms_wf(),
             self.dom().contains(alloc_ptr),
@@ -277,7 +277,7 @@ impl UnLockedMap<usize, PageAllocator> {
         self.borrow_global_pool(alloc_ptr, lock_perm)
     }
 
-    pub fn borrow_cache<'a>(&'a self, alloc_ptr: usize, cpu_id: CpuId, lp: Tracked<&'a LockPerm>) -> (ret: &'a AllocatorCache)
+    pub fn borrow_cache<'a>(&'a self, alloc_ptr: usize, cpu_id: CpuId, lp: Tracked<&'a LockPerm>) -> (ret: &'a AllocatorCache<SIZE>)
         requires
             self.perms_wf(),
             self.dom().contains(alloc_ptr),
@@ -293,7 +293,7 @@ impl UnLockedMap<usize, PageAllocator> {
         alloc.cpu_caches.borrow(cpu_id, lp)
     }
 
-    pub fn borrow_cache_typed<'a>(&'a self, alloc_ptr: usize, cpu_id: CpuId, Ghost(held_locks): Ghost<Map<(RwLockPageAllocatorPtr, CpuId), TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&'a LockPerm>) -> (ret: &'a AllocatorCache)
+    pub fn borrow_cache_typed<'a>(&'a self, alloc_ptr: usize, cpu_id: CpuId, Ghost(held_locks): Ghost<Map<(RwLockPageAllocatorPtr, CpuId), TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&'a LockPerm>) -> (ret: &'a AllocatorCache<SIZE>)
         requires
             self.perms_wf(),
             self.dom().contains(alloc_ptr),
@@ -539,7 +539,7 @@ impl UnLockedMap<usize, PageAllocator> {
     }
 }
 
-impl UnLockedMap<usize, PageAllocator> {
+impl<const SIZE: usize> UnLockedMap<usize, PageAllocator<SIZE>> {
     pub fn wlock_quota(&mut self, alloc_ptr: usize, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).perms_wf(),
@@ -564,7 +564,7 @@ impl UnLockedMap<usize, PageAllocator> {
     }
 }
 
-impl UnLockedMap<usize, PageAllocator> {
+impl<const SIZE: usize> UnLockedMap<usize, PageAllocator<SIZE>> {
     pub fn wunlock_quota(&mut self, alloc_ptr: usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>)
         requires
             old(self).perms_wf(),
@@ -594,7 +594,7 @@ impl UnLockedMap<usize, PageAllocator> {
     }
 }
 
-impl UnLockedMap<usize, PageAllocator> {
+impl<const SIZE: usize> UnLockedMap<usize, PageAllocator<SIZE>> {
     pub fn wlock_cache(&mut self, alloc_ptr: usize, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).perms_wf(),

@@ -203,6 +203,7 @@ pub(super) fn publish_new_container_base(
         typed_lock_map_contains_mode(final(lctx).cpu_set_lock_map(), pages_4k.view().spec_index(8), TypedLockMode::Write),
         final(krnl).cpu_set_mp.dom().contains(parent_cpu_set),
         final(krnl).cpu_set_mp.dom().contains(pages_4k.view().spec_index(8)),
+        !final(krnl).cpu_set_mp.spec_index(pages_4k.view().spec_index(8)).being_killed(),
         final(krnl).cpu_set_mp.spec_index(parent_cpu_set) == old(krnl).cpu_set_mp.spec_index(parent_cpu_set),
         final(krnl).ctn_mp.spec_index(parent_container_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(parent_container_ptr).view_rodata(),
         final(krnl).ctn_mp.spec_index(container_page).view_rodata().view().cpu_set == pages_4k.view().spec_index(8),
@@ -241,6 +242,7 @@ pub(super) fn publish_new_container_base(
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_2m.view().is_empty(),
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_1g.view().is_empty(),
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
+        final(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost(),
         final(krnl).thr_mp.spec_index(current_thread_ptr).view() == (Thread {
             quota_4k: final(krnl).thr_mp.spec_index(current_thread_ptr).view().quota_4k,
             quota_2m: final(krnl).thr_mp.spec_index(current_thread_ptr).view().quota_2m,
@@ -368,6 +370,7 @@ pub(super) fn publish_new_container_base(
         Tracked(&container_tail_lock_perms), Tracked(&pcid_allocator_tail_lock_perms),
     );
     let ghost published_k = *krnl;
+    proof { assert(!krnl.cpu_set_mp.spec_index(cpu_set_page).being_killed()) by { reveal(publish_staged_container_root_eof_transition_framing); }; }
     let ghost origin = Share4kOrigin::NewContainer(NewContainerProgress {
         range: *source_range, funding: funding_page_count, process_quota: process_quota_4k, transfer_cpu: transfer_cpu_id, regs,
         endpoint_index, child_container: Some(container_page),

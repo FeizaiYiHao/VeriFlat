@@ -675,6 +675,102 @@ pub fn page_array_retire_kernel_object_4k_to_cache(
     ret
 }
 
+/// Return the memory of the retired 2M kernel object at `page_index` to the global pool of `allocator_ptr`, owned by
+/// `owning_container`; the write-held head page changes its lock id with its state.
+pub fn page_array_retire_kernel_object_2m_to_global(
+    page_array: &mut PageLockedArray, page_index: PageIndex, Tracked(perm): Tracked<PagePerm2m>, allocator_ptr: RwLockPageAllocatorPtr, owning_container: RwLockContainerPtr,
+    Tracked(lctx): Tracked<&LocalContext>, Tracked(page_lock_perm): Tracked<&LockPerm>,
+) -> (ret: (usize, Tracked<vstd::simple_pptr::PointsTo<Node<PagePtr>>>))
+    requires
+        page_array_wf(*old(page_array)),
+        index_valid(NUM_PAGES, page_index),
+        old(page_array).typed_lock_map_aligned(lctx.page_lock_map(), lctx.thread_id()),
+        typed_lock_map_contains_mode(lctx.page_lock_map(), page_index, TypedLockMode::Write),
+        page_lock_perm.state() is WriteLock,
+        page_lock_perm.thread_id() == lctx.thread_id(),
+        page_lock_perm.lock_id() == old(page_array).spec_index(page_index).view().locking_thread()->Write_lock_id,
+        old(page_array).spec_index(page_index).view().view().state is Allocated2m,
+        perm.is_init(),
+        perm.addr() == page_index2page_ptr(page_index),
+    ensures
+        page_array_wf(*final(page_array)),
+        final(page_array).inv(),
+        final(page_array).entries_unchanged_except(old(page_array), page_index),
+        lctx.page_lock_map().index(page_index).lock_id == old(page_array).lock_id_by_index(page_index),
+        final(page_array).typed_lock_map_aligned(lctx.page_lock_map().insert(page_index, TypedHeldLock { lock_id: final(page_array).lock_id_by_index(page_index), mode: TypedLockMode::Write }), lctx.thread_id()),
+        final(page_array).spec_index(page_index).view().is_init(),
+        final(page_array).spec_index(page_index).view().inv(),
+        final(page_array).spec_index(page_index).view().wlocked_by(lctx),
+        final(page_array).spec_index(page_index).view().locking_thread() == old(page_array).spec_index(page_index).view().locking_thread(),
+        final(page_array).spec_index(page_index).view().being_killed() == old(page_array).spec_index(page_index).view().being_killed(),
+        final(page_array).spec_index(page_index).view().view_rodata() == old(page_array).spec_index(page_index).view().view_rodata(),
+        final(page_array).spec_index(page_index).view().view_ghost() == old(page_array).spec_index(page_index).view().view_ghost(),
+        final(page_array).spec_index(page_index).view().view() == (Page { state: PageState::Free2m { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::GlobalList },
+            owning_container, free_list_node_storage: final(page_array).spec_index(page_index).view().view().free_list_node_storage,
+            perm_2m: final(page_array).spec_index(page_index).view().view().perm_2m, ..old(page_array).spec_index(page_index).view().view() }),
+        final(page_array).spec_index(page_index).view().view().perm_2m.view() == Some(perm),
+        final(page_array).spec_index(page_index).view().view().free_list_node_storage.addr() == old(page_array).spec_index(page_index).view().view().free_list_node_storage.addr(),
+        ret.0 == old(page_array).spec_index(page_index).view().view().free_list_node_storage.addr(),
+        ret.1.view().is_init(),
+        ret.1.view().addr() == ret.0,
+        ret.1.view().value().view() == old(page_array).spec_index(page_index).view().view().addr,
+{
+    assert(page_array.inv() && page_array.spec_index(page_index).view().is_init() && page_array.spec_index(page_index).view().view().inv()
+        && page_array.spec_index(page_index).view().view().addr == page_index2page_ptr(page_index)) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, page_index); };
+    let page = page_array.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
+    let ret = convert_kernel_object_2m_to_free_global(page, Tracked(perm), allocator_ptr, owning_container);
+    proof { assert(page_array_wf(*page_array)) by { reveal(page_array_wf); }; }
+    ret
+}
+
+/// Return the memory of the retired 4K kernel object at `page_index` to the global pool of `allocator_ptr`, owned by
+/// `owning_container`; the write-held page changes its lock id with its state.
+pub fn page_array_retire_kernel_object_4k_to_global(
+    page_array: &mut PageLockedArray, page_index: PageIndex, Tracked(perm): Tracked<PagePerm4k>, allocator_ptr: RwLockPageAllocatorPtr, owning_container: RwLockContainerPtr,
+    Tracked(lctx): Tracked<&LocalContext>, Tracked(page_lock_perm): Tracked<&LockPerm>,
+) -> (ret: (usize, Tracked<vstd::simple_pptr::PointsTo<Node<PagePtr>>>))
+    requires
+        page_array_wf(*old(page_array)),
+        index_valid(NUM_PAGES, page_index),
+        old(page_array).typed_lock_map_aligned(lctx.page_lock_map(), lctx.thread_id()),
+        typed_lock_map_contains_mode(lctx.page_lock_map(), page_index, TypedLockMode::Write),
+        page_lock_perm.state() is WriteLock,
+        page_lock_perm.thread_id() == lctx.thread_id(),
+        page_lock_perm.lock_id() == old(page_array).spec_index(page_index).view().locking_thread()->Write_lock_id,
+        old(page_array).spec_index(page_index).view().view().state is Allocated4k,
+        perm.is_init(),
+        perm.addr() == page_index2page_ptr(page_index),
+    ensures
+        page_array_wf(*final(page_array)),
+        final(page_array).inv(),
+        final(page_array).entries_unchanged_except(old(page_array), page_index),
+        lctx.page_lock_map().index(page_index).lock_id == old(page_array).lock_id_by_index(page_index),
+        final(page_array).typed_lock_map_aligned(lctx.page_lock_map().insert(page_index, TypedHeldLock { lock_id: final(page_array).lock_id_by_index(page_index), mode: TypedLockMode::Write }), lctx.thread_id()),
+        final(page_array).spec_index(page_index).view().is_init(),
+        final(page_array).spec_index(page_index).view().inv(),
+        final(page_array).spec_index(page_index).view().wlocked_by(lctx),
+        final(page_array).spec_index(page_index).view().locking_thread() == old(page_array).spec_index(page_index).view().locking_thread(),
+        final(page_array).spec_index(page_index).view().being_killed() == old(page_array).spec_index(page_index).view().being_killed(),
+        final(page_array).spec_index(page_index).view().view_rodata() == old(page_array).spec_index(page_index).view().view_rodata(),
+        final(page_array).spec_index(page_index).view().view_ghost() == old(page_array).spec_index(page_index).view().view_ghost(),
+        final(page_array).spec_index(page_index).view().view() == (Page { state: PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::GlobalList },
+            owning_container, free_list_node_storage: final(page_array).spec_index(page_index).view().view().free_list_node_storage,
+            perm_4k: final(page_array).spec_index(page_index).view().view().perm_4k, ..old(page_array).spec_index(page_index).view().view() }),
+        final(page_array).spec_index(page_index).view().view().perm_4k.view() == Some(perm),
+        final(page_array).spec_index(page_index).view().view().free_list_node_storage.addr() == old(page_array).spec_index(page_index).view().view().free_list_node_storage.addr(),
+        ret.0 == old(page_array).spec_index(page_index).view().view().free_list_node_storage.addr(),
+        ret.1.view().is_init(),
+        ret.1.view().addr() == ret.0,
+        ret.1.view().value().view() == old(page_array).spec_index(page_index).view().view().addr,
+{
+    assert(page_array.inv() && page_array.spec_index(page_index).view().is_init() && page_array.spec_index(page_index).view().view().inv()
+        && page_array.spec_index(page_index).view().view().addr == page_index2page_ptr(page_index)) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, page_index); };
+    let page = page_array.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
+    let ret = convert_kernel_object_4k_to_free_global(page, Tracked(perm), allocator_ptr, owning_container);
+    proof { assert(page_array_wf(*page_array)) by { reveal(page_array_wf); }; }
+    ret
+}
+
 pub fn page_array_move_free_4k_to_global_list(page_array: &mut PageLockedArray, page_index: PageIndex, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, Tracked(lctx): Tracked<&LocalContext>, Tracked(page_lock_perm): Tracked<&LockPerm>)
     requires
         page_array_wf(*old(page_array)),
@@ -830,8 +926,8 @@ pub fn page_array_retype_owned_2m_for_container(pages: &mut PageLockedArray, chi
     Tracked(page_perm)
 }
 
-pub fn page_allocator_map_insert_new(
-    allocator_map: &mut PageAllocatorUnLockedMap, allocator_page: PagePtr, allocator_value: PageAllocator,
+pub fn page_allocator_map_insert_new<const SIZE: usize>(
+    allocator_map: &mut PageAllocatorUnLockedMap<SIZE>, allocator_page: PagePtr, allocator_value: PageAllocator<SIZE>,
     Ghost(quota_lock_map): Ghost<Map<RwLockPageAllocatorPtr, TypedHeldLock>>,
     Ghost(cache_lock_map): Ghost<Map<(RwLockPageAllocatorPtr, CpuId), TypedHeldLock>>,
     Ghost(global_pool_lock_map): Ghost<Map<RwLockPageAllocatorPtr, TypedHeldLock>>,

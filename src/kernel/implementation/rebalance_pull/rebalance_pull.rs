@@ -350,6 +350,7 @@ fn rebalance_pull_move_head(
             &&& thread.view().free_quota_pending_clean()
             &&& thread.view().temp_alloc_clean()
             &&& thread.view().syscall_progress.view() is None
+            &&& !thread.view_ghost().exited
         },
     ensures
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),

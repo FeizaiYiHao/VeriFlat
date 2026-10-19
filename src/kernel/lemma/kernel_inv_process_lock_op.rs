@@ -69,6 +69,7 @@ pub proof fn process_management_inv_preserved_for_process_invariant_fields(pre: 
         process_thread_wf(post.prc_mp, post.thr_mp),
         process_kill_mark_wf(post.ctn_mp, post.prc_mp),
         container_kill_mark_wf(post.ctn_mp, post.prc_mp),
+        cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp),
         process_state_lock_wf(post.prc_mp),
         process_emptied_threads_wf(post.prc_mp, post.thr_mp),
         process_invariant_fields_unchanged(pre.prc_mp, post.prc_mp),

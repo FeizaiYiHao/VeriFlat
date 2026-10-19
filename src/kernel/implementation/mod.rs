@@ -43,6 +43,7 @@ pub mod create_container_from_staged_pages;
 pub mod transfer_staged_4k_page;
 mod transfer_staged_4k_page_eof;
 pub mod lock_owned_2m_page_tails;
+pub mod lock_allocated_2m_page_tails;
 #[cfg(not(feature = "split-crates"))]
 pub mod map_4k;
 #[cfg(not(feature = "split-crates"))]

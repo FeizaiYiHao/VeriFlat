@@ -51,6 +51,7 @@ pub open spec fn ipc_begin_endpoint_transfer_eof_transition_framing(
     &&& post.thr_mp.spec_index(current_thread_ptr) == pre.thr_mp.spec_index(current_thread_ptr)
     &&& peer_after.locking_thread() == peer_before.locking_thread()
     &&& peer_after.being_killed() == peer_before.being_killed()
+    &&& peer_after.view_ghost() == peer_before.view_ghost()
     &&& peer_after.view().non_ipc_fields_unchanged(&peer_before.view())
     &&& peer_after.view().caller == peer_before.view().caller
     &&& peer_after.view().callee == peer_before.view().callee
@@ -103,6 +104,7 @@ pub open spec fn ipc_finish_endpoint_transit_eof_transition_framing(
     &&& post.thr_mp.unchanged_except(&pre.thr_mp, peer_thread_ptr)
     &&& after.locking_thread() == before.locking_thread()
     &&& after.being_killed() == before.being_killed()
+    &&& after.view_ghost() == before.view_ghost()
     &&& post.thr_mp.spec_index(current_thread_ptr) == pre.thr_mp.spec_index(current_thread_ptr)
     &&& after.view().non_ipc_fields_unchanged(&before.view())
     &&& after.view().trap_frame == before.view().trap_frame

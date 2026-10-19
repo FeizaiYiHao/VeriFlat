@@ -33,6 +33,8 @@ pub struct ContainerGhost {
     pub owned_threads: Ghost<Set<RwLockThreadPtr>>,
     pub owned_indirect_threads: Ghost<Set<RwLockThreadPtr>>,
     pub owned_endpoints: Ghost<Set<RwLockEndpointPtr>>,
+    /// Set by a killer once the marked container is ready to retire; K-only, never projected.
+    pub retire_ready: bool,
 }
 
 pub ghost struct ContainerU {
@@ -57,6 +59,7 @@ pub ghost struct ContainerU {
     pub quota_2m: usize,
     pub quota_1g: usize,
     pub killed: bool,
+    pub cpu_set_killed: bool,
 }
 
 impl LockInvTrait for Container {

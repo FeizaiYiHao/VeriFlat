@@ -688,7 +688,7 @@ pub proof fn kernel_container_root_published_implies_u_step(
         forall|c: RwLockContainerPtr| #![trigger after.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c))] before.ctn_mp.dom().contains(c) ==>
             after.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c)) == before.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c)),
         forall|p: RwLockCpuSetPtr| #![trigger after.cpu_set_mp.spec_index(p)] before.cpu_set_mp.dom().contains(p) ==>
-            after.cpu_set_mp.spec_index(p).locking_thread() == before.cpu_set_mp.spec_index(p).locking_thread(),
+            after.cpu_set_mp.spec_index(p).locking_thread() == before.cpu_set_mp.spec_index(p).locking_thread() && after.cpu_set_mp.spec_index(p).being_killed() == before.cpu_set_mp.spec_index(p).being_killed(),
         before.thr_mp.spec_index(thread).view().quota_4k >= 8 + funding,
         after.thr_mp.unchanged_except(&before.thr_mp, thread),
         after.thr_mp.spec_index(thread).being_killed() == before.thr_mp.spec_index(thread).being_killed(),
@@ -733,6 +733,7 @@ pub proof fn kernel_container_root_published_implies_u_step(
         moved.contains(process),
         moved.contains(after.ctn_mp.spec_index(child).view_rodata().view().cpu_set),
         after.cpu_set_mp.spec_index(after.ctn_mp.spec_index(child).view_rodata().view().cpu_set).locking_thread() is Write,
+        !after.cpu_set_mp.spec_index(after.ctn_mp.spec_index(child).view_rodata().view().cpu_set).being_killed(),
         after.ctn_mp.spec_index(child).locking_thread() is Write,
         !after.ctn_mp.spec_index(child).being_killed(),
         !after.ctn_mp.spec_index(child).view().zombie,
@@ -849,6 +850,7 @@ pub proof fn kernel_cpu_and_page_owner_changed_implies_u_step(before: &KernelK, 
         after.cpu_set_mp.spec_index(before.ctn_mp.spec_index(target).view_rodata().view().cpu_set).locking_thread() is None,
         forall|p: RwLockCpuSetPtr| #![trigger after.cpu_set_mp.spec_index(p)] before.cpu_set_mp.dom().contains(p) && p != before.ctn_mp.spec_index(source).view_rodata().view().cpu_set
             && p != before.ctn_mp.spec_index(target).view_rodata().view().cpu_set ==> after.cpu_set_mp.spec_index(p).locking_thread() == before.cpu_set_mp.spec_index(p).locking_thread(),
+        forall|p: RwLockCpuSetPtr| #![trigger after.cpu_set_mp.spec_index(p)] before.cpu_set_mp.dom().contains(p) ==> after.cpu_set_mp.spec_index(p).being_killed() == before.cpu_set_mp.spec_index(p).being_killed(),
         after.ctn_mp.dom() == before.ctn_mp.dom(),
         forall|c: RwLockContainerPtr| #![trigger after.ctn_mp.spec_index(c)] before.ctn_mp.dom().contains(c) ==> {
             &&& after.ctn_mp.spec_index(c).view_rodata() == before.ctn_mp.spec_index(c).view_rodata()
@@ -1219,6 +1221,7 @@ pub proof fn kernel_container_projection_at(krnl: &KernelK, ptr: RwLockContainer
                 quota_2m: krnl.allc_2m_mp.spec_index(c_ro.allocator_ptr_2m).quota.view().view(),
                 quota_1g: krnl.allc_1g_mp.spec_index(c_ro.allocator_ptr_1g).quota.view().view(),
                 killed: krnl.ctn_mp.spec_index(ptr).being_killed(),
+                cpu_set_killed: krnl.cpu_set_mp.spec_index(c_ro.cpu_set).being_killed(),
             })
         }),
 { reveal(kernel_k_to_kernel_u); }
@@ -2013,6 +2016,7 @@ pub proof fn kernel_cpu_process_thread_endpoint_lock_modes_changed_implies_u_ste
                 &&& container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)
                 &&& *post == (KernelK { cpu_set_mp: post.cpu_set_mp, ..mid })
                 &&& post.cpu_set_mp.unchanged_except(&mid.cpu_set_mp, s)
+                &&& post.cpu_set_mp.spec_index(s).being_killed() == mid.cpu_set_mp.spec_index(s).being_killed()
                 &&& if write_locked { typed_lock_map_contains_mode(lctx.cpu_set_lock_map(), s, TypedLockMode::Write) } else { post.cpu_set_mp.spec_index(s).locking_thread() is None }
                 &&& kernel_container_nonlock_fields_and_quotas_unchanged(pre, &mid)
             },
@@ -2389,7 +2393,7 @@ pub(super) proof fn kernel_ipc_rendezvous_fields_implies_u_step(
             index_valid(NUM_CPUS, i) ==> post.cpu_arr.spec_index(i).value.locking_thread() == pre.cpu_arr.spec_index(i).value.locking_thread(),
         post.cpu_set_mp.dom() == pre.cpu_set_mp.dom(),
         forall|p: RwLockCpuSetPtr| #![trigger post.cpu_set_mp.spec_index(p)]
-            pre.cpu_set_mp.dom().contains(p) ==> post.cpu_set_mp.spec_index(p).locking_thread() == pre.cpu_set_mp.spec_index(p).locking_thread(),
+            pre.cpu_set_mp.dom().contains(p) ==> post.cpu_set_mp.spec_index(p).locking_thread() == pre.cpu_set_mp.spec_index(p).locking_thread() && post.cpu_set_mp.spec_index(p).being_killed() == pre.cpu_set_mp.spec_index(p).being_killed(),
     ensures
         kernel_u_ipc_rendezvous_changed(kernel_k_user_projection(*pre, include_lock_state), kernel_k_user_projection(*post, include_lock_state),
             cpu_id, caller_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer, pci_transfer),
@@ -2453,7 +2457,7 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_container_map(
             pre.ctn_mp.dom().contains(p) && post.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).locking_thread() == pre.ctn_mp.spec_index(p).locking_thread(),
         post.cpu_set_mp.dom() == pre.cpu_set_mp.dom(),
         forall|p: RwLockCpuSetPtr| #![trigger post.cpu_set_mp.spec_index(p)]
-            pre.cpu_set_mp.dom().contains(p) ==> post.cpu_set_mp.spec_index(p).locking_thread() == pre.cpu_set_mp.spec_index(p).locking_thread(),
+            pre.cpu_set_mp.dom().contains(p) ==> post.cpu_set_mp.spec_index(p).locking_thread() == pre.cpu_set_mp.spec_index(p).locking_thread() && post.cpu_set_mp.spec_index(p).being_killed() == pre.cpu_set_mp.spec_index(p).being_killed(),
     ensures
         ({
             let pre_u = kernel_k_user_projection(*pre, include_lock_state);

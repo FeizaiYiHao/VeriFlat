@@ -65,6 +65,7 @@ pub(super) fn schedule_continue(
             &&& old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean()
             &&& old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean()
             &&& old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None
+            &&& !old(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited
             &&& typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write)
             &&& perm.state() is WriteLock
             &&& perm.thread_id() == old(lctx).thread_id()
@@ -256,6 +257,7 @@ pub(super) fn schedule_lock_current_and_shard(
                 &&& final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean()
                 &&& final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean()
                 &&& final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None
+                &&& !final(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited
                 &&& typed_lock_map_contains_mode(final(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write)
                 &&& perm.state() is WriteLock
                 &&& perm.thread_id() == final(lctx).thread_id()
@@ -419,6 +421,7 @@ pub(super) fn schedule_lock_queue_head(
             &&& final(krnl).thr_mp.spec_index(next_thread).view().free_quota_pending_clean()
             &&& final(krnl).thr_mp.spec_index(next_thread).view().temp_alloc_clean()
             &&& final(krnl).thr_mp.spec_index(next_thread).view().syscall_progress.view() is None
+            &&& !final(krnl).thr_mp.spec_index(next_thread).view_ghost().exited
             &&& typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Thread(next_thread), TypedHeldLock { lock_id: final(krnl).thr_mp.lock_id_by_key(next_thread), mode: TypedLockMode::Write })
             &&& typed_lock_map_contains_mode(final(lctx).thread_lock_map(), next_thread, TypedLockMode::Write)
             &&& next_perm.view().state() is WriteLock

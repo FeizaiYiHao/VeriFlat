@@ -41,6 +41,8 @@ pub open spec fn reclaim_dangling_thread_eof_transition_framing(
         }
     &&& post.thr_mp.dom() == pre.thr_mp.dom().remove(dangling_ptr)
     &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)] post.thr_mp.dom().contains(t) ==> post.thr_mp.spec_index(t) == pre.thr_mp.spec_index(t)
+    &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t).view().temp_alloc_cache_2m]
+        post.thr_mp.dom().contains(t) ==> post.thr_mp.spec_index(t).view().temp_alloc_cache_2m == pre.thr_mp.spec_index(t).view().temp_alloc_cache_2m
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, page_index)
     &&& forall|i: PageIndex| #![trigger pre.pg_arr.spec_index(i).view().view().state] #![trigger post.pg_arr.spec_index(i).view().view().state]
         index_valid(NUM_PAGES, i) ==> {

@@ -172,7 +172,7 @@ pub proof fn owned_2m_all_ptrs_belong_to_container(krnl: &KernelK, head: PageInd
     requires
         krnl.inv(),
         page_index_2m_valid(head),
-        krnl.pg_arr.spec_index(head).view().view().state is Owned2m,
+        krnl.pg_arr.spec_index(head).view().view().state is Owned2m || krnl.pg_arr.spec_index(head).view().view().state is Free2m,
         krnl.pg_arr.spec_index(head).view().view().owning_container == container_ptr,
     ensures
         page_2m_all_ptrs(head).subset_of(krnl.ctn_mp.spec_index(container_ptr).view().owned_pages.view()),
@@ -254,7 +254,7 @@ pub fn wlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(lc
     requires
         old(krnl).inv(),
         page_index_2m_valid(head),
-        old(krnl).pg_arr.spec_index(head).view().view().state is Owned2m,
+        old(krnl).pg_arr.spec_index(head).view().view().state is Owned2m || old(krnl).pg_arr.spec_index(head).view().view().state is Free2m,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).page_lock_map().dom().disjoint(page_2m_tail_indices(head)),
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
@@ -311,7 +311,7 @@ pub fn wlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(lc
         invariant
             krnl.inv(),
             page_index_2m_valid(head),
-            old(krnl).pg_arr.spec_index(head).view().view().state is Owned2m,
+            old(krnl).pg_arr.spec_index(head).view().view().state is Owned2m || old(krnl).pg_arr.spec_index(head).view().view().state is Free2m,
             head + 512usize <= NUM_PAGES,
             0 <= count <= 511,
             lctx.thread_id() == old(lctx).thread_id(),

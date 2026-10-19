@@ -3,11 +3,16 @@ use crate::*;
 
 verus! {
 /// The write-held thread `victim_ptr`, waiting for a reply or killed, leaves the write-held marked process `process_ptr`,
-/// which absorbs its quota, and takes back its process node; a thread waiting for a reply becomes a dangling thread.
+/// which absorbs its quota, and takes back its process node; a thread waiting for a reply becomes a dangling thread, and it
+/// and its dangling callers `callers` record the end of its call chain.
 #[verifier::opaque]
-pub open spec fn kill_leave_process_eof_transition_framing(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, victim_ptr: RwLockThreadPtr) -> bool {
+pub open spec fn kill_leave_process_eof_transition_framing(
+    pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, victim_ptr: RwLockThreadPtr, callers: Set<RwLockThreadPtr>,
+) -> bool {
     let process = pre.prc_mp.spec_index(process_ptr);
     let victim = pre.thr_mp.spec_index(victim_ptr);
+    let callee = pre.thr_mp.spec_index(victim.view().callee.unwrap());
+    let end = if thread_is_dangling(callee) && !callee.being_killed() { callee.view_ghost().chain_end.unwrap() } else { victim.view().callee.unwrap() };
     let node_addr = victim.view().proc_linkedlist_node.addr();
     let after_process = post.prc_mp.spec_index(process_ptr);
     let after_victim = post.thr_mp.spec_index(victim_ptr);
@@ -26,10 +31,18 @@ pub open spec fn kill_leave_process_eof_transition_framing(pre: KernelK, post: K
     &&& after_process.view().owned_threads.view() == process.view().owned_threads.view().remove_value(victim_ptr)
     &&& after_process.view().owned_threads.dom() == process.view().owned_threads.dom().remove(node_addr)
     &&& after_process.view().owned_threads.map() == process.view().owned_threads.map().remove(node_addr)
-    &&& post.thr_mp.unchanged_except(&pre.thr_mp, victim_ptr)
+    &&& post.thr_mp.dom() == pre.thr_mp.dom()
+    &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)]
+        pre.thr_mp.dom().contains(t) && t != victim_ptr && !callers.contains(t) ==> post.thr_mp.spec_index(t) == pre.thr_mp.spec_index(t)
+    &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)]
+        callers.contains(t) && t != victim_ptr ==> {
+            &&& update_ghost_ensures(pre.thr_mp.spec_index(t), post.thr_mp.spec_index(t), ThreadGhost { chain_end: Some(end), ..pre.thr_mp.spec_index(t).view_ghost() })
+            &&& post.thr_mp.spec_index(t).being_killed() == pre.thr_mp.spec_index(t).being_killed()
+        }
+    &&& victim.view().state is KILLED ==> callers == Set::<RwLockThreadPtr>::empty()
     &&& after_victim.is_init() == victim.is_init()
     &&& after_victim.view_rodata() == victim.view_rodata()
-    &&& after_victim.view_ghost() == victim.view_ghost()
+    &&& after_victim.view_ghost() == if callers.contains(victim_ptr) { ThreadGhost { chain_end: Some(end), ..victim.view_ghost() } } else { victim.view_ghost() }
     &&& after_victim.being_killed() == victim.being_killed()
     &&& after_victim.killer_info() == victim.killer_info()
     &&& after_victim.locking_thread() == victim.locking_thread()

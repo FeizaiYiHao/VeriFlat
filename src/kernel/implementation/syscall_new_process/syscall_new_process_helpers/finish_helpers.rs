@@ -96,7 +96,7 @@ pub(super) fn release_new_process_locks_and_attach_endpoint(
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().state is RUNNING,
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_clean(),
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() != Some(SyscallProgress::ThreadExitZombie),
+        !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
         current_thread_lock_perm.state() is WriteLock && current_thread_lock_perm.thread_id() == old(lctx).thread_id(),
         current_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
         old(krnl).thr_mp.dom().contains(new_thread_ptr),
@@ -110,6 +110,7 @@ pub(super) fn release_new_process_locks_and_attach_endpoint(
         old(krnl).thr_mp.spec_index(new_thread_ptr).view().free_quota_pending_clean(),
         old(krnl).thr_mp.spec_index(new_thread_ptr).view().temp_alloc_clean(),
         old(krnl).thr_mp.spec_index(new_thread_ptr).view().syscall_progress.view() is None,
+        !old(krnl).thr_mp.spec_index(new_thread_ptr).view_ghost().exited,
         new_thread_lock_perm.state() is WriteLock && new_thread_lock_perm.thread_id() == old(lctx).thread_id(),
         new_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(new_thread_ptr).locking_thread()->Write_lock_id,
         page_ptr_valid(new_thread_ptr),
@@ -197,6 +198,8 @@ pub(super) fn release_new_process_locks_and_attach_endpoint(
             },
         final(krnl).thr_mp.spec_index(current_thread_ptr).view() == (Thread { syscall_progress: final(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress, ..old(krnl).thr_mp.spec_index(current_thread_ptr).view() }),
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is None,
+        !final(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
+        final(krnl).thr_mp.spec_index(new_thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(new_thread_ptr).view_ghost(),
         final(krnl).thr_mp.spec_index(new_thread_ptr).view() == (Thread { endpoint_descriptors: final(krnl).thr_mp.spec_index(new_thread_ptr).view().endpoint_descriptors, ..old(krnl).thr_mp.spec_index(new_thread_ptr).view() }),
         final(krnl).thr_mp.spec_index(new_thread_ptr).view().endpoint_descriptors.view() == if endpoint is Some {
             old(krnl).thr_mp.spec_index(new_thread_ptr).view().endpoint_descriptors.view().update(0, endpoint)

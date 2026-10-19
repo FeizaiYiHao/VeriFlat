@@ -2,7 +2,9 @@ use vstd::prelude::*;
 use crate::*;
 use super::mmap_4k_create_entry_install::{ install_staged_4k_page_table_page, MissingPageTableLevel };
 use super::mmap_4k_build_structure_spec::*;
+#[cfg(verus_keep_ghost)]
 use super::mmap_4k_build_structure_trace::mmap_4k_directory_step_from_k;
+#[cfg(verus_keep_ghost)]
 use super::share_mapping_4k_trace::share_4k_directory_step_from_k;
 
 verus! {
@@ -91,7 +93,7 @@ verus! {
                     &&& old(krnl).pt_mp.spec_index(pagetable_ptr).view().spec_resolve_mapping_2m_l2(indices.0, indices.1, indices.2) is None
                 },
             },
-            held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_MAJOR),
+            held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         ensures
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
             old(steps).snapshot_k() == *old(krnl) && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(progress_thread)
@@ -111,7 +113,7 @@ verus! {
                 &&& final(krnl).thr_mp.spec_index(progress_thread).view().syscall_progress.view() == old(krnl).thr_mp.spec_index(progress_thread).view().syscall_progress.view()
                 &&& progress_thread == quota_thread_ptr || final(krnl).thr_mp.spec_index(quota_thread_ptr).view().syscall_progress.view() is None
             },
-            held_locks_order_below(final(krnl), final(lctx), ALLOCATOR_CACHE_MAJOR),
+            held_locks_order_below(final(krnl), final(lctx), ALLOCATOR_CACHE_4K_MAJOR),
             final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
             forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, final(krnl).pt_mp.spec_index(pt).view())]
                 old(lctx).pagetable_lock_map().dom().contains(pt) && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, old(krnl).pt_mp.spec_index(pt).view())
@@ -198,6 +200,7 @@ verus! {
             final(krnl).thr_mp.spec_index(quota_thread_ptr).view().proc_pagetable_ptr == old(krnl).thr_mp.spec_index(quota_thread_ptr).view().proc_pagetable_ptr,
             final(krnl).thr_mp.spec_index(quota_thread_ptr).view().state == old(krnl).thr_mp.spec_index(quota_thread_ptr).view().state,
             final(krnl).thr_mp.spec_index(quota_thread_ptr).view().syscall_progress.view() == mmap_4k_progress_after_directory(old(krnl).thr_mp.spec_index(quota_thread_ptr).view().syscall_progress.view(), level),
+            final(krnl).thr_mp.spec_index(quota_thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(quota_thread_ptr).view_ghost(),
             final(krnl).thr_mp.spec_index(quota_thread_ptr).view().blocking_endpoint_ptr == old(krnl).thr_mp.spec_index(quota_thread_ptr).view().blocking_endpoint_ptr,
             final(krnl).thr_mp.spec_index(quota_thread_ptr).view().ipc_payload == old(krnl).thr_mp.spec_index(quota_thread_ptr).view().ipc_payload,
             final(krnl).thr_mp.spec_index(quota_thread_ptr).view().error_code == old(krnl).thr_mp.spec_index(quota_thread_ptr).view().error_code,

@@ -18,6 +18,19 @@ pub(super) open spec fn set_4k_page_staging_next_eof_transition_framing(pre: Ker
     &&& new_page.view() == (Page { free_list: next, ..old_page.view() })
 }
 
+/// The staging-link write keeps every page's state and owner, so each page keeps its object owner.
+proof fn set_4k_page_staging_next_eof_page_object_owner(pre: KernelK, post: KernelK, page_ptr: PagePtr, next: PagePtr)
+    requires
+        pre.inv(),
+        set_4k_page_staging_next_eof_transition_framing(pre, post, page_ptr, next),
+        page_ptr_valid(page_ptr),
+    ensures page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp),
+{
+    reveal(set_4k_page_staging_next_eof_transition_framing);
+    page_ptr_valid_imply_page_index_valid();
+    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(page_object_owner_wf); };
+}
+
 /// Closes every kernel invariant after the staging-link write from the entry invariants, the summary, and the
 /// representation facts `set_4k_staging_next` guarantees.
 pub(super) proof fn set_4k_page_staging_next_eof(pre: KernelK, post: KernelK, page_ptr: PagePtr, next: PagePtr)
@@ -48,6 +61,7 @@ pub(super) proof fn set_4k_page_staging_next_eof(pre: KernelK, post: KernelK, pa
     assert(container_pages_wf(post.pg_arr, post.ctn_mp)) by { container_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.ctn_mp, post.ctn_mp); };
     assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { process_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.prc_mp, post.prc_mp); };
     assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
+    set_4k_page_staging_next_eof_page_object_owner(pre, post, page_ptr, next);
     assert(pagetable_pages_wf(post.pt_mp, post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, post.pt_mp, pre.pg_arr, post.pg_arr); };
     assert(pagetable_pages_wf(post.it_mp, post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.it_mp, post.it_mp, pre.pg_arr, post.pg_arr); };
     assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };

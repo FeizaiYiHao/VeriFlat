@@ -185,6 +185,7 @@ pub(super) fn publish_staged_container_root_mutation(
         final(krnl).prc_mp.spec_index(process_page).inv(),
         final(krnl).thr_mp.perms_wf(),
         final(krnl).thr_mp.spec_index(current_thread_ptr).inv(),
+        final(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost(),
         final(krnl).sched_mp.perms_wf(),
         final(krnl).sched_mp.spec_index(scheduler_page).inv(),
         final(krnl).cpu_set_mp.perms_wf(),
@@ -425,9 +426,9 @@ pub(super) fn publish_staged_container_root_mutation(
         Tracked(funding_page_lock_perms), Tracked(container_page_lock_perm), Tracked(pcid_allocator_page_lock_perm),
         Tracked(container_tail_lock_perms), Tracked(pcid_allocator_tail_lock_perms),
     );
-    let allocator_4k_value = PageAllocator::new_with_global_pool(child_container_ptr, child_depth, funded_global_pool, allocator_quota_4k);
-    let allocator_2m_value = PageAllocator::new_empty(child_container_ptr, child_depth);
-    let allocator_1g_value = PageAllocator::new_empty(child_container_ptr, child_depth);
+    let allocator_4k_value = PageAllocator::<ALLOCATOR_SIZE_4K>::new_with_global_pool(child_container_ptr, child_depth, funded_global_pool, allocator_quota_4k);
+    let allocator_2m_value = PageAllocator::<ALLOCATOR_SIZE_2M>::new_empty(child_container_ptr, child_depth);
+    let allocator_1g_value = PageAllocator::<ALLOCATOR_SIZE_1G>::new_empty(child_container_ptr, child_depth);
     let scheduler_value = Scheduler::new_empty(child_container_ptr);
     let mut pcid_allocator_value = PcidAllocator::new_empty(child_container_ptr, child_depth);
     pcid_allocator_value.alloc(root_pcid, child_process_ptr);
@@ -462,7 +463,7 @@ pub(super) fn publish_staged_container_root_mutation(
     );
     let container_ghost = ContainerGhost {
         uppertree_seq: Ghost(child_uppers), subtree_set: Ghost(Set::empty()), owned_processes: Ghost(Set::empty().insert(child_process_ptr)),
-        owned_threads: Ghost(Set::empty()), owned_indirect_threads: Ghost(Set::empty()), owned_endpoints: Ghost(Set::empty()),
+        owned_threads: Ghost(Set::empty()), owned_indirect_threads: Ghost(Set::empty()), owned_endpoints: Ghost(Set::empty()), retire_ready: false,
     };
     proof {
         assert(old(krnl).cpu_offline_mp.perms_wf()) by { cpu_offline_flags_wf_map(old(krnl).cpu_offline_mp, old(krnl).cpu_arr); };
@@ -719,6 +720,7 @@ pub fn publish_staged_container_root(
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_2m.view().is_empty(),
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_1g == old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_1g,
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_fields_unchanged(&old(krnl).thr_mp.spec_index(current_thread_ptr).view(),),
+        final(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost(),
         final(krnl).thr_mp.spec_index(current_thread_ptr).view() == (Thread {
             quota_4k: final(krnl).thr_mp.spec_index(current_thread_ptr).view().quota_4k, quota_2m: final(krnl).thr_mp.spec_index(current_thread_ptr).view().quota_2m,
             temp_alloc_cache_4k: final(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_4k, temp_alloc_cache_2m: final(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_2m,

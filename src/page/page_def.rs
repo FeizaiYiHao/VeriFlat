@@ -294,6 +294,62 @@ pub fn convert_kernel_object_4k_to_free_cache(page: &mut Page, Tracked(perm): Tr
     (node_addr, node_perm)
 }
 
+/// Return the memory of a retired 2M kernel object to the global pool of `allocator_ptr`, owned by `owning_container`.
+pub fn convert_kernel_object_2m_to_free_global(page: &mut Page, Tracked(perm): Tracked<PagePerm2m>, allocator_ptr: RwLockPageAllocatorPtr, owning_container: RwLockContainerPtr)
+    -> (ret: (usize, Tracked<PointsTo<Node<PagePtr>>>))
+    requires
+        old(page).inv(),
+        old(page).state is Allocated2m,
+        perm.is_init(),
+        perm.addr() == old(page).addr,
+    ensures
+        final(page).inv(),
+        *final(page) == (Page { state: PageState::Free2m { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::GlobalList }, owning_container,
+            free_list_node_storage: final(page).free_list_node_storage, perm_2m: final(page).perm_2m, ..*old(page) }),
+        final(page).perm_2m.view() == Some(perm),
+        final(page).free_list_node_storage.addr() == old(page).free_list_node_storage.addr(),
+        ret.0 == old(page).free_list_node_storage.addr(),
+        ret.1.view().is_init(),
+        ret.1.view().addr() == ret.0,
+        ret.1.view().value().view() == old(page).addr,
+{
+    proof { reveal(Page::mappings_va_valid); }
+    let (node_addr, mut node_perm) = page.free_list_node_storage.take();
+    node_update_value(node_addr, &mut node_perm, page.addr);
+    page.perm_2m = Tracked(Some(perm));
+    page.state = PageState::Free2m { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::GlobalList };
+    page.owning_container = owning_container;
+    (node_addr, node_perm)
+}
+
+/// Return the memory of a retired 4K kernel object to the global pool of `allocator_ptr`, owned by `owning_container`.
+pub fn convert_kernel_object_4k_to_free_global(page: &mut Page, Tracked(perm): Tracked<PagePerm4k>, allocator_ptr: RwLockPageAllocatorPtr, owning_container: RwLockContainerPtr)
+    -> (ret: (usize, Tracked<PointsTo<Node<PagePtr>>>))
+    requires
+        old(page).inv(),
+        old(page).state is Allocated4k,
+        perm.is_init(),
+        perm.addr() == old(page).addr,
+    ensures
+        final(page).inv(),
+        *final(page) == (Page { state: PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::GlobalList }, owning_container,
+            free_list_node_storage: final(page).free_list_node_storage, perm_4k: final(page).perm_4k, ..*old(page) }),
+        final(page).perm_4k.view() == Some(perm),
+        final(page).free_list_node_storage.addr() == old(page).free_list_node_storage.addr(),
+        ret.0 == old(page).free_list_node_storage.addr(),
+        ret.1.view().is_init(),
+        ret.1.view().addr() == ret.0,
+        ret.1.view().value().view() == old(page).addr,
+{
+    proof { reveal(Page::mappings_va_valid); }
+    let (node_addr, mut node_perm) = page.free_list_node_storage.take();
+    node_update_value(node_addr, &mut node_perm, page.addr);
+    page.perm_4k = Tracked(Some(perm));
+    page.state = PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::GlobalList };
+    page.owning_container = owning_container;
+    (node_addr, node_perm)
+}
+
 pub fn take_perm_2m(page: &mut Page) -> (ret: Tracked<PagePerm2m>)
     requires
         old(page).perm_2m.view().is_some(),

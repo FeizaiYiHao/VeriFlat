@@ -44,6 +44,7 @@ proof fn ipc_cpu_rendezvous_eof_process_management_inv(
         pre.sched_mp.dom().contains(peer_scheduler_ptr),
         pre.cpu_set_mp.dom().contains(source_cpu_set),
         pre.cpu_set_mp.dom().contains(target_cpu_set),
+        !pre.cpu_set_mp.spec_index(source_cpu_set).being_killed() && !pre.cpu_set_mp.spec_index(target_cpu_set).being_killed(),
         pre.ctn_mp.spec_index(source_container).view_rodata().view().cpu_set == source_cpu_set,
         pre.ctn_mp.spec_index(target_container).view_rodata().view().cpu_set == target_cpu_set,
         pre.ctn_mp.spec_index(pre.thr_mp.spec_index(peer_thread_ptr).view().owning_container).view_rodata().view().scheduler == peer_scheduler_ptr,
@@ -65,8 +66,10 @@ proof fn ipc_cpu_rendezvous_eof_process_management_inv(
 {
     reveal(ipc_cpu_rendezvous_eof_transition_framing);
     assert(post.process_management_inv()) by {
+        assert(thread_dangling_chain_end_wf(post.thr_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thr_mp, post.thr_mp); };
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
         assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
+        assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by { reveal(cpu_set_kill_mark_wf); };
         assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); };
         assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); };
         ipc_cpu_rendezvous_eof_thread_endpoint_ref_counter(pre, post);
@@ -107,6 +110,7 @@ proof fn ipc_cpu_rendezvous_eof_memory_management_inv(
         assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
         assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { scheduler_pages_wf_preserved_for_page_state_eq(pre.sched_mp, post.sched_mp, pre.pg_arr, post.pg_arr); };
         assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
+        assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
         assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
         assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
         assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_2m_wf); };
@@ -153,6 +157,7 @@ pub(super) proof fn ipc_cpu_rendezvous_eof(
         pre.sched_mp.dom().contains(peer_scheduler_ptr),
         pre.cpu_set_mp.dom().contains(source_cpu_set),
         pre.cpu_set_mp.dom().contains(target_cpu_set),
+        !pre.cpu_set_mp.spec_index(source_cpu_set).being_killed() && !pre.cpu_set_mp.spec_index(target_cpu_set).being_killed(),
         pre.ctn_mp.spec_index(source_container).view_rodata().view().cpu_set == source_cpu_set,
         pre.ctn_mp.spec_index(target_container).view_rodata().view().cpu_set == target_cpu_set,
         pre.ctn_mp.spec_index(pre.thr_mp.spec_index(peer_thread_ptr).view().owning_container).view_rodata().view().scheduler == peer_scheduler_ptr,
@@ -225,7 +230,10 @@ pub(super) proof fn ipc_cpu_rendezvous_eof(
             &&& thread_perms_wf(post.thr_mp)
             &&& endpoint_perms_wf(post.ep_mp)
             &&& scheduler_perms_wf(post.sched_mp)
-        }) by { reveal(thread_perms_wf); reveal(endpoint_perms_wf); reveal(scheduler_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); };
+        }) by {
+            reveal(thread_perms_wf); reveal(endpoint_perms_wf); reveal(scheduler_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked);
+            reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
+        };
         reveal(cpu_set_perms_wf); reveal(cpu_array_wf); reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf);
     };
     ipc_cpu_rendezvous_eof_memory_management_inv(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id);

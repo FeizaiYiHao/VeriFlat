@@ -3,7 +3,7 @@ use crate::*;
 
 verus! {
 /// Sorts the distinct retired pages into strictly increasing index order, the order in which pages of one lock major are acquired.
-pub(crate) fn kill_retire_sort_pages(pages: &ArrayVec<PageIndex, 5>) -> (ret: ArrayVec<PageIndex, 5>)
+pub(crate) fn kill_retire_sort_pages<const N: usize>(pages: &ArrayVec<PageIndex, N>) -> (ret: ArrayVec<PageIndex, N>)
     requires
         pages.wf(),
         pages.view().no_duplicates(),
@@ -14,7 +14,7 @@ pub(crate) fn kill_retire_sort_pages(pages: &ArrayVec<PageIndex, 5>) -> (ret: Ar
         forall|k: int| #![trigger ret.view()[k]] 0 <= k < ret.view().len() ==> pages.view().contains(ret.view()[k]),
         forall|i: int, j: int| #![trigger ret.view()[i], ret.view()[j]] 0 <= i < j < ret.view().len() ==> ret.view()[i] < ret.view()[j],
 {
-    let mut ret = ArrayVec::<PageIndex, 5>::new();
+    let mut ret = ArrayVec::<PageIndex, N>::new();
     let mut i: usize = 0;
     while i < pages.len()
         invariant
@@ -56,10 +56,11 @@ pub(crate) fn kill_retire_sort_pages(pages: &ArrayVec<PageIndex, 5>) -> (ret: Ar
     ret
 }
 
-/// Write-locks the `Allocated4k` pages `sorted`, all of lock major `major`, in increasing index order from a context whose
-/// held pages all have a lower major and are write-held with `perms`; returns `perms` with the new pages' permissions.
-pub(crate) fn wlock_kill_retire_pages(
-    krnl: &mut KernelK, sorted: &ArrayVec<PageIndex, 5>, Ghost(major): Ghost<LockMajorId>, Tracked(lctx): Tracked<&mut LocalContext>,
+/// Write-locks the pages `sorted`, all of lock major `major`, in increasing index order from a context whose held pages
+/// all have a lower major and are write-held with `perms`, and whose held offline request cells and cpu sets belong to
+/// marked objects; returns `perms` with the new pages' permissions.
+pub(crate) fn wlock_kill_retire_pages<const N: usize>(
+    krnl: &mut KernelK, sorted: &ArrayVec<PageIndex, N>, Ghost(major): Ghost<LockMajorId>, Tracked(lctx): Tracked<&mut LocalContext>,
     Tracked(perms): Tracked<Map<PageIndex, LockPerm>>,
 ) -> (ret: Tracked<Map<PageIndex, LockPerm>>)
     requires
@@ -67,10 +68,16 @@ pub(crate) fn wlock_kill_retire_pages(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
-        old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         old(lctx).endpoint_lock_map().dom().is_empty(),
         old(lctx).scheduler_lock_map().dom().is_empty(),
-        old(lctx).cpu_set_lock_map().dom().is_empty(),
+        forall|held_flag: (RwLockCpuOfflineFlagsPtr, CpuId)| #![trigger old(lctx).cpu_offline_flag_lock_map().dom().contains(held_flag)]
+            old(lctx).cpu_offline_flag_lock_map().dom().contains(held_flag) ==> {
+                let flag_container = old(krnl).cpu_offline_mp.spec_index(held_flag.0).owning_container.view();
+                &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), flag_container, TypedLockMode::Write)
+                &&& old(krnl).ctn_mp.spec_index(flag_container).being_killed()
+            },
+        forall|held_cpu_set: RwLockCpuSetPtr| #![trigger old(lctx).cpu_set_lock_map().dom().contains(held_cpu_set)]
+            old(lctx).cpu_set_lock_map().dom().contains(held_cpu_set) ==> old(krnl).cpu_set_mp.spec_index(held_cpu_set).being_killed(),
         major < PAGETABLE_PAGE_MAJOR ==> old(lctx).pagetable_lock_map().dom().is_empty() && old(lctx).iommu_table_lock_map().dom().is_empty(),
         old(lctx).iommu_root_table_lock_map().dom().is_empty(),
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
@@ -94,7 +101,6 @@ pub(crate) fn wlock_kill_retire_pages(
         forall|i: int, j: int| #![trigger sorted.view()[i], sorted.view()[j]] 0 <= i < j < sorted.view().len() ==> sorted.view()[i] < sorted.view()[j],
         forall|k: int| #![trigger sorted.view()[k]] 0 <= k < sorted.view().len() ==> {
             &&& index_valid(NUM_PAGES, sorted.view()[k])
-            &&& old(krnl).pg_arr.spec_index(sorted.view()[k]).view().view().state is Allocated4k
             &&& old(krnl).pg_arr.lock_id_by_index(sorted.view()[k]).major == major
         },
     ensures
@@ -158,7 +164,6 @@ pub(crate) fn wlock_kill_retire_pages(
             forall|i: int, j: int| #![trigger sorted.view()[i], sorted.view()[j]] 0 <= i < j < sorted.view().len() ==> sorted.view()[i] < sorted.view()[j],
             forall|j: int| #![trigger sorted.view()[j]] 0 <= j < sorted.view().len() ==> {
                 &&& index_valid(NUM_PAGES, sorted.view()[j])
-                &&& old(krnl).pg_arr.spec_index(sorted.view()[j]).view().view().state is Allocated4k
                 &&& old(krnl).pg_arr.lock_id_by_index(sorted.view()[j]).major == major
             },
             forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> {
@@ -171,10 +176,16 @@ pub(crate) fn wlock_kill_retire_pages(
             lctx.page_lock_map().dom() =~= old(lctx).page_lock_map().dom() + sorted.view().subrange(0, k as int).to_set(),
             perms.dom() == lctx.page_lock_map().dom(),
             lctx.pcid_needflush_lock_map().dom().is_empty(),
-            lctx.cpu_offline_flag_lock_map().dom().is_empty(),
             lctx.endpoint_lock_map().dom().is_empty(),
             lctx.scheduler_lock_map().dom().is_empty(),
-            lctx.cpu_set_lock_map().dom().is_empty(),
+            forall|held_flag: (RwLockCpuOfflineFlagsPtr, CpuId)| #![trigger old(lctx).cpu_offline_flag_lock_map().dom().contains(held_flag)]
+                old(lctx).cpu_offline_flag_lock_map().dom().contains(held_flag) ==> {
+                    let flag_container = old(krnl).cpu_offline_mp.spec_index(held_flag.0).owning_container.view();
+                    &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), flag_container, TypedLockMode::Write)
+                    &&& old(krnl).ctn_mp.spec_index(flag_container).being_killed()
+                },
+            forall|held_cpu_set: RwLockCpuSetPtr| #![trigger old(lctx).cpu_set_lock_map().dom().contains(held_cpu_set)]
+                old(lctx).cpu_set_lock_map().dom().contains(held_cpu_set) ==> old(krnl).cpu_set_mp.spec_index(held_cpu_set).being_killed(),
             major < PAGETABLE_PAGE_MAJOR ==> lctx.pagetable_lock_map().dom().is_empty() && lctx.iommu_table_lock_map().dom().is_empty(),
             lctx.iommu_root_table_lock_map().dom().is_empty(),
             lctx.holds_no_allocator_locks(PageSize::SZ4k),

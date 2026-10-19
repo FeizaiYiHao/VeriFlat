@@ -36,6 +36,7 @@ pub(super) fn cpu_offline_commit_unlock_and_record(
         entry_k.sched_mp.unchanged_except(&old(steps).snapshot_k().sched_mp, scheduler_ptr),
         entry_k.cpu_set_mp.unchanged_except(&old(steps).snapshot_k().cpu_set_mp, cpu_set_ptr),
         old(steps).snapshot_k().cpu_set_mp.spec_index(cpu_set_ptr).locking_thread() is None,
+        !old(steps).snapshot_k().cpu_set_mp.spec_index(cpu_set_ptr).being_killed() && !entry_k.cpu_set_mp.spec_index(cpu_set_ptr).being_killed(),
         entry_k.cpu_offline_mp.unchanged_except(&old(steps).snapshot_k().cpu_offline_mp, flags_ptr),
         kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), &entry_k),
         kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, entry_k.ep_mp),
@@ -93,6 +94,7 @@ pub(super) fn cpu_offline_commit_unlock_and_record(
         old(krnl).cpu_offline_mp.perms_wf(),
         old(krnl).cpu_offline_mp.spec_index(flags_ptr).inv(),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
+        !old(krnl).cpu_set_mp.spec_index(cpu_set_ptr).being_killed(),
         old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         old(krnl).sched_mp.dom().contains(scheduler_ptr),
         old(krnl).cpu_set_mp.dom().contains(cpu_set_ptr),
@@ -117,6 +119,7 @@ pub(super) fn cpu_offline_commit_unlock_and_record(
             &&& old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean()
             &&& old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean()
             &&& old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None
+            &&& !old(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited
             &&& typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write)
             &&& perm.state() is WriteLock
             &&& perm.thread_id() == old(lctx).thread_id()
@@ -253,6 +256,7 @@ pub(super) fn cpu_offline_commit_go_off(
         old(krnl).sched_mp.unchanged_except(&old(steps).snapshot_k().sched_mp, scheduler_ptr),
         old(krnl).cpu_set_mp.unchanged_except(&old(steps).snapshot_k().cpu_set_mp, cpu_set_ptr),
         old(steps).snapshot_k().cpu_set_mp.spec_index(cpu_set_ptr).locking_thread() is None,
+        !old(steps).snapshot_k().cpu_set_mp.spec_index(cpu_set_ptr).being_killed() && !old(krnl).cpu_set_mp.spec_index(cpu_set_ptr).being_killed(),
         old(krnl).cpu_offline_mp.unchanged_except(&old(steps).snapshot_k().cpu_offline_mp, flags_ptr),
         old(krnl).cpu_offline_mp.spec_index(flags_ptr).flags.entries_unchanged_except(&old(steps).snapshot_k().cpu_offline_mp.spec_index(flags_ptr).flags, cpu_id),
         old(steps).snapshot_k().cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_id).view().locking_thread() is None,
@@ -344,6 +348,7 @@ pub(super) fn cpu_offline_commit_go_off(
             &&& old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean()
             &&& old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean()
             &&& old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None
+            &&& !old(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited
             &&& !old(krnl).sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.view().contains(thread_ptr)
             &&& typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write)
             &&& perm.state() is WriteLock
@@ -450,6 +455,7 @@ pub(super) fn cpu_offline_commit_go_off(
             };
         };
         assert(typed_lock_maps_aligned(&*krnl, &*lctx)) by { reveal(UnLockedMap::typed_flag_lock_map_aligned); };
+        assert(!krnl.cpu_set_mp.spec_index(cpu_set_ptr).being_killed()) by { reveal(cpu_went_off_eof_transition_framing); };
         if current_thread is Some { process_thread_wf_at(before.prc_mp, before.thr_mp, current_thread.unwrap()); }
     }
     cpu_offline_commit_unlock_and_record(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, pt_regs, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr,

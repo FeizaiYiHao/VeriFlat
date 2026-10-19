@@ -28,13 +28,21 @@ pub proof fn memory_management_inv_preserved_for_thread_endpoint_memory_fields(p
                 &&& post.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k == pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k
                 &&& post.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m == pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m
                 &&& post.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_1g == pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_1g
+                &&& post.thr_mp.spec_index(thread_ptr).view().owning_container == pre.thr_mp.spec_index(thread_ptr).view().owning_container
             },
+        forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)]
+            pre.thr_mp.dom().contains(t) && pre.thr_mp.spec_index(t).locking_thread() is Write && !pre.thr_mp.spec_index(t).view().temp_alloc_clean()
+                ==> post.thr_mp.spec_index(t).locking_thread() is Write && post.thr_mp.spec_index(t).locking_thread()->Write_thread_id == pre.thr_mp.spec_index(t).locking_thread()->Write_thread_id,
     ensures
         post.memory_management_inv(),
 {
     assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { reveal(scheduler_pages_wf); };
     assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { reveal(endpoint_pages_wf); };
+    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by {
+        reveal(page_object_owner_wf); reveal(thread_staged_pages_4k_wf); reveal(thread_staged_pages_2m_wf); reveal(thread_staged_pages_1g_wf);
+        broadcast use vstd::set_lib::lemma_set_empty_equivalency_len;
+    };
     assert(thread_staged_pages_wf(post.thr_mp, post.pg_arr)) by {
         thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
         thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);

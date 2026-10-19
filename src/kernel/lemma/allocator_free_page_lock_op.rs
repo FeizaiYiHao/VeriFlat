@@ -2,7 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use crate::kernel::*;
 verus! {
-pub proof fn container_allocator_free_4k_page_wf_preserved_for_nonfree_page_change(allocator_map: PageAllocatorUnLockedMap, pre: PageLockedArray, post: PageLockedArray, changed: PageIndex)
+pub proof fn container_allocator_free_4k_page_wf_preserved_for_nonfree_page_change(allocator_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>, pre: PageLockedArray, post: PageLockedArray, changed: PageIndex)
     requires
         page_array_wf(pre),
         page_array_wf(post),
@@ -16,7 +16,7 @@ pub proof fn container_allocator_free_4k_page_wf_preserved_for_nonfree_page_chan
         container_allocator_free_4k_page_wf(allocator_map, post),
 { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf); }
 
-pub proof fn container_allocator_free_2m_page_wf_preserved_for_nonfree_page_change(allocator_map: PageAllocatorUnLockedMap, pre: PageLockedArray, post: PageLockedArray, changed: PageIndex)
+pub proof fn container_allocator_free_2m_page_wf_preserved_for_nonfree_page_change(allocator_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_2M>, pre: PageLockedArray, post: PageLockedArray, changed: PageIndex)
     requires
         page_array_wf(pre),
         page_array_wf(post),
@@ -30,7 +30,7 @@ pub proof fn container_allocator_free_2m_page_wf_preserved_for_nonfree_page_chan
         container_allocator_free_2m_page_wf(allocator_map, post),
 { reveal(container_allocator_free_2m_page_wf); reveal(container_allocator_global_free_2m_page_wf); reveal(container_allocator_cpu_cache_free_2m_page_wf); reveal(allocator_free_page_ptrs_wf); }
 
-pub proof fn container_allocator_free_1g_page_wf_preserved_for_nonfree_page_change(allocator_map: PageAllocatorUnLockedMap, pre: PageLockedArray, post: PageLockedArray, changed: PageIndex)
+pub proof fn container_allocator_free_1g_page_wf_preserved_for_nonfree_page_change(allocator_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_1G>, pre: PageLockedArray, post: PageLockedArray, changed: PageIndex)
     requires
         page_array_wf(pre),
         page_array_wf(post),

@@ -14,7 +14,7 @@ verus! {
     pub type CpuSetLockedMap = LockedMap<RwLockCpuSetPtr, CpuSet, (), (), CPU_SET_HAS_KILL_STATE>;
     pub type PcidAllocatorLockedMap = LockedMap<RwLockPcidAllocatorPtr, PcidAllocator, (), (), PCID_ALLOCATOR_HAS_KILL_STATE>;
     pub type EndpointLockedMap = LockedMap<RwLockEndpointPtr, Endpoint, (), (), ENDPOINT_HAS_KILL_STATE>;
-    pub type PageAllocatorUnLockedMap = UnLockedMap<RwLockPageAllocatorPtr, PageAllocator>;
+    pub type PageAllocatorUnLockedMap<const SIZE: usize> = UnLockedMap<RwLockPageAllocatorPtr, PageAllocator<SIZE>>;
     pub type ProcessLockedMap = LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, ProcessGhost, PROCESS_HAS_KILL_STATE>;
     pub struct KernelK{
         pub pt_mp: PageTableLockedMap,
@@ -32,9 +32,9 @@ verus! {
         pub prc_mp: ProcessLockedMap,
         pub thr_mp: ThreadLockedMap,
         pub ep_mp: EndpointLockedMap,
-        pub allc_4k_mp: PageAllocatorUnLockedMap,
-        pub allc_2m_mp: PageAllocatorUnLockedMap,
-        pub allc_1g_mp: PageAllocatorUnLockedMap,
+        pub allc_4k_mp: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>,
+        pub allc_2m_mp: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_2M>,
+        pub allc_1g_mp: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_1G>,
         pub cpu_tlb: CpuTLB,
         pub iommu_tlb: IommuTLB,
 
@@ -92,9 +92,11 @@ verus! {
             &&& pagetable_no_huge_leaf_wf(self.pt_mp, self.it_mp)
             &&& process_emptied_tables_wf(self.prc_mp, self.pt_mp, self.it_mp)
             &&& process_kernel_pages_owner_wf(self.pg_arr, self.prc_mp, self.pt_mp, self.it_mp)
+            &&& page_object_owner_wf(self.pg_arr, self.ctn_mp, self.thr_mp)
             &&& self.allocator_free_pages_wf()
             &&& container_process_allocator_quota_wf(self.ctn_mp, self.prc_mp, self.thr_mp, self.allc_4k_mp, self.allc_2m_mp, self.allc_1g_mp)
             &&& container_allocator_wf(self.ctn_mp, self.allc_4k_mp, self.allc_2m_mp, self.allc_1g_mp)
+            &&& container_kill_retire_wf(self.ctn_mp, self.allc_4k_mp, self.allc_2m_mp, self.allc_1g_mp)
             &&& container_allocator_free_4k_page_wf(self.allc_4k_mp, self.pg_arr)
             &&& container_allocator_free_2m_page_wf(self.allc_2m_mp, self.pg_arr)
             &&& container_allocator_free_1g_page_wf(self.allc_1g_mp, self.pg_arr)
@@ -107,6 +109,7 @@ verus! {
             &&& per_container_process_tree_wf(self.ctn_mp, self.prc_mp)
             &&& process_kill_mark_wf(self.ctn_mp, self.prc_mp)
             &&& container_kill_mark_wf(self.ctn_mp, self.prc_mp)
+            &&& cpu_set_kill_mark_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp)
             &&& process_state_lock_wf(self.prc_mp)
             &&& container_endpoint_wf(self.ctn_mp, self.ep_mp)
             &&& container_cpu_wf(self.ctn_mp, self.cpu_set_mp, self.cpu_arr)
@@ -125,6 +128,7 @@ verus! {
             &&& process_thread_wf(self.prc_mp, self.thr_mp)
             &&& process_emptied_threads_wf(self.prc_mp, self.thr_mp)
             &&& thread_cpu_wf(self.thr_mp, self.cpu_arr)
+            &&& thread_dangling_chain_end_wf(self.thr_mp)
         }
         /// All spec functions under this are closed
         pub open spec fn inv(&self) -> bool {
@@ -414,7 +418,7 @@ verus! {
         &&& lctx.endpoint_lock_map().dom().is_empty()
         &&& lctx.scheduler_lock_map().dom().is_empty()
         &&& lctx.pcid_allocator_lock_map().dom().is_empty()
-        &&& lctx.cpu_set_lock_map().dom().is_empty()
+        &&& forall|s: RwLockCpuSetPtr| #![trigger lctx.cpu_set_lock_map().dom().contains(s)] lctx.cpu_set_lock_map().dom().contains(s) ==> k.cpu_set_mp.spec_index(s).being_killed()
         &&& lctx.iommu_root_table_lock_map().dom().is_empty()
         &&& lctx.allocator_quota_4k_lock_map().dom().is_empty()
         &&& lctx.allocator_cache_4k_lock_map().dom().is_empty()

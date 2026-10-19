@@ -157,8 +157,16 @@ pub struct Thread {
     pub syscall_progress: Ghost<Option<SyscallProgress>>,
 }
 
-pub type ThreadRwLock = RwLock<Thread, (), (), THREAD_HAS_KILL_STATE>;
-pub type ThreadLockedMap = LockedMap<RwLockThreadPtr, Thread, (), (), THREAD_HAS_KILL_STATE>;
+/// Proof-only state of a thread lock; kernel-internal and not projected to the user view.
+pub ghost struct ThreadGhost {
+    /// For a dangling thread, the live thread of its container at the end of its call chain that owes the chain a reply.
+    pub chain_end: Option<RwLockThreadPtr>,
+    /// Set once by the exit of its process's last thread, after the process's tables were released; never cleared.
+    pub exited: bool,
+}
+
+pub type ThreadRwLock = RwLock<Thread, (), ThreadGhost, THREAD_HAS_KILL_STATE>;
+pub type ThreadLockedMap = LockedMap<RwLockThreadPtr, Thread, (), ThreadGhost, THREAD_HAS_KILL_STATE>;
 
 pub ghost struct ThreadU {
     pub lock_state: LockStateU,

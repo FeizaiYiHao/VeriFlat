@@ -84,6 +84,7 @@ pub(super) fn end_new_container_created_step(
         child_cpu_set_lock_perm.view().state() is WriteLock,
         child_cpu_set_lock_perm.view().thread_id() == old(lctx).thread_id(),
         child_cpu_set_lock_perm.view().lock_id() == old(krnl).cpu_set_mp.spec_index(child_cpu_set).locking_thread()->Write_lock_id,
+        !old(krnl).cpu_set_mp.spec_index(parent_cpu_set).being_killed() && !old(krnl).cpu_set_mp.spec_index(child_cpu_set).being_killed(),
         old(krnl).ctn_mp.spec_index(parent_container_ptr).view().owned_pages.view().contains(thread_page_ptr),
         parent_container_lock_perm.state() is WriteLock,
         parent_container_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -327,6 +328,7 @@ pub(super) fn share_new_container_range(
         final(krnl).prc_mp.spec_index(child_process_ptr) == old(krnl).prc_mp.spec_index(child_process_ptr),
         final(krnl).thr_mp.dom().contains(current_thread_ptr),
         final(krnl).thr_mp.spec_index(current_thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(current_thread_ptr).being_killed(),
+        final(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost(),
         current_thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_proc == parent_process_ptr,
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_container == parent_container_ptr,
@@ -480,6 +482,7 @@ fn create_new_container_root_thread_and_unlock(
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_2m.view().is_empty(),
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_1g.view().is_empty(),
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() matches Some(SyscallProgress::Share4k { .. }),
+        !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
         old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_thread == Some(current_thread_ptr),
         old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().state is Running,
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
@@ -678,6 +681,7 @@ pub(super) fn create_new_container_root_thread_and_finish(
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_4k.view() == set![thread_page_ptr],
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_2m.view().is_empty(),
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_1g.view().is_empty(),
+        !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() matches Some(SyscallProgress::Share4k { source_range, shared, origin, .. })
             && shared == source_range.len && origin is NewContainer && origin->NewContainer_0.child_container == Some(child_container_ptr) && origin->NewContainer_0.regs == *initial_regs
             && origin->NewContainer_0.endpoint_index == if endpoint is Some { Some(endpoint_index) } else { None },

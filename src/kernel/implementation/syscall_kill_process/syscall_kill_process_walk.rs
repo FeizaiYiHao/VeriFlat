@@ -36,9 +36,9 @@ pub open spec fn kill_walk_state(
 
 /// The killer `thread_ptr` of process `process_ptr`, running on `cpu_id`, works at `stage` on `chain`, the marked
 /// processes of `scope` from its first marked process down to the target. It write-holds its cpu, its process, and
-/// itself with `cpu_perm`, `process_perm`, and `thread_perm`, and every process on the chain with `chain_perms`. A held
-/// process other than the killer's sits on the chain at its depth below the chain's base depth: the depth below the
-/// subtree's process, or the root depth of the victim container. The killer's process is running; every chain process
+/// itself with `cpu_perm`, `process_perm`, and `thread_perm`, and every process on the chain with `chain_perms`, and no cpu
+/// set. A held process other than the killer's sits on the chain at its depth below the chain's base depth: the depth
+/// below the subtree's process, or the root depth of the victim container. The killer's process is running; every chain process
 /// lies in the subtree of the scope's process or is owned by the victim container, is being killed or a zombie, and the
 /// target may also have emptied tables at stage `Zombie`. The chain starts at a child of the scope's process or at the
 /// victim container's root process. A subtree hangs below the killer's process; a victim container is marked, write-held,
@@ -55,6 +55,7 @@ pub open spec fn kill_chain_state(
     let base = match scope { KillScope::Subtree { process: root } => k.prc_mp.spec_index(root).view_rodata().view().depth + 1, KillScope::Container { .. } => 0int };
     let container_ptr = match scope { KillScope::Subtree { .. } => process.view_rodata().view().owning_container, KillScope::Container { container } => container };
     &&& cpu_id == lctx.cpu_id()
+    &&& lctx.cpu_set_lock_map().dom().is_empty()
     &&& k.prc_mp.dom().contains(process_ptr)
     &&& k.thr_mp.dom().contains(thread_ptr)
     &&& k.cpu_published[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
@@ -68,6 +69,7 @@ pub open spec fn kill_chain_state(
     &&& thread.view().owning_proc == process_ptr
     &&& thread.view().temp_alloc_clean()
     &&& thread.view().syscall_progress.view() == kill_scope_progress(scope, if chain.len() == 0 { process_ptr } else { chain[chain.len() - 1] }, stage)
+    &&& !thread.view_ghost().exited
     &&& match scope {
         KillScope::Subtree { process: root } => root == process_ptr && lctx.container_lock_map().dom().is_empty(),
         KillScope::Container { container } => {
@@ -152,6 +154,19 @@ pub(crate) fn kill_mark_child(
         kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, process_ptr, thread_ptr, chain.push(ret), None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *final(chain_perms)),
         final(krnl).prc_mp.spec_index(process_ptr) == old(krnl).prc_mp.spec_index(process_ptr),
+        forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
+            &&& final(krnl).ctn_mp.dom().contains(c)
+            &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
+            &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
+            &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
+            &&& final(krnl).ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
+        },
+        scope is Container ==> final(krnl).ctn_mp.spec_index(scope->Container_container).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(scope->Container_container).view_ghost().owned_processes,
+        final(lctx).container_lock_map() == old(lctx).container_lock_map(),
+        final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
 {
     let ghost before = *krnl;
     let ghost before_lctx = *lctx;
@@ -210,8 +225,8 @@ pub(crate) fn kill_mark_child(
 }
 
 /// Work on the first thread of the childless target. A thread waiting for a reply leaves the target as an unlocked
-/// dangling thread. Any other thread is marked, taken off the scheduler shard, endpoint queue, or remote cpu it occupies, unlinked
-/// from the target, and reclaimed.
+/// dangling thread. Any other thread is marked, taken off the scheduler shard, endpoint queue, or remote cpu it occupies, releases
+/// its caller, is unlinked from the target, and is reclaimed.
 pub(crate) fn kill_first_thread(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
     thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, killer_info: KillerInfo, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>,
@@ -242,6 +257,19 @@ pub(crate) fn kill_first_thread(
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
         final(krnl).prc_mp.spec_index(process_ptr) == old(krnl).prc_mp.spec_index(process_ptr),
         final(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() < old(krnl).prc_mp.spec_index(target).view().owned_threads.view().len(),
+        forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
+            &&& final(krnl).ctn_mp.dom().contains(c)
+            &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
+            &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
+            &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
+            &&& final(krnl).ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
+        },
+        scope is Container ==> final(krnl).ctn_mp.spec_index(scope->Container_container).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(scope->Container_container).view_ghost().owned_processes,
+        final(lctx).container_lock_map() == old(lctx).container_lock_map(),
+        final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
 {
     let ghost before = *krnl;
     let ghost before_lctx = *lctx;
@@ -310,6 +338,8 @@ pub(crate) fn kill_first_thread(
         }
         kill_victim_off_cpu_or_queue(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, victim_ptr, killer_info, Ghost(chain), Tracked(chain_perms),
             Tracked(cpu_perm), Tracked(process_perm), Tracked(thread_perm), Tracked(&victim_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
+        kill_release_victim_caller(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, victim_ptr, Ghost(chain), Tracked(chain_perms),
+            Tracked(cpu_perm), Tracked(process_perm), Tracked(thread_perm), Tracked(&victim_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
         kill_unlink_victim(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, victim_ptr, Ghost(chain), Tracked(chain_perms),
             Tracked(cpu_perm), Tracked(process_perm), Tracked(thread_perm), Tracked(&victim_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
         kill_reclaim_victim(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, victim_ptr, Ghost(chain), Tracked(chain_perms),
@@ -372,6 +402,18 @@ pub(crate) fn kill_victim_off_cpu_or_queue(
         }),
         final(krnl).thr_mp.spec_index(victim_ptr).locking_thread() == old(krnl).thr_mp.spec_index(victim_ptr).locking_thread(),
         final(krnl).thr_mp.spec_index(victim_ptr).being_killed(),
+        forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
+            &&& final(krnl).ctn_mp.dom().contains(c)
+            &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
+            &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
+            &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
+            &&& final(krnl).ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
+        },
+        final(lctx).container_lock_map() == old(lctx).container_lock_map(),
+        final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
 {
     let ghost before = *krnl;
     let ghost before_lctx = *lctx;
@@ -423,6 +465,87 @@ pub(crate) fn kill_victim_off_cpu_or_queue(
     }
 }
 
+/// Release the caller of the killed first thread `victim_ptr`, still linked to the target: wake a caller waiting for the reply, or
+/// take over the dangling thread of a killed caller and reclaim it with the dangling threads it serves.
+pub(crate) fn kill_release_victim_caller(
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
+    thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, victim_ptr: RwLockThreadPtr, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>,
+    Tracked(chain_perms): Tracked<&Map<RwLockProcessPtr, LockPerm>>, Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>,
+    Tracked(thread_perm): Tracked<&LockPerm>, Tracked(victim_perm): Tracked<&LockPerm>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>,
+)
+    requires
+        old(krnl).inv(),
+        typed_lock_maps_aligned(old(krnl), old(lctx)),
+        old(lctx).kernel_view_locking_state() is Acquire,
+        old(steps).snapshot_k() == *old(krnl),
+        0 <= start <= old(steps).view().len(),
+        kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
+        kill_walk_state(*old(krnl), *old(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, Some(victim_ptr), KillStage::Thread { thread: victim_ptr }, *cpu_perm, *process_perm,
+            *thread_perm, *chain_perms),
+        0 < chain.len(),
+        target == chain[chain.len() - 1],
+        old(krnl).thr_mp.dom().contains(victim_ptr),
+        old(krnl).thr_mp.spec_index(victim_ptr).being_killed(),
+        typed_lock_map_contains_mode(old(lctx).thread_lock_map(), victim_ptr, TypedLockMode::Write),
+        victim_perm.state() is WriteLock,
+        victim_perm.thread_id() == old(lctx).thread_id(),
+        victim_perm.lock_id() == old(krnl).thr_mp.spec_index(victim_ptr).locking_thread()->Write_lock_id,
+        old(krnl).thr_mp.spec_index(victim_ptr).view().state is KILLED,
+    ensures
+        final(krnl).inv(),
+        typed_lock_maps_aligned(final(krnl), final(lctx)),
+        typed_lock_maps_unchanged(old(lctx), final(lctx)),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() is Acquire,
+        final(steps).snapshot_k() == *final(krnl),
+        old(steps).view().len() <= final(steps).view().len(),
+        forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+        kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, Some(victim_ptr), KillStage::Thread { thread: victim_ptr }, *cpu_perm, *process_perm,
+            *thread_perm, *chain_perms),
+        final(krnl).prc_mp.spec_index(target) == old(krnl).prc_mp.spec_index(target),
+        final(krnl).prc_mp.spec_index(process_ptr) == old(krnl).prc_mp.spec_index(process_ptr),
+        final(krnl).thr_mp.dom().contains(victim_ptr),
+        final(krnl).thr_mp.spec_index(victim_ptr).view() == (Thread { caller: None, ..old(krnl).thr_mp.spec_index(victim_ptr).view() }),
+        final(krnl).thr_mp.spec_index(victim_ptr).locking_thread() == old(krnl).thr_mp.spec_index(victim_ptr).locking_thread(),
+        final(krnl).thr_mp.spec_index(victim_ptr).being_killed(),
+        forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
+            &&& final(krnl).ctn_mp.dom().contains(c)
+            &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
+            &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
+            &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
+            &&& final(krnl).ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
+        },
+        final(lctx).container_lock_map() == old(lctx).container_lock_map(),
+        final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
+{
+    let ghost before = *krnl;
+    let ghost before_lctx = *lctx;
+    let ghost before_steps = steps.view();
+    proof { assert(kernel_steps_prefix_unchanged(before_steps, before_steps)) by { reveal(kernel_steps_prefix_unchanged); }; }
+    let (next, Tracked(next_perm)) = release_killed_thread_caller(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, victim_ptr, Tracked(victim_perm));
+    proof {
+        kill_step_pre_from_k(&before, &before_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Thread { thread: victim_ptr }, scope);
+        kill_trace_from_killed_thread_reclaim(&*steps, before_steps, start, pre, kernel_k_to_kernel_u(before), cpu_id, ctx, process_ptr, target, KillStage::Thread { thread: victim_ptr }, scope);
+    }
+    if let Some(caller_ptr) = next {
+        let ghost reclaim_k = *krnl;
+        let ghost reclaim_lctx = *lctx;
+        let ghost reclaim_before = steps.view();
+        let tracked caller_perm = next_perm.tracked_unwrap();
+        proof { assert(kernel_steps_prefix_unchanged(reclaim_before, reclaim_before)) by { reveal(kernel_steps_prefix_unchanged); }; }
+        reclaim_killed_thread_chain(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, caller_ptr, Tracked(caller_perm));
+        proof {
+            kill_step_pre_from_k(&reclaim_k, &reclaim_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Thread { thread: victim_ptr }, scope);
+            kill_trace_from_killed_thread_reclaim(&*steps, reclaim_before, start, pre, kernel_k_to_kernel_u(reclaim_k), cpu_id, ctx, process_ptr, target, KillStage::Thread { thread: victim_ptr }, scope);
+            assert(lctx.thread_lock_map() =~= old(lctx).thread_lock_map());
+        }
+    }
+}
+
 /// Unlink the killed first thread `victim_ptr` from the target, which absorbs its quota, and walk the target again.
 pub(crate) fn kill_unlink_victim(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
@@ -449,6 +572,7 @@ pub(crate) fn kill_unlink_victim(
         victim_perm.thread_id() == old(lctx).thread_id(),
         victim_perm.lock_id() == old(krnl).thr_mp.spec_index(victim_ptr).locking_thread()->Write_lock_id,
         old(krnl).thr_mp.spec_index(victim_ptr).view().state is KILLED,
+        old(krnl).thr_mp.spec_index(victim_ptr).view().caller is None,
         old(krnl).thr_mp.spec_index(victim_ptr).view().temp_alloc_clean(),
     ensures
         final(krnl).inv(),
@@ -469,6 +593,18 @@ pub(crate) fn kill_unlink_victim(
         final(krnl).thr_mp.spec_index(victim_ptr).locking_thread() == old(krnl).thr_mp.spec_index(victim_ptr).locking_thread(),
         final(krnl).prc_mp.spec_index(process_ptr) == old(krnl).prc_mp.spec_index(process_ptr),
         final(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() < old(krnl).prc_mp.spec_index(target).view().owned_threads.view().len(),
+        forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
+            &&& final(krnl).ctn_mp.dom().contains(c)
+            &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
+            &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
+            &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
+            &&& final(krnl).ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
+        },
+        final(lctx).container_lock_map() == old(lctx).container_lock_map(),
+        final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
 {
     let ghost before = *krnl;
     let ghost before_lctx = *lctx;
@@ -546,6 +682,18 @@ pub(crate) fn kill_reclaim_victim(
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
         final(krnl).prc_mp.spec_index(process_ptr) == old(krnl).prc_mp.spec_index(process_ptr),
         final(krnl).prc_mp.spec_index(target) == old(krnl).prc_mp.spec_index(target),
+        forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
+            &&& final(krnl).ctn_mp.dom().contains(c)
+            &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
+            &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
+            &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
+            &&& final(krnl).ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
+        },
+        final(lctx).container_lock_map() == old(lctx).container_lock_map(),
+        final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
 {
     let ghost reclaim_k = *krnl;
     let ghost reclaim_lctx = *lctx;

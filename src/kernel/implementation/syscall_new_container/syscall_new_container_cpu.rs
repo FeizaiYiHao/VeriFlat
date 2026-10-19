@@ -36,6 +36,7 @@ pub(super) fn transfer_new_container_cpu(
         child_cpu_set_lock_perm.state() is WriteLock,
         child_cpu_set_lock_perm.thread_id() == old(lctx).thread_id(),
         child_cpu_set_lock_perm.lock_id() == old(krnl).cpu_set_mp.spec_index(child_cpu_set).locking_thread()->Write_lock_id,
+        !old(krnl).cpu_set_mp.spec_index(parent_cpu_set).being_killed() && !old(krnl).cpu_set_mp.spec_index(child_cpu_set).being_killed(),
     ensures
         final(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view().view() == (CpuView {
             owning_container: child_container_ptr, container_depth: old(krnl).ctn_mp.spec_index(child_container_ptr).view_rodata().view().depth,
@@ -68,6 +69,7 @@ pub(super) fn transfer_new_container_cpu(
         *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_set_mp: final(krnl).cpu_set_mp, ..*old(krnl) }),
         final(krnl).cpu_set_mp.spec_index(parent_cpu_set).locking_thread() is None,
         final(krnl).cpu_set_mp.spec_index(child_cpu_set).locking_thread() is None,
+        !final(krnl).cpu_set_mp.spec_index(parent_cpu_set).being_killed() && !final(krnl).cpu_set_mp.spec_index(child_cpu_set).being_killed(),
         forall|p: RwLockCpuSetPtr| #![trigger final(krnl).cpu_set_mp.spec_index(p)]
             old(krnl).cpu_set_mp.dom().contains(p) && p != parent_cpu_set && p != child_cpu_set ==> final(krnl).cpu_set_mp.spec_index(p) == old(krnl).cpu_set_mp.spec_index(p),
         forall|cpu_id: CpuId| #![trigger final(krnl).cpu_arr.spec_index(cpu_id)]
@@ -119,6 +121,7 @@ pub(super) fn transfer_new_container_cpu(
             reveal(new_container_cpu_transfer_eof_transition_framing);
         };
         new_container_cpu_transfer_eof(locked_k, *krnl, parent_container_ptr, child_container_ptr, parent_cpu_set, child_cpu_set, transfer_cpu_id, lctx.thread_id());
+        assert(!krnl.cpu_set_mp.spec_index(parent_cpu_set).being_killed() && !krnl.cpu_set_mp.spec_index(child_cpu_set).being_killed()) by { reveal(new_container_cpu_transfer_eof_transition_framing); };
     }
     krnl.wunlock_cpu(transfer_cpu_id, Tracked(&mut *lctx), Tracked(transfer_cpu_lock_perm));
     krnl.wunlock_cpu_set(child_cpu_set, Tracked(&mut *lctx), Tracked(child_cpu_set_lock_perm));

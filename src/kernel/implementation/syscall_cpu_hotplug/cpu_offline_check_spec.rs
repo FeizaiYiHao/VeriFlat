@@ -4,10 +4,11 @@ use super::cpu_offline_check::OfflineCheckResult;
 
 verus! {
 /// The result of `cpu_offline_check` from the state at entry: an Off cpu, a cpu a killer marked, a clear request
-/// bit, or a killed running process or thread continue to the scheduler; otherwise the cpu goes Off.
+/// bit, a cpu set a killer marked, or a killed running process or thread continue to the scheduler; otherwise the cpu
+/// goes Off.
 pub open spec fn cpu_offline_check_result(pre: KernelU, cpu_id: CpuId) -> OfflineCheckResult {
     let cpu = pre.cpu_array[cpu_id as int];
-    if cpu.state is Off || cpu.killed || !pre.container_map[cpu.owning_container].cpu_offline_requests[cpu_id as int]
+    if cpu.state is Off || cpu.killed || !pre.container_map[cpu.owning_container].cpu_offline_requests[cpu_id as int] || pre.container_map[cpu.owning_container].cpu_set_killed
         || (cpu.current_process is Some && (pre.process_map[cpu.current_process->Some_0].killed || pre.thread_map[cpu.current_thread->Some_0].killed)) {
         OfflineCheckResult::Continue
     } else { OfflineCheckResult::Off }
@@ -129,6 +130,7 @@ pub open spec fn cpu_went_off_eof_transition_framing(
     &&& cpu_set_after.view().owned_cpus.closed_view() == cpu_set_before.view().owned_cpus.closed_view().insert(cpu_id)
     &&& post.cpu_offline_mp.unchanged_except(&pre.cpu_offline_mp, flags_ptr)
     &&& table_after.owning_container == table_before.owning_container
+    &&& table_after.container_depth == table_before.container_depth
     &&& table_after.flags.entries_unchanged_except(&table_before.flags, cpu_id)
     &&& !cell_after.view().requested
     &&& cell_after.view().index() == cell_before.view().index()

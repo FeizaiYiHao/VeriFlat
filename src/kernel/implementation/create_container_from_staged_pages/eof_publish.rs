@@ -101,6 +101,11 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
         index_valid(NUM_PAGES, index) && !funding_indices.contains(index) && !page_2m_tail_indices(container_head).contains(index) && !page_2m_tail_indices(pcid_allocator_head).contains(index) && unpublished(index)
             ==> post.pg_arr.spec_index(index).view().view().owning_container == pre.pg_arr.spec_index(index).view().view().owning_container
     &&& forall|index: PageIndex|
+        #![trigger post.pg_arr.spec_index(index).view().view().is_io_page]
+        #![trigger pre.pg_arr.spec_index(index).view().view().is_io_page]
+        index_valid(NUM_PAGES, index) && !funding_indices.contains(index) && !page_2m_tail_indices(container_head).contains(index) && !page_2m_tail_indices(pcid_allocator_head).contains(index) && unpublished(index)
+            ==> post.pg_arr.spec_index(index).view().view().is_io_page == pre.pg_arr.spec_index(index).view().view().is_io_page
+    &&& forall|index: PageIndex|
         #![trigger post.pg_arr.spec_index(index).view().view().free_list_node_storage]
         #![trigger pre.pg_arr.spec_index(index).view().view().free_list_node_storage]
         index_valid(NUM_PAGES, index) && !funding_indices.contains(index) && !page_2m_tail_indices(container_head).contains(index) && !page_2m_tail_indices(pcid_allocator_head).contains(index) && unpublished(index)
@@ -167,6 +172,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
             &&& post.ctn_mp.spec_index(ptr).view_ghost().owned_processes == pre.ctn_mp.spec_index(ptr).view_ghost().owned_processes
             &&& post.ctn_mp.spec_index(ptr).view_ghost().owned_indirect_threads == pre.ctn_mp.spec_index(ptr).view_ghost().owned_indirect_threads
             &&& post.ctn_mp.spec_index(ptr).view_ghost().owned_endpoints == pre.ctn_mp.spec_index(ptr).view_ghost().owned_endpoints
+            &&& post.ctn_mp.spec_index(ptr).view_ghost().retire_ready == pre.ctn_mp.spec_index(ptr).view_ghost().retire_ready
             &&& ptr != parent_container_ptr ==> post.ctn_mp.spec_index(ptr).view() == pre.ctn_mp.spec_index(ptr).view()
         }
     &&& forall|ptr: RwLockContainerPtr|
@@ -198,6 +204,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& !post.ctn_mp.spec_index(container_page).being_killed()
     &&& post.ctn_mp.spec_index(container_page).view_ghost().owned_processes.view() == set![process_page]
     &&& post.ctn_mp.spec_index(container_page).view_ghost().owned_endpoints.view().is_empty()
+    &&& !post.ctn_mp.spec_index(container_page).view_ghost().retire_ready
     &&& post.ctn_mp.spec_index(container_page).view().owned_pages.view() == moved_pages
     &&& post.ctn_mp.spec_index(container_page).view_rodata().view().parent == Some(parent_container_ptr)
     &&& post.ctn_mp.spec_index(container_page).view_rodata().view().depth == pre.ctn_mp.spec_index(parent_container_ptr).view_rodata().view().depth + 1
@@ -272,6 +279,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& post.cpu_set_mp.spec_index(cpu_set_page).view().container_depth.view() == post.ctn_mp.spec_index(container_page).view_rodata().view().depth
     &&& post.cpu_set_mp.spec_index(cpu_set_page).view().owned_cpus.view().is_empty()
     &&& post.cpu_set_mp.spec_index(cpu_set_page).view().owned_cpus.closed_view().is_empty()
+    &&& !post.cpu_set_mp.spec_index(cpu_set_page).being_killed()
     &&& post.cpu_offline_mp.perms_wf()
     &&& post.cpu_offline_mp.dom() =~= pre.cpu_offline_mp.dom().insert(cpu_offline_flags_ptr(container_page))
     &&& forall|ptr: RwLockCpuOfflineFlagsPtr|
@@ -279,6 +287,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
         pre.cpu_offline_mp.dom().contains(ptr) ==> post.cpu_offline_mp.spec_index(ptr) == pre.cpu_offline_mp.spec_index(ptr)
     &&& post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_page)).inv()
     &&& post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_page)).owning_container.view() == container_page
+    &&& post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_page)).container_depth.view() == post.ctn_mp.spec_index(container_page).view_rodata().view().depth
     &&& forall|cpu_id: CpuId|
         #![trigger post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_page)).flags.spec_index(cpu_id)]
         index_valid(NUM_CPUS, cpu_id) ==> {
@@ -355,6 +364,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& post.thr_mp.spec_index(current_thread_ptr).locking_thread() is Write
     &&& post.thr_mp.spec_index(current_thread_ptr).being_killed() == pre.thr_mp.spec_index(current_thread_ptr).being_killed()
     &&& post.thr_mp.spec_index(current_thread_ptr).killer_info() == pre.thr_mp.spec_index(current_thread_ptr).killer_info()
+    &&& post.thr_mp.spec_index(current_thread_ptr).view_ghost() == pre.thr_mp.spec_index(current_thread_ptr).view_ghost()
     &&& thread_quota_4k_fields_unchanged(pre.thr_mp, post.thr_mp)
     &&& thread_quota_2m_fields_unchanged(pre.thr_mp, post.thr_mp)
     &&& thread_quota_1g_fields_unchanged(pre.thr_mp, post.thr_mp)

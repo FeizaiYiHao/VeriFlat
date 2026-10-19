@@ -52,6 +52,18 @@ pub proof fn container_process_wf_container_at(container_perms: ContainerLockedM
         }),
 { reveal(container_process_wf); }
 
+/// Container `c_ptr` owning a process owns its root process, which is in the process map.
+pub proof fn container_process_wf_root_at(container_perms: ContainerLockedMap, process_perms: ProcessLockedMap, c_ptr: RwLockContainerPtr)
+    requires
+        container_process_wf(container_perms, process_perms),
+        container_perms.dom().contains(c_ptr),
+    ensures
+        !container_perms.spec_index(c_ptr).view_ghost().owned_processes.view().is_empty() ==> {
+            &&& process_perms.dom().contains(container_perms.spec_index(c_ptr).view().root_process)
+            &&& container_perms.spec_index(c_ptr).view_ghost().owned_processes.view().contains(container_perms.spec_index(c_ptr).view().root_process)
+        },
+{ reveal(container_process_wf); }
+
 #[verifier::opaque]
 pub open spec fn per_container_process_tree_wf(container_perms: ContainerLockedMap, process_perms: ProcessLockedMap) -> bool
     recommends

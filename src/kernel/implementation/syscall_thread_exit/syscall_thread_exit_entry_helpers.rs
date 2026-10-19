@@ -86,6 +86,7 @@ pub(super) fn thread_exit_lock_running_thread(krnl: &mut KernelK, Tracked(lctx):
             &&& final(krnl).prc_mp.spec_index(e.process_ptr).view().state.view() is Running
             &&& thread.state == (ThreadState::RUNNING { cpu_id }) && thread.owning_proc == e.process_ptr && thread.owning_container == e.container_ptr
             &&& thread.temp_alloc_clean() && thread.free_quota_pending_clean() && thread.syscall_progress.view() is None
+            &&& !final(krnl).thr_mp.spec_index(e.thread_ptr).view_ghost().exited
             &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, ctn_mp: final(krnl).ctn_mp, prc_mp: final(krnl).prc_mp, thr_mp: final(krnl).thr_mp, ..*old(krnl) })
             &&& final(krnl).cpu_arr.unchanged_except(&old(krnl).cpu_arr, cpu_id)
             &&& final(krnl).ctn_mp.unchanged_except(&old(krnl).ctn_mp, e.container_ptr)

@@ -78,6 +78,7 @@ pub const NR_REPLY_AND_RECEIVE: usize = 40;
 pub const NR_REPLY_AND_RECEIVE_USIZE: usize = 41;
 pub const NR_THREAD_EXIT: usize = 42;
 pub const NR_KILL_PROCESS: usize = 43;
+pub const NR_KILL_CONTAINER: usize = 44;
 
 /// Trap-layer error codes, returned in `rax`.
 pub const ERR_INVALID_SYSCALL: isize = -1;
@@ -252,6 +253,12 @@ pub unsafe fn sys_new_endpoint(endpoint_index: usize) -> isize {
 /// reclaimed or left dangling for its callee, and every process is reclaimed.
 pub unsafe fn sys_kill_process(child: usize) -> isize {
     syscall1(NR_KILL_PROCESS, child).rax
+}
+
+/// Kills the `child`-th child container of the calling thread's container and every container below it:
+/// their processes are killed, their cpus and free pages move to the calling container, and they are retired.
+pub unsafe fn sys_kill_container(child: usize) -> isize {
+    syscall1(NR_KILL_CONTAINER, child).rax
 }
 
 pub unsafe fn sys_mmap_4k(va: usize, range: usize) -> isize {

@@ -41,6 +41,7 @@ pub(super) fn cpu_offline_commit(
         old(krnl).sched_mp.unchanged_except(&old(steps).snapshot_k().sched_mp, scheduler_ptr),
         old(krnl).cpu_set_mp.unchanged_except(&old(steps).snapshot_k().cpu_set_mp, cpu_set_ptr),
         old(steps).snapshot_k().cpu_set_mp.spec_index(cpu_set_ptr).locking_thread() is None,
+        !old(steps).snapshot_k().cpu_set_mp.spec_index(cpu_set_ptr).being_killed() && !old(krnl).cpu_set_mp.spec_index(cpu_set_ptr).being_killed(),
         old(krnl).cpu_offline_mp.unchanged_except(&old(steps).snapshot_k().cpu_offline_mp, flags_ptr),
         old(krnl).cpu_offline_mp.spec_index(flags_ptr).flags.entries_unchanged_except(&old(steps).snapshot_k().cpu_offline_mp.spec_index(flags_ptr).flags, cpu_id),
         old(steps).snapshot_k().cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_id).view().locking_thread() is None,
@@ -132,6 +133,7 @@ pub(super) fn cpu_offline_commit(
             &&& old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean()
             &&& old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean()
             &&& old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None
+            &&& !old(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited
             &&& !old(krnl).sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.view().contains(thread_ptr)
             &&& typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write)
             &&& perm.state() is WriteLock

@@ -64,7 +64,7 @@ proof fn thread_exit_destroy_eof_subsystems_inv(
     assert(container_perms_wf(post.ctn_mp)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
     assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };
     assert(thread_perms_wf(post.thr_mp)) by {
-        reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+        reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
     };
     assert(allocator_perms_wf(post.allc_4k_mp)) by { reveal(allocator_perms_wf); };
     reveal(KernelK::default_pagetable_wf);
@@ -120,6 +120,7 @@ proof fn thread_exit_destroy_eof_page_relations(
         container_pages_wf(post.pg_arr, post.ctn_mp),
         process_pages_wf(post.pg_arr, post.prc_mp),
         process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp),
+        page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp),
         pagetable_pages_wf(post.pt_mp, post.pg_arr),
         pagetable_pages_wf(post.it_mp, post.pg_arr),
         thread_pages_wf(post.thr_mp, post.pg_arr),
@@ -134,6 +135,7 @@ proof fn thread_exit_destroy_eof_page_relations(
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.it_mp),
         post.allocator_free_pages_wf(),
         container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
+        container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
         container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr),
         container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
         container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr),
@@ -156,6 +158,11 @@ proof fn thread_exit_destroy_eof_page_relations(
     assert(container_pages_wf(post.pg_arr, post.ctn_mp)) by { container_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.ctn_mp, post.ctn_mp); };
     assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { process_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.prc_mp, post.prc_mp); };
     assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
+    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by {
+        vstd::set_lib::lemma_set_empty_equivalency_len(thread.temp_alloc_cache_4k.view()); vstd::set_lib::lemma_set_empty_equivalency_len(thread.temp_alloc_cache_2m.view());
+        vstd::set_lib::lemma_set_empty_equivalency_len(thread.temp_alloc_cache_1g.view());
+        reveal(page_object_owner_wf); reveal(container_page_owner_wf); reveal(thread_staged_pages_4k_wf); reveal(thread_staged_pages_2m_wf); reveal(thread_staged_pages_1g_wf);
+    };
     assert(pagetable_pages_wf(post.pt_mp, post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, post.pt_mp, pre.pg_arr, post.pg_arr); };
     assert(pagetable_pages_wf(post.it_mp, post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.it_mp, post.it_mp, pre.pg_arr, post.pg_arr); };
     assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); page_ptr2page_index_injective(); };
@@ -171,6 +178,11 @@ proof fn thread_exit_destroy_eof_page_relations(
     assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.it_mp)) by { reveal(process_emptied_tables_wf); };
     assert(allocator_free_page_ptrs_wf(post.allc_4k_mp)) by { reveal(allocator_free_page_ptrs_wf); };
     assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { container_allocator_wf_preserved_for_owner_depth_eq(pre.ctn_mp, post.ctn_mp, pre.allc_4k_mp, post.allc_4k_mp, pre.allc_2m_mp, post.allc_2m_mp, pre.allc_1g_mp, post.allc_1g_mp); };
+    assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
+        page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_object_owner_wf_at(pre.pg_arr, pre.ctn_mp, pre.thr_mp, page_ptr2page_index(thread_ptr));
+        container_thread_wf_at(pre.ctn_mp, pre.thr_mp, thread_ptr); pre.ctn_mp.spec_index(container_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
+        reveal(container_kill_retire_wf); reveal(container_allocator_wf); reveal(container_uppertree_seq_wf);
+    };
     assert(container_allocator_global_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf); };
     assert(container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by {
         reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); reveal(container_allocator_wf); reveal(allocator_free_page_ptrs_wf); reveal(page_array_wf);
@@ -246,6 +258,9 @@ proof fn thread_exit_destroy_eof_thread_relations(
         pre.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
         pre.thr_mp.spec_index(thread_ptr).view().caller is None,
         pre.thr_mp.spec_index(thread_ptr).view().callee is None,
+        pre.thr_mp.spec_index(thread_ptr).locking_thread() is Write,
+        forall|u: RwLockThreadPtr| #![trigger pre.thr_mp.spec_index(u).locking_thread()]
+            pre.thr_mp.dom().contains(u) && pre.thr_mp.spec_index(u).wlocked_by_thread(pre.thr_mp.spec_index(thread_ptr).locking_thread()->Write_thread_id) ==> u == thread_ptr,
         forall|j: int| #![trigger pre.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().spec_index(j)] 0 <= j < MAX_NUM_ENDPOINT_DESCRIPTORS ==> pre.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().spec_index(j) is None,
         pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
         pre.thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
@@ -276,12 +291,14 @@ proof fn thread_exit_destroy_eof_thread_relations(
         per_container_process_tree_wf(post.ctn_mp, post.prc_mp),
         process_kill_mark_wf(post.ctn_mp, post.prc_mp),
         container_kill_mark_wf(post.ctn_mp, post.prc_mp),
+        cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp),
         process_state_lock_wf(post.prc_mp),
         process_emptied_threads_wf(post.prc_mp, post.thr_mp),
         container_endpoint_wf(post.ctn_mp, post.ep_mp),
         thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp),
         thread_endpoint_queue_wf(post.thr_mp, post.ep_mp),
         thread_caller_callee_wf(post.thr_mp),
+        thread_dangling_chain_end_wf(post.thr_mp),
         container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp),
         container_scheduler_wf(post.ctn_mp, post.sched_mp),
         container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp),
@@ -306,12 +323,17 @@ proof fn thread_exit_destroy_eof_thread_relations(
     };
     assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
     assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
+    assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by { reveal(cpu_set_kill_mark_wf); };
     assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
     assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); reveal(process_thread_wf); };
     assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { container_endpoint_wf_preserved_for_endpoint_owner_eq(pre.ctn_mp, post.ctn_mp, pre.ep_mp, post.ep_mp); };
     assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_perms_wf); reveal(thread_endpoint_ref_counter_wf); };
     assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_queue_wf); };
     assert(thread_caller_callee_wf(post.thr_mp)) by { reveal(thread_caller_callee_wf); };
+    assert(thread_dangling_chain_end_wf(post.thr_mp)) by {
+        thread_dangling_chain_end_on_caller_chain(pre.thr_mp, thread_ptr, Set::<RwLockThreadPtr>::empty(), pre.thr_mp.spec_index(thread_ptr).view().call_depth.view());
+        reveal(thread_dangling_chain_end_wf); reveal(thread_caller_callee_wf);
+    };
     assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); reveal(container_endpoint_wf); reveal(container_thread_endpoint_wf); };
     assert(container_scheduler_wf(post.ctn_mp, post.sched_mp)) by { container_scheduler_wf_preserved_for_scheduler_owner_eq(pre.ctn_mp, post.ctn_mp, pre.sched_mp, post.sched_mp); };
     assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
@@ -384,6 +406,27 @@ proof fn thread_exit_destroy_eof_cpu_relations(
 
 /// The destroyed exiting thread, its idle cpu, its zombie-marked process and container, and its page returned to the
 /// owner's allocator keep the kernel invariant.
+/// The exiting thread's process keeps its PCI functions and IOMMU tables, so every IOMMU relation survives the destroy step.
+proof fn thread_exit_destroy_eof_iommu_relations(
+    pre: KernelK, post: KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
+    owner: RwLockContainerPtr, allocator_ptr: RwLockPageAllocatorPtr, proc_node_addr: usize, cache_node_addr: usize,
+)
+    requires
+        pre.inv(),
+        thread_exit_destroy_eof_transition_framing(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr),
+    ensures
+        iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
+        process_pci_function_ownership_wf(post.irt.view(), post.prc_mp),
+        iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
+        iommu_table_lock_wf(post.irt.view(), post.prc_mp, post.it_mp),
+{
+    reveal(thread_exit_destroy_eof_transition_framing);
+    assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
+    assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
+    assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
+    assert(iommu_table_lock_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_table_lock_wf); };
+}
+
 pub(super) proof fn thread_exit_destroy_eof(
     pre: KernelK, post: KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
     owner: RwLockContainerPtr, allocator_ptr: RwLockPageAllocatorPtr, proc_node_addr: usize, cache_node_addr: usize,
@@ -400,6 +443,9 @@ pub(super) proof fn thread_exit_destroy_eof(
         pre.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
         pre.thr_mp.spec_index(thread_ptr).view().caller is None,
         pre.thr_mp.spec_index(thread_ptr).view().callee is None,
+        pre.thr_mp.spec_index(thread_ptr).locking_thread() is Write,
+        forall|u: RwLockThreadPtr| #![trigger pre.thr_mp.spec_index(u).locking_thread()]
+            pre.thr_mp.dom().contains(u) && pre.thr_mp.spec_index(u).wlocked_by_thread(pre.thr_mp.spec_index(thread_ptr).locking_thread()->Write_thread_id) ==> u == thread_ptr,
         forall|j: int| #![trigger pre.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().spec_index(j)] 0 <= j < MAX_NUM_ENDPOINT_DESCRIPTORS ==> pre.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().spec_index(j) is None,
         pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
         pre.thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
@@ -443,11 +489,8 @@ pub(super) proof fn thread_exit_destroy_eof(
     thread_exit_destroy_eof_allocator_quota_wf(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr);
     thread_exit_destroy_eof_thread_relations(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr);
     thread_exit_destroy_eof_cpu_relations(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr);
+    thread_exit_destroy_eof_iommu_relations(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr);
     reveal(thread_exit_destroy_eof_transition_framing);
-    assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
-    assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
-    assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
-    assert(iommu_table_lock_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_table_lock_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
         reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match);
         reveal(container_cpu_wf);

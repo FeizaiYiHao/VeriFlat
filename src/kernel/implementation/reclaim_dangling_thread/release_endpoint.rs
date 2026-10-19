@@ -60,6 +60,7 @@ pub fn release_endpoint_last_reference(
         old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.view() == Seq::<RwLockThreadPtr>::empty(),
         *final(krnl) == (KernelK { ctn_mp: final(krnl).ctn_mp, thr_mp: final(krnl).thr_mp, ep_mp: final(krnl).ep_mp, pg_arr: final(krnl).pg_arr, allc_4k_mp: final(krnl).allc_4k_mp, ..*old(krnl) }),
         final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, thread_ptr),
+        final(krnl).thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
         final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { endpoint_descriptors: final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
         final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view() == old(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().update(index as int, None),
         final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread(),

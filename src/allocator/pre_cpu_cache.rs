@@ -2,21 +2,21 @@ use vstd::prelude::*;
 use crate::*;
 use vstd::simple_pptr::*;
 verus! {
-pub struct AllocatorCache {
+pub struct AllocatorCache<const SIZE: usize> {
     pub linked_list: LinkedList<PagePtr, 233>,
 }
 
-impl LockOwnerIdTrait for AllocatorCache {
+impl<const SIZE: usize> LockOwnerIdTrait for AllocatorCache<SIZE> {
     open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
     open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
 }
 
-impl LockInvTrait for AllocatorCache {
+impl<const SIZE: usize> LockInvTrait for AllocatorCache<SIZE> {
     open spec fn inv(&self) -> bool { self.wf() }
 }
 
-impl LockMajorTrait for AllocatorCache {
-    open spec fn lock_major_1(&self) -> LockMajorId { ALLOCATOR_CACHE_MAJOR }
+impl<const SIZE: usize> LockMajorTrait for AllocatorCache<SIZE> {
+    open spec fn lock_major_1(&self) -> LockMajorId { allocator_cache_major(SIZE) }
     open spec fn lock_major_2(&self) -> LockMajorId { 233 }
     open spec fn lock_major_3(&self) -> LockMajorId { 233 }
     open spec fn lock_major_default(&self) -> LockMajorId { 233 }
@@ -26,7 +26,7 @@ impl LockMajorTrait for AllocatorCache {
     open spec fn lock_major_default_predicate(&self) -> bool { false }
 }
 
-impl AllocatorCache {
+impl<const SIZE: usize> AllocatorCache<SIZE> {
     pub open spec fn wf(&self) -> bool {
         &&& self.linked_list.wf()
         &&& self.watermark_wf()

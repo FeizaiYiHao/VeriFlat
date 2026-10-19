@@ -22,7 +22,7 @@ proof fn release_endpoint_eof_subsystems_inv(
 {
     reveal(release_endpoint_eof_transition_framing);
     assert(thread_perms_wf(post.thr_mp)) by {
-        reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+        reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
     };
     assert(endpoint_perms_wf(post.ep_mp)) by { reveal(endpoint_perms_wf); };
     assert(allocator_perms_wf(post.allc_4k_mp)) by { reveal(allocator_perms_wf); };
@@ -58,6 +58,7 @@ proof fn release_endpoint_eof_page_relations(
         container_pages_wf(post.pg_arr, post.ctn_mp),
         process_pages_wf(post.pg_arr, post.prc_mp),
         process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp),
+        page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp),
         pagetable_pages_wf(post.pt_mp, post.pg_arr),
         pagetable_pages_wf(post.it_mp, post.pg_arr),
         thread_pages_wf(post.thr_mp, post.pg_arr),
@@ -89,6 +90,7 @@ proof fn release_endpoint_eof_page_relations(
     assert(container_pages_wf(post.pg_arr, post.ctn_mp)) by { container_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.ctn_mp, post.ctn_mp); };
     assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { process_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.prc_mp, post.prc_mp); };
     assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
+    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
     assert(pagetable_pages_wf(post.pt_mp, post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, post.pt_mp, pre.pg_arr, post.pg_arr); };
     assert(pagetable_pages_wf(post.it_mp, post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.it_mp, post.it_mp, pre.pg_arr, post.pg_arr); };
     assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
@@ -162,11 +164,13 @@ proof fn release_endpoint_eof_process_relations(
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { reveal(per_container_process_tree_wf); };
     assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
     assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
+    assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by { reveal(cpu_set_kill_mark_wf); };
     assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { reveal(container_endpoint_wf); };
     assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { container_cpu_wf_preserved_for_container_cpu_fields_eq(pre.ctn_mp, post.ctn_mp, post.cpu_set_mp, post.cpu_arr); };
     assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { thread_perms_wf_at(pre.thr_mp, thread_ptr); reveal(thread_endpoint_ref_counter_wf); };
     assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_queue_wf); };
     assert(thread_caller_callee_wf(post.thr_mp)) by { thread_caller_callee_wf_preserved_for_call_link_eq(pre.thr_mp, post.thr_mp); };
+    assert(thread_dangling_chain_end_wf(post.thr_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thr_mp, post.thr_mp); };
     assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by {
         thread_perms_wf_at(pre.thr_mp, thread_ptr); reveal(container_thread_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(container_endpoint_wf);
     };
@@ -217,6 +221,12 @@ pub(super) proof fn release_endpoint_eof(
     release_endpoint_eof_subsystems_inv(pre, post, thread_ptr, endpoint_ptr, index, allocator_ptr, node_addr);
     release_endpoint_eof_page_relations(pre, post, thread_ptr, endpoint_ptr, index, owner, allocator_ptr, node_addr);
     release_endpoint_eof_allocator_quota_wf(pre, post, thread_ptr, endpoint_ptr, index, allocator_ptr, node_addr);
+    assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
+        reveal(release_endpoint_eof_transition_framing); page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
+        page_object_owner_wf_at(pre.pg_arr, pre.ctn_mp, pre.thr_mp, page_ptr2page_index(endpoint_ptr));
+        container_thread_endpoint_wf_at(pre.ctn_mp, pre.thr_mp, pre.ep_mp, thread_ptr, index); container_thread_wf_at(pre.ctn_mp, pre.thr_mp, thread_ptr);
+        reveal(container_endpoint_wf); reveal(container_kill_retire_wf); reveal(container_allocator_wf);
+    };
     release_endpoint_eof_process_relations(pre, post, thread_ptr, endpoint_ptr, index, allocator_ptr, node_addr);
     reveal(release_endpoint_eof_transition_framing);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {

@@ -25,7 +25,7 @@ proof fn reclaim_dangling_thread_eof_subsystems_inv(
 {
     reveal(reclaim_dangling_thread_eof_transition_framing);
     assert(thread_perms_wf(post.thr_mp)) by {
-        reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+        reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
     };
     assert(allocator_perms_wf(post.allc_4k_mp)) by { reveal(allocator_perms_wf); };
     reveal(KernelK::default_pagetable_wf);
@@ -66,7 +66,6 @@ proof fn reclaim_dangling_thread_eof_page_relations(
         scheduler_pages_wf(post.sched_mp, post.pg_arr),
         cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr),
         pcid_allocator_pages_wf(post.pg_arr, post.pcid_allc_mp),
-        thread_staged_pages_wf(post.thr_mp, post.pg_arr),
         endpoint_pages_wf(post.ep_mp, post.pg_arr),
         post.allocator_free_pages_wf(),
         container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
@@ -76,7 +75,6 @@ proof fn reclaim_dangling_thread_eof_page_relations(
 {
     reveal(reclaim_dangling_thread_eof_transition_framing);
     let page_index = page_ptr2page_index(dangling_ptr);
-    let dangling = pre.thr_mp.spec_index(dangling_ptr).view();
     page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip();
     assert(allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
         allocator_4k_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.allc_4k_mp, post.allc_4k_mp);
@@ -98,12 +96,6 @@ proof fn reclaim_dangling_thread_eof_page_relations(
     assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { scheduler_pages_wf_preserved_for_page_state_eq(pre.sched_mp, post.sched_mp, pre.pg_arr, post.pg_arr); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
     assert(pcid_allocator_pages_wf(post.pg_arr, post.pcid_allc_mp)) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.pcid_allc_mp, post.pcid_allc_mp); };
-    assert(thread_staged_pages_wf(post.thr_mp, post.pg_arr)) by {
-        vstd::set_lib::lemma_set_empty_equivalency_len(dangling.temp_alloc_cache_4k.view());
-        vstd::set_lib::lemma_set_empty_equivalency_len(dangling.temp_alloc_cache_2m.view());
-        vstd::set_lib::lemma_set_empty_equivalency_len(dangling.temp_alloc_cache_1g.view());
-        reveal(thread_staged_pages_4k_wf); reveal(thread_staged_pages_2m_wf); reveal(thread_staged_pages_1g_wf);
-    };
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
     assert(allocator_free_page_ptrs_wf(post.allc_4k_mp)) by { reveal(allocator_free_page_ptrs_wf); };
     assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
@@ -117,6 +109,45 @@ proof fn reclaim_dangling_thread_eof_page_relations(
     };
     assert(container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr)) by { container_allocator_free_2m_page_wf_preserved_for_nonfree_page_change(post.allc_2m_mp, pre.pg_arr, post.pg_arr, page_index); };
     assert(container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr)) by { container_allocator_free_1g_page_wf_preserved_for_nonfree_page_change(post.allc_1g_mp, pre.pg_arr, post.pg_arr, page_index); };
+}
+
+/// Dropping the reclaimed thread and freeing its page keep page ownership by objects and every staged page.
+proof fn reclaim_dangling_thread_eof_thread_pages(
+    pre: KernelK, post: KernelK, cpu_id: CpuId, dangling_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, allocator_ptr: RwLockPageAllocatorPtr, cache_node_addr: usize,
+)
+    requires
+        pre.inv(),
+        reclaim_dangling_thread_eof_transition_framing(pre, post, cpu_id, dangling_ptr, owner, allocator_ptr, cache_node_addr),
+        index_valid(NUM_CPUS, cpu_id),
+        page_ptr_valid(dangling_ptr),
+        pre.thr_mp.dom().contains(dangling_ptr),
+        pre.thr_mp.spec_index(dangling_ptr).view().temp_alloc_clean(),
+        pre.ctn_mp.dom().contains(owner),
+        pre.pg_arr.spec_index(page_ptr2page_index(dangling_ptr)).view().view().owning_container == owner,
+        pre.pg_arr.spec_index(page_ptr2page_index(dangling_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread }),
+        pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr,
+        pre.allc_4k_mp.dom().contains(allocator_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(dangling_ptr)).view().view().free_list_node_storage.addr() == cache_node_addr,
+        !pre.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(cache_node_addr),
+        post.subsystems_inv(),
+    ensures
+        page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp),
+        thread_staged_pages_wf(post.thr_mp, post.pg_arr),
+{
+    reveal(reclaim_dangling_thread_eof_transition_framing);
+    let dangling = pre.thr_mp.spec_index(dangling_ptr).view();
+    page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip();
+    vstd::set_lib::lemma_set_empty_equivalency_len(dangling.temp_alloc_cache_4k.view()); vstd::set_lib::lemma_set_empty_equivalency_len(dangling.temp_alloc_cache_2m.view());
+    vstd::set_lib::lemma_set_empty_equivalency_len(dangling.temp_alloc_cache_1g.view());
+    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by {
+        reveal(page_object_owner_wf); reveal(container_page_owner_wf); reveal(thread_staged_pages_4k_wf); reveal(thread_staged_pages_2m_wf); reveal(thread_staged_pages_1g_wf);
+    };
+    assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_4k_wf); };
+    assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by {
+        assert(dangling.temp_alloc_cache_2m.view() == Set::<PagePtr>::empty());
+        reveal(thread_staged_pages_2m_wf);
+    };
+    assert(thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_1g_wf); };
 }
 
 proof fn reclaim_dangling_thread_eof_allocator_quota_wf(
@@ -163,6 +194,7 @@ proof fn reclaim_dangling_thread_eof_thread_relations(
         per_container_process_tree_wf(post.ctn_mp, post.prc_mp),
         process_kill_mark_wf(post.ctn_mp, post.prc_mp),
         container_kill_mark_wf(post.ctn_mp, post.prc_mp),
+        cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp),
         container_endpoint_wf(post.ctn_mp, post.ep_mp),
         container_scheduler_wf(post.ctn_mp, post.sched_mp),
         container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp),
@@ -172,6 +204,7 @@ proof fn reclaim_dangling_thread_eof_thread_relations(
         thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp),
         thread_endpoint_queue_wf(post.thr_mp, post.ep_mp),
         thread_caller_callee_wf(post.thr_mp),
+        thread_dangling_chain_end_wf(post.thr_mp),
         container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp),
         container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp),
         container_thread_wf(post.ctn_mp, post.thr_mp),
@@ -188,6 +221,7 @@ proof fn reclaim_dangling_thread_eof_thread_relations(
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { reveal(per_container_process_tree_wf); };
     assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
     assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
+    assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by { reveal(cpu_set_kill_mark_wf); };
     assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { container_endpoint_wf_preserved_for_endpoint_owner_eq(pre.ctn_mp, post.ctn_mp, pre.ep_mp, post.ep_mp); };
     assert(container_scheduler_wf(post.ctn_mp, post.sched_mp)) by { container_scheduler_wf_preserved_for_scheduler_owner_eq(pre.ctn_mp, post.ctn_mp, pre.sched_mp, post.sched_mp); };
     assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
@@ -197,6 +231,7 @@ proof fn reclaim_dangling_thread_eof_thread_relations(
     assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_perms_wf); reveal(thread_endpoint_ref_counter_wf); };
     assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_queue_wf); };
     assert(thread_caller_callee_wf(post.thr_mp)) by { reveal(thread_caller_callee_wf); };
+    assert(thread_dangling_chain_end_wf(post.thr_mp)) by { reveal(thread_dangling_chain_end_wf); reveal(thread_caller_callee_wf); };
     assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); reveal(container_endpoint_wf); reveal(container_thread_endpoint_wf); };
     assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf); };
     assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { reveal(container_thread_wf); uppers.to_set_ensures(); };
@@ -243,7 +278,15 @@ pub(super) proof fn reclaim_dangling_thread_eof(
 {
     reclaim_dangling_thread_eof_subsystems_inv(pre, post, cpu_id, dangling_ptr, owner, allocator_ptr, cache_node_addr);
     reclaim_dangling_thread_eof_page_relations(pre, post, cpu_id, dangling_ptr, owner, allocator_ptr, cache_node_addr);
+    reclaim_dangling_thread_eof_thread_pages(pre, post, cpu_id, dangling_ptr, owner, allocator_ptr, cache_node_addr);
     reclaim_dangling_thread_eof_allocator_quota_wf(pre, post, cpu_id, dangling_ptr, owner, allocator_ptr, cache_node_addr);
+    assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
+        let container_ptr = pre.thr_mp.spec_index(dangling_ptr).view().owning_container;
+        reveal(reclaim_dangling_thread_eof_transition_framing); page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
+        page_object_owner_wf_at(pre.pg_arr, pre.ctn_mp, pre.thr_mp, page_ptr2page_index(dangling_ptr));
+        container_thread_wf_at(pre.ctn_mp, pre.thr_mp, dangling_ptr); pre.ctn_mp.spec_index(container_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
+        reveal(container_kill_retire_wf); reveal(container_allocator_wf); reveal(container_uppertree_seq_wf);
+    };
     reclaim_dangling_thread_eof_thread_relations(pre, post, cpu_id, dangling_ptr, owner, allocator_ptr, cache_node_addr);
     reveal(reclaim_dangling_thread_eof_transition_framing);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
@@ -300,6 +343,9 @@ pub(super) proof fn reclaim_dangling_thread_eof_fields(
             &&& post.ctn_mp.spec_index(c).locking_thread() == start.ctn_mp.spec_index(c).locking_thread()
             &&& post.ctn_mp.spec_index(c).being_killed() == start.ctn_mp.spec_index(c).being_killed()
             &&& post.ctn_mp.spec_index(c).killer_info() == start.ctn_mp.spec_index(c).killer_info()
+            &&& post.ctn_mp.spec_index(c).view_ghost().uppertree_seq == start.ctn_mp.spec_index(c).view_ghost().uppertree_seq
+            &&& post.ctn_mp.spec_index(c).view_ghost().subtree_set == start.ctn_mp.spec_index(c).view_ghost().subtree_set
+            &&& post.ctn_mp.spec_index(c).view_ghost().owned_processes == start.ctn_mp.spec_index(c).view_ghost().owned_processes
         },
 {
     reveal(reclaim_dangling_thread_eof_transition_framing); reveal(kernel_dangling_thread_reclaimed_fields); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);

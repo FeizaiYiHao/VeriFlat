@@ -110,7 +110,7 @@ pub proof fn pagetable_pages_wf_preserved_for_page_state_eq<const TABLE_TYPE: PT
 { reveal(pagetable_pages_wf); }
 
 // allocator_4k_pages_wf: Allocated4k{As4KAllocator} <-> allocator_4k_map.dom().
-pub proof fn allocator_4k_pages_wf_preserved_for_page_state_eq(old_page_array: PageLockedArray, new_page_array: PageLockedArray, old_allocator_map: PageAllocatorUnLockedMap, new_allocator_map: PageAllocatorUnLockedMap)
+pub proof fn allocator_4k_pages_wf_preserved_for_page_state_eq(old_page_array: PageLockedArray, new_page_array: PageLockedArray, old_allocator_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>, new_allocator_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>)
     requires
         allocator_4k_pages_wf(old_page_array, old_allocator_map),
         new_allocator_map.dom() == old_allocator_map.dom(),
@@ -124,7 +124,7 @@ pub proof fn allocator_4k_pages_wf_preserved_for_page_state_eq(old_page_array: P
 { reveal(allocator_4k_pages_wf); }
 
 // allocator_2m_pages_wf: Allocated4k{As2MAllocator} <-> allocator_2m_map.dom().
-pub proof fn allocator_2m_pages_wf_preserved_for_page_state_eq(old_page_array: PageLockedArray, new_page_array: PageLockedArray, old_allocator_map: PageAllocatorUnLockedMap, new_allocator_map: PageAllocatorUnLockedMap)
+pub proof fn allocator_2m_pages_wf_preserved_for_page_state_eq(old_page_array: PageLockedArray, new_page_array: PageLockedArray, old_allocator_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_2M>, new_allocator_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_2M>)
     requires
         allocator_2m_pages_wf(old_page_array, old_allocator_map),
         new_allocator_map.dom() == old_allocator_map.dom(),
@@ -139,7 +139,7 @@ pub proof fn allocator_2m_pages_wf_preserved_for_page_state_eq(old_page_array: P
 { reveal(allocator_2m_pages_wf); }
 
 // allocator_1g_pages_wf: Allocated4k{As1GAllocator} <-> allocator_1g_map.dom().
-pub proof fn allocator_1g_pages_wf_preserved_for_page_state_eq(old_page_array: PageLockedArray, new_page_array: PageLockedArray, old_allocator_map: PageAllocatorUnLockedMap, new_allocator_map: PageAllocatorUnLockedMap)
+pub proof fn allocator_1g_pages_wf_preserved_for_page_state_eq(old_page_array: PageLockedArray, new_page_array: PageLockedArray, old_allocator_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_1G>, new_allocator_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_1G>)
     requires
         allocator_1g_pages_wf(old_page_array, old_allocator_map),
         new_allocator_map.dom() == old_allocator_map.dom(),

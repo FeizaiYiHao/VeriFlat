@@ -13,16 +13,33 @@ impl KernelK {
             {
                 let major = old(self).pg_arr.lock_id_by_index(page_index).major;
                 &&& old(lctx).pcid_needflush_lock_map().dom().is_empty()
-                &&& old(lctx).cpu_offline_flag_lock_map().dom().is_empty()
+                &&& forall|held_flag: (RwLockCpuOfflineFlagsPtr, CpuId)| #![trigger old(lctx).cpu_offline_flag_lock_map().dom().contains(held_flag)]
+                    old(lctx).cpu_offline_flag_lock_map().dom().contains(held_flag) ==> {
+                        let flag_container = old(self).cpu_offline_mp.spec_index(held_flag.0).owning_container.view();
+                        &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), flag_container, TypedLockMode::Write)
+                        &&& old(self).ctn_mp.spec_index(flag_container).being_killed()
+                    }
                 &&& forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off)
                 &&& forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page)
                     ==> old(self).pg_arr.lock_id_by_index(held_page).major < major || (old(self).pg_arr.lock_id_by_index(held_page).major == major && held_page < page_index)
                 &&& major < FREE_PAGE_LOCK_MAJOR ==> {
-                    &&& old(lctx).scheduler_lock_map().dom().is_empty()
-                    &&& old(lctx).cpu_set_lock_map().dom().is_empty()
-                    &&& old(lctx).holds_no_allocator_locks(PageSize::SZ4k)
-                    &&& old(lctx).holds_no_allocator_locks(PageSize::SZ2m)
-                    &&& old(lctx).holds_no_allocator_locks(PageSize::SZ1g)
+                    ||| {
+                        &&& old(lctx).scheduler_lock_map().dom().is_empty()
+                        &&& old(lctx).cpu_set_lock_map().dom().is_empty()
+                        &&& old(lctx).holds_no_allocator_locks(PageSize::SZ4k)
+                        &&& old(lctx).holds_no_allocator_locks(PageSize::SZ2m)
+                        &&& old(lctx).holds_no_allocator_locks(PageSize::SZ1g)
+                    }
+                    // A killer retiring a marked container may hold that container's marked cpu set, whose killed lock id is
+                    // below every page.
+                    ||| {
+                        &&& old(lctx).scheduler_lock_map().dom().is_empty()
+                        &&& forall|held_cpu_set: RwLockCpuSetPtr| #![trigger old(lctx).cpu_set_lock_map().dom().contains(held_cpu_set)]
+                            old(lctx).cpu_set_lock_map().dom().contains(held_cpu_set) ==> old(self).cpu_set_mp.spec_index(held_cpu_set).being_killed()
+                        &&& old(lctx).holds_no_allocator_locks(PageSize::SZ4k)
+                        &&& old(lctx).holds_no_allocator_locks(PageSize::SZ2m)
+                        &&& old(lctx).holds_no_allocator_locks(PageSize::SZ1g)
+                    }
                 }
                 &&& major < ENDPOINT_PAGE_MAJOR ==> old(lctx).endpoint_lock_map().dom().is_empty()
                 &&& major < PAGETABLE_PAGE_MAJOR ==> {

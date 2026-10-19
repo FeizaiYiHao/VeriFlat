@@ -57,9 +57,19 @@ pub(super) proof fn return_free_quota_4k_eof(pre: KernelK, post: KernelK, thread
     assert(post.memory_management_inv()) by {
         assert(allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { lemma_allocator_pages_wf_preserved_for_allocator_invariant_fields_except_quota_forall(); };
         assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(container_allocator_wf); };
+        assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
+            let thread = pre.thr_mp.spec_index(thread_ptr).view();
+            container_thread_wf_at(pre.ctn_mp, pre.thr_mp, thread_ptr); container_thread_wf_uppertree_at(pre.ctn_mp, pre.thr_mp, thread_ptr);
+            if depth < thread.container_depth {
+                container_perms_wf_at(pre.ctn_mp, thread.owning_container); assert(thread.upper_container_seq.view().contains(owner));
+                container_uppertree_seq_wf_at(pre.rt_ctn, pre.ctn_mp, thread.owning_container, owner);
+            }
+            reveal(container_kill_retire_wf); reveal(container_allocator_wf);
+        };
         assert(post.allocator_free_pages_wf()) by { reveal(allocator_free_page_ptrs_wf); };
         assert(container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); };
         assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
+        assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
         assert(thread_staged_pages_wf(post.thr_mp, post.pg_arr)) by {
             thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
             thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
@@ -83,6 +93,7 @@ pub(super) proof fn return_free_quota_4k_eof(pre: KernelK, post: KernelK, thread
         process_thread_wf_preserved_for_thread_process_management_fields(post.prc_mp, pre.thr_mp, post.thr_mp);
         thread_cpu_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.cpu_arr);
         assert(thread_caller_callee_wf(post.thr_mp)) by { reveal(thread_caller_callee_wf); };
+        assert(thread_dangling_chain_end_wf(post.thr_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thr_mp, post.thr_mp); };
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
     };
     assert(kernel_container_quota_4k_changed(&pre, &post, owner, amount as int)) by {

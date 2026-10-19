@@ -223,7 +223,10 @@ pub proof fn container_cpu_offline_flags_wf_preserved_for_flags_owner_eq(old_con
         new_flags_map.dom() == old_flags_map.dom(),
         forall|flags_ptr: RwLockCpuOfflineFlagsPtr|
             #![trigger new_flags_map.spec_index(flags_ptr)]
-            new_flags_map.dom().contains(flags_ptr) ==> new_flags_map.spec_index(flags_ptr).owning_container == old_flags_map.spec_index(flags_ptr).owning_container,
+            new_flags_map.dom().contains(flags_ptr) ==> new_flags_map.spec_index(flags_ptr).owning_container == old_flags_map.spec_index(flags_ptr).owning_container
+                && new_flags_map.spec_index(flags_ptr).container_depth == old_flags_map.spec_index(flags_ptr).container_depth,
+        forall|c_ptr: RwLockContainerPtr| #![trigger new_container_map.spec_index(c_ptr)]
+            new_container_map.dom().contains(c_ptr) ==> new_container_map.spec_index(c_ptr).view_rodata().view().depth == old_container_map.spec_index(c_ptr).view_rodata().view().depth,
     ensures
         container_cpu_offline_flags_wf(new_container_map, new_flags_map),
 { reveal(container_cpu_offline_flags_wf); }

@@ -31,7 +31,6 @@ pub(super) fn thread_exit_return_quota(
         old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
         old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
         old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
-        old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() != Some(SyscallProgress::ThreadExitZombie),
         typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
         process_lock_perm.state() is WriteLock,
         process_lock_perm.thread_id() == old(lctx).thread_id(),

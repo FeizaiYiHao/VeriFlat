@@ -49,6 +49,7 @@ pub(super) proof fn eof_page_fields_eq_outside_moved_pages(
         post.pg_arr.spec_index(page_index).view().view().state == pre.pg_arr.spec_index(page_index).view().view().state,
         post.pg_arr.spec_index(page_index).view().view().owning_container == pre.pg_arr.spec_index(page_index).view().view().owning_container,
         post.pg_arr.spec_index(page_index).view().view().free_list_node_storage == pre.pg_arr.spec_index(page_index).view().view().free_list_node_storage,
+        post.pg_arr.spec_index(page_index).view().view().is_io_page == pre.pg_arr.spec_index(page_index).view().view().is_io_page,
 {
     hide(Seq::contains); reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
     let container_head = page_ptr2page_index(container_page);
@@ -134,6 +135,8 @@ pub(super) broadcast proof fn eof_unmodified_object_page_state_eq(
             ||| (post_state is Allocated4k && post_state->Allocated4k_state is PageTable && post_state->Allocated4k_state->PageTable_table_type == IOMMU_TYPE)
             ||| (pre_state is Mapped4k)
             ||| (post_state is Mapped4k)
+            ||| (pre_state is Unavailable)
+            ||| (post_state is Unavailable)
             ||| (pre_state is Mapped2m)
             ||| (post_state is Mapped2m)
             ||| (pre_state is Free2m)
@@ -192,6 +195,7 @@ pub(super) broadcast proof fn eof_unmodified_object_page_state_eq(
             &&& post.pg_arr.spec_index(page_index).view().view().state == pre.pg_arr.spec_index(page_index).view().view().state
             &&& post.pg_arr.spec_index(page_index).view().view().owning_container == pre.pg_arr.spec_index(page_index).view().view().owning_container
             &&& post.pg_arr.spec_index(page_index).view().view().free_list_node_storage == pre.pg_arr.spec_index(page_index).view().view().free_list_node_storage
+            &&& post.pg_arr.spec_index(page_index).view().view().is_io_page == pre.pg_arr.spec_index(page_index).view().view().is_io_page
         },
 {
     reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);

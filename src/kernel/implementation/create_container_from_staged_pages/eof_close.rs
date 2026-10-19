@@ -68,7 +68,7 @@ pub(super) proof fn eof_subsystems_inv(
     };
     assert(container_perms_wf(post.ctn_mp)) by { reveal(container_perms_wf); };
     assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };
-    assert(thread_perms_wf(post.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_free_quota_pending_empty_unless_wlocked); };
+    assert(thread_perms_wf(post.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); reveal(thread_free_quota_pending_empty_unless_wlocked); };
     assert(scheduler_perms_wf(post.sched_mp)) by { reveal(scheduler_perms_wf); };
     assert(cpu_set_perms_wf(post.cpu_set_mp)) by { reveal(cpu_set_perms_wf); };
     assert(pcid_allocator_perms_wf(post.pcid_allc_mp)) by { reveal(pcid_allocator_perms_wf); };

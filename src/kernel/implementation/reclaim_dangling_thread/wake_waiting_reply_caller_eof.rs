@@ -17,6 +17,7 @@ proof fn wake_waiting_reply_caller_eof_memory_management_inv(
     assert(post.memory_management_inv()) by {
         assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { reveal(scheduler_pages_wf); };
         assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
+        assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
         assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
         assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_2m_wf); };
         assert(thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_1g_wf); };
@@ -60,6 +61,7 @@ proof fn wake_waiting_reply_caller_eof_process_management_inv(
     assert(post.process_management_inv()) by {
         assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_descriptor_eq(pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
         assert(thread_caller_callee_wf(post.thr_mp)) by { reveal(thread_caller_callee_wf); };
+        assert(thread_dangling_chain_end_wf(post.thr_mp)) by { reveal(thread_dangling_chain_end_wf); };
         assert({
             &&& container_thread_wf(post.ctn_mp, post.thr_mp)
             &&& process_thread_wf(post.prc_mp, post.thr_mp)
@@ -99,7 +101,7 @@ pub(super) proof fn wake_waiting_reply_caller_eof(
     reveal(wake_waiting_reply_caller_eof_transition_framing);
     assert(post.subsystems_inv()) by {
         assert(thread_perms_wf(post.thr_mp)) by {
-            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
         };
         reveal(KernelK::default_pagetable_wf);
     };

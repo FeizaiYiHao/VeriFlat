@@ -27,6 +27,7 @@ pub mod thread_process_management_fields_eq;
 pub mod thread_fields_narrow_eq;
 pub mod held_objects_unchanged_lemmas;
 pub mod kernel_view_release_lock_op;
+pub mod container_without_processes;
 
 pub use kernel_fold_lemmas::*;
 pub use kernel_cardinality_axioms::*;
@@ -58,3 +59,4 @@ pub use thread_process_management_fields_eq::*;
 pub use thread_fields_narrow_eq::*;
 pub use held_objects_unchanged_lemmas::*;
 pub use kernel_view_release_lock_op::*;
+pub use container_without_processes::*;

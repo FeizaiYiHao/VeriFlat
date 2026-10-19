@@ -45,11 +45,15 @@ fn release_killed_thread_descriptors(
             &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
             &&& final(krnl).ctn_mp.spec_index(c).being_killed() == old(krnl).ctn_mp.spec_index(c).being_killed()
             &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
         },
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
         killed_thread_reclaim_lock_context(*final(krnl), *final(lctx)),
         held_threads_unchanged_except(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx), set![thread_ptr]),
         final(krnl).thr_mp.dom().contains(thread_ptr),
+        final(krnl).thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
         final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { endpoint_descriptors: final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
         forall|j: int| #![trigger final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view()[j]]
             0 <= j < MAX_NUM_ENDPOINT_DESCRIPTORS ==> final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view()[j] is None,
@@ -80,11 +84,15 @@ fn release_killed_thread_descriptors(
                 &&& krnl.ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
                 &&& krnl.ctn_mp.spec_index(c).being_killed() == old(krnl).ctn_mp.spec_index(c).being_killed()
                 &&& krnl.ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
+                &&& krnl.ctn_mp.spec_index(c).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq
+                &&& krnl.ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
+                &&& krnl.ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
             },
             typed_lock_maps_unchanged(old(lctx), lctx),
             killed_thread_reclaim_lock_context(*krnl, *lctx),
             held_threads_unchanged_except(old(krnl).thr_mp, krnl.thr_mp, old(lctx), set![thread_ptr]),
             krnl.thr_mp.dom().contains(thread_ptr),
+            krnl.thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
             krnl.thr_mp.spec_index(thread_ptr).view() == (Thread { endpoint_descriptors: krnl.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
             forall|j: int| #![trigger krnl.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view()[j]]
                 0 <= j < index ==> krnl.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view()[j] is None,
@@ -133,7 +141,7 @@ fn release_killed_thread_descriptors(
 
 /// Release the caller of the write-held killed thread `thread_ptr`, if any, in one step: wake a caller waiting for the
 /// reply on shard `cpu_id` of its container, or take over the dangling thread of a killed caller and return it write-held.
-fn release_killed_thread_caller(
+pub fn release_killed_thread_caller(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, thread_ptr: RwLockThreadPtr,
     Tracked(thread_lock_perm): Tracked<&LockPerm>,
 ) -> (ret: (Option<RwLockThreadPtr>, Tracked<Option<LockPerm>>))
@@ -150,6 +158,8 @@ fn release_killed_thread_caller(
         thread_lock_perm.state() is WriteLock,
         thread_lock_perm.thread_id() == old(lctx).thread_id(),
         thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
+        forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)]
+            old(lctx).thread_lock_map().dom().contains(held_thread) ==> !(old(krnl).thr_mp.spec_index(held_thread).view().state is KILLED) || old(krnl).thr_mp.spec_index(held_thread).being_killed() || held_thread == thread_ptr,
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -166,6 +176,7 @@ fn release_killed_thread_caller(
         killed_thread_reclaim_lock_context(*final(krnl), *final(lctx)),
         held_threads_unchanged_except(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx), set![thread_ptr]),
         final(krnl).thr_mp.dom().contains(thread_ptr),
+        final(krnl).thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
         final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { caller: None, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
         final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread(),
         final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
@@ -275,6 +286,8 @@ pub fn reclaim_killed_thread_chain(
         old(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k == 0,
         old(krnl).thr_mp.spec_index(thread_ptr).view().quota_2m == 0,
         old(krnl).thr_mp.spec_index(thread_ptr).view().quota_1g == 0,
+        forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)]
+            old(lctx).thread_lock_map().dom().contains(held_thread) ==> !(old(krnl).thr_mp.spec_index(held_thread).view().state is KILLED) || old(krnl).thr_mp.spec_index(held_thread).being_killed() || held_thread == thread_ptr,
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -294,6 +307,9 @@ pub fn reclaim_killed_thread_chain(
             &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
             &&& final(krnl).ctn_mp.spec_index(c).being_killed() == old(krnl).ctn_mp.spec_index(c).being_killed()
             &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
         },
         typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::Thread(thread_ptr)),
         held_threads_unchanged_except(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx), set![thread_ptr]),
@@ -323,6 +339,8 @@ pub fn reclaim_killed_thread_chain(
             krnl.thr_mp.spec_index(cur).view().quota_4k == 0,
             krnl.thr_mp.spec_index(cur).view().quota_2m == 0,
             krnl.thr_mp.spec_index(cur).view().quota_1g == 0,
+            forall|held_thread: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(held_thread)]
+                lctx.thread_lock_map().dom().contains(held_thread) ==> !(krnl.thr_mp.spec_index(held_thread).view().state is KILLED) || krnl.thr_mp.spec_index(held_thread).being_killed() || held_thread == cur,
         invariant
             old(krnl).inv(),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
@@ -346,6 +364,9 @@ pub fn reclaim_killed_thread_chain(
                 &&& krnl.ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
                 &&& krnl.ctn_mp.spec_index(c).being_killed() == old(krnl).ctn_mp.spec_index(c).being_killed()
                 &&& krnl.ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
+                &&& krnl.ctn_mp.spec_index(c).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq
+                &&& krnl.ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
+                &&& krnl.ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
             },
             killed_thread_reclaim_lock_context(*krnl, *lctx),
             held_threads_unchanged_except(old(krnl).thr_mp, krnl.thr_mp, old(lctx), set![thread_ptr]),

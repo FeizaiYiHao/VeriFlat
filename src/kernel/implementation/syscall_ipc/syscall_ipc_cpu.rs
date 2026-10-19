@@ -70,6 +70,7 @@ verus! {
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
             typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
             current_thread_lock_perm.state() is WriteLock,
             current_thread_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -81,6 +82,7 @@ verus! {
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
             typed_lock_map_contains_mode(old(lctx).thread_lock_map(), peer_thread_ptr, TypedLockMode::Write),
             peer_thread_lock_perm.state() is WriteLock,
             peer_thread_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -107,6 +109,7 @@ verus! {
             target_cpu_set_lock_perm.state() is WriteLock,
             target_cpu_set_lock_perm.thread_id() == old(lctx).thread_id(),
             target_cpu_set_lock_perm.lock_id() == old(krnl).cpu_set_mp.spec_index(target_cpu_set).locking_thread()->Write_lock_id,
+            !old(krnl).cpu_set_mp.spec_index(source_cpu_set).being_killed() && !old(krnl).cpu_set_mp.spec_index(target_cpu_set).being_killed(),
             old(lctx).page_lock_map().dom().is_empty(),
             old(lctx).cpu_lock_map().dom() =~= if transfer_cpu_lock_perm is Some { set![cpu_id, transfer_cpu_id] } else { set![cpu_id] },
             old(lctx).container_lock_map().dom().is_empty(),
@@ -135,6 +138,8 @@ verus! {
                 old(steps).snapshot_k().cpu_set_mp.dom().contains(p) ==> if old(lctx).cpu_set_lock_map().dom().contains(p) {
                     old(steps).snapshot_k().cpu_set_mp.spec_index(p).locking_thread() is None
                 } else { old(krnl).cpu_set_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().cpu_set_mp.spec_index(p).locking_thread() },
+            forall|p: RwLockCpuSetPtr| #![trigger old(krnl).cpu_set_mp.spec_index(p)]
+                old(steps).snapshot_k().cpu_set_mp.dom().contains(p) ==> old(krnl).cpu_set_mp.spec_index(p).being_killed() == old(steps).snapshot_k().cpu_set_mp.spec_index(p).being_killed(),
             ({
                 let snap = old(steps).snapshot_k();
                 &&& snap.cpu_set_mp.spec_index(snap.ctn_mp.spec_index(snap.thr_mp.spec_index(current_thread_ptr).view().owning_container).view_rodata().view().cpu_set).locking_thread() is None
@@ -228,6 +233,7 @@ verus! {
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
             typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
             current_thread_lock_perm.state() is WriteLock,
             current_thread_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -239,6 +245,7 @@ verus! {
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
             typed_lock_map_contains_mode(old(lctx).thread_lock_map(), peer_thread_ptr, TypedLockMode::Write),
             peer_thread_lock_perm.state() is WriteLock,
             peer_thread_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -265,6 +272,7 @@ verus! {
             target_cpu_set_lock_perm.state() is WriteLock,
             target_cpu_set_lock_perm.thread_id() == old(lctx).thread_id(),
             target_cpu_set_lock_perm.lock_id() == old(krnl).cpu_set_mp.spec_index(target_cpu_set).locking_thread()->Write_lock_id,
+            !old(krnl).cpu_set_mp.spec_index(source_cpu_set).being_killed() && !old(krnl).cpu_set_mp.spec_index(target_cpu_set).being_killed(),
             old(lctx).page_lock_map().dom().is_empty(),
             old(lctx).cpu_lock_map().dom() =~= if transfer_cpu_lock_perm is Some { set![cpu_id, transfer_cpu_id] } else { set![cpu_id] },
             old(lctx).container_lock_map().dom().is_empty(),
@@ -326,7 +334,8 @@ verus! {
             },
             final(krnl).cpu_set_mp.dom() == old(krnl).cpu_set_mp.dom(),
             forall|p: RwLockCpuSetPtr| #![trigger final(krnl).cpu_set_mp.spec_index(p)] old(krnl).cpu_set_mp.dom().contains(p) ==>
-                final(krnl).cpu_set_mp.spec_index(p).locking_thread() == if old(lctx).cpu_set_lock_map().dom().contains(p) { RwLockState::None } else { old(krnl).cpu_set_mp.spec_index(p).locking_thread() },
+                final(krnl).cpu_set_mp.spec_index(p).locking_thread() == if old(lctx).cpu_set_lock_map().dom().contains(p) { RwLockState::None } else { old(krnl).cpu_set_mp.spec_index(p).locking_thread() }
+                    && final(krnl).cpu_set_mp.spec_index(p).being_killed() == old(krnl).cpu_set_mp.spec_index(p).being_killed(),
             forall|c: RwLockContainerPtr| #![trigger final(krnl).sched_mp.spec_index(final(krnl).ctn_mp.spec_index(c).view_rodata().view().scheduler)]
                 old(krnl).ctn_mp.dom().contains(c) ==> scheduler_shards_of(final(krnl).sched_mp.spec_index(final(krnl).ctn_mp.spec_index(c).view_rodata().view().scheduler))
                     == scheduler_shards_of(old(krnl).sched_mp.spec_index(old(krnl).ctn_mp.spec_index(c).view_rodata().view().scheduler)),
@@ -486,6 +495,8 @@ verus! {
             source_cpu_set != target_cpu_set,
             old(krnl).cpu_set_mp.dom().contains(source_cpu_set),
             old(krnl).cpu_set_mp.dom().contains(target_cpu_set),
+            !old(krnl).cpu_set_mp.spec_index(source_cpu_set).being_killed(),
+            !old(krnl).cpu_set_mp.spec_index(target_cpu_set).being_killed(),
             old(krnl).sched_mp.dom().contains(peer_scheduler_ptr),
             typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
             old(lctx).page_lock_map().dom().is_empty(),
@@ -746,11 +757,13 @@ verus! {
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state.is_endpoint_waiting(),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state == (if is_send { ThreadState::RECEIVING } else { ThreadState::SENDING }),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().ipc_payload == (if is_send { IPCPayLoad::ReceiveCpu } else { IPCPayLoad::Cpu { cpu_id: transfer_cpu_id } }),
             old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.len() != 0,
@@ -872,6 +885,14 @@ verus! {
             };
         }
         assert(krnl.sched_mp.spec_index(peer_scheduler_ptr).shard(wake_cpu).queue.length != usize::MAX) by { scheduler_queue_len_bounded(&*krnl, peer_scheduler_ptr, wake_cpu); };
+        proof {
+            // Both containers own a thread of the rendezvous, so neither cpu set is marked.
+            assert(!krnl.cpu_set_mp.spec_index(source_cpu_set).being_killed() && !krnl.cpu_set_mp.spec_index(target_cpu_set).being_killed()) by {
+                container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, current_thread_ptr); container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, peer_thread_ptr);
+                container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, source_container); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, target_container);
+                cpu_set_kill_mark_wf_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, source_cpu_set); cpu_set_kill_mark_wf_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, target_cpu_set);
+            };
+        }
         let (result, Tracked(source_cpu_set_lock_perm), Tracked(target_cpu_set_lock_perm), Tracked(peer_scheduler_lock_perm), transfer_cpu_lock_perm) = ipc_lock_cpu_sets_and_transfer_cpu(
             krnl, Tracked(&mut *lctx), cpu_id, current_thread_ptr, peer_thread_ptr, source_container, target_container, target_container_depth, source_cpu_set, target_cpu_set,
             peer_scheduler_ptr, wake_cpu, transfer_cpu_id,
@@ -1007,11 +1028,13 @@ verus! {
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state.is_endpoint_waiting(),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state == (if is_send { ThreadState::RECEIVING } else { ThreadState::SENDING }),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().ipc_payload == (if is_send { IPCPayLoad::ReceiveCpu } else { IPCPayLoad::Cpu { cpu_id: transfer_cpu_id } }),
             old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.len() != 0,

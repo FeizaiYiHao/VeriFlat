@@ -11,6 +11,7 @@ verus! {
         requires
             old(krnl).inv(),
             old(krnl).thr_mp.dom().contains(current_thread_ptr),
+            !(old(krnl).thr_mp.spec_index(current_thread_ptr).view().state is KILLED),
             current_thread_ptr != thread_ptr,
             old(krnl).thr_mp.dom().contains(thread_ptr),
             old(krnl).thr_mp.spec_index(thread_ptr).is_init(),
@@ -20,6 +21,7 @@ verus! {
             old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited,
             old(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.spec_index(0) is None,
             old(krnl).ep_mp.dom().contains(endpoint_ptr),
             {
@@ -42,6 +44,7 @@ verus! {
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(krnl).inv(),
             final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view() == old(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().update(0, Some(endpoint_ptr)),
+            final(krnl).thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
             final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { endpoint_descriptors: final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
             final(krnl).ep_mp.spec_index(endpoint_ptr).view().owning_threads.view() == old(krnl).ep_mp.spec_index(endpoint_ptr).view().owning_threads.view().insert((thread_ptr, 0usize)),
             final(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.view() == old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.view(),

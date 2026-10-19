@@ -58,6 +58,7 @@ verus! {
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
             old(lctx).page_lock_map().dom().is_empty(),
             old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
             old(lctx).container_lock_map().dom().is_empty(),
@@ -250,8 +251,10 @@ verus! {
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
             u_step is Some ==> old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is None,
             u_step is None ==> old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() matches Some(SyscallProgress::IpcPages { .. }),
+            !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
             old(krnl).thr_mp.dom().contains(peer_thread_ptr),
             typed_lock_map_contains_mode(old(lctx).thread_lock_map(), peer_thread_ptr, TypedLockMode::Write),
             peer_thread_lock_perm.state() is WriteLock,
@@ -475,6 +478,7 @@ verus! {
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_clean(),
             u_step is Some ==> old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
             u_step is None ==> {
                 let progress = old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view();
                 &&& progress is Some
@@ -488,6 +492,7 @@ verus! {
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
             old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.len() != 0,
             old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.view().spec_index(0) == peer_thread_ptr,
             u_step matches Some((endpoint_index, waiting_state, payload)) ==> {

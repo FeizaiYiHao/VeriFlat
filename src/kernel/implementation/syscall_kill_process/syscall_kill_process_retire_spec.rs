@@ -121,7 +121,7 @@ pub open spec fn kill_retire_held_pages(k: KernelK, target: RwLockProcessPtr) ->
 }
 
 /// The killer `thread_ptr` of process `process_ptr`, retiring the zombie `target`, holds its
-/// `killer_held_context_except_tables` locks with the containers it holds and besides write-holds the pages
+/// `killer_held_context_except_tables` locks with the containers it holds and no cpu set, and besides write-holds the pages
 /// `kill_retire_held_pages(k, target)` with `page_perms`, the target's page table with `pt_perm`, and its IOMMU table, if
 /// any, with `it_perm`.
 pub open spec fn kill_retire_held_state(
@@ -131,6 +131,7 @@ pub open spec fn kill_retire_held_state(
     let process = k.prc_mp.spec_index(target).view();
     let held = kill_retire_held_pages(k, target);
     &&& killer_held_context_except_tables(k, lctx, process_ptr, thread_ptr, lctx.container_lock_map().dom())
+    &&& lctx.cpu_set_lock_map().dom().is_empty()
     &&& lctx.page_lock_map().dom() == held
     &&& page_perms.dom() == held
     &&& forall|p: PageIndex| #![trigger page_perms.dom().contains(p)] page_perms.dom().contains(p) ==> {

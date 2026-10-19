@@ -105,7 +105,7 @@ proof fn eof_pop_2m_subsystems_inv(pre: KernelK, post: KernelK, allocator: RwLoc
     reveal(pop_stage_2m_page_eof_transition_framing);
     assert(post.subsystems_inv()) by {
         reveal(KernelK::default_pagetable_wf); reveal(allocator_perms_wf);
-        reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(page_array_wf); reveal(Page::mappings_va_valid); reveal(thread_perms_wf);
+        reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); reveal(page_array_wf); reveal(Page::mappings_va_valid); reveal(thread_perms_wf);
         reveal(thread_free_quota_pending_empty_unless_wlocked);
     };
 }
@@ -245,15 +245,20 @@ proof fn eof_pop_2m_process_pages(pre: KernelK, post: KernelK, allocator: RwLock
             let free_state = match source { Some(cpu_id) => FreePageAllocatorState::PreCpuCache { cpu_id }, None => FreePageAllocatorState::GlobalList };
             &&& index_valid(NUM_PAGES, page_ptr2page_index(page))
             &&& old_page.state == (PageState::Free2m { allocator_ptr: Ghost(allocator), state: free_state })
+            &&& pre.thr_mp.dom().contains(thread)
+            &&& pre.thr_mp.spec_index(thread).view().owning_container == container
+            &&& old_page.owning_container == container
         }),
         post.subsystems_inv(),
     ensures
         process_pages_wf(post.pg_arr, post.prc_mp),
         process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp),
+        page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp),
 {
     reveal(pop_stage_2m_page_eof_transition_framing);
     assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { reveal(process_pages_wf); };
     assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
+    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
 }
 
 proof fn eof_pop_2m_quota(pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)
@@ -534,6 +539,9 @@ proof fn eof_pop_2m_memory_management_inv(pre: KernelK, post: KernelK, allocator
     eof_pop_2m_page_types(pre, post, allocator, thread, container, page, node, source);
     eof_pop_2m_staged_pages(pre, post, allocator, thread, container, page, node, source);
     eof_pop_2m_free_pages(pre, post, allocator, thread, container, page, node, source);
+    assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
+        reveal(pop_stage_2m_page_eof_transition_framing); reveal(container_kill_retire_wf);
+    };
 }
 
 proof fn eof_pop_2m_thread_endpoint_ref_counter(pre: KernelK, post: KernelK, thread: RwLockThreadPtr)
@@ -559,6 +567,7 @@ proof fn eof_pop_2m_process_management_inv(pre: KernelK, post: KernelK, allocato
     eof_pop_2m_thread_endpoint_ref_counter(pre, post, thread);
     assert(post.process_management_inv()) by {
         assert(thread_caller_callee_wf(post.thr_mp)) by { thread_caller_callee_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp); };
+        assert(thread_dangling_chain_end_wf(post.thr_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thr_mp, post.thr_mp); };
         assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.ep_mp); };
         assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { container_thread_endpoint_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thr_mp, post.thr_mp, post.ep_mp); };
         assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { container_thread_scheduler_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thr_mp, post.thr_mp, post.sched_mp); };

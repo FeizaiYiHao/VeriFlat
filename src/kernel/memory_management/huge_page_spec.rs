@@ -88,6 +88,19 @@ verus! {
             },
     { reveal(hugepage_2m_wf); }
 
+    /// A 2m head page `p_i` starts a 2m-aligned region.
+    pub proof fn hugepage_2m_wf_head_at(page_array: PageLockedArray, p_i: PageIndex)
+        requires
+            hugepage_2m_wf(page_array),
+        ensures
+            index_valid(NUM_PAGES, p_i) && {
+                ||| page_array.spec_index(p_i).view().view().state is Free2m
+                ||| page_array.spec_index(p_i).view().view().state is Owned2m
+                ||| page_array.spec_index(p_i).view().view().state is Allocated2m
+                ||| page_array.spec_index(p_i).view().view().state is Mapped2m
+            } ==> page_index_2m_valid(p_i),
+    { reveal(hugepage_2m_wf); }
+
     pub open spec fn hugepage_1g_head_valid_wf(page_array: PageLockedArray) -> bool {
         forall|p_i:PageIndex|
             #![trigger page_array.spec_index(p_i).view().view().state is Free1g]
@@ -126,4 +139,21 @@ verus! {
         &&& hugepage_1g_tail_forward_wf(page_array)
         &&& hugepage_1g_tail_backward_wf(page_array)
     }
+
+    /// A free or mapped 1G head page `p_i` starts a 1G-aligned region.
+    pub proof fn hugepage_1g_wf_head_at(page_array: PageLockedArray, p_i: PageIndex)
+        requires
+            hugepage_1g_wf(page_array),
+        ensures
+            index_valid(NUM_PAGES, p_i) && (page_array.spec_index(p_i).view().view().state is Free1g || page_array.spec_index(p_i).view().view().state is Mapped1g) ==> page_index_1g_valid(p_i),
+    { reveal(hugepage_1g_wf); }
+
+    /// Page `p_j` inside the 1G region headed by the free or mapped page `p_i` is merged into it.
+    pub proof fn hugepage_1g_wf_tail_forward_at(page_array: PageLockedArray, p_i: PageIndex, p_j: PageIndex)
+        requires
+            hugepage_1g_wf(page_array),
+        ensures
+            index_valid(NUM_PAGES, p_i) && index_valid(NUM_PAGES, p_j) && (page_array.spec_index(p_i).view().view().state is Free1g || page_array.spec_index(p_i).view().view().state is Mapped1g)
+                && spec_page_index_merge_1g_valid(p_i, p_j) ==> page_array.spec_index(p_j).view().view().state is Merged1g,
+    { reveal(hugepage_1g_wf); }
 }

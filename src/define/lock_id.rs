@@ -59,14 +59,37 @@ pub const CPU_SET_LOCK_MAJOR: LockMajorId = MAPPED_PAGE_LOCK_MAJOR + 1;
 // afterward. Keep allocation above the scheduler so new-thread creation can
 // still allocate while holding the destination scheduler.
 pub const SCHEDULER_LOCK_MAJOR: LockMajorId = CPU_SET_LOCK_MAJOR + 1;
-pub const ALLOCATOR_CACHE_MAJOR: LockMajorId = SCHEDULER_LOCK_MAJOR + 1;
-pub const ALLOCATOR_GLOBAL_POOL_MAJOR: LockMajorId = ALLOCATOR_CACHE_MAJOR + 1;
+// Allocator caches, pools, and quotas split their majors by page size (4K < 2M < 1G) so one section can hold
+// the same-kind objects of several sizes; same-size objects of two containers are ordered by the minor.
+pub const ALLOCATOR_SIZE_4K: usize = 0;
+pub const ALLOCATOR_SIZE_2M: usize = 1;
+pub const ALLOCATOR_SIZE_1G: usize = 2;
+pub const ALLOCATOR_CACHE_4K_MAJOR: LockMajorId = SCHEDULER_LOCK_MAJOR + 1;
+pub const ALLOCATOR_CACHE_2M_MAJOR: LockMajorId = ALLOCATOR_CACHE_4K_MAJOR + 1;
+pub const ALLOCATOR_CACHE_1G_MAJOR: LockMajorId = ALLOCATOR_CACHE_2M_MAJOR + 1;
+pub const ALLOCATOR_GLOBAL_POOL_4K_MAJOR: LockMajorId = ALLOCATOR_CACHE_1G_MAJOR + 1;
+pub const ALLOCATOR_GLOBAL_POOL_2M_MAJOR: LockMajorId = ALLOCATOR_GLOBAL_POOL_4K_MAJOR + 1;
+pub const ALLOCATOR_GLOBAL_POOL_1G_MAJOR: LockMajorId = ALLOCATOR_GLOBAL_POOL_2M_MAJOR + 1;
 pub const THREAD_SCHEDULED_LOCK_MAJOR: LockMajorId = 20001;
 
 pub const FREE_PAGE_LOCK_MAJOR: LockMajorId = 30000;
 pub const MERGED_PAGE_LOCK_MAJOR: LockMajorId = 30000;
 
-pub const QUOTA_MAJOR: LockMajorId = THREAD_SCHEDULED_LOCK_MAJOR + 1;
+pub const QUOTA_4K_MAJOR: LockMajorId = THREAD_SCHEDULED_LOCK_MAJOR + 1;
+pub const QUOTA_2M_MAJOR: LockMajorId = QUOTA_4K_MAJOR + 1;
+pub const QUOTA_1G_MAJOR: LockMajorId = QUOTA_2M_MAJOR + 1;
+
+pub open spec fn allocator_cache_major(size: usize) -> LockMajorId {
+    if size == ALLOCATOR_SIZE_4K { ALLOCATOR_CACHE_4K_MAJOR } else if size == ALLOCATOR_SIZE_2M { ALLOCATOR_CACHE_2M_MAJOR } else { ALLOCATOR_CACHE_1G_MAJOR }
+}
+
+pub open spec fn allocator_global_pool_major(size: usize) -> LockMajorId {
+    if size == ALLOCATOR_SIZE_4K { ALLOCATOR_GLOBAL_POOL_4K_MAJOR } else if size == ALLOCATOR_SIZE_2M { ALLOCATOR_GLOBAL_POOL_2M_MAJOR } else { ALLOCATOR_GLOBAL_POOL_1G_MAJOR }
+}
+
+pub open spec fn allocator_quota_major(size: usize) -> LockMajorId {
+    if size == ALLOCATOR_SIZE_4K { QUOTA_4K_MAJOR } else if size == ALLOCATOR_SIZE_2M { QUOTA_2M_MAJOR } else { QUOTA_1G_MAJOR }
+}
 // -------------------- End of const --------------------------
 
 // -------------------- Begin of lock thread id  --------------

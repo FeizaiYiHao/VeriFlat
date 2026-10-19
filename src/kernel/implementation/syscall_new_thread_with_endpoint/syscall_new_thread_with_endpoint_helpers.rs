@@ -74,6 +74,7 @@ verus! {
                 old(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_container == container_ptr,
                 old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_clean(),
                 old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is None,
+                !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
                 old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
                 old(krnl).thr_mp.spec_index(current_thread_ptr).view().quota_4k >= 1,
                 old(lctx).page_lock_map().dom().is_empty(),
@@ -88,7 +89,7 @@ verus! {
                 old(lctx).pagetable_lock_map().dom().is_empty(),
                 old(lctx).iommu_table_lock_map().dom().is_empty(),
                 old(lctx).iommu_root_table_lock_map().dom().is_empty(),
-                held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_MAJOR),
+                held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
                 typed_lock_maps_aligned(old(krnl), old(lctx)),
             ensures
                 final(steps).view().len() == old(steps).view().len() + 2,

@@ -107,6 +107,22 @@ verus! {
             },
     { reveal(container_children_parent_wf); }
 
+    /// A non-root container `c_ptr` whose parent is in the map sits in its parent's child list at its own list node.
+    pub proof fn containers_linkedlist_wf_at(root_container: RwLockContainerPtr, container_perms: ContainerLockedMap, c_ptr: RwLockContainerPtr)
+        requires
+            containers_linkedlist_wf(root_container, container_perms),
+            container_perms.dom().contains(c_ptr),
+            c_ptr != root_container,
+        ensures
+            container_perms.spec_index(c_ptr).view_rodata().view().parent is Some,
+            container_perms.dom().contains(container_perms.spec_index(c_ptr).view_rodata().view().parent.unwrap()) ==> {
+                let parent = container_perms.spec_index(container_perms.spec_index(c_ptr).view_rodata().view().parent.unwrap()).view();
+                &&& parent.children.view().contains(c_ptr)
+                &&& parent.children.map().dom().contains(container_perms.spec_index(c_ptr).view().parent_linkedlist_node.addr())
+                &&& parent.children.map().spec_index(container_perms.spec_index(c_ptr).view().parent_linkedlist_node.addr()) == c_ptr
+            },
+    { reveal(containers_linkedlist_wf); }
+
     #[verifier::opaque]
     pub open spec fn containers_linkedlist_wf(root_container: RwLockContainerPtr, container_perms: ContainerLockedMap) -> bool {
         &&& forall|c_ptr: RwLockContainerPtr|
@@ -129,6 +145,16 @@ verus! {
             container_perms.dom().contains(c_ptr) && c_ptr != root_container
                 ==> container_perms.spec_index(c_ptr).view_ghost().uppertree_seq.view().spec_index(container_perms.spec_index(c_ptr).view_rodata().view().depth - 1) == container_perms.spec_index(c_ptr).view_rodata().view().parent.unwrap()
     }
+
+    /// The last entry of non-root container `c_ptr`'s upper-tree sequence is its parent.
+    pub proof fn container_children_depth_wf_at(root_container: RwLockContainerPtr, container_perms: ContainerLockedMap, c_ptr: RwLockContainerPtr)
+        requires
+            container_children_depth_wf(root_container, container_perms),
+            container_perms.dom().contains(c_ptr),
+            c_ptr != root_container,
+        ensures
+            container_perms.spec_index(c_ptr).view_ghost().uppertree_seq.view().spec_index(container_perms.spec_index(c_ptr).view_rodata().view().depth - 1) == container_perms.spec_index(c_ptr).view_rodata().view().parent.unwrap(),
+    { reveal(container_children_depth_wf); }
 
     #[verifier::opaque]
     pub open spec fn container_subtree_set_wf(root_container: RwLockContainerPtr, container_perms: ContainerLockedMap) -> bool {
@@ -269,6 +295,8 @@ verus! {
                 old(container_map).dom().contains(c) ==> final(container_map).spec_index(c).being_killed() == old(container_map).spec_index(c).being_killed(),
             forall|c: RwLockContainerPtr| #![trigger final(container_map).spec_index(c).killer_info()]
                 old(container_map).dom().contains(c) ==> final(container_map).spec_index(c).killer_info() == old(container_map).spec_index(c).killer_info(),
+            forall|c: RwLockContainerPtr| #![trigger final(container_map).spec_index(c).view_ghost().retire_ready]
+                old(container_map).dom().contains(c) ==> final(container_map).spec_index(c).view_ghost().retire_ready == old(container_map).spec_index(c).view_ghost().retire_ready,
             forall|c: RwLockContainerPtr| #![trigger final(container_map).spec_index(c).is_init()]
                 old(container_map).dom().contains(c) ==> final(container_map).spec_index(c).is_init() == old(container_map).spec_index(c).is_init(),
         decreases ancestors.len(),
@@ -279,7 +307,7 @@ verus! {
             container_map.update_ghost(c0, ContainerGhost { uppertree_seq: container_map.spec_index(c0).view_ghost().uppertree_seq,
                 subtree_set: Ghost(container_map.spec_index(c0).view_ghost().subtree_set.view().insert(child_ptr)), owned_processes: container_map.spec_index(c0).view_ghost().owned_processes,
                 owned_threads: container_map.spec_index(c0).view_ghost().owned_threads, owned_indirect_threads: container_map.spec_index(c0).view_ghost().owned_indirect_threads,
-                owned_endpoints: container_map.spec_index(c0).view_ghost().owned_endpoints });
+                owned_endpoints: container_map.spec_index(c0).view_ghost().owned_endpoints, retire_ready: container_map.spec_index(c0).view_ghost().retire_ready });
             assert(container_map.typed_lock_map_aligned(held_locks, thread_id)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(ancestors.drop_first().to_set().subset_of(container_map.dom())) by { ancestors.to_set_ensures(); ancestors.drop_first().to_set_ensures(); };
             container_insert_child_into_ancestor_subtree_sets(container_map, ancestors.drop_first(), child_ptr, held_locks, thread_id);
@@ -325,6 +353,8 @@ verus! {
                 old(container_map).dom().contains(c) ==> final(container_map).spec_index(c).being_killed() == old(container_map).spec_index(c).being_killed(),
             forall|c: RwLockContainerPtr| #![trigger final(container_map).spec_index(c).killer_info()]
                 old(container_map).dom().contains(c) ==> final(container_map).spec_index(c).killer_info() == old(container_map).spec_index(c).killer_info(),
+            forall|c: RwLockContainerPtr| #![trigger final(container_map).spec_index(c).view_ghost().retire_ready]
+                old(container_map).dom().contains(c) ==> final(container_map).spec_index(c).view_ghost().retire_ready == old(container_map).spec_index(c).view_ghost().retire_ready,
             forall|c: RwLockContainerPtr| #![trigger final(container_map).spec_index(c).is_init()]
                 old(container_map).dom().contains(c) ==> final(container_map).spec_index(c).is_init() == old(container_map).spec_index(c).is_init(),
         decreases ancestors.len(),
@@ -335,7 +365,7 @@ verus! {
             container_map.update_ghost(c0, ContainerGhost { uppertree_seq: container_map.spec_index(c0).view_ghost().uppertree_seq,
                 subtree_set: Ghost(container_map.spec_index(c0).view_ghost().subtree_set.view().remove(child_ptr)), owned_processes: container_map.spec_index(c0).view_ghost().owned_processes,
                 owned_threads: container_map.spec_index(c0).view_ghost().owned_threads, owned_indirect_threads: container_map.spec_index(c0).view_ghost().owned_indirect_threads,
-                owned_endpoints: container_map.spec_index(c0).view_ghost().owned_endpoints });
+                owned_endpoints: container_map.spec_index(c0).view_ghost().owned_endpoints, retire_ready: container_map.spec_index(c0).view_ghost().retire_ready });
             assert(container_map.typed_lock_map_aligned(held_locks, thread_id)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(ancestors.drop_first().to_set().subset_of(container_map.dom())) by { ancestors.to_set_ensures(); ancestors.drop_first().to_set_ensures(); };
             container_remove_child_from_ancestor_subtree_sets(container_map, ancestors.drop_first(), child_ptr, held_locks, thread_id);

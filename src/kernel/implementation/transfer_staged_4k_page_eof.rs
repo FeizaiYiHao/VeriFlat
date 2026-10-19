@@ -103,6 +103,7 @@ proof fn staged_4k_page_container_transfer_eof_process_management_inv(pre: Kerne
         assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { reveal(per_container_process_tree_wf); };
         assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
         assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
+        assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by { reveal(cpu_set_kill_mark_wf); };
         assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { container_endpoint_wf_preserved_for_endpoint_owner_eq(pre.ctn_mp, post.ctn_mp, pre.ep_mp, post.ep_mp); };
         assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
         assert(container_cpu_offline_flags_wf(post.ctn_mp, post.cpu_offline_mp)) by { container_cpu_offline_flags_wf_preserved_for_flags_owner_eq(pre.ctn_mp, post.ctn_mp, pre.cpu_offline_mp, post.cpu_offline_mp); };
@@ -121,6 +122,42 @@ proof fn staged_4k_page_container_transfer_eof_process_management_inv(pre: Kerne
     };
 }
 
+/// Only the two containers' owned pages change, so every retire-ready container keeps its marked, empty state and its allocators.
+proof fn staged_4k_page_container_transfer_eof_kill_retire_wf(pre: KernelK, post: KernelK, page_ptr: PagePtr, staging_thread_ptr: RwLockThreadPtr, parent: RwLockContainerPtr, child: RwLockContainerPtr)
+    requires
+        container_kill_retire_wf(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp),
+        transfer_staged_4k_page_to_child_container_eof_transition_framing(pre, post, page_ptr, staging_thread_ptr, parent, child),
+    ensures
+        container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
+{ reveal(transfer_staged_4k_page_to_child_container_eof_transition_framing); reveal(container_kill_retire_wf); }
+
+/// The transferred page keeps its staging thread, which write-holds the live child container that now owns the page;
+/// every other page keeps its owner, which stays in the container map.
+proof fn staged_4k_page_container_transfer_eof_page_object_owner(
+    pre: KernelK, post: KernelK, page_ptr: PagePtr, staging_thread_ptr: RwLockThreadPtr, parent: RwLockContainerPtr, child: RwLockContainerPtr,
+)
+    requires
+        page_object_owner_wf(pre.pg_arr, pre.ctn_mp, pre.thr_mp),
+        container_page_owner_wf(pre.ctn_mp, pre.pg_arr),
+        page_array_wf(pre.pg_arr),
+        page_ptr_valid(page_ptr),
+        parent != child,
+        pre.ctn_mp.dom().contains(parent),
+        pre.ctn_mp.dom().contains(child),
+        pre.thr_mp.dom().contains(staging_thread_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thread_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == parent,
+        transfer_staged_4k_page_to_child_container_eof_transition_framing(pre, post, page_ptr, staging_thread_ptr, parent, child),
+        pre.ctn_mp.spec_index(child).locking_thread() is Write,
+        pre.thr_mp.spec_index(staging_thread_ptr).locking_thread() is Write,
+        pre.ctn_mp.spec_index(child).locking_thread()->Write_thread_id == pre.thr_mp.spec_index(staging_thread_ptr).locking_thread()->Write_thread_id,
+        !pre.ctn_mp.spec_index(child).being_killed(),
+    ensures page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp),
+{
+    reveal(transfer_staged_4k_page_to_child_container_eof_transition_framing);
+    page_ptr_valid_imply_page_index_valid(); page_array_wf_at(pre.pg_arr, page_ptr2page_index(page_ptr)); reveal(page_object_owner_wf); reveal(container_page_owner_wf);
+}
+
 pub(super) proof fn staged_4k_page_container_transfer_eof_inv(pre: KernelK, post: KernelK, page_ptr: PagePtr, staging_thread_ptr: RwLockThreadPtr, parent: RwLockContainerPtr, child: RwLockContainerPtr)
     requires
         pre.inv(),
@@ -136,6 +173,10 @@ pub(super) proof fn staged_4k_page_container_transfer_eof_inv(pre: KernelK, post
         pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == parent,
         transfer_staged_4k_page_to_child_container_eof_transition_framing(pre, post, page_ptr, staging_thread_ptr, parent, child),
         post.pg_arr.inv(),
+        pre.ctn_mp.spec_index(child).locking_thread() is Write,
+        pre.thr_mp.spec_index(staging_thread_ptr).locking_thread() is Write,
+        pre.ctn_mp.spec_index(child).locking_thread()->Write_thread_id == pre.thr_mp.spec_index(staging_thread_ptr).locking_thread()->Write_thread_id,
+        !pre.ctn_mp.spec_index(child).being_killed(),
     ensures
         post.inv(),
         post == (KernelK { pg_arr: post.pg_arr, ctn_mp: post.ctn_mp, ..pre }),
@@ -161,7 +202,6 @@ pub(super) proof fn staged_4k_page_container_transfer_eof_inv(pre: KernelK, post
         post.ctn_mp.spec_index(child).view().owned_pages.view() == pre.ctn_mp.spec_index(child).view().owned_pages.view().insert(page_ptr),
 {
     reveal(transfer_staged_4k_page_to_child_container_eof_transition_framing);
-    let page_index = page_ptr2page_index(page_ptr);
     assert(page_array_wf(post.pg_arr)) by { reveal(page_array_wf); reveal(Page::mappings_va_valid); };
     assert(container_tree_fields_wf(post.ctn_mp)) by { reveal(container_tree_fields_wf); reveal(container_perms_wf); };
     assert(container_perms_wf(post.ctn_mp)) by { reveal(container_perms_wf); };
@@ -174,6 +214,7 @@ pub(super) proof fn staged_4k_page_container_transfer_eof_inv(pre: KernelK, post
         };
         assert(container_page_owner_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_page_owner_wf); };
         assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
+        staged_4k_page_container_transfer_eof_page_object_owner(pre, post, page_ptr, staging_thread_ptr, parent, child);
         assert(hugepage_2m_wf(post.pg_arr)) by { hugepage_2m_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); };
         assert(hugepage_1g_wf(post.pg_arr)) by { hugepage_1g_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); };
         assert(page_pagetable_wf(post.pt_mp, post.pg_arr)) by {
@@ -197,6 +238,7 @@ pub(super) proof fn staged_4k_page_container_transfer_eof_inv(pre: KernelK, post
             reveal(container_process_allocator_quota_4k_wf); reveal(container_process_allocator_quota_2m_wf); reveal(container_process_allocator_quota_1g_wf);
         };
         assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { container_allocator_wf_preserved_for_owner_depth_eq(pre.ctn_mp, post.ctn_mp, pre.allc_4k_mp, post.allc_4k_mp, pre.allc_2m_mp, post.allc_2m_mp, pre.allc_1g_mp, post.allc_1g_mp); };
+        staged_4k_page_container_transfer_eof_kill_retire_wf(pre, post, page_ptr, staging_thread_ptr, parent, child);
         assert(container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by { container_allocator_free_4k_page_wf_preserved_for_nonfree_page_change(post.allc_4k_mp, pre.pg_arr, post.pg_arr, page_ptr2page_index(page_ptr)); };
         assert(container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr)) by { container_allocator_free_2m_page_wf_preserved_for_nonfree_page_change(post.allc_2m_mp, pre.pg_arr, post.pg_arr, page_ptr2page_index(page_ptr)); };
         assert(container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr)) by { container_allocator_free_1g_page_wf_preserved_for_nonfree_page_change(post.allc_1g_mp, pre.pg_arr, post.pg_arr, page_ptr2page_index(page_ptr)); };

@@ -26,7 +26,7 @@ pub open spec fn process_invariant_fields_except_quota_unchanged(pre: ProcessLoc
 
 /// Union of allocator fields read by invariants that frame a quota-value
 /// update. The changed quota value and all lock owners are excluded.
-pub open spec fn allocator_invariant_fields_except_quota_unchanged(pre: PageAllocatorUnLockedMap, post: PageAllocatorUnLockedMap) -> bool {
+pub open spec fn allocator_invariant_fields_except_quota_unchanged<const SIZE: usize>(pre: PageAllocatorUnLockedMap<SIZE>, post: PageAllocatorUnLockedMap<SIZE>) -> bool {
     &&& post.dom() == pre.dom()
     &&& forall|a_ptr: RwLockPageAllocatorPtr|
         #![trigger pre.spec_index(a_ptr)]
@@ -44,7 +44,7 @@ pub open spec fn allocator_invariant_fields_except_quota_unchanged(pre: PageAllo
 
 pub proof fn lemma_allocator_pages_wf_preserved_for_allocator_invariant_fields_except_quota_forall()
     ensures
-        forall|page_array: PageLockedArray, pre: PageAllocatorUnLockedMap, post: PageAllocatorUnLockedMap, allocator_2m_map: PageAllocatorUnLockedMap, allocator_1g_map: PageAllocatorUnLockedMap|
+        forall|page_array: PageLockedArray, pre: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>, post: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>, allocator_2m_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_2M>, allocator_1g_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_1G>|
             #![trigger allocator_pages_wf(page_array, pre, allocator_2m_map, allocator_1g_map), allocator_pages_wf(page_array, post, allocator_2m_map, allocator_1g_map)]
             allocator_pages_wf(page_array, pre, allocator_2m_map, allocator_1g_map) && allocator_invariant_fields_except_quota_unchanged(pre, post) ==> allocator_pages_wf(page_array, post, allocator_2m_map, allocator_1g_map),
 { reveal(allocator_4k_pages_wf); }
@@ -64,9 +64,9 @@ pub proof fn lemma_container_process_page_pagetable_wf_preserved_for_process_inv
                 ==> container_process_page_pagetable_wf(container_map, post, pagetable_map, page_array),
 { reveal(container_process_page_pagetable_wf); }
 
-pub proof fn lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_contents_forall()
+pub proof fn lemma_allocator_free_page_ptrs_wf_preserved_for_pool_and_cache_contents_forall<const SIZE: usize>()
     ensures
-        forall|pre: PageAllocatorUnLockedMap, post: PageAllocatorUnLockedMap|
+        forall|pre: PageAllocatorUnLockedMap<SIZE>, post: PageAllocatorUnLockedMap<SIZE>|
             #![trigger allocator_free_page_ptrs_wf(pre), allocator_free_page_ptrs_wf(post)]
             allocator_free_page_ptrs_wf(pre) && post.dom() == pre.dom() && (forall|a_ptr: RwLockPageAllocatorPtr|
                 #![trigger pre.spec_index(a_ptr)]
@@ -146,14 +146,14 @@ pub proof fn lemma_container_process_wf_preserved_for_process_rodata_forall()
 
 pub proof fn lemma_container_allocator_wf_preserved_for_allocator_invariant_fields_except_quota_forall()
     ensures
-        forall|container_map: ContainerLockedMap, pre: PageAllocatorUnLockedMap, post: PageAllocatorUnLockedMap, allocator_2m_map: PageAllocatorUnLockedMap, allocator_1g_map: PageAllocatorUnLockedMap|
+        forall|container_map: ContainerLockedMap, pre: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>, post: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>, allocator_2m_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_2M>, allocator_1g_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_1G>|
             #![trigger container_allocator_wf(container_map, pre, allocator_2m_map, allocator_1g_map), container_allocator_wf(container_map, post, allocator_2m_map, allocator_1g_map)]
             container_allocator_wf(container_map, pre, allocator_2m_map, allocator_1g_map) && allocator_invariant_fields_except_quota_unchanged(pre, post) ==> container_allocator_wf(container_map, post, allocator_2m_map, allocator_1g_map),
 { reveal(container_allocator_wf); }
 
 pub proof fn container_allocator_wf_preserved_for_owner_depth_eq(
-    old_container_map: ContainerLockedMap, new_container_map: ContainerLockedMap, old_allocator_4k_map: PageAllocatorUnLockedMap, new_allocator_4k_map: PageAllocatorUnLockedMap,
-    old_allocator_2m_map: PageAllocatorUnLockedMap, new_allocator_2m_map: PageAllocatorUnLockedMap, old_allocator_1g_map: PageAllocatorUnLockedMap, new_allocator_1g_map: PageAllocatorUnLockedMap,
+    old_container_map: ContainerLockedMap, new_container_map: ContainerLockedMap, old_allocator_4k_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>, new_allocator_4k_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>,
+    old_allocator_2m_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_2M>, new_allocator_2m_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_2M>, old_allocator_1g_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_1G>, new_allocator_1g_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_1G>,
 )
     requires
         container_allocator_wf(old_container_map, old_allocator_4k_map, old_allocator_2m_map, old_allocator_1g_map),

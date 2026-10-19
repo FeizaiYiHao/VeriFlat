@@ -53,6 +53,7 @@ fn new_container_release_entry_locks(
         old(steps).snapshot_k().pt_mp.spec_index(pagetable_ptr).locking_thread() is None,
         endpoint is Some ==> old(steps).snapshot_k().ep_mp.spec_index(endpoint->Some_0).locking_thread() is None,
         cpu_set_unlocked_k.cpu_set_mp.spec_index(cpu_set_ptr).locking_thread() is None,
+        !cpu_set_unlocked_k.cpu_set_mp.spec_index(cpu_set_ptr).being_killed() && !old(krnl).cpu_set_mp.spec_index(cpu_set_ptr).being_killed(),
         container_cpu_set_wf(cpu_set_unlocked_k.ctn_mp, cpu_set_unlocked_k.cpu_set_mp),
         kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
@@ -70,7 +71,7 @@ fn new_container_release_entry_locks(
         old(lctx).pcid_allocator_lock_map().dom().is_empty(),
         old(lctx).iommu_table_lock_map().dom().is_empty(),
         old(lctx).iommu_root_table_lock_map().dom().is_empty(),
-        held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_MAJOR),
+        held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
         old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
@@ -91,6 +92,7 @@ fn new_container_release_entry_locks(
         old(krnl).thr_mp.spec_index(thread_ptr).view().state == (ThreadState::RUNNING { cpu_id: cpu_id }),
         old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
         old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None,
+        !old(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited,
         old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
         thread_lock_perm.state() is WriteLock && thread_lock_perm.thread_id() == old(lctx).thread_id() && thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
         old(krnl).pt_mp.dom().contains(pagetable_ptr),
@@ -255,6 +257,7 @@ fn new_container_lock_owners(
             &&& final(krnl).thr_mp.spec_index(e.current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id: cpu_id })
             &&& final(krnl).thr_mp.spec_index(e.current_thread_ptr).view().temp_alloc_clean()
             &&& final(krnl).thr_mp.spec_index(e.current_thread_ptr).view().syscall_progress.view() is None
+            &&& !final(krnl).thr_mp.spec_index(e.current_thread_ptr).view_ghost().exited
             &&& final(krnl).thr_mp.spec_index(e.current_thread_ptr).view().free_quota_pending_clean()
             &&& final(krnl).thr_mp.spec_index(e.current_thread_ptr).view().quota_4k >= 9 + funding_page_count + 3 * range
             &&& final(krnl).thr_mp.spec_index(e.current_thread_ptr).view().quota_2m >= 2
@@ -489,6 +492,7 @@ fn new_container_lock_entry(
             &&& kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &KernelK { cpu_set_mp: old(krnl).cpu_set_mp, ..*final(krnl) })
             &&& final(krnl).cpu_set_mp.unchanged_except(&old(krnl).cpu_set_mp, e.parent_cpu_set)
             &&& old(krnl).cpu_set_mp.spec_index(e.parent_cpu_set).locking_thread() is None
+            &&& !old(krnl).cpu_set_mp.spec_index(e.parent_cpu_set).being_killed() && !final(krnl).cpu_set_mp.spec_index(e.parent_cpu_set).being_killed()
             &&& cpu_id == final(lctx).cpu_id()
             &&& final(krnl).cpu_published[cpu_id as int].view() == (final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid)
             &&& process_quota_4k <= funding_page_count
@@ -537,7 +541,7 @@ fn new_container_lock_entry(
             &&& final(lctx).pagetable_lock_map().dom() =~= set![e.source_pagetable_ptr]
             &&& final(lctx).iommu_table_lock_map().dom().is_empty()
             &&& final(lctx).iommu_root_table_lock_map().dom().is_empty()
-            &&& held_locks_order_below(final(krnl), final(lctx), ALLOCATOR_CACHE_MAJOR)
+            &&& held_locks_order_below(final(krnl), final(lctx), ALLOCATOR_CACHE_4K_MAJOR)
             &&& typed_lock_maps_aligned(final(krnl), final(lctx))
             &&& typed_lock_map_contains_mode(final(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write)
             &&& !final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed()
@@ -570,6 +574,7 @@ fn new_container_lock_entry(
             &&& final(krnl).thr_mp.spec_index(e.current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id: cpu_id })
             &&& final(krnl).thr_mp.spec_index(e.current_thread_ptr).view().temp_alloc_clean()
             &&& final(krnl).thr_mp.spec_index(e.current_thread_ptr).view().syscall_progress.view() is None
+            &&& !final(krnl).thr_mp.spec_index(e.current_thread_ptr).view_ghost().exited
             &&& final(krnl).thr_mp.spec_index(e.current_thread_ptr).view().free_quota_pending_clean()
             &&& final(krnl).thr_mp.spec_index(e.current_thread_ptr).view().quota_4k >= 9 + funding_page_count + 3 * e.source_range.len
             &&& final(krnl).thr_mp.spec_index(e.current_thread_ptr).view().quota_2m >= 2
@@ -619,6 +624,11 @@ fn new_container_lock_entry(
     proof {
         assert(krnl.cpu_set_mp.dom().contains(parent_cpu_set)) by { container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, parent_container_ptr); };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+        // The caller's thread lives in the parent container, so its cpu set is not marked.
+        assert(!krnl.cpu_set_mp.spec_index(parent_cpu_set).being_killed()) by {
+            container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, current_thread_ptr); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, parent_container_ptr);
+            cpu_set_kill_mark_wf_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, parent_cpu_set);
+        };
     }
     let ghost cpu_set_unlocked_k = *krnl;
     let Tracked(cpu_set_lock_perm) = krnl.wlock_cpu_set(parent_cpu_set, Tracked(&mut *lctx));

@@ -29,7 +29,7 @@ pub(super) fn allocate_new_process_with_iommu_pages(
         current_thread_lock_perm.thread_id() == old(lctx).thread_id(),
         current_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
         old(lctx).page_lock_map().dom().is_empty(),
-        held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_MAJOR),
+        held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
     ensures
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
@@ -75,6 +75,7 @@ pub(super) fn allocate_new_process_with_iommu_pages(
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_container == old(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_container,
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().proc_pagetable_ptr == old(krnl).thr_mp.spec_index(current_thread_ptr).view().proc_pagetable_ptr,
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().state == old(krnl).thr_mp.spec_index(current_thread_ptr).view().state,
+        final(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost(),
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress == old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress,
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().quota_4k == old(krnl).thr_mp.spec_index(current_thread_ptr).view().quota_4k,
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_2m.view().is_empty(),

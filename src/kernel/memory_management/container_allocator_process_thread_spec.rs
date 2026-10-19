@@ -3,7 +3,7 @@ use crate::*;
 
 verus! {
     pub open spec fn container_process_allocator_quota_wf(container_map: ContainerLockedMap, process_map: ProcessLockedMap, thread_map: ThreadLockedMap,
-        allocator_4k_map: PageAllocatorUnLockedMap, allocator_2m_map: PageAllocatorUnLockedMap, allocator_1g_map: PageAllocatorUnLockedMap) -> bool {
+        allocator_4k_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>, allocator_2m_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_2M>, allocator_1g_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_1G>) -> bool {
         &&& container_process_allocator_quota_4k_wf(container_map, process_map, thread_map, allocator_4k_map)
         &&& container_process_allocator_quota_2m_wf(container_map, process_map, thread_map, allocator_2m_map)
         &&& container_process_allocator_quota_1g_wf(container_map, process_map, thread_map, allocator_1g_map)
@@ -61,7 +61,7 @@ verus! {
     // container_thread_wf.
     // Global-pool page removal additionally needs container_allocator_wf.
     #[verifier::opaque]
-    pub open spec fn container_process_allocator_quota_4k_wf(container_map: ContainerLockedMap, process_map: ProcessLockedMap, thread_map: ThreadLockedMap, allocator_4k_map: PageAllocatorUnLockedMap) -> bool
+    pub open spec fn container_process_allocator_quota_4k_wf(container_map: ContainerLockedMap, process_map: ProcessLockedMap, thread_map: ThreadLockedMap, allocator_4k_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>) -> bool
     {
         &&& forall|c_ptr:RwLockContainerPtr|
             #![trigger container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_4k]
@@ -75,7 +75,7 @@ verus! {
     // Proof dependencies (confirmed for thread-map preservation):
     // container_thread_wf.
     #[verifier::opaque]
-    pub open spec fn container_process_allocator_quota_2m_wf(container_map: ContainerLockedMap, process_map: ProcessLockedMap, thread_map: ThreadLockedMap, allocator_2m_map: PageAllocatorUnLockedMap) -> bool {
+    pub open spec fn container_process_allocator_quota_2m_wf(container_map: ContainerLockedMap, process_map: ProcessLockedMap, thread_map: ThreadLockedMap, allocator_2m_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_2M>) -> bool {
         &&& forall|c_ptr:RwLockContainerPtr|
             #![trigger container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_2m]
             container_map.dom().contains(c_ptr) ==> process_effective_quota_2m_fold_sum(container_map.spec_index(c_ptr).view_ghost().owned_processes.view(), process_map)
@@ -88,7 +88,7 @@ verus! {
     // Proof dependencies (confirmed for thread-map preservation):
     // container_thread_wf.
     #[verifier::opaque]
-    pub open spec fn container_process_allocator_quota_1g_wf(container_map: ContainerLockedMap, process_map: ProcessLockedMap, thread_map: ThreadLockedMap, allocator_1g_map: PageAllocatorUnLockedMap) -> bool {
+    pub open spec fn container_process_allocator_quota_1g_wf(container_map: ContainerLockedMap, process_map: ProcessLockedMap, thread_map: ThreadLockedMap, allocator_1g_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_1G>) -> bool {
         &&& forall|c_ptr:RwLockContainerPtr|
             #![trigger container_map.spec_index(c_ptr).view_rodata().view().allocator_ptr_1g]
             container_map.dom().contains(c_ptr) ==> process_effective_quota_1g_fold_sum(container_map.spec_index(c_ptr).view_ghost().owned_processes.view(), process_map)

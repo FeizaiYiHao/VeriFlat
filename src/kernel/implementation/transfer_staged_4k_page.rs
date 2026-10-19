@@ -32,6 +32,7 @@ pub fn transfer_staged_4k_page_to_child_container(
         child_container_lock_perm.lock_id() == old(krnl).ctn_mp.spec_index(child_container_ptr).locking_thread()->Write_lock_id,
         old(krnl).thr_mp.dom().contains(staging_thread_ptr),
         old(krnl).thr_mp.spec_index(staging_thread_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr),
+        typed_lock_map_contains_mode(old(lctx).thread_lock_map(), staging_thread_ptr, TypedLockMode::Write),
         typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(page_ptr), TypedLockMode::Write),
         !old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().being_killed(),
         old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thread_ptr }),
@@ -82,6 +83,8 @@ pub fn transfer_staged_4k_page_to_child_container(
         page_array_wf_map(krnl.pg_arr);
         page_array_wf_at(krnl.pg_arr, page_index);
         container_perms_wf_at(krnl.ctn_mp, parent_container_ptr); container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, child_container_ptr);
+        krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), child_container_ptr);
+        krnl.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), staging_thread_ptr);
     }
     let page = krnl.pg_arr.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(page_lock_perm));
     page.owning_container = child_container_ptr;

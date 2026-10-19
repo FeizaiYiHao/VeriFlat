@@ -44,7 +44,7 @@ pub(in super::super) fn create_initial_thread_and_finish_new_process(
         kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
         old(lctx).page_lock_map().dom().is_empty(),
-        held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_MAJOR),
+        held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
         old(lctx).container_lock_map().dom().is_empty(),
         old(lctx).process_lock_map().dom() =~= set![child_ptr],
@@ -78,6 +78,7 @@ pub(in super::super) fn create_initial_thread_and_finish_new_process(
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_container == container_ptr,
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().state is RUNNING,
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_clean(),
+        !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() matches Some(SyscallProgress::Share4k { source_range, shared, origin, .. })
             && shared == source_range.len && origin == Share4kOrigin::NewProcess(NewProcessProgress {
                 range: source_range, regs: *initial_regs, endpoint_index: if endpoint is Some { Some(endpoint_index) } else { None }, with_iommu: iommu_table is Some, child: Some(child_ptr),

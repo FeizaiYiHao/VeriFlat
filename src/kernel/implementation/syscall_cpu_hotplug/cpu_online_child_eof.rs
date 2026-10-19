@@ -37,13 +37,14 @@ proof fn cpu_online_child_eof_process_management_inv(pre: KernelK, post: KernelK
         pre.ctn_mp.spec_index(child_ptr).view_rodata().view().cpu_set == cpu_set_ptr,
         pre.cpu_set_mp.dom().contains(cpu_set_ptr),
         pre.cpu_set_mp.spec_index(cpu_set_ptr).view().owned_cpus.closed_view().contains(target),
+        !pre.cpu_set_mp.spec_index(cpu_set_ptr).being_killed(),
         pre.cpu_arr.spec_index(target).view().view().view().state is Off,
         pre.cpu_arr.spec_index(target).view().view().view().owning_container == child_ptr,
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
     reveal(cpu_online_child_eof_transition_framing);
-    assert(post.process_management_inv()) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); reveal(cpu_array_wf); };
+    assert(post.process_management_inv()) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); reveal(cpu_array_wf); reveal(cpu_set_kill_mark_wf); };
 }
 
 /// Closes every kernel invariant after the online commit from the entry invariants, the summary, and the
@@ -57,6 +58,7 @@ pub(super) proof fn cpu_online_child_eof(pre: KernelK, post: KernelK, cpu_set_pt
         pre.ctn_mp.spec_index(child_ptr).view_rodata().view().cpu_set == cpu_set_ptr,
         pre.cpu_set_mp.dom().contains(cpu_set_ptr),
         pre.cpu_set_mp.spec_index(cpu_set_ptr).view().owned_cpus.closed_view().contains(target),
+        !pre.cpu_set_mp.spec_index(cpu_set_ptr).being_killed(),
         pre.cpu_arr.spec_index(target).view().view().view().state is Off,
         pre.cpu_arr.spec_index(target).view().view().view().owning_container == child_ptr,
         post.cpu_arr.inv(),

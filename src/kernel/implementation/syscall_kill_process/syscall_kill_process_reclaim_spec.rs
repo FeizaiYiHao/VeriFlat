@@ -101,20 +101,9 @@ pub open spec fn kill_reassign_eof_transition_framing(pre: KernelK, post: Kernel
     }
 }
 
-/// Returning the whole `size` quota of the target `process_ptr` to the write-held `size` allocator `allocator_ptr` of its
-/// container, which has room for it: the target drops its `size` quota, which the allocator regains. Lock owners, lock
-/// ids, and every other object stay.
-#[verifier::opaque]
-pub open spec fn kill_quota_eof_transition_framing(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, allocator_ptr: RwLockPageAllocatorPtr, size: PageSize) -> bool {
-    let process = pre.prc_mp.spec_index(process_ptr);
-    let pre_allocators = match size { PageSize::SZ4k => pre.allc_4k_mp, PageSize::SZ2m => pre.allc_2m_mp, PageSize::SZ1g => pre.allc_1g_mp };
-    let post_allocators = match size { PageSize::SZ4k => post.allc_4k_mp, PageSize::SZ2m => post.allc_2m_mp, PageSize::SZ1g => post.allc_1g_mp };
+/// The write-held allocator `allocator_ptr` regains `returned` quota; nothing else in its map changes.
+pub open spec fn kill_quota_eof_allocator_returned<const SIZE: usize>(pre_allocators: PageAllocatorUnLockedMap<SIZE>, post_allocators: PageAllocatorUnLockedMap<SIZE>, allocator_ptr: RwLockPageAllocatorPtr, returned: int) -> bool {
     let allocator = pre_allocators.spec_index(allocator_ptr);
-    let returned = match size { PageSize::SZ4k => process.view().quota_4k, PageSize::SZ2m => process.view().quota_2m, PageSize::SZ1g => process.view().quota_1g };
-    &&& post == (KernelK { prc_mp: post.prc_mp, allc_4k_mp: post.allc_4k_mp, allc_2m_mp: post.allc_2m_mp, allc_1g_mp: post.allc_1g_mp, ..pre })
-    &&& !(size is SZ4k) ==> post.allc_4k_mp == pre.allc_4k_mp
-    &&& !(size is SZ2m) ==> post.allc_2m_mp == pre.allc_2m_mp
-    &&& !(size is SZ1g) ==> post.allc_1g_mp == pre.allc_1g_mp
     &&& post_allocators.perms_wf()
     &&& post_allocators.unchanged_except(&pre_allocators, allocator_ptr)
     &&& post_allocators.spec_index(allocator_ptr).quota.view() == (AllocatorQuota { value: (allocator.quota.view().value + returned) as usize, ..allocator.quota.view() })
@@ -124,6 +113,22 @@ pub open spec fn kill_quota_eof_transition_framing(pre: KernelK, post: KernelK, 
     &&& post_allocators.spec_index(allocator_ptr).quota.locking_thread() == allocator.quota.locking_thread()
     &&& post_allocators.spec_index(allocator_ptr).quota.being_killed() == allocator.quota.being_killed()
     &&& post_allocators.spec_index(allocator_ptr) == (PageAllocator { quota: post_allocators.spec_index(allocator_ptr).quota, ..allocator })
+}
+
+/// Returning the whole `size` quota of the target `process_ptr` to the write-held `size` allocator `allocator_ptr` of its
+/// container, which has room for it: the target drops its `size` quota, which the allocator regains. Lock owners, lock
+/// ids, and every other object stay.
+#[verifier::opaque]
+pub open spec fn kill_quota_eof_transition_framing(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, allocator_ptr: RwLockPageAllocatorPtr, size: PageSize) -> bool {
+    let process = pre.prc_mp.spec_index(process_ptr);
+    let returned = match size { PageSize::SZ4k => process.view().quota_4k, PageSize::SZ2m => process.view().quota_2m, PageSize::SZ1g => process.view().quota_1g };
+    &&& post == (KernelK { prc_mp: post.prc_mp, allc_4k_mp: post.allc_4k_mp, allc_2m_mp: post.allc_2m_mp, allc_1g_mp: post.allc_1g_mp, ..pre })
+    &&& !(size is SZ4k) ==> post.allc_4k_mp == pre.allc_4k_mp
+    &&& !(size is SZ2m) ==> post.allc_2m_mp == pre.allc_2m_mp
+    &&& !(size is SZ1g) ==> post.allc_1g_mp == pre.allc_1g_mp
+    &&& size is SZ4k ==> kill_quota_eof_allocator_returned(pre.allc_4k_mp, post.allc_4k_mp, allocator_ptr, returned as int)
+    &&& size is SZ2m ==> kill_quota_eof_allocator_returned(pre.allc_2m_mp, post.allc_2m_mp, allocator_ptr, returned as int)
+    &&& size is SZ1g ==> kill_quota_eof_allocator_returned(pre.allc_1g_mp, post.allc_1g_mp, allocator_ptr, returned as int)
     &&& post.prc_mp.perms_wf()
     &&& post.prc_mp.unchanged_except(&pre.prc_mp, process_ptr)
     &&& post.prc_mp.spec_index(process_ptr).is_init()

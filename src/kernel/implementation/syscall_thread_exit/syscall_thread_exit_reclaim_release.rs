@@ -159,6 +159,7 @@ pub(super) fn thread_exit_reclaim_flush(
         final(krnl).pt_mp.spec_index(pagetable).view().mapping_1g() == locked_pt.mapping_1g(),
         forall|va: VAddr| #![trigger final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va)]
             final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va) && !final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(va).present ==> spec_va_4k_valid(va) && start_l4 <= spec_v2l4index(va),
+        final(krnl).thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
         final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress, ..entry_k.thr_mp.spec_index(thread_ptr).view() }),
         final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: true }),
         old(steps).view().len() <= final(steps).view().len(),
@@ -350,6 +351,7 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
         final(krnl).pt_mp.spec_index(pagetable).view().mapping_1g() == locked_pt.mapping_1g(),
         forall|va: VAddr| #![trigger final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va)]
             final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va) && !final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(va).present ==> spec_va_4k_valid(va) && start_l4 <= spec_v2l4index(va),
+        final(krnl).thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
         final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress, ..entry_k.thr_mp.spec_index(thread_ptr).view() }),
         final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: true }),
         old(steps).view().len() <= final(steps).view().len(),
@@ -468,6 +470,7 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
             pei_valid(start_l4),
             forall|va: VAddr| #![trigger krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va)]
                 krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va) && !krnl.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(va).present ==> spec_va_4k_valid(va) && start_l4 <= spec_v2l4index(va),
+            krnl.thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
             krnl.thr_mp.spec_index(thread_ptr).view() == (Thread {
                 direct_free_quota_pending_4k: krnl.thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k, indirect_free_quota_pending_4k: krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k,
                 syscall_progress: krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress, ..entry_k.thr_mp.spec_index(thread_ptr).view()
@@ -704,6 +707,7 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
         final(krnl).pt_mp.spec_index(pagetable).view().mapping_1g() == locked_pt.mapping_1g(),
         forall|va: VAddr| #![trigger final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va)]
             final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va) && !final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(va).present ==> spec_va_4k_valid(va) && start_l4 <= spec_v2l4index(va),
+        final(krnl).thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
         final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress, ..entry_k.thr_mp.spec_index(thread_ptr).view() }),
         final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: true }),
         old(steps).view().len() <= final(steps).view().len(),
@@ -821,6 +825,7 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
             pei_valid(start_l4),
             forall|va: VAddr| #![trigger krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va)]
                 krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va) && !krnl.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(va).present ==> spec_va_4k_valid(va) && start_l4 <= spec_v2l4index(va),
+            krnl.thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
             krnl.thr_mp.spec_index(thread_ptr).view() == (Thread {
                 direct_free_quota_pending_4k: krnl.thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k, indirect_free_quota_pending_4k: krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k,
                 syscall_progress: krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress, ..entry_k.thr_mp.spec_index(thread_ptr).view()

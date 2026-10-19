@@ -306,13 +306,16 @@ proof fn kill_container_retire_root_eof_process_kernel_pages_owner(
                 &&& pages[4] == page_ptr2page_index(pre.it_mp.spec_index(it).view().cr3)
             }
         }),
-    ensures process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp),
+    ensures
+        process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp),
+        page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp),
 {
     reveal(kill_container_retire_root_eof_transition_framing);
     page_ptr_roundtrip(); page_index_roundtrip();
     assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by {
         reveal(process_kernel_pages_owner_wf); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match);
     };
+    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
 }
 
 proof fn kill_container_retire_root_eof_mappings(
@@ -387,6 +390,7 @@ proof fn kill_container_retire_root_eof_allocator(
     ensures
         post.allocator_free_pages_wf(),
         container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
+        container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
         container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr),
         container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
         container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr),
@@ -398,6 +402,9 @@ proof fn kill_container_retire_root_eof_allocator(
         container_allocator_wf_preserved_for_owner_depth_eq(pre.ctn_mp, post.ctn_mp, pre.allc_4k_mp, post.allc_4k_mp, pre.allc_2m_mp, post.allc_2m_mp, pre.allc_1g_mp, post.allc_1g_mp);
     };
     container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, container_ptr);
+    assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
+        container_process_wf_process_at(pre.ctn_mp, pre.prc_mp, target); reveal(container_kill_retire_wf); reveal(container_allocator_wf);
+    };
     assert(container_allocator_global_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf); };
     assert(container_allocator_cpu_cache_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf); };
     assert(container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(container_allocator_free_4k_page_wf); };
@@ -524,6 +531,7 @@ pub(crate) proof fn kill_container_retire_root_eof_container_relations(
         thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp),
         thread_endpoint_queue_wf(post.thr_mp, post.ep_mp),
         thread_caller_callee_wf(post.thr_mp),
+        thread_dangling_chain_end_wf(post.thr_mp),
         container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp),
         container_scheduler_wf(post.ctn_mp, post.sched_mp),
         container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp),
@@ -573,6 +581,8 @@ pub(crate) proof fn kill_container_retire_root_eof_process_relations(
         pre.ctn_mp.typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id()),
         forall|c: RwLockContainerPtr| #![trigger lctx.container_lock_map().dom().contains(c)] lctx.container_lock_map().dom().contains(c) && pre.ctn_mp.spec_index(c).killer_info() is Some
             ==> pre.ctn_mp.spec_index(c).killer_info()->Some_0.process != target,
+        forall|u: RwLockThreadPtr| #![trigger pre.thr_mp.spec_index(u).locking_thread()]
+            pre.thr_mp.dom().contains(u) && pre.thr_mp.spec_index(u).wlocked_by_thread(lctx.thread_id()) ==> !pre.thr_mp.spec_index(u).being_killed(),
     ensures
         container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr),
         process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp),
@@ -580,6 +590,7 @@ pub(crate) proof fn kill_container_retire_root_eof_process_relations(
         process_thread_wf(post.prc_mp, post.thr_mp),
         process_kill_mark_wf(post.ctn_mp, post.prc_mp),
         container_kill_mark_wf(post.ctn_mp, post.prc_mp),
+        cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp),
         process_state_lock_wf(post.prc_mp),
         process_emptied_threads_wf(post.prc_mp, post.thr_mp),
 {
@@ -587,9 +598,10 @@ pub(crate) proof fn kill_container_retire_root_eof_process_relations(
     assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); reveal(process_cpu_wf); };
     assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { reveal(process_pcid_allocator_wf); reveal(container_pcid_allocator_wf); };
     assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); };
-    assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(process_thread_wf); };
+    assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { pre.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), target); reveal(process_thread_wf); };
     assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); reveal(LockedMap::typed_lock_map_aligned); reveal(container_process_wf); reveal(per_container_process_tree_wf); reveal(process_children_parent_wf); };
     assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); reveal(LockedMap::typed_lock_map_aligned); };
+    assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by { reveal(cpu_set_kill_mark_wf); reveal(container_kill_mark_wf); reveal(LockedMap::typed_lock_map_aligned); };
     assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
     assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
 }
@@ -800,6 +812,8 @@ pub(crate) proof fn kill_container_retire_root_eof(
         pre.ctn_mp.typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id()),
         forall|c: RwLockContainerPtr| #![trigger lctx.container_lock_map().dom().contains(c)] lctx.container_lock_map().dom().contains(c) && pre.ctn_mp.spec_index(c).killer_info() is Some
             ==> pre.ctn_mp.spec_index(c).killer_info()->Some_0.process != target,
+        forall|u: RwLockThreadPtr| #![trigger pre.thr_mp.spec_index(u).locking_thread()]
+            pre.thr_mp.dom().contains(u) && pre.thr_mp.spec_index(u).wlocked_by_thread(lctx.thread_id()) ==> !pre.thr_mp.spec_index(u).being_killed(),
     ensures
         post.inv(),
         post.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().is_empty(),

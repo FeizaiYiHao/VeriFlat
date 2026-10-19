@@ -13,6 +13,7 @@ pub(super) proof fn cpu_offline_flag_lock_op_eof(pre: KernelK, post: KernelK, fl
         post.cpu_offline_mp.unchanged_except(&pre.cpu_offline_mp, flags_ptr),
         post.cpu_offline_mp.spec_index(flags_ptr).inv(),
         post.cpu_offline_mp.spec_index(flags_ptr).owning_container == pre.cpu_offline_mp.spec_index(flags_ptr).owning_container,
+        post.cpu_offline_mp.spec_index(flags_ptr).container_depth == pre.cpu_offline_mp.spec_index(flags_ptr).container_depth,
         post.cpu_offline_mp.spec_index(flags_ptr).flags.unchanged_except(&pre.cpu_offline_mp.spec_index(flags_ptr).flags, cpu_id),
         post.cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_id).view().inv(),
         post.cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_id).view().view() == pre.cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_id).view().view(),

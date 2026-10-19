@@ -46,6 +46,7 @@ pub proof fn memory_management_inv_preserved_for_page_invariant_fields(pre: Kern
     };
     assert(container_page_owner_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_page_owner_wf); };
     assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
+    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(page_object_owner_wf); };
     assert(hugepage_2m_wf(post.pg_arr)) by { reveal(hugepage_2m_wf); };
     assert(hugepage_1g_wf(post.pg_arr)) by { reveal(hugepage_1g_wf); };
     assert(page_pagetable_wf(post.pt_mp, post.pg_arr)) by { reveal(pagetable_perms_wf); reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); };

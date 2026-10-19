@@ -39,6 +39,7 @@ use veriflat_monolith::kernel::implementation::syscall_cpu_hotplug::syscall_cpu_
 use veriflat_monolith::kernel::implementation::syscall_cpu_hotplug::syscall_cpu_online_child::syscall_cpu_online_child;
 use veriflat_monolith::kernel::implementation::syscall_ipc::syscall_ipc::*;
 use veriflat_monolith::kernel::implementation::syscall_kill_process::syscall_kill_process::syscall_kill_process;
+use veriflat_monolith::kernel::implementation::syscall_kill_container::syscall_kill_container::syscall_kill_container;
 use veriflat_monolith::kernel::implementation::syscall_mmap_4k::syscall_mmap_4k::syscall_mmap_4k;
 use veriflat_monolith::kernel::implementation::syscall_new_container::{syscall_new_container, syscall_new_container_with_endpoint};
 use veriflat_monolith::kernel::implementation::syscall_new_endpoint::syscall_new_endpoint::syscall_new_endpoint;
@@ -522,6 +523,7 @@ extern "C" fn syscall_dispatch(regs: &mut Registers) {
         }
         vsys::NR_THREAD_EXIT => syscall_thread_exit(k, t!(), t!(), cpu_id),
         vsys::NR_KILL_PROCESS => syscall_kill_process(k, t!(), t!(), cpu_id, a1),
+        vsys::NR_KILL_CONTAINER => syscall_kill_container(k, t!(), t!(), cpu_id, a1),
         vsys::NR_MMAP_4K => syscall_mmap_4k(k, t!(), t!(), cpu_id, a1, a2),
         vsys::NR_UNMAP_4K => syscall_unmap_4k(k, t!(), t!(), cpu_id, a1, a2),
         vsys::NR_NEW_PROCESS => {

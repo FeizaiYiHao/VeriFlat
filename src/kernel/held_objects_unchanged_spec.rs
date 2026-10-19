@@ -173,7 +173,7 @@ pub open spec fn held_cpus_unchanged(pre: CpuLockedArray, post: CpuLockedArray, 
         }
 }
 
-pub open spec fn held_allocator_objects_unchanged(pre: PageAllocatorUnLockedMap, post: PageAllocatorUnLockedMap, lctx: &LocalContext, page_size: PageSize) -> bool {
+pub open spec fn held_allocator_objects_unchanged<const SIZE: usize>(pre: PageAllocatorUnLockedMap<SIZE>, post: PageAllocatorUnLockedMap<SIZE>, lctx: &LocalContext, page_size: PageSize) -> bool {
     let quota_lock_map = match page_size {
         PageSize::SZ4k => lctx.allocator_quota_4k_lock_map(),
         PageSize::SZ2m => lctx.allocator_quota_2m_lock_map(),

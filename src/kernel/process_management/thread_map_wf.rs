@@ -5,7 +5,8 @@ verus! {
     // Proof dependencies (confirmed):
     // thread_free_quota_pending_empty_unless_wlocked,
     // thread_temp_alloc_empty_unless_wlocked,
-    // thread_syscall_progress_only_when_wlocked.
+    // thread_syscall_progress_only_when_wlocked,
+    // thread_exited_only_when_wlocked.
     #[verifier::opaque]
     pub open spec fn thread_perms_wf(thread_map: ThreadLockedMap) -> bool {
         &&& thread_map.perms_wf()
@@ -14,6 +15,7 @@ verus! {
         &&& thread_temp_alloc_empty_unless_wlocked(thread_map)
         &&& thread_endpoint_transit_only_when_wlocked(thread_map)
         &&& thread_syscall_progress_only_when_wlocked(thread_map)
+        &&& thread_exited_only_when_wlocked(thread_map)
     }
 
     pub proof fn thread_perms_wf_map(thread_map: ThreadLockedMap)
@@ -49,6 +51,22 @@ verus! {
             #![trigger thread_map.spec_index(thread_ptr).view().syscall_progress]
             thread_map.dom().contains(thread_ptr) && thread_map.spec_index(thread_ptr).view().syscall_progress.view() is Some ==> thread_map.spec_index(thread_ptr).locking_thread() is Write
     }
+
+    /// An exited thread stays write-held by its exiting syscall until it is destroyed.
+    #[verifier::opaque]
+    pub open spec fn thread_exited_only_when_wlocked(thread_map: ThreadLockedMap) -> bool {
+        forall|thread_ptr: RwLockThreadPtr|
+            #![trigger thread_map.spec_index(thread_ptr).view_ghost()]
+            thread_map.dom().contains(thread_ptr) && thread_map.spec_index(thread_ptr).view_ghost().exited ==> thread_map.spec_index(thread_ptr).locking_thread() is Write
+    }
+
+    /// Exited thread `thread_ptr` is write-held.
+    pub proof fn thread_exited_only_when_wlocked_at(thread_map: ThreadLockedMap, thread_ptr: RwLockThreadPtr)
+        requires
+            thread_perms_wf(thread_map),
+            thread_map.dom().contains(thread_ptr),
+        ensures thread_map.spec_index(thread_ptr).view_ghost().exited ==> thread_map.spec_index(thread_ptr).locking_thread() is Write,
+    { reveal(thread_perms_wf); reveal(thread_exited_only_when_wlocked); }
 
     /// Thread `thread_ptr` in endpoint transit or killed is write-held.
     pub proof fn thread_endpoint_transit_only_when_wlocked_at(thread_map: ThreadLockedMap, thread_ptr: RwLockThreadPtr)

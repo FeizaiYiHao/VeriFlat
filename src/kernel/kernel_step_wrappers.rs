@@ -21,6 +21,14 @@ pub mod kill_reclaim;
 pub mod kill_retire;
 /// K->U lemmas for the steps of killing a container subtree.
 pub mod kill_container;
+/// K->U lemmas for the step that retires an empty marked container.
+pub mod kill_container_retire;
+/// K->U lemmas for the steps that move a marked container's free pages to the killer's container.
+pub mod kill_container_pages;
+/// K->U lemmas for the steps that move a marked container's cpus to the killer's container.
+pub mod kill_container_cpus;
+/// K->U lemmas for the steps that enter and walk a container kill.
+pub mod kill_container_walk;
 /// Generic K->U bindings of projected entries, the stored snapshot, and root-table detaches.
 pub mod bindings;
 /// K->U lemmas for the step that releases an endpoint with its last descriptor.
@@ -34,6 +42,10 @@ pub use kill::*;
 pub use kill_reclaim::*;
 pub use kill_retire::*;
 pub use kill_container::*;
+pub use kill_container_retire::*;
+pub use kill_container_pages::*;
+pub use kill_container_cpus::*;
+pub use kill_container_walk::*;
 pub use bindings::*;
 pub use endpoint_release::*;
 
@@ -1256,7 +1268,7 @@ impl KernelSteps {
             kernel_ipc_rendezvous_fields(&old(self).snapshot_k(), krnl, cpu_id, caller_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer, pci_transfer),
             krnl.cpu_set_mp.dom() == old(self).snapshot_k().cpu_set_mp.dom(),
             forall|p: RwLockCpuSetPtr| #![trigger krnl.cpu_set_mp.spec_index(p)]
-                old(self).snapshot_k().cpu_set_mp.dom().contains(p) ==> krnl.cpu_set_mp.spec_index(p).locking_thread() == old(self).snapshot_k().cpu_set_mp.spec_index(p).locking_thread(),
+                old(self).snapshot_k().cpu_set_mp.dom().contains(p) ==> krnl.cpu_set_mp.spec_index(p).locking_thread() == old(self).snapshot_k().cpu_set_mp.spec_index(p).locking_thread() && krnl.cpu_set_mp.spec_index(p).being_killed() == old(self).snapshot_k().cpu_set_mp.spec_index(p).being_killed(),
             cpu_sets_locked ==> {
                 let snap = old(self).snapshot_k();
                 &&& snap.cpu_set_mp.spec_index(snap.ctn_mp.spec_index(snap.thr_mp.spec_index(caller_thread_ptr).view().owning_container).view_rodata().view().cpu_set).locking_thread() is None

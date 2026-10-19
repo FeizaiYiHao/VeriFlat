@@ -68,6 +68,9 @@ pub proof fn memory_management_inv_preserved_for_thread_invariant_fields(pre: Ke
         pre.memory_management_inv(),
         container_thread_wf(pre.ctn_mp, pre.thr_mp),
         thread_invariant_fields_unchanged(pre.thr_mp, post.thr_mp),
+        forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)]
+            pre.thr_mp.dom().contains(t) && pre.thr_mp.spec_index(t).locking_thread() is Write && !pre.thr_mp.spec_index(t).view().temp_alloc_clean()
+                ==> post.thr_mp.spec_index(t).locking_thread() is Write && post.thr_mp.spec_index(t).locking_thread()->Write_thread_id == pre.thr_mp.spec_index(t).locking_thread()->Write_thread_id,
         post.pt_mp == pre.pt_mp,
         post.it_mp == pre.it_mp,
         post.pg_arr == pre.pg_arr,
@@ -88,6 +91,10 @@ pub proof fn memory_management_inv_preserved_for_thread_invariant_fields(pre: Ke
     assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp)) by { container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_1g_mp); };
     assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
     assert(thread_staged_pages_wf(post.thr_mp, post.pg_arr)) by { lemma_thread_staged_pages_wf_preserved_for_thread_invariant_fields_forall(); };
+    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by {
+        reveal(page_object_owner_wf); reveal(thread_staged_pages_4k_wf); reveal(thread_staged_pages_2m_wf); reveal(thread_staged_pages_1g_wf);
+        broadcast use vstd::set_lib::lemma_set_empty_equivalency_len;
+    };
 }
 
 pub proof fn process_management_inv_preserved_for_thread_invariant_fields(pre: KernelK, post: KernelK)
@@ -95,6 +102,8 @@ pub proof fn process_management_inv_preserved_for_thread_invariant_fields(pre: K
         pre.process_management_inv(),
         thread_invariant_fields_unchanged(pre.thr_mp, post.thr_mp),
         process_thread_wf(post.prc_mp, post.thr_mp),
+        process_emptied_threads_wf(post.prc_mp, post.thr_mp),
+        thread_dangling_chain_end_wf(post.thr_mp),
         forall|t_ptr: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t_ptr).killer_info()]
             pre.thr_mp.dom().contains(t_ptr) && pre.thr_mp.spec_index(t_ptr).being_killed()
                 ==> post.thr_mp.spec_index(t_ptr).killer_info() == pre.thr_mp.spec_index(t_ptr).killer_info() && post.thr_mp.spec_index(t_ptr).locking_thread() == pre.thr_mp.spec_index(t_ptr).locking_thread(),
@@ -118,10 +127,9 @@ pub proof fn process_management_inv_preserved_for_thread_invariant_fields(pre: K
     assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { container_thread_scheduler_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thr_mp, post.thr_mp, post.sched_mp); };
     assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { container_thread_wf_preserved_for_thread_process_management_fields(post.ctn_mp, pre.thr_mp, post.thr_mp); };
     assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.cpu_arr); };
-    assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
 }
 
-pub proof fn container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(container_map: ContainerLockedMap, process_map: ProcessLockedMap, pre_thread_map: ThreadLockedMap, post_thread_map: ThreadLockedMap, allocator_map: PageAllocatorUnLockedMap)
+pub proof fn container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(container_map: ContainerLockedMap, process_map: ProcessLockedMap, pre_thread_map: ThreadLockedMap, post_thread_map: ThreadLockedMap, allocator_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>)
     requires
         container_process_allocator_quota_4k_wf(container_map, process_map, pre_thread_map, allocator_map),
         container_thread_wf(container_map, pre_thread_map),
@@ -130,7 +138,7 @@ pub proof fn container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fie
         container_process_allocator_quota_4k_wf(container_map, process_map, post_thread_map, allocator_map),
 { reveal(container_process_allocator_quota_4k_wf); reveal(container_thread_wf); lemma_thread_effective_quota_4k_fold_sum_eq_forall(); lemma_thread_pending_4k_folds_eq_forall(container_map, pre_thread_map, post_thread_map); }
 
-pub proof fn container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(container_map: ContainerLockedMap, process_map: ProcessLockedMap, pre_thread_map: ThreadLockedMap, post_thread_map: ThreadLockedMap, allocator_map: PageAllocatorUnLockedMap)
+pub proof fn container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(container_map: ContainerLockedMap, process_map: ProcessLockedMap, pre_thread_map: ThreadLockedMap, post_thread_map: ThreadLockedMap, allocator_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_2M>)
     requires
         container_process_allocator_quota_2m_wf(container_map, process_map, pre_thread_map, allocator_map),
         container_thread_wf(container_map, pre_thread_map),
@@ -139,7 +147,7 @@ pub proof fn container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fie
         container_process_allocator_quota_2m_wf(container_map, process_map, post_thread_map, allocator_map),
 { reveal(container_process_allocator_quota_2m_wf); reveal(container_thread_wf); lemma_thread_effective_quota_2m_fold_sum_eq_forall(); lemma_thread_pending_2m_folds_eq_forall(container_map, pre_thread_map, post_thread_map); }
 
-pub proof fn container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(container_map: ContainerLockedMap, process_map: ProcessLockedMap, pre_thread_map: ThreadLockedMap, post_thread_map: ThreadLockedMap, allocator_map: PageAllocatorUnLockedMap)
+pub proof fn container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(container_map: ContainerLockedMap, process_map: ProcessLockedMap, pre_thread_map: ThreadLockedMap, post_thread_map: ThreadLockedMap, allocator_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_1G>)
     requires
         container_process_allocator_quota_1g_wf(container_map, process_map, pre_thread_map, allocator_map),
         container_thread_wf(container_map, pre_thread_map),

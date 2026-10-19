@@ -2,7 +2,9 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_kill_process_spec::*;
 use super::syscall_kill_process_trace::*;
-use super::syscall_kill_process_walk::{KillScope, kill_scope_progress};
+use super::syscall_kill_process_walk::KillScope;
+#[cfg(verus_keep_ghost)]
+use super::syscall_kill_process_walk::kill_scope_progress;
 use super::syscall_kill_process_retire_pages::kill_retire_lock_cache;
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_process_reclaim_scoped_spec::kill_retire_table_page_scoped_eof_transition_framing;

@@ -67,6 +67,28 @@ impl KernelK {
                 let allocator = old(self).pcid_allc_mp.spec_index(allocator_ptr).view();
                 &&& killer_held_context(*old(self), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0, old(lctx).container_lock_map().dom())
                 &&& allocator.owning_container.view() == cpu.owning_container || allocator.container_depth.view() > cpu.container_depth
+            }) || ({
+                // A killer retiring the marked container that owns the allocator may hold that container's offline request
+                // cells, besides its own context, containers it marked, and marked cpu sets.
+                let cpu_i = old(lctx).cpu_id();
+                let cpu = old(self).cpu_arr.spec_index(cpu_i).view().view().view();
+                let allocator = old(self).pcid_allc_mp.spec_index(allocator_ptr).view();
+                let owner = allocator.owning_container.view();
+                &&& index_valid(NUM_CPUS, cpu_i)
+                &&& old(lctx).cpu_lock_map().dom() =~= set![cpu_i]
+                &&& cpu.state is Running
+                &&& allocator.container_depth.view() > cpu.container_depth
+                &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), owner, TypedLockMode::Write)
+                &&& old(self).ctn_mp.spec_index(owner).being_killed()
+                &&& forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)] old(lctx).process_lock_map().dom().contains(p) && cpu.current_process != Some(p) ==> old(self).prc_mp.spec_index(p).being_killed()
+                &&& forall|t: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(t)] old(lctx).thread_lock_map().dom().contains(t) && cpu.current_thread != Some(t) ==> old(self).thr_mp.spec_index(t).being_killed()
+                &&& forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) && c != cpu.owning_container ==> old(self).ctn_mp.spec_index(c).being_killed()
+                &&& forall|s: RwLockCpuSetPtr| #![trigger old(lctx).cpu_set_lock_map().dom().contains(s)] old(lctx).cpu_set_lock_map().dom().contains(s) ==> old(self).cpu_set_mp.spec_index(s).being_killed()
+                &&& forall|x: (RwLockCpuOfflineFlagsPtr, CpuId)| #![trigger old(lctx).cpu_offline_flag_lock_map().dom().contains(x)] old(lctx).cpu_offline_flag_lock_map().dom().contains(x) ==> x.0 == cpu_offline_flags_ptr(owner)
+                &&& old(lctx).page_lock_map().dom().is_empty() && old(lctx).pcid_needflush_lock_map().dom().is_empty() && old(lctx).endpoint_lock_map().dom().is_empty()
+                &&& old(lctx).scheduler_lock_map().dom().is_empty() && old(lctx).pcid_allocator_lock_map().dom().is_empty() && old(lctx).pagetable_lock_map().dom().is_empty()
+                &&& old(lctx).iommu_table_lock_map().dom().is_empty() && old(lctx).iommu_root_table_lock_map().dom().is_empty()
+                &&& old(lctx).holds_no_allocator_locks(PageSize::SZ4k) && old(lctx).holds_no_allocator_locks(PageSize::SZ2m) && old(lctx).holds_no_allocator_locks(PageSize::SZ1g)
             }),
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
@@ -95,8 +117,17 @@ impl KernelK {
                     thread_perms_wf_at(old(self).thr_mp, cpu.current_thread->Some_0); process_thread_wf_at(old(self).prc_mp, old(self).thr_mp, cpu.current_thread->Some_0);
                     container_process_wf_process_at(old(self).ctn_mp, old(self).prc_mp, cpu.current_process->Some_0);
                     container_pcid_allocator_wf_allocator_at(old(self).ctn_mp, old(self).pcid_allc_mp, allocator_ptr); container_pcid_allocator_wf_container_at(old(self).ctn_mp, old(self).pcid_allc_mp, cpu.owning_container);
+                } else if index_valid(NUM_CPUS, old(lctx).cpu_id()) && cpu.state is Running {
+                    let owner = old(self).pcid_allc_mp.spec_index(allocator_ptr).view().owning_container.view();
+                    thread_cpu_wf_cpu_at(old(self).thr_mp, old(self).cpu_arr, old(lctx).cpu_id()); process_cpu_wf_at(old(self).prc_mp, old(self).cpu_arr, old(lctx).cpu_id());
+                    container_cpu_wf_cpu_at(old(self).ctn_mp, old(self).cpu_set_mp, old(self).cpu_arr, old(lctx).cpu_id());
+                    thread_perms_wf_at(old(self).thr_mp, cpu.current_thread->Some_0); process_thread_wf_at(old(self).prc_mp, old(self).thr_mp, cpu.current_thread->Some_0);
+                    container_process_wf_process_at(old(self).ctn_mp, old(self).prc_mp, cpu.current_process->Some_0);
+                    container_pcid_allocator_wf_allocator_at(old(self).ctn_mp, old(self).pcid_allc_mp, allocator_ptr); container_pcid_allocator_wf_container_at(old(self).ctn_mp, old(self).pcid_allc_mp, owner);
+                    container_cpu_offline_flags_wf_container_at(old(self).ctn_mp, old(self).cpu_offline_mp, owner);
+                    cpu_offline_flags_wf_map(old(self).cpu_offline_mp, old(self).cpu_arr); cpu_offline_flags_wf_at(old(self).cpu_offline_mp, old(self).cpu_arr, cpu_offline_flags_ptr(owner));
                 }
-                reveal(LocalContext::lock_id_acyclic); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
+                reveal(LocalContext::lock_id_acyclic); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_flag_lock_map_aligned);
             };
 
             assert(!old(self).pcid_allc_mp.spec_index(allocator_ptr).locked_by_thread(old(lctx).thread_id())) by {

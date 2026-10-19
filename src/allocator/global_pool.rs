@@ -3,21 +3,21 @@ use vstd::simple_pptr::*;
 
 use crate::*;
 verus! {
-pub struct GlobalPool {
-    pub linked_list: LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
+pub struct GlobalPool<const SIZE: usize> {
+    pub linked_list: LinkedList<PagePtr, 233>,
 }
 
-impl LockOwnerIdTrait for GlobalPool {
+impl<const SIZE: usize> LockOwnerIdTrait for GlobalPool<SIZE> {
     open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
     open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
 }
 
-impl LockInvTrait for GlobalPool {
+impl<const SIZE: usize> LockInvTrait for GlobalPool<SIZE> {
     open spec fn inv(&self) -> bool { self.wf() }
 }
 
-impl LockMajorTrait for GlobalPool {
-    open spec fn lock_major_1(&self) -> LockMajorId { ALLOCATOR_GLOBAL_POOL_MAJOR }
+impl<const SIZE: usize> LockMajorTrait for GlobalPool<SIZE> {
+    open spec fn lock_major_1(&self) -> LockMajorId { allocator_global_pool_major(SIZE) }
     open spec fn lock_major_2(&self) -> LockMajorId { 233 }
     open spec fn lock_major_3(&self) -> LockMajorId { 233 }
     open spec fn lock_major_default(&self) -> LockMajorId { 233 }
@@ -27,17 +27,17 @@ impl LockMajorTrait for GlobalPool {
     open spec fn lock_major_default_predicate(&self) -> bool { false }
 }
 
-impl LockMinorTrait for GlobalPool {
+impl<const SIZE: usize> LockMinorTrait for GlobalPool<SIZE> {
     open spec fn lock_minor(&self) -> LockMinorId { self.linked_list.lock_minor() }
 }
 
-impl LockIdTrait for GlobalPool {
+impl<const SIZE: usize> LockIdTrait for GlobalPool<SIZE> {
     open spec fn lock_id(&self) -> LockId {
         LockId { container: self.container_depth(), process: self.process_depth(), major: self.current_lock_major(), minor: self.lock_minor() }
     }
 }
 
-impl GlobalPool {
+impl<const SIZE: usize> GlobalPool<SIZE> {
     pub open spec fn wf(&self) -> bool {
         &&& self.linked_list.wf()
     }

@@ -54,3 +54,5 @@ pub mod pages_cpu_set_spec;
 pub use pages_cpu_set_spec::*;
 pub mod process_kernel_pages_owner_spec;
 pub use process_kernel_pages_owner_spec::*;
+pub mod page_object_owner_spec;
+pub use page_object_owner_spec::*;

@@ -5,7 +5,7 @@ use crate::kernel::*;
 verus! {
 /// Semantic allocator fields read by kernel invariants.  Internal quota,
 /// cache, and global-pool lock owners are deliberately excluded.
-pub open spec fn allocator_invariant_fields_unchanged(pre: PageAllocatorUnLockedMap, post: PageAllocatorUnLockedMap) -> bool {
+pub open spec fn allocator_invariant_fields_unchanged<const SIZE: usize>(pre: PageAllocatorUnLockedMap<SIZE>, post: PageAllocatorUnLockedMap<SIZE>) -> bool {
     &&& pre.dom() =~= post.dom()
     &&& forall|a_ptr: RwLockPageAllocatorPtr|
         #![trigger pre.spec_index(a_ptr).owning_container]
@@ -23,7 +23,7 @@ pub open spec fn allocator_invariant_fields_unchanged(pre: PageAllocatorUnLocked
         }
 }
 
-pub proof fn allocator_cache_lock_op_preserves_invariant_fields(pre: PageAllocatorUnLockedMap, post: PageAllocatorUnLockedMap, changed_allocator: RwLockPageAllocatorPtr, changed_cpu: CpuId)
+pub proof fn allocator_cache_lock_op_preserves_invariant_fields<const SIZE: usize>(pre: PageAllocatorUnLockedMap<SIZE>, post: PageAllocatorUnLockedMap<SIZE>, changed_allocator: RwLockPageAllocatorPtr, changed_cpu: CpuId)
     requires
         pre.dom() =~= post.dom(),
         post.unchanged_except(&pre, changed_allocator),
@@ -37,7 +37,7 @@ pub proof fn allocator_cache_lock_op_preserves_invariant_fields(pre: PageAllocat
 {
 }
 
-pub proof fn allocator_quota_lock_op_preserves_invariant_fields(pre: PageAllocatorUnLockedMap, post: PageAllocatorUnLockedMap, changed: RwLockPageAllocatorPtr)
+pub proof fn allocator_quota_lock_op_preserves_invariant_fields<const SIZE: usize>(pre: PageAllocatorUnLockedMap<SIZE>, post: PageAllocatorUnLockedMap<SIZE>, changed: RwLockPageAllocatorPtr)
     requires
         pre.dom() =~= post.dom(),
         post.unchanged_except(&pre, changed),
@@ -51,7 +51,7 @@ pub proof fn allocator_quota_lock_op_preserves_invariant_fields(pre: PageAllocat
 {
 }
 
-pub proof fn allocator_global_pool_lock_op_preserves_invariant_fields(pre: PageAllocatorUnLockedMap, post: PageAllocatorUnLockedMap, changed: RwLockPageAllocatorPtr)
+pub proof fn allocator_global_pool_lock_op_preserves_invariant_fields<const SIZE: usize>(pre: PageAllocatorUnLockedMap<SIZE>, post: PageAllocatorUnLockedMap<SIZE>, changed: RwLockPageAllocatorPtr)
     requires
         pre.dom() =~= post.dom(),
         post.unchanged_except(&pre, changed),

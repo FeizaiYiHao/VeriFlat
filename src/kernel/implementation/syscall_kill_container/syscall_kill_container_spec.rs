@@ -171,7 +171,7 @@ pub open spec fn kill_container_retire_root_step(old_u: KernelU, new_u: KernelU,
     })
 }
 
-/// The target without child containers and processes moves on to its cpus.
+/// The target without child containers and processes marks and write-locks its cpu set and moves on to its cpus.
 #[verifier::opaque]
 pub open spec fn kill_container_cpus_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let container_ptr = kill_container_target(old_u, cpu_id);
@@ -179,7 +179,11 @@ pub open spec fn kill_container_cpus_step(old_u: KernelU, new_u: KernelU, cpu_id
     &&& kill_container_stage(old_u, cpu_id) is Walk
     &&& target.children.len() == 0
     &&& target.owned_processes.is_empty()
-    &&& new_u == (KernelU { thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_container_killer_at(old_u, cpu_id, container_ptr, ContainerKillStage::Cpus)), ..old_u })
+    &&& new_u == (KernelU {
+        container_map: old_u.container_map.insert(container_ptr, ContainerU { cpu_set_lock: LockStateU::WriteLocked, cpu_set_killed: true, ..target }),
+        thread_map: old_u.thread_map.insert(kill_killer(old_u, cpu_id), kill_container_killer_at(old_u, cpu_id, container_ptr, ContainerKillStage::Cpus)),
+        ..old_u
+    })
 }
 
 /// One unlocked Idle or Off cpu of the target moves, in the same state, to the killer's container, and the target drops
@@ -298,8 +302,8 @@ pub open spec fn kill_container_retire_step(old_u: KernelU, new_u: KernelU, cpu_
 
 /// A step between entering and finishing: a step of a process kill inside a marked container, or, for the marked
 /// target container, descending into a child container, marking its root process, retiring its root process, moving
-/// on to its cpus, moving one cpu, moving on to its free pages, moving one free page, starting to retire it, or
-/// retiring it.
+/// on to its cpus with its cpu set marked, moving one cpu, moving on to its free pages, moving one free page, starting
+/// to retire it, or retiring it.
 pub open spec fn kill_container_middle_step(step: KernelStep, cpu_id: CpuId) -> bool {
     let old_u = step.old_u;
     let new_u = step.new_u;

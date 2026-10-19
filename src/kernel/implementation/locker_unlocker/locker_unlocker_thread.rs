@@ -39,6 +39,8 @@ impl KernelK {
                             &&& old(self).prc_mp.spec_index(thread.owning_proc).view_rodata().view().depth == thread.process_depth
                         }
                         &&& containers.contains(thread.owning_container) ==> old(self).ctn_mp.spec_index(thread.owning_container).view_rodata().view().depth == thread.container_depth
+                        &&& forall|f: RwLockCpuOfflineFlagsPtr, i: CpuId| #![trigger old(lctx).cpu_offline_flag_lock_map().dom().contains((f, i))] old(lctx).cpu_offline_flag_lock_map().dom().contains((f, i))
+                            ==> old(self).cpu_offline_mp.spec_index(f).flags.spec_index(i).view().view().container_depth.view() <= thread.container_depth
                         &&& old(lctx).page_lock_map().dom().is_empty()
                         &&& old(lctx).process_lock_map().dom().subset_of(set![thread.owning_proc])
                         &&& old(lctx).thread_lock_map().dom().is_empty()
@@ -76,6 +78,7 @@ impl KernelK {
                         &&& old(lctx).thread_lock_map().dom() =~= match cpu.current_thread { Some(ptr) => set![ptr], None => Set::empty() }
                         &&& old(lctx).page_lock_map().dom().is_empty()
                         &&& old(lctx).container_lock_map().dom().is_empty()
+                        &&& old(lctx).cpu_offline_flag_lock_map().dom().is_empty()
                         &&& old(lctx).endpoint_lock_map().dom().is_empty()
                         &&& old(lctx).cpu_set_lock_map().dom().is_empty()
                         &&& old(lctx).pcid_allocator_lock_map().dom().is_empty()
@@ -189,6 +192,7 @@ impl KernelK {
                 &&& final(self).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean()
                 &&& final(self).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean()
                 &&& final(self).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None
+                &&& !final(self).thr_mp.spec_index(thread_ptr).view_ghost().exited
                 &&& typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Thread(thread_ptr), TypedHeldLock { lock_id: final(self).thr_mp.lock_id_by_key(thread_ptr), mode: TypedLockMode::Write })
             },
     {
@@ -339,7 +343,12 @@ impl KernelK {
             old(self).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
             old(self).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
             old(self).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None,
+            !old(self).thr_mp.spec_index(thread_ptr).view_ghost().exited,
             typed_lock_maps_aligned(old(self), old(lctx)),
+            // No dangling thread taken over for reclamation is held: its chain end could be released here.
+            forall|t: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(t)]
+                old(lctx).thread_lock_map().dom().contains(t) ==> !(old(self).thr_mp.spec_index(t).view().state is KILLED) || old(self).thr_mp.spec_index(t).being_killed()
+                    || old(self).thr_mp.spec_index(thread_ptr).view().call_depth.view() < old(self).thr_mp.spec_index(t).view().call_depth.view(),
         ensures
             // ---- Kernel-wide invariant re-established ----
             final(self).inv(),
@@ -375,7 +384,8 @@ impl KernelK {
                 reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
             };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-            wunlock_thread_eof(*old(self), *self, thread_ptr);
+            reveal(LockedMap::typed_lock_map_aligned);
+            wunlock_thread_eof(*old(self), *self, thread_ptr, old(lctx).thread_id());
         }
     }
 
@@ -388,7 +398,6 @@ impl KernelK {
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == lctx.thread_id(),
             lock_perm.view().lock_id() == old(self).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
-            old(self).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitZombie) ==> progress.view() == Some(SyscallProgress::ThreadExitZombie),
             typed_lock_maps_aligned(old(self), lctx),
         ensures
             final(self).inv(),
@@ -396,6 +405,7 @@ impl KernelK {
             *final(self) == (KernelK { thr_mp: final(self).thr_mp, ..*old(self) }),
             final(self).thr_mp.unchanged_except(&old(self).thr_mp, thread_ptr),
             final(self).thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: progress, ..old(self).thr_mp.spec_index(thread_ptr).view() }),
+            final(self).thr_mp.spec_index(thread_ptr).view_ghost() == old(self).thr_mp.spec_index(thread_ptr).view_ghost(),
             final(self).thr_mp.spec_index(thread_ptr).locking_thread() == old(self).thr_mp.spec_index(thread_ptr).locking_thread(),
             final(self).thr_mp.spec_index(thread_ptr).being_killed() == old(self).thr_mp.spec_index(thread_ptr).being_killed(),
             final(self).thr_mp.lock_id_by_key(thread_ptr) == old(self).thr_mp.lock_id_by_key(thread_ptr),

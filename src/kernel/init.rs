@@ -94,7 +94,7 @@ pub open spec fn boot_dom0_pagetable_model(
     }
 }
 
-pub open spec fn boot_free_4k_pool_wf(page_array: PageLockedArray, layout: BootKernelLayout, pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>) -> bool {
+pub open spec fn boot_free_4k_pool_wf(page_array: PageLockedArray, layout: BootKernelLayout, pool: &LinkedList<PagePtr, 233>) -> bool {
     &&& pool.wf()
     &&& pool.view().no_duplicates()
     &&& pool.container_depth.view() == Some(0)
@@ -118,7 +118,7 @@ pub open spec fn boot_free_4k_pool_wf(page_array: PageLockedArray, layout: BootK
         }
 }
 
-pub open spec fn boot_free_2m_pool_wf(page_array: PageLockedArray, layout: BootKernelLayout, pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>) -> bool {
+pub open spec fn boot_free_2m_pool_wf(page_array: PageLockedArray, layout: BootKernelLayout, pool: &LinkedList<PagePtr, 233>) -> bool {
     &&& pool.wf()
     &&& pool.view().no_duplicates()
     &&& pool.container_depth.view() == Some(0)
@@ -142,7 +142,7 @@ pub open spec fn boot_free_2m_pool_wf(page_array: PageLockedArray, layout: BootK
         }
 }
 
-pub open spec fn boot_free_1g_pool_wf(page_array: PageLockedArray, layout: BootKernelLayout, pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>) -> bool {
+pub open spec fn boot_free_1g_pool_wf(page_array: PageLockedArray, layout: BootKernelLayout, pool: &LinkedList<PagePtr, 233>) -> bool {
     &&& pool.wf()
     &&& pool.view().no_duplicates()
     &&& pool.container_depth.view() == Some(0)
@@ -169,8 +169,8 @@ pub open spec fn boot_free_1g_pool_wf(page_array: PageLockedArray, layout: BootK
 #[verifier::opaque]
 pub open spec fn boot_page_array_ready(
     page_array: PageLockedArray, layout: BootKernelLayout, cpu_page_closure: Set<PagePtr>, manifest_4k: Map<VAddr, MapEntry>,
-    free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
-    free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
+    free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
+    free_1g_pool: &LinkedList<PagePtr, 233>,
 ) -> bool {
     &&& page_array_wf(page_array)
     &&& hugepage_2m_wf(page_array)
@@ -459,8 +459,8 @@ proof fn prove_boot_container_process_allocator_quota_1g_wf(krnl: &KernelK, layo
 
 proof fn prove_boot_container_page_owner_wf(
     krnl: &KernelK, layout: BootKernelLayout, page_array: PageLockedArray, cpu_page_closure: Set<PagePtr>, manifest_4k: Map<VAddr, MapEntry>,
-    free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
-    free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, all_valid_pages: Set<PagePtr>,
+    free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
+    free_1g_pool: &LinkedList<PagePtr, 233>, all_valid_pages: Set<PagePtr>,
 )
     requires
         krnl.pg_arr == page_array,
@@ -474,11 +474,29 @@ proof fn prove_boot_container_page_owner_wf(
         container_page_owner_wf(krnl.ctn_mp, krnl.pg_arr),
 { reveal(container_page_owner_wf); reveal(boot_page_array_ready); page_ptr_valid_imply_page_index_valid(); page_index_valid_imply_page_ptr_valid(); page_index_roundtrip(); }
 
+/// Every boot object page is named by the root container, and the root container has no parent.
+proof fn prove_boot_page_object_owner_wf(
+    krnl: &KernelK, layout: BootKernelLayout, page_array: PageLockedArray, cpu_page_closure: Set<PagePtr>, manifest_4k: Map<VAddr, MapEntry>,
+    free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>, free_1g_pool: &LinkedList<PagePtr, 233>,
+)
+    requires
+        krnl.pg_arr == page_array,
+        boot_page_array_ready(page_array, layout, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool),
+        krnl.ctn_mp.spec_index(layout.root_container).view_rodata().view() == (ContainerRO {
+            parent: None, depth: 0, scheduler: layout.scheduler, pcid_allocator: layout.pcid_allocator, cpu_set: layout.cpu_set,
+            allocator_ptr_4k: layout.allocator_4k, allocator_ptr_2m: layout.allocator_2m, allocator_ptr_1g: layout.allocator_1g,
+        }),
+        krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_threads.view() =~= set![layout.root_thread],
+        krnl.ctn_mp.spec_index(layout.root_container).view_ghost().owned_endpoints.view() =~= set![layout.root_endpoint],
+    ensures
+        page_object_owner_wf(krnl.pg_arr, krnl.ctn_mp, krnl.thr_mp),
+{ reveal(page_object_owner_wf); reveal(boot_page_array_ready); }
+
 /// Every boot page and the root process belong to the root container.
 proof fn prove_boot_process_kernel_pages_owner_wf(
     krnl: &KernelK, layout: BootKernelLayout, page_array: PageLockedArray, cpu_page_closure: Set<PagePtr>, manifest_4k: Map<VAddr, MapEntry>,
-    free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
-    free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
+    free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
+    free_1g_pool: &LinkedList<PagePtr, 233>,
 )
     requires
         krnl.pg_arr == page_array,
@@ -496,8 +514,8 @@ proof fn prove_boot_process_kernel_pages_owner_wf(
 
 proof fn prove_boot_iommu_table_pages_wf(
     krnl: &KernelK, layout: BootKernelLayout, page_array: PageLockedArray, cpu_page_closure: Set<PagePtr>,
-    manifest_4k: Map<VAddr, MapEntry>, free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
-    free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
+    manifest_4k: Map<VAddr, MapEntry>, free_4k_pool: &LinkedList<PagePtr, 233>,
+    free_2m_pool: &LinkedList<PagePtr, 233>, free_1g_pool: &LinkedList<PagePtr, 233>,
 )
     requires
         krnl.pg_arr == page_array,
@@ -560,8 +578,8 @@ proof fn prove_boot_process_thread_wf(krnl: &KernelK, layout: BootKernelLayout, 
 pub open spec fn boot_kernel_state(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
     page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_published: CpuPublishedArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
-    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
-    free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
+    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
+    free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
 ) -> bool {
     &&& krnl.rt_ctn == layout.root_container
@@ -645,7 +663,7 @@ pub open spec fn boot_kernel_state(
     })
     &&& krnl.ctn_mp.spec_index(layout.root_container).view_ghost() == (ContainerGhost {
         uppertree_seq: Ghost(Seq::empty()), subtree_set: Ghost(Set::empty()), owned_processes: Ghost(Set::empty().insert(layout.root_process)),
-        owned_threads: Ghost(Set::empty().insert(layout.root_thread)), owned_indirect_threads: Ghost(Set::empty()), owned_endpoints: Ghost(Set::empty().insert(layout.root_endpoint)),
+        owned_threads: Ghost(Set::empty().insert(layout.root_thread)), owned_indirect_threads: Ghost(Set::empty()), owned_endpoints: Ghost(Set::empty().insert(layout.root_endpoint)), retire_ready: false,
     })
     &&& krnl.sched_mp.perms_wf()
     &&& krnl.sched_mp.dom() =~= set![layout.scheduler]
@@ -735,6 +753,7 @@ pub open spec fn boot_kernel_state(
     &&& krnl.thr_mp.spec_index(layout.root_thread).view().blocking_endpoint_index is None
     &&& krnl.thr_mp.spec_index(layout.root_thread).view().free_quota_pending_clean()
     &&& krnl.thr_mp.spec_index(layout.root_thread).view().syscall_progress.view() is None
+    &&& !krnl.thr_mp.spec_index(layout.root_thread).view_ghost().exited
     &&& krnl.thr_mp.spec_index(layout.root_thread).view().temp_alloc_clean()
     &&& krnl.thr_mp.spec_index(layout.root_thread).view().quota_4k == 0
     &&& krnl.thr_mp.spec_index(layout.root_thread).view().quota_2m == 0
@@ -814,6 +833,7 @@ pub open spec fn boot_kernel_state(
     &&& krnl.cpu_offline_mp.dom() =~= set![cpu_offline_flags_ptr(layout.root_container)]
     &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(layout.root_container)).inv()
     &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(layout.root_container)).owning_container.view() == layout.root_container
+    &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(layout.root_container)).container_depth.view() == 0
     &&& forall|cpu_id: CpuId| #![trigger krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(layout.root_container)).flags.spec_index(cpu_id)] index_valid(NUM_CPUS, cpu_id) ==> {
         &&& !krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(layout.root_container)).flags.spec_index(cpu_id).view().locked()
         &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(layout.root_container)).flags.spec_index(cpu_id).view().view().index() == (cpu_offline_flags_ptr(layout.root_container), cpu_id)
@@ -824,8 +844,8 @@ pub open spec fn boot_kernel_state(
 proof fn boot_subsystems_inv_eof(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
     page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_published: CpuPublishedArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
-    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
-    free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
+    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
+    free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
 )
     requires
@@ -865,6 +885,7 @@ proof fn boot_subsystems_inv_eof(
         assert(thread_free_quota_pending_empty_unless_wlocked(krnl.thr_mp)) by { reveal(thread_free_quota_pending_empty_unless_wlocked); };
         assert(thread_temp_alloc_empty_unless_wlocked(krnl.thr_mp)) by { reveal(thread_temp_alloc_empty_unless_wlocked); };
         assert(thread_syscall_progress_only_when_wlocked(krnl.thr_mp)) by { reveal(thread_syscall_progress_only_when_wlocked); };
+        assert(thread_exited_only_when_wlocked(krnl.thr_mp)) by { reveal(thread_exited_only_when_wlocked); };
     };
     assert(scheduler_perms_wf(krnl.sched_mp)) by { reveal(scheduler_perms_wf); };
     assert(cpu_set_perms_wf(krnl.cpu_set_mp)) by { reveal(cpu_set_perms_wf); };
@@ -879,8 +900,8 @@ proof fn boot_subsystems_inv_eof(
 proof fn boot_memory_management_inv_eof_allocator_pages(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
     page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_published: CpuPublishedArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
-    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
-    free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
+    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
+    free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
 )
     requires
@@ -912,8 +933,8 @@ proof fn boot_memory_management_inv_eof_allocator_pages(
 proof fn boot_memory_management_inv_eof_allocator_free_pages(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
     page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_published: CpuPublishedArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
-    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
-    free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
+    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
+    free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
 )
     requires
@@ -945,8 +966,8 @@ proof fn boot_memory_management_inv_eof_allocator_free_pages(
 proof fn boot_memory_management_inv_eof_free_4k(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
     page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_published: CpuPublishedArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
-    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
-    free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
+    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
+    free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
 )
     requires
@@ -978,8 +999,8 @@ proof fn boot_memory_management_inv_eof_free_4k(
 proof fn boot_memory_management_inv_eof_free_2m(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
     page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_published: CpuPublishedArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
-    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
-    free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
+    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
+    free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
 )
     requires
@@ -1011,8 +1032,8 @@ proof fn boot_memory_management_inv_eof_free_2m(
 proof fn boot_memory_management_inv_eof_free_1g(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
     page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_published: CpuPublishedArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
-    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
-    free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
+    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
+    free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
 )
     requires
@@ -1044,8 +1065,8 @@ proof fn boot_memory_management_inv_eof_free_1g(
 proof fn boot_memory_management_inv_eof_object_pages(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
     page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_published: CpuPublishedArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
-    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
-    free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
+    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
+    free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
 )
     requires
@@ -1094,8 +1115,8 @@ proof fn boot_memory_management_inv_eof_object_pages(
 proof fn boot_memory_management_inv_eof_mappings(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
     page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_published: CpuPublishedArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
-    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
-    free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
+    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
+    free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
 )
     requires
@@ -1135,8 +1156,8 @@ proof fn boot_memory_management_inv_eof_mappings(
 proof fn boot_memory_management_inv_eof(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
     page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_published: CpuPublishedArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
-    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
-    free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
+    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
+    free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
 )
     requires
@@ -1197,17 +1218,19 @@ proof fn boot_memory_management_inv_eof(
     assert(pagetable_no_huge_leaf_wf(krnl.pt_mp, krnl.it_mp)) by { reveal(pagetable_no_huge_leaf_wf); };
     assert(process_emptied_tables_wf(krnl.prc_mp, krnl.pt_mp, krnl.it_mp)) by { reveal(process_emptied_tables_wf); };
     prove_boot_process_kernel_pages_owner_wf(krnl, layout, page_array, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool);
+    prove_boot_page_object_owner_wf(krnl, layout, page_array, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool);
     prove_boot_container_process_allocator_quota_4k_wf(krnl, layout);
     prove_boot_container_process_allocator_quota_2m_wf(krnl, layout);
     prove_boot_container_process_allocator_quota_1g_wf(krnl, layout);
     assert(container_allocator_wf(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by { reveal(container_allocator_wf); };
+    assert(container_kill_retire_wf(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp)) by { reveal(container_kill_retire_wf); };
 }
 
 proof fn boot_process_management_inv_eof(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
     page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_published: CpuPublishedArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
-    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
-    free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
+    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
+    free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
 )
     requires
@@ -1255,6 +1278,7 @@ proof fn boot_process_management_inv_eof(
     };
     assert(process_kill_mark_wf(krnl.ctn_mp, krnl.prc_mp)) by { reveal(process_kill_mark_wf); };
     assert(container_kill_mark_wf(krnl.ctn_mp, krnl.prc_mp)) by { reveal(container_kill_mark_wf); };
+    assert(cpu_set_kill_mark_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp)) by { reveal(cpu_set_kill_mark_wf); };
     assert(process_state_lock_wf(krnl.prc_mp)) by { reveal(process_state_lock_wf); };
     assert(container_endpoint_wf(krnl.ctn_mp, krnl.ep_mp)) by { reveal(container_endpoint_wf); };
     assert(container_cpu_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr)) by { reveal(container_cpu_wf); };
@@ -1273,13 +1297,14 @@ proof fn boot_process_management_inv_eof(
     prove_boot_process_thread_wf(krnl, layout, process_node_addr);
     assert(process_emptied_threads_wf(krnl.prc_mp, krnl.thr_mp)) by { reveal(process_emptied_threads_wf); };
     assert(thread_cpu_wf(krnl.thr_mp, krnl.cpu_arr)) by { reveal(thread_cpu_wf); };
+    assert(thread_dangling_chain_end_wf(krnl.thr_mp)) by { reveal(thread_dangling_chain_end_wf); };
 }
 
 proof fn boot_kernel_inv_eof(
     krnl: &KernelK, layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: Registers, kernel_entries: Seq<PageEntry>, manifest_4k: Map<VAddr, MapEntry>,
     page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray, cpu_published: CpuPublishedArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>,
-    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_2m_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
-    free_1g_pool: &LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
+    cpu_page_closure: Set<PagePtr>, free_4k_pool: &LinkedList<PagePtr, 233>, free_2m_pool: &LinkedList<PagePtr, 233>,
+    free_1g_pool: &LinkedList<PagePtr, 233>, owned_pages: Set<PagePtr>, owned_pci_functions: Set<PciBdf>, scheduler_node_addr: usize,
     process_node_addr: usize,
 )
     requires
@@ -1323,8 +1348,8 @@ proof fn boot_kernel_inv_eof(
 
 pub fn finish_init_from_boot(
     layout: BootKernelLayout, kernel_l4_end: usize, initial_regs: &Registers, page_array: PageLockedArray, pcid_needflush: PcidNeedFlushArray,
-    cpu_published: CpuPublishedArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>, free_4k_pool: LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
-    free_2m_pool: LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, free_1g_pool: LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>,
+    cpu_published: CpuPublishedArray, default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>, free_4k_pool: LinkedList<PagePtr, 233>,
+    free_2m_pool: LinkedList<PagePtr, 233>, free_1g_pool: LinkedList<PagePtr, 233>,
     kernel_entries: Ghost<Seq<PageEntry>>, manifest_4k: Ghost<Map<VAddr, MapEntry>>, owned_pages: Ghost<Set<PagePtr>>,
     owned_pci_functions: Ghost<Set<PciBdf>>, cpu_rev_maps: Ghost<BootRevMaps>, Tracked(cpu_l4_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
     Tracked(cpu_l3_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>, Tracked(cpu_l2_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
@@ -1432,9 +1457,9 @@ pub fn finish_init_from_boot(
             && free_1g_pool.wf() && free_1g_pool.container_depth.view() == Some(0) && free_1g_pool.minor.view() == Some(layout.root_container)) by { reveal(boot_page_array_ready); };
         reveal(LinkedList::wf_value_list);
     }
-    let allocator_4k = PageAllocator::new_with_global_pool(layout.root_container, 0, free_4k_pool, quota_4k);
-    let allocator_2m = PageAllocator::new_with_global_pool(layout.root_container, 0, free_2m_pool, quota_2m);
-    let allocator_1g = PageAllocator::new_with_global_pool(layout.root_container, 0, free_1g_pool, quota_1g);
+    let allocator_4k = PageAllocator::<ALLOCATOR_SIZE_4K>::new_with_global_pool(layout.root_container, 0, free_4k_pool, quota_4k);
+    let allocator_2m = PageAllocator::<ALLOCATOR_SIZE_2M>::new_with_global_pool(layout.root_container, 0, free_2m_pool, quota_2m);
+    let allocator_1g = PageAllocator::<ALLOCATOR_SIZE_1G>::new_with_global_pool(layout.root_container, 0, free_1g_pool, quota_1g);
     proof { reveal(PageTable::table_pages_wf); }
     let cpu_array = Cpu::new_boot_array(layout.root_container, default_cr3);
     let cpu_tlb = CpuTLB::new_empty();
@@ -1455,7 +1480,7 @@ pub fn finish_init_from_boot(
     let ghost root_threads = Set::<RwLockThreadPtr>::empty().insert(layout.root_thread);
     let container_ghost = ContainerGhost {
         uppertree_seq: Ghost(Seq::empty()), subtree_set: Ghost(Set::empty()), owned_processes: Ghost(Set::empty().insert(layout.root_process)),
-        owned_threads: Ghost(root_threads), owned_indirect_threads: Ghost(Set::empty()), owned_endpoints: Ghost(Set::empty().insert(layout.root_endpoint)),
+        owned_threads: Ghost(root_threads), owned_indirect_threads: Ghost(Set::empty()), owned_endpoints: Ghost(Set::empty().insert(layout.root_endpoint)), retire_ready: false,
     };
 
     let mut pt_mp = PageTableLockedMap::new_empty();
@@ -1466,9 +1491,9 @@ pub fn finish_init_from_boot(
     let mut cpu_set_mp = CpuSetLockedMap::new_empty();
     let mut prc_mp = ProcessLockedMap::new_empty();
     let mut ep_mp = EndpointLockedMap::new_empty();
-    let mut allc_4k_mp = PageAllocatorUnLockedMap::new_empty();
-    let mut allc_2m_mp = PageAllocatorUnLockedMap::new_empty();
-    let mut allc_1g_mp = PageAllocatorUnLockedMap::new_empty();
+    let mut allc_4k_mp = PageAllocatorUnLockedMap::<ALLOCATOR_SIZE_4K>::new_empty();
+    let mut allc_2m_mp = PageAllocatorUnLockedMap::<ALLOCATOR_SIZE_2M>::new_empty();
+    let mut allc_1g_mp = PageAllocatorUnLockedMap::<ALLOCATOR_SIZE_1G>::new_empty();
 
     pt_mp.retype_4k_as_unlocked_singleton(layout.cpu_pagetable, cpu_pagetable, (), Ghost(()), Tracked(cpu_pagetable_page_perm), 0, layout.root_thread, Ghost(KernelObjId::PageTable(layout.cpu_pagetable)));
     it_mp.retype_4k_as_unlocked_singleton(layout.iommu_table, iommu_table, (), Ghost(()), Tracked(iommu_table_page_perm), 0, layout.root_thread, Ghost(KernelObjId::IommuTable(layout.iommu_table)));
@@ -1483,7 +1508,7 @@ pub fn finish_init_from_boot(
     allc_2m_mp.retype_page_to_allocator_and_insert(layout.allocator_2m, allocator_2m, Tracked(allocator_2m_page_perm), Tracked(&boot_lctx));
     allc_1g_mp.retype_page_to_allocator_and_insert(layout.allocator_1g, allocator_1g, Tracked(allocator_1g_page_perm), Tracked(&boot_lctx));
     let mut cpu_offline_mp = CpuOfflineFlagsUnLockedMap::new_empty();
-    let cpu_offline_flags = CpuOfflineFlags::new_empty(Ghost(layout.root_container), Ghost(cpu_offline_flags_ptr(layout.root_container)));
+    let cpu_offline_flags = CpuOfflineFlags::new_empty(Ghost(layout.root_container), Ghost(0usize), Ghost(cpu_offline_flags_ptr(layout.root_container)));
     cpu_offline_mp.retype_container_page_tail_and_insert(&ctn_mp, layout.root_container, cpu_offline_flags, Tracked(&boot_lctx));
 
     let krnl = KernelK {

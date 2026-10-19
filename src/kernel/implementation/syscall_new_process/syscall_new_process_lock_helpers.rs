@@ -101,6 +101,7 @@ pub(super) fn new_process_lock_cpu_owner(
             &&& final(krnl).thr_mp.spec_index(x.current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id })
             &&& final(krnl).thr_mp.spec_index(x.current_thread_ptr).view().temp_alloc_clean()
             &&& final(krnl).thr_mp.spec_index(x.current_thread_ptr).view().syscall_progress.view() is None
+            &&& !final(krnl).thr_mp.spec_index(x.current_thread_ptr).view_ghost().exited
             &&& final(krnl).thr_mp.spec_index(x.current_thread_ptr).view().free_quota_pending_clean()
             &&& typed_lock_map_contains_mode(final(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write)
             &&& x.cpu_lock_perm.view().state() is WriteLock && x.cpu_lock_perm.view().thread_id() == final(lctx).thread_id()
@@ -273,6 +274,7 @@ pub(super) fn new_process_unlock_and_stutter(
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_clean(),
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is None,
+        !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
         old(krnl).pcid_allc_mp.dom().contains(pcid_allocator_ptr),
         old(steps).snapshot_k().pcid_allc_mp.spec_index(pcid_allocator_ptr).locking_thread() is None,
         old(krnl).pcid_allc_mp.spec_index(pcid_allocator_ptr).view() == old(steps).snapshot_k().pcid_allc_mp.spec_index(pcid_allocator_ptr).view(),

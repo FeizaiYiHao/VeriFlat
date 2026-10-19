@@ -33,7 +33,9 @@ pub proof fn memory_management_inv_preserved_for_container_invariant_fields(pre:
     requires
         pre.memory_management_inv(),
         container_process_wf(pre.ctn_mp, pre.prc_mp),
+        container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
         container_invariant_fields_unchanged(pre.ctn_mp, post.ctn_mp),
+        page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp),
         post.pt_mp == pre.pt_mp,
         post.it_mp == pre.it_mp,
         post.pg_arr == pre.pg_arr,
@@ -67,6 +69,7 @@ pub proof fn process_management_inv_preserved_for_container_invariant_fields(pre
         container_process_wf(post.ctn_mp, post.prc_mp),
         process_kill_mark_wf(post.ctn_mp, post.prc_mp),
         container_kill_mark_wf(post.ctn_mp, post.prc_mp),
+        cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp),
         container_invariant_fields_unchanged(pre.ctn_mp, post.ctn_mp),
         post.cpu_arr == pre.cpu_arr,
         post.sched_mp == pre.sched_mp,

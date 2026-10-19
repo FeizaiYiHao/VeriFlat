@@ -54,6 +54,7 @@ proof fn cpu_went_off_eof_process_management_inv(pre: KernelK, post: KernelK, cp
             &&& pre.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set == cpu_set_ptr
             &&& pre.sched_mp.dom().contains(scheduler_ptr)
             &&& pre.cpu_set_mp.dom().contains(cpu_set_ptr)
+            &&& !pre.cpu_set_mp.spec_index(cpu_set_ptr).being_killed()
             &&& old_cpu.current_process is Some == old_cpu.current_thread is Some
             &&& (old_cpu.current_thread is Some ==> {
                 let prev = old_cpu.current_thread.unwrap();
@@ -77,6 +78,7 @@ proof fn cpu_went_off_eof_process_management_inv(pre: KernelK, post: KernelK, cp
         assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { process_thread_wf_preserved_for_process_thread_link_eq(pre.prc_mp, post.prc_mp, pre.thr_mp, post.thr_mp); };
         assert(container_scheduler_wf(post.ctn_mp, post.sched_mp)) by { container_scheduler_wf_preserved_for_scheduler_owner_eq(pre.ctn_mp, post.ctn_mp, pre.sched_mp, post.sched_mp); };
         assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
+        assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by { reveal(cpu_set_kill_mark_wf); };
         assert(container_cpu_offline_flags_wf(post.ctn_mp, post.cpu_offline_mp)) by { container_cpu_offline_flags_wf_preserved_for_flags_owner_eq(pre.ctn_mp, post.ctn_mp, pre.cpu_offline_mp, post.cpu_offline_mp); };
         assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by {
             thread_endpoint_ref_counter_wf_preserved_for_descriptor_eq(pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp);
@@ -86,6 +88,7 @@ proof fn cpu_went_off_eof_process_management_inv(pre: KernelK, post: KernelK, cp
         assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_endpoint_waiting_eq(pre.thr_mp, post.thr_mp, post.ep_mp); };
         assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { container_thread_endpoint_wf_preserved_for_descriptor_owner_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
         assert(thread_caller_callee_wf(post.thr_mp)) by { thread_caller_callee_wf_preserved_for_call_link_eq(pre.thr_mp, post.thr_mp); };
+        assert(thread_dangling_chain_end_wf(post.thr_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thr_mp, post.thr_mp); };
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
     };
 }
@@ -107,6 +110,7 @@ pub(super) proof fn cpu_went_off_eof(pre: KernelK, post: KernelK, cpu_id: CpuId,
             &&& flags_ptr == cpu_offline_flags_ptr(container_ptr)
             &&& pre.sched_mp.dom().contains(scheduler_ptr)
             &&& pre.cpu_set_mp.dom().contains(cpu_set_ptr)
+            &&& !pre.cpu_set_mp.spec_index(cpu_set_ptr).being_killed()
             &&& pre.cpu_offline_mp.dom().contains(flags_ptr)
             &&& !pre.cpu_arr.spec_index(cpu_id).view().being_killed()
             &&& old_cpu.current_process is Some == old_cpu.current_thread is Some
@@ -139,7 +143,7 @@ pub(super) proof fn cpu_went_off_eof(pre: KernelK, post: KernelK, cpu_id: CpuId,
     reveal(cpu_went_off_eof_transition_framing);
     assert(post.subsystems_inv()) by {
         assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); };
-        assert(thread_perms_wf(post.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); };
+        assert(thread_perms_wf(post.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); };
         assert(scheduler_perms_wf(post.sched_mp)) by { reveal(scheduler_perms_wf); };
         assert(cpu_set_perms_wf(post.cpu_set_mp)) by { reveal(cpu_set_perms_wf); };
         assert(pcid_needflush_wf(post.pcid_needflush)) by { reveal(pcid_needflush_wf); };
@@ -151,6 +155,7 @@ pub(super) proof fn cpu_went_off_eof(pre: KernelK, post: KernelK, cpu_id: CpuId,
         assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { reveal(scheduler_pages_wf); };
         assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
         assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
+        assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
         thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
         thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
         thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
@@ -189,6 +194,7 @@ pub(super) proof fn cpu_went_off_eof_fields(
         entry.sched_mp.unchanged_except(&snapshot.sched_mp, scheduler_ptr),
         entry.cpu_set_mp.unchanged_except(&snapshot.cpu_set_mp, cpu_set_ptr),
         snapshot.cpu_set_mp.spec_index(cpu_set_ptr).locking_thread() is None,
+        !snapshot.cpu_set_mp.spec_index(cpu_set_ptr).being_killed() && !entry.cpu_set_mp.spec_index(cpu_set_ptr).being_killed(),
         entry.cpu_offline_mp.unchanged_except(&snapshot.cpu_offline_mp, flags_ptr),
         kernel_cpu_process_thread_nonlock_fields_unchanged(&snapshot, &entry),
         kernel_endpoint_nonlock_fields_unchanged(snapshot.ep_mp, entry.ep_mp),

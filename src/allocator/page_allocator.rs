@@ -4,24 +4,25 @@ use crate::*;
 use vstd::simple_pptr::*;
 
 verus! {
-pub struct PageAllocator {
-    pub cpu_caches: LockedArray<AllocatorCache, (), (), NUM_CPUS, NO_KILL_STATE>,
-    pub global_pool: RwLock<GlobalPool, (), (), NO_KILL_STATE>,
-    pub quota: RwLock<AllocatorQuota, (), (), NO_KILL_STATE>,
+#[verifier::reject_recursive_types(SIZE)]
+pub struct PageAllocator<const SIZE: usize> {
+    pub cpu_caches: LockedArray<AllocatorCache<SIZE>, (), (), NUM_CPUS, NO_KILL_STATE>,
+    pub global_pool: RwLock<GlobalPool<SIZE>, (), (), NO_KILL_STATE>,
+    pub quota: RwLock<AllocatorQuota<SIZE>, (), (), NO_KILL_STATE>,
     pub total_free_pages: Ghost<usize>,
 
     pub owning_container: RwLockContainerPtr,
 }
 
-impl LockInvTrait for PageAllocator {
+impl<const SIZE: usize> LockInvTrait for PageAllocator<SIZE> {
     open spec fn inv(&self) -> bool {
         &&& self.wf()
         &&& self.quota.inv()
     }
 }
 
-impl PageAllocator {
-    pub fn new_with_global_pool(owning_container: RwLockContainerPtr, container_depth: usize, linked_list: LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, quota_value: usize) -> (ret: Self)
+impl<const SIZE: usize> PageAllocator<SIZE> {
+    pub fn new_with_global_pool(owning_container: RwLockContainerPtr, container_depth: usize, linked_list: LinkedList<PagePtr, 233>, quota_value: usize) -> (ret: Self)
         requires
             linked_list.wf(),
             linked_list.container_depth.view() == Some(container_depth),
@@ -45,7 +46,7 @@ impl PageAllocator {
                 },
     {
         assert(linked_list.view().len() == linked_list.length) by { linked_list.lemma_len_view(); };
-        let mut cache_array: Array<RwLock<AllocatorCache, (), (), NO_KILL_STATE>, NUM_CPUS> = Array::new();
+        let mut cache_array: Array<RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>, NUM_CPUS> = Array::new();
         let mut cpu_id = 0;
         while cpu_id < NUM_CPUS
             invariant
@@ -95,7 +96,7 @@ impl PageAllocator {
                     &&& !ret.cpu_caches.spec_index(cpu_id).view().locked()
                 },
     {
-        let mut cache_array: Array<RwLock<AllocatorCache, (), (), NO_KILL_STATE>, NUM_CPUS> = Array::new();
+        let mut cache_array: Array<RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>, NUM_CPUS> = Array::new();
         let mut cpu_id = 0;
         while cpu_id < NUM_CPUS
             invariant
@@ -149,11 +150,11 @@ impl PageAllocator {
     pub open spec fn global_pool_minor_wf(&self) -> bool { self.global_pool.view().lock_minor() == self.owning_container }
 
     pub open spec fn total_free_pages_wf(&self) -> bool {
-        self.global_pool.view().len() + self.cpu_caches.view().fold_left(0int, |sum: int, cpu_rw_lock: RwLock<AllocatorCache, (), (), NO_KILL_STATE>| { sum + cpu_rw_lock.view().linked_list.len() }) == self.total_free_pages.view()
+        self.global_pool.view().len() + self.cpu_caches.view().fold_left(0int, |sum: int, cpu_rw_lock: RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + cpu_rw_lock.view().linked_list.len() }) == self.total_free_pages.view()
     }
 }
 
-impl PageAllocator {
+impl<const SIZE: usize> PageAllocator<SIZE> {
     pub fn wlock_quota(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).wf(),
@@ -174,7 +175,7 @@ impl PageAllocator {
     }
 }
 
-impl PageAllocator {
+impl<const SIZE: usize> PageAllocator<SIZE> {
     pub fn wunlock_quota(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>)
         requires
             old(self).wf(),
@@ -199,7 +200,7 @@ impl PageAllocator {
     }
 }
 
-impl PageAllocator {
+impl<const SIZE: usize> PageAllocator<SIZE> {
     pub fn wlock_cache(&mut self, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).wf(),
@@ -293,7 +294,7 @@ impl PageAllocator {
     }
 }
 
-impl PageAllocator {
+impl<const SIZE: usize> PageAllocator<SIZE> {
     pub fn push_cache_page(&mut self, cpu_id: CpuId, node_addr: usize, node_perm: Tracked<PointsTo<Node<PagePtr>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>)
         requires
             old(self).wf(),
@@ -456,4 +457,4 @@ impl PageAllocator {
 }
 }
 
-const ASSERT_PAGE_ALLOCATOR_FITS_4K: [(); 1] = [(); (core::mem::size_of::<PageAllocator>() <= PAGE_SZ_4K) as usize];
+const ASSERT_PAGE_ALLOCATOR_FITS_4K: [(); 1] = [(); (core::mem::size_of::<PageAllocator<ALLOCATOR_SIZE_4K>>() <= PAGE_SZ_4K) as usize];

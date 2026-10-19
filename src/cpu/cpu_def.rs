@@ -267,6 +267,19 @@ impl Cpu {
         self.container_depth = depth;
     }
 
+    /// Moves an Idle cpu to `container` at `depth`; it stays Idle with no current process or thread.
+    pub fn transfer_idle_cpu_to_container(&mut self, container: RwLockContainerPtr, depth: usize)
+        requires
+            old(self).wf(),
+            old(self).view().state is Idle,
+        ensures
+            final(self).wf(),
+            final(self).view() == (CpuView { owning_container: container, container_depth: depth, ..old(self).view() }),
+    {
+        self.owning_container = container;
+        self.container_depth = depth;
+    }
+
     pub fn publish_idle_from_off(&mut self)
         requires
             old(self).wf(),

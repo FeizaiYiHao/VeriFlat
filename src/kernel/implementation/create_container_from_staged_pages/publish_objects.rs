@@ -33,7 +33,7 @@ pub(super) fn build_staged_4k_global_pool(
     pages: &mut PageLockedArray, count: usize, head: PagePtr, Ghost(page_ptrs): Ghost<Seq<PagePtr>>, Ghost(page_indices): Ghost<Set<PageIndex>>,
     child_allocator_ptr: RwLockPageAllocatorPtr, child_container_ptr: RwLockContainerPtr, child_depth: usize,
     Tracked(lctx): Tracked<&LocalContext>, Tracked(page_lock_perms): Tracked<&Map<PagePtr, LockPerm>>,
-) -> (ret: (LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, Ghost<Map<PageIndex, TypedHeldLock>>))
+) -> (ret: (LinkedList<PagePtr, 233>, Ghost<Map<PageIndex, TypedHeldLock>>))
     requires
         old(pages).inv(),
         page_array_wf(*old(pages)),
@@ -538,7 +538,7 @@ pub(super) fn prepare_new_container_backing_pages(
     Tracked(funding_page_lock_perms): Tracked<&Map<PagePtr, LockPerm>>, Tracked(container_page_lock_perm): Tracked<&LockPerm>,
     Tracked(pcid_allocator_page_lock_perm): Tracked<&LockPerm>, Tracked(container_tail_lock_perms): Tracked<&Map<PageIndex, LockPerm>>,
     Tracked(pcid_allocator_tail_lock_perms): Tracked<&Map<PageIndex, LockPerm>>,
-) -> (ret: (LinkedList<PagePtr, ALLOCATOR_GLOBAL_POOL_MAJOR>, Tracked<PagePerm2m>, Tracked<PagePerm2m>, Ghost<Map<PageIndex, TypedHeldLock>>, Ghost<Map<PageIndex, TypedHeldLock>>))
+) -> (ret: (LinkedList<PagePtr, 233>, Tracked<PagePerm2m>, Tracked<PagePerm2m>, Ghost<Map<PageIndex, TypedHeldLock>>, Ghost<Map<PageIndex, TypedHeldLock>>))
     requires
         reference_krnl.inv(),
         reference_krnl.pg_arr == *old(pages),
@@ -992,9 +992,9 @@ pub(super) fn publish_new_container_process_and_pagetable(
     (Tracked(child_process_lock_perm), Tracked(child_pagetable_lock_perm), Ghost(process_page_locks))
 }
 
-pub(super) fn publish_new_container_allocator(
-    pages: &mut PageLockedArray, allocator_map: &mut PageAllocatorUnLockedMap, child_container_ptr: RwLockContainerPtr, allocator_page: PagePtr,
-    allocator_state: Allocated4KPageState, allocator_value: PageAllocator, Ghost(quota_lock_map): Ghost<Map<RwLockPageAllocatorPtr, TypedHeldLock>>,
+pub(super) fn publish_new_container_allocator<const SIZE: usize>(
+    pages: &mut PageLockedArray, allocator_map: &mut PageAllocatorUnLockedMap<SIZE>, child_container_ptr: RwLockContainerPtr, allocator_page: PagePtr,
+    allocator_state: Allocated4KPageState, allocator_value: PageAllocator<SIZE>, Ghost(quota_lock_map): Ghost<Map<RwLockPageAllocatorPtr, TypedHeldLock>>,
     Ghost(cache_lock_map): Ghost<Map<(RwLockPageAllocatorPtr, CpuId), TypedHeldLock>>,
     Ghost(global_pool_lock_map): Ghost<Map<RwLockPageAllocatorPtr, TypedHeldLock>>, Ghost(page_locks): Ghost<Map<PageIndex, TypedHeldLock>>,
     Tracked(lctx): Tracked<&LocalContext>, Tracked(allocator_page_lock_perm): Tracked<&LockPerm>,
@@ -1059,7 +1059,7 @@ pub(super) fn publish_new_container_allocator(
 
 pub(super) fn publish_new_container_allocators(
     krnl: &mut KernelK, child_container_ptr: RwLockContainerPtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
-    allocator_4k_value: PageAllocator, allocator_2m_value: PageAllocator, allocator_1g_value: PageAllocator, container_head: PageIndex,
+    allocator_4k_value: PageAllocator<ALLOCATOR_SIZE_4K>, allocator_2m_value: PageAllocator<ALLOCATOR_SIZE_2M>, allocator_1g_value: PageAllocator<ALLOCATOR_SIZE_1G>, container_head: PageIndex,
     pcid_allocator_head: PageIndex, Ghost(page_locks): Ghost<Map<PageIndex, TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>,
     Tracked(allocator_4k_page_lock_perm): Tracked<&LockPerm>, Tracked(allocator_2m_page_lock_perm): Tracked<&LockPerm>, Tracked(allocator_1g_page_lock_perm): Tracked<&LockPerm>,
     Tracked(container_tail_lock_perms): Tracked<&Map<PageIndex, LockPerm>>, Tracked(pcid_allocator_tail_lock_perms): Tracked<&Map<PageIndex, LockPerm>>,
@@ -1386,6 +1386,7 @@ pub(super) fn publish_new_container_cpu_set(
         cpu_set_page_lock_perm.lock_id() == final(krnl).pg_arr.spec_index(page_ptr2page_index(cpu_set_page),).view().locking_thread()->Write_lock_id,
         final(krnl).cpu_set_mp.dom() =~= old(krnl).cpu_set_mp.dom().insert(child_cpu_set_ptr),
         final(krnl).cpu_set_mp.spec_index(child_cpu_set_ptr).view() == cpu_set_value,
+        !final(krnl).cpu_set_mp.spec_index(child_cpu_set_ptr).being_killed(),
         forall|ptr: RwLockCpuSetPtr|
             #![trigger final(krnl).cpu_set_mp.spec_index(ptr)]
             old(krnl).cpu_set_mp.dom().contains(ptr) ==> final(krnl).cpu_set_mp.spec_index(ptr) == old(krnl).cpu_set_mp.spec_index(ptr),
@@ -1501,6 +1502,7 @@ pub(super) fn publish_new_container_pcid_allocator_and_container(
             old(krnl).cpu_offline_mp.dom().contains(ptr) ==> final(krnl).cpu_offline_mp.spec_index(ptr) == old(krnl).cpu_offline_mp.spec_index(ptr),
         final(krnl).cpu_offline_mp.spec_index(cpu_offline_flags_ptr(child_container_ptr)).inv(),
         final(krnl).cpu_offline_mp.spec_index(cpu_offline_flags_ptr(child_container_ptr)).owning_container.view() == child_container_ptr,
+        final(krnl).cpu_offline_mp.spec_index(cpu_offline_flags_ptr(child_container_ptr)).container_depth.view() == container_rodata.view().depth,
         forall|cpu_id: CpuId|
             #![trigger final(krnl).cpu_offline_mp.spec_index(cpu_offline_flags_ptr(child_container_ptr)).flags.spec_index(cpu_id)]
             index_valid(NUM_CPUS, cpu_id) ==> {
@@ -1562,7 +1564,7 @@ pub(super) fn publish_new_container_pcid_allocator_and_container(
     hide(Seq::contains);
     let child_pcid_allocator_lock_perm = pcid_allocator_map_insert_new_2m(&mut krnl.pcid_allc_mp, child_pcid_allocator_ptr, pcid_allocator_value, Tracked(pcid_allocator_perm), Tracked(&mut *lctx));
     let child_container_lock_perm = container_map_insert_new_2m(&mut krnl.ctn_mp, child_container_ptr, container_value, container_rodata, container_ghost, Tracked(container_perm), Tracked(&mut *lctx));
-    let flags_value = CpuOfflineFlags::new_empty(Ghost(child_container_ptr), Ghost(cpu_offline_flags_ptr(child_container_ptr)));
+    let flags_value = CpuOfflineFlags::new_empty(Ghost(child_container_ptr), Ghost(container_rodata.view().depth), Ghost(cpu_offline_flags_ptr(child_container_ptr)));
     krnl.cpu_offline_mp.retype_container_page_tail_and_insert(&krnl.ctn_mp, child_container_ptr, flags_value, Tracked(&*lctx));
     proof {
         assert(krnl.cpu_offline_mp.typed_flag_lock_map_aligned(lctx.cpu_offline_flag_lock_map(), lctx.thread_id())) by { reveal(UnLockedMap::typed_flag_lock_map_aligned); };
@@ -1690,6 +1692,7 @@ pub(super) fn link_new_container_into_tree(
         final(containers).spec_index(child_container_ptr).view_ghost().owned_endpoints == old(containers).spec_index(child_container_ptr).view_ghost().owned_endpoints,
         final(containers).spec_index(child_container_ptr).view_ghost().owned_threads == old(containers).spec_index(child_container_ptr).view_ghost().owned_threads,
         final(containers).spec_index(child_container_ptr).view_ghost().owned_indirect_threads == old(containers).spec_index(child_container_ptr).view_ghost().owned_indirect_threads,
+        final(containers).spec_index(child_container_ptr).view_ghost().retire_ready == old(containers).spec_index(child_container_ptr).view_ghost().retire_ready,
         parent_container_lock_perm.lock_id() == final(containers).spec_index(parent_container_ptr).locking_thread()->Write_lock_id,
         child_container_lock_perm.lock_id() == final(containers).spec_index(child_container_ptr).locking_thread()->Write_lock_id,
         forall|container_ptr: RwLockContainerPtr|
@@ -1705,6 +1708,7 @@ pub(super) fn link_new_container_into_tree(
                 &&& final(containers).spec_index(container_ptr).view_ghost().owned_processes == base_containers.spec_index(container_ptr).view_ghost().owned_processes
                 &&& final(containers).spec_index(container_ptr).view_ghost().owned_indirect_threads == base_containers.spec_index(container_ptr).view_ghost().owned_indirect_threads
                 &&& final(containers).spec_index(container_ptr).view_ghost().owned_endpoints == base_containers.spec_index(container_ptr).view_ghost().owned_endpoints
+                &&& final(containers).spec_index(container_ptr).view_ghost().retire_ready == base_containers.spec_index(container_ptr).view_ghost().retire_ready
                 &&& container_ptr != parent_container_ptr ==> final(containers).spec_index(container_ptr).view() == base_containers.spec_index(container_ptr).view()
             },
 {

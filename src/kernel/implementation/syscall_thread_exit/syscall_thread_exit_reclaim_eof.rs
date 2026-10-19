@@ -12,7 +12,7 @@ proof fn thread_exit_tables_emptied_eof_process(pre: KernelK, post: KernelK, pro
         !pre.prc_mp.spec_index(process_ptr).view().zombie,
         pre.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() == 1,
         pre.prc_mp.spec_index(process_ptr).view().owned_threads.view().contains(thread_ptr),
-        pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitZombie),
+        pre.thr_mp.spec_index(thread_ptr).view_ghost().exited,
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
@@ -21,11 +21,41 @@ proof fn thread_exit_tables_emptied_eof_process(pre: KernelK, post: KernelK, pro
     assert(per_container_process_tree_wf(post.ctn_mp, post.prc_mp)) by { per_container_process_tree_wf_preserved_for_tree_fields_eq(pre.ctn_mp, pre.prc_mp, post.prc_mp); reveal(per_container_process_tree_wf); };
     assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
     assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
+    assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by { reveal(cpu_set_kill_mark_wf); };
     assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { reveal(process_pcid_allocator_wf); };
     assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); };
     assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(process_thread_wf); };
     assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
     assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); reveal(process_thread_wf); };
+}
+
+/// Marking the write-held, live exiting thread `thread_ptr` as exited changes only its ghost state and keeps the kernel invariant.
+pub(super) proof fn thread_exit_mark_exited_eof(pre: KernelK, post: KernelK, thread_ptr: RwLockThreadPtr)
+    requires
+        pre.inv(),
+        pre.thr_mp.dom().contains(thread_ptr),
+        pre.thr_mp.spec_index(thread_ptr).locking_thread() is Write,
+        !thread_is_dangling(pre.thr_mp.spec_index(thread_ptr)),
+        post == (KernelK { thr_mp: post.thr_mp, ..pre }),
+        post.thr_mp.perms_wf(),
+        post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr),
+        update_ghost_ensures(pre.thr_mp.spec_index(thread_ptr), post.thr_mp.spec_index(thread_ptr), ThreadGhost { exited: true, ..pre.thr_mp.spec_index(thread_ptr).view_ghost() }),
+    ensures post.inv(),
+{
+    assert(thread_perms_wf(post.thr_mp)) by {
+        reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+        reveal(thread_exited_only_when_wlocked);
+    };
+    assert(thread_invariant_fields_unchanged(pre.thr_mp, post.thr_mp)) by { thread_lock_op_preserves_invariant_fields(pre.thr_mp, post.thr_mp, thread_ptr); };
+    assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
+    assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_thread_invariant_fields(pre, post); };
+    assert(process_thread_wf(post.prc_mp, post.thr_mp)) by {
+        thread_invariant_fields_unchanged_implies_process_management_fields(pre.thr_mp, post.thr_mp);
+        process_thread_wf_preserved_for_thread_process_management_fields(post.prc_mp, pre.thr_mp, post.thr_mp);
+    };
+    assert(thread_dangling_chain_end_wf(post.thr_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thr_mp, post.thr_mp); };
+    assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
+    assert(post.process_management_inv()) by { process_management_inv_preserved_for_thread_invariant_fields(pre, post); };
 }
 
 /// Marking the write-held exiting process `process_ptr`, whose tables map nothing and whose only thread `thread_ptr`
@@ -38,7 +68,7 @@ pub(super) proof fn thread_exit_tables_emptied_eof(pre: KernelK, post: KernelK, 
         !pre.prc_mp.spec_index(process_ptr).view().zombie,
         pre.prc_mp.spec_index(process_ptr).view().owned_threads.view().len() == 1,
         pre.prc_mp.spec_index(process_ptr).view().owned_threads.view().contains(thread_ptr),
-        pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitZombie),
+        pre.thr_mp.spec_index(thread_ptr).view_ghost().exited,
         pre.pt_mp.spec_index(pre.prc_mp.spec_index(process_ptr).view().pagetable).view().mapping_4k().dom() =~= Set::<VAddr>::empty(),
         pre.prc_mp.spec_index(process_ptr).view().iommu_table is Some ==> pre.it_mp.spec_index(pre.prc_mp.spec_index(process_ptr).view().iommu_table->Some_0).view().mapping_4k().dom() =~= Set::<VAddr>::empty(),
     ensures post.inv(),

@@ -34,6 +34,8 @@ impl KernelK {
                         &&& old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().current_process is Some ==> old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().process_depth == process.depth
                     })
                 &&& containers.contains(container_ptr) ==> old(self).ctn_mp.spec_index(container_ptr).view_rodata().view().depth == process.container_depth
+                &&& forall|f: RwLockCpuOfflineFlagsPtr, i: CpuId| #![trigger old(lctx).cpu_offline_flag_lock_map().dom().contains((f, i))] old(lctx).cpu_offline_flag_lock_map().dom().contains((f, i))
+                    ==> old(self).cpu_offline_mp.spec_index(f).flags.spec_index(i).view().view().container_depth.view() <= process.container_depth
                 &&& cpus.contains(cpu_id)
                 &&& old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr)
                 &&& {

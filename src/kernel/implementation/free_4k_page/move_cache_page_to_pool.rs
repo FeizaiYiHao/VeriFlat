@@ -41,6 +41,7 @@ pub fn move_cache_page_to_pool(krnl: &mut KernelK, allocator: RwLockPageAllocato
         final(krnl).allc_4k_mp.unchanged_except(&old(krnl).allc_4k_mp, allocator),
         final(krnl).allc_4k_mp.spec_index(allocator).total_free_pages == old(krnl).allc_4k_mp.spec_index(allocator).total_free_pages,
         final(krnl).allc_4k_mp.spec_index(allocator).quota == old(krnl).allc_4k_mp.spec_index(allocator).quota,
+        final(krnl).allc_4k_mp.spec_index(allocator).cpu_caches.entries_unchanged_except(&old(krnl).allc_4k_mp.spec_index(allocator).cpu_caches, cpu_id),
         final(krnl).allc_4k_mp.spec_index(allocator).cpu_caches.spec_index(cpu_id).view().view().view() == old(krnl).allc_4k_mp.spec_index(allocator).cpu_caches.spec_index(cpu_id).view().view().view().skip(1),
         final(krnl).allc_4k_mp.spec_index(allocator).global_pool.view().view() == old(krnl).allc_4k_mp.spec_index(allocator).global_pool.view().view().insert(0, page_ptr),
         final(krnl).allc_4k_mp.spec_index(allocator).cpu_caches.spec_index(cpu_id).view().locking_thread() == old(krnl).allc_4k_mp.spec_index(allocator).cpu_caches.spec_index(cpu_id).view().locking_thread(),
