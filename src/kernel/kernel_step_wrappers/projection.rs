@@ -961,6 +961,145 @@ pub proof fn kernel_peer_scheduled_and_locks_released_implies_u_step(
             })
         }),
 {
+    kernel_peer_scheduled_and_locks_released_implies_u_cpu_array(before, after, cpu_id, caller, peer, wake_cpu, endpoint, result, dequeue, descriptor);
+    kernel_peer_scheduled_and_locks_released_implies_u_process_map(before, after, cpu_id, caller, peer, wake_cpu, endpoint, result, dequeue, descriptor);
+    kernel_peer_scheduled_and_locks_released_implies_u_container_map(before, after, cpu_id, caller, peer, wake_cpu, endpoint, result, dequeue, descriptor);
+    kernel_peer_scheduled_and_locks_released_implies_u_thread_map(before, after, cpu_id, caller, peer, wake_cpu, endpoint, result, dequeue, descriptor);
+    reveal(kernel_k_to_kernel_u);
+    let pre = kernel_k_to_kernel_u(*before);
+    let post = kernel_k_to_kernel_u(*after);
+    assert_maps_equal!(post.endpoint_map, pre.endpoint_map.insert(endpoint, EndpointU { lock_state: LockStateU::Unlocked,
+        queue: if dequeue { pre.endpoint_map[endpoint].queue.skip(1) } else { pre.endpoint_map[endpoint].queue },
+        owning_threads: if descriptor is Some { pre.endpoint_map[endpoint].owning_threads.insert(descriptor->Some_0) } else { pre.endpoint_map[endpoint].owning_threads }, ..pre.endpoint_map[endpoint]
+    }), e => {});
+}
+
+/// The peer-scheduled transition projects to the cpu array with only `cpu_id` unlocked.
+proof fn kernel_peer_scheduled_and_locks_released_implies_u_cpu_array(
+    before: &KernelK, after: &KernelK, cpu_id: CpuId, caller: RwLockThreadPtr, peer: RwLockThreadPtr,
+    wake_cpu: CpuId, endpoint: RwLockEndpointPtr, result: RetValueType, dequeue: bool, descriptor: Option<(RwLockThreadPtr, EndpointIdx)>,
+)
+    requires
+        index_valid(NUM_CPUS, cpu_id),
+        kernel_cpu_nonlock_fields_unchanged(before.cpu_arr, after.cpu_arr),
+        after.cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
+        forall|i: CpuId| #![trigger after.cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) && i != cpu_id ==>
+            after.cpu_arr.spec_index(i).value.locking_thread() == before.cpu_arr.spec_index(i).value.locking_thread(),
+    ensures
+        ({
+            let pre = kernel_k_to_kernel_u(*before);
+            kernel_k_to_kernel_u(*after).cpu_array == pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre.cpu_array[cpu_id as int] })
+        }),
+{
+    reveal(kernel_k_to_kernel_u); reveal(kernel_cpu_nonlock_fields_unchanged);
+    let pre = kernel_k_to_kernel_u(*before);
+    let post = kernel_k_to_kernel_u(*after);
+    assert_seqs_equal!(post.cpu_array == pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre.cpu_array[cpu_id as int] }));
+}
+
+/// The peer-scheduled transition leaves the process map projection unchanged.
+proof fn kernel_peer_scheduled_and_locks_released_implies_u_process_map(
+    before: &KernelK, after: &KernelK, cpu_id: CpuId, caller: RwLockThreadPtr, peer: RwLockThreadPtr,
+    wake_cpu: CpuId, endpoint: RwLockEndpointPtr, result: RetValueType, dequeue: bool, descriptor: Option<(RwLockThreadPtr, EndpointIdx)>,
+)
+    requires
+        *after == (KernelK { cpu_arr: after.cpu_arr, prc_mp: after.prc_mp, thr_mp: after.thr_mp, ep_mp: after.ep_mp, sched_mp: after.sched_mp, ..*before }),
+        kernel_process_nonlock_fields_unchanged(before.prc_mp, after.prc_mp),
+        forall|p: RwLockProcessPtr| #![trigger after.prc_mp.spec_index(p)] before.prc_mp.dom().contains(p) ==>
+            after.prc_mp.spec_index(p).locking_thread() == before.prc_mp.spec_index(p).locking_thread(),
+    ensures kernel_k_to_kernel_u(*after).process_map == kernel_k_to_kernel_u(*before).process_map,
+{
+    reveal(kernel_k_to_kernel_u); reveal(kernel_process_nonlock_fields_unchanged);
+    let pre = kernel_k_to_kernel_u(*before);
+    let post = kernel_k_to_kernel_u(*after);
+    assert_maps_equal!(post.process_map, pre.process_map, p => {});
+}
+
+/// The peer-scheduled transition projects to the container map with `peer` pushed on shard `wake_cpu` of its container's scheduler.
+proof fn kernel_peer_scheduled_and_locks_released_implies_u_container_map(
+    before: &KernelK, after: &KernelK, cpu_id: CpuId, caller: RwLockThreadPtr, peer: RwLockThreadPtr,
+    wake_cpu: CpuId, endpoint: RwLockEndpointPtr, result: RetValueType, dequeue: bool, descriptor: Option<(RwLockThreadPtr, EndpointIdx)>,
+)
+    requires
+        container_thread_wf(after.ctn_mp, after.thr_mp),
+        container_scheduler_wf(after.ctn_mp, after.sched_mp),
+        index_valid(NUM_CPUS, wake_cpu),
+        before.thr_mp.dom().contains(peer),
+        *after == (KernelK { cpu_arr: after.cpu_arr, prc_mp: after.prc_mp, thr_mp: after.thr_mp, ep_mp: after.ep_mp, sched_mp: after.sched_mp, ..*before }),
+        after.thr_mp.dom() == before.thr_mp.dom(),
+        after.thr_mp.spec_index(peer).view().owning_container == before.thr_mp.spec_index(peer).view().owning_container,
+        after.sched_mp.dom() == before.sched_mp.dom(),
+        forall|s: RwLockSchedulerPtr| #![trigger after.sched_mp.spec_index(s)] before.sched_mp.dom().contains(s) ==>
+            scheduler_shards_of(after.sched_mp.spec_index(s)) == if s == before.ctn_mp.spec_index(before.thr_mp.spec_index(peer).view().owning_container).view_rodata().view().scheduler {
+                scheduler_shards_of(before.sched_mp.spec_index(s)).update(wake_cpu as int, scheduler_shards_of(before.sched_mp.spec_index(s))[wake_cpu as int].push(peer))
+            } else { scheduler_shards_of(before.sched_mp.spec_index(s)) },
+    ensures
+        ({
+            let pre = kernel_k_to_kernel_u(*before);
+            let container = pre.thread_map[peer].owning_container;
+            kernel_k_to_kernel_u(*after).container_map == pre.container_map.insert(container, ContainerU {
+                scheduler: pre.container_map[container].scheduler.update(wake_cpu as int, pre.container_map[container].scheduler[wake_cpu as int].push(peer)), ..pre.container_map[container]
+            })
+        }),
+{
+    reveal(kernel_k_to_kernel_u);
+    let pre = kernel_k_to_kernel_u(*before);
+    let post = kernel_k_to_kernel_u(*after);
+    let container = pre.thread_map[peer].owning_container;
+    assert_maps_equal!(post.container_map, pre.container_map.insert(container, ContainerU {
+        scheduler: pre.container_map[container].scheduler.update(wake_cpu as int, pre.container_map[container].scheduler[wake_cpu as int].push(peer)), ..pre.container_map[container]
+    }), p => {
+        reveal(container_thread_wf); reveal(container_scheduler_wf);
+    });
+}
+
+/// The peer-scheduled transition projects to the thread map with the descriptor installed, `caller` unlocked, and `peer` scheduled on `wake_cpu`.
+proof fn kernel_peer_scheduled_and_locks_released_implies_u_thread_map(
+    before: &KernelK, after: &KernelK, cpu_id: CpuId, caller: RwLockThreadPtr, peer: RwLockThreadPtr,
+    wake_cpu: CpuId, endpoint: RwLockEndpointPtr, result: RetValueType, dequeue: bool, descriptor: Option<(RwLockThreadPtr, EndpointIdx)>,
+)
+    requires
+        before.thr_mp.dom().contains(caller),
+        before.thr_mp.dom().contains(peer),
+        caller != peer,
+        descriptor matches Some((receiver, index)) ==> (receiver == caller || receiver == peer) && edp_idx_valid(index),
+        after.thr_mp.dom() == before.thr_mp.dom(),
+        forall|t: RwLockThreadPtr| #![trigger after.thr_mp.spec_index(t)] before.thr_mp.dom().contains(t) ==> {
+            &&& after.thr_mp.spec_index(t).view().state == if t == peer { ThreadState::SCHEDULED { cpu_id: wake_cpu } } else { before.thr_mp.spec_index(t).view().state }
+            &&& after.thr_mp.spec_index(t).view().caller == before.thr_mp.spec_index(t).view().caller
+            &&& after.thr_mp.spec_index(t).view().callee == before.thr_mp.spec_index(t).view().callee
+            &&& after.thr_mp.spec_index(t).view().owning_container == before.thr_mp.spec_index(t).view().owning_container
+            &&& after.thr_mp.spec_index(t).view().owning_proc == before.thr_mp.spec_index(t).view().owning_proc
+            &&& after.thr_mp.spec_index(t).view().last_cpu == before.thr_mp.spec_index(t).view().last_cpu
+            &&& after.thr_mp.spec_index(t).view().quota_4k == before.thr_mp.spec_index(t).view().quota_4k
+            &&& after.thr_mp.spec_index(t).view().quota_2m == before.thr_mp.spec_index(t).view().quota_2m
+            &&& after.thr_mp.spec_index(t).view().quota_1g == before.thr_mp.spec_index(t).view().quota_1g
+            &&& after.thr_mp.spec_index(t).view().endpoint_descriptors.view() == if descriptor is Some && t == descriptor->Some_0.0 {
+                before.thr_mp.spec_index(t).view().endpoint_descriptors.view().update(descriptor->Some_0.1 as int, Some(endpoint))
+            } else { before.thr_mp.spec_index(t).view().endpoint_descriptors.view() }
+            &&& after.thr_mp.spec_index(t).view().blocking_endpoint_ptr == if t == peer { None } else { before.thr_mp.spec_index(t).view().blocking_endpoint_ptr }
+            &&& after.thr_mp.spec_index(t).view().ipc_payload == if t == peer { IPCPayLoad::Empty } else { before.thr_mp.spec_index(t).view().ipc_payload }
+            &&& after.thr_mp.spec_index(t).view().error_code == if t == peer { Some(result) } else { before.thr_mp.spec_index(t).view().error_code }
+            &&& after.thr_mp.spec_index(t).view().trap_frame == before.thr_mp.spec_index(t).view().trap_frame
+            &&& t != caller ==> after.thr_mp.spec_index(t).view().syscall_progress == before.thr_mp.spec_index(t).view().syscall_progress
+            &&& after.thr_mp.spec_index(t).being_killed() == before.thr_mp.spec_index(t).being_killed()
+            &&& if t == caller || t == peer { after.thr_mp.spec_index(t).locking_thread() is None }
+                else { after.thr_mp.spec_index(t).locking_thread() == before.thr_mp.spec_index(t).locking_thread() }
+        },
+    ensures
+        ({
+            let pre = kernel_k_to_kernel_u(*before);
+            let threads = match descriptor {
+                Some((receiver, index)) => pre.thread_map.insert(receiver, ThreadU { endpoint_descriptors: pre.thread_map[receiver].endpoint_descriptors.update(index as int, Some(endpoint)), ..pre.thread_map[receiver] }),
+                None => pre.thread_map,
+            };
+            kernel_k_to_kernel_u(*after).thread_map == threads.insert(caller, ThreadU {
+                lock_state: LockStateU::Unlocked, syscall_progress: after.thr_mp.spec_index(caller).view().syscall_progress.view(), ..threads[caller]
+            }).insert(peer, ThreadU {
+                lock_state: LockStateU::Unlocked, state: ThreadState::SCHEDULED { cpu_id: wake_cpu }, blocking_endpoint_ptr: None, ipc_payload: IPCPayLoad::Empty, error_code: Some(result), ..threads[peer]
+            })
+        }),
+{
     reveal(kernel_k_to_kernel_u);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
@@ -968,25 +1107,11 @@ pub proof fn kernel_peer_scheduled_and_locks_released_implies_u_step(
         Some((receiver, index)) => pre.thread_map.insert(receiver, ThreadU { endpoint_descriptors: pre.thread_map[receiver].endpoint_descriptors.update(index as int, Some(endpoint)), ..pre.thread_map[receiver] }),
         None => pre.thread_map,
     };
-    let container = pre.thread_map[peer].owning_container;
-    assert_seqs_equal!(post.cpu_array == pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre.cpu_array[cpu_id as int] }), i => {
-        reveal(kernel_cpu_nonlock_fields_unchanged);
-    });
-    assert_maps_equal!(post.process_map, pre.process_map, p => { reveal(kernel_process_nonlock_fields_unchanged); });
-    assert_maps_equal!(post.container_map, pre.container_map.insert(container, ContainerU {
-        scheduler: pre.container_map[container].scheduler.update(wake_cpu as int, pre.container_map[container].scheduler[wake_cpu as int].push(peer)), ..pre.container_map[container]
-    }), p => {
-        reveal(container_thread_wf); reveal(container_scheduler_wf);
-    });
     assert_maps_equal!(post.thread_map, threads.insert(caller, ThreadU {
         lock_state: LockStateU::Unlocked, syscall_progress: after.thr_mp.spec_index(caller).view().syscall_progress.view(), ..threads[caller]
     }).insert(peer, ThreadU {
         lock_state: LockStateU::Unlocked, state: ThreadState::SCHEDULED { cpu_id: wake_cpu }, blocking_endpoint_ptr: None, ipc_payload: IPCPayLoad::Empty, error_code: Some(result), ..threads[peer]
     }), t => {});
-    assert_maps_equal!(post.endpoint_map, pre.endpoint_map.insert(endpoint, EndpointU { lock_state: LockStateU::Unlocked,
-        queue: if dequeue { pre.endpoint_map[endpoint].queue.skip(1) } else { pre.endpoint_map[endpoint].queue },
-        owning_threads: if descriptor is Some { pre.endpoint_map[endpoint].owning_threads.insert(descriptor->Some_0) } else { pre.endpoint_map[endpoint].owning_threads }, ..pre.endpoint_map[endpoint]
-    }), e => {});
 }
 
 pub proof fn kernel_container_ancestry_projection_at(krnl: &KernelK, container: RwLockContainerPtr)
