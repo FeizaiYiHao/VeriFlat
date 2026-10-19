@@ -11,10 +11,12 @@ pub proof fn kernel_container_nonlock_fields_and_locks_unchanged_implies_u_conta
             pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).locking_thread() == pre.ctn_mp.spec_index(p).locking_thread(),
     ensures kernel_k_user_projection(*post, include_lock_state).container_map == kernel_k_user_projection(*pre, include_lock_state).container_map,
 {
+    hide(kernel_k_user_projection);
     reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
+    kernel_u_user_domains_projection(pre, include_lock_state); kernel_u_user_domains_projection(post, include_lock_state);
     let pre_u = kernel_k_user_projection(*pre, include_lock_state);
     let post_u = kernel_k_user_projection(*post, include_lock_state);
-    assert_maps_equal!(post_u.container_map, pre_u.container_map, c => {});
+    assert_maps_equal!(post_u.container_map, pre_u.container_map, c => { if pre.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(pre, include_lock_state, c); } if post.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(post, include_lock_state, c); } });
 }
 
 /// Unchanged process and table nonlock fields and lock owners project to an unchanged process map.
@@ -33,10 +35,12 @@ pub proof fn kernel_process_nonlock_fields_and_locks_unchanged_implies_u_process
             pre.it_mp.dom().contains(p) && post.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread(),
     ensures kernel_k_user_projection(*post, include_lock_state).process_map == kernel_k_user_projection(*pre, include_lock_state).process_map,
 {
-    reveal(kernel_process_nonlock_fields_unchanged);
+    hide(kernel_k_user_projection);
+    reveal(kernel_process_nonlock_fields_unchanged); kernel_u_user_domains_projection(pre, include_lock_state); kernel_u_user_domains_projection(post, include_lock_state);
     let pre_u = kernel_k_user_projection(*pre, include_lock_state);
     let post_u = kernel_k_user_projection(*post, include_lock_state);
     assert_maps_equal!(post_u.process_map, pre_u.process_map, p => {
+        if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, include_lock_state, p); } if post.prc_mp.dom().contains(p) { kernel_process_user_projection_at(post, include_lock_state, p); }
         process_pagetable_match_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, p); reveal(kernel_pagetable_nonlock_fields_unchanged);
     });
 }
@@ -49,10 +53,12 @@ pub proof fn kernel_endpoint_nonlock_fields_and_locks_unchanged_implies_u_endpoi
             pre.ep_mp.dom().contains(p) ==> post.ep_mp.spec_index(p).locking_thread() == pre.ep_mp.spec_index(p).locking_thread(),
     ensures kernel_k_user_projection(*post, include_lock_state).endpoint_map == kernel_k_user_projection(*pre, include_lock_state).endpoint_map,
 {
+    hide(kernel_k_user_projection);
     reveal(kernel_endpoint_nonlock_fields_unchanged);
+    kernel_u_user_domains_projection(pre, include_lock_state); kernel_u_user_domains_projection(post, include_lock_state);
     let pre_u = kernel_k_user_projection(*pre, include_lock_state);
     let post_u = kernel_k_user_projection(*post, include_lock_state);
-    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => {});
+    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => { if pre.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(pre, include_lock_state, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(post, include_lock_state, e); } });
 }
 
 /// Cpu `cpu_id` entering `state` with no current process or thread, every other cpu and every cpu lock owner unchanged,
@@ -79,9 +85,13 @@ pub proof fn kernel_cpu_state_set_and_current_cleared_implies_u_cpu_array(pre: &
             post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { state, current_process: None, current_thread: None, ..pre_u.cpu_array[cpu_id as int] })
         }),
 {
+    hide(kernel_k_user_projection);
+    kernel_u_user_domains_projection(pre, include_lock_state); kernel_u_user_domains_projection(post, include_lock_state);
     let pre_u = kernel_k_user_projection(*pre, include_lock_state);
     let post_u = kernel_k_user_projection(*post, include_lock_state);
-    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { state, current_process: None, current_thread: None, ..pre_u.cpu_array[cpu_id as int] }));
+    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { state, current_process: None, current_thread: None, ..pre_u.cpu_array[cpu_id as int] }), i => {
+        if 0 <= i < NUM_CPUS { kernel_cpu_user_projection_at(pre, include_lock_state, i as usize); kernel_cpu_user_projection_at(post, include_lock_state, i as usize); }
+    });
 }
 
 /// The IPC block fields project to the thread map with only the blocking thread waiting on the endpoint.
@@ -99,12 +109,14 @@ pub proof fn kernel_ipc_block_fields_implies_u_thread_map(
             })
         }),
 {
+    hide(kernel_k_user_projection);
     reveal(kernel_ipc_block_fields);
+    kernel_u_user_domains_projection(pre, include_lock_state); kernel_u_user_domains_projection(post, include_lock_state);
     let pre_u = kernel_k_user_projection(*pre, include_lock_state);
     let post_u = kernel_k_user_projection(*post, include_lock_state);
     assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thread_ptr, ThreadU {
         state: waiting_state, blocking_endpoint_ptr: Some(endpoint_ptr), ipc_payload: payload, trap_frame: Some(regs), ..pre_u.thread_map.spec_index(thread_ptr)
-    }), t => {});
+    }), t => { if pre.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, include_lock_state, t); } if post.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(post, include_lock_state, t); } });
 }
 
 /// The IPC block fields project to the endpoint map with only the blocking thread appended to the endpoint queue.
@@ -127,7 +139,9 @@ pub proof fn kernel_ipc_block_fields_implies_u_endpoint_map(
             })
         }),
 {
+    hide(kernel_k_user_projection);
     reveal(kernel_ipc_block_fields);
+    kernel_u_user_domains_projection(pre, include_lock_state); kernel_u_user_domains_projection(post, include_lock_state);
     let pre_u = kernel_k_user_projection(*pre, include_lock_state);
     let post_u = kernel_k_user_projection(*post, include_lock_state);
     let endpoint = pre_u.endpoint_map.spec_index(endpoint_ptr);
@@ -137,7 +151,7 @@ pub proof fn kernel_ipc_block_fields_implies_u_endpoint_map(
             match waiting_state { ThreadState::SENDING | ThreadState::CALLING => EndpointState::SEND, _ => EndpointState::RECEIVE }
         } else { endpoint.queue_state },
         ..endpoint
-    }), e => {});
+    }), e => { if pre.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(pre, include_lock_state, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(post, include_lock_state, e); } });
 }
 
 /// The call-handoff fields project to the cpu array with only `cpu_id` switched to the callee.
@@ -155,12 +169,15 @@ pub proof fn kernel_ipc_call_handoff_fields_implies_u_cpu_array(
             })
         }),
 {
+    hide(kernel_k_user_projection);
     reveal(kernel_ipc_call_handoff_fields);
+    kernel_u_user_domains_projection(pre, include_lock_state); kernel_u_user_domains_projection(post, include_lock_state);
+    if pre.thr_mp.dom().contains(callee_ptr) { kernel_thread_user_projection_at(pre, include_lock_state, callee_ptr); } if index_valid(NUM_CPUS, cpu_id) { kernel_cpu_user_projection_at(pre, include_lock_state, cpu_id); }
     let pre_u = kernel_k_user_projection(*pre, include_lock_state);
     let post_u = kernel_k_user_projection(*post, include_lock_state);
     assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU {
         current_process: Some(pre_u.thread_map.spec_index(callee_ptr).owning_proc), current_thread: Some(callee_ptr), ..pre_u.cpu_array[cpu_id as int]
-    }));
+    }), i => { if 0 <= i < NUM_CPUS { kernel_cpu_user_projection_at(pre, include_lock_state, i as usize); kernel_cpu_user_projection_at(post, include_lock_state, i as usize); } });
 }
 
 /// The call-handoff fields project to the thread map with the caller waiting for the reply and the callee running.
@@ -179,13 +196,18 @@ pub proof fn kernel_ipc_call_handoff_fields_implies_u_thread_map(
                 .insert(callee_ptr, ThreadU { state: ThreadState::RUNNING { cpu_id }, caller: Some(caller_ptr), last_cpu: cpu_id, blocking_endpoint_ptr: None, trap_frame: None, ..callee })
         }),
 {
-    reveal(kernel_ipc_call_handoff_fields);
+    hide(kernel_k_user_projection);
+    reveal(kernel_ipc_call_handoff_fields); kernel_u_user_domains_projection(pre, include_lock_state); kernel_u_user_domains_projection(post, include_lock_state);
+    if pre.thr_mp.dom().contains(caller_ptr) { kernel_thread_user_projection_at(pre, include_lock_state, caller_ptr); } if pre.thr_mp.dom().contains(callee_ptr) { kernel_thread_user_projection_at(pre, include_lock_state, callee_ptr); }
     let pre_u = kernel_k_user_projection(*pre, include_lock_state);
     let post_u = kernel_k_user_projection(*post, include_lock_state);
     let caller = pre_u.thread_map.spec_index(caller_ptr);
     let callee = pre_u.thread_map.spec_index(callee_ptr);
     assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(caller_ptr, ThreadU { state: ThreadState::WAITING_REPLY, callee: Some(callee_ptr), trap_frame: Some(regs), ..caller })
-        .insert(callee_ptr, ThreadU { state: ThreadState::RUNNING { cpu_id }, caller: Some(caller_ptr), last_cpu: cpu_id, blocking_endpoint_ptr: None, trap_frame: None, ..callee }), t => {});
+        .insert(callee_ptr, ThreadU { state: ThreadState::RUNNING { cpu_id }, caller: Some(caller_ptr), last_cpu: cpu_id, blocking_endpoint_ptr: None, trap_frame: None, ..callee }), t => {
+        if pre.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, include_lock_state, t); }
+        if post.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(post, include_lock_state, t); }
+    });
 }
 
 /// The call-handoff fields project to the endpoint map with only the callee dequeued from the endpoint.
@@ -202,11 +224,17 @@ pub proof fn kernel_ipc_call_handoff_fields_implies_u_endpoint_map(
             post_u.endpoint_map == pre_u.endpoint_map.insert(endpoint_ptr, EndpointU { queue: endpoint.queue.skip(1), ..endpoint })
         }),
 {
+    hide(kernel_k_user_projection);
     reveal(kernel_ipc_call_handoff_fields);
+    kernel_u_user_domains_projection(pre, include_lock_state); kernel_u_user_domains_projection(post, include_lock_state);
+    if pre.ep_mp.dom().contains(endpoint_ptr) { kernel_endpoint_user_projection_at(pre, include_lock_state, endpoint_ptr); }
     let pre_u = kernel_k_user_projection(*pre, include_lock_state);
     let post_u = kernel_k_user_projection(*post, include_lock_state);
     let endpoint = pre_u.endpoint_map.spec_index(endpoint_ptr);
-    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map.insert(endpoint_ptr, EndpointU { queue: endpoint.queue.skip(1), ..endpoint }), e => {});
+    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map.insert(endpoint_ptr, EndpointU { queue: endpoint.queue.skip(1), ..endpoint }), e => {
+        if pre.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(pre, include_lock_state, e); }
+        if post.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(post, include_lock_state, e); }
+    });
 }
 
 /// The cpu-off fields project to the container map with the requeued thread and the cleared request bit of the cpu's container.
