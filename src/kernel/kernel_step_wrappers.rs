@@ -23,6 +23,8 @@ pub mod kill_retire;
 pub mod bindings;
 /// K->U lemmas for the step that releases an endpoint with its last descriptor.
 pub mod endpoint_release;
+/// Per-map K->U lemmas of the IPC block and call-handoff, cpu-off, thread-quota, and lock-mode steps.
+pub mod per_map_projection;
 
 pub use projection::*;
 pub use boundary::*;
@@ -33,6 +35,7 @@ pub use kill_reclaim::*;
 pub use kill_retire::*;
 pub use bindings::*;
 pub use endpoint_release::*;
+pub use per_map_projection::*;
 
 verus! {
 /// Each boundary refreshes both stored snapshots after recording its own section.

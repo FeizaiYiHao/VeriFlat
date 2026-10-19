@@ -224,36 +224,17 @@ pub(super) proof fn kernel_cpu_went_off_fields_implies_u_step(pre: &KernelK, pos
     ensures
         kernel_u_cpu_went_off_changed(kernel_k_user_projection(*pre, include_lock_state), kernel_k_user_projection(*post, include_lock_state), cpu_id, regs, flushed_default_pcid),
 {
-    reveal(kernel_u_cpu_went_off_changed); reveal(kernel_cpu_went_off_fields); reveal(kernel_endpoint_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged);
-    reveal(container_cpu_set_wf);
+    reveal(kernel_u_cpu_went_off_changed); reveal(kernel_cpu_went_off_fields);
+    kernel_cpu_state_set_and_current_cleared_implies_u_cpu_array(pre, post, cpu_id, CpuState::Off, include_lock_state);
+    kernel_endpoint_nonlock_fields_and_locks_unchanged_implies_u_endpoint_map(pre, post, include_lock_state);
+    kernel_process_nonlock_fields_and_locks_unchanged_implies_u_process_map(pre, post, include_lock_state);
+    kernel_cpu_went_off_fields_implies_u_container_map(pre, post, cpu_id, regs, flushed_default_pcid, include_lock_state);
+    kernel_cpu_went_off_fields_implies_u_thread_map(pre, post, cpu_id, regs, flushed_default_pcid, include_lock_state);
     let pre_u = kernel_k_user_projection(*pre, include_lock_state);
     let post_u = kernel_k_user_projection(*post, include_lock_state);
-    let cpu = pre_u.cpu_array[cpu_id as int];
-    let container_ptr = cpu.owning_container;
-    let container = pre_u.container_map.spec_index(container_ptr);
+    let container = pre_u.container_map.spec_index(pre_u.cpu_array[cpu_id as int].owning_container);
     assert(container.cpu_offline_requests.len() == NUM_CPUS) by { reveal(cpu_offline_requests_of); };
     assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { reveal(IommuRootTable::user_view); };
-    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { state: CpuState::Off, current_process: None, current_thread: None, ..cpu }));
-    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => {});
-    assert_maps_equal!(post_u.process_map, pre_u.process_map, p => {
-        reveal(process_pagetable_match); reveal(process_iommu_table_match); reveal(kernel_pagetable_nonlock_fields_unchanged);
-    });
-    assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(container_ptr, ContainerU {
-        scheduler: match cpu.current_thread {
-            Some(prev) => container.scheduler.update(cpu_id as int, container.scheduler[cpu_id as int].push(prev)),
-            None => container.scheduler,
-        },
-        cpu_offline_requests: container.cpu_offline_requests.update(cpu_id as int, false),
-        ..container
-    }), c => {});
-    match cpu.current_thread {
-        Some(prev) => {
-            assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(prev, ThreadU {
-                state: ThreadState::SCHEDULED { cpu_id }, error_code: None, trap_frame: Some(regs), ..pre_u.thread_map.spec_index(prev)
-            }), t => {});
-        },
-        None => { assert_maps_equal!(post_u.thread_map, pre_u.thread_map, t => {}); },
-    }
 }
 
 #[verifier::spinoff_prover]
