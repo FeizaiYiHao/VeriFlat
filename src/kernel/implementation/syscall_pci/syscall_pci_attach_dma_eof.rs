@@ -3,7 +3,8 @@ use crate::*;
 
 verus! {
 /// Attaching a function owned by a live process with an IOMMU table keeps the root-table, ownership,
-/// and IOTLB invariants: its translation is that table's root, and its IOTLB domain was empty while detached.
+/// and IOTLB invariants: its translation is that table's root, and its IOTLB domain was empty while detached. Every
+/// cpu, process, thread, and container field is as before.
 pub(super) proof fn pci_attach_dma_eof(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, bus: usize, device: usize, function: usize, root: PageTableRoot)
     requires
         pre.inv(),
@@ -22,7 +23,13 @@ pub(super) proof fn pci_attach_dma_eof(pre: KernelK, post: KernelK, process_ptr:
         pre.prc_mp.spec_index(process_ptr).view().iommu_table is Some ==> !(pre.it_mp.spec_index(pre.prc_mp.spec_index(process_ptr).view().iommu_table->Some_0).locking_thread() is Write),
     ensures
         post.inv(),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post),
+        kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
 {
+    assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post)) by {
+        broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
+    };
+    assert(kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); reveal(process_iommu_table_match); };
     assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
     assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); };

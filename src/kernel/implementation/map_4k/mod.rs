@@ -21,6 +21,7 @@ pub mod unmap_4k_reclaim;
 mod unmap_4k_reclaim_eof;
 mod unmap_4k_reclaim_spec;
 pub mod unmap_4k_flush_all;
+mod unmap_4k_flush_one_cpu;
 pub mod unmap_4k_reclaim_one;
 mod unmap_4k_reclaim_last;
 mod unmap_4k_reclaim_last_cache;

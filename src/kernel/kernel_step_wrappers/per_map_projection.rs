@@ -260,16 +260,18 @@ pub proof fn kernel_cpu_went_off_fields_implies_u_thread_map(pre: &KernelK, post
             }
         }),
 {
+    hide(kernel_k_user_projection);
     reveal(kernel_cpu_went_off_fields);
     let pre_u = kernel_k_user_projection(*pre, include_lock_state);
     let post_u = kernel_k_user_projection(*post, include_lock_state);
+    assert(post_u.thread_map.dom() == post.thr_mp.dom() && pre_u.thread_map.dom() == pre.thr_mp.dom() && pre_u.cpu_array[cpu_id as int].current_thread == pre.cpu_arr.spec_index(cpu_id).value.view().view().current_thread) by { reveal(kernel_k_user_projection); };
     match pre_u.cpu_array[cpu_id as int].current_thread {
         Some(prev) => {
             assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(prev, ThreadU {
                 state: ThreadState::SCHEDULED { cpu_id }, error_code: None, trap_frame: Some(regs), ..pre_u.thread_map.spec_index(prev)
-            }), t => {});
+            }), t => { reveal(kernel_k_user_projection); });
         },
-        None => { assert_maps_equal!(post_u.thread_map, pre_u.thread_map, t => {}); },
+        None => { assert_maps_equal!(post_u.thread_map, pre_u.thread_map, t => { reveal(kernel_k_user_projection); }); },
     }
 }
 

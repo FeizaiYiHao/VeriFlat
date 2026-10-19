@@ -136,11 +136,7 @@ pub fn syscall_pci_attach_dma(
     }
     let ghost before_attach = *krnl;
     iommu_root_table_attach(&mut krnl.irt, bus, device, function, root, Tracked(&*lctx), Tracked(&irt_lock_perm));
-    proof {
-        pci_attach_dma_eof(before_attach, *krnl, process_ptr, bus, device, function, root);
-        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&before_attach, &*krnl)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&before_attach, &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-    }
+    proof { pci_attach_dma_eof(before_attach, *krnl, process_ptr, bus, device, function, root); }
     krnl.wunlock_iommu_root_table(Tracked(lctx), Tracked(irt_lock_perm));
     krnl.wunlock_process(process_ptr, Tracked(lctx), Tracked(process_lock_perm));
     krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
