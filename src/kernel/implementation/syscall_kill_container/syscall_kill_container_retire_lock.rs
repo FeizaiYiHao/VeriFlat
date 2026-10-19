@@ -3,6 +3,7 @@ use crate::*;
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_container_retire_spec::*;
 use super::super::syscall_kill_process::syscall_kill_process_retire_pages_lock::{kill_retire_sort_pages, wlock_kill_retire_pages};
+use super::syscall_kill_container_lock_pairs::{kill_container_wlock_pool_pairs, kill_container_wlock_quota_pairs};
 #[cfg(feature = "split-crates")]
 use veriflat_kernel_core::kernel::implementation::lock_allocated_2m_page_tails::wlock_allocated_2m_page_tails;
 #[cfg(not(feature = "split-crates"))]
@@ -1062,54 +1063,14 @@ pub(crate) fn kill_container_retire_lock_pools_quotas(
     let a1 = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_1g;
     let o4 = krnl.ctn_mp.borrow_rodata(owner_ptr).borrow().allocator_ptr_4k;
     let o2 = krnl.ctn_mp.borrow_rodata(owner_ptr).borrow().allocator_ptr_2m;
-    if container_ptr < owner_ptr {
-        let Tracked(perm) = krnl.wlock_allocator_global_pool_4k_ordered(a4, Tracked(&mut *lctx));
-        proof { pools_4k.tracked_insert(a4, perm); }
-        let Tracked(perm) = krnl.wlock_allocator_global_pool_4k_ordered(o4, Tracked(&mut *lctx));
-        proof { pools_4k.tracked_insert(o4, perm); }
-        let Tracked(perm) = krnl.wlock_allocator_global_pool_2m_ordered(a2, Tracked(&mut *lctx));
-        proof { pools_2m.tracked_insert(a2, perm); }
-        let Tracked(perm) = krnl.wlock_allocator_global_pool_2m_ordered(o2, Tracked(&mut *lctx));
-        proof { pools_2m.tracked_insert(o2, perm); }
-    } else {
-        let Tracked(perm) = krnl.wlock_allocator_global_pool_4k_ordered(o4, Tracked(&mut *lctx));
-        proof { pools_4k.tracked_insert(o4, perm); }
-        let Tracked(perm) = krnl.wlock_allocator_global_pool_4k_ordered(a4, Tracked(&mut *lctx));
-        proof { pools_4k.tracked_insert(a4, perm); }
-        let Tracked(perm) = krnl.wlock_allocator_global_pool_2m_ordered(o2, Tracked(&mut *lctx));
-        proof { pools_2m.tracked_insert(o2, perm); }
-        let Tracked(perm) = krnl.wlock_allocator_global_pool_2m_ordered(a2, Tracked(&mut *lctx));
-        proof { pools_2m.tracked_insert(a2, perm); }
-    }
+    kill_container_wlock_pool_pairs(krnl, Tracked(&mut *lctx), container_ptr, owner_ptr, a4, o4, a2, o2, Tracked(&mut *pools_4k), Tracked(&mut *pools_2m));
     let pool_1g = krnl.wlock_allocator_global_pool_1g_ordered(a1, Tracked(&mut *lctx));
-    if container_ptr < owner_ptr {
-        let Tracked(perm) = krnl.wlock_allocator_quota_4k_ordered(a4, Tracked(&mut *lctx));
-        proof { quotas_4k.tracked_insert(a4, perm); }
-        let Tracked(perm) = krnl.wlock_allocator_quota_4k_ordered(o4, Tracked(&mut *lctx));
-        proof { quotas_4k.tracked_insert(o4, perm); }
-        let Tracked(perm) = krnl.wlock_allocator_quota_2m_ordered(a2, Tracked(&mut *lctx));
-        proof { quotas_2m.tracked_insert(a2, perm); }
-        let Tracked(perm) = krnl.wlock_allocator_quota_2m_ordered(o2, Tracked(&mut *lctx));
-        proof { quotas_2m.tracked_insert(o2, perm); }
-    } else {
-        let Tracked(perm) = krnl.wlock_allocator_quota_4k_ordered(o4, Tracked(&mut *lctx));
-        proof { quotas_4k.tracked_insert(o4, perm); }
-        let Tracked(perm) = krnl.wlock_allocator_quota_4k_ordered(a4, Tracked(&mut *lctx));
-        proof { quotas_4k.tracked_insert(a4, perm); }
-        let Tracked(perm) = krnl.wlock_allocator_quota_2m_ordered(o2, Tracked(&mut *lctx));
-        proof { quotas_2m.tracked_insert(o2, perm); }
-        let Tracked(perm) = krnl.wlock_allocator_quota_2m_ordered(a2, Tracked(&mut *lctx));
-        proof { quotas_2m.tracked_insert(a2, perm); }
-    }
+    kill_container_wlock_quota_pairs(krnl, Tracked(&mut *lctx), container_ptr, owner_ptr, a4, o4, a2, o2, Tracked(&mut *quotas_4k), Tracked(&mut *quotas_2m));
     let quota_1g = krnl.wlock_allocator_quota_1g_ordered(a1, Tracked(&mut *lctx));
     proof {
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-        assert(lctx.allocator_global_pool_4k_lock_map().dom() =~= set![a4, o4] && pools_4k.dom() =~= set![a4, o4]);
-        assert(lctx.allocator_global_pool_2m_lock_map().dom() =~= set![a2, o2] && pools_2m.dom() =~= set![a2, o2]);
-        assert(lctx.allocator_quota_4k_lock_map().dom() =~= set![a4, o4] && quotas_4k.dom() =~= set![a4, o4]);
-        assert(lctx.allocator_quota_2m_lock_map().dom() =~= set![a2, o2] && quotas_2m.dom() =~= set![a2, o2]);
         assert(lctx.allocator_global_pool_1g_lock_map().dom() =~= set![a1] && lctx.allocator_quota_1g_lock_map().dom() =~= set![a1]);
     }
     (pool_1g, quota_1g)

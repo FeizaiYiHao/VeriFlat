@@ -2315,16 +2315,18 @@ proof fn kernel_thread_exit_quota_returned_implies_u_container_map(pre: &KernelK
     let a = kernel_k_to_kernel_u(*pre);
     let t = pre.thr_mp.spec_index(thread_ptr).view();
     kernel_thread_projection_at(pre, thread_ptr); kernel_process_projection_at(pre, t.owning_proc);
-    kernel_container_projection_at(pre, t.owning_container); kernel_container_projection_at(post, t.owning_container);
+    kernel_container_projection_at(pre, t.owning_container);
     let thread = a.thread_map[thread_ptr];
     let process = a.process_map[t.owning_proc];
     let container = a.container_map[t.owning_container];
-    assert_maps_equal!(kernel_k_to_kernel_u(*post).container_map, a.container_map.insert(t.owning_container, match size {
+    let new_c = match size {
         PageSize::SZ4k => ContainerU { quota_4k: (container.quota_4k + process.quota_4k + thread.quota_4k) as usize, ..container },
         PageSize::SZ2m => ContainerU { quota_2m: (container.quota_2m + process.quota_2m + thread.quota_2m) as usize, ..container },
         PageSize::SZ1g => ContainerU { quota_1g: (container.quota_1g + process.quota_1g + thread.quota_1g) as usize, ..container },
-    }), c => {
-        if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); kernel_container_projection_at(post, c); }
+    };
+    assert(kernel_k_to_kernel_u(*post).container_map[t.owning_container] == new_c) by { kernel_container_projection_at(post, t.owning_container); };
+    assert_maps_equal!(kernel_k_to_kernel_u(*post).container_map, a.container_map.insert(t.owning_container, new_c), c => {
+        if pre.ctn_mp.dom().contains(c) && c != t.owning_container { kernel_container_projection_at(pre, c); kernel_container_projection_at(post, c); }
     });
 }
 

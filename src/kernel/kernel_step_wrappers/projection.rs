@@ -415,10 +415,16 @@ proof fn kernel_context_switch_fields_implies_u_container_map(pre: &KernelK, pos
     let cpu = pre_u.cpu_array[cpu_id as int];
     let container = pre_u.container_map.spec_index(cpu.owning_container);
     let run_queue = container.scheduler[cpu_id as int];
-    assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(cpu.owning_container, ContainerU {
+    let new_c = ContainerU {
         scheduler: container.scheduler.update(cpu_id as int, match cpu.current_thread { Some(prev) => run_queue.skip(1).push(prev), None => run_queue.skip(1) }),
         ..container
-    }), c => { if pre.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(pre, include_lock_state, c); } if post.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(post, include_lock_state, c); } reveal(container_scheduler_wf); });
+    };
+    assert(post_u.container_map[cpu.owning_container] == new_c) by { kernel_container_user_projection_at(post, include_lock_state, cpu.owning_container); reveal(container_scheduler_wf); };
+    assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(cpu.owning_container, new_c), c => {
+        if pre.ctn_mp.dom().contains(c) && c != cpu.owning_container {
+            kernel_container_user_projection_at(pre, include_lock_state, c); kernel_container_user_projection_at(post, include_lock_state, c); reveal(container_scheduler_wf);
+        }
+    });
 }
 
 #[verifier::spinoff_prover]
@@ -3382,14 +3388,19 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_container_map(
             .insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, ..old_u.container_map[container_ptr] }),
         None => old_u.container_map,
     };
-    reveal(kernel_new_thread_fields);
-    assert_maps_equal!(post_u.container_map, unlocked.insert(container_ptr, ContainerU {
+    let new_c = ContainerU {
         owned_threads: unlocked.spec_index(container_ptr).owned_threads.insert(new_thread_ptr),
         scheduler: unlocked.spec_index(container_ptr).scheduler.update(cpu_id as int, unlocked.spec_index(container_ptr).scheduler[cpu_id as int].push(new_thread_ptr)),
         ..unlocked.spec_index(container_ptr)
-    }), p => {
-        reveal(container_scheduler_wf);
-        if pre.ctn_mp.dom().contains(p) { kernel_container_projection_at(pre, p); } if post.ctn_mp.dom().contains(p) { kernel_container_projection_at(post, p); }
+    };
+    reveal(kernel_new_thread_fields);
+    assert(post_u.container_map[container_ptr] == new_c) by {
+        kernel_container_projection_at(pre, container_ptr); kernel_container_projection_at(post, container_ptr); container_scheduler_wf_at(post.ctn_mp, post.sched_mp, container_ptr);
+    };
+    assert_maps_equal!(post_u.container_map, unlocked.insert(container_ptr, new_c), p => {
+        if pre.ctn_mp.dom().contains(p) && p != container_ptr {
+            kernel_container_projection_at(pre, p); kernel_container_projection_at(post, p); reveal(container_scheduler_wf);
+        }
     });
 }
 
@@ -3518,4 +3529,5 @@ pub proof fn kernel_new_thread_fields_and_parent_unlocks_implies_u_process_map(
         assert(post.prc_mp.spec_index(release_source_process).view().pagetable == pre.prc_mp.spec_index(release_source_process).view().pagetable);
     });
 }
+
 } // verus!

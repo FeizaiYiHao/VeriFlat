@@ -258,19 +258,27 @@ pub proof fn kernel_cpu_went_off_fields_implies_u_container_map(pre: &KernelK, p
             })
         }),
 {
+    hide(kernel_k_user_projection);
     reveal(kernel_cpu_went_off_fields); reveal(container_cpu_set_wf);
+    kernel_u_user_domains_projection(pre, include_lock_state); kernel_u_user_domains_projection(post, include_lock_state); kernel_cpu_user_projection_at(pre, include_lock_state, cpu_id);
     let pre_u = kernel_k_user_projection(*pre, include_lock_state);
     let post_u = kernel_k_user_projection(*post, include_lock_state);
     let cpu = pre_u.cpu_array[cpu_id as int];
     let container = pre_u.container_map.spec_index(cpu.owning_container);
-    assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(cpu.owning_container, ContainerU {
+    let new_c = ContainerU {
         scheduler: match cpu.current_thread {
             Some(prev) => container.scheduler.update(cpu_id as int, container.scheduler[cpu_id as int].push(prev)),
             None => container.scheduler,
         },
         cpu_offline_requests: container.cpu_offline_requests.update(cpu_id as int, false),
         ..container
-    }), c => {});
+    };
+    assert(post_u.container_map[cpu.owning_container] == new_c) by {
+        kernel_container_user_projection_at(pre, include_lock_state, cpu.owning_container); kernel_container_user_projection_at(post, include_lock_state, cpu.owning_container);
+    };
+    assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(cpu.owning_container, new_c), c => {
+        if pre.ctn_mp.dom().contains(c) && c != cpu.owning_container { kernel_container_user_projection_at(pre, include_lock_state, c); kernel_container_user_projection_at(post, include_lock_state, c); }
+    });
 }
 
 /// The cpu-off fields project to the thread map with only the cpu's running thread, if any, requeued with `regs`.
@@ -382,10 +390,13 @@ pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_container_map(
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
-    assert_maps_equal!(b.container_map, a.container_map.insert(source, ContainerU { owned_pages: a.container_map[source].owned_pages.remove(page), ..a.container_map[source] })
-        .insert(target, ContainerU { owned_pages: a.container_map[target].owned_pages.insert(page), ..a.container_map[target] }), p => {
-            if pre.ctn_mp.dom().contains(p) { kernel_container_projection_at(pre, p); } if post.ctn_mp.dom().contains(p) { kernel_container_projection_at(post, p); }
-        });
+    let x = ContainerU { owned_pages: a.container_map[source].owned_pages.remove(page), ..a.container_map[source] };
+    let y = ContainerU { owned_pages: a.container_map[target].owned_pages.insert(page), ..a.container_map[target] };
+    assert(b.container_map[source] == x) by { kernel_container_projection_at(pre, source); kernel_container_projection_at(post, source); };
+    assert(b.container_map[target] == y) by { kernel_container_projection_at(pre, target); kernel_container_projection_at(post, target); };
+    assert_maps_equal!(b.container_map, a.container_map.insert(source, x).insert(target, y), p => {
+        if pre.ctn_mp.dom().contains(p) && p != source && p != target { kernel_container_projection_at(pre, p); kernel_container_projection_at(post, p); }
+    });
 }
 
 /// Only the lock mode of cpu `cpu_id` changing, to `mode`, projects to that cpu-array update.
@@ -445,14 +456,20 @@ pub proof fn kernel_container_lock_mode_changed_implies_u_container_map(
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
     let old_u = kernel_k_to_kernel_u(*pre);
     let new_u = kernel_k_to_kernel_u(*post);
-    assert_maps_equal!(new_u.container_map, match container {
-        Some(c) => old_u.container_map.insert(c, ContainerU {
-            lock_state: mode, cpu_set_lock: if cpu_set_unlocked is Some { mode } else { old_u.container_map[c].cpu_set_lock }, ..old_u.container_map[c]
-        }),
-        None => old_u.container_map,
-    }, p => {
-        if pre.ctn_mp.dom().contains(p) { kernel_container_projection_at(pre, p); } if post.ctn_mp.dom().contains(p) { kernel_container_projection_at(post, p); } reveal(container_cpu_set_wf);
-    });
+    match container {
+        Some(c) => {
+            let new_c = ContainerU { lock_state: mode, cpu_set_lock: if cpu_set_unlocked is Some { mode } else { old_u.container_map[c].cpu_set_lock }, ..old_u.container_map[c] };
+            assert(new_u.container_map[c] == new_c) by { kernel_container_projection_at(pre, c); kernel_container_projection_at(post, c); reveal(container_cpu_set_wf); };
+            assert_maps_equal!(new_u.container_map, old_u.container_map.insert(c, new_c), p => {
+                if pre.ctn_mp.dom().contains(p) && p != c { kernel_container_projection_at(pre, p); kernel_container_projection_at(post, p); reveal(container_cpu_set_wf); }
+            });
+        },
+        None => {
+            assert_maps_equal!(new_u.container_map, old_u.container_map, p => {
+                if pre.ctn_mp.dom().contains(p) { kernel_container_projection_at(pre, p); kernel_container_projection_at(post, p); reveal(container_cpu_set_wf); }
+            });
+        },
+    }
 }
 
 /// Only the lock modes of `process_ptr` and, with `pagetable`, of its pagetable changing, to `mode`, project to that process-map update.

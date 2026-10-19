@@ -67,9 +67,12 @@ pub proof fn kernel_page_owner_changed_implies_u_container_map(before: &KernelK,
     let a = kernel_k_to_kernel_u(*before);
     let b = kernel_k_to_kernel_u(*after);
     container_cpu_set_wf_container_at(before.ctn_mp, before.cpu_set_mp, source); container_cpu_set_wf_container_at(before.ctn_mp, before.cpu_set_mp, target);
-    assert_maps_equal!(b.container_map, a.container_map.insert(source, ContainerU { cpu_set_lock: LockStateU::Unlocked, owned_pages: a.container_map[source].owned_pages.remove(page), ..a.container_map[source] })
-        .insert(target, ContainerU { cpu_set_lock: LockStateU::Unlocked, owned_pages: a.container_map[target].owned_pages.insert(page), ..a.container_map[target] }), c => {
-        if before.ctn_mp.dom().contains(c) {
+    let x = ContainerU { cpu_set_lock: LockStateU::Unlocked, owned_pages: a.container_map[source].owned_pages.remove(page), ..a.container_map[source] };
+    let y = ContainerU { cpu_set_lock: LockStateU::Unlocked, owned_pages: a.container_map[target].owned_pages.insert(page), ..a.container_map[target] };
+    assert(b.container_map[source] == x) by { kernel_container_projection_at(before, source); kernel_container_projection_at(after, source); container_scheduler_wf_at(before.ctn_mp, before.sched_mp, source); };
+    assert(b.container_map[target] == y) by { kernel_container_projection_at(before, target); kernel_container_projection_at(after, target); container_scheduler_wf_at(before.ctn_mp, before.sched_mp, target); };
+    assert_maps_equal!(b.container_map, a.container_map.insert(source, x).insert(target, y), c => {
+        if before.ctn_mp.dom().contains(c) && c != source && c != target {
             kernel_container_projection_at(before, c); kernel_container_projection_at(after, c);
             container_scheduler_wf_at(before.ctn_mp, before.sched_mp, c); container_cpu_set_wf_container_at(before.ctn_mp, before.cpu_set_mp, c);
         }

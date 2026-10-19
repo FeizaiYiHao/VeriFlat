@@ -13,6 +13,7 @@ pub(crate) mod syscall_kill_container_retire_spec;
 pub(crate) mod syscall_kill_container_pages_spec;
 pub(crate) mod syscall_kill_container_pages_eof;
 pub(crate) mod syscall_kill_container_pages_trace;
+pub(crate) mod syscall_kill_container_lock_pairs;
 pub(crate) mod syscall_kill_container_pages_lock;
 pub(crate) mod syscall_kill_container_pages_drain;
 pub(crate) mod syscall_kill_container_pages_move;

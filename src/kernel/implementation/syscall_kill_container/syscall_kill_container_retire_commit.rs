@@ -148,7 +148,7 @@ pub(crate) fn kill_container_retire_commit(
         container_allocator_free_4k_page_wf_global_at(krnl.allc_4k_mp, krnl.pg_arr, owner_ro.allocator_ptr_4k, ro.allocator_ptr_1g);
         container_allocator_free_2m_page_wf_global_at(krnl.allc_2m_mp, krnl.pg_arr, owner_ro.allocator_ptr_2m, container_ptr);
         container_allocator_free_2m_page_wf_global_at(krnl.allc_2m_mp, krnl.pg_arr, owner_ro.allocator_ptr_2m, ro.pcid_allocator);
-        container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, container_ptr); container_perms_wf_at(krnl.ctn_mp, owner_ptr);
+        container_perms_wf_at(krnl.ctn_mp, container_ptr); container_perms_wf_at(krnl.ctn_mp, owner_ptr);
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr);
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner_ptr);
         container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, container_ptr);

@@ -58,12 +58,15 @@ pub proof fn kernel_container_free_4k_page_moved_implies_u_step(pre: &KernelK, p
     let b = kernel_k_to_kernel_u(*post);
     let target = a.container_map[src];
     let owner = a.container_map[dst];
-    let expected = a.container_map.insert(src, ContainerU { owned_pages: target.owned_pages.difference(moved), quota_4k: (target.quota_4k - 1) as usize, ..target })
-        .insert(dst, ContainerU { owned_pages: owner.owned_pages.union(moved), quota_4k: (owner.quota_4k + 1) as usize, ..owner });
+    let x = ContainerU { owned_pages: target.owned_pages.difference(moved), quota_4k: (target.quota_4k - 1) as usize, ..target };
+    let y = ContainerU { owned_pages: owner.owned_pages.union(moved), quota_4k: (owner.quota_4k + 1) as usize, ..owner };
+    let expected = a.container_map.insert(src, x).insert(dst, y);
     container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, src); container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, dst);
-    kernel_container_projection_at(pre, src); kernel_container_projection_at(pre, dst); kernel_container_projection_at(post, src); kernel_container_projection_at(post, dst);
+    kernel_container_projection_at(pre, src); kernel_container_projection_at(pre, dst);
+    assert(b.container_map[src] == x) by { kernel_container_projection_at(post, src); };
+    assert(b.container_map[dst] == y) by { kernel_container_projection_at(post, dst); };
     assert_maps_equal!(b.container_map, expected, c => {
-        if pre.ctn_mp.dom().contains(c) {
+        if pre.ctn_mp.dom().contains(c) && c != src && c != dst {
             kernel_container_projection_at(pre, c); kernel_container_projection_at(post, c); container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, c);
         }
     });
@@ -132,12 +135,15 @@ pub proof fn kernel_container_free_2m_page_moved_implies_u_step(pre: &KernelK, p
     let b = kernel_k_to_kernel_u(*post);
     let target = a.container_map[src];
     let owner = a.container_map[dst];
-    let expected = a.container_map.insert(src, ContainerU { owned_pages: target.owned_pages.difference(moved), quota_2m: (target.quota_2m - 1) as usize, ..target })
-        .insert(dst, ContainerU { owned_pages: owner.owned_pages.union(moved), quota_2m: (owner.quota_2m + 1) as usize, ..owner });
+    let x = ContainerU { owned_pages: target.owned_pages.difference(moved), quota_2m: (target.quota_2m - 1) as usize, ..target };
+    let y = ContainerU { owned_pages: owner.owned_pages.union(moved), quota_2m: (owner.quota_2m + 1) as usize, ..owner };
+    let expected = a.container_map.insert(src, x).insert(dst, y);
     container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, src); container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, dst);
-    kernel_container_projection_at(pre, src); kernel_container_projection_at(pre, dst); kernel_container_projection_at(post, src); kernel_container_projection_at(post, dst);
+    kernel_container_projection_at(pre, src); kernel_container_projection_at(pre, dst);
+    assert(b.container_map[src] == x) by { kernel_container_projection_at(post, src); };
+    assert(b.container_map[dst] == y) by { kernel_container_projection_at(post, dst); };
     assert_maps_equal!(b.container_map, expected, c => {
-        if pre.ctn_mp.dom().contains(c) {
+        if pre.ctn_mp.dom().contains(c) && c != src && c != dst {
             kernel_container_projection_at(pre, c); kernel_container_projection_at(post, c); container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, c);
         }
     });

@@ -161,11 +161,18 @@ pub(crate) proof fn kill_container_retire_eof(pre: KernelK, post: KernelK, conta
     kill_container_retire_eof_container_threads(pre, post, container_ptr, parent_ptr, owner_ptr);
     kill_container_retire_eof_container_processes(pre, post, container_ptr, parent_ptr, owner_ptr);
     kill_container_retire_eof_tlb(pre, post, container_ptr, parent_ptr, owner_ptr);
-    kill_container_retire_eof_page_objects(pre, post, container_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_page_objects_allocators(pre, post, container_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_page_objects_containers(pre, post, container_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_page_objects_retired(pre, post, container_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_page_objects_processes(pre, post, container_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_page_objects_threads(pre, post, container_ptr, parent_ptr, owner_ptr);
     kill_container_retire_eof_hugepages(pre, post, container_ptr, parent_ptr, owner_ptr);
     kill_container_retire_eof_mappings(pre, post, container_ptr, parent_ptr, owner_ptr);
     kill_container_retire_eof_page_owners(pre, post, container_ptr, parent_ptr, owner_ptr);
     kill_container_retire_eof_allocators(pre, post, container_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_allocator_free_4k_pages(pre, post, container_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_allocator_free_2m_pages(pre, post, container_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_allocator_free_1g_pages(pre, post, container_ptr, parent_ptr, owner_ptr);
     kill_container_retire_eof_allocator_quotas(pre, post, container_ptr, parent_ptr, owner_ptr);
     reveal(kill_container_retire_eof_transition_framing); reveal(KernelK::default_pagetable_wf);
 }

@@ -68,6 +68,42 @@ pub(crate) proof fn kill_reassign_eof(pre: KernelK, post: KernelK, target: RwLoc
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_proc_pcid_match); };
 }
 
+proof fn kill_quota_eof_allocator_quota(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, allocator_ptr: RwLockPageAllocatorPtr, size: PageSize)
+    requires
+        pre.inv(),
+        kill_quota_eof_transition_framing(pre, post, process_ptr, allocator_ptr, size),
+        pre.prc_mp.dom().contains(process_ptr),
+        size is SZ4k ==> allocator_ptr == pre.ctn_mp.spec_index(pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container).view_rodata().view().allocator_ptr_4k,
+        size is SZ2m ==> allocator_ptr == pre.ctn_mp.spec_index(pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container).view_rodata().view().allocator_ptr_2m,
+        size is SZ1g ==> allocator_ptr == pre.ctn_mp.spec_index(pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container).view_rodata().view().allocator_ptr_1g,
+        size is SZ4k ==> pre.allc_4k_mp.spec_index(allocator_ptr).quota.view().value + pre.prc_mp.spec_index(process_ptr).view().quota_4k <= usize::MAX,
+        size is SZ2m ==> pre.allc_2m_mp.spec_index(allocator_ptr).quota.view().value + pre.prc_mp.spec_index(process_ptr).view().quota_2m <= usize::MAX,
+        size is SZ1g ==> pre.allc_1g_mp.spec_index(allocator_ptr).quota.view().value + pre.prc_mp.spec_index(process_ptr).view().quota_1g <= usize::MAX,
+    ensures
+        container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp),
+        container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp),
+        container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp),
+{
+    reveal(kill_quota_eof_transition_framing);
+    let process = pre.prc_mp.spec_index(process_ptr).view();
+    let dp4k = if size is SZ4k { -(process.quota_4k as int) } else { 0int };
+    let dp2m = if size is SZ2m { -(process.quota_2m as int) } else { 0int };
+    let dp1g = if size is SZ1g { -(process.quota_1g as int) } else { 0int };
+    process_perms_wf_at(pre.prc_mp, process_ptr);
+    assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp)) by {
+        reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf); reveal(container_process_wf);
+        lemma_process_effective_quota_4k_fold_change_by_forall(process_ptr, dp4k); lemma_process_effective_quota_4k_fold_sum_eq_forall();
+    };
+    assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp)) by {
+        reveal(container_process_allocator_quota_2m_wf); reveal(container_allocator_wf); reveal(container_process_wf);
+        lemma_process_effective_quota_2m_fold_change_by_forall(process_ptr, dp2m); lemma_process_effective_quota_2m_fold_sum_eq_forall();
+    };
+    assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp)) by {
+        reveal(container_process_allocator_quota_1g_wf); reveal(container_allocator_wf); reveal(container_process_wf);
+        lemma_process_effective_quota_1g_fold_change_by_forall(process_ptr, dp1g); lemma_process_effective_quota_1g_fold_sum_eq_forall();
+    };
+}
+
 proof fn kill_quota_eof_memory(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, allocator_ptr: RwLockPageAllocatorPtr, size: PageSize)
     requires
         pre.inv(),
@@ -83,11 +119,7 @@ proof fn kill_quota_eof_memory(pre: KernelK, post: KernelK, process_ptr: RwLockP
     ensures post.memory_management_inv(),
 {
     reveal(kill_quota_eof_transition_framing);
-    let process = pre.prc_mp.spec_index(process_ptr).view();
-    let dp4k = if size is SZ4k { -(process.quota_4k as int) } else { 0int };
-    let dp2m = if size is SZ2m { -(process.quota_2m as int) } else { 0int };
-    let dp1g = if size is SZ1g { -(process.quota_1g as int) } else { 0int };
-    process_perms_wf_at(pre.prc_mp, process_ptr); container_process_wf_process_at(pre.ctn_mp, pre.prc_mp, process_ptr);
+    container_process_wf_process_at(pre.ctn_mp, pre.prc_mp, process_ptr);
     assert(allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
         lemma_allocator_pages_wf_preserved_for_allocator_invariant_fields_except_quota_forall(); reveal(allocator_2m_pages_wf); reveal(allocator_1g_pages_wf);
     };
@@ -108,16 +140,7 @@ proof fn kill_quota_eof_memory(pre: KernelK, post: KernelK, process_ptr: RwLockP
     assert(container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by { lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(pre, post); };
     assert(container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr)) by { lemma_container_allocator_free_2m_page_wf_preserved_for_lock_op(pre, post); };
     assert(container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr)) by { lemma_container_allocator_free_1g_page_wf_preserved_for_lock_op(pre, post); };
-    assert({
-        &&& container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp)
-        &&& container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp)
-        &&& container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp)
-    }) by {
-        reveal(container_process_allocator_quota_4k_wf); reveal(container_process_allocator_quota_2m_wf); reveal(container_process_allocator_quota_1g_wf); reveal(container_allocator_wf); reveal(container_process_wf);
-        lemma_process_effective_quota_4k_fold_change_by_forall(process_ptr, dp4k); lemma_process_effective_quota_4k_fold_sum_eq_forall();
-        lemma_process_effective_quota_2m_fold_change_by_forall(process_ptr, dp2m); lemma_process_effective_quota_2m_fold_sum_eq_forall();
-        lemma_process_effective_quota_1g_fold_change_by_forall(process_ptr, dp1g); lemma_process_effective_quota_1g_fold_sum_eq_forall();
-    };
+    kill_quota_eof_allocator_quota(pre, post, process_ptr, allocator_ptr, size);
 }
 
 proof fn kill_quota_eof_process(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, allocator_ptr: RwLockPageAllocatorPtr, size: PageSize)

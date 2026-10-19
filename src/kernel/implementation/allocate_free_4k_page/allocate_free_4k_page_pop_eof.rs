@@ -377,8 +377,37 @@ proof fn eof_pop_4k_mappings(pre: KernelK, post: KernelK, allocator: RwLockPageA
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { page_iommu_table_wf_preserved_for_nonmapped_page_change(pre.ctn_mp, pre.prc_mp, pre.it_mp, post.it_mp, pre.pg_arr, post.pg_arr, page_ptr2page_index(page)); };
 }
 
-proof fn eof_pop_4k_global_pool(pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)
+proof fn eof_pop_4k_global_pool_after_cache_pop(pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)
     requires
+        source is Some,
+        allocator_free_page_ptrs_wf(pre.allc_4k_mp),
+        container_allocator_free_4k_page_wf(pre.allc_4k_mp, pre.pg_arr),
+        pop_stage_4k_page_eof_transition_framing(pre, post, allocator, thread, container, page, node, source),
+        ({
+            let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view();
+            let free_state = match source { Some(cpu_id) => FreePageAllocatorState::PreCpuCache { cpu_id }, None => FreePageAllocatorState::GlobalList };
+            &&& page_ptr_valid(page)
+            &&& index_valid(NUM_PAGES, page_ptr2page_index(page))
+            &&& pre.ctn_mp.dom().contains(container)
+            &&& pre.ctn_mp.spec_index(container).view_rodata().view().allocator_ptr_4k == allocator
+            &&& pre.allc_4k_mp.dom().contains(allocator)
+            &&& pre.allc_4k_mp.spec_index(allocator).total_free_pages.view() > 0
+            &&& old_page.state == (PageState::Free4k { allocator_ptr: Ghost(allocator), state: free_state })
+            &&& old_page.free_list_node_storage.addr() == node
+            &&& old_page.owning_container == container
+        }),
+    ensures container_allocator_global_free_4k_page_wf(post.allc_4k_mp, post.pg_arr),
+{
+    reveal(pop_stage_4k_page_eof_transition_framing);
+    assert(container_allocator_global_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by {
+        reveal(container_allocator_global_free_4k_page_wf); reveal(container_allocator_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf);
+        page_ptr_valid_imply_page_index_valid();
+    };
+}
+
+proof fn eof_pop_4k_global_pool_after_pool_pop(pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)
+    requires
+        source is None,
         allocator_perms_wf(pre.allc_4k_mp),
         allocator_free_page_ptrs_wf(pre.allc_4k_mp),
         container_allocator_free_4k_page_wf(pre.allc_4k_mp, pre.pg_arr),
@@ -396,22 +425,14 @@ proof fn eof_pop_4k_global_pool(pre: KernelK, post: KernelK, allocator: RwLockPa
             &&& old_page.free_list_node_storage.addr() == node
             &&& old_page.owning_container == container
         }),
-    ensures
-        container_allocator_global_free_4k_page_wf(post.allc_4k_mp, post.pg_arr),
+    ensures container_allocator_global_free_4k_page_wf(post.allc_4k_mp, post.pg_arr),
 {
     reveal(pop_stage_4k_page_eof_transition_framing);
-    if source is Some {
-        assert(container_allocator_global_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by {
-            reveal(container_allocator_global_free_4k_page_wf); reveal(container_allocator_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf);
-            page_ptr_valid_imply_page_index_valid();
-        };
-    } else {
-        assert(container_allocator_global_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by {
-            reveal(container_allocator_global_free_4k_page_wf); reveal(container_allocator_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf); reveal(allocator_perms_wf);
-            reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list);
-            seq_skip_lemma::<PagePtr>();
-        };
-    }
+    assert(container_allocator_global_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by {
+        reveal(container_allocator_global_free_4k_page_wf); reveal(container_allocator_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf); reveal(allocator_perms_wf);
+        reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list);
+        seq_skip_lemma::<PagePtr>();
+    };
 }
 
 proof fn eof_pop_4k_cpu_cache(pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)
@@ -450,42 +471,36 @@ proof fn eof_pop_4k_cpu_cache(pre: KernelK, post: KernelK, allocator: RwLockPage
     }
 }
 
-proof fn eof_pop_4k_free_2m_pages(pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)
+proof fn eof_pop_4k_free_2m_pages(pre: KernelK, post: KernelK, page: PagePtr)
     requires
         allocator_free_page_ptrs_wf(pre.allc_2m_mp),
         container_allocator_free_2m_page_wf(pre.allc_2m_mp, pre.pg_arr),
-        pop_stage_4k_page_eof_transition_framing(pre, post, allocator, thread, container, page, node, source),
-        ({
-            let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view();
-            let free_state = match source { Some(cpu_id) => FreePageAllocatorState::PreCpuCache { cpu_id }, None => FreePageAllocatorState::GlobalList };
-            &&& index_valid(NUM_PAGES, page_ptr2page_index(page))
-            &&& old_page.state == (PageState::Free4k { allocator_ptr: Ghost(allocator), state: free_state })
-        }),
+        index_valid(NUM_PAGES, page_ptr2page_index(page)),
+        post.allc_2m_mp == pre.allc_2m_mp,
+        post.pg_arr.entries_unchanged_except(&pre.pg_arr, page_ptr2page_index(page)),
+        pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view().state is Free4k,
+        post.pg_arr.spec_index(page_ptr2page_index(page)).view().view().state is Owned4k,
     ensures
         container_allocator_global_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
         container_allocator_cpu_cache_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
 {
-    reveal(pop_stage_4k_page_eof_transition_framing);
     assert(container_allocator_global_free_2m_page_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(container_allocator_global_free_2m_page_wf); reveal(container_allocator_free_2m_page_wf); reveal(allocator_free_page_ptrs_wf); };
     assert(container_allocator_cpu_cache_free_2m_page_wf(post.allc_2m_mp, post.pg_arr)) by { reveal(container_allocator_cpu_cache_free_2m_page_wf); reveal(container_allocator_free_2m_page_wf); reveal(allocator_free_page_ptrs_wf); };
 }
 
-proof fn eof_pop_4k_free_1g_pages(pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)
+proof fn eof_pop_4k_free_1g_pages(pre: KernelK, post: KernelK, page: PagePtr)
     requires
         allocator_free_page_ptrs_wf(pre.allc_1g_mp),
         container_allocator_free_1g_page_wf(pre.allc_1g_mp, pre.pg_arr),
-        pop_stage_4k_page_eof_transition_framing(pre, post, allocator, thread, container, page, node, source),
-        ({
-            let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view();
-            let free_state = match source { Some(cpu_id) => FreePageAllocatorState::PreCpuCache { cpu_id }, None => FreePageAllocatorState::GlobalList };
-            &&& index_valid(NUM_PAGES, page_ptr2page_index(page))
-            &&& old_page.state == (PageState::Free4k { allocator_ptr: Ghost(allocator), state: free_state })
-        }),
+        index_valid(NUM_PAGES, page_ptr2page_index(page)),
+        post.allc_1g_mp == pre.allc_1g_mp,
+        post.pg_arr.entries_unchanged_except(&pre.pg_arr, page_ptr2page_index(page)),
+        pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view().state is Free4k,
+        post.pg_arr.spec_index(page_ptr2page_index(page)).view().view().state is Owned4k,
     ensures
         container_allocator_global_free_1g_page_wf(post.allc_1g_mp, post.pg_arr),
         container_allocator_cpu_cache_free_1g_page_wf(post.allc_1g_mp, post.pg_arr),
 {
-    reveal(pop_stage_4k_page_eof_transition_framing);
     assert(container_allocator_global_free_1g_page_wf(post.allc_1g_mp, post.pg_arr)) by { reveal(container_allocator_global_free_1g_page_wf); reveal(container_allocator_free_1g_page_wf); reveal(allocator_free_page_ptrs_wf); };
     assert(container_allocator_cpu_cache_free_1g_page_wf(post.allc_1g_mp, post.pg_arr)) by { reveal(container_allocator_cpu_cache_free_1g_page_wf); reveal(container_allocator_free_1g_page_wf); reveal(allocator_free_page_ptrs_wf); };
 }
@@ -525,10 +540,14 @@ proof fn eof_pop_4k_allocator(pre: KernelK, post: KernelK, allocator: RwLockPage
 {
     reveal(pop_stage_4k_page_eof_transition_framing);
     assert(allocator_free_page_ptrs_wf(post.allc_4k_mp)) by { reveal(allocator_free_page_ptrs_wf); };
-    eof_pop_4k_free_2m_pages(pre, post, allocator, thread, container, page, node, source);
-    eof_pop_4k_free_1g_pages(pre, post, allocator, thread, container, page, node, source);
+    eof_pop_4k_free_2m_pages(pre, post, page);
+    eof_pop_4k_free_1g_pages(pre, post, page);
     assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(container_allocator_wf); };
-    eof_pop_4k_global_pool(pre, post, allocator, thread, container, page, node, source);
+    if source is Some {
+        eof_pop_4k_global_pool_after_cache_pop(pre, post, allocator, thread, container, page, node, source);
+    } else {
+        eof_pop_4k_global_pool_after_pool_pop(pre, post, allocator, thread, container, page, node, source);
+    }
     eof_pop_4k_cpu_cache(pre, post, allocator, thread, container, page, node, source);
 }
 
