@@ -775,6 +775,7 @@ pub proof fn remove_thread_from_container_sets(
             #![trigger final(container_map).spec_index(c)]
             old(container_map).dom().contains(c) ==> {
                 &&& final(container_map).spec_index(c).view() == old(container_map).spec_index(c).view()
+                &&& final(container_map).spec_index(c).is_init() == old(container_map).spec_index(c).is_init()
                 &&& final(container_map).spec_index(c).view_rodata() == old(container_map).spec_index(c).view_rodata()
                 &&& final(container_map).spec_index(c).locking_thread() == old(container_map).spec_index(c).locking_thread()
                 &&& final(container_map).spec_index(c).being_killed() == old(container_map).spec_index(c).being_killed()

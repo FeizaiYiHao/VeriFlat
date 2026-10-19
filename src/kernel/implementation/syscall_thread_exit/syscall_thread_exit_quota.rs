@@ -1,9 +1,6 @@
 use vstd::prelude::*;
 use crate::*;
-#[cfg(verus_keep_ghost)]
-use super::syscall_thread_exit_quota_spec::thread_exit_quota_eof_transition_framing;
-#[cfg(verus_keep_ghost)]
-use super::syscall_thread_exit_quota_eof::thread_exit_quota_eof;
+use super::syscall_thread_exit_quota_helpers::{thread_exit_return_quota_4k, thread_exit_return_quota_2m, thread_exit_return_quota_1g};
 
 verus! {
 /// Return the whole `size` quota of the running last thread `thread_ptr` and of its process `process_ptr` to the `size`
@@ -76,108 +73,10 @@ pub(super) fn thread_exit_return_quota(
         final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread(),
         final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
 {
-    proof {
-        container_process_thread_quota_sums_bounded(&*krnl, container_ptr, process_ptr, thread_ptr);
-        container_perms_wf_at(krnl.ctn_mp, container_ptr);
-    }
-    let allocator_ptr = match size {
-        PageSize::SZ4k => krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_4k,
-        PageSize::SZ2m => krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_2m,
-        PageSize::SZ1g => krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_1g,
-    };
-    proof {
-        assert(match size { PageSize::SZ4k => krnl.allc_4k_mp.dom().contains(allocator_ptr), PageSize::SZ2m => krnl.allc_2m_mp.dom().contains(allocator_ptr), PageSize::SZ1g => krnl.allc_1g_mp.dom().contains(allocator_ptr) }) by {
-            container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr);
-        };
-    }
-    let Tracked(quota_lock_perm) = match size {
-        PageSize::SZ4k => krnl.wlock_allocator_quota_4k(allocator_ptr, Tracked(&mut *lctx)),
-        PageSize::SZ2m => krnl.wlock_allocator_quota_2m(allocator_ptr, Tracked(&mut *lctx)),
-        PageSize::SZ1g => krnl.wlock_allocator_quota_1g(allocator_ptr, Tracked(&mut *lctx)),
-    };
-    let ghost locked = *krnl;
-    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, process_ptr); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, thread_ptr); }
-    let process_quota = {
-        let process = krnl.prc_mp.borrow_mut_typed(process_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(process_lock_perm));
-        match size {
-            PageSize::SZ4k => {
-                let quota = process.quota_4k;
-                process.quota_4k = 0;
-                quota
-            },
-            PageSize::SZ2m => {
-                let quota = process.quota_2m;
-                process.quota_2m = 0;
-                quota
-            },
-            PageSize::SZ1g => {
-                let quota = process.quota_1g;
-                process.quota_1g = 0;
-                quota
-            },
-        }
-    };
-    let thread_quota = {
-        let thread = krnl.thr_mp.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(thread_lock_perm));
-        match size {
-            PageSize::SZ4k => {
-                let quota = thread.quota_4k;
-                thread.quota_4k = 0;
-                quota
-            },
-            PageSize::SZ2m => {
-                let quota = thread.quota_2m;
-                thread.quota_2m = 0;
-                quota
-            },
-            PageSize::SZ1g => {
-                let quota = thread.quota_1g;
-                thread.quota_1g = 0;
-                quota
-            },
-        }
-    };
     match size {
-        PageSize::SZ4k => {
-            let quota = krnl.allc_4k_mp.borrow_mut_quota_typed(allocator_ptr, Ghost(lctx.allocator_quota_4k_lock_map()), Ghost(lctx.allocator_cache_4k_lock_map()),
-                Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), Tracked(&quota_lock_perm));
-            quota.value = quota.value + process_quota + thread_quota;
-        }
-        PageSize::SZ2m => {
-            let quota = krnl.allc_2m_mp.borrow_mut_quota_typed(allocator_ptr, Ghost(lctx.allocator_quota_2m_lock_map()), Ghost(lctx.allocator_cache_2m_lock_map()),
-                Ghost(lctx.allocator_global_pool_2m_lock_map()), Tracked(&*lctx), Tracked(&quota_lock_perm));
-            quota.value = quota.value + process_quota + thread_quota;
-        }
-        PageSize::SZ1g => {
-            let quota = krnl.allc_1g_mp.borrow_mut_quota_typed(allocator_ptr, Ghost(lctx.allocator_quota_1g_lock_map()), Ghost(lctx.allocator_cache_1g_lock_map()),
-                Ghost(lctx.allocator_global_pool_1g_lock_map()), Tracked(&*lctx), Tracked(&quota_lock_perm));
-            quota.value = quota.value + process_quota + thread_quota;
-        }
+        PageSize::SZ4k => thread_exit_return_quota_4k(krnl, Tracked(&mut *lctx), container_ptr, process_ptr, thread_ptr, Tracked(process_lock_perm), Tracked(thread_lock_perm)),
+        PageSize::SZ2m => thread_exit_return_quota_2m(krnl, Tracked(&mut *lctx), container_ptr, process_ptr, thread_ptr, Tracked(process_lock_perm), Tracked(thread_lock_perm)),
+        PageSize::SZ1g => thread_exit_return_quota_1g(krnl, Tracked(&mut *lctx), container_ptr, process_ptr, thread_ptr, Tracked(process_lock_perm), Tracked(thread_lock_perm)),
     }
-    proof {
-        assert(thread_exit_quota_eof_transition_framing(locked, *krnl, process_ptr, thread_ptr, allocator_ptr, size)) by { reveal(thread_exit_quota_eof_transition_framing); };
-        thread_exit_quota_eof(locked, *krnl, container_ptr, process_ptr, thread_ptr, allocator_ptr, size);
-    }
-    match size {
-        PageSize::SZ4k => {
-            proof { assert(krnl.allc_4k_mp.spec_index(allocator_ptr).wf() && krnl.allc_4k_mp.spec_index(allocator_ptr).quota.inv()) by { allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr); }; }
-            krnl.wunlock_allocator_quota_4k(allocator_ptr, Tracked(&mut *lctx), Tracked(quota_lock_perm));
-        }
-        PageSize::SZ2m => {
-            proof { assert(krnl.allc_2m_mp.spec_index(allocator_ptr).wf() && krnl.allc_2m_mp.spec_index(allocator_ptr).quota.inv()) by { allocator_perms_wf_at(krnl.allc_2m_mp, allocator_ptr); }; }
-            krnl.wunlock_allocator_quota_2m(allocator_ptr, Tracked(&mut *lctx), Tracked(quota_lock_perm));
-        }
-        PageSize::SZ1g => {
-            proof { assert(krnl.allc_1g_mp.spec_index(allocator_ptr).wf() && krnl.allc_1g_mp.spec_index(allocator_ptr).quota.inv()) by { allocator_perms_wf_at(krnl.allc_1g_mp, allocator_ptr); }; }
-            krnl.wunlock_allocator_quota_1g(allocator_ptr, Tracked(&mut *lctx), Tracked(quota_lock_perm));
-        }
-    }
-    proof {
-        assert(lctx.allocator_quota_4k_lock_map() =~= old(lctx).allocator_quota_4k_lock_map());
-        assert(lctx.allocator_quota_2m_lock_map() =~= old(lctx).allocator_quota_2m_lock_map());
-        assert(lctx.allocator_quota_1g_lock_map() =~= old(lctx).allocator_quota_1g_lock_map());
-    }
-    krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::ThreadExitQuota { returned: size })), Tracked(&*lctx), Tracked(thread_lock_perm));
-    proof { assert(kernel_thread_exit_quota_returned(old(krnl), &*krnl, thread_ptr, size)) by { reveal(kernel_thread_exit_quota_returned); reveal(kernel_container_nonlock_fields_and_quotas_unchanged); }; }
 }
 } // verus!

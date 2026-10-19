@@ -6,6 +6,7 @@ pub mod reclaim_dangling_thread;
 pub use reclaim_dangling_thread::*;
 mod reclaim_dangling_thread_eof;
 mod reclaim_dangling_thread_spec;
+mod reclaim_dangling_thread_helpers;
 pub mod wake_waiting_reply_caller;
 pub use wake_waiting_reply_caller::*;
 mod wake_waiting_reply_caller_eof;

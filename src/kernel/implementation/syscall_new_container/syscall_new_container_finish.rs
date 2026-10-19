@@ -3,6 +3,7 @@ use crate::*;
 #[cfg(verus_keep_ghost)]
 use super::syscall_new_container_finish_eof::{finish_staged_container_publish_eof, finish_staged_container_publish_eof_transition_framing, release_container_backing_page_locks_eof, release_container_backing_page_locks_eof_transition_framing};
 use super::*;
+use super::syscall_new_container_tail_unlock::wunlock_new_container_2m_page_tails;
 
 verus! {
 #[verifier::spinoff_prover]
@@ -182,8 +183,7 @@ pub(super) fn finish_staged_container_publish(
     let thread_page = *pages_4k.get(7);
     let container_head = page_ptr2page_index(container_page);
     let pcid_allocator_head = page_ptr2page_index(pcid_allocator_page);
-    wunlock_owned_2m_page_tails(krnl, container_head, Tracked(&mut *lctx), Tracked(container_tail_lock_perms));
-    wunlock_owned_2m_page_tails(krnl, pcid_allocator_head, Tracked(&mut *lctx), Tracked(pcid_allocator_tail_lock_perms));
+    wunlock_new_container_2m_page_tails(krnl, Tracked(&mut *lctx), container_head, pcid_allocator_head, Tracked(container_tail_lock_perms), Tracked(pcid_allocator_tail_lock_perms));
     assert({
         &&& seq![
             page_ptr2page_index(allocator_4k_page), page_ptr2page_index(allocator_2m_page), page_ptr2page_index(allocator_1g_page),

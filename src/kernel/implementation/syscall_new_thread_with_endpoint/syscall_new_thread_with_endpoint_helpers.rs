@@ -1,15 +1,11 @@
 use vstd::prelude::*;
-use vstd::assert_seqs_equal;
 use crate::*;
-#[cfg(feature = "split-crates")]
-use veriflat_kernel_core::attach_endpoint_reference_and_unlock;
-#[cfg(not(feature = "split-crates"))]
-use crate::kernel::implementation::attach_endpoint_reference_and_unlock::attach_endpoint_reference_and_unlock;
 use super::super::syscall_new_thread::syscall_new_thread_helpers::create_thread_from_staged_page_merged;
 #[cfg(verus_keep_ghost)]
 use super::super::syscall_new_thread::syscall_new_thread_helpers::kernel_u_new_thread_changed;
 use super::super::syscall_new_thread::syscall_new_thread_spec::*;
 use super::super::syscall_new_thread::syscall_new_thread_trace::*;
+use super::syscall_new_thread_with_endpoint_release_helpers::attach_endpoint_and_release_new_thread_locks;
 
 verus! {
         pub(super) fn add_new_thread_with_endpoint(
@@ -128,7 +124,6 @@ verus! {
                 assert(krnl.ctn_mp.dom().contains(container_ptr)) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, current_thread_ptr); };
             }
             let (page_ptr, Tracked(page_lock_perm)) = allocate_free_4k_page(krnl, current_thread_ptr, container_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&current_thread_lock_perm));
-            let page_index = page_ptr2page_index(page_ptr);
             proof { new_thread_finish_step_pre_from_k(&*krnl, &*lctx, cpu_id, process_ptr, current_thread_ptr, container_ptr, Some(endpoint_ptr), *initial_regs, Some(endpoint_index)); }
 
             let (new_thread_ptr, Tracked(new_thread_lock_perm)) = create_thread_from_staged_page_merged(
@@ -136,32 +131,22 @@ verus! {
                 Tracked(&process_lock_perm), Tracked(&current_thread_lock_perm), Tracked(&scheduler_lock_perm), initial_regs,
             );
             proof {
-                assert(krnl.thr_mp.spec_index(new_thread_ptr).view().endpoint_descriptors.view() == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| None)) by { reveal(kernel_new_thread_fields); };
                 assert({
                     ||| krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container == container_ptr
                     ||| krnl.ctn_mp.spec_index(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container).view_ghost().subtree_set.view().contains(container_ptr)
                 }) by { container_endpoint_wf_at(krnl.ctn_mp, krnl.ep_mp, endpoint_ptr); container_thread_endpoint_wf_at(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp, current_thread_ptr, endpoint_index); };
             }
-            attach_endpoint_reference_and_unlock(krnl, new_thread_ptr, endpoint_ptr, current_thread_ptr, Tracked(&mut *lctx), Tracked(new_thread_lock_perm), Tracked(endpoint_lock_perm));
-            krnl.wunlock_page(page_index, Tracked(&mut *lctx), Tracked(page_lock_perm));
-            krnl.wunlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));
-            krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(None), Tracked(&*lctx), Tracked(&current_thread_lock_perm));
-            krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
-            krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
-            krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-
+            attach_endpoint_and_release_new_thread_locks(
+                krnl, Tracked(&mut *lctx), Ghost(steps.snapshot_k()), cpu_id, process_ptr, current_thread_ptr, container_ptr, scheduler_ptr, new_thread_ptr, endpoint_ptr,
+                Ghost(endpoint_index), Ghost(*initial_regs), Tracked(cpu_lock_perm), Tracked(process_lock_perm), Tracked(current_thread_lock_perm), Tracked(new_thread_lock_perm),
+                Tracked(page_lock_perm), Tracked(scheduler_lock_perm), Tracked(endpoint_lock_perm),
+            );
             proof {
                 let ghost finish_k = steps.snapshot_k();
                 let ghost finish_before = steps.view();
-                let ghost descriptors = krnl.thr_mp.spec_index(new_thread_ptr).view().endpoint_descriptors.view();
-                assert_seqs_equal!(descriptors == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| if i == 0 { Some(endpoint_ptr) } else { None }), i => {});
-                assert(kernel_new_thread_fields(
-                    &steps.snapshot_k(), krnl, process_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, *initial_regs, Some(endpoint_ptr), None,
-                )) by { reveal(kernel_new_thread_fields); reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
                 steps.end_kernel_step_new_thread_on_cpu(&*krnl, &*lctx, cpu_id, process_ptr, current_thread_ptr, container_ptr, new_thread_ptr, *initial_regs, Some(endpoint_ptr), endpoint_index, None);
                 assert(new_thread_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()),
                     kernel_k_to_kernel_u(*krnl), cpu_id, *initial_regs, Some(endpoint_index), true)) by {
-                    reveal(kernel_new_thread_fields);
                     kernel_new_thread_fields_and_unlocks_implies_u_step(&finish_k, &*krnl, cpu_id, process_ptr, current_thread_ptr, container_ptr, new_thread_ptr, *initial_regs, Some(endpoint_ptr), None, None);
                     new_thread_finish_step_from_u(kernel_k_to_kernel_u(finish_k), kernel_k_to_kernel_u(*krnl), cpu_id, process_ptr, current_thread_ptr, container_ptr, new_thread_ptr, Some(endpoint_ptr), *initial_regs, Some(endpoint_index));
                     new_thread_trace_finish_step(&*steps, finish_before, old(steps).view().len() as int, kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(finish_k), kernel_k_to_kernel_u(*krnl), cpu_id, *initial_regs, Some(endpoint_index));

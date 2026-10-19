@@ -6,6 +6,7 @@ pub mod mmap_4k_build_structure_spec;
 mod mmap_4k_build_structure_trace;
 pub mod share_mapping_4k;
 mod share_mapping_4k_eof;
+mod share_mapping_4k_precheck_helpers;
 pub mod share_mapping_4k_spec;
 mod share_mapping_4k_trace;
 

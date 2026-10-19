@@ -1,2 +1,3 @@
 pub mod syscall_new_thread_with_endpoint;
 mod syscall_new_thread_with_endpoint_helpers;
+mod syscall_new_thread_with_endpoint_release_helpers;

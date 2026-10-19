@@ -2,11 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_thread_exit_spec::*;
 use super::syscall_thread_exit_trace::*;
-use super::syscall_thread_exit_quota::thread_exit_return_quota;
-#[cfg(verus_keep_ghost)]
-use super::syscall_thread_exit_reclaim_spec::thread_exit_tables_emptied_eof_transition_framing;
-#[cfg(verus_keep_ghost)]
-use super::syscall_thread_exit_reclaim_eof::thread_exit_tables_emptied_eof;
+use super::syscall_thread_exit_reclaim_quota_helpers::{thread_exit_reclaim_return_quota_size, thread_exit_reclaim_release_tables};
 
 verus! {
 /// Flush the process's PCID from every cpu once, then record the flush.
@@ -1086,94 +1082,14 @@ pub(super) fn thread_exit_reclaim_return_quota(
             };
         }
     }
-    let ghost sz4k_before = steps.view();
-    let ghost sz4k_k = *krnl;
-    let ghost sz4k_lctx = *lctx;
-    thread_exit_return_quota(krnl, Tracked(&mut *lctx), container_ptr, process_ptr, thread_ptr, PageSize::SZ4k, Tracked(process_lock_perm), Tracked(thread_lock_perm));
-    proof {
-        let returned_k = *krnl;
-        krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
-        assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
-            thread_exit_quota_step_pre_from_k(&sz4k_k, &sz4k_lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, PageSize::SZ4k);
-            kernel_thread_exit_quota_returned_implies_u_step(&sz4k_k, &returned_k, thread_ptr, PageSize::SZ4k);
-            thread_exit_quota_step_from_u(kernel_k_to_kernel_u(sz4k_k), kernel_k_to_kernel_u(returned_k), cpu_id, thread_ptr, PageSize::SZ4k);
-            thread_exit_trace_push(&*steps, sz4k_before, start, pre, kernel_k_to_kernel_u(sz4k_k), kernel_k_to_kernel_u(returned_k), cpu_id);
-        };
-        assert(entry_lctx.container_lock_map().dom().contains(container_ptr) && entry_lctx.process_lock_map().dom().contains(process_ptr) && entry_lctx.cpu_lock_map().dom().contains(cpu_id)
-            && entry_lctx.thread_lock_map().dom().contains(thread_ptr) && lctx.pagetable_lock_map().dom().contains(pagetable)
-            && (iommu_table is Some ==> lctx.iommu_table_lock_map().dom().contains(iommu_table->Some_0)));
-    }
-    let ghost sz2m_before = steps.view();
-    let ghost sz2m_k = *krnl;
-    let ghost sz2m_lctx = *lctx;
-    thread_exit_return_quota(krnl, Tracked(&mut *lctx), container_ptr, process_ptr, thread_ptr, PageSize::SZ2m, Tracked(process_lock_perm), Tracked(thread_lock_perm));
-    proof {
-        let returned_k = *krnl;
-        krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
-        assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
-            thread_exit_quota_step_pre_from_k(&sz2m_k, &sz2m_lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, PageSize::SZ2m);
-            kernel_thread_exit_quota_returned_implies_u_step(&sz2m_k, &returned_k, thread_ptr, PageSize::SZ2m);
-            thread_exit_quota_step_from_u(kernel_k_to_kernel_u(sz2m_k), kernel_k_to_kernel_u(returned_k), cpu_id, thread_ptr, PageSize::SZ2m);
-            thread_exit_trace_push(&*steps, sz2m_before, start, pre, kernel_k_to_kernel_u(sz2m_k), kernel_k_to_kernel_u(returned_k), cpu_id);
-        };
-        assert(entry_lctx.container_lock_map().dom().contains(container_ptr) && entry_lctx.process_lock_map().dom().contains(process_ptr) && entry_lctx.cpu_lock_map().dom().contains(cpu_id)
-            && entry_lctx.thread_lock_map().dom().contains(thread_ptr) && lctx.pagetable_lock_map().dom().contains(pagetable)
-            && (iommu_table is Some ==> lctx.iommu_table_lock_map().dom().contains(iommu_table->Some_0)));
-    }
-    let ghost sz1g_before = steps.view();
-    let ghost sz1g_k = *krnl;
-    let ghost sz1g_lctx = *lctx;
-    thread_exit_return_quota(krnl, Tracked(&mut *lctx), container_ptr, process_ptr, thread_ptr, PageSize::SZ1g, Tracked(process_lock_perm), Tracked(thread_lock_perm));
-    proof {
-        let returned_k = *krnl;
-        krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
-        assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
-            thread_exit_quota_step_pre_from_k(&sz1g_k, &sz1g_lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, PageSize::SZ1g);
-            kernel_thread_exit_quota_returned_implies_u_step(&sz1g_k, &returned_k, thread_ptr, PageSize::SZ1g);
-            thread_exit_quota_step_from_u(kernel_k_to_kernel_u(sz1g_k), kernel_k_to_kernel_u(returned_k), cpu_id, thread_ptr, PageSize::SZ1g);
-            thread_exit_trace_push(&*steps, sz1g_before, start, pre, kernel_k_to_kernel_u(sz1g_k), kernel_k_to_kernel_u(returned_k), cpu_id);
-        };
-        assert(entry_lctx.container_lock_map().dom().contains(container_ptr) && entry_lctx.process_lock_map().dom().contains(process_ptr) && entry_lctx.cpu_lock_map().dom().contains(cpu_id)
-            && entry_lctx.thread_lock_map().dom().contains(thread_ptr) && lctx.pagetable_lock_map().dom().contains(pagetable)
-            && (iommu_table is Some ==> lctx.iommu_table_lock_map().dom().contains(iommu_table->Some_0)));
-    }
-    let ghost unlock_before = steps.view();
-    let ghost unlock_k = *krnl;
-    let ghost unlock_lctx = *lctx;
-    proof { assert(krnl.pt_mp.spec_index(pagetable) == reclaimed_pt && (iommu_table is Some ==> krnl.it_mp.spec_index(iommu_table->Some_0) == reclaimed_it)); }
-    krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::ThreadExitZombie)), Tracked(&*lctx), Tracked(thread_lock_perm));
-    let ghost progressed = *krnl;
-    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, process_ptr); }
-    {
-        let process = krnl.prc_mp.borrow_mut_typed(process_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(process_lock_perm));
-        process.state = Ghost(ProcessState::TablesEmptied);
-    }
-    proof {
-        process_thread_wf_at(progressed.prc_mp, progressed.thr_mp, thread_ptr);
-        assert(thread_exit_tables_emptied_eof_transition_framing(progressed, *krnl, process_ptr, thread_ptr)) by { reveal(thread_exit_tables_emptied_eof_transition_framing); };
-        thread_exit_tables_emptied_eof(progressed, *krnl, process_ptr, thread_ptr);
-    }
-    if let Some(it) = iommu_table {
-        krnl.wunlock_iommu_table(it, Tracked(&mut *lctx), Tracked(iommu_table_lock_perm.tracked_unwrap()));
-    }
-    proof {
-        assert(pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, pagetable, krnl.pt_mp.spec_index(pagetable).view())) by { tlb_wf_pagetable_entries_present_at(*krnl, pagetable); };
-    }
-    krnl.wunlock_pagetable(pagetable, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
-    proof {
-        let unlocked_k = *krnl;
-        let unlocked_lctx = *lctx;
-        krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
-        assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
-            thread_exit_unlock_table_step_pre_from_k(&unlock_k, &unlock_lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, iommu_table);
-            kernel_process_tables_lock_state_and_progress_changed_implies_u_step(&unlock_k, &unlocked_k, &unlocked_lctx, process_ptr, pagetable, thread_ptr, false);
-            thread_exit_unlock_table_step_from_u(kernel_k_to_kernel_u(unlock_k), kernel_k_to_kernel_u(unlocked_k), cpu_id, thread_ptr);
-            thread_exit_trace_push(&*steps, unlock_before, start, pre, kernel_k_to_kernel_u(unlock_k), kernel_k_to_kernel_u(unlocked_k), cpu_id);
-        };
-        assert(lctx.pagetable_lock_map() =~= entry_lctx.pagetable_lock_map());
-        assert(lctx.iommu_table_lock_map() =~= entry_lctx.iommu_table_lock_map());
-        assert(entry_lctx.container_lock_map().dom().contains(container_ptr) && entry_lctx.process_lock_map().dom().contains(process_ptr) && entry_lctx.cpu_lock_map().dom().contains(cpu_id)
-            && entry_lctx.thread_lock_map().dom().contains(thread_ptr));
-    }
+    thread_exit_reclaim_return_quota_size(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, Ghost(iommu_table), PageSize::SZ4k,
+        Tracked(process_lock_perm), Tracked(thread_lock_perm), Ghost(start), Ghost(pre));
+    thread_exit_reclaim_return_quota_size(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, Ghost(iommu_table), PageSize::SZ2m,
+        Tracked(process_lock_perm), Tracked(thread_lock_perm), Ghost(start), Ghost(pre));
+    thread_exit_reclaim_return_quota_size(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, Ghost(iommu_table), PageSize::SZ1g,
+        Tracked(process_lock_perm), Tracked(thread_lock_perm), Ghost(start), Ghost(pre));
+    thread_exit_reclaim_release_tables(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, iommu_table, Ghost(entry_lctx),
+        Ghost(table_lctx), Ghost(pt_entry), Ghost(it_entry), Tracked(process_lock_perm), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(iommu_table_lock_perm), Ghost(start),
+        Ghost(pre));
 }
 } // verus!

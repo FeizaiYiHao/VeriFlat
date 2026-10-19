@@ -6,53 +6,15 @@ use super::super::syscall_new_process_spec::{new_process_finish_step, new_proces
 use super::super::syscall_new_process_trace::{new_process_finish_step_from_u, new_process_finish_step_pre_from_k};
 #[cfg(verus_keep_ghost)]
 use super::finish_eof::{create_initial_thread_and_finish_new_process_eof, create_initial_thread_and_finish_new_process_eof_transition_framing};
+use super::finish_helpers::release_new_process_locks_and_attach_endpoint;
 #[cfg(feature = "split-crates")]
-use veriflat_kernel_core::{attach_endpoint_reference_and_unlock, create_thread_from_staged_page_merged, kernel_u_new_thread_changed};
+use veriflat_kernel_core::{create_thread_from_staged_page_merged, kernel_u_new_thread_changed};
 #[cfg(not(feature = "split-crates"))]
 use crate::kernel::implementation::create_thread_from_staged_page::create_thread_from_staged_page_merged;
 #[cfg(all(not(feature = "split-crates"), verus_keep_ghost))]
 use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
-#[cfg(not(feature = "split-crates"))]
-use crate::kernel::implementation::attach_endpoint_reference_and_unlock::attach_endpoint_reference_and_unlock;
 
 verus! {
-/// Releases the child's IOMMU table when the process has one; a single call keeps the caller's later proof on one path.
-fn wunlock_new_process_iommu_table(krnl: &mut KernelK, iommu_table: Option<RwLockPageTableRoot>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(lock_perm): Tracked<Option<LockPerm>>)
-    requires
-        old(krnl).inv(),
-        typed_lock_maps_aligned(old(krnl), old(lctx)),
-        iommu_table is Some ==> {
-            let iommu_table_ptr = iommu_table->Some_0;
-            &&& old(krnl).it_mp.dom().contains(iommu_table_ptr)
-            &&& old(krnl).it_mp.spec_index(iommu_table_ptr).view().leaves_present()
-            &&& typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), iommu_table_ptr, TypedLockMode::Write)
-            &&& lock_perm is Some
-            &&& lock_perm->Some_0.state() is WriteLock
-            &&& lock_perm->Some_0.thread_id() == old(lctx).thread_id()
-            &&& lock_perm->Some_0.lock_id() == old(krnl).it_mp.spec_index(iommu_table_ptr).locking_thread()->Write_lock_id
-        },
-    ensures
-        final(krnl).inv(),
-        typed_lock_maps_aligned(final(krnl), final(lctx)),
-        iommu_table is None ==> *final(krnl) == *old(krnl) && *final(lctx) == *old(lctx),
-        iommu_table is Some ==> {
-            let iommu_table_ptr = iommu_table->Some_0;
-            &&& kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl))
-            &&& kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp)
-            &&& kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl))
-            &&& *final(krnl) == (KernelK { it_mp: final(krnl).it_mp, ..*old(krnl) })
-            &&& final(krnl).it_mp.unchanged_except(&old(krnl).it_mp, iommu_table_ptr)
-            &&& final(krnl).it_mp.lock_id_by_key(iommu_table_ptr) == old(krnl).it_mp.lock_id_by_key(iommu_table_ptr)
-            &&& wunlock_ensures(old(krnl).it_mp.spec_index(iommu_table_ptr), final(krnl).it_mp.spec_index(iommu_table_ptr))
-            &&& unlock_ensures(old(lctx), final(lctx), KernelObjId::IommuTable(iommu_table_ptr), old(krnl).it_mp.lock_id_by_key(iommu_table_ptr))
-        },
-{
-    if let Some(iommu_table_ptr) = iommu_table {
-        let tracked lock_perm = lock_perm.tracked_unwrap();
-        krnl.wunlock_iommu_table(iommu_table_ptr, Tracked(&mut *lctx), Tracked(lock_perm));
-    }
-}
-
 #[verifier::spinoff_prover]
 pub(in super::super) fn create_initial_thread_and_finish_new_process(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
@@ -218,32 +180,23 @@ pub(in super::super) fn create_initial_thread_and_finish_new_process(
         Tracked(&child_lock_perm), Tracked(&current_thread_lock_perm), Tracked(&scheduler_lock_perm), initial_regs,
     );
     let ghost mid_k = *krnl;
-    proof { assert(iommu_table is Some ==> krnl.prc_mp.spec_index(child_ptr).view().iommu_table == iommu_table) by { reveal(process_iommu_table_match); }; }
-    wunlock_new_process_iommu_table(krnl, iommu_table, Tracked(&mut *lctx), Tracked(iommu_table_lock_perm));
-    krnl.wunlock_process(child_ptr, Tracked(&mut *lctx), Tracked(child_lock_perm));
-    krnl.wunlock_pagetable(target_pagetable_ptr, Tracked(&mut *lctx), Tracked(target_pagetable_lock_perm));
-    krnl.wunlock_pagetable(source_pagetable_ptr, Tracked(&mut *lctx), Tracked(source_pagetable_lock_perm));
-    krnl.wunlock_page(page_ptr2page_index(thread_page_ptr), Tracked(&mut *lctx), Tracked(thread_page_lock_perm));
-    krnl.wunlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));
-    krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(None), Tracked(&*lctx), Tracked(&current_thread_lock_perm));
-    match endpoint {
-        Some(endpoint_ptr) => {
-            let tracked endpoint_lock_perm = endpoint_lock_perm.tracked_unwrap();
-            proof {
-                assert({
-                    ||| krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container == container_ptr
-                    ||| krnl.ctn_mp.spec_index(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container).view_ghost().subtree_set.view().contains(container_ptr)
-                }) by { container_endpoint_wf_at(krnl.ctn_mp, krnl.ep_mp, endpoint_ptr); container_thread_endpoint_wf_at(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp, current_thread_ptr, endpoint_index); };
-            }
-            attach_endpoint_reference_and_unlock(krnl, new_thread_ptr, endpoint_ptr, current_thread_ptr, Tracked(&mut *lctx), Tracked(new_thread_lock_perm), Tracked(endpoint_lock_perm));
-        },
-        None => krnl.wunlock_thread(new_thread_ptr, Tracked(&mut *lctx), Tracked(new_thread_lock_perm)),
+    proof {
+        assert(iommu_table is Some ==> krnl.prc_mp.spec_index(child_ptr).view().iommu_table == iommu_table) by { reveal(process_iommu_table_match); };
+        if let Some(endpoint_ptr) = endpoint {
+            assert({
+                ||| krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container == container_ptr
+                ||| krnl.ctn_mp.spec_index(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container).view_ghost().subtree_set.view().contains(container_ptr)
+            }) by { container_endpoint_wf_at(krnl.ctn_mp, krnl.ep_mp, endpoint_ptr); container_thread_endpoint_wf_at(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp, current_thread_ptr, endpoint_index); };
+        }
     }
-    krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
-    krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+    release_new_process_locks_and_attach_endpoint(
+        krnl, Tracked(&mut *lctx), cpu_id, container_ptr, child_ptr, current_thread_ptr, new_thread_ptr, scheduler_ptr, endpoint, source_pagetable_ptr, target_pagetable_ptr,
+        iommu_table, Tracked(cpu_lock_perm), Tracked(child_lock_perm), Tracked(current_thread_lock_perm), Tracked(new_thread_lock_perm), Tracked(thread_page_lock_perm),
+        Tracked(scheduler_lock_perm), Tracked(endpoint_lock_perm), Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm), Tracked(iommu_table_lock_perm),
+    );
     proof {
         assert(create_initial_thread_and_finish_new_process_eof_transition_framing(finish_k, mid_k, *krnl, child_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, *initial_regs, endpoint)) by {
-            reveal(create_initial_thread_and_finish_new_process_eof_transition_framing); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
+            reveal(create_initial_thread_and_finish_new_process_eof_transition_framing);
         };
         create_initial_thread_and_finish_new_process_eof(finish_k, mid_k, *krnl, child_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, *initial_regs, endpoint);
         steps.end_kernel_step_new_thread(&*krnl, &*lctx, child_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, *initial_regs, endpoint, None);

@@ -7,10 +7,9 @@ use super::syscall_new_container_trace::{new_container_finish_step_from_u, new_c
 #[cfg(verus_keep_ghost)]
 use super::syscall_new_container_share_eof::{create_new_container_root_thread_and_unlock_eof, create_new_container_root_thread_and_unlock_eof_transition_framing};
 use super::syscall_new_container_cpu::transfer_new_container_cpu;
+use super::syscall_new_container_share_helpers::release_new_container_root_thread_locks_and_attach_endpoint;
 #[cfg(not(feature = "split-crates"))]
 use crate::implementation::create_thread_from_staged_page::create_thread_from_staged_page_merged;
-#[cfg(not(feature = "split-crates"))]
-use crate::kernel::implementation::attach_endpoint_reference_and_unlock::attach_endpoint_reference_and_unlock;
 
 verus! {
 /// Moves the Off CPU and the staged root-thread page into the child container,
@@ -550,28 +549,16 @@ fn create_new_container_root_thread_and_unlock(
         Tracked(&child_scheduler_lock_perm), initial_regs,
     );
     let ghost mid_k = *krnl;
-    krnl.wunlock_process(child_process_ptr, Tracked(&mut *lctx), Tracked(child_process_lock_perm));
-    krnl.wunlock_pagetable(child_pagetable_ptr, Tracked(&mut *lctx), Tracked(child_pagetable_lock_perm));
-    krnl.wunlock_pagetable(source_pagetable_ptr, Tracked(&mut *lctx), Tracked(source_pagetable_lock_perm));
-    krnl.wunlock_page(page_ptr2page_index(thread_page_ptr), Tracked(&mut *lctx), Tracked(thread_page_lock_perm));
-    krnl.wunlock_scheduler_shard(child_scheduler_ptr, caller_cpu_id, Tracked(&mut *lctx), Tracked(child_scheduler_lock_perm));
-    krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(None), Tracked(&*lctx), Tracked(&current_thread_lock_perm));
-    match endpoint {
-        Some(endpoint_ptr) => {
-            let tracked endpoint_lock_perm = endpoint_lock_perm.tracked_unwrap();
-            attach_endpoint_reference_and_unlock(krnl, new_thread_ptr, endpoint_ptr, current_thread_ptr, Tracked(&mut *lctx), Tracked(new_thread_lock_perm), Tracked(endpoint_lock_perm));
-        },
-        None => krnl.wunlock_thread(new_thread_ptr, Tracked(&mut *lctx), Tracked(new_thread_lock_perm)),
-    }
-    krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
-    krnl.wunlock_process(parent_process_ptr, Tracked(&mut *lctx), Tracked(parent_process_lock_perm));
-    krnl.wunlock_container(child_container_ptr, Tracked(&mut *lctx), Tracked(child_container_lock_perm));
-    krnl.wunlock_container(parent_container_ptr, Tracked(&mut *lctx), Tracked(parent_container_lock_perm));
-    krnl.wunlock_cpu(caller_cpu_id, Tracked(&mut *lctx), Tracked(caller_cpu_lock_perm));
+    release_new_container_root_thread_locks_and_attach_endpoint(
+        krnl, Tracked(&mut *lctx), caller_cpu_id, parent_container_ptr, child_container_ptr, parent_process_ptr, child_process_ptr, current_thread_ptr, new_thread_ptr,
+        source_pagetable_ptr, child_pagetable_ptr, child_scheduler_ptr, endpoint, Tracked(caller_cpu_lock_perm), Tracked(parent_container_lock_perm),
+        Tracked(child_container_lock_perm), Tracked(parent_process_lock_perm), Tracked(child_process_lock_perm), Tracked(current_thread_lock_perm),
+        Tracked(new_thread_lock_perm), Tracked(thread_page_lock_perm), Tracked(child_scheduler_lock_perm), Tracked(endpoint_lock_perm),
+        Tracked(source_pagetable_lock_perm), Tracked(child_pagetable_lock_perm),
+    );
     proof {
         assert(create_new_container_root_thread_and_unlock_eof_transition_framing(*old(krnl), mid_k, *krnl, child_process_ptr, current_thread_ptr, child_container_ptr, caller_cpu_id, new_thread_ptr, *initial_regs, endpoint)) by {
-            reveal(create_new_container_root_thread_and_unlock_eof_transition_framing); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
-            broadcast use kernel_process_nonlock_fields_unchanged_transitive;
+            reveal(create_new_container_root_thread_and_unlock_eof_transition_framing);
         };
         create_new_container_root_thread_and_unlock_eof(*old(krnl), mid_k, *krnl, child_process_ptr, current_thread_ptr, child_container_ptr, caller_cpu_id, new_thread_ptr, *initial_regs, endpoint);
     }
