@@ -3,11 +3,13 @@ use crate::*;
 use super::syscall_kill_process_spec::*;
 #[cfg(verus_keep_ghost)]
 use super::super::syscall_kill_container::syscall_kill_container_spec::kill_container_partial_trace;
+#[cfg(verus_keep_ghost)]
+use super::syscall_kill_process_walk::{KillScope, kill_scope_progress};
 
 verus! {
 /// The killer on `cpu_id` holds its cpu, its process `process_ptr`, and itself `thread_ptr`, and its progress records a
-/// kill of the marked, write-locked `target` at `stage`.
-pub(crate) proof fn kill_step_pre_from_u(u: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, stage: KillStage)
+/// kill of the marked, write-locked `target` at `stage` in `scope`, whose victim container, if any, is write-locked.
+pub(crate) proof fn kill_step_pre_from_u(u: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, stage: KillStage, scope: KillScope)
     requires
         index_valid(NUM_CPUS, cpu_id),
         u.cpu_array[cpu_id as int].lock_state is WriteLocked,
@@ -17,10 +19,11 @@ pub(crate) proof fn kill_step_pre_from_u(u: KernelU, cpu_id: CpuId, process_ptr:
         u.process_map[process_ptr].lock_state is WriteLocked,
         u.thread_map.dom().contains(thread_ptr),
         u.thread_map[thread_ptr].lock_state is WriteLocked,
-        u.thread_map[thread_ptr].syscall_progress == kill_progress(target, stage),
+        u.thread_map[thread_ptr].syscall_progress == kill_scope_progress(scope, target, stage),
         u.process_map.dom().contains(target),
         u.process_map[target].lock_state is WriteLocked,
         u.process_map[target].killed,
+        scope matches KillScope::Container { container } ==> u.container_map.dom().contains(container) && u.container_map[container].lock_state is WriteLocked,
     ensures
         kill_process_step_pre(u, cpu_id),
         kill_killer(u, cpu_id) == thread_ptr,
@@ -28,10 +31,11 @@ pub(crate) proof fn kill_step_pre_from_u(u: KernelU, cpu_id: CpuId, process_ptr:
         kill_stage(u, cpu_id) == stage,
 { reveal(kill_process_step_pre); }
 
-/// The killer on `cpu_id` write-holding its cpu, its process `process_ptr`, itself `thread_ptr`, and the marked `target`,
-/// with its progress recording the kill of `target` at `stage`, satisfies the kill's step precondition on `krnl`.
+/// The killer on `cpu_id` write-holding its cpu, its process `process_ptr`, itself `thread_ptr`, the marked `target`, and
+/// the victim container of `scope`, if any, with its progress recording the kill of `target` at `stage` in `scope`,
+/// satisfies the kill's step precondition on `krnl`.
 pub(crate) proof fn kill_step_pre_from_k(
-    krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, stage: KillStage,
+    krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, stage: KillStage, scope: KillScope,
 )
     requires
         typed_lock_maps_aligned(krnl, lctx),
@@ -44,7 +48,8 @@ pub(crate) proof fn kill_step_pre_from_k(
         krnl.prc_mp.spec_index(target).being_killed(),
         krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
         krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
-        krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == kill_progress(target, stage),
+        krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == kill_scope_progress(scope, target, stage),
+        scope matches KillScope::Container { container } ==> krnl.ctn_mp.dom().contains(container) && typed_lock_map_contains_mode(lctx.container_lock_map(), container, TypedLockMode::Write),
     ensures
         kill_process_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
         kill_killer(kernel_k_to_kernel_u(*krnl), cpu_id) == thread_ptr,
@@ -52,11 +57,12 @@ pub(crate) proof fn kill_step_pre_from_k(
         kill_stage(kernel_k_to_kernel_u(*krnl), cpu_id) == stage,
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_process == Some(process_ptr),
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_thread == Some(thread_ptr),
-        kernel_k_to_kernel_u(*krnl).thread_map[thread_ptr].syscall_progress == kill_progress(target, stage),
+        kernel_k_to_kernel_u(*krnl).thread_map[thread_ptr].syscall_progress == kill_scope_progress(scope, target, stage),
 {
     kernel_write_held_context_projection(krnl, lctx, cpu_id, process_ptr, thread_ptr, None); kernel_write_held_context_projection(krnl, lctx, cpu_id, target, thread_ptr, None);
     kernel_cpu_projection_at(krnl, cpu_id); kernel_process_projection_at(krnl, target);
-    kill_step_pre_from_u(kernel_k_to_kernel_u(*krnl), cpu_id, process_ptr, thread_ptr, target, stage);
+    if let KillScope::Container { container } = scope { krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), container); kernel_container_projection_at(krnl, container); }
+    kill_step_pre_from_u(kernel_k_to_kernel_u(*krnl), cpu_id, process_ptr, thread_ptr, target, stage, scope);
 }
 
 /// A cpu that is not running or is marked by a killer makes the kill return CpuIdle.
@@ -463,18 +469,18 @@ pub(crate) proof fn kill_enter_step_from_u(
 }
 
 /// Marking and write-locking the first child `child_ptr` of the target and recording its walk is a middle step.
-pub(crate) proof fn kill_mark_child_step_from_u(pre: KernelU, marked: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
+pub(crate) proof fn kill_mark_child_step_from_u(pre: KernelU, marked: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, child_ptr: RwLockProcessPtr, scope: KillScope)
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
-        pre.thread_map[thread_ptr].syscall_progress->Some_0 is KillProcess,
+        pre.thread_map[thread_ptr].syscall_progress == kill_scope_progress(scope, target, kill_stage(pre, cpu_id)),
         kill_target(pre, cpu_id) == target,
         kill_stage(pre, cpu_id) is Walk,
         0 < pre.process_map[target].children.len(),
         pre.process_map[target].children[0] == child_ptr,
         pre.process_map.dom().contains(child_ptr),
         marked == (KernelU { process_map: pre.process_map.insert(child_ptr, ProcessU { lock_state: LockStateU::WriteLocked, killed: true, ..pre.process_map[child_ptr] }), ..pre }),
-        post == (KernelU { thread_map: marked.thread_map.insert(thread_ptr, ThreadU { syscall_progress: kill_progress(child_ptr, KillStage::Walk), ..marked.thread_map[thread_ptr] }), ..marked }),
+        post == (KernelU { thread_map: marked.thread_map.insert(thread_ptr, ThreadU { syscall_progress: kill_scope_progress(scope, child_ptr, KillStage::Walk), ..marked.thread_map[thread_ptr] }), ..marked }),
     ensures kill_process_middle_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
 { reveal(kill_process_mark_child_step); }
 
@@ -506,12 +512,12 @@ pub(crate) proof fn kill_dangling_step_from_u(pre: KernelU, post: KernelU, cpu_i
 /// Marking and write-locking the first thread `victim_ptr` of the childless target, not waiting for a reply, and
 /// recording it is a middle step.
 pub(crate) proof fn kill_mark_thread_step_from_u(
-    pre: KernelU, marked: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, victim_ptr: RwLockThreadPtr,
+    pre: KernelU, marked: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, victim_ptr: RwLockThreadPtr, scope: KillScope,
 )
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
-        pre.thread_map[thread_ptr].syscall_progress->Some_0 is KillProcess,
+        pre.thread_map[thread_ptr].syscall_progress == kill_scope_progress(scope, target, kill_stage(pre, cpu_id)),
         kill_target(pre, cpu_id) == target,
         kill_stage(pre, cpu_id) is Walk,
         pre.process_map[target].children.len() == 0,
@@ -522,7 +528,7 @@ pub(crate) proof fn kill_mark_thread_step_from_u(
         victim_ptr != thread_ptr,
         marked == (KernelU { thread_map: pre.thread_map.insert(victim_ptr, ThreadU { lock_state: LockStateU::WriteLocked, killed: true, ..pre.thread_map[victim_ptr] }), ..pre }),
         post == (KernelU {
-            thread_map: marked.thread_map.insert(thread_ptr, ThreadU { syscall_progress: kill_progress(target, KillStage::Thread { thread: victim_ptr }), ..marked.thread_map[thread_ptr] }),
+            thread_map: marked.thread_map.insert(thread_ptr, ThreadU { syscall_progress: kill_scope_progress(scope, target, KillStage::Thread { thread: victim_ptr }), ..marked.thread_map[thread_ptr] }),
             ..marked
         }),
     ensures kill_process_middle_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
@@ -587,13 +593,13 @@ pub(crate) proof fn kill_evict_step_from_u(pre: KernelU, post: KernelU, cpu_id: 
 /// The killed recorded victim leaving the target, which absorbs its quota, and the kill walking the target again is a
 /// middle step.
 pub(crate) proof fn kill_unlink_step_from_u(
-    pre: KernelU, left: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, victim_ptr: RwLockThreadPtr,
+    pre: KernelU, left: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, victim_ptr: RwLockThreadPtr, scope: KillScope,
 )
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_process_victim_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
-        pre.thread_map[thread_ptr].syscall_progress->Some_0 is KillProcess,
+        pre.thread_map[thread_ptr].syscall_progress == kill_scope_progress(scope, target, kill_stage(pre, cpu_id)),
         kill_target(pre, cpu_id) == target,
         kill_stage(pre, cpu_id) == (KillStage::Thread { thread: victim_ptr }),
         pre.thread_map[victim_ptr].state is KILLED,
@@ -607,7 +613,7 @@ pub(crate) proof fn kill_unlink_step_from_u(
                 ..pre
             })
         }),
-        post == (KernelU { thread_map: left.thread_map.insert(thread_ptr, ThreadU { syscall_progress: kill_progress(target, KillStage::Walk), ..left.thread_map[thread_ptr] }), ..left }),
+        post == (KernelU { thread_map: left.thread_map.insert(thread_ptr, ThreadU { syscall_progress: kill_scope_progress(scope, target, KillStage::Walk), ..left.thread_map[thread_ptr] }), ..left }),
     ensures kill_process_middle_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
 { reveal(kill_process_unlink_step); }
 
@@ -666,11 +672,11 @@ pub(crate) proof fn kill_reassign_step_from_u(pre: KernelU, post: KernelU, cpu_i
 
 /// Write-locking the page table and IOMMU table of the empty live target owning no PCI function, and recording that
 /// nothing is flushed yet, is a middle step.
-pub(crate) proof fn kill_lock_table_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr)
+pub(crate) proof fn kill_lock_table_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, scope: KillScope)
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
-        pre.thread_map[thread_ptr].syscall_progress->Some_0 is KillProcess,
+        pre.thread_map[thread_ptr].syscall_progress == kill_scope_progress(scope, target, kill_stage(pre, cpu_id)),
         kill_target(pre, cpu_id) == target,
         kill_stage(pre, cpu_id) is Walk,
         pre.process_map[target].children.len() == 0,
@@ -679,7 +685,7 @@ pub(crate) proof fn kill_lock_table_step_from_u(pre: KernelU, post: KernelU, cpu
         pre.process_map[target].owned_pci_functions.is_empty(),
         pre.process_map[target].pagetable is Some,
         post == (KernelU {
-            thread_map: pre.thread_map.insert(thread_ptr, ThreadU { syscall_progress: kill_progress(target, KillStage::Reclaim { flushed: false }), ..pre.thread_map[thread_ptr] }),
+            thread_map: pre.thread_map.insert(thread_ptr, ThreadU { syscall_progress: kill_scope_progress(scope, target, KillStage::Reclaim { flushed: false }), ..pre.thread_map[thread_ptr] }),
             process_map: pre.process_map.insert(target, ProcessU {
                 pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..pre.process_map[target].pagetable->Some_0 }),
                 iommu_table: match pre.process_map[target].iommu_table { Some(t) => Some(PageTableU { lock_state: LockStateU::WriteLocked, ..t }), None => None },
@@ -719,15 +725,15 @@ pub(crate) proof fn kill_leaf_step_from_u(pre: KernelU, post: KernelU, cpu_id: C
 }
 
 /// Recording the flush of the target's PCID is a middle step.
-pub(crate) proof fn kill_flushed_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr)
+pub(crate) proof fn kill_flushed_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, scope: KillScope)
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
-        pre.thread_map[thread_ptr].syscall_progress->Some_0 is KillProcess,
+        pre.thread_map[thread_ptr].syscall_progress == kill_scope_progress(scope, target, kill_stage(pre, cpu_id)),
         kill_target(pre, cpu_id) == target,
         kill_process_flush_step_pre(pre, cpu_id),
         post == (KernelU {
-            thread_map: pre.thread_map.insert(thread_ptr, ThreadU { syscall_progress: kill_progress(target, KillStage::Reclaim { flushed: true }), ..pre.thread_map[thread_ptr] }),
+            thread_map: pre.thread_map.insert(thread_ptr, ThreadU { syscall_progress: kill_scope_progress(scope, target, KillStage::Reclaim { flushed: true }), ..pre.thread_map[thread_ptr] }),
             ..pre
         }),
     ensures kill_process_middle_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
@@ -758,11 +764,11 @@ pub(crate) proof fn kill_iommu_leaf_step_from_u(pre: KernelU, post: KernelU, cpu
 }
 
 /// Returning the target's whole `size` quota to its container and recording the return is a middle step.
-pub(crate) proof fn kill_quota_step_from_u(pre: KernelU, returned: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, size: PageSize)
+pub(crate) proof fn kill_quota_step_from_u(pre: KernelU, returned: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, size: PageSize, scope: KillScope)
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
-        pre.thread_map[thread_ptr].syscall_progress->Some_0 is KillProcess,
+        pre.thread_map[thread_ptr].syscall_progress == kill_scope_progress(scope, target, kill_stage(pre, cpu_id)),
         kill_target(pre, cpu_id) == target,
         kill_process_reclaim_step_pre(pre, cpu_id, kill_process_quota_stage_before(size)),
         pre.container_map.dom().contains(pre.process_map[target].owning_container),
@@ -784,24 +790,24 @@ pub(crate) proof fn kill_quota_step_from_u(pre: KernelU, returned: KernelU, post
             })
         }),
         post == (KernelU {
-            thread_map: returned.thread_map.insert(thread_ptr, ThreadU { syscall_progress: kill_progress(target, KillStage::Quota { returned: size }), ..returned.thread_map[thread_ptr] }),
+            thread_map: returned.thread_map.insert(thread_ptr, ThreadU { syscall_progress: kill_scope_progress(scope, target, KillStage::Quota { returned: size }), ..returned.thread_map[thread_ptr] }),
             ..returned
         }),
     ensures kill_process_middle_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
 { reveal(kill_process_quota_step); }
 
 /// Unlocking the target's reclaimed page table and IOMMU table once every quota size is returned is a middle step.
-pub(crate) proof fn kill_unlock_table_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr)
+pub(crate) proof fn kill_unlock_table_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, scope: KillScope)
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
-        pre.thread_map[thread_ptr].syscall_progress->Some_0 is KillProcess,
+        pre.thread_map[thread_ptr].syscall_progress == kill_scope_progress(scope, target, kill_stage(pre, cpu_id)),
         kill_target(pre, cpu_id) == target,
         kill_process_reclaim_step_pre(pre, cpu_id, KillStage::Quota { returned: PageSize::SZ1g }),
         kill_process_user_4k_unmapped(pre, pre.process_map[target].pagetable->Some_0),
         pre.process_map[target].iommu_table is Some ==> kill_process_iommu_4k_unmapped(pre.process_map[target].iommu_table->Some_0),
         post == (KernelU {
-            thread_map: pre.thread_map.insert(thread_ptr, ThreadU { syscall_progress: kill_progress(target, KillStage::Zombie), ..pre.thread_map[thread_ptr] }),
+            thread_map: pre.thread_map.insert(thread_ptr, ThreadU { syscall_progress: kill_scope_progress(scope, target, KillStage::Zombie), ..pre.thread_map[thread_ptr] }),
             process_map: pre.process_map.insert(target, ProcessU {
                 pagetable: Some(PageTableU { lock_state: LockStateU::Unlocked, ..pre.process_map[target].pagetable->Some_0 }),
                 iommu_table: match pre.process_map[target].iommu_table { Some(t) => Some(PageTableU { lock_state: LockStateU::Unlocked, ..t }), None => None },
@@ -814,11 +820,11 @@ pub(crate) proof fn kill_unlock_table_step_from_u(pre: KernelU, post: KernelU, c
 
 /// Making the reclaimed target a zombie that releases its PCID to its container, and starting to retire it, is a middle
 /// step.
-pub(crate) proof fn kill_zombify_step_from_u(pre: KernelU, zombified: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr)
+pub(crate) proof fn kill_zombify_step_from_u(pre: KernelU, zombified: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, scope: KillScope)
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
-        pre.thread_map[thread_ptr].syscall_progress->Some_0 is KillProcess,
+        pre.thread_map[thread_ptr].syscall_progress == kill_scope_progress(scope, target, kill_stage(pre, cpu_id)),
         kill_target(pre, cpu_id) == target,
         kill_stage(pre, cpu_id) is Zombie,
         !pre.process_map[target].zombie,
@@ -833,18 +839,18 @@ pub(crate) proof fn kill_zombify_step_from_u(pre: KernelU, zombified: KernelU, p
             })
         }),
         post == (KernelU {
-            thread_map: zombified.thread_map.insert(thread_ptr, ThreadU { syscall_progress: kill_progress(target, KillStage::Retire), ..zombified.thread_map[thread_ptr] }),
+            thread_map: zombified.thread_map.insert(thread_ptr, ThreadU { syscall_progress: kill_scope_progress(scope, target, KillStage::Retire), ..zombified.thread_map[thread_ptr] }),
             ..zombified
         }),
     ensures kill_process_middle_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
 { reveal(kill_process_zombify_step); }
 
 /// An empty zombie target owning no PCI function going straight to retiring is a middle step.
-pub(crate) proof fn kill_zombie_retire_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr)
+pub(crate) proof fn kill_zombie_retire_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, scope: KillScope)
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
-        pre.thread_map[thread_ptr].syscall_progress->Some_0 is KillProcess,
+        pre.thread_map[thread_ptr].syscall_progress == kill_scope_progress(scope, target, kill_stage(pre, cpu_id)),
         kill_target(pre, cpu_id) == target,
         kill_stage(pre, cpu_id) is Walk,
         pre.process_map[target].children.len() == 0,
@@ -852,7 +858,7 @@ pub(crate) proof fn kill_zombie_retire_step_from_u(pre: KernelU, post: KernelU, 
         pre.process_map[target].zombie,
         pre.process_map[target].owned_pci_functions.is_empty(),
         post == (KernelU {
-            thread_map: pre.thread_map.insert(thread_ptr, ThreadU { syscall_progress: kill_progress(target, KillStage::Retire), ..pre.thread_map[thread_ptr] }),
+            thread_map: pre.thread_map.insert(thread_ptr, ThreadU { syscall_progress: kill_scope_progress(scope, target, KillStage::Retire), ..pre.thread_map[thread_ptr] }),
             ..pre
         }),
     ensures kill_process_middle_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
@@ -870,12 +876,12 @@ pub(crate) proof fn kill_trace_enter_step(steps: &KernelSteps, before: Seq<Kerne
 /// Retiring the empty zombie target, which raises its container's 4K quota to `quota`, and walking its parent again is a
 /// middle step.
 pub(crate) proof fn kill_retire_step_from_u(
-    pre: KernelU, retired: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, parent_ptr: RwLockProcessPtr, quota: usize,
+    pre: KernelU, retired: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, parent_ptr: RwLockProcessPtr, quota: usize, scope: KillScope,
 )
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
-        pre.thread_map[thread_ptr].syscall_progress->Some_0 is KillProcess,
+        pre.thread_map[thread_ptr].syscall_progress == kill_scope_progress(scope, target, kill_stage(pre, cpu_id)),
         kill_target(pre, cpu_id) == target,
         kill_stage(pre, cpu_id) is Retire,
         pre.process_map[target].children.len() == 0,
@@ -900,7 +906,7 @@ pub(crate) proof fn kill_retire_step_from_u(
             })
         }),
         post == (KernelU {
-            thread_map: retired.thread_map.insert(thread_ptr, ThreadU { syscall_progress: kill_progress(parent_ptr, KillStage::Walk), ..retired.thread_map[thread_ptr] }),
+            thread_map: retired.thread_map.insert(thread_ptr, ThreadU { syscall_progress: kill_scope_progress(scope, parent_ptr, KillStage::Walk), ..retired.thread_map[thread_ptr] }),
             ..retired
         }),
     ensures kill_process_middle_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
@@ -920,17 +926,18 @@ pub(crate) proof fn kill_trace_push(steps: &KernelSteps, before: Seq<KernelStep>
 }
 
 /// Steps reclaiming killed threads, recorded after the partial trace that starts at `start` while the killer's cpu, the
-/// killer, and the lock modes and kill marks of its held processes keep their projection at `entry`, extend it.
+/// killer, the lock modes and kill marks of its held processes, and the lock mode of the victim container of `scope`
+/// keep their projection at `entry`, extend it.
 pub(crate) proof fn kill_trace_from_killed_thread_reclaim(
     steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, entry: KernelU, cpu_id: CpuId, ctx: KillTraceCtx, process_ptr: RwLockProcessPtr,
-    target: RwLockProcessPtr,
+    target: RwLockProcessPtr, stage: KillStage, scope: KillScope,
 )
     requires
         0 <= start <= before.len(),
         kill_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id, ctx),
         kernel_steps_prefix_unchanged(before, steps.view()),
         kill_process_step_pre(entry, cpu_id),
-        entry.thread_map[kill_killer(entry, cpu_id)].syscall_progress->Some_0 is KillProcess,
+        entry.thread_map[kill_killer(entry, cpu_id)].syscall_progress == kill_scope_progress(scope, target, stage),
         entry.cpu_array[cpu_id as int].current_process == Some(process_ptr),
         kill_target(entry, cpu_id) == target,
         forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
@@ -945,6 +952,7 @@ pub(crate) proof fn kill_trace_from_killed_thread_reclaim(
             &&& old_u.process_map.dom().contains(target)
             &&& old_u.process_map[target].lock_state == entry.process_map[target].lock_state
             &&& old_u.process_map[target].killed == entry.process_map[target].killed
+            &&& scope matches KillScope::Container { container } ==> old_u.container_map.dom().contains(container) && old_u.container_map[container].lock_state == entry.container_map[container].lock_state
         },
     ensures kill_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, ctx),
 {
@@ -977,10 +985,11 @@ pub(crate) proof fn kill_trace_push_tlb_flush(
 
 /// Refund steps, recorded after the partial trace that starts at `start` while the killer's cpu and the lock modes and
 /// kill marks of the killer's process and the target keep their projection at `entry` and the killer keeps its lock
-/// mode and its progress at `stage`, each growing the 4K quota of the target's container `container_ptr`, extend it.
+/// mode and its progress at `stage` in `scope`, each growing the 4K quota of the target's container `container_ptr`,
+/// extend it.
 pub(crate) proof fn kill_trace_from_refund(
     steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, entry: KernelU, cpu_id: CpuId, ctx: KillTraceCtx, process_ptr: RwLockProcessPtr,
-    thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, stage: KillStage, container_ptr: RwLockContainerPtr,
+    thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, stage: KillStage, container_ptr: RwLockContainerPtr, scope: KillScope,
 )
     requires
         0 <= start <= before.len() <= steps.view().len(),
@@ -997,7 +1006,8 @@ pub(crate) proof fn kill_trace_from_refund(
             &&& old_u.cpu_array[cpu_id as int] == entry.cpu_array[cpu_id as int]
             &&& old_u.thread_map.dom().contains(thread_ptr)
             &&& old_u.thread_map[thread_ptr].lock_state is WriteLocked
-            &&& old_u.thread_map[thread_ptr].syscall_progress == kill_progress(target, stage)
+            &&& old_u.thread_map[thread_ptr].syscall_progress == kill_scope_progress(scope, target, stage)
+            &&& scope matches KillScope::Container { container } ==> old_u.container_map.dom().contains(container) && old_u.container_map[container].lock_state is WriteLocked
             &&& old_u.process_map.dom().contains(process_ptr)
             &&& old_u.process_map[process_ptr].lock_state == entry.process_map[process_ptr].lock_state
             &&& old_u.process_map.dom().contains(target)
@@ -1009,6 +1019,39 @@ pub(crate) proof fn kill_trace_from_refund(
 {
     reveal(kill_partial_trace); reveal(kill_process_partial_trace); reveal(kill_container_partial_trace); reveal(kill_process_step_pre);
     assert(steps.view().subrange(start, steps.view().len() as int) =~= before.subrange(start, before.len() as int) + steps.view().subrange(before.len() as int, steps.view().len() as int));
+}
+
+/// One step pushed after the partial trace that starts at `start`, from the projection of `krnl` while the kill holds its
+/// cpu, process, thread, and target at `stage` in `scope`, that grows the 4K quota of the target's container or of one of
+/// its ancestors, extends it.
+pub(crate) proof fn kill_trace_from_scoped_credit(
+    steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, post_u: KernelU, krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, ctx: KillTraceCtx,
+    process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, stage: KillStage, scope: KillScope,
+)
+    requires
+        0 <= start <= before.len(),
+        kill_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id, ctx),
+        steps.view() == before.push(KernelStep { old_u: kernel_k_to_kernel_u(*krnl), new_u: post_u }),
+        kernel_u_container_quota_4k_increased(kernel_k_to_kernel_u(*krnl), post_u, krnl.prc_mp.spec_index(target).view_rodata().view().owning_container),
+        typed_lock_maps_aligned(krnl, lctx),
+        index_valid(NUM_CPUS, cpu_id),
+        typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.process_lock_map(), process_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.process_lock_map(), target, TypedLockMode::Write),
+        krnl.prc_mp.dom().contains(target),
+        krnl.prc_mp.spec_index(target).being_killed(),
+        krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
+        krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
+        krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == kill_scope_progress(scope, target, stage),
+        scope matches KillScope::Container { container } ==> krnl.ctn_mp.dom().contains(container) && typed_lock_map_contains_mode(lctx.container_lock_map(), container, TypedLockMode::Write),
+    ensures kill_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, ctx),
+{
+    let container_ptr = krnl.prc_mp.spec_index(target).view_rodata().view().owning_container;
+    kill_step_pre_from_k(krnl, lctx, cpu_id, process_ptr, thread_ptr, target, stage, scope); kill_refund_pre_from_k(krnl, target, container_ptr);
+    kernel_write_held_context_projection(krnl, lctx, cpu_id, process_ptr, thread_ptr, None); kernel_write_held_context_projection(krnl, lctx, cpu_id, target, thread_ptr, None);
+    if let KillScope::Container { container } = scope { krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), container); kernel_container_projection_at(krnl, container); }
+    kill_trace_from_refund(steps, before, start, pre, kernel_k_to_kernel_u(*krnl), cpu_id, ctx, process_ptr, thread_ptr, target, stage, container_ptr, scope);
 }
 
 /// The finish step pushed after the partial trace that starts at `start` completes the trace of a kill.

@@ -163,7 +163,7 @@ pub(crate) fn kill_dequeue_endpoint_victim(krnl: &mut KernelK, Tracked(lctx): Tr
         old(lctx).kernel_view_locking_state() is Acquire,
         ({
             let cpu = old(krnl).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view();
-            killer_held_context(*old(krnl), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0, Set::empty())
+            killer_held_context(*old(krnl), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0, old(lctx).container_lock_map().dom())
         }),
         old(krnl).thr_mp.dom().contains(victim_ptr),
         old(krnl).thr_mp.spec_index(victim_ptr).being_killed(),
@@ -241,9 +241,9 @@ pub(crate) fn kill_evict_running_victim(krnl: &mut KernelK, Tracked(lctx): Track
         old(lctx).kernel_view_locking_state() is Acquire,
         ({
             let cpu = old(krnl).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view();
-            &&& killer_held_context(*old(krnl), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0, Set::empty())
-            &&& old(krnl).thr_mp.spec_index(victim_ptr).view().container_depth == cpu.container_depth
-            &&& old(krnl).thr_mp.spec_index(victim_ptr).view().process_depth > cpu.process_depth
+            let victim = old(krnl).thr_mp.spec_index(victim_ptr).view();
+            &&& killer_held_context(*old(krnl), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0, old(lctx).container_lock_map().dom())
+            &&& victim.container_depth > cpu.container_depth || (victim.container_depth == cpu.container_depth && victim.process_depth > cpu.process_depth && !old(lctx).container_lock_map().dom().contains(cpu.owning_container))
         }),
         old(krnl).thr_mp.dom().contains(victim_ptr),
         old(krnl).thr_mp.spec_index(victim_ptr).being_killed(),

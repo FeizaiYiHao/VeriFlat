@@ -6,7 +6,7 @@ use super::syscall_kill_process_retire_spec::*;
 verus! {
 /// Removing the process `removed`, which holds no quota, from the folded set keeps the process quota folds when every
 /// other member keeps its quotas.
-proof fn lemma_process_effective_quota_folds_remove_zero(s: Set<RwLockProcessPtr>, pre_map: ProcessLockedMap, post_map: ProcessLockedMap, removed: RwLockProcessPtr)
+pub(crate) proof fn lemma_process_effective_quota_folds_remove_zero(s: Set<RwLockProcessPtr>, pre_map: ProcessLockedMap, post_map: ProcessLockedMap, removed: RwLockProcessPtr)
     requires
         s.contains(removed),
         process_effective_quota_4k(pre_map.spec_index(removed)) == 0,

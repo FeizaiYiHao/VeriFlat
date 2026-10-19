@@ -27,6 +27,56 @@ pub(super) proof fn wlock_container_eof(pre: KernelK, post: KernelK, container_p
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { cpu_dirty_map_wf_preserved_for_container_invariant_fields(pre, post); };
 }
 
+/// Closes `inv()` after `try_wlock_container_and_mark_kill`: the target is write-locked by the killer's thread and
+/// marked for the killer, whose parent container that thread write-holds.
+pub(super) proof fn mark_kill_container_eof(pre: KernelK, post: KernelK, pre_lctx: LocalContext, container_ptr: RwLockContainerPtr, killer_info: KillerInfo, marked: bool)
+    requires
+        pre.inv(),
+        pre.ctn_mp.dom().contains(container_ptr),
+        ({
+            let cpu = pre.cpu_arr.spec_index(pre_lctx.cpu_id()).view().view().view();
+            let container = pre.ctn_mp.spec_index(container_ptr).view_rodata().view();
+            &&& killer_held_context(pre, pre_lctx, cpu.current_process->Some_0, cpu.current_thread->Some_0, pre_lctx.container_lock_map().dom())
+            &&& killer_info.process == cpu.current_process->Some_0
+            &&& container.parent is Some
+            &&& typed_lock_map_contains_mode(pre_lctx.container_lock_map(), container.parent->Some_0, TypedLockMode::Write)
+        }),
+        typed_lock_maps_aligned(&pre, &pre_lctx),
+        post == (KernelK { ctn_mp: post.ctn_mp, ..pre }),
+        post.ctn_mp.perms_wf(),
+        post.ctn_mp.unchanged_except(&pre.ctn_mp, container_ptr),
+        post.ctn_mp.spec_index(container_ptr).view() == pre.ctn_mp.spec_index(container_ptr).view(),
+        post.ctn_mp.spec_index(container_ptr).view_rodata() == pre.ctn_mp.spec_index(container_ptr).view_rodata(),
+        post.ctn_mp.spec_index(container_ptr).view_ghost() == pre.ctn_mp.spec_index(container_ptr).view_ghost(),
+        !marked ==> post.ctn_mp.spec_index(container_ptr) == pre.ctn_mp.spec_index(container_ptr),
+        marked ==> {
+            &&& !pre.ctn_mp.spec_index(container_ptr).being_killed()
+            &&& !pre.ctn_mp.spec_index(container_ptr).locked()
+            &&& post.ctn_mp.spec_index(container_ptr).being_killed()
+            &&& post.ctn_mp.spec_index(container_ptr).killer_info() == Some(killer_info)
+            &&& post.ctn_mp.spec_index(container_ptr).inv()
+            &&& post.ctn_mp.spec_index(container_ptr).locking_thread() is Write
+            &&& post.ctn_mp.spec_index(container_ptr).locking_thread()->Write_thread_id == pre_lctx.thread_id()
+        },
+    ensures
+        post.inv(),
+{
+    assert(container_perms_wf(post.ctn_mp)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
+    assert(container_invariant_fields_unchanged(pre.ctn_mp, post.ctn_mp)) by { container_lock_op_preserves_invariant_fields(pre.ctn_mp, post.ctn_mp, container_ptr); };
+    assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
+    assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_container_invariant_fields(pre, post); };
+    assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
+    assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(process_kill_mark_wf); };
+    assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by {
+        let cpu = pre.cpu_arr.spec_index(pre_lctx.cpu_id()).view().view().view();
+        reveal(container_kill_mark_wf);
+        pre.prc_mp.typed_lock_map_aligned_write_at(pre_lctx.process_lock_map(), pre_lctx.thread_id(), cpu.current_process->Some_0);
+        pre.ctn_mp.typed_lock_map_aligned_write_at(pre_lctx.container_lock_map(), pre_lctx.thread_id(), pre.ctn_mp.spec_index(container_ptr).view_rodata().view().parent->Some_0);
+    };
+    assert(post.process_management_inv()) by { process_management_inv_preserved_for_container_invariant_fields(pre, post); };
+    assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { cpu_dirty_map_wf_preserved_for_container_invariant_fields(pre, post); };
+}
+
 /// Closes `inv()` after `wunlock_container`: the released container still owns a process, is not marked, and is the
 /// parent of no marked container this thread holds.
 pub(super) proof fn wunlock_container_eof(pre: KernelK, post: KernelK, pre_lctx: LocalContext, container_ptr: RwLockContainerPtr)

@@ -11,6 +11,8 @@ use veriflat_map_4k::map_4k::unmap_4k_reclaim_one::reclaim_unmapped_4k_page;
 use veriflat_map_4k::map_4k::unmap_4k_tlb::{mark_pcid_needflush_and_load, flush_remote_pcid_and_clear, flush_local_pcid_and_clear};
 use veriflat_map_4k::map_4k::unmap_iommu_4k_present::clear_iommu_4k_mapping_present;
 use veriflat_map_4k::map_4k::unmap_iommu_4k_reclaim_one::reclaim_unmapped_iommu_4k_page;
+use veriflat_map_4k::map_4k::unmap_4k_remove::remove_4k_mapping_without_free;
+use veriflat_map_4k::map_4k::unmap_iommu_4k_remove::remove_iommu_4k_mapping_without_free;
 
 pub mod syscall_kill_process;
 pub mod syscall_kill_container;

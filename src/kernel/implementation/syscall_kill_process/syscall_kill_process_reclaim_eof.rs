@@ -67,7 +67,7 @@ pub(crate) proof fn kill_reassign_eof(pre: KernelK, post: KernelK, target: RwLoc
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_proc_pcid_match); };
 }
 
-proof fn kill_quota_eof_memory(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, allocator_ptr: RwLockPageAllocatorPtr, size: PageSize)
+proof fn kill_quota_eof_memory(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, allocator_ptr: RwLockPageAllocatorPtr, size: PageSize)
     requires
         pre.inv(),
         kill_quota_eof_transition_framing(pre, post, process_ptr, allocator_ptr, size),
@@ -79,17 +79,14 @@ proof fn kill_quota_eof_memory(pre: KernelK, post: KernelK, process_ptr: RwLockP
         size is SZ2m ==> pre.allc_2m_mp.spec_index(allocator_ptr).quota.view().value + pre.prc_mp.spec_index(process_ptr).view().quota_2m <= usize::MAX,
         size is SZ1g ==> pre.allc_1g_mp.spec_index(allocator_ptr).quota.view().value + pre.prc_mp.spec_index(process_ptr).view().quota_1g <= usize::MAX,
         post.subsystems_inv(),
-        pre.thr_mp.dom().contains(thread_ptr),
-        pre.thr_mp.spec_index(thread_ptr).view().owning_container == pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container,
     ensures post.memory_management_inv(),
 {
     reveal(kill_quota_eof_transition_framing);
     let process = pre.prc_mp.spec_index(process_ptr).view();
-    let container_ptr = pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container;
     let dp4k = if size is SZ4k { -(process.quota_4k as int) } else { 0int };
     let dp2m = if size is SZ2m { -(process.quota_2m as int) } else { 0int };
     let dp1g = if size is SZ1g { -(process.quota_1g as int) } else { 0int };
-    process_perms_wf_at(pre.prc_mp, process_ptr); container_process_wf_process_at(pre.ctn_mp, pre.prc_mp, process_ptr); container_thread_wf_at(pre.ctn_mp, pre.thr_mp, thread_ptr);
+    process_perms_wf_at(pre.prc_mp, process_ptr); container_process_wf_process_at(pre.ctn_mp, pre.prc_mp, process_ptr);
     assert(allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
         lemma_allocator_pages_wf_preserved_for_allocator_invariant_fields_except_quota_forall(); reveal(allocator_2m_pages_wf); reveal(allocator_1g_pages_wf);
     };
@@ -114,8 +111,10 @@ proof fn kill_quota_eof_memory(pre: KernelK, post: KernelK, process_ptr: RwLockP
         &&& container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp)
         &&& container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp)
     }) by {
-        lemma_container_process_thread_quota_folds_change_forall(pre.ctn_mp, pre.prc_mp, post.prc_mp, pre.thr_mp, post.thr_mp, container_ptr, process_ptr, thread_ptr, dp4k, dp2m, dp1g, 0, 0, 0);
-        reveal(container_process_allocator_quota_4k_wf); reveal(container_process_allocator_quota_2m_wf); reveal(container_process_allocator_quota_1g_wf); reveal(container_allocator_wf);
+        reveal(container_process_allocator_quota_4k_wf); reveal(container_process_allocator_quota_2m_wf); reveal(container_process_allocator_quota_1g_wf); reveal(container_allocator_wf); reveal(container_process_wf);
+        lemma_process_effective_quota_4k_fold_change_by_forall(process_ptr, dp4k); lemma_process_effective_quota_4k_fold_sum_eq_forall();
+        lemma_process_effective_quota_2m_fold_change_by_forall(process_ptr, dp2m); lemma_process_effective_quota_2m_fold_sum_eq_forall();
+        lemma_process_effective_quota_1g_fold_change_by_forall(process_ptr, dp1g); lemma_process_effective_quota_1g_fold_sum_eq_forall();
     };
 }
 
@@ -143,9 +142,8 @@ proof fn kill_quota_eof_process(pre: KernelK, post: KernelK, process_ptr: RwLock
     assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
 }
 
-/// Returning the target's whole `size` quota to its container's `size` allocator keeps the kernel invariant; the killer's
-/// thread `thread_ptr` of the same container anchors the quota folds.
-pub(crate) proof fn kill_quota_eof(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, allocator_ptr: RwLockPageAllocatorPtr, size: PageSize)
+/// Returning the target's whole `size` quota to its container's `size` allocator keeps the kernel invariant.
+pub(crate) proof fn kill_quota_eof(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, allocator_ptr: RwLockPageAllocatorPtr, size: PageSize)
     requires
         pre.inv(),
         kill_quota_eof_transition_framing(pre, post, process_ptr, allocator_ptr, size),
@@ -156,14 +154,12 @@ pub(crate) proof fn kill_quota_eof(pre: KernelK, post: KernelK, process_ptr: RwL
         size is SZ4k ==> pre.allc_4k_mp.spec_index(allocator_ptr).quota.view().value + pre.prc_mp.spec_index(process_ptr).view().quota_4k <= usize::MAX,
         size is SZ2m ==> pre.allc_2m_mp.spec_index(allocator_ptr).quota.view().value + pre.prc_mp.spec_index(process_ptr).view().quota_2m <= usize::MAX,
         size is SZ1g ==> pre.allc_1g_mp.spec_index(allocator_ptr).quota.view().value + pre.prc_mp.spec_index(process_ptr).view().quota_1g <= usize::MAX,
-        pre.thr_mp.dom().contains(thread_ptr),
-        pre.thr_mp.spec_index(thread_ptr).view().owning_container == pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container,
     ensures post.inv(),
 {
     reveal(kill_quota_eof_transition_framing);
     process_perms_wf_at(pre.prc_mp, process_ptr);
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(process_perms_wf); reveal(allocator_perms_wf); };
-    kill_quota_eof_memory(pre, post, process_ptr, thread_ptr, allocator_ptr, size);
+    kill_quota_eof_memory(pre, post, process_ptr, allocator_ptr, size);
     kill_quota_eof_process(pre, post, process_ptr, allocator_ptr, size);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { lemma_iommu_root_table_process_wf_preserved_for_process_invariant_fields_except_quota_forall(); };

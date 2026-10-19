@@ -43,8 +43,16 @@ pub(super) proof fn mark_kill_process_eof(pre: KernelK, post: KernelK, pre_lctx:
         pre.prc_mp.dom().contains(killer_process),
         killer_held_context(pre, pre_lctx, killer_process, killer_thread, pre_lctx.container_lock_map().dom()),
         killer_info.process == killer_process,
-        pre.prc_mp.spec_index(process_ptr).view_rodata().view().parent is Some,
-        typed_lock_map_contains_mode(pre_lctx.process_lock_map(), pre.prc_mp.spec_index(process_ptr).view_rodata().view().parent->Some_0, TypedLockMode::Write),
+        ({
+            let process = pre.prc_mp.spec_index(process_ptr).view_rodata().view();
+            ||| process.parent is Some && typed_lock_map_contains_mode(pre_lctx.process_lock_map(), process.parent->Some_0, TypedLockMode::Write)
+            ||| {
+                &&& process.parent is None
+                &&& pre.ctn_mp.spec_index(process.owning_container).view().root_process == process_ptr
+                &&& pre.ctn_mp.spec_index(process.owning_container).killer_info() == Some(killer_info)
+                &&& typed_lock_map_contains_mode(pre_lctx.container_lock_map(), process.owning_container, TypedLockMode::Write)
+            }
+        }),
         typed_lock_maps_aligned(&pre, &pre_lctx),
         post == (KernelK { prc_mp: post.prc_mp, ..pre }),
         post.prc_mp.perms_wf(),
@@ -74,9 +82,14 @@ pub(super) proof fn mark_kill_process_eof(pre: KernelK, post: KernelK, pre_lctx:
     assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_process_invariant_fields(pre, post); };
     assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(process_thread_wf); };
     assert(process_kill_mark_wf(post.ctn_mp, post.prc_mp)) by {
+        let process = pre.prc_mp.spec_index(process_ptr).view_rodata().view();
         reveal(process_kill_mark_wf);
         pre.prc_mp.typed_lock_map_aligned_write_at(pre_lctx.process_lock_map(), pre_lctx.thread_id(), killer_process);
-        pre.prc_mp.typed_lock_map_aligned_write_at(pre_lctx.process_lock_map(), pre_lctx.thread_id(), pre.prc_mp.spec_index(process_ptr).view_rodata().view().parent->Some_0);
+        if process.parent is Some {
+            pre.prc_mp.typed_lock_map_aligned_write_at(pre_lctx.process_lock_map(), pre_lctx.thread_id(), process.parent->Some_0);
+        } else {
+            pre.ctn_mp.typed_lock_map_aligned_write_at(pre_lctx.container_lock_map(), pre_lctx.thread_id(), process.owning_container);
+        }
     };
     assert(container_kill_mark_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_kill_mark_wf); };
     assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };

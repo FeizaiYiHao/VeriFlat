@@ -2,7 +2,8 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_kill_process_spec::*;
 use super::syscall_kill_process_trace::*;
-use super::syscall_kill_process_walk::KillScope;
+use super::syscall_kill_process_walk::{KillScope, kill_scope_progress};
+use super::syscall_kill_process_reclaim_scoped::{kill_reclaim_unmapped_4k_page_scoped, kill_reclaim_unmapped_iommu_4k_page_scoped};
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_process_walk::kill_walk_state;
 #[cfg(verus_keep_ghost)]
@@ -26,7 +27,6 @@ pub(crate) fn kill_reclaim_clear_leaves(
         old(steps).snapshot_k() == *old(krnl),
         0 <= start <= old(steps).view().len(),
         kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
-        scope == (KillScope::Subtree { process: process_ptr }),
         kill_reclaim_state(*old(krnl), *old(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, KillStage::Reclaim { flushed: false }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
             iommu_table, *pagetable_perm, *iommu_perm),
         old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
@@ -77,7 +77,6 @@ pub(crate) fn kill_reclaim_clear_leaves(
             0 <= start <= old(steps).view().len() <= steps.view().len(),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, steps.view()),
             kill_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, ctx),
-            scope == (KillScope::Subtree { process: process_ptr }),
             kill_reclaim_state(*krnl, *lctx, cpu_id, scope, process_ptr, thread_ptr, chain, KillStage::Reclaim { flushed: false }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
                 iommu_table, *pagetable_perm, *iommu_perm),
             target == chain[chain.len() - 1],
@@ -135,7 +134,7 @@ pub(crate) fn kill_reclaim_clear_leaves(
                 let before_u = kernel_k_to_kernel_u(leaf_k);
                 assert(kernel_process_4k_mapping_changed(&leaf_k, &leaf_post, target, pagetable, va)) by { reveal(kernel_process_4k_mapping_changed); };
                 kernel_process_4k_mapping_changed_implies_u_neq(&leaf_k, &leaf_post, target, pagetable, va);
-                kill_step_pre_from_k(&leaf_k, &leaf_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Reclaim { flushed: false });
+                kill_step_pre_from_k(&leaf_k, &leaf_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Reclaim { flushed: false }, scope);
                 kill_reclaim_pre_from_k(&leaf_k, &leaf_lctx, cpu_id, thread_ptr, target, KillStage::Reclaim { flushed: false }, pagetable, iommu_table); kill_leaf_pre_from_k(&leaf_k, pagetable, va);
                 kernel_pagetable_4k_present_cleared_and_progress_changed_implies_u_step(&leaf_k, &leaf_post, pagetable, va, thread_ptr);
                 kill_leaf_step_from_u(before_u, kernel_k_to_kernel_u(leaf_post), cpu_id, thread_ptr, target, va);
@@ -167,7 +166,6 @@ pub(crate) fn kill_reclaim_flush(
         old(steps).snapshot_k() == *old(krnl),
         0 <= start <= old(steps).view().len(),
         kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
-        scope == (KillScope::Subtree { process: process_ptr }),
         kill_reclaim_state(*old(krnl), *old(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, KillStage::Reclaim { flushed: false }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
             iommu_table, *pagetable_perm, *iommu_perm),
         old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
@@ -235,7 +233,6 @@ pub(crate) fn kill_reclaim_flush(
             0 <= start <= old(steps).view().len() <= steps.view().len(),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, steps.view()),
             kill_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, ctx),
-            scope == (KillScope::Subtree { process: process_ptr }),
             kill_reclaim_state(*krnl, *lctx, cpu_id, scope, process_ptr, thread_ptr, chain, KillStage::Reclaim { flushed: false }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
                 iommu_table, *pagetable_perm, *iommu_perm),
             target == chain[chain.len() - 1],
@@ -294,7 +291,7 @@ pub(crate) fn kill_reclaim_flush(
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
             let tlb_k = *krnl;
             krnl.kernel_step_boundary_cpu_tlb_updated(&mut *lctx, &mut *steps, c, pcid, flushed);
-            kill_step_pre_from_k(&iter_k, &iter_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Reclaim { flushed: false });
+            kill_step_pre_from_k(&iter_k, &iter_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Reclaim { flushed: false }, scope);
             kill_reclaim_pre_from_k(&iter_k, &iter_lctx, cpu_id, thread_ptr, target, KillStage::Reclaim { flushed: false }, pagetable, iommu_table); kill_user_4k_unmapped_pre_from_k(&iter_k, target);
             kill_trace_push_tlb_flush(&*steps, iter_before, start, pre, kernel_k_to_kernel_u(iter_k), kernel_k_to_kernel_u(tlb_k), cpu_id, ctx, pcid);
         }
@@ -304,14 +301,14 @@ pub(crate) fn kill_reclaim_flush(
     let ghost flushed_k = *krnl;
     let ghost flushed_lctx = *lctx;
     let ghost flushed_before = steps.view();
-    krnl.set_thread_syscall_progress(thread_ptr, Ghost(kill_progress(target, KillStage::Reclaim { flushed: true })), Tracked(&*lctx), Tracked(thread_perm));
+    krnl.set_thread_syscall_progress(thread_ptr, Ghost(kill_scope_progress(scope, target, KillStage::Reclaim { flushed: true })), Tracked(&*lctx), Tracked(thread_perm));
     proof {
         let flushed_pre = kernel_k_to_kernel_u(flushed_k);
         let flushed_post = kernel_k_to_kernel_u(*krnl);
-        kill_step_pre_from_k(&flushed_k, &flushed_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Reclaim { flushed: false });
+        kill_step_pre_from_k(&flushed_k, &flushed_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Reclaim { flushed: false }, scope);
         kill_reclaim_pre_from_k(&flushed_k, &flushed_lctx, cpu_id, thread_ptr, target, KillStage::Reclaim { flushed: false }, pagetable, iommu_table); kill_user_4k_unmapped_pre_from_k(&flushed_k, target);
         kernel_thread_syscall_progress_changed_implies_u_step(&flushed_k, &*krnl, thread_ptr);
-        kill_flushed_step_from_u(flushed_pre, flushed_post, cpu_id, thread_ptr, target);
+        kill_flushed_step_from_u(flushed_pre, flushed_post, cpu_id, thread_ptr, target, scope);
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         kill_trace_push(&*steps, flushed_before, start, pre, flushed_pre, flushed_post, cpu_id, ctx);
@@ -319,23 +316,24 @@ pub(crate) fn kill_reclaim_flush(
     }
 }
 
-/// Unmap every cleared leaf of the target's page table, accumulating the quota of its page as the killer's pending refund,
-/// then refund that quota to the killer's container chain.
+/// Unmap every cleared leaf of the target's page table. In a process kill (`same`), whose target shares the killer's
+/// container, the quota of each freed page accumulates as the killer's pending refund, refunded to the killer's container
+/// chain at the end; otherwise each freed page is credited to its owner's quota in its own step.
 pub(crate) fn kill_reclaim_unmap_leaves(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
     thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>, Tracked(chain_perms): Tracked<&Map<RwLockProcessPtr, LockPerm>>,
     Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>, Tracked(thread_perm): Tracked<&LockPerm>, pagetable: RwLockPageTableRoot,
     iommu_table: Option<RwLockPageTableRoot>, Tracked(pagetable_perm): Tracked<&LockPerm>, Tracked(iommu_perm): Tracked<&Option<LockPerm>>, Ghost(kernel_l4_end): Ghost<usize>, start_l4: L4Index, Ghost(locked_pt): Ghost<PageTable<PT_TYPE>>,
-    Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>,
+    same: bool, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>,
 )
     requires
+        same == (scope is Subtree),
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
         old(steps).snapshot_k() == *old(krnl),
         0 <= start <= old(steps).view().len(),
         kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
-        scope == (KillScope::Subtree { process: process_ptr }),
         kill_reclaim_state(*old(krnl), *old(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, KillStage::Reclaim { flushed: true }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
             iommu_table, *pagetable_perm, *iommu_perm),
         old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
@@ -377,7 +375,7 @@ pub(crate) fn kill_reclaim_unmap_leaves(
     proof {
         pagetable_perms_wf_map(krnl.pt_mp);
         pagetable_perms_wf_at(krnl.pt_mp, pagetable); thread_perms_wf_at(krnl.thr_mp, thread_ptr);
-        assert(krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == krnl.thr_mp.spec_index(thread_ptr).view().owning_container) by { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); };
+        assert(same ==> krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == entry_thread.owning_container) by { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); };
         assert(entry_thread.container_depth <= MAX_CONTAINER_TREE_DEPTH) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); container_perms_wf_at(krnl.ctn_mp, entry_thread.owning_container); };
     }
     let mut indirect = [0usize; MAX_CONTAINER_TREE_DEPTH];
@@ -394,7 +392,6 @@ pub(crate) fn kill_reclaim_unmap_leaves(
             0 <= start <= old(steps).view().len() <= steps.view().len(),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, steps.view()),
             kill_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, ctx),
-            scope == (KillScope::Subtree { process: process_ptr }),
             kill_reclaim_state(*krnl, *lctx, cpu_id, scope, process_ptr, thread_ptr, chain, KillStage::Reclaim { flushed: true }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
                 iommu_table, *pagetable_perm, *iommu_perm),
             target == chain[chain.len() - 1],
@@ -411,14 +408,16 @@ pub(crate) fn kill_reclaim_unmap_leaves(
             iommu_table is Some ==> krnl.it_mp.spec_index(iommu_table->Some_0).view().leaves_present() && krnl.it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0,
             pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, pagetable, krnl.pt_mp.spec_index(pagetable).view()),
             entry_thread.free_quota_pending_clean(),
-            krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == entry_thread.owning_container,
-            krnl.thr_mp.spec_index(thread_ptr).view() == (Thread {
+            same == (scope is Subtree),
+            same ==> krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == entry_thread.owning_container,
+            same ==> krnl.thr_mp.spec_index(thread_ptr).view() == (Thread {
                 direct_free_quota_pending_4k: krnl.thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k,
                 indirect_free_quota_pending_4k: krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k, ..entry_thread
             }),
-            direct == krnl.thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k.view(),
-            forall|d: int| #![trigger indirect[d]] #![trigger krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().spec_index(d)] 0 <= d < entry_thread.container_depth
+            same ==> direct == krnl.thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k.view(),
+            same ==> forall|d: int| #![trigger indirect[d]] #![trigger krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().spec_index(d)] 0 <= d < entry_thread.container_depth
                 ==> indirect[d] == krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().spec_index(d),
+            !same ==> krnl.thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
                 pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && start_l4 <= l4i && krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
                     ==> !krnl.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present,
@@ -449,47 +448,53 @@ pub(crate) fn kill_reclaim_unmap_leaves(
         proof {
             assert(spec_va_4k_valid(va) && spec_va2index(va) == next) by { spec_va_4k_index_roundtrip_at(va, next.0, next.1, next.2, next.3); };
         }
-        reclaim_unmapped_4k_page(krnl, pagetable, va, thread_ptr, cpu_id, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(pagetable_perm), Tracked(thread_perm));
+        if same {
+            reclaim_unmapped_4k_page(krnl, pagetable, va, thread_ptr, cpu_id, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(pagetable_perm), Tracked(thread_perm));
+        } else {
+            kill_reclaim_unmapped_4k_page_scoped(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, pagetable, va, Tracked(pagetable_perm),
+                Ghost(KillStage::Reclaim { flushed: true }), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
+        }
         cursor = (next.0, next.1, next.2, next.3 + 1);
         proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target); }
         found = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_perm)).next_mapped_4k_from(cursor);
     }
-    proof {
-        assert(krnl.pt_mp.spec_index(pagetable).view().leaves_present()) by { broadcast use spec_va_4k_valid_index_roundtrip; };
-        kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl);
+    proof { assert(krnl.pt_mp.spec_index(pagetable).view().leaves_present()) by { broadcast use spec_va_4k_valid_index_roundtrip; }; }
+    if same {
+        proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
+        let ghost refund_k = *krnl;
+        let ghost refund_lctx = *lctx;
+        let ghost refund_before = steps.view();
+        proof {
+            kill_step_pre_from_k(&refund_k, &refund_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Reclaim { flushed: true }, scope); kill_refund_pre_from_k(&refund_k, target, entry_thread.owning_container);
+        }
+        refund_unmap_4k_quota(krnl, thread_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_perm));
+        proof {
+            vstd::assert_seqs_equal!(krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view(), entry_thread.indirect_free_quota_pending_4k.view());
+            kill_trace_from_refund(&*steps, refund_before, start, pre, kernel_k_to_kernel_u(refund_k), cpu_id, ctx, process_ptr, thread_ptr, target, KillStage::Reclaim { flushed: true },
+                entry_thread.owning_container, scope);
+        }
     }
-    let ghost refund_k = *krnl;
-    let ghost refund_lctx = *lctx;
-    let ghost refund_before = steps.view();
-    proof {
-        kill_step_pre_from_k(&refund_k, &refund_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Reclaim { flushed: true }); kill_refund_pre_from_k(&refund_k, target, entry_thread.owning_container);
-    }
-    refund_unmap_4k_quota(krnl, thread_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_perm));
-    proof {
-        vstd::assert_seqs_equal!(krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view(), entry_thread.indirect_free_quota_pending_4k.view());
-        kill_trace_from_refund(&*steps, refund_before, start, pre, kernel_k_to_kernel_u(refund_k), cpu_id, ctx, process_ptr, thread_ptr, target, KillStage::Reclaim { flushed: true },
-            entry_thread.owning_container);
-        pagetable_perms_wf_at(krnl.pt_mp, pagetable); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target);
-    }
+    proof { pagetable_perms_wf_at(krnl.pt_mp, pagetable); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target); }
 }
 
-/// Clear and unmap every 4K leaf of the target's write-locked IOMMU table, one step per cleared leaf, then refund the
-/// quota of the freed pages to the killer's container chain.
+/// Clear and unmap every 4K leaf of the target's write-locked IOMMU table, one step per cleared leaf. In a process kill
+/// (`same`), whose target shares the killer's container, the quota of the freed pages is refunded to the killer's
+/// container chain at the end; otherwise each freed page is credited to its owner's quota in its own step.
 pub(crate) fn kill_reclaim_iommu_leaves(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
     thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>, Tracked(chain_perms): Tracked<&Map<RwLockProcessPtr, LockPerm>>,
     Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>, Tracked(thread_perm): Tracked<&LockPerm>, pagetable: RwLockPageTableRoot,
     iommu_table: RwLockPageTableRoot, Tracked(pagetable_perm): Tracked<&LockPerm>, Tracked(iommu_perm): Tracked<&LockPerm>, Ghost(kernel_l4_end): Ghost<usize>,
-    Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>,
+    same: bool, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>,
 )
     requires
+        same == (scope is Subtree),
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
         old(steps).snapshot_k() == *old(krnl),
         0 <= start <= old(steps).view().len(),
         kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
-        scope == (KillScope::Subtree { process: process_ptr }),
         kill_reclaim_state(*old(krnl), *old(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, KillStage::Reclaim { flushed: true }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
             Some(iommu_table), *pagetable_perm, Some(*iommu_perm)),
         old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
@@ -523,8 +528,8 @@ pub(crate) fn kill_reclaim_iommu_leaves(
     proof {
         iommu_table_perms_wf_map(krnl.it_mp);
         iommu_table_perms_wf_at(krnl.it_mp, iommu_table); thread_perms_wf_at(krnl.thr_mp, thread_ptr);
+        assert(same ==> krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == entry_thread.owning_container) by { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); };
         assert(entry_thread.container_depth <= MAX_CONTAINER_TREE_DEPTH) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); container_perms_wf_at(krnl.ctn_mp, entry_thread.owning_container); };
-        assert(krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == entry_thread.owning_container) by { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); };
     }
     let mut indirect = [0usize; MAX_CONTAINER_TREE_DEPTH];
     let mut direct = 0usize;
@@ -540,7 +545,6 @@ pub(crate) fn kill_reclaim_iommu_leaves(
             0 <= start <= old(steps).view().len() <= steps.view().len(),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, steps.view()),
             kill_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, ctx),
-            scope == (KillScope::Subtree { process: process_ptr }),
             kill_reclaim_state(*krnl, *lctx, cpu_id, scope, process_ptr, thread_ptr, chain, KillStage::Reclaim { flushed: true }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
                 Some(iommu_table), *pagetable_perm, Some(*iommu_perm)),
             target == chain[chain.len() - 1],
@@ -549,14 +553,16 @@ pub(crate) fn kill_reclaim_iommu_leaves(
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
                 pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && KERNEL_MEM_END_L4INDEX <= l4i && kernel_l4_end <= l4i ==> !krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
             entry_thread.free_quota_pending_clean(),
-            krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == entry_thread.owning_container,
-            krnl.thr_mp.spec_index(thread_ptr).view() == (Thread {
+            same == (scope is Subtree),
+            same ==> krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == entry_thread.owning_container,
+            same ==> krnl.thr_mp.spec_index(thread_ptr).view() == (Thread {
                 direct_free_quota_pending_4k: krnl.thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k,
                 indirect_free_quota_pending_4k: krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k, ..entry_thread
             }),
-            direct == krnl.thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k.view(),
-            forall|d: int| #![trigger indirect[d]] #![trigger krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().spec_index(d)] 0 <= d < entry_thread.container_depth
+            same ==> direct == krnl.thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k.view(),
+            same ==> forall|d: int| #![trigger indirect[d]] #![trigger krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().spec_index(d)] 0 <= d < entry_thread.container_depth
                 ==> indirect[d] == krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().spec_index(d),
+            !same ==> krnl.thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
             krnl.it_mp.spec_index(iommu_table).view().leaves_present(),
             krnl.it_mp.spec_index(iommu_table).view().kernel_l4_end == 0,
             pei_valid(cursor.0),
@@ -589,33 +595,40 @@ pub(crate) fn kill_reclaim_iommu_leaves(
         proof {
             let leaf_post = *krnl;
             let before_u = kernel_k_to_kernel_u(leaf_k);
-            kill_step_pre_from_k(&leaf_k, &leaf_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Reclaim { flushed: true });
+            kill_step_pre_from_k(&leaf_k, &leaf_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Reclaim { flushed: true }, scope);
             kill_reclaim_pre_from_k(&leaf_k, &leaf_lctx, cpu_id, thread_ptr, target, KillStage::Reclaim { flushed: true }, pagetable, Some(iommu_table));
             kernel_iommu_table_4k_present_cleared_implies_u_step(&leaf_k, &leaf_post, iommu_table, iova);
             kill_iommu_leaf_step_from_u(before_u, kernel_k_to_kernel_u(leaf_post), cpu_id, target, iova);
             krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
             kill_trace_push(&*steps, leaf_before, start, pre, before_u, kernel_k_to_kernel_u(leaf_post), cpu_id, ctx);
         }
-        reclaim_unmapped_iommu_4k_page(krnl, iommu_table, next, thread_ptr, cpu_id, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(iommu_perm),
-            Tracked(thread_perm));
+        if same {
+            reclaim_unmapped_iommu_4k_page(krnl, iommu_table, next, thread_ptr, cpu_id, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(iommu_perm),
+                Tracked(thread_perm));
+        } else {
+            kill_reclaim_unmapped_iommu_4k_page_scoped(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, iommu_table, next, Tracked(iommu_perm),
+                Ghost(KillStage::Reclaim { flushed: true }), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
+        }
         cursor = (next.0, next.1, next.2, next.3 + 1);
         proof { iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target); }
         found = krnl.it_mp.borrow_typed(iommu_table, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_perm)).next_mapped_4k_from(cursor);
     }
-    proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
-    let ghost refund_k = *krnl;
-    let ghost refund_lctx = *lctx;
-    let ghost refund_before = steps.view();
-    proof {
-        kill_step_pre_from_k(&refund_k, &refund_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Reclaim { flushed: true }); kill_refund_pre_from_k(&refund_k, target, entry_thread.owning_container);
+    if same {
+        proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
+        let ghost refund_k = *krnl;
+        let ghost refund_lctx = *lctx;
+        let ghost refund_before = steps.view();
+        proof {
+            kill_step_pre_from_k(&refund_k, &refund_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Reclaim { flushed: true }, scope); kill_refund_pre_from_k(&refund_k, target, entry_thread.owning_container);
+        }
+        refund_unmap_4k_quota(krnl, thread_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_perm));
+        proof {
+            assert(krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view() =~= entry_thread.indirect_free_quota_pending_4k.view()) by { thread_perms_wf_at(krnl.thr_mp, thread_ptr); };
+            kill_trace_from_refund(&*steps, refund_before, start, pre, kernel_k_to_kernel_u(refund_k), cpu_id, ctx, process_ptr, thread_ptr, target, KillStage::Reclaim { flushed: true },
+                entry_thread.owning_container, scope);
+        }
     }
-    refund_unmap_4k_quota(krnl, thread_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_perm));
-    proof {
-        assert(krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view() =~= entry_thread.indirect_free_quota_pending_4k.view()) by { thread_perms_wf_at(krnl.thr_mp, thread_ptr); };
-        kill_trace_from_refund(&*steps, refund_before, start, pre, kernel_k_to_kernel_u(refund_k), cpu_id, ctx, process_ptr, thread_ptr, target, KillStage::Reclaim { flushed: true },
-            entry_thread.owning_container);
-        iommu_table_perms_wf_at(krnl.it_mp, iommu_table); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target);
-    }
+    proof { iommu_table_perms_wf_at(krnl.it_mp, iommu_table); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target); }
 }
 
 /// Return the target's quota of every size to its container, one size per step.
@@ -633,7 +646,6 @@ pub(crate) fn kill_reclaim_return_quota(
         old(steps).snapshot_k() == *old(krnl),
         0 <= start <= old(steps).view().len(),
         kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
-        scope == (KillScope::Subtree { process: process_ptr }),
         kill_reclaim_state(*old(krnl), *old(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, KillStage::Reclaim { flushed: true }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
             iommu_table, *pagetable_perm, *iommu_perm),
         old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
@@ -680,7 +692,6 @@ pub(crate) fn kill_reclaim_return_quota_size(
         old(steps).snapshot_k() == *old(krnl),
         0 <= start <= old(steps).view().len(),
         kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
-        scope == (KillScope::Subtree { process: process_ptr }),
         kill_reclaim_state(*old(krnl), *old(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, kill_process_quota_stage_before(size), *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
             iommu_table, *pagetable_perm, *iommu_perm),
         old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
@@ -709,13 +720,8 @@ pub(crate) fn kill_reclaim_return_quota_size(
     proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
     let container_ptr = krnl.prc_mp.borrow_rodata(target).borrow().owning_container;
     proof {
-        assert({
-            &&& krnl.ctn_mp.dom().contains(container_ptr)
-            &&& krnl.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().contains(target)
-            &&& krnl.ctn_mp.spec_index(container_ptr).view_ghost().owned_threads.view().contains(thread_ptr)
-            &&& krnl.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr
-        }) by { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target); container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); };
-        container_process_thread_quota_sums_bounded(&*krnl, container_ptr, target, thread_ptr);
+        container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target);
+        container_process_quota_sums_bounded(&*krnl, container_ptr, target);
         container_perms_wf_at(krnl.ctn_mp, container_ptr);
     }
     match size {
@@ -740,7 +746,7 @@ pub(crate) fn kill_reclaim_return_quota_size(
             }
             proof {
                 assert(kill_quota_eof_transition_framing(locked, *krnl, target, allocator_ptr, size)) by { reveal(kill_quota_eof_transition_framing); };
-                kill_quota_eof(locked, *krnl, target, thread_ptr, allocator_ptr, size);
+                kill_quota_eof(locked, *krnl, target, allocator_ptr, size);
                 assert(krnl.allc_4k_mp.spec_index(allocator_ptr).wf() && krnl.allc_4k_mp.spec_index(allocator_ptr).quota.inv()) by { allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr); };
             }
             krnl.wunlock_allocator_quota_4k(allocator_ptr, Tracked(&mut *lctx), Tracked(quota_perm));
@@ -766,7 +772,7 @@ pub(crate) fn kill_reclaim_return_quota_size(
             }
             proof {
                 assert(kill_quota_eof_transition_framing(locked, *krnl, target, allocator_ptr, size)) by { reveal(kill_quota_eof_transition_framing); };
-                kill_quota_eof(locked, *krnl, target, thread_ptr, allocator_ptr, size);
+                kill_quota_eof(locked, *krnl, target, allocator_ptr, size);
                 assert(krnl.allc_2m_mp.spec_index(allocator_ptr).wf() && krnl.allc_2m_mp.spec_index(allocator_ptr).quota.inv()) by { allocator_perms_wf_at(krnl.allc_2m_mp, allocator_ptr); };
             }
             krnl.wunlock_allocator_quota_2m(allocator_ptr, Tracked(&mut *lctx), Tracked(quota_perm));
@@ -792,22 +798,22 @@ pub(crate) fn kill_reclaim_return_quota_size(
             }
             proof {
                 assert(kill_quota_eof_transition_framing(locked, *krnl, target, allocator_ptr, size)) by { reveal(kill_quota_eof_transition_framing); };
-                kill_quota_eof(locked, *krnl, target, thread_ptr, allocator_ptr, size);
+                kill_quota_eof(locked, *krnl, target, allocator_ptr, size);
                 assert(krnl.allc_1g_mp.spec_index(allocator_ptr).wf() && krnl.allc_1g_mp.spec_index(allocator_ptr).quota.inv()) by { allocator_perms_wf_at(krnl.allc_1g_mp, allocator_ptr); };
             }
             krnl.wunlock_allocator_quota_1g(allocator_ptr, Tracked(&mut *lctx), Tracked(quota_perm));
         }
     }
     let ghost returned_k = *krnl;
-    krnl.set_thread_syscall_progress(thread_ptr, Ghost(kill_progress(target, KillStage::Quota { returned: size })), Tracked(&*lctx), Tracked(thread_perm));
+    krnl.set_thread_syscall_progress(thread_ptr, Ghost(kill_scope_progress(scope, target, KillStage::Quota { returned: size })), Tracked(&*lctx), Tracked(thread_perm));
     proof {
         let pre_u = kernel_k_to_kernel_u(entry_k);
         let post_u = kernel_k_to_kernel_u(*krnl);
         kernel_process_quota_returned_implies_u_step(&entry_k, &returned_k, target, size);
         kernel_thread_syscall_progress_changed_implies_u_step(&returned_k, &*krnl, thread_ptr);
-        kill_step_pre_from_k(&entry_k, &entry_lctx, cpu_id, process_ptr, thread_ptr, target, kill_process_quota_stage_before(size));
+        kill_step_pre_from_k(&entry_k, &entry_lctx, cpu_id, process_ptr, thread_ptr, target, kill_process_quota_stage_before(size), scope);
         kill_reclaim_pre_from_k(&entry_k, &entry_lctx, cpu_id, thread_ptr, target, kill_process_quota_stage_before(size), pagetable, iommu_table);
-        kill_quota_step_from_u(pre_u, kernel_k_to_kernel_u(returned_k), post_u, cpu_id, thread_ptr, target, size);
+        kill_quota_step_from_u(pre_u, kernel_k_to_kernel_u(returned_k), post_u, cpu_id, thread_ptr, target, size, scope);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         kill_trace_push(&*steps, entry_steps, start, pre, pre_u, post_u, cpu_id, ctx);
     }
@@ -828,7 +834,6 @@ pub(crate) fn kill_reclaim_unlock_table(
         old(steps).snapshot_k() == *old(krnl),
         0 <= start <= old(steps).view().len(),
         kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
-        scope == (KillScope::Subtree { process: process_ptr }),
         kill_reclaim_state(*old(krnl), *old(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, KillStage::Quota { returned: PageSize::SZ1g }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
             iommu_table, pagetable_perm, iommu_perm),
         old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
@@ -865,7 +870,7 @@ pub(crate) fn kill_reclaim_unlock_table(
     let ghost unlock_before = steps.view();
     let ghost unlock_k = *krnl;
     let ghost unlock_lctx = *lctx;
-    krnl.set_thread_syscall_progress(thread_ptr, Ghost(kill_progress(target, KillStage::Zombie)), Tracked(&*lctx), Tracked(thread_perm));
+    krnl.set_thread_syscall_progress(thread_ptr, Ghost(kill_scope_progress(scope, target, KillStage::Zombie)), Tracked(&*lctx), Tracked(thread_perm));
     let ghost progressed = *krnl;
     proof {
         process_perms_wf_map(krnl.prc_mp);
@@ -897,12 +902,12 @@ pub(crate) fn kill_reclaim_unlock_table(
     proof {
         let unlocked_k = *krnl;
         let before_u = kernel_k_to_kernel_u(unlock_k);
-        kill_step_pre_from_k(&unlock_k, &unlock_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Quota { returned: PageSize::SZ1g });
+        kill_step_pre_from_k(&unlock_k, &unlock_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Quota { returned: PageSize::SZ1g }, scope);
         kill_reclaim_pre_from_k(&unlock_k, &unlock_lctx, cpu_id, thread_ptr, target, KillStage::Quota { returned: PageSize::SZ1g }, pagetable, iommu_table);
         kill_user_4k_unmapped_pre_from_k(&unlock_k, target);
         if iommu_table is Some { kill_iommu_unmapped_pre_from_k(&unlock_k, target); }
         kernel_process_tables_lock_state_and_progress_changed_implies_u_step(&unlock_k, &unlocked_k, &*lctx, target, pagetable, thread_ptr, false);
-        kill_unlock_table_step_from_u(before_u, kernel_k_to_kernel_u(unlocked_k), cpu_id, thread_ptr, target);
+        kill_unlock_table_step_from_u(before_u, kernel_k_to_kernel_u(unlocked_k), cpu_id, thread_ptr, target, scope);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         kill_trace_push(&*steps, unlock_before, start, pre, before_u, kernel_k_to_kernel_u(unlocked_k), cpu_id, ctx);
     }
@@ -922,7 +927,6 @@ pub(crate) fn kill_reclaim_zombify(
         old(steps).snapshot_k() == *old(krnl),
         0 <= start <= old(steps).view().len(),
         kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
-        scope == (KillScope::Subtree { process: process_ptr }),
         kill_walk_state(*old(krnl), *old(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, None, KillStage::Zombie, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
         0 < chain.len(),
         target == chain[chain.len() - 1],
@@ -958,16 +962,18 @@ pub(crate) fn kill_reclaim_zombify(
         (target_ro.owning_container, target_ro.pcid)
     };
     proof {
-        assert(krnl.ctn_mp.dom().contains(container_ptr) && krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container == container_ptr) by {
-            container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
-        };
+        container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target);
+        if scope is Subtree { process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); }
         container_perms_wf_at(krnl.ctn_mp, container_ptr);
     }
     let pcid_allocator_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().pcid_allocator;
     proof {
-        assert(krnl.pcid_allc_mp.dom().contains(pcid_allocator_ptr) && krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().owning_container.view() == container_ptr) by {
-            container_pcid_allocator_wf_container_at(krnl.ctn_mp, krnl.pcid_allc_mp, container_ptr);
-        };
+        let cpu = krnl.cpu_arr.spec_index(cpu_id).view().view().view();
+        assert({
+            &&& krnl.pcid_allc_mp.dom().contains(pcid_allocator_ptr)
+            &&& krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().owning_container.view() == container_ptr
+            &&& container_ptr == cpu.owning_container || krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().container_depth.view() > cpu.container_depth
+        }) by { container_pcid_allocator_wf_container_at(krnl.ctn_mp, krnl.pcid_allc_mp, container_ptr); };
         assert({
             &&& krnl.prc_mp.spec_index(target).view().pcid == pcid
             &&& pcid_valid(pcid)
@@ -991,14 +997,14 @@ pub(crate) fn kill_reclaim_zombify(
     }
     krnl.wunlock_pcid_allocator(pcid_allocator_ptr, Tracked(&mut *lctx), Tracked(pcid_allocator_perm));
     let ghost zombified_k = *krnl;
-    krnl.set_thread_syscall_progress(thread_ptr, Ghost(kill_progress(target, KillStage::Retire)), Tracked(&*lctx), Tracked(thread_perm));
+    krnl.set_thread_syscall_progress(thread_ptr, Ghost(kill_scope_progress(scope, target, KillStage::Retire)), Tracked(&*lctx), Tracked(thread_perm));
     proof {
         let pre_u = kernel_k_to_kernel_u(entry_k);
         let post_u = kernel_k_to_kernel_u(*krnl);
         kernel_process_zombified_implies_u_step(&entry_k, &zombified_k, target, pcid_allocator_ptr);
         kernel_thread_syscall_progress_changed_implies_u_step(&zombified_k, &*krnl, thread_ptr);
-        kill_step_pre_from_k(&entry_k, &entry_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Zombie); kill_zombify_pre_from_k(&entry_k, target);
-        kill_zombify_step_from_u(pre_u, kernel_k_to_kernel_u(zombified_k), post_u, cpu_id, thread_ptr, target);
+        kill_step_pre_from_k(&entry_k, &entry_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Zombie, scope); kill_zombify_pre_from_k(&entry_k, target);
+        kill_zombify_step_from_u(pre_u, kernel_k_to_kernel_u(zombified_k), post_u, cpu_id, thread_ptr, target, scope);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         kill_trace_push(&*steps, entry_steps, start, pre, pre_u, post_u, cpu_id, ctx);
     }

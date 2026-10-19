@@ -49,6 +49,8 @@ use kernel::implementation::map_4k::unmap_4k_present::clear_4k_mapping_present;
 use kernel::implementation::map_4k::unmap_4k_reclaim_one::reclaim_unmapped_4k_page;
 use kernel::implementation::map_4k::unmap_iommu_4k_present::clear_iommu_4k_mapping_present;
 use kernel::implementation::map_4k::unmap_iommu_4k_reclaim_one::reclaim_unmapped_iommu_4k_page;
+use kernel::implementation::map_4k::unmap_4k_remove::remove_4k_mapping_without_free;
+use kernel::implementation::map_4k::unmap_iommu_4k_remove::remove_iommu_4k_mapping_without_free;
 use kernel::implementation::map_4k::unmap_4k_tlb::{mark_pcid_needflush_and_load, flush_remote_pcid_and_clear, flush_local_pcid_and_clear};
 
 use kernel::implementation::map_4k::unmap_4k_spec::*;

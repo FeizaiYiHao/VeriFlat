@@ -99,7 +99,7 @@ pub open spec fn kill_process_enter_step(old_u: KernelU, new_u: KernelU, cpu_id:
 
 /// Every step after entering runs while the killer holds its cpu, its process, and itself, records a process kill or a
 /// container kill working on a process, and holds the marked target of the kill; inside a container kill it also holds
-/// the target's marked container.
+/// the container the kill records.
 #[verifier::opaque]
 pub open spec fn kill_process_step_pre(u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = u.cpu_array[cpu_id as int];
@@ -119,8 +119,8 @@ pub open spec fn kill_process_step_pre(u: KernelU, cpu_id: CpuId) -> bool {
     &&& u.process_map.dom().contains(kill_target(u, cpu_id))
     &&& target.lock_state is WriteLocked
     &&& target.killed
-    &&& progress is KillContainer ==> u.container_map.dom().contains(target.owning_container)
-    &&& progress is KillContainer ==> u.container_map[target.owning_container].lock_state is WriteLocked && u.container_map[target.owning_container].killed
+    &&& progress is KillContainer ==> u.container_map.dom().contains(progress->KillContainer_container)
+    &&& progress is KillContainer ==> u.container_map[progress->KillContainer_container].lock_state is WriteLocked
 }
 
 /// The kill descends from its target into the target's first child, which it marks and write-locks.

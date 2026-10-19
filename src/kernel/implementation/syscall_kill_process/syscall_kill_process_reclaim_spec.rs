@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::syscall_kill_process_walk::{KillScope, kill_chain_state, kill_scope_containers};
+use super::syscall_kill_process_walk::{KillScope, kill_chain_state};
 
 verus! {
 /// The killer at `stage` on `chain` in `scope`, as in `kill_chain_state`, reclaims the empty live target, the last
@@ -29,7 +29,6 @@ pub open spec fn kill_reclaim_state(
     &&& lctx.page_lock_map().dom().is_empty()
     &&& lctx.pcid_needflush_lock_map().dom().is_empty()
     &&& lctx.cpu_offline_flag_lock_map().dom().is_empty()
-    &&& lctx.container_lock_map().dom() =~= kill_scope_containers(scope, lctx)
     &&& lctx.endpoint_lock_map().dom().is_empty()
     &&& lctx.scheduler_lock_map().dom().is_empty()
     &&& lctx.pcid_allocator_lock_map().dom().is_empty()

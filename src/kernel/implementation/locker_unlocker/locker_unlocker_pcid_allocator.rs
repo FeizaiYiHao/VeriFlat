@@ -64,8 +64,9 @@ impl KernelK {
                     })
             }) || ({
                 let cpu = old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view();
-                &&& killer_held_context(*old(self), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0, Set::empty())
-                &&& old(self).pcid_allc_mp.spec_index(allocator_ptr).view().owning_container.view() == cpu.owning_container
+                let allocator = old(self).pcid_allc_mp.spec_index(allocator_ptr).view();
+                &&& killer_held_context(*old(self), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0, old(lctx).container_lock_map().dom())
+                &&& allocator.owning_container.view() == cpu.owning_container || allocator.container_depth.view() > cpu.container_depth
             }),
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
@@ -88,7 +89,7 @@ impl KernelK {
             pcid_allocator_perms_wf_at(old(self).pcid_allc_mp, allocator_ptr);
             assert(old(lctx).lock_id_acyclic(old(self).pcid_allc_mp.lock_id_by_key(allocator_ptr))) by {
                 let cpu = old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view();
-                if killer_held_context(*old(self), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0, Set::empty()) {
+                if killer_held_context(*old(self), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0, old(lctx).container_lock_map().dom()) {
                     thread_cpu_wf_cpu_at(old(self).thr_mp, old(self).cpu_arr, old(lctx).cpu_id()); process_cpu_wf_at(old(self).prc_mp, old(self).cpu_arr, old(lctx).cpu_id());
                     container_cpu_wf_cpu_at(old(self).ctn_mp, old(self).cpu_set_mp, old(self).cpu_arr, old(lctx).cpu_id());
                     thread_perms_wf_at(old(self).thr_mp, cpu.current_thread->Some_0); process_thread_wf_at(old(self).prc_mp, old(self).thr_mp, cpu.current_thread->Some_0);

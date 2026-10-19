@@ -28,7 +28,6 @@ pub(crate) fn kill_retire_target(
         old(steps).snapshot_k() == *old(krnl),
         0 <= start <= old(steps).view().len(),
         kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
-        scope == (KillScope::Subtree { process: process_ptr }),
         kill_walk_state(*old(krnl), *old(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, None, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *old(chain_perms)),
         0 < chain.len(),
         target == chain[chain.len() - 1],
@@ -36,7 +35,8 @@ pub(crate) fn kill_retire_target(
         old(krnl).prc_mp.spec_index(target).view().children.view().len() == 0,
         old(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
         old(krnl).prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
-        old(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set.view().contains(target),
+        scope is Subtree ==> old(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set.view().contains(target),
+        scope is Subtree || 1 < chain.len(),
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -49,7 +49,7 @@ pub(crate) fn kill_retire_target(
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, process_ptr, thread_ptr, chain.drop_last(), None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm,
             *final(chain_perms)),
         parent == if chain.len() == 1 { process_ptr } else { chain[chain.len() - 2] },
-        final(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set.view() == old(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set.view().remove(target),
+        scope is Subtree ==> final(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set.view() == old(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set.view().remove(target),
 {
     proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
     let (pagetable, iommu_table) = {
@@ -79,7 +79,6 @@ pub(crate) fn kill_retire_hold_tables(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
         old(steps).snapshot_k() == *old(krnl),
-        scope == (KillScope::Subtree { process: process_ptr }),
         kill_walk_state(*old(krnl), *old(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, None, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
         0 < chain.len(),
         target == chain[chain.len() - 1],
@@ -94,7 +93,7 @@ pub(crate) fn kill_retire_hold_tables(
         final(lctx).kernel_view_locking_state() is Acquire,
         final(steps).snapshot_k() == *final(krnl),
         final(steps).view() == old(steps).view(),
-        kill_retire_held_state(*final(krnl), *final(lctx), scope, process_ptr, thread_ptr, target, ret.1.view(), ret.2.view(), ret.3.view()),
+        kill_retire_held_state(*final(krnl), *final(lctx), process_ptr, thread_ptr, target, ret.1.view(), ret.2.view(), ret.3.view()),
         held_locks_order_below(final(krnl), final(lctx), PAGETABLE_PAGE_MAJOR),
         final(lctx).thread_lock_map().dom() =~= set![thread_ptr],
         final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
@@ -109,6 +108,7 @@ pub(crate) fn kill_retire_hold_tables(
         ret.0.view().to_set() == kill_retire_held_pages(*final(krnl), target),
         forall|k: int| #![trigger ret.0.view()[k]] 0 <= k < ret.0.view().len() ==> index_valid(NUM_PAGES, ret.0.view()[k]),
         final(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set == old(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set,
+        scope is Container ==> final(krnl).ctn_mp.spec_index(scope->Container_container) == old(krnl).ctn_mp.spec_index(scope->Container_container),
 {
     proof {
         process_perms_wf_at(krnl.prc_mp, target);
@@ -163,8 +163,7 @@ pub(crate) fn kill_retire_process(
         old(steps).snapshot_k() == *old(krnl),
         0 <= start <= old(steps).view().len(),
         kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
-        scope == (KillScope::Subtree { process: process_ptr }),
-        kill_retire_held_state(*old(krnl), *old(lctx), scope, process_ptr, thread_ptr, target, page_perms, pt_perm, it_perm),
+        kill_retire_held_state(*old(krnl), *old(lctx), process_ptr, thread_ptr, target, page_perms, pt_perm, it_perm),
         held_locks_order_below(old(krnl), old(lctx), PAGETABLE_PAGE_MAJOR),
         old(lctx).thread_lock_map().dom() =~= set![thread_ptr],
         old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
@@ -176,6 +175,7 @@ pub(crate) fn kill_retire_process(
         old(krnl).prc_mp.spec_index(target).view().children.view().len() == 0,
         old(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
         old(krnl).prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
+        scope is Subtree || 1 < chain.len(),
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -188,18 +188,20 @@ pub(crate) fn kill_retire_process(
         kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, process_ptr, thread_ptr, chain.drop_last(), None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm,
             *final(chain_perms)),
         parent == if chain.len() == 1 { process_ptr } else { chain[chain.len() - 2] },
-        final(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set.view() == old(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set.view().remove(target),
+        scope is Subtree ==> final(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set.view() == old(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set.view().remove(target),
 {
     proof {
         process_perms_wf_map(krnl.prc_mp);
         process_perms_wf_at(krnl.prc_mp, target);
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr);
-        assert(krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(process_ptr)) by {
-            let owner = krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container;
-            let tree = krnl.ctn_mp.spec_index(owner).view_ghost().owned_processes.view();
-            let root = krnl.ctn_mp.spec_index(owner).view().root_process;
-            per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, owner); process_subtree_set_wf_at(root, tree, krnl.prc_mp, process_ptr, target);
-        };
+        if scope is Subtree {
+            assert(krnl.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(process_ptr)) by {
+                let owner = krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container;
+                let tree = krnl.ctn_mp.spec_index(owner).view_ghost().owned_processes.view();
+                let root = krnl.ctn_mp.spec_index(owner).view().root_process;
+                per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, owner); process_subtree_set_wf_at(root, tree, krnl.prc_mp, process_ptr, target);
+            };
+        }
     }
     let (pagetable, iommu_table) = {
         let tracked target_perm = chain_perms.tracked_borrow(target);
@@ -231,14 +233,14 @@ pub(crate) fn kill_retire_process(
     kill_retire_commit(krnl, Tracked(&mut *lctx), cpu_id, target, parent, container_ptr, allocator_ptr, pagetable, iommu_table, &pages, Tracked(target_perm), Tracked(parent_perm),
         Tracked(page_lock_perms), Tracked(pt_perm), Tracked(it_perm), Tracked(cache_lock_perm), Tracked(quota_lock_perm), Ghost(base));
     let ghost retired_k = *krnl;
-    krnl.set_thread_syscall_progress(thread_ptr, Ghost(kill_progress(parent, KillStage::Walk)), Tracked(&*lctx), Tracked(thread_perm));
+    krnl.set_thread_syscall_progress(thread_ptr, Ghost(kill_scope_progress(scope, parent, KillStage::Walk)), Tracked(&*lctx), Tracked(thread_perm));
     proof {
         let pre_u = kernel_k_to_kernel_u(base);
         let post_u = kernel_k_to_kernel_u(*krnl);
-        kill_step_pre_from_k(&base, &base_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Retire); kill_retire_pre_from_k(&base, target, parent);
+        kill_step_pre_from_k(&base, &base_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Retire, scope); kill_retire_pre_from_k(&base, target, parent);
         kernel_zombie_process_retired_implies_u_step(&base, &retired_k, target, parent, container_ptr, allocator_ptr);
         kernel_thread_syscall_progress_changed_implies_u_step(&retired_k, &*krnl, thread_ptr);
-        kill_retire_step_from_u(pre_u, kernel_k_to_kernel_u(retired_k), post_u, cpu_id, thread_ptr, target, parent, retired_k.allc_4k_mp.spec_index(allocator_ptr).quota.view().view());
+        kill_retire_step_from_u(pre_u, kernel_k_to_kernel_u(retired_k), post_u, cpu_id, thread_ptr, target, parent, retired_k.allc_4k_mp.spec_index(allocator_ptr).quota.view().view(), scope);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         kill_trace_push(&*steps, base_steps, start, pre, pre_u, post_u, cpu_id, ctx);
     }

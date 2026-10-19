@@ -120,8 +120,9 @@ impl KernelK {
         res
     }
 
-    /// Write-lock a process below the killer's own and mark it for the killer. A process another killer already marked
-    /// is left untouched. On success the held entry moves to the sunk id a marked object reports.
+    /// Write-lock a process below the killer's own and mark it for the killer: a child of a process the killer holds, or
+    /// the root of a container the killer marked and holds. A process another killer already marked is left untouched.
+    /// On success the held entry moves to the sunk id a marked object reports.
     pub fn try_wlock_process_and_mark_kill(&mut self, process_ptr: RwLockProcessPtr, killer_process: RwLockProcessPtr, killer_thread: RwLockThreadPtr, killer_info: KillerInfo, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Option<Tracked<LockPerm>>)
         requires
             old(self).inv(),
@@ -129,14 +130,23 @@ impl KernelK {
             old(self).prc_mp.dom().contains(killer_process),
             !old(lctx).process_lock_map().dom().contains(process_ptr),
             old(lctx).kernel_view_locking_state() is Acquire,
-            killer_held_context(*old(self), *old(lctx), killer_process, killer_thread, Set::empty()),
+            killer_held_context(*old(self), *old(lctx), killer_process, killer_thread, old(lctx).container_lock_map().dom()),
             killer_info.process == killer_process,
-            old(self).prc_mp.spec_index(process_ptr).view_rodata().view().parent is Some,
-            typed_lock_map_contains_mode(old(lctx).process_lock_map(), old(self).prc_mp.spec_index(process_ptr).view_rodata().view().parent->Some_0, TypedLockMode::Write),
             ({
                 let process = old(self).prc_mp.spec_index(process_ptr).view_rodata().view();
                 let killer = old(self).prc_mp.spec_index(killer_process).view_rodata().view();
-                process.container_depth > killer.container_depth || (process.owning_container == killer.owning_container && process.depth > killer.depth)
+                ||| {
+                    &&& process.parent is Some
+                    &&& typed_lock_map_contains_mode(old(lctx).process_lock_map(), process.parent->Some_0, TypedLockMode::Write)
+                    &&& process.container_depth > killer.container_depth || (process.owning_container == killer.owning_container && process.depth > killer.depth)
+                }
+                ||| {
+                    &&& process.parent is None
+                    &&& old(self).ctn_mp.spec_index(process.owning_container).view().root_process == process_ptr
+                    &&& old(self).ctn_mp.spec_index(process.owning_container).killer_info() == Some(killer_info)
+                    &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), process.owning_container, TypedLockMode::Write)
+                    &&& process.container_depth > killer.container_depth
+                }
             }),
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures

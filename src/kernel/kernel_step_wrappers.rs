@@ -19,6 +19,8 @@ pub mod kill;
 pub mod kill_reclaim;
 /// K->U lemmas for the step that retires an empty zombie process during a kill.
 pub mod kill_retire;
+/// K->U lemmas for the steps of killing a container subtree.
+pub mod kill_container;
 /// Generic K->U bindings of projected entries, the stored snapshot, and root-table detaches.
 pub mod bindings;
 /// K->U lemmas for the step that releases an endpoint with its last descriptor.
@@ -31,6 +33,7 @@ pub use killed_thread::*;
 pub use kill::*;
 pub use kill_reclaim::*;
 pub use kill_retire::*;
+pub use kill_container::*;
 pub use bindings::*;
 pub use endpoint_release::*;
 

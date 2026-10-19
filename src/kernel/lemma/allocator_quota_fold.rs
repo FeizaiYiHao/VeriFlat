@@ -387,6 +387,23 @@ pub proof fn lemma_process_effective_quota_2m_fold_change_by_forall(mod_p: RwLoc
     by { lemma_process_effective_quota_2m_fold_change_by(s, pre, post, mod_p, x); };
 }
 
+pub proof fn lemma_process_effective_quota_1g_fold_change_by_forall(mod_p: RwLockProcessPtr, x: int)
+    ensures
+        forall|s: Set<RwLockProcessPtr>, pre: ProcessLockedMap, post: ProcessLockedMap|
+            #![trigger process_effective_quota_1g_fold_sum(s, post), process_effective_quota_1g_fold_sum(s, pre)]
+            (s.contains(mod_p) && process_effective_quota_1g(post.spec_index(mod_p)) == process_effective_quota_1g(pre.spec_index(mod_p)) + x && forall|p: RwLockProcessPtr|
+                #![trigger process_effective_quota_1g(pre.spec_index(p))]
+                s.contains(p) && p != mod_p ==> process_effective_quota_1g(post.spec_index(p)) == process_effective_quota_1g(pre.spec_index(p)))
+            ==> process_effective_quota_1g_fold_sum(s, post) == process_effective_quota_1g_fold_sum(s, pre) + x,
+{
+    assert forall|s: Set<RwLockProcessPtr>, pre: ProcessLockedMap, post: ProcessLockedMap| #![auto]
+        (s.contains(mod_p) && process_effective_quota_1g(post.spec_index(mod_p)) == process_effective_quota_1g(pre.spec_index(mod_p)) + x && forall|p: RwLockProcessPtr| #![auto] s.contains(p) && p != mod_p
+            ==> process_effective_quota_1g(post.spec_index(p)) == process_effective_quota_1g(pre.spec_index(p)))
+    implies
+        process_effective_quota_1g_fold_sum(s, post) == process_effective_quota_1g_fold_sum(s, pre) + x
+    by { lemma_process_effective_quota_1g_fold_change_by(s, pre, post, mod_p, x); };
+}
+
 pub proof fn lemma_thread_effective_quota_4k_fold_sum_eq_forall()
     ensures
         forall|s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap|
@@ -1476,6 +1493,62 @@ pub proof fn container_process_thread_quota_sums_bounded(krnl: &KernelK, contain
             && processes.fold(0int, |sum: int, p: RwLockProcessPtr| sum + process_value(p)) >= process_value(process_ptr)) by { lemma_set_fold_int_sum_ge_member(processes, process_value, process_ptr); };
         assert((|sum: int, t: RwLockThreadPtr| sum + thread_value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_1g(krnl.thr_mp.spec_index(t)))
             && threads.fold(0int, |sum: int, t: RwLockThreadPtr| sum + thread_value(t)) >= thread_value(thread_ptr)) by { lemma_set_fold_int_sum_ge_member(threads, thread_value, thread_ptr); };
+        assert((|sum: int, t: RwLockThreadPtr| sum + direct_value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + krnl.thr_mp.spec_index(t).view().direct_free_quota_pending_1g.view())
+            && threads.fold(0int, |sum: int, t: RwLockThreadPtr| sum + direct_value(t)) >= 0) by { lemma_set_fold_int_sum_nonneg(threads, direct_value); };
+        assert((|sum: int, t: RwLockThreadPtr| sum + indirect_value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + krnl.thr_mp.spec_index(t).view().indirect_free_quota_pending_1g.view().spec_index(depth))
+            && indirect.fold(0int, |sum: int, t: RwLockThreadPtr| sum + indirect_value(t)) >= 0) by { lemma_set_fold_int_sum_nonneg(indirect, indirect_value); };
+        reveal(container_process_allocator_quota_1g_wf);
+    };
+}
+
+/// The quotas of a process and its container's allocators are summands of the container's conservation law, so each
+/// pair fits in a `usize`.
+pub proof fn container_process_quota_sums_bounded(krnl: &KernelK, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr)
+    requires
+        krnl.inv(),
+        krnl.ctn_mp.dom().contains(container_ptr),
+        krnl.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().contains(process_ptr),
+    ensures
+        krnl.allc_4k_mp.spec_index(krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k).quota.view().value + krnl.prc_mp.spec_index(process_ptr).view().quota_4k <= usize::MAX,
+        krnl.allc_2m_mp.spec_index(krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_2m).quota.view().value + krnl.prc_mp.spec_index(process_ptr).view().quota_2m <= usize::MAX,
+        krnl.allc_1g_mp.spec_index(krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_1g).quota.view().value + krnl.prc_mp.spec_index(process_ptr).view().quota_1g <= usize::MAX,
+{
+    let processes = krnl.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view();
+    let threads = krnl.ctn_mp.spec_index(container_ptr).view_ghost().owned_threads.view();
+    let indirect = krnl.ctn_mp.spec_index(container_ptr).view_ghost().owned_indirect_threads.view();
+    let depth = krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().depth as int;
+    reveal(container_thread_wf); reveal(thread_perms_wf);
+    assert(krnl.allc_4k_mp.spec_index(krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k).quota.view().value + krnl.prc_mp.spec_index(process_ptr).view().quota_4k <= usize::MAX) by {
+        let process_value = |p: RwLockProcessPtr| process_effective_quota_4k(krnl.prc_mp.spec_index(p));
+        let thread_value = |t: RwLockThreadPtr| thread_effective_quota_4k(krnl.thr_mp.spec_index(t));
+        assert((|sum: int, p: RwLockProcessPtr| sum + process_value(p)) =~= (|sum: int, p: RwLockProcessPtr| sum + process_effective_quota_4k(krnl.prc_mp.spec_index(p)))
+            && processes.fold(0int, |sum: int, p: RwLockProcessPtr| sum + process_value(p)) >= process_value(process_ptr)) by { lemma_set_fold_int_sum_ge_member(processes, process_value, process_ptr); };
+        assert((|sum: int, t: RwLockThreadPtr| sum + thread_value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_4k(krnl.thr_mp.spec_index(t)))
+            && threads.fold(0int, |sum: int, t: RwLockThreadPtr| sum + thread_value(t)) >= 0) by { lemma_set_fold_int_sum_nonneg(threads, thread_value); };
+        lemma_thread_direct_pending_4k_fold_nonneg(threads, krnl.thr_mp);
+        lemma_thread_indirect_pending_4k_fold_nonneg(indirect, krnl.thr_mp, depth);
+        reveal(container_process_allocator_quota_4k_wf);
+    };
+    assert(krnl.allc_2m_mp.spec_index(krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_2m).quota.view().value + krnl.prc_mp.spec_index(process_ptr).view().quota_2m <= usize::MAX) by {
+        let process_value = |p: RwLockProcessPtr| process_effective_quota_2m(krnl.prc_mp.spec_index(p));
+        let thread_value = |t: RwLockThreadPtr| thread_effective_quota_2m(krnl.thr_mp.spec_index(t));
+        assert((|sum: int, p: RwLockProcessPtr| sum + process_value(p)) =~= (|sum: int, p: RwLockProcessPtr| sum + process_effective_quota_2m(krnl.prc_mp.spec_index(p)))
+            && processes.fold(0int, |sum: int, p: RwLockProcessPtr| sum + process_value(p)) >= process_value(process_ptr)) by { lemma_set_fold_int_sum_ge_member(processes, process_value, process_ptr); };
+        assert((|sum: int, t: RwLockThreadPtr| sum + thread_value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_2m(krnl.thr_mp.spec_index(t)))
+            && threads.fold(0int, |sum: int, t: RwLockThreadPtr| sum + thread_value(t)) >= 0) by { lemma_set_fold_int_sum_nonneg(threads, thread_value); };
+        lemma_thread_direct_pending_2m_fold_nonneg(threads, krnl.thr_mp);
+        lemma_thread_indirect_pending_2m_fold_nonneg(indirect, krnl.thr_mp, depth);
+        reveal(container_process_allocator_quota_2m_wf);
+    };
+    assert(krnl.allc_1g_mp.spec_index(krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_1g).quota.view().value + krnl.prc_mp.spec_index(process_ptr).view().quota_1g <= usize::MAX) by {
+        let process_value = |p: RwLockProcessPtr| process_effective_quota_1g(krnl.prc_mp.spec_index(p));
+        let thread_value = |t: RwLockThreadPtr| thread_effective_quota_1g(krnl.thr_mp.spec_index(t));
+        let direct_value = |t: RwLockThreadPtr| krnl.thr_mp.spec_index(t).view().direct_free_quota_pending_1g.view() as int;
+        let indirect_value = |t: RwLockThreadPtr| krnl.thr_mp.spec_index(t).view().indirect_free_quota_pending_1g.view().spec_index(depth) as int;
+        assert((|sum: int, p: RwLockProcessPtr| sum + process_value(p)) =~= (|sum: int, p: RwLockProcessPtr| sum + process_effective_quota_1g(krnl.prc_mp.spec_index(p)))
+            && processes.fold(0int, |sum: int, p: RwLockProcessPtr| sum + process_value(p)) >= process_value(process_ptr)) by { lemma_set_fold_int_sum_ge_member(processes, process_value, process_ptr); };
+        assert((|sum: int, t: RwLockThreadPtr| sum + thread_value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + thread_effective_quota_1g(krnl.thr_mp.spec_index(t)))
+            && threads.fold(0int, |sum: int, t: RwLockThreadPtr| sum + thread_value(t)) >= 0) by { lemma_set_fold_int_sum_nonneg(threads, thread_value); };
         assert((|sum: int, t: RwLockThreadPtr| sum + direct_value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + krnl.thr_mp.spec_index(t).view().direct_free_quota_pending_1g.view())
             && threads.fold(0int, |sum: int, t: RwLockThreadPtr| sum + direct_value(t)) >= 0) by { lemma_set_fold_int_sum_nonneg(threads, direct_value); };
         assert((|sum: int, t: RwLockThreadPtr| sum + indirect_value(t)) =~= (|sum: int, t: RwLockThreadPtr| sum + krnl.thr_mp.spec_index(t).view().indirect_free_quota_pending_1g.view().spec_index(depth))
