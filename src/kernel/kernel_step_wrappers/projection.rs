@@ -576,31 +576,10 @@ pub proof fn kernel_process_tables_lock_state_and_progress_changed_implies_u_ste
         }
     }
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
-    let a = kernel_k_to_kernel_u(*pre);
-    let b = kernel_k_to_kernel_u(*post);
-    let process_u = a.process_map[process];
-    let state = if lock { LockStateU::WriteLocked } else { LockStateU::Unlocked };
-    let new_process_u = ProcessU {
-        pagetable: Some(PageTableU { lock_state: state, ..process_u.pagetable->Some_0 }),
-        iommu_table: match process_u.iommu_table { Some(t) => Some(PageTableU { lock_state: state, ..t }), None => None },
-        ..process_u
-    };
     kernel_thread_projection_at(pre, thread); kernel_process_projection_at(pre, process);
-    assert_maps_equal!(b.thread_map, a.thread_map.insert(thread, ThreadU { syscall_progress: post.thr_mp.spec_index(thread).view().syscall_progress.view(), ..a.thread_map[thread] }), t => {
-        if pre.thr_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thr_mp.dom().contains(t) { kernel_thread_projection_at(post, t); }
-    });
-    assert_maps_equal!(b.process_map, a.process_map.insert(process, new_process_u), p => {
-        if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }
-        process_pagetable_match_process_at(post.prc_mp, post.pt_mp, p); process_pagetable_match_process_at(post.prc_mp, post.pt_mp, process);
-        process_iommu_table_match_process_at(post.prc_mp, post.it_mp, p); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, process);
-    });
-    assert_seqs_equal!(b.cpu_array == a.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); } });
-    assert_maps_equal!(b.container_map, a.container_map, p => {
-        if pre.ctn_mp.dom().contains(p) { kernel_container_projection_at(pre, p); } if post.ctn_mp.dom().contains(p) { kernel_container_projection_at(post, p); }
-    });
-    assert_maps_equal!(b.endpoint_map, a.endpoint_map, p => {
-        if pre.ep_mp.dom().contains(p) { kernel_endpoint_projection_at(pre, p); } if post.ep_mp.dom().contains(p) { kernel_endpoint_projection_at(post, p); }
-    });
+    kernel_thread_progress_changed_implies_u_thread_map(pre, post, thread);
+    kernel_process_tables_lock_state_changed_implies_u_process_map(pre, post, process, pagetable, lock);
+    kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
 }
 
 pub proof fn kernel_restored_locks_implies_u_eq(pre: &KernelK, post: &KernelK, cpu: CpuId, container: Option<RwLockContainerPtr>, process: Option<RwLockProcessPtr>, thread: Option<RwLockThreadPtr>, endpoint: Option<RwLockEndpointPtr>, table: Option<RwLockPageTableRoot>)
@@ -862,13 +841,11 @@ pub proof fn kernel_cpu_and_page_owner_changed_implies_u_step(before: &KernelK, 
     ensures
         kernel_u_cpu_and_page_owner_changed(kernel_k_to_kernel_u(*before), kernel_k_to_kernel_u(*after), cpu, source, target, page),
 {
-    reveal(kernel_u_cpu_and_page_owner_changed); reveal(kernel_k_to_kernel_u);
-    let pre = kernel_k_to_kernel_u(*before);
-    let post = kernel_k_to_kernel_u(*after);
-    assert_seqs_equal!(post.cpu_array == pre.cpu_array.update(cpu as int, CpuU { lock_state: LockStateU::Unlocked, owning_container: target, ..pre.cpu_array[cpu as int] }));
-    assert_maps_equal!(post.container_map, pre.container_map.insert(source, ContainerU { cpu_set_lock: LockStateU::Unlocked, owned_pages: pre.container_map[source].owned_pages.remove(page), ..pre.container_map[source] })
-        .insert(target, ContainerU { cpu_set_lock: LockStateU::Unlocked, owned_pages: pre.container_map[target].owned_pages.insert(page), ..pre.container_map[target] }),
-        c => { reveal(container_scheduler_wf); reveal(container_cpu_set_wf); });
+    reveal(kernel_u_cpu_and_page_owner_changed);
+    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_cpu_owner_changed_implies_u_cpu_array(before, after, cpu, target);
+    kernel_page_owner_changed_implies_u_container_map(before, after, source, target, page);
+    kernel_process_maps_unchanged_implies_u_process_map(before, after); kernel_thread_map_unchanged_implies_u_thread_map(before, after); kernel_endpoint_map_unchanged_implies_u_endpoint_map(before, after);
 }
 
 pub proof fn kernel_peer_scheduled_and_locks_released_implies_u_step(

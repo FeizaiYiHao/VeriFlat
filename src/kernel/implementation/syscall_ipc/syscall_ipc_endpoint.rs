@@ -3,6 +3,7 @@ use crate::*;
 use super::syscall_ipc_queue::{ipc_dequeue_endpoint_waiter, ipc_move_endpoint_waiter_to_transit, ipc_schedule_endpoint_transit};
 use super::syscall_ipc_transition::ipc_schedule_waiting_peer_and_finish;
 use super::syscall_ipc_endpoint_helpers::ipc_endpoint_copy_and_finish_transit;
+use super::syscall_ipc_endpoint_release::ipc_finish_endpoint_transit_release_and_end_step;
 #[cfg(verus_keep_ghost)]
 use super::syscall_ipc_dispatch::running_thread_not_in_endpoint_queue;
 #[cfg(verus_keep_ghost)]
@@ -571,26 +572,11 @@ pub(super) fn ipc_finish_endpoint_transit(
         ipc_finish_endpoint_transit_eof(*old(krnl), *krnl, current_thread_ptr, peer_thread_ptr, peer_scheduler_ptr, wake_cpu, result);
     }
 
-    krnl.wunlock_thread(peer_thread_ptr, Tracked(&mut *lctx), Tracked(peer_thread_lock_perm));
-    krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(None), Tracked(&*lctx), Tracked(&current_thread_lock_perm));
-    krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
-    krnl.wunlock_scheduler_shard(peer_scheduler_ptr, wake_cpu, Tracked(&mut *lctx), Tracked(peer_scheduler_lock_perm));
-    krnl.wunlock_endpoint(payload_endpoint_ptr, Tracked(&mut *lctx), Tracked(payload_endpoint_lock_perm));
-    krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-    proof {
-        assert(kernel_thread_state_changed(&steps.snapshot_k(), &*krnl, peer_thread_ptr)) by { reveal(kernel_thread_state_changed); };
-        let pre_k = steps.snapshot_k();
-        let descriptor = if result is Success { Some((receiver_thread_ptr, target_endpoint_index)) } else { None };
-        reveal(kernel_cpu_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged);
-        ipc_endpoint_finish_step_pre_from_k(&pre_k, cpu_id, process_ptr, current_thread_ptr, peer_thread_ptr, payload_endpoint_ptr, receiver_thread_ptr, source_endpoint_index,
-            target_endpoint_index, result, wake_cpu);
-        kernel_peer_scheduled_and_locks_released_implies_u_step(&pre_k, &*krnl, cpu_id, current_thread_ptr, peer_thread_ptr, wake_cpu, payload_endpoint_ptr, result, false, descriptor);
-        ipc_endpoint_finish_step_from_u(kernel_k_to_kernel_u(pre_k), kernel_k_to_kernel_u(*krnl), cpu_id, process_ptr, current_thread_ptr, peer_thread_ptr, payload_endpoint_ptr,
-            receiver_thread_ptr, source_endpoint_index, target_endpoint_index, result, descriptor, wake_cpu);
-        let ghost old_state = steps.snapshot_k().thr_mp.spec_index(peer_thread_ptr).view().state;
-        let ghost new_state = krnl.thr_mp.spec_index(peer_thread_ptr).view().state;
-        steps.end_kernel_step_thread_state_changed(&*krnl, &*lctx, peer_thread_ptr, old_state, new_state,);
-    }
+    ipc_finish_endpoint_transit_release_and_end_step(
+        krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, payload_endpoint_ptr, peer_thread_ptr, peer_scheduler_ptr, wake_cpu, result,
+        Ghost(*old(krnl)), Ghost(receiver_thread_ptr), Ghost(target_endpoint_index), Ghost(source_endpoint_index), Tracked(cpu_lock_perm), Tracked(current_thread_lock_perm),
+        Tracked(payload_endpoint_lock_perm), Tracked(peer_thread_lock_perm), Tracked(peer_scheduler_lock_perm),
+    );
     result
 }
 

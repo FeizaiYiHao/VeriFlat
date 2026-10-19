@@ -253,36 +253,10 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             PageEntry { addr: page_map_ptr, perm: PageEntryPerm { present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: false } },
             Tracked(&mut *lctx));
         proof { self.l3_tables.borrow_mut().tracked_insert(page_map_ptr, page_map_perm); self.l3_rev_map = Ghost(self.l3_rev_map.view().insert(page_map_ptr, target_l4i)); }
-        assert(self.wf_l4()) by { reveal(PageTable::wf_l4); };
-        assert(self.wf_l3()) by { reveal(PageTable::wf_l3); };
-        assert(self.wf_l2()) by { reveal(PageTable::wf_l2); };
-        assert(self.wf_l1()) by { reveal(PageTable::wf_l1); };
-        assert(self.disjoint_l4()) by { reveal(PageTable::disjoint_l4); reveal(PageTable::wf_l4); };
-        assert(self.disjoint_l3()) by { reveal(PageTable::disjoint_l3); };
-        assert(self.disjoint_l2()) by { reveal(PageTable::disjoint_l2); };
-        assert(self.wf_mapping_4k()) by {
-            assert(forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L2Index| #![trigger self.spec_resolve_mapping_4k_l1(l4i,l3i,l2i,l1i)] #![trigger old(self).spec_resolve_mapping_4k_l1(l4i,l3i,l2i,l1i)]
-                self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i)
-                ==> old(self).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)) by { reveal(PageTable::wf_l4); };
-            reveal(PageTable::wf_mapping_4k);
-        };
-        assert(self.wf_mapping_2m()) by {
-            assert(forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger self.spec_resolve_mapping_2m_l2(l4i,l3i,l2i)] #![trigger old(self).spec_resolve_mapping_2m_l2(l4i,l3i,l2i)]
-                self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
-                ==> old(self).spec_resolve_mapping_2m_l2(l4i, l3i, l2i) == self.spec_resolve_mapping_2m_l2(l4i,l3i,l2i)) by { reveal(PageTable::wf_l4); };
-            reveal(PageTable::wf_mapping_2m);
-        };
-        assert(self.wf_mapping_1g()) by {
-            assert(forall|l4i: L4Index, l3i: L3Index| #![trigger self.spec_resolve_mapping_1g_l3(l4i,l3i)] #![trigger old(self).spec_resolve_mapping_1g_l3(l4i,l3i)]
-                self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i)
-                ==> old(self).spec_resolve_mapping_1g_l3(l4i, l3i) == self.spec_resolve_mapping_1g_l3(l4i, l3i)) by { reveal(PageTable::wf_l4); };
-            reveal(PageTable::wf_mapping_1g);
-        };
-        assert(self.user_only()) by { reveal(PageTable::user_only); };
-        assert(self.rwx_upper_level_entries()) by { reveal(PageTable::rwx_upper_level_entries); };
-        assert(self.table_pages_wf()) by { reveal(PageTable::table_pages_wf); };
-        assert(self.tables_reachable_wf()) by { reveal(PageTable::tables_reachable_wf); reveal(PageTable::wf_l4); };
-        assert(self.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
+        proof {
+            assert(Self::create_entry_l4_eof_transition_framing(*old(self), *self, target_l4i, page_map_ptr)) by { reveal(PageTable::create_entry_l4_eof_transition_framing); };
+            Self::create_entry_l4_eof(*old(self), *self, target_l4i, page_map_ptr);
+        }
     }
 
     pub fn create_entry_l3(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<PageMap>>, Tracked(lctx): Tracked<&mut LocalContext>)

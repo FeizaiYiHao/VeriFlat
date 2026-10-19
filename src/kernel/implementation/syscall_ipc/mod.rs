@@ -11,6 +11,7 @@ mod syscall_ipc_cpu_eof;
 mod syscall_ipc_endpoint;
 mod syscall_ipc_endpoint_eof;
 mod syscall_ipc_endpoint_helpers;
+mod syscall_ipc_endpoint_release;
 mod syscall_ipc_endpoint_spec;
 mod syscall_ipc_pages;
 mod syscall_ipc_pages_helpers;

@@ -942,7 +942,8 @@ proof fn boot_memory_management_inv_eof_allocator_free_pages(
     ensures
         krnl.allocator_free_pages_wf(),
 {
-    assert(krnl.allocator_free_pages_wf()) by { reveal(allocator_free_page_ptrs_wf); reveal(boot_page_array_ready); };
+    assert(boot_free_4k_pool_wf(page_array, layout, free_4k_pool) && boot_free_2m_pool_wf(page_array, layout, free_2m_pool) && boot_free_1g_pool_wf(page_array, layout, free_1g_pool)) by { reveal(boot_page_array_ready); };
+    assert(krnl.allocator_free_pages_wf()) by { reveal(allocator_free_page_ptrs_wf); };
 }
 
 proof fn boot_memory_management_inv_eof_free_4k(

@@ -27,6 +27,8 @@ pub mod endpoint_release;
 pub mod per_map_projection;
 /// Per-map K->U lemmas of unchanged maps and of the steps that reclaim or retire a process during a kill.
 pub mod kill_per_map_projection;
+/// Per-map K->U lemmas of the cpu-and-page-owner step and the process-table lock-state-and-progress step.
+pub mod owner_and_tables_per_map_projection;
 
 pub use projection::*;
 pub use boundary::*;
@@ -39,6 +41,7 @@ pub use bindings::*;
 pub use endpoint_release::*;
 pub use per_map_projection::*;
 pub use kill_per_map_projection::*;
+pub use owner_and_tables_per_map_projection::*;
 
 verus! {
 /// Each boundary refreshes both stored snapshots after recording its own section.

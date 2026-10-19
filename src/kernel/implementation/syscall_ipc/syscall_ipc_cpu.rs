@@ -20,37 +20,38 @@ verus! {
         Tracked(cpu_lock_perm): Tracked<LockPerm>, Tracked(current_thread_lock_perm): Tracked<LockPerm>, Tracked(endpoint_lock_perm): Tracked<LockPerm>,
         Tracked(peer_thread_lock_perm): Tracked<LockPerm>, Tracked(peer_scheduler_lock_perm): Tracked<LockPerm>,
         Tracked(source_cpu_set_lock_perm): Tracked<LockPerm>, Tracked(target_cpu_set_lock_perm): Tracked<LockPerm>, transfer_cpu_lock_perm: Option<Tracked<LockPerm>>,
+        Ghost(source_container): Ghost<RwLockContainerPtr>, Ghost(target_container): Ghost<RwLockContainerPtr>, Ghost(entry_k): Ghost<KernelK>, Ghost(entry_lctx): Ghost<LocalContext>,
     )
         requires
             old(krnl).inv(),
-            forall|p: RwLockContainerPtr| #![trigger old(krnl).ctn_mp.spec_index(p)] #![trigger old(steps).snapshot_k().ctn_mp.spec_index(p)]
-                old(steps).snapshot_k().ctn_mp.dom().contains(p) && old(krnl).ctn_mp.dom().contains(p) ==> if old(lctx).container_lock_map().dom().contains(p) {
+            forall|p: RwLockContainerPtr| #![trigger entry_k.ctn_mp.spec_index(p)] #![trigger old(steps).snapshot_k().ctn_mp.spec_index(p)]
+                old(steps).snapshot_k().ctn_mp.dom().contains(p) && entry_k.ctn_mp.dom().contains(p) ==> if entry_lctx.container_lock_map().dom().contains(p) {
                     old(steps).snapshot_k().ctn_mp.spec_index(p).locking_thread() is None
-                } else { old(krnl).ctn_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().ctn_mp.spec_index(p).locking_thread() },
-            forall|p: RwLockProcessPtr| #![trigger old(krnl).prc_mp.spec_index(p)] #![trigger old(steps).snapshot_k().prc_mp.spec_index(p)]
-                old(steps).snapshot_k().prc_mp.dom().contains(p) && old(krnl).prc_mp.dom().contains(p) ==> if old(lctx).process_lock_map().dom().contains(p) {
+                } else { entry_k.ctn_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().ctn_mp.spec_index(p).locking_thread() },
+            forall|p: RwLockProcessPtr| #![trigger entry_k.prc_mp.spec_index(p)] #![trigger old(steps).snapshot_k().prc_mp.spec_index(p)]
+                old(steps).snapshot_k().prc_mp.dom().contains(p) && entry_k.prc_mp.dom().contains(p) ==> if entry_lctx.process_lock_map().dom().contains(p) {
                     old(steps).snapshot_k().prc_mp.spec_index(p).locking_thread() is None
-                } else { old(krnl).prc_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().prc_mp.spec_index(p).locking_thread() },
-            forall|p: RwLockThreadPtr| #![trigger old(krnl).thr_mp.spec_index(p)] #![trigger old(steps).snapshot_k().thr_mp.spec_index(p)]
-                old(steps).snapshot_k().thr_mp.dom().contains(p) && old(krnl).thr_mp.dom().contains(p) ==> if old(lctx).thread_lock_map().dom().contains(p) {
+                } else { entry_k.prc_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().prc_mp.spec_index(p).locking_thread() },
+            forall|p: RwLockThreadPtr| #![trigger entry_k.thr_mp.spec_index(p)] #![trigger old(steps).snapshot_k().thr_mp.spec_index(p)]
+                old(steps).snapshot_k().thr_mp.dom().contains(p) && entry_k.thr_mp.dom().contains(p) ==> if entry_lctx.thread_lock_map().dom().contains(p) {
                     old(steps).snapshot_k().thr_mp.spec_index(p).locking_thread() is None
-                } else { old(krnl).thr_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().thr_mp.spec_index(p).locking_thread() },
-            forall|p: RwLockEndpointPtr| #![trigger old(krnl).ep_mp.spec_index(p)] #![trigger old(steps).snapshot_k().ep_mp.spec_index(p)]
-                old(steps).snapshot_k().ep_mp.dom().contains(p) && old(krnl).ep_mp.dom().contains(p) ==> if old(lctx).endpoint_lock_map().dom().contains(p) {
+                } else { entry_k.thr_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().thr_mp.spec_index(p).locking_thread() },
+            forall|p: RwLockEndpointPtr| #![trigger entry_k.ep_mp.spec_index(p)] #![trigger old(steps).snapshot_k().ep_mp.spec_index(p)]
+                old(steps).snapshot_k().ep_mp.dom().contains(p) && entry_k.ep_mp.dom().contains(p) ==> if entry_lctx.endpoint_lock_map().dom().contains(p) {
                     old(steps).snapshot_k().ep_mp.spec_index(p).locking_thread() is None
-                } else { old(krnl).ep_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().ep_mp.spec_index(p).locking_thread() },
-            forall|p: RwLockPageTableRoot| #![trigger old(krnl).pt_mp.spec_index(p)] #![trigger old(steps).snapshot_k().pt_mp.spec_index(p)]
-                old(steps).snapshot_k().pt_mp.dom().contains(p) && old(krnl).pt_mp.dom().contains(p) ==> if old(lctx).pagetable_lock_map().dom().contains(p) {
+                } else { entry_k.ep_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().ep_mp.spec_index(p).locking_thread() },
+            forall|p: RwLockPageTableRoot| #![trigger entry_k.pt_mp.spec_index(p)] #![trigger old(steps).snapshot_k().pt_mp.spec_index(p)]
+                old(steps).snapshot_k().pt_mp.dom().contains(p) && entry_k.pt_mp.dom().contains(p) ==> if entry_lctx.pagetable_lock_map().dom().contains(p) {
                     old(steps).snapshot_k().pt_mp.spec_index(p).locking_thread() is None
-                } else { old(krnl).pt_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().pt_mp.spec_index(p).locking_thread() },
-            forall|p: RwLockPageTableRoot| #![trigger old(krnl).it_mp.spec_index(p)] #![trigger old(steps).snapshot_k().it_mp.spec_index(p)]
-                old(steps).snapshot_k().it_mp.dom().contains(p) && old(krnl).it_mp.dom().contains(p) ==> if old(lctx).iommu_table_lock_map().dom().contains(p) {
+                } else { entry_k.pt_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().pt_mp.spec_index(p).locking_thread() },
+            forall|p: RwLockPageTableRoot| #![trigger entry_k.it_mp.spec_index(p)] #![trigger old(steps).snapshot_k().it_mp.spec_index(p)]
+                old(steps).snapshot_k().it_mp.dom().contains(p) && entry_k.it_mp.dom().contains(p) ==> if entry_lctx.iommu_table_lock_map().dom().contains(p) {
                     old(steps).snapshot_k().it_mp.spec_index(p).locking_thread() is None
-                } else { old(krnl).it_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().it_mp.spec_index(p).locking_thread() },
-            forall|i: CpuId| #![trigger old(krnl).cpu_arr.spec_index(i)] #![trigger old(steps).snapshot_k().cpu_arr.spec_index(i)]
-                index_valid(NUM_CPUS, i) ==> if old(lctx).cpu_lock_map().dom().contains(i) {
+                } else { entry_k.it_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().it_mp.spec_index(p).locking_thread() },
+            forall|i: CpuId| #![trigger entry_k.cpu_arr.spec_index(i)] #![trigger old(steps).snapshot_k().cpu_arr.spec_index(i)]
+                index_valid(NUM_CPUS, i) ==> if entry_lctx.cpu_lock_map().dom().contains(i) {
                     old(steps).snapshot_k().cpu_arr.spec_index(i).value.locking_thread() is None
-                } else { old(krnl).cpu_arr.spec_index(i).value.locking_thread() == old(steps).snapshot_k().cpu_arr.spec_index(i).value.locking_thread() },
+                } else { entry_k.cpu_arr.spec_index(i).value.locking_thread() == old(steps).snapshot_k().cpu_arr.spec_index(i).value.locking_thread() },
             old(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             index_valid(NUM_CPUS, cpu_id),
@@ -130,11 +131,21 @@ verus! {
             old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
             old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
             old(lctx).pcid_needflush_lock_map().dom().is_empty(),
-            old(krnl).cpu_set_mp.dom() == old(steps).snapshot_k().cpu_set_mp.dom(),
-            forall|p: RwLockCpuSetPtr| #![trigger old(krnl).cpu_set_mp.spec_index(p)] #![trigger old(steps).snapshot_k().cpu_set_mp.spec_index(p)]
-                old(steps).snapshot_k().cpu_set_mp.dom().contains(p) ==> if old(lctx).cpu_set_lock_map().dom().contains(p) {
-                    old(steps).snapshot_k().cpu_set_mp.spec_index(p).locking_thread() is None
-                } else { old(krnl).cpu_set_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().cpu_set_mp.spec_index(p).locking_thread() },
+            entry_lctx.container_lock_map().dom().is_empty(),
+            entry_lctx.process_lock_map().dom().is_empty(),
+            entry_lctx.thread_lock_map().dom() =~= set![current_thread_ptr, peer_thread_ptr],
+            entry_lctx.endpoint_lock_map().dom() =~= set![endpoint_ptr],
+            entry_lctx.pagetable_lock_map().dom().is_empty(),
+            entry_lctx.iommu_table_lock_map().dom().is_empty(),
+            entry_lctx.cpu_lock_map().dom() =~= set![cpu_id],
+            entry_k.cpu_set_mp == old(steps).snapshot_k().cpu_set_mp,
+            entry_k.cpu_set_mp.spec_index(source_cpu_set).locking_thread() is None,
+            entry_k.cpu_set_mp.spec_index(target_cpu_set).locking_thread() is None,
+            cpu_transfer is Some ==> entry_k.cpu_arr.spec_index(transfer_cpu_id).value.locking_thread() is None,
+            ipc_cpu_rendezvous_eof_transition_framing(
+                entry_k, *old(krnl), current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set,
+                transfer_cpu_id, cpu_transfer is Some, peer_result, old(lctx).thread_id(),
+            ),
             ({
                 let snap = old(steps).snapshot_k();
                 &&& snap.cpu_set_mp.spec_index(snap.ctn_mp.spec_index(snap.thr_mp.spec_index(current_thread_ptr).view().owning_container).view_rodata().view().cpu_set).locking_thread() is None
@@ -188,6 +199,7 @@ verus! {
         );
         proof {
             assert(kernel_ipc_rendezvous_fields(&steps.snapshot_k(), &*krnl, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer, None)) by { reveal(kernel_ipc_rendezvous_fields); };
+            reveal(ipc_cpu_rendezvous_eof_transition_framing);
             steps.end_kernel_step_ipc_rendezvous(&*krnl, &*lctx, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer, None, payload, true);
             assert({
                 &&& ipc_rendezvous_step_pre(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, endpoint_index, waiting_state, payload)
@@ -918,7 +930,7 @@ verus! {
             peer_scheduler_ptr, wake_cpu, source_cpu_set, target_cpu_set, transfer_cpu_id, Ghost(endpoint_index), Ghost(waiting_state), Ghost(peer_result),
             Ghost(cpu_transfer), Ghost(payload), Tracked(cpu_lock_perm), Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm),
             Tracked(peer_thread_lock_perm), Tracked(peer_scheduler_lock_perm), Tracked(source_cpu_set_lock_perm), Tracked(target_cpu_set_lock_perm),
-            transfer_cpu_lock_perm,
+            transfer_cpu_lock_perm, Ghost(source_container), Ghost(target_container), Ghost(*old(krnl)), Ghost(*old(lctx)),
         );
         caller_result
     }
