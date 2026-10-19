@@ -6,7 +6,7 @@ use super::syscall_kill_process_retire_spec::*;
 verus! {
 /// Retiring the empty zombie `target` keeps the container tree and the container, endpoint, scheduler, cpu-set,
 /// offline-flag, PCID-allocator, and thread relations.
-pub(super) proof fn kill_retire_eof_container_relations(
+pub(crate) proof fn kill_retire_eof_container_relations(
     pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr,
     allocator_ptr: RwLockPageAllocatorPtr,
 )
@@ -57,7 +57,7 @@ pub(super) proof fn kill_retire_eof_container_relations(
 
 /// Retiring the empty zombie `target` keeps the container-cpu relation and the process PCID, cpu, thread, kill-mark,
 /// lock-state, and emptied-thread invariants.
-pub(super) proof fn kill_retire_eof_process_relations(
+pub(crate) proof fn kill_retire_eof_process_relations(
     pre: KernelK, post: KernelK, lctx: LocalContext, cpu_id: CpuId, target: RwLockProcessPtr, parent_ptr: RwLockProcessPtr,
     container_ptr: RwLockContainerPtr, allocator_ptr: RwLockPageAllocatorPtr,
 )
@@ -108,7 +108,7 @@ pub(super) proof fn kill_retire_eof_process_relations(
 
 /// Retiring the empty zombie `target` keeps the IOMMU root-table, PCI-function ownership, IOTLB, and IOMMU-table lock
 /// invariants.
-pub(super) proof fn kill_retire_eof_iommu(
+pub(crate) proof fn kill_retire_eof_iommu(
     pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr,
     allocator_ptr: RwLockPageAllocatorPtr,
 )
@@ -196,7 +196,7 @@ broadcast proof fn kill_retire_eof_tlb_entry(
 }
 
 /// Retiring the empty zombie `target` keeps the cpu dirty-map and TLB invariants.
-pub(super) proof fn kill_retire_eof_tlb(
+pub(crate) proof fn kill_retire_eof_tlb(
     pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr,
     allocator_ptr: RwLockPageAllocatorPtr,
 )

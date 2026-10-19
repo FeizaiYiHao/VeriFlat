@@ -43,7 +43,7 @@ proof fn kill_reassign_eof_process(pre: KernelK, post: KernelK, target: RwLockPr
 }
 
 /// Reassigning the PCI functions of the empty target `target` to the killer's process `owner` keeps the kernel invariant.
-pub(super) proof fn kill_reassign_eof(pre: KernelK, post: KernelK, target: RwLockProcessPtr, owner: RwLockProcessPtr)
+pub(crate) proof fn kill_reassign_eof(pre: KernelK, post: KernelK, target: RwLockProcessPtr, owner: RwLockProcessPtr)
     requires
         pre.inv(),
         kill_reassign_eof_transition_framing(pre, post, target, owner),
@@ -143,7 +143,7 @@ proof fn kill_quota_eof_process(pre: KernelK, post: KernelK, process_ptr: RwLock
 
 /// Returning the target's whole `size` quota to its container's `size` allocator keeps the kernel invariant; the killer's
 /// thread `thread_ptr` of the same container anchors the quota folds.
-pub(super) proof fn kill_quota_eof(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, allocator_ptr: RwLockPageAllocatorPtr, size: PageSize)
+pub(crate) proof fn kill_quota_eof(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, allocator_ptr: RwLockPageAllocatorPtr, size: PageSize)
     requires
         pre.inv(),
         kill_quota_eof_transition_framing(pre, post, process_ptr, allocator_ptr, size),
@@ -193,7 +193,7 @@ proof fn kill_tables_emptied_eof_process(pre: KernelK, post: KernelK, process_pt
 
 /// Marking the write-held reclaimed target `process_ptr`, whose tables map nothing and which owns no thread, as having
 /// emptied its tables keeps the kernel invariant.
-pub(super) proof fn kill_tables_emptied_eof(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr)
+pub(crate) proof fn kill_tables_emptied_eof(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr)
     requires
         pre.inv(),
         kill_tables_emptied_eof_transition_framing(pre, post, process_ptr),
@@ -260,7 +260,7 @@ proof fn kill_zombify_eof_process(pre: KernelK, post: KernelK, process_ptr: RwLo
 
 /// Making the reclaimed target `process_ptr` a zombie while its container's PCID allocator releases its PCID keeps the
 /// kernel invariant.
-pub(super) proof fn kill_zombify_eof(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, pcid_allocator_ptr: RwLockPcidAllocatorPtr)
+pub(crate) proof fn kill_zombify_eof(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, pcid_allocator_ptr: RwLockPcidAllocatorPtr)
     requires
         pre.inv(),
         kill_zombify_eof_transition_framing(pre, post, process_ptr, pcid_allocator_ptr),

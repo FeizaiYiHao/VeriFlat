@@ -3,7 +3,7 @@ use crate::*;
 
 verus! {
 /// Sorts the distinct retired pages into strictly increasing index order, the order in which pages of one lock major are acquired.
-pub(super) fn kill_retire_sort_pages(pages: &ArrayVec<PageIndex, 5>) -> (ret: ArrayVec<PageIndex, 5>)
+pub(crate) fn kill_retire_sort_pages(pages: &ArrayVec<PageIndex, 5>) -> (ret: ArrayVec<PageIndex, 5>)
     requires
         pages.wf(),
         pages.view().no_duplicates(),
@@ -58,7 +58,7 @@ pub(super) fn kill_retire_sort_pages(pages: &ArrayVec<PageIndex, 5>) -> (ret: Ar
 
 /// Write-locks the `Allocated4k` pages `sorted`, all of lock major `major`, in increasing index order from a context whose
 /// held pages all have a lower major and are write-held with `perms`; returns `perms` with the new pages' permissions.
-pub(super) fn wlock_kill_retire_pages(
+pub(crate) fn wlock_kill_retire_pages(
     krnl: &mut KernelK, sorted: &ArrayVec<PageIndex, 5>, Ghost(major): Ghost<LockMajorId>, Tracked(lctx): Tracked<&mut LocalContext>,
     Tracked(perms): Tracked<Map<PageIndex, LockPerm>>,
 ) -> (ret: Tracked<Map<PageIndex, LockPerm>>)
@@ -244,7 +244,7 @@ pub(super) fn wlock_kill_retire_pages(
 }
 
 /// Releases the distinct write-held pages `pages`, in either locking phase.
-pub(super) fn wunlock_kill_retire_pages(krnl: &mut KernelK, pages: &ArrayVec<PageIndex, 5>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(perms): Tracked<Map<PageIndex, LockPerm>>)
+pub(crate) fn wunlock_kill_retire_pages(krnl: &mut KernelK, pages: &ArrayVec<PageIndex, 5>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(perms): Tracked<Map<PageIndex, LockPerm>>)
     requires
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
@@ -367,7 +367,7 @@ pub(super) fn wunlock_kill_retire_pages(krnl: &mut KernelK, pages: &ArrayVec<Pag
 /// Retires the write-held `Allocated4k` pages `pages`, whose kernel objects were removed with their permissions in
 /// `page_perms`, through their free-list nodes into shard `cpu_id` of the 4K allocator `allocator_ptr`, during Release.
 /// The quota is left to the caller.
-pub(super) fn kill_retire_pages_to_cache(
+pub(crate) fn kill_retire_pages_to_cache(
     krnl: &mut KernelK, pages: &ArrayVec<PageIndex, 5>, Tracked(page_perms): Tracked<Map<PageIndex, PagePerm4k>>, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
     Tracked(lctx): Tracked<&mut LocalContext>, Tracked(page_lock_perms): Tracked<&Map<PageIndex, LockPerm>>, Tracked(cache_lock_perm): Tracked<&LockPerm>,
 )

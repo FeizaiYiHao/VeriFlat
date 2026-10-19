@@ -136,7 +136,7 @@ impl KernelK {
                     }
             } || {
                 let cpu = old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view();
-                killer_held_context(*old(self), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0)
+                killer_held_context(*old(self), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0, Set::empty())
             } || killed_thread_reclaim_lock_context(*old(self), *old(lctx)),
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
@@ -159,7 +159,7 @@ impl KernelK {
             assert(old(lctx).lock_id_acyclic(old(self).ep_mp.lock_id_by_key(endpoint_ptr))) by {
                 reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
                 let cpu = old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view();
-                if killer_held_context(*old(self), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0) || killed_thread_reclaim_lock_context(*old(self), *old(lctx)) { thread_cpu_wf_cpu_at(old(self).thr_mp, old(self).cpu_arr, old(lctx).cpu_id()); }
+                if killer_held_context(*old(self), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0, Set::empty()) || killed_thread_reclaim_lock_context(*old(self), *old(lctx)) { thread_cpu_wf_cpu_at(old(self).thr_mp, old(self).cpu_arr, old(lctx).cpu_id()); }
             };
             assert(!old(self).ep_mp.spec_index(endpoint_ptr).locked_by_thread(old(lctx).thread_id())) by {
                 if old(self).ep_mp.spec_index(endpoint_ptr).locked_by_thread(old(lctx).thread_id()) {

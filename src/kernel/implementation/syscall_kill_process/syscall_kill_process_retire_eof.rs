@@ -13,7 +13,7 @@ use super::syscall_kill_process_retire_pages::kill_retire_pages_held_and_owned;
 
 verus! {
 /// The retired zombie, its tables, and its pages returned to its container's 4K allocator keep the kernel invariant.
-pub(super) proof fn kill_retire_eof(
+pub(crate) proof fn kill_retire_eof(
     pre: KernelK, post: KernelK, lctx: LocalContext, cpu_id: CpuId, target: RwLockProcessPtr, parent_ptr: RwLockProcessPtr,
     container_ptr: RwLockContainerPtr, allocator_ptr: RwLockPageAllocatorPtr,
 )

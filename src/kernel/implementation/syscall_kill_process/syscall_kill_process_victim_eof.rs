@@ -95,7 +95,7 @@ proof fn kill_leave_process_eof_process(pre: KernelK, post: KernelK, process_ptr
 }
 
 /// The thread that left its marked process, which absorbed its quota, keeps the kernel invariant.
-pub(super) proof fn kill_leave_process_eof(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, victim_ptr: RwLockThreadPtr)
+pub(crate) proof fn kill_leave_process_eof(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, victim_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
         kill_leave_process_eof_transition_framing(pre, post, process_ptr, victim_ptr),
@@ -168,7 +168,7 @@ proof fn kill_victim_killed_eof_memory(pre: KernelK, post: KernelK)
 }
 
 /// The killed thread taken off its scheduler shard keeps the kernel invariant.
-pub(super) proof fn kill_dequeue_scheduled_eof(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, scheduler_ptr: RwLockSchedulerPtr, shard: CpuId)
+pub(crate) proof fn kill_dequeue_scheduled_eof(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, scheduler_ptr: RwLockSchedulerPtr, shard: CpuId)
     requires
         pre.inv(),
         kill_dequeue_scheduled_eof_transition_framing(pre, post, victim_ptr, scheduler_ptr, shard),
@@ -214,7 +214,7 @@ pub(super) proof fn kill_dequeue_scheduled_eof(pre: KernelK, post: KernelK, vict
 }
 
 /// The killed thread taken out of its endpoint's queue keeps the kernel invariant.
-pub(super) proof fn kill_dequeue_endpoint_eof(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr)
+pub(crate) proof fn kill_dequeue_endpoint_eof(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr)
     requires
         pre.inv(),
         kill_dequeue_endpoint_eof_transition_framing(pre, post, victim_ptr, endpoint_ptr),
@@ -282,7 +282,7 @@ proof fn kill_evict_eof_cpu_relations(pre: KernelK, post: KernelK, victim_ptr: R
 }
 
 /// The killed thread evicted from its remote cpu, which went idle on the default page table, keeps the kernel invariant.
-pub(super) proof fn kill_evict_eof(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, remote: CpuId, default_cr3: PageTableRoot)
+pub(crate) proof fn kill_evict_eof(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, remote: CpuId, default_cr3: PageTableRoot)
     requires
         pre.inv(),
         kill_evict_eof_transition_framing(pre, post, victim_ptr, remote, default_cr3),

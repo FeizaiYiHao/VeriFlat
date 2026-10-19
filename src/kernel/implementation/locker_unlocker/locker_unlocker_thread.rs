@@ -163,7 +163,7 @@ impl KernelK {
                             }
                     },
                 }
-            } || killer_any_thread_lock_context(*old(self), *old(lctx), thread_ptr)
+            } || killer_any_thread_lock_context(*old(self), *old(lctx), thread_ptr, Set::empty())
                 || (old(self).thr_mp.spec_index(thread_ptr).view().state.is_reply_waiting() && killed_thread_reclaim_lock_context(*old(self), *old(lctx))),
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
@@ -196,7 +196,7 @@ impl KernelK {
             thread_perms_wf_map(old(self).thr_mp);
             thread_perms_wf_at(old(self).thr_mp, thread_ptr);
             let target_thread = old(self).thr_mp.spec_index(thread_ptr).view();
-            if old(self).thr_mp.spec_index(thread_ptr).being_killed() {} else if killer_any_thread_lock_context(*old(self), *old(lctx), thread_ptr) {
+            if old(self).thr_mp.spec_index(thread_ptr).being_killed() {} else if killer_any_thread_lock_context(*old(self), *old(lctx), thread_ptr, Set::empty()) {
                 assert(old(lctx).lock_id_acyclic(old(self).thr_mp.lock_id_by_key(thread_ptr))) by {
                     let cpu_id = old(lctx).cpu_id();
                     let cpu = old(self).cpu_arr.spec_index(cpu_id).view().view().view();

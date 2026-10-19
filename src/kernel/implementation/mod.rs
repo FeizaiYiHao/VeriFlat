@@ -11,6 +11,8 @@ pub mod syscall_thread_exit;
 #[cfg(not(feature = "split-crates"))]
 pub mod syscall_kill_process;
 #[cfg(not(feature = "split-crates"))]
+pub mod syscall_kill_container;
+#[cfg(not(feature = "split-crates"))]
 pub mod syscall_new_process;
 #[cfg(not(feature = "split-crates"))]
 pub mod syscall_new_container;

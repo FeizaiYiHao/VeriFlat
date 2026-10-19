@@ -378,16 +378,19 @@ verus! {
         &&& k.allc_1g_mp.typed_global_pool_lock_map_aligned(lctx.allocator_global_pool_1g_lock_map(), lctx.thread_id())
     }
 
-    /// Locks a killer holds between steps: its running CPU, process and thread, plus the objects it marked.
-    pub open spec fn killer_held_context(k: KernelK, lctx: LocalContext, killer_process: RwLockProcessPtr, killer_thread: RwLockThreadPtr) -> bool {
-        &&& killer_held_context_except_tables(k, lctx, killer_process, killer_thread)
+    /// Locks a killer holds between steps: its running CPU, process and thread, the containers `containers`, plus the
+    /// objects it marked.
+    pub open spec fn killer_held_context(k: KernelK, lctx: LocalContext, killer_process: RwLockProcessPtr, killer_thread: RwLockThreadPtr, containers: Set<RwLockContainerPtr>) -> bool {
+        &&& killer_held_context_except_tables(k, lctx, killer_process, killer_thread, containers)
         &&& lctx.page_lock_map().dom().is_empty()
         &&& lctx.pagetable_lock_map().dom().is_empty()
         &&& lctx.iommu_table_lock_map().dom().is_empty()
     }
 
     /// `killer_held_context` without its empty page, page-table, and IOMMU-table lock maps.
-    pub open spec fn killer_held_context_except_tables(k: KernelK, lctx: LocalContext, killer_process: RwLockProcessPtr, killer_thread: RwLockThreadPtr) -> bool {
+    pub open spec fn killer_held_context_except_tables(
+        k: KernelK, lctx: LocalContext, killer_process: RwLockProcessPtr, killer_thread: RwLockThreadPtr, containers: Set<RwLockContainerPtr>,
+    ) -> bool {
         let cpu_id = lctx.cpu_id();
         let cpu = k.cpu_arr.spec_index(cpu_id).view().view().view();
         &&& index_valid(NUM_CPUS, cpu_id)
@@ -402,7 +405,7 @@ verus! {
         &&& forall|t: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(t)] lctx.thread_lock_map().dom().contains(t) && t != killer_thread ==> k.thr_mp.spec_index(t).being_killed()
         &&& lctx.pcid_needflush_lock_map().dom().is_empty()
         &&& lctx.cpu_offline_flag_lock_map().dom().is_empty()
-        &&& lctx.container_lock_map().dom().is_empty()
+        &&& lctx.container_lock_map().dom() =~= containers
         &&& lctx.endpoint_lock_map().dom().is_empty()
         &&& lctx.scheduler_lock_map().dom().is_empty()
         &&& lctx.pcid_allocator_lock_map().dom().is_empty()
@@ -419,15 +422,14 @@ verus! {
         &&& lctx.allocator_global_pool_1g_lock_map().dom().is_empty()
     }
 
-    /// A killer holding only its own thread among threads may lock any thread of a deeper process of its container,
-    /// whatever its state.
-    pub open spec fn killer_any_thread_lock_context(k: KernelK, lctx: LocalContext, thread_ptr: RwLockThreadPtr) -> bool {
+    /// A killer holding only its own thread among threads and the containers `containers` may lock any thread of a
+    /// deeper container or of a deeper process of its container, whatever its state.
+    pub open spec fn killer_any_thread_lock_context(k: KernelK, lctx: LocalContext, thread_ptr: RwLockThreadPtr, containers: Set<RwLockContainerPtr>) -> bool {
         let cpu = k.cpu_arr.spec_index(lctx.cpu_id()).view().view().view();
         let thread = k.thr_mp.spec_index(thread_ptr).view();
-        &&& killer_held_context(k, lctx, cpu.current_process->Some_0, cpu.current_thread->Some_0)
+        &&& killer_held_context(k, lctx, cpu.current_process->Some_0, cpu.current_thread->Some_0, containers)
         &&& lctx.thread_lock_map().dom() =~= set![cpu.current_thread->Some_0]
-        &&& thread.container_depth == cpu.container_depth
-        &&& thread.process_depth > cpu.process_depth
+        &&& thread.container_depth > cpu.container_depth || (thread.container_depth == cpu.container_depth && thread.process_depth > cpu.process_depth)
     }
 
     /// Locks a thread holds while it reclaims killed threads: its running cpu, any containers and processes, its running

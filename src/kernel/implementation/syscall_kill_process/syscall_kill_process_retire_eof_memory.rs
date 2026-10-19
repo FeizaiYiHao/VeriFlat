@@ -415,7 +415,7 @@ proof fn kill_retire_eof_quota(
 
 /// Retiring the empty zombie `target` and returning its pages to shard `cpu_id` of its container's 4K allocator keeps the
 /// subsystem and memory-management invariants.
-pub(super) proof fn kill_retire_eof_memory(
+pub(crate) proof fn kill_retire_eof_memory(
     pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr,
     allocator_ptr: RwLockPageAllocatorPtr,
 )

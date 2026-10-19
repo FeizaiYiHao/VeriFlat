@@ -6,7 +6,7 @@ use super::syscall_kill_process_retire_spec::*;
 verus! {
 /// Dropping the retired zombie leaf keeps its container's process tree well formed, every container's process set
 /// consistent with the process map, and the root container's root process.
-pub(super) proof fn kill_retire_eof_tree(
+pub(crate) proof fn kill_retire_eof_tree(
     pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr,
     allocator_ptr: RwLockPageAllocatorPtr,
 )
@@ -46,7 +46,7 @@ pub(super) proof fn kill_retire_eof_tree(
 
 /// Retiring the childless non-root `target` of `parent_ptr` from a tree whose processes keep their tree fields,
 /// except the parent's child list and the ancestors' subtree sets, keeps the remaining tree well formed.
-pub(super) proof fn kill_retire_eof_process_tree_wf(
+pub(crate) proof fn kill_retire_eof_process_tree_wf(
     pre: KernelK, post: KernelK, root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, parent_ptr: RwLockProcessPtr, target: RwLockProcessPtr,
 )
     requires
@@ -201,7 +201,7 @@ proof fn kill_retire_eof_target_no_descendant(pre: KernelK, root_process: RwLock
 
 /// Parent-link part of `kill_retire_eof_process_tree_wf`: the remaining tree keeps its root, parent/child links,
 /// child-list nodes, and parent depths.
-pub(super) proof fn kill_retire_eof_process_tree_parent_links_wf(
+pub(crate) proof fn kill_retire_eof_process_tree_parent_links_wf(
     pre: KernelK, post: KernelK, root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, parent_ptr: RwLockProcessPtr, target: RwLockProcessPtr,
 )
     requires
@@ -250,7 +250,7 @@ pub(super) proof fn kill_retire_eof_process_tree_parent_links_wf(
 
 /// Container-level form of `kill_retire_eof_process_tree_wf`: `container_ptr`, the owner of the retired leaf
 /// `target`, drops it from its ghost process set and every other container entry is unchanged.
-pub(super) proof fn kill_retire_eof_per_container_process_tree_wf(
+pub(crate) proof fn kill_retire_eof_per_container_process_tree_wf(
     pre: KernelK, post: KernelK, container_ptr: RwLockContainerPtr, parent_ptr: RwLockProcessPtr, target: RwLockProcessPtr,
 )
     requires
@@ -309,7 +309,7 @@ proof fn kill_retire_eof_target_uppers_in_tree(pre: KernelK, root_process: RwLoc
 
 /// Dropping the retired leaf `target` from both the process map and its owning container `container_ptr` keeps the
 /// container-process ownership invariant; the container keeps the leaf's parent, so its process set stays non-empty.
-pub(super) proof fn kill_retire_eof_container_process_wf(
+pub(crate) proof fn kill_retire_eof_container_process_wf(
     pre: KernelK, post: KernelK, container_ptr: RwLockContainerPtr, parent_ptr: RwLockProcessPtr, target: RwLockProcessPtr,
 )
     requires

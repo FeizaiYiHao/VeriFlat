@@ -8,7 +8,7 @@ use super::syscall_kill_process_victim_eof::*;
 verus! {
 /// The write-held thread `victim_ptr`, waiting for a reply or killed, leaves the write-held marked process `process_ptr`,
 /// which absorbs its quota and hands back its process node; a thread waiting for a reply becomes a dangling thread.
-pub(super) fn kill_leave_process(
+pub(crate) fn kill_leave_process(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&LocalContext>, process_ptr: RwLockProcessPtr, victim_ptr: RwLockThreadPtr, Tracked(process_lock_perm): Tracked<&LockPerm>,
     Tracked(victim_lock_perm): Tracked<&LockPerm>,
 )
@@ -71,7 +71,7 @@ pub(super) fn kill_leave_process(
 
 /// Take the write-held marked thread `victim_ptr` off the scheduler shard it is queued on and kill it, write-locking and
 /// releasing the shard.
-pub(super) fn kill_dequeue_scheduled_victim(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, victim_ptr: RwLockThreadPtr, Tracked(victim_lock_perm): Tracked<&LockPerm>)
+pub(crate) fn kill_dequeue_scheduled_victim(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, victim_ptr: RwLockThreadPtr, Tracked(victim_lock_perm): Tracked<&LockPerm>)
     requires
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
@@ -156,14 +156,14 @@ pub(super) fn kill_dequeue_scheduled_victim(krnl: &mut KernelK, Tracked(lctx): T
 
 /// Take the write-held marked thread `victim_ptr` out of the queue of the endpoint it waits on and kill it,
 /// write-locking and releasing the endpoint.
-pub(super) fn kill_dequeue_endpoint_victim(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, victim_ptr: RwLockThreadPtr, Tracked(victim_lock_perm): Tracked<&LockPerm>)
+pub(crate) fn kill_dequeue_endpoint_victim(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, victim_ptr: RwLockThreadPtr, Tracked(victim_lock_perm): Tracked<&LockPerm>)
     requires
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
         ({
             let cpu = old(krnl).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view();
-            killer_held_context(*old(krnl), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0)
+            killer_held_context(*old(krnl), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0, Set::empty())
         }),
         old(krnl).thr_mp.dom().contains(victim_ptr),
         old(krnl).thr_mp.spec_index(victim_ptr).being_killed(),
@@ -234,14 +234,14 @@ pub(super) fn kill_dequeue_endpoint_victim(krnl: &mut KernelK, Tracked(lctx): Tr
 /// Evict the write-held marked thread `victim_ptr` from the remote cpu it runs on and kill it: the cpu, write-locked,
 /// marked with `killer_info` for the eviction and released here, loads the default page table with the default PCID and
 /// goes idle.
-pub(super) fn kill_evict_running_victim(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, victim_ptr: RwLockThreadPtr, killer_info: KillerInfo, Tracked(victim_lock_perm): Tracked<&LockPerm>)
+pub(crate) fn kill_evict_running_victim(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, victim_ptr: RwLockThreadPtr, killer_info: KillerInfo, Tracked(victim_lock_perm): Tracked<&LockPerm>)
     requires
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
         ({
             let cpu = old(krnl).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view();
-            &&& killer_held_context(*old(krnl), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0)
+            &&& killer_held_context(*old(krnl), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0, Set::empty())
             &&& old(krnl).thr_mp.spec_index(victim_ptr).view().container_depth == cpu.container_depth
             &&& old(krnl).thr_mp.spec_index(victim_ptr).view().process_depth > cpu.process_depth
         }),

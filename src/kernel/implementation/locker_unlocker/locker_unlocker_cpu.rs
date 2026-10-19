@@ -15,7 +15,7 @@ impl KernelK {
             !old(lctx).cpu_lock_map().dom().contains(cpu_id),
             old(lctx).no_locks_held() || old(lctx).lock_id_acyclic(old(self).cpu_arr.lock_id_by_index(cpu_id)) || {
                 let cpu = old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view();
-                &&& killer_held_context(*old(self), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0)
+                &&& killer_held_context(*old(self), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0, Set::empty())
                 &&& old(self).cpu_arr.spec_index(cpu_id).view().view().view().state is Running
                 &&& old(self).cpu_arr.spec_index(cpu_id).view().view().view().container_depth == cpu.container_depth
                 &&& old(self).cpu_arr.spec_index(cpu_id).view().view().view().process_depth > cpu.process_depth
@@ -51,7 +51,7 @@ impl KernelK {
             assert(old(lctx).lock_id_acyclic(old(self).cpu_arr.lock_id_by_index(cpu_id))) by {
                 reveal(LocalContext::lock_id_acyclic);
                 let cpu = old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view();
-                if killer_held_context(*old(self), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0) {
+                if killer_held_context(*old(self), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0, Set::empty()) {
                     thread_cpu_wf_cpu_at(old(self).thr_mp, old(self).cpu_arr, old(lctx).cpu_id()); thread_cpu_wf_cpu_at(old(self).thr_mp, old(self).cpu_arr, cpu_id);
                     process_cpu_wf_at(old(self).prc_mp, old(self).cpu_arr, old(lctx).cpu_id()); container_cpu_wf_cpu_at(old(self).ctn_mp, old(self).cpu_set_mp, old(self).cpu_arr, old(lctx).cpu_id());
                     thread_perms_wf_at(old(self).thr_mp, cpu.current_thread->Some_0); process_thread_wf_at(old(self).prc_mp, old(self).thr_mp, cpu.current_thread->Some_0);

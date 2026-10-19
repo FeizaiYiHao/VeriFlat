@@ -1,11 +1,13 @@
 use vstd::prelude::*;
 use crate::*;
 use super::syscall_kill_process_spec::*;
+#[cfg(verus_keep_ghost)]
+use super::super::syscall_kill_container::syscall_kill_container_spec::kill_container_partial_trace;
 
 verus! {
 /// The killer on `cpu_id` holds its cpu, its process `process_ptr`, and itself `thread_ptr`, and its progress records a
 /// kill of the marked, write-locked `target` at `stage`.
-pub(super) proof fn kill_step_pre_from_u(u: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, stage: KillStage)
+pub(crate) proof fn kill_step_pre_from_u(u: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, stage: KillStage)
     requires
         index_valid(NUM_CPUS, cpu_id),
         u.cpu_array[cpu_id as int].lock_state is WriteLocked,
@@ -28,7 +30,7 @@ pub(super) proof fn kill_step_pre_from_u(u: KernelU, cpu_id: CpuId, process_ptr:
 
 /// The killer on `cpu_id` write-holding its cpu, its process `process_ptr`, itself `thread_ptr`, and the marked `target`,
 /// with its progress recording the kill of `target` at `stage`, satisfies the kill's step precondition on `krnl`.
-pub(super) proof fn kill_step_pre_from_k(
+pub(crate) proof fn kill_step_pre_from_k(
     krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, stage: KillStage,
 )
     requires
@@ -58,7 +60,7 @@ pub(super) proof fn kill_step_pre_from_k(
 }
 
 /// A cpu that is not running or is marked by a killer makes the kill return CpuIdle.
-pub(super) proof fn kill_idle_pre_from_k(krnl: &KernelK, cpu_id: CpuId, child_index: usize)
+pub(crate) proof fn kill_idle_pre_from_k(krnl: &KernelK, cpu_id: CpuId, child_index: usize)
     requires
         index_valid(NUM_CPUS, cpu_id),
         !(krnl.cpu_arr.spec_index(cpu_id).view().view().view().state is Running && !krnl.cpu_arr.spec_index(cpu_id).view().being_killed()),
@@ -67,7 +69,7 @@ pub(super) proof fn kill_idle_pre_from_k(krnl: &KernelK, cpu_id: CpuId, child_in
 
 /// On a running unmarked cpu that runs `thread_ptr` of `process_ptr`, a marked process or thread, a child index past the
 /// children, and a marked child each reject the kill.
-pub(super) proof fn kill_result_pre_from_k(krnl: &KernelK, cpu_id: CpuId, child_index: usize, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr)
+pub(crate) proof fn kill_result_pre_from_k(krnl: &KernelK, cpu_id: CpuId, child_index: usize, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr)
     requires
         index_valid(NUM_CPUS, cpu_id),
         krnl.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
@@ -95,7 +97,7 @@ pub(super) proof fn kill_result_pre_from_k(krnl: &KernelK, cpu_id: CpuId, child_
 
 /// The unlocked running unmarked cpu, process, and thread with no syscall in progress, whose live child at `child_index`
 /// is `child_ptr`, are so on the projection, where the kill succeeds.
-pub(super) proof fn kill_enter_pre_from_k(krnl: &KernelK, cpu_id: CpuId, child_index: usize, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, child_ptr: RwLockProcessPtr)
+pub(crate) proof fn kill_enter_pre_from_k(krnl: &KernelK, cpu_id: CpuId, child_index: usize, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, child_ptr: RwLockProcessPtr)
     requires
         index_valid(NUM_CPUS, cpu_id),
         ({
@@ -150,7 +152,7 @@ pub(super) proof fn kill_enter_pre_from_k(krnl: &KernelK, cpu_id: CpuId, child_i
 { kernel_cpu_thread_projection_at(krnl, cpu_id, process_ptr, thread_ptr, None); kernel_thread_projection_at(krnl, thread_ptr); kernel_process_projection_at(krnl, process_ptr); kernel_process_projection_at(krnl, child_ptr); }
 
 /// The first child `child_ptr` of the target on `krnl` is its first child on the projection.
-pub(super) proof fn kill_mark_child_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
+pub(crate) proof fn kill_mark_child_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
     requires
         krnl.prc_mp.dom().contains(target),
         krnl.prc_mp.dom().contains(child_ptr),
@@ -163,7 +165,7 @@ pub(super) proof fn kill_mark_child_pre_from_k(krnl: &KernelK, target: RwLockPro
 { kernel_process_projection_at(krnl, target); kernel_process_projection_at(krnl, child_ptr); }
 
 /// The unlocked first thread `victim_ptr` of the childless target on `krnl`, waiting for a reply, is so on the projection.
-pub(super) proof fn kill_dangling_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr, victim_ptr: RwLockThreadPtr)
+pub(crate) proof fn kill_dangling_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr, victim_ptr: RwLockThreadPtr)
     requires
         krnl.prc_mp.dom().contains(target),
         krnl.thr_mp.dom().contains(victim_ptr),
@@ -185,7 +187,7 @@ pub(super) proof fn kill_dangling_pre_from_k(krnl: &KernelK, target: RwLockProce
 { kernel_process_projection_at(krnl, target); kernel_thread_projection_at(krnl, victim_ptr); }
 
 /// The first thread `victim_ptr` of the childless target on `krnl`, not waiting for a reply, is so on the projection.
-pub(super) proof fn kill_mark_thread_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr, victim_ptr: RwLockThreadPtr)
+pub(crate) proof fn kill_mark_thread_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr, victim_ptr: RwLockThreadPtr)
     requires
         krnl.prc_mp.dom().contains(target),
         krnl.thr_mp.dom().contains(victim_ptr),
@@ -207,7 +209,7 @@ pub(super) proof fn kill_mark_thread_pre_from_k(krnl: &KernelK, target: RwLockPr
 /// The marked victim `victim_ptr` that the killer on `cpu_id` write-holds with its cpu and the target, recorded by the
 /// kill, in state `state`, owned by `container_ptr`, and waiting on `endpoint`, is the kill's write-locked marked victim
 /// on the projection.
-pub(super) proof fn kill_victim_pre_from_k(
+pub(crate) proof fn kill_victim_pre_from_k(
     krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, target: RwLockProcessPtr, victim_ptr: RwLockThreadPtr, state: ThreadState, container_ptr: RwLockContainerPtr,
     endpoint: Option<RwLockEndpointPtr>,
 )
@@ -231,7 +233,7 @@ pub(super) proof fn kill_victim_pre_from_k(
 
 /// The killer's write-held cpu, process, and thread, with its progress walking its own process, are so on the
 /// projection.
-pub(super) proof fn kill_finish_pre_from_k(krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr)
+pub(crate) proof fn kill_finish_pre_from_k(krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr)
     requires
         typed_lock_maps_aligned(krnl, lctx),
         index_valid(NUM_CPUS, cpu_id),
@@ -256,7 +258,7 @@ pub(super) proof fn kill_finish_pre_from_k(krnl: &KernelK, lctx: &LocalContext, 
 { kernel_write_held_context_projection(krnl, lctx, cpu_id, process_ptr, thread_ptr, None); kernel_cpu_projection_at(krnl, cpu_id); }
 
 /// The target without children or threads on `krnl` has none on the projection.
-pub(super) proof fn kill_reassign_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr)
+pub(crate) proof fn kill_reassign_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr)
     requires
         krnl.prc_mp.dom().contains(target),
         krnl.prc_mp.spec_index(target).view().children.view().len() == 0,
@@ -267,7 +269,7 @@ pub(super) proof fn kill_reassign_pre_from_k(krnl: &KernelK, target: RwLockProce
 { kernel_process_projection_at(krnl, target); }
 
 /// The empty live target owning no PCI function on `krnl` is so on the projection, with a page table.
-pub(super) proof fn kill_lock_table_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr)
+pub(crate) proof fn kill_lock_table_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr)
     requires
         krnl.prc_mp.dom().contains(target),
         krnl.prc_mp.spec_index(target).view().children.view().len() == 0,
@@ -286,7 +288,7 @@ pub(super) proof fn kill_lock_table_pre_from_k(krnl: &KernelK, target: RwLockPro
 { kernel_process_projection_at(krnl, target); }
 
 /// The empty zombie target owning no PCI function on `krnl` is so on the projection.
-pub(super) proof fn kill_zombie_retire_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr)
+pub(crate) proof fn kill_zombie_retire_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr)
     requires
         krnl.prc_mp.dom().contains(target),
         krnl.prc_mp.spec_index(target).view().children.view().len() == 0,
@@ -304,7 +306,7 @@ pub(super) proof fn kill_zombie_retire_pre_from_k(krnl: &KernelK, target: RwLock
 { kernel_process_projection_at(krnl, target); }
 
 /// The empty zombie target owning no PCI function, a child of `parent_ptr`, on `krnl` is so on the projection.
-pub(super) proof fn kill_retire_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr, parent_ptr: RwLockProcessPtr)
+pub(crate) proof fn kill_retire_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr, parent_ptr: RwLockProcessPtr)
     requires
         krnl.prc_mp.dom().contains(target),
         krnl.prc_mp.spec_index(target).view().children.view().len() == 0,
@@ -324,7 +326,7 @@ pub(super) proof fn kill_retire_pre_from_k(krnl: &KernelK, target: RwLockProcess
 { kernel_process_projection_at(krnl, target); }
 
 /// The live target on `krnl` is live on the projection.
-pub(super) proof fn kill_zombify_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr)
+pub(crate) proof fn kill_zombify_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr)
     requires
         krnl.prc_mp.dom().contains(target),
         !krnl.prc_mp.spec_index(target).view().zombie,
@@ -333,7 +335,7 @@ pub(super) proof fn kill_zombify_pre_from_k(krnl: &KernelK, target: RwLockProces
 
 /// The live target's page table `pagetable` and IOMMU table `iommu_table`, write-held by the killer `thread_ptr` on
 /// `cpu_id` that reclaims the target at `stage`, are write-locked on the projection, which shows the target's PCID.
-pub(super) proof fn kill_reclaim_pre_from_k(
+pub(crate) proof fn kill_reclaim_pre_from_k(
     krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, stage: KillStage, pagetable: RwLockPageTableRoot,
     iommu_table: Option<RwLockPageTableRoot>,
 )
@@ -361,7 +363,7 @@ pub(super) proof fn kill_reclaim_pre_from_k(
 }
 
 /// A user VA `va` at or above the kernel L4 end of a page table on `krnl` is at or above the projection's kernel L4 end.
-pub(super) proof fn kill_leaf_pre_from_k(krnl: &KernelK, pagetable: RwLockPageTableRoot, va: VAddr)
+pub(crate) proof fn kill_leaf_pre_from_k(krnl: &KernelK, pagetable: RwLockPageTableRoot, va: VAddr)
     requires
         krnl.inv(),
         krnl.pt_mp.dom().contains(pagetable),
@@ -371,7 +373,7 @@ pub(super) proof fn kill_leaf_pre_from_k(krnl: &KernelK, pagetable: RwLockPageTa
 
 /// With no present user 4K leaf at or above the kernel L4 end of the live target's page table on `krnl`, the target's
 /// projected page table has no user 4K mapping.
-pub(super) proof fn kill_user_4k_unmapped_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr)
+pub(crate) proof fn kill_user_4k_unmapped_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr)
     requires
         krnl.inv(),
         krnl.prc_mp.dom().contains(target),
@@ -389,7 +391,7 @@ pub(super) proof fn kill_user_4k_unmapped_pre_from_k(krnl: &KernelK, target: RwL
 { kernel_pagetable_user_4k_unmapped_projection_at(krnl, target); }
 
 /// With no 4K leaf in the live target's IOMMU table on `krnl`, its projected IOMMU table has no 4K mapping.
-pub(super) proof fn kill_iommu_unmapped_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr)
+pub(crate) proof fn kill_iommu_unmapped_pre_from_k(krnl: &KernelK, target: RwLockProcessPtr)
     requires
         krnl.inv(),
         krnl.prc_mp.dom().contains(target),
@@ -405,7 +407,7 @@ pub(super) proof fn kill_iommu_unmapped_pre_from_k(krnl: &KernelK, target: RwLoc
 { kernel_iommu_table_4k_unmapped_projection_at(krnl, target); }
 
 /// The killer's cpu, owned by `container_ptr` on `krnl`, is owned by it on the projection.
-pub(super) proof fn kill_refund_pre_from_k(krnl: &KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr)
+pub(crate) proof fn kill_refund_pre_from_k(krnl: &KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr)
     requires
         index_valid(NUM_CPUS, cpu_id),
         krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container == container_ptr,
@@ -415,7 +417,7 @@ pub(super) proof fn kill_refund_pre_from_k(krnl: &KernelK, cpu_id: CpuId, contai
 
 /// Write-locking the cpu, the process, and the thread, marking and write-locking the live child at `child_index`, and
 /// recording the walk of that child is the enter step on `pre`/`post`.
-pub(super) proof fn kill_enter_step_from_u(
+pub(crate) proof fn kill_enter_step_from_u(
     pre: KernelU, locked: KernelU, marked: KernelU, post: KernelU, cpu_id: CpuId, child_index: usize, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
     child_ptr: RwLockProcessPtr,
 )
@@ -461,7 +463,7 @@ pub(super) proof fn kill_enter_step_from_u(
 }
 
 /// Marking and write-locking the first child `child_ptr` of the target and recording its walk is a middle step.
-pub(super) proof fn kill_mark_child_step_from_u(pre: KernelU, marked: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
+pub(crate) proof fn kill_mark_child_step_from_u(pre: KernelU, marked: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
@@ -477,7 +479,7 @@ pub(super) proof fn kill_mark_child_step_from_u(pre: KernelU, marked: KernelU, p
 
 /// The first thread `victim_ptr` of the childless target, waiting for a reply and unlocked, leaving the target as a dangling thread
 /// is a middle step.
-pub(super) proof fn kill_dangling_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, target: RwLockProcessPtr, victim_ptr: RwLockThreadPtr)
+pub(crate) proof fn kill_dangling_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, target: RwLockProcessPtr, victim_ptr: RwLockThreadPtr)
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_target(pre, cpu_id) == target,
@@ -502,7 +504,7 @@ pub(super) proof fn kill_dangling_step_from_u(pre: KernelU, post: KernelU, cpu_i
 
 /// Marking and write-locking the first thread `victim_ptr` of the childless target, not waiting for a reply, and
 /// recording it is a middle step.
-pub(super) proof fn kill_mark_thread_step_from_u(
+pub(crate) proof fn kill_mark_thread_step_from_u(
     pre: KernelU, marked: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, victim_ptr: RwLockThreadPtr,
 )
     requires
@@ -525,7 +527,7 @@ pub(super) proof fn kill_mark_thread_step_from_u(
 { reveal(kill_process_mark_thread_step); }
 
 /// The recorded victim leaving shard `shard` of its container's scheduler and becoming killed is a middle step.
-pub(super) proof fn kill_dequeue_scheduled_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, victim_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, shard: CpuId)
+pub(crate) proof fn kill_dequeue_scheduled_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, victim_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, shard: CpuId)
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_process_victim_step_pre(pre, cpu_id),
@@ -547,7 +549,7 @@ pub(super) proof fn kill_dequeue_scheduled_step_from_u(pre: KernelU, post: Kerne
 { reveal(kill_process_dequeue_scheduled_step); }
 
 /// The recorded victim leaving the queue of the endpoint `endpoint_ptr` it waits on and becoming killed is a middle step.
-pub(super) proof fn kill_dequeue_endpoint_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, victim_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr)
+pub(crate) proof fn kill_dequeue_endpoint_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, victim_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr)
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_process_victim_step_pre(pre, cpu_id),
@@ -564,7 +566,7 @@ pub(super) proof fn kill_dequeue_endpoint_step_from_u(pre: KernelU, post: Kernel
 { reveal(kill_process_dequeue_endpoint_step); }
 
 /// Evicting the recorded victim from the remote cpu `remote` it runs on is a middle step.
-pub(super) proof fn kill_evict_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, victim_ptr: RwLockThreadPtr, remote: CpuId)
+pub(crate) proof fn kill_evict_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, victim_ptr: RwLockThreadPtr, remote: CpuId)
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_process_victim_step_pre(pre, cpu_id),
@@ -582,7 +584,7 @@ pub(super) proof fn kill_evict_step_from_u(pre: KernelU, post: KernelU, cpu_id: 
 
 /// The killed recorded victim leaving the target, which absorbs its quota, and the kill walking the target again is a
 /// middle step.
-pub(super) proof fn kill_unlink_step_from_u(
+pub(crate) proof fn kill_unlink_step_from_u(
     pre: KernelU, left: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, victim_ptr: RwLockThreadPtr,
 )
     requires
@@ -608,7 +610,7 @@ pub(super) proof fn kill_unlink_step_from_u(
 
 /// Clearing the progress of the killer, which walks its own process again, and unlocking it, its process, and its cpu is
 /// the finish step on `pre`/`post`.
-pub(super) proof fn kill_finish_step_from_u(pre: KernelU, cleared: KernelU, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr)
+pub(crate) proof fn kill_finish_step_from_u(pre: KernelU, cleared: KernelU, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr)
     requires
         index_valid(NUM_CPUS, cpu_id),
         pre.cpu_array[cpu_id as int].lock_state is WriteLocked,
@@ -636,7 +638,7 @@ pub(super) proof fn kill_finish_step_from_u(pre: KernelU, cleared: KernelU, post
 
 /// Handing every PCI function of the empty target to the killer's process `process_ptr`, detached and with their IOTLB
 /// domains emptied, is a middle step.
-pub(super) proof fn kill_reassign_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, target: RwLockProcessPtr)
+pub(crate) proof fn kill_reassign_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, target: RwLockProcessPtr)
     requires
         kill_process_step_pre(pre, cpu_id),
         pre.cpu_array[cpu_id as int].current_process == Some(process_ptr),
@@ -661,7 +663,7 @@ pub(super) proof fn kill_reassign_step_from_u(pre: KernelU, post: KernelU, cpu_i
 
 /// Write-locking the page table and IOMMU table of the empty live target owning no PCI function, and recording that
 /// nothing is flushed yet, is a middle step.
-pub(super) proof fn kill_lock_table_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr)
+pub(crate) proof fn kill_lock_table_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr)
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
@@ -685,7 +687,7 @@ pub(super) proof fn kill_lock_table_step_from_u(pre: KernelU, post: KernelU, cpu
 { reveal(kill_process_lock_table_step); }
 
 /// Clearing the user 4K leaf `va` of the target's write-locked page table before the flush is a middle step.
-pub(super) proof fn kill_leaf_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, va: VAddr)
+pub(crate) proof fn kill_leaf_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, va: VAddr)
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
@@ -713,7 +715,7 @@ pub(super) proof fn kill_leaf_step_from_u(pre: KernelU, post: KernelU, cpu_id: C
 }
 
 /// Recording the flush of the target's PCID is a middle step.
-pub(super) proof fn kill_flushed_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr)
+pub(crate) proof fn kill_flushed_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr)
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
@@ -727,7 +729,7 @@ pub(super) proof fn kill_flushed_step_from_u(pre: KernelU, post: KernelU, cpu_id
 { reveal(kill_process_flushed_step); }
 
 /// Clearing the 4K leaf `iova` of the target's write-locked IOMMU table after the flush is a middle step.
-pub(super) proof fn kill_iommu_leaf_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, target: RwLockProcessPtr, iova: VAddr)
+pub(crate) proof fn kill_iommu_leaf_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, target: RwLockProcessPtr, iova: VAddr)
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_target(pre, cpu_id) == target,
@@ -751,7 +753,7 @@ pub(super) proof fn kill_iommu_leaf_step_from_u(pre: KernelU, post: KernelU, cpu
 }
 
 /// Returning the target's whole `size` quota to its container and recording the return is a middle step.
-pub(super) proof fn kill_quota_step_from_u(pre: KernelU, returned: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, size: PageSize)
+pub(crate) proof fn kill_quota_step_from_u(pre: KernelU, returned: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, size: PageSize)
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
@@ -783,7 +785,7 @@ pub(super) proof fn kill_quota_step_from_u(pre: KernelU, returned: KernelU, post
 { reveal(kill_process_quota_step); }
 
 /// Unlocking the target's reclaimed page table and IOMMU table once every quota size is returned is a middle step.
-pub(super) proof fn kill_unlock_table_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr)
+pub(crate) proof fn kill_unlock_table_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr)
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
@@ -805,7 +807,7 @@ pub(super) proof fn kill_unlock_table_step_from_u(pre: KernelU, post: KernelU, c
 
 /// Making the reclaimed target a zombie that releases its PCID to its container, and starting to retire it, is a middle
 /// step.
-pub(super) proof fn kill_zombify_step_from_u(pre: KernelU, zombified: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr)
+pub(crate) proof fn kill_zombify_step_from_u(pre: KernelU, zombified: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr)
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
@@ -830,7 +832,7 @@ pub(super) proof fn kill_zombify_step_from_u(pre: KernelU, zombified: KernelU, p
 { reveal(kill_process_zombify_step); }
 
 /// An empty zombie target owning no PCI function going straight to retiring is a middle step.
-pub(super) proof fn kill_zombie_retire_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr)
+pub(crate) proof fn kill_zombie_retire_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr)
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_killer(pre, cpu_id) == thread_ptr,
@@ -848,17 +850,17 @@ pub(super) proof fn kill_zombie_retire_step_from_u(pre: KernelU, post: KernelU, 
 { reveal(kill_process_zombie_retire_step); }
 
 /// The one step pushed since `before` is the partial trace after entering.
-pub(super) proof fn kill_trace_enter_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, child_index: usize)
+pub(crate) proof fn kill_trace_enter_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, child_index: usize)
     requires
         steps.view() == before.push(KernelStep { old_u: pre, new_u: post }),
         kill_process_enter_step_pre(pre, cpu_id, child_index),
         kill_process_enter_step(pre, post, cpu_id, child_index),
-    ensures kill_process_partial_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, cpu_id, child_index),
-{ reveal(kill_process_partial_trace); }
+    ensures kill_partial_trace(steps.view().subrange(before.len() as int, steps.view().len() as int), pre, cpu_id, KillTraceCtx::Process { child_index }),
+{ reveal(kill_partial_trace); reveal(kill_process_partial_trace); }
 
 /// Retiring the empty zombie target, which raises its container's 4K quota to `quota`, and walking its parent again is a
 /// middle step.
-pub(super) proof fn kill_retire_step_from_u(
+pub(crate) proof fn kill_retire_step_from_u(
     pre: KernelU, retired: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, parent_ptr: RwLockProcessPtr, quota: usize,
 )
     requires
@@ -895,27 +897,27 @@ pub(super) proof fn kill_retire_step_from_u(
 { reveal(kill_process_retire_step); }
 
 /// A middle step pushed after the partial trace that starts at `start` extends it.
-pub(super) proof fn kill_trace_push(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, step_pre: KernelU, step_post: KernelU, cpu_id: CpuId, child_index: usize)
+pub(crate) proof fn kill_trace_push(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, step_pre: KernelU, step_post: KernelU, cpu_id: CpuId, ctx: KillTraceCtx)
     requires
         0 <= start <= before.len(),
-        kill_process_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id, child_index),
+        kill_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id, ctx),
         steps.view() == before.push(KernelStep { old_u: step_pre, new_u: step_post }),
         kill_process_middle_step(KernelStep { old_u: step_pre, new_u: step_post }, cpu_id),
-    ensures kill_process_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, child_index),
+    ensures kill_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, ctx),
 {
-    reveal(kill_process_partial_trace);
+    reveal(kill_partial_trace); reveal(kill_process_partial_trace); reveal(kill_container_partial_trace);
     assert(steps.view().subrange(start, steps.view().len() as int) =~= before.subrange(start, before.len() as int).push(KernelStep { old_u: step_pre, new_u: step_post }));
 }
 
 /// Steps reclaiming killed threads, recorded after the partial trace that starts at `start` while the killer's cpu, the
 /// killer, and the lock modes and kill marks of its held processes keep their projection at `entry`, extend it.
-pub(super) proof fn kill_trace_from_killed_thread_reclaim(
-    steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, entry: KernelU, cpu_id: CpuId, child_index: usize, process_ptr: RwLockProcessPtr,
+pub(crate) proof fn kill_trace_from_killed_thread_reclaim(
+    steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, entry: KernelU, cpu_id: CpuId, ctx: KillTraceCtx, process_ptr: RwLockProcessPtr,
     target: RwLockProcessPtr,
 )
     requires
         0 <= start <= before.len(),
-        kill_process_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id, child_index),
+        kill_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id, ctx),
         kernel_steps_prefix_unchanged(before, steps.view()),
         kill_process_step_pre(entry, cpu_id),
         entry.cpu_array[cpu_id as int].current_process == Some(process_ptr),
@@ -933,28 +935,28 @@ pub(super) proof fn kill_trace_from_killed_thread_reclaim(
             &&& old_u.process_map[target].lock_state == entry.process_map[target].lock_state
             &&& old_u.process_map[target].killed == entry.process_map[target].killed
         },
-    ensures kill_process_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, child_index),
+    ensures kill_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, ctx),
 {
-    reveal(kill_process_partial_trace); reveal(kill_process_step_pre); reveal(kernel_steps_prefix_unchanged);
+    reveal(kill_partial_trace); reveal(kill_process_partial_trace); reveal(kill_container_partial_trace); reveal(kill_process_step_pre); reveal(kernel_steps_prefix_unchanged);
     assert(steps.view().subrange(start, steps.view().len() as int) =~= before.subrange(start, before.len() as int) + steps.view().subrange(before.len() as int, steps.view().len() as int));
 }
 
 /// A flush step of the target's PCID `pcid`, recorded after the partial trace that starts at `start` once every user 4K
 /// leaf of the target is cleared, extends it.
-pub(super) proof fn kill_trace_push_tlb_flush(
-    steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, step_pre: KernelU, step_post: KernelU, cpu_id: CpuId, child_index: usize, pcid: Pcid,
+pub(crate) proof fn kill_trace_push_tlb_flush(
+    steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, step_pre: KernelU, step_post: KernelU, cpu_id: CpuId, ctx: KillTraceCtx, pcid: Pcid,
 )
     requires
         0 <= start <= before.len(),
-        kill_process_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id, child_index),
+        kill_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id, ctx),
         steps.view() == record_user_view_change(before, step_pre, step_post),
         forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> kernel_u_cpu_tlb_cleared(steps.view()[j].old_u, steps.view()[j].new_u, pcid),
         kill_process_step_pre(step_pre, cpu_id),
         kill_process_flush_step_pre(step_pre, cpu_id),
         step_pre.process_map[kill_target(step_pre, cpu_id)].pcid == pcid,
-    ensures kill_process_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, child_index),
+    ensures kill_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, ctx),
 {
-    reveal(kill_process_partial_trace);
+    reveal(kill_partial_trace); reveal(kill_process_partial_trace); reveal(kill_container_partial_trace);
     if step_pre == step_post { assert(steps.view().subrange(start, steps.view().len() as int) =~= before.subrange(start, before.len() as int)); }
     else {
         assert(steps.view()[before.len() as int] == KernelStep { old_u: step_pre, new_u: step_post });
@@ -965,13 +967,13 @@ pub(super) proof fn kill_trace_push_tlb_flush(
 /// Refund steps, recorded after the partial trace that starts at `start` while the killer's cpu and the lock modes and
 /// kill marks of the killer's process and the target keep their projection at `entry` and the killer keeps its lock
 /// mode and its progress at `stage`, each growing the 4K quota of the killer's container `container_ptr`, extend it.
-pub(super) proof fn kill_trace_from_refund(
-    steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, entry: KernelU, cpu_id: CpuId, child_index: usize, process_ptr: RwLockProcessPtr,
+pub(crate) proof fn kill_trace_from_refund(
+    steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, entry: KernelU, cpu_id: CpuId, ctx: KillTraceCtx, process_ptr: RwLockProcessPtr,
     thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, stage: KillStage, container_ptr: RwLockContainerPtr,
 )
     requires
         0 <= start <= before.len() <= steps.view().len(),
-        kill_process_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id, child_index),
+        kill_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id, ctx),
         forall|j: int| #![trigger steps.view()[j]] 0 <= j < before.len() ==> steps.view()[j] == before[j],
         kill_process_step_pre(entry, cpu_id),
         entry.cpu_array[cpu_id as int].current_process == Some(process_ptr),
@@ -991,28 +993,28 @@ pub(super) proof fn kill_trace_from_refund(
             &&& old_u.process_map[target].lock_state == entry.process_map[target].lock_state
             &&& old_u.process_map[target].killed == entry.process_map[target].killed
         },
-    ensures kill_process_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, child_index),
+    ensures kill_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, ctx),
 {
-    reveal(kill_process_partial_trace); reveal(kill_process_step_pre);
+    reveal(kill_partial_trace); reveal(kill_process_partial_trace); reveal(kill_container_partial_trace); reveal(kill_process_step_pre);
     assert(steps.view().subrange(start, steps.view().len() as int) =~= before.subrange(start, before.len() as int) + steps.view().subrange(before.len() as int, steps.view().len() as int));
 }
 
 /// The finish step pushed after the partial trace that starts at `start` completes the trace of a kill.
-pub(super) proof fn kill_trace_finish_step(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, finish_pre: KernelU, post: KernelU, cpu_id: CpuId, child_index: usize)
+pub(crate) proof fn kill_trace_finish_step(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, finish_pre: KernelU, post: KernelU, cpu_id: CpuId, child_index: usize)
     requires
         0 <= start <= before.len(),
-        kill_process_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id, child_index),
+        kill_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id, KillTraceCtx::Process { child_index }),
         steps.view() == before.push(KernelStep { old_u: finish_pre, new_u: post }),
         kill_process_finish_step_pre(finish_pre, cpu_id),
         kill_process_finish_step(finish_pre, post, cpu_id),
     ensures kill_process_syscall_trace(steps.view().subrange(start, steps.view().len() as int), pre, post, cpu_id, child_index, true),
 {
-    reveal(kill_process_partial_trace); reveal(kill_process_syscall_trace);
+    reveal(kill_partial_trace); reveal(kill_process_partial_trace); reveal(kill_process_syscall_trace);
     assert(steps.view().subrange(start, steps.view().len() as int) =~= before.subrange(start, before.len() as int).push(KernelStep { old_u: finish_pre, new_u: post }));
 }
 
 /// A rejected call records no step.
-pub(super) proof fn kill_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, child_index: usize)
+pub(crate) proof fn kill_trace_stutter(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, child_index: usize)
     requires trace.len() == 0,
     ensures kill_process_syscall_trace(trace, pre, pre, cpu_id, child_index, false),
 { reveal(kill_process_syscall_trace); }

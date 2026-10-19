@@ -14,11 +14,11 @@ verus! {
 /// Retire the empty zombie target, which owns no PCI function, and walk its parent again: write-hold its process page, its
 /// tables' object pages, and its tables, unlink their structure pages, then retire the process with its tables and their
 /// root pages.
-pub(super) fn kill_retire_target(
+pub(crate) fn kill_retire_target(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
     thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>, Tracked(chain_perms): Tracked<&mut Map<RwLockProcessPtr, LockPerm>>,
     Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>, Tracked(thread_perm): Tracked<&LockPerm>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>,
-    Ghost(child_index): Ghost<usize>,
+    Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>,
 ) -> (parent: RwLockProcessPtr)
     requires
         old(krnl).inv(),
@@ -26,8 +26,9 @@ pub(super) fn kill_retire_target(
         old(lctx).kernel_view_locking_state() is Acquire,
         old(steps).snapshot_k() == *old(krnl),
         0 <= start <= old(steps).view().len(),
-        kill_process_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, child_index),
-        kill_walk_state(*old(krnl), *old(lctx), cpu_id, process_ptr, thread_ptr, chain, None, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *old(chain_perms)),
+        kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
+        scope == (KillScope::Subtree { process: process_ptr }),
+        kill_walk_state(*old(krnl), *old(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, None, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *old(chain_perms)),
         0 < chain.len(),
         target == chain[chain.len() - 1],
         old(krnl).prc_mp.spec_index(target).view().zombie,
@@ -43,8 +44,8 @@ pub(super) fn kill_retire_target(
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
-        kill_process_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, child_index),
-        kill_walk_state(*final(krnl), *final(lctx), cpu_id, process_ptr, thread_ptr, chain.drop_last(), None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm,
+        kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, process_ptr, thread_ptr, chain.drop_last(), None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm,
             *final(chain_perms)),
         parent == if chain.len() == 1 { process_ptr } else { chain[chain.len() - 2] },
         final(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set.view() == old(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set.view().remove(target),
@@ -56,28 +57,29 @@ pub(super) fn kill_retire_target(
         (process.pagetable, process.iommu_table)
     };
     let (_, Tracked(page_perms), Tracked(pt_perm), Tracked(it_perm)) = kill_retire_hold_tables(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr,
-        thread_ptr, target, Ghost(chain), Tracked(&*chain_perms), Tracked(cpu_perm), Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table);
+        thread_ptr, target, Ghost(chain), Tracked(&*chain_perms), Tracked(cpu_perm), Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Ghost(scope));
     kill_retire_structure_pages(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, Ghost(chain), Tracked(&*chain_perms), Tracked(cpu_perm),
-        Tracked(process_perm), Tracked(thread_perm), Tracked(&page_perms), Tracked(&pt_perm), Tracked(&it_perm), Ghost(start), Ghost(pre), Ghost(child_index));
+        Tracked(process_perm), Tracked(thread_perm), Tracked(&page_perms), Tracked(&pt_perm), Tracked(&it_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
     kill_retire_process(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, Ghost(chain), Tracked(&mut *chain_perms), Tracked(cpu_perm),
-        Tracked(process_perm), Tracked(thread_perm), Tracked(page_perms), Tracked(pt_perm), Tracked(it_perm), Ghost(start), Ghost(pre), Ghost(child_index))
+        Tracked(process_perm), Tracked(thread_perm), Tracked(page_perms), Tracked(pt_perm), Tracked(it_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx))
 }
 
 /// Write-hold the empty zombie target's process page and its tables' object pages, sorted by index, then its page table
 /// `pagetable` and its IOMMU table `iommu_table`, and end the step, which the projection does not show. Returns those pages
 /// with the permissions of the pages and tables.
-fn kill_retire_hold_tables(
+pub(crate) fn kill_retire_hold_tables(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
     thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>, Tracked(chain_perms): Tracked<&Map<RwLockProcessPtr, LockPerm>>,
     Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>, Tracked(thread_perm): Tracked<&LockPerm>, pagetable: RwLockPageTableRoot,
-    iommu_table: Option<RwLockPageTableRoot>,
+    iommu_table: Option<RwLockPageTableRoot>, Ghost(scope): Ghost<KillScope>,
 ) -> (ret: (ArrayVec<PageIndex, 5>, Tracked<Map<PageIndex, LockPerm>>, Tracked<LockPerm>, Tracked<Option<LockPerm>>))
     requires
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
         old(steps).snapshot_k() == *old(krnl),
-        kill_walk_state(*old(krnl), *old(lctx), cpu_id, process_ptr, thread_ptr, chain, None, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
+        scope == (KillScope::Subtree { process: process_ptr }),
+        kill_walk_state(*old(krnl), *old(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, None, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
         0 < chain.len(),
         target == chain[chain.len() - 1],
         old(krnl).prc_mp.spec_index(target).view().zombie,
@@ -91,11 +93,11 @@ fn kill_retire_hold_tables(
         final(lctx).kernel_view_locking_state() is Acquire,
         final(steps).snapshot_k() == *final(krnl),
         final(steps).view() == old(steps).view(),
-        kill_retire_held_state(*final(krnl), *final(lctx), process_ptr, thread_ptr, target, ret.1.view(), ret.2.view(), ret.3.view()),
+        kill_retire_held_state(*final(krnl), *final(lctx), scope, process_ptr, thread_ptr, target, ret.1.view(), ret.2.view(), ret.3.view()),
         held_locks_order_below(final(krnl), final(lctx), PAGETABLE_PAGE_MAJOR),
         final(lctx).thread_lock_map().dom() =~= set![thread_ptr],
         final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
-        kill_chain_state(*final(krnl), *final(lctx), cpu_id, process_ptr, thread_ptr, chain, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
+        kill_chain_state(*final(krnl), *final(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
         final(krnl).prc_mp.spec_index(target) == old(krnl).prc_mp.spec_index(target),
         pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pagetable, final(krnl).pt_mp.spec_index(pagetable).view()),
         final(krnl).pt_mp.spec_index(pagetable).view().leaves_present(),
@@ -147,11 +149,11 @@ fn kill_retire_hold_tables(
 /// container (drained first when it lacks room for the pages), and that allocator's quota; then the process leaves its
 /// parent, its ancestors' subtrees, and its container, its tables leave their maps, its pages return to the cache with
 /// their quota, and the killer walks the parent again.
-fn kill_retire_process(
+pub(crate) fn kill_retire_process(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
     thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>, Tracked(chain_perms): Tracked<&mut Map<RwLockProcessPtr, LockPerm>>,
     Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>, Tracked(thread_perm): Tracked<&LockPerm>, Tracked(page_perms): Tracked<Map<PageIndex, LockPerm>>,
-    Tracked(pt_perm): Tracked<LockPerm>, Tracked(it_perm): Tracked<Option<LockPerm>>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(child_index): Ghost<usize>,
+    Tracked(pt_perm): Tracked<LockPerm>, Tracked(it_perm): Tracked<Option<LockPerm>>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>,
 ) -> (parent: RwLockProcessPtr)
     requires
         old(krnl).inv(),
@@ -159,12 +161,13 @@ fn kill_retire_process(
         old(lctx).kernel_view_locking_state() is Acquire,
         old(steps).snapshot_k() == *old(krnl),
         0 <= start <= old(steps).view().len(),
-        kill_process_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, child_index),
-        kill_retire_held_state(*old(krnl), *old(lctx), process_ptr, thread_ptr, target, page_perms, pt_perm, it_perm),
+        kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
+        scope == (KillScope::Subtree { process: process_ptr }),
+        kill_retire_held_state(*old(krnl), *old(lctx), scope, process_ptr, thread_ptr, target, page_perms, pt_perm, it_perm),
         held_locks_order_below(old(krnl), old(lctx), PAGETABLE_PAGE_MAJOR),
         old(lctx).thread_lock_map().dom() =~= set![thread_ptr],
         old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
-        kill_chain_state(*old(krnl), *old(lctx), cpu_id, process_ptr, thread_ptr, chain, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *old(chain_perms)),
+        kill_chain_state(*old(krnl), *old(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *old(chain_perms)),
         kill_retire_tables_emptied(*old(krnl), target),
         0 < chain.len(),
         target == chain[chain.len() - 1],
@@ -180,8 +183,8 @@ fn kill_retire_process(
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
-        kill_process_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, child_index),
-        kill_walk_state(*final(krnl), *final(lctx), cpu_id, process_ptr, thread_ptr, chain.drop_last(), None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm,
+        kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, process_ptr, thread_ptr, chain.drop_last(), None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm,
             *final(chain_perms)),
         parent == if chain.len() == 1 { process_ptr } else { chain[chain.len() - 2] },
         final(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set.view() == old(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set.view().remove(target),
@@ -268,7 +271,7 @@ fn kill_retire_process(
         kernel_thread_syscall_progress_changed_implies_u_step(&retired_k, &*krnl, thread_ptr);
         kill_retire_step_from_u(pre_u, kernel_k_to_kernel_u(retired_k), post_u, cpu_id, thread_ptr, target, parent, retired_k.allc_4k_mp.spec_index(allocator_ptr).quota.view().view());
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
-        kill_trace_push(&*steps, base_steps, start, pre, pre_u, post_u, cpu_id, child_index);
+        kill_trace_push(&*steps, base_steps, start, pre, pre_u, post_u, cpu_id, ctx);
     }
     parent
 }
@@ -276,7 +279,7 @@ fn kill_retire_process(
 /// With the zombie target's pages, tables, and its container's 4K allocator cache on `cpu_id` and quota write-held,
 /// retire the target: its tables leave their maps, it leaves its parent, its ancestors' subtrees, and its container,
 /// its pages return to the cache with their quota, and those locks are released. The caller ends the step.
-fn kill_retire_commit(
+pub(crate) fn kill_retire_commit(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, cpu_id: CpuId, target: RwLockProcessPtr, parent_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr,
     allocator_ptr: RwLockPageAllocatorPtr, pagetable: RwLockPageTableRoot, iommu_table: Option<RwLockPageTableRoot>, pages: &ArrayVec<PageIndex, 5>,
     Tracked(target_perm): Tracked<LockPerm>, Tracked(parent_perm): Tracked<&LockPerm>, Tracked(page_lock_perms): Tracked<Map<PageIndex, LockPerm>>,
@@ -475,7 +478,7 @@ fn kill_retire_commit(
 
 /// With the zombie target and its parent write-held in a released view, unlink the target from its parent, its ancestors'
 /// subtrees, and its container, and remove it from the process map, returning its page permission.
-fn kill_retire_unlink_process(
+pub(crate) fn kill_retire_unlink_process(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, target: RwLockProcessPtr, parent_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr,
     Tracked(target_perm): Tracked<LockPerm>, Tracked(parent_perm): Tracked<&LockPerm>,
 ) -> (ret: Tracked<PagePerm4k>)
@@ -571,7 +574,7 @@ fn kill_retire_unlink_process(
 
 /// Remove the write-held page table `pagetable` and IOMMU table `iommu_table`, which hold only their root tables, from their
 /// maps, returning the permissions of each table's object and root table pages.
-fn kill_retire_remove_tables(
+pub(crate) fn kill_retire_remove_tables(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, pagetable: RwLockPageTableRoot, iommu_table: Option<RwLockPageTableRoot>,
     Tracked(pt_lock_perm): Tracked<LockPerm>, Tracked(it_lock_perm): Tracked<Option<LockPerm>>,
 ) -> (ret: Tracked<Map<PageIndex, PagePerm4k>>)

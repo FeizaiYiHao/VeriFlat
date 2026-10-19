@@ -1,5 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
+#[cfg(verus_keep_ghost)]
+use super::super::syscall_kill_container::syscall_kill_container_spec::kill_container_partial_trace;
 
 verus! {
 /// The result of `syscall_kill_process` from the state at entry, in the implementation's check order: a killed process
@@ -576,6 +578,19 @@ pub open spec fn kill_process_partial_trace(trace: Seq<KernelStep>, pre: KernelU
     &&& kill_process_enter_step_pre(pre, cpu_id, child_index)
     &&& kill_process_enter_step(pre, trace[0].new_u, cpu_id, child_index)
     &&& forall|j: int| #![trigger trace[j]] 0 < j < trace.len() ==> kill_process_middle_step(trace[j], cpu_id)
+}
+
+/// The kill a partial trace belongs to: `syscall_kill_process` or `syscall_kill_container` of the child at
+/// `child_index`.
+pub ghost enum KillTraceCtx { Process { child_index: usize }, Container { child_index: usize } }
+
+/// The partial trace before finishing of the kill `ctx`.
+#[verifier::opaque]
+pub open spec fn kill_partial_trace(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, ctx: KillTraceCtx) -> bool {
+    match ctx {
+        KillTraceCtx::Process { child_index } => kill_process_partial_trace(trace, pre, cpu_id, child_index),
+        KillTraceCtx::Container { child_index } => kill_container_partial_trace(trace, pre, cpu_id, child_index),
+    }
 }
 
 /// Complete trace of the call: on a kill, the enter step, the middle steps, and the finish step; a stutter otherwise.

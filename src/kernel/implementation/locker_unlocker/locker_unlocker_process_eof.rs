@@ -40,7 +40,7 @@ pub(super) proof fn mark_kill_process_eof(pre: KernelK, post: KernelK, pre_lctx:
         pre.inv(),
         pre.prc_mp.dom().contains(process_ptr),
         pre.prc_mp.dom().contains(killer_process),
-        killer_held_context(pre, pre_lctx, killer_process, killer_thread),
+        killer_held_context(pre, pre_lctx, killer_process, killer_thread, pre_lctx.container_lock_map().dom()),
         killer_info.process == killer_process,
         pre.prc_mp.spec_index(process_ptr).view_rodata().view().parent is Some,
         typed_lock_map_contains_mode(pre_lctx.process_lock_map(), pre.prc_mp.spec_index(process_ptr).view_rodata().view().parent->Some_0, TypedLockMode::Write),

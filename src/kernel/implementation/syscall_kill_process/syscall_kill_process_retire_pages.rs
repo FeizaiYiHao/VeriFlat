@@ -4,6 +4,7 @@ use crate::*;
 use veriflat_alloc_page::free_4k_page::drain_4k_cache_batch;
 use super::syscall_kill_process_spec::*;
 use super::syscall_kill_process_trace::*;
+use super::syscall_kill_process_walk::KillScope;
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_process_walk::kill_chain_state;
 #[cfg(verus_keep_ghost)]
@@ -18,12 +19,12 @@ verus! {
 /// root alone, of its write-held IOMMU table, one step per page, to the caches of their owner, the killer's container;
 /// then refund their quota to the killer's container chain. Both tables then hold only their roots: a zombie's tables map
 /// nothing (`process_emptied_tables_wf`, `pagetable_no_huge_leaf_wf`), so no scan is Blocked.
-pub(super) fn kill_retire_structure_pages(
+pub(crate) fn kill_retire_structure_pages(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
     thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>, Tracked(chain_perms): Tracked<&Map<RwLockProcessPtr, LockPerm>>,
     Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>, Tracked(thread_perm): Tracked<&LockPerm>,
     Tracked(page_perms): Tracked<&Map<PageIndex, LockPerm>>, Tracked(pt_perm): Tracked<&LockPerm>, Tracked(it_perm): Tracked<&Option<LockPerm>>, Ghost(start): Ghost<int>,
-    Ghost(pre): Ghost<KernelU>, Ghost(child_index): Ghost<usize>,
+    Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>,
 )
     requires
         old(krnl).inv(),
@@ -31,12 +32,13 @@ pub(super) fn kill_retire_structure_pages(
         old(lctx).kernel_view_locking_state() is Acquire,
         old(steps).snapshot_k() == *old(krnl),
         0 <= start <= old(steps).view().len(),
-        kill_process_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, child_index),
-        kill_retire_held_state(*old(krnl), *old(lctx), process_ptr, thread_ptr, target, *page_perms, *pt_perm, *it_perm),
+        kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
+        scope == (KillScope::Subtree { process: process_ptr }),
+        kill_retire_held_state(*old(krnl), *old(lctx), scope, process_ptr, thread_ptr, target, *page_perms, *pt_perm, *it_perm),
         held_locks_order_below(old(krnl), old(lctx), PAGETABLE_PAGE_MAJOR),
         old(lctx).thread_lock_map().dom() =~= set![thread_ptr],
         old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
-        kill_chain_state(*old(krnl), *old(lctx), cpu_id, process_ptr, thread_ptr, chain, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
+        kill_chain_state(*old(krnl), *old(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
         0 < chain.len(),
         target == chain[chain.len() - 1],
         old(krnl).prc_mp.spec_index(target).view().zombie,
@@ -51,12 +53,12 @@ pub(super) fn kill_retire_structure_pages(
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
-        kill_process_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, child_index),
-        kill_retire_held_state(*final(krnl), *final(lctx), process_ptr, thread_ptr, target, *page_perms, *pt_perm, *it_perm),
+        kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        kill_retire_held_state(*final(krnl), *final(lctx), scope, process_ptr, thread_ptr, target, *page_perms, *pt_perm, *it_perm),
         held_locks_order_below(final(krnl), final(lctx), PAGETABLE_PAGE_MAJOR),
         final(lctx).thread_lock_map().dom() =~= set![thread_ptr],
         final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
-        kill_chain_state(*final(krnl), *final(lctx), cpu_id, process_ptr, thread_ptr, chain, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
+        kill_chain_state(*final(krnl), *final(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
         final(krnl).prc_mp.spec_index(target) == old(krnl).prc_mp.spec_index(target),
         kill_retire_tables_emptied(*final(krnl), target),
         ({
@@ -83,11 +85,12 @@ pub(super) fn kill_retire_structure_pages(
     };
     let mut direct = 0usize;
     kill_retire_table_pages(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, Ghost(chain), Tracked(chain_perms), Tracked(cpu_perm),
-        Tracked(process_perm), Tracked(thread_perm), Tracked(page_perms), Tracked(pt_perm), Tracked(it_perm), false, pagetable, Tracked(pt_perm), &mut direct, Ghost(entry_thread));
+        Tracked(process_perm), Tracked(thread_perm), Tracked(page_perms), Tracked(pt_perm), Tracked(it_perm), false, pagetable, Tracked(pt_perm), &mut direct, Ghost(entry_thread),
+        Ghost(scope));
     if let Some(it) = iommu_table {
         kill_retire_table_pages(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, Ghost(chain), Tracked(chain_perms), Tracked(cpu_perm),
             Tracked(process_perm), Tracked(thread_perm), Tracked(page_perms), Tracked(pt_perm), Tracked(it_perm), true, it, Tracked(it_perm.tracked_borrow()), &mut direct,
-            Ghost(entry_thread));
+            Ghost(entry_thread), Ghost(scope));
     }
     let mut indirect = [0usize; MAX_CONTAINER_TREE_DEPTH];
     let ghost refund_k = *krnl;
@@ -101,7 +104,7 @@ pub(super) fn kill_retire_structure_pages(
     refund_unmap_4k_quota(krnl, thread_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_perm));
     proof {
         assert(krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view() =~= entry_thread.indirect_free_quota_pending_4k.view()) by { reveal(thread_perms_wf); };
-        kill_trace_from_refund(&*steps, refund_before, start, pre, kernel_k_to_kernel_u(refund_k), cpu_id, child_index, process_ptr, thread_ptr, target, KillStage::Retire,
+        kill_trace_from_refund(&*steps, refund_before, start, pre, kernel_k_to_kernel_u(refund_k), cpu_id, ctx, process_ptr, thread_ptr, target, KillStage::Retire,
             entry_thread.owning_container);
     }
 }
@@ -109,22 +112,23 @@ pub(super) fn kill_retire_structure_pages(
 /// Retire the table pages of the zombie target's write-held page table `table` (its write-held IOMMU table when
 /// `iommu`), held with `table_perm`, one step per page, counting each in the killer's direct pending 4K refund, until a
 /// scan of the table, which maps nothing, finds the root alone.
-fn kill_retire_table_pages(
+pub(crate) fn kill_retire_table_pages(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
     thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>, Tracked(chain_perms): Tracked<&Map<RwLockProcessPtr, LockPerm>>,
     Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>, Tracked(thread_perm): Tracked<&LockPerm>,
     Tracked(page_perms): Tracked<&Map<PageIndex, LockPerm>>, Tracked(pt_perm): Tracked<&LockPerm>, Tracked(it_perm): Tracked<&Option<LockPerm>>, iommu: bool,
-    table: RwLockPageTableRoot, Tracked(table_perm): Tracked<&LockPerm>, direct: &mut usize, Ghost(entry_thread): Ghost<Thread>,
+    table: RwLockPageTableRoot, Tracked(table_perm): Tracked<&LockPerm>, direct: &mut usize, Ghost(entry_thread): Ghost<Thread>, Ghost(scope): Ghost<KillScope>,
 )
     requires
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
         old(steps).snapshot_k() == *old(krnl),
-        kill_retire_held_state(*old(krnl), *old(lctx), process_ptr, thread_ptr, target, *page_perms, *pt_perm, *it_perm),
+        scope == (KillScope::Subtree { process: process_ptr }),
+        kill_retire_held_state(*old(krnl), *old(lctx), scope, process_ptr, thread_ptr, target, *page_perms, *pt_perm, *it_perm),
         held_locks_order_below(old(krnl), old(lctx), PAGETABLE_PAGE_MAJOR),
         old(lctx).thread_lock_map().dom() =~= set![thread_ptr],
-        kill_chain_state(*old(krnl), *old(lctx), cpu_id, process_ptr, thread_ptr, chain, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
+        kill_chain_state(*old(krnl), *old(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
         0 < chain.len(),
         target == chain[chain.len() - 1],
         old(krnl).prc_mp.spec_index(target).view().zombie,
@@ -141,10 +145,10 @@ fn kill_retire_table_pages(
         final(lctx).kernel_view_locking_state() is Acquire,
         final(steps).snapshot_k() == *final(krnl),
         final(steps).view() == old(steps).view(),
-        kill_retire_held_state(*final(krnl), *final(lctx), process_ptr, thread_ptr, target, *page_perms, *pt_perm, *it_perm),
+        kill_retire_held_state(*final(krnl), *final(lctx), scope, process_ptr, thread_ptr, target, *page_perms, *pt_perm, *it_perm),
         held_locks_order_below(final(krnl), final(lctx), PAGETABLE_PAGE_MAJOR),
         final(lctx).thread_lock_map().dom() =~= set![thread_ptr],
-        kill_chain_state(*final(krnl), *final(lctx), cpu_id, process_ptr, thread_ptr, chain, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
+        kill_chain_state(*final(krnl), *final(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
         final(krnl).prc_mp.spec_index(target) == old(krnl).prc_mp.spec_index(target),
         final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { direct_free_quota_pending_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k, ..entry_thread }),
         *final(direct) == final(krnl).thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k.view(),
@@ -182,10 +186,11 @@ fn kill_retire_table_pages(
             lctx.kernel_view_locking_state() is Acquire,
             steps.snapshot_k() == *krnl,
             steps.view() == old(steps).view(),
-            kill_retire_held_state(*krnl, *lctx, process_ptr, thread_ptr, target, *page_perms, *pt_perm, *it_perm),
+            scope == (KillScope::Subtree { process: process_ptr }),
+            kill_retire_held_state(*krnl, *lctx, scope, process_ptr, thread_ptr, target, *page_perms, *pt_perm, *it_perm),
             held_locks_order_below(krnl, lctx, PAGETABLE_PAGE_MAJOR),
             lctx.thread_lock_map().dom() =~= set![thread_ptr],
-            kill_chain_state(*krnl, *lctx, cpu_id, process_ptr, thread_ptr, chain, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
+            kill_chain_state(*krnl, *lctx, cpu_id, scope, process_ptr, thread_ptr, chain, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
             0 < chain.len(),
             target == chain[chain.len() - 1],
             krnl.prc_mp.spec_index(target) == old(krnl).prc_mp.spec_index(target),
@@ -253,7 +258,7 @@ fn kill_retire_table_pages(
 /// Retire the table page `page_ptr` that `scan` names from the write-held table `table` of the zombie `target` (its
 /// write-held IOMMU table when `iommu`) to shard `cpu_id` of the 4K allocator of its owner, the container of the write-held
 /// killer `thread_ptr`, whose direct pending 4K refund grows by one; the page and cache locks taken for it are released.
-fn kill_retire_next_table_page(
+pub(crate) fn kill_retire_next_table_page(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, thread_ptr: RwLockThreadPtr,
     target: RwLockProcessPtr, iommu: bool, table: RwLockPageTableRoot, scan: StructureScan, page_ptr: PagePtr, Tracked(table_perm): Tracked<&LockPerm>,
     Tracked(thread_perm): Tracked<&LockPerm>, direct: &mut usize,
@@ -364,7 +369,7 @@ fn kill_retire_next_table_page(
 /// Write-lock the cache shard `cpu_id` of the 4K allocator `allocator_ptr`, first moving a batch of a shard without room
 /// for `room` more pages to the allocator's global pool; the step changes nothing the projection shows and keeps every
 /// held object.
-pub(super) fn kill_retire_lock_cache(
+pub(crate) fn kill_retire_lock_cache(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
     room: usize, Ghost(page_index): Ghost<PageIndex>,
 ) -> (ret: Tracked<LockPerm>)
@@ -435,7 +440,7 @@ pub(super) fn kill_retire_lock_cache(
 /// Unlink the table page `page_ptr` that `scan` names from the write-held table `table` of a zombie (its IOMMU table when
 /// `iommu`) and return it through the write-held cache shard `cpu_id` of the 4K allocator `allocator_ptr` of its owner, the
 /// container of the write-held killer `thread_ptr`, whose direct pending 4K refund grows by one.
-fn kill_retire_table_page_to_cache(
+pub(crate) fn kill_retire_table_page_to_cache(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, iommu: bool, table: RwLockPageTableRoot, scan: StructureScan, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr,
     allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, direct: &mut usize, Tracked(table_perm): Tracked<&LockPerm>, Tracked(page_perm): Tracked<&LockPerm>,
     Tracked(thread_perm): Tracked<&LockPerm>, Tracked(cache_perm): Tracked<&LockPerm>,
@@ -552,7 +557,7 @@ fn kill_retire_table_page_to_cache(
 
 /// Each page `kill_retire_pages(k, target)` retires is a valid page in `held`, allocated as a 4K kernel page to the
 /// container of `target`, and outside shard `cpu_id` of that container's 4K allocator `allocator_ptr`.
-pub(super) proof fn kill_retire_pages_held_and_owned(k: KernelK, target: RwLockProcessPtr, held: Set<PageIndex>, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId)
+pub(crate) proof fn kill_retire_pages_held_and_owned(k: KernelK, target: RwLockProcessPtr, held: Set<PageIndex>, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId)
     requires
         k.inv(),
         k.prc_mp.dom().contains(target),

@@ -13,6 +13,7 @@ use veriflat_map_4k::map_4k::unmap_iommu_4k_present::clear_iommu_4k_mapping_pres
 use veriflat_map_4k::map_4k::unmap_iommu_4k_reclaim_one::reclaim_unmapped_iommu_4k_page;
 
 pub mod syscall_kill_process;
+pub mod syscall_kill_container;
 
 verus! {
 global size_of usize == 8;

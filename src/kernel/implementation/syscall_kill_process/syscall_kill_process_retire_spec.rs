@@ -1,5 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
+#[cfg(verus_keep_ghost)]
+use super::syscall_kill_process_walk::{KillScope, kill_scope_containers};
 
 verus! {
 /// The page indices the retirement of `target` frees, in retire order: the process page, the page table's object page
@@ -119,16 +121,17 @@ pub open spec fn kill_retire_held_pages(k: KernelK, target: RwLockProcessPtr) ->
     }
 }
 
-/// The killer `thread_ptr` of process `process_ptr`, retiring the zombie `target`, holds its `killer_held_context_except_tables` locks
-/// and besides write-holds the pages `kill_retire_held_pages(k, target)` with `page_perms`, the target's page table with
-/// `pt_perm`, and its IOMMU table, if any, with `it_perm`.
+/// The killer `thread_ptr` of process `process_ptr`, retiring the zombie `target` in `scope`, holds its
+/// `killer_held_context_except_tables` locks with the containers of `scope` and besides write-holds the pages
+/// `kill_retire_held_pages(k, target)` with `page_perms`, the target's page table with `pt_perm`, and its IOMMU table, if
+/// any, with `it_perm`.
 pub open spec fn kill_retire_held_state(
-    k: KernelK, lctx: LocalContext, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, page_perms: Map<PageIndex, LockPerm>,
-    pt_perm: LockPerm, it_perm: Option<LockPerm>,
+    k: KernelK, lctx: LocalContext, scope: KillScope, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr,
+    page_perms: Map<PageIndex, LockPerm>, pt_perm: LockPerm, it_perm: Option<LockPerm>,
 ) -> bool {
     let process = k.prc_mp.spec_index(target).view();
     let held = kill_retire_held_pages(k, target);
-    &&& killer_held_context_except_tables(k, lctx, process_ptr, thread_ptr)
+    &&& killer_held_context_except_tables(k, lctx, process_ptr, thread_ptr, kill_scope_containers(scope, lctx))
     &&& lctx.page_lock_map().dom() == held
     &&& page_perms.dom() == held
     &&& forall|p: PageIndex| #![trigger page_perms.dom().contains(p)] page_perms.dom().contains(p) ==> {

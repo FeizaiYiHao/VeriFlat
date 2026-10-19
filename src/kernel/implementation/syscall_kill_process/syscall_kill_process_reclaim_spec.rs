@@ -1,21 +1,22 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::syscall_kill_process_walk::kill_chain_state;
+use super::syscall_kill_process_walk::{KillScope, kill_chain_state, kill_scope_containers};
 
 verus! {
-/// The killer at `stage` on `chain`, as in `kill_chain_state`, reclaims the empty live target, the last process of the
-/// chain, which owns no PCI function. Besides its cpu, its process, itself, and the chain, it write-holds exactly the target's page table
-/// `pagetable` with `pagetable_perm` and the target's IOMMU table `iommu_table`, if any, with `iommu_perm`.
+/// The killer at `stage` on `chain` in `scope`, as in `kill_chain_state`, reclaims the empty live target, the last
+/// process of the chain, which owns no PCI function. Besides its cpu, its process, itself, the chain, and the containers
+/// of `scope`, it write-holds exactly the target's page table `pagetable` with `pagetable_perm` and the target's IOMMU
+/// table `iommu_table`, if any, with `iommu_perm`.
 pub open spec fn kill_reclaim_state(
-    k: KernelK, lctx: LocalContext, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, chain: Seq<RwLockProcessPtr>, stage: KillStage,
-    cpu_perm: LockPerm, process_perm: LockPerm, thread_perm: LockPerm, chain_perms: Map<RwLockProcessPtr, LockPerm>, pagetable: RwLockPageTableRoot,
+    k: KernelK, lctx: LocalContext, cpu_id: CpuId, scope: KillScope, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, chain: Seq<RwLockProcessPtr>,
+    stage: KillStage, cpu_perm: LockPerm, process_perm: LockPerm, thread_perm: LockPerm, chain_perms: Map<RwLockProcessPtr, LockPerm>, pagetable: RwLockPageTableRoot,
     iommu_table: Option<RwLockPageTableRoot>, pagetable_perm: LockPerm, iommu_perm: Option<LockPerm>,
 ) -> bool {
     let cpu = k.cpu_arr.spec_index(cpu_id).view().view().view();
     let target = k.prc_mp.spec_index(chain[chain.len() - 1]);
     &&& 0 < chain.len()
-    &&& kill_chain_state(k, lctx, cpu_id, process_ptr, thread_ptr, chain, stage, cpu_perm, process_perm, thread_perm, chain_perms)
+    &&& kill_chain_state(k, lctx, cpu_id, scope, process_ptr, thread_ptr, chain, stage, cpu_perm, process_perm, thread_perm, chain_perms)
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& forall|c: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(c)] lctx.cpu_lock_map().dom().contains(c) <==> c == cpu_id
     &&& typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write)
@@ -28,7 +29,7 @@ pub open spec fn kill_reclaim_state(
     &&& lctx.page_lock_map().dom().is_empty()
     &&& lctx.pcid_needflush_lock_map().dom().is_empty()
     &&& lctx.cpu_offline_flag_lock_map().dom().is_empty()
-    &&& lctx.container_lock_map().dom().is_empty()
+    &&& lctx.container_lock_map().dom() =~= kill_scope_containers(scope, lctx)
     &&& lctx.endpoint_lock_map().dom().is_empty()
     &&& lctx.scheduler_lock_map().dom().is_empty()
     &&& lctx.pcid_allocator_lock_map().dom().is_empty()

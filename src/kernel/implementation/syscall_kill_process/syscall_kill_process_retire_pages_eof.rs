@@ -199,7 +199,7 @@ proof fn kill_retire_table_page_eof_process_management_inv(
 
 /// The table page leaving its zombie table for the owner's cpu cache, with the killer's pending refund grown by one,
 /// keeps the kernel invariant and every non-lock field the projection reads.
-pub(super) proof fn kill_retire_table_page_eof(
+pub(crate) proof fn kill_retire_table_page_eof(
     pre: KernelK, post: KernelK, iommu: bool, table: RwLockPageTableRoot, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
     node_addr: usize,
 )

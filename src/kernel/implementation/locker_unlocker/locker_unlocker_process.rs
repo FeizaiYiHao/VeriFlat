@@ -129,12 +129,15 @@ impl KernelK {
             old(self).prc_mp.dom().contains(killer_process),
             !old(lctx).process_lock_map().dom().contains(process_ptr),
             old(lctx).kernel_view_locking_state() is Acquire,
-            killer_held_context(*old(self), *old(lctx), killer_process, killer_thread),
+            killer_held_context(*old(self), *old(lctx), killer_process, killer_thread, Set::empty()),
             killer_info.process == killer_process,
             old(self).prc_mp.spec_index(process_ptr).view_rodata().view().parent is Some,
             typed_lock_map_contains_mode(old(lctx).process_lock_map(), old(self).prc_mp.spec_index(process_ptr).view_rodata().view().parent->Some_0, TypedLockMode::Write),
-            old(self).prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == old(self).prc_mp.spec_index(killer_process).view_rodata().view().owning_container,
-            old(self).prc_mp.spec_index(process_ptr).view_rodata().view().depth > old(self).prc_mp.spec_index(killer_process).view_rodata().view().depth,
+            ({
+                let process = old(self).prc_mp.spec_index(process_ptr).view_rodata().view();
+                let killer = old(self).prc_mp.spec_index(killer_process).view_rodata().view();
+                process.container_depth > killer.container_depth || (process.owning_container == killer.owning_container && process.depth > killer.depth)
+            }),
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
