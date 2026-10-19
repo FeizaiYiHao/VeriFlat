@@ -8,6 +8,7 @@ use super::syscall_new_container_spec::*;
 use super::syscall_new_container_trace::*;
 use super::syscall_new_container_share::end_new_container_created_step;
 use super::syscall_new_container_commit_share::commit_new_container_share_and_finish;
+use super::syscall_new_container_enter::enter_new_container_commit;
 
 verus! {
 pub(super) fn commit_new_container(
@@ -452,31 +453,10 @@ fn commit_new_container_publish(
         share_mapping_4k_source_range_present(final(krnl), source_pagetable_ptr, source_range),
 {
     hide(Seq::contains);
-    let ghost endpoint_index_opt: Option<EndpointIdx> = if endpoint is Some { Some(endpoint_index) } else { None };
-    let ghost record = NewContainerProgress {
-        range: *source_range, funding: funding_page_count, process_quota: process_quota_4k, transfer_cpu: transfer_cpu_id, regs,
-        endpoint_index: endpoint_index_opt, child_container: None,
-    };
-    let ghost progress = SyscallProgress::NewContainer(record);
-    krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(Some(progress)), Tracked(&*lctx), Tracked(current_thread_lock_perm));
-    proof {
-        let ghost entered_k = *krnl;
-        assert(steps.snapshot_k().thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is None) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged); };
-        enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
-        krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, current_thread_ptr);
-        assert(new_container_trace_after_enter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), old(steps).snapshot_u(), caller_cpu_id,
-            *source_range, funding_page_count, process_quota_4k, transfer_cpu_id, regs, endpoint_index_opt)) by {
-            process_thread_wf_at(old(krnl).prc_mp, old(krnl).thr_mp, current_thread_ptr); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
-            kernel_cpu_process_thread_endpoint_lock_modes_changed_implies_u_step(&old(steps).snapshot_k(), old(krnl), old(lctx),
-                caller_cpu_id, parent_process_ptr, current_thread_ptr, endpoint, true, Some(parent_container_ptr), true,
-                Some(KernelK { cpu_set_mp: old(steps).snapshot_k().cpu_set_mp, ..*old(krnl) }));
-            kernel_thread_syscall_progress_changed_implies_u_step(old(krnl), &entered_k, current_thread_ptr);
-            new_container_enter_step_from_u(old(steps).snapshot_u(), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(entered_k), caller_cpu_id, parent_process_ptr,
-                current_thread_ptr, parent_container_ptr, endpoint, *source_range, funding_page_count, process_quota_4k, transfer_cpu_id, regs, endpoint_index_opt);
-            new_container_trace_enter_step(&*steps, old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(entered_k), caller_cpu_id, *source_range,
-                funding_page_count, process_quota_4k, transfer_cpu_id, regs, endpoint_index_opt);
-        };
-    }
+    enter_new_container_commit(
+        krnl, Tracked(&mut *lctx), Tracked(&mut *steps), caller_cpu_id, parent_container_ptr, parent_process_ptr, current_thread_ptr, source_pagetable_ptr,
+        source_range, funding_page_count, process_quota_4k, transfer_cpu_id, parent_cpu_set, endpoint, endpoint_index, Tracked(current_thread_lock_perm), Ghost(regs),
+    );
     let (pages_4k, container_page, pcid_allocator_page, Tracked(page_4k_lock_perms), Tracked(container_page_lock_perm), Tracked(pcid_allocator_page_lock_perm)) =
         allocate_new_container_pages(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), current_thread_ptr, parent_container_ptr, caller_cpu_id, Tracked(current_thread_lock_perm));
     proof {
@@ -492,7 +472,7 @@ fn commit_new_container_publish(
         pcid_allocator_page, funding_page_head, Ghost(funding_pages), Tracked(page_4k_lock_perms), Tracked(funding_page_lock_perms),
         Tracked(container_page_lock_perm), Tracked(pcid_allocator_page_lock_perm), Tracked(caller_cpu_lock_perm), Tracked(parent_container_lock_perm),
         Tracked(parent_process_lock_perm), Tracked(current_thread_lock_perm), Tracked(source_pagetable_lock_perm), parent_cpu_set_lock_perm,
-        Tracked(endpoint_lock_perm), Ghost(regs), Ghost(old(steps).view().len() as int), Ghost(old(steps).snapshot_u()),
+        Tracked(endpoint_lock_perm), Ghost(regs), Ghost(old(steps).view().len() as int), Ghost(kernel_k_to_kernel_u(old(steps).snapshot_k())),
     )
 }
 

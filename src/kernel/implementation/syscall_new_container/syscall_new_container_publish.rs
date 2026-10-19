@@ -1,10 +1,7 @@
-use vstd::{assert_seqs_equal, assert_sets_equal};
 use vstd::prelude::*;
 use crate::*;
-use super::staged_4k_page_chain::cleanup_published_4k_page_chain;
-#[cfg(verus_keep_ghost)]
-use super::staged_4k_page_chain::page_ptrs_to_indices_excludes_distinct_valid_page;
 use super::*;
+use super::syscall_new_container_publish_release::release_new_container_publish_staging;
 
 verus! {
 #[verifier::spinoff_prover]
@@ -306,7 +303,7 @@ pub(super) fn publish_new_container_base(
         ret.5.view().thread_id() == final(lctx).thread_id(),
         ret.5.view().lock_id() == final(krnl).cpu_set_mp.spec_index(pages_4k.view().spec_index(8)).locking_thread()->Write_lock_id,
 {
-    // This long publish equation expands sequence membership repeatedly; reveal it only in the scoped set proof below.
+    // The publish contracts mention sequence membership repeatedly; this equation never needs its definition.
     hide(Seq::contains);
     let allocator_4k_page = *pages_4k.get(0);
     let allocator_2m_page = *pages_4k.get(1);
@@ -353,18 +350,6 @@ pub(super) fn publish_new_container_base(
     let tracked thread_page_lock_perm = page_4k_lock_perms.tracked_remove(thread_page);
     let container_head = page_ptr2page_index(container_page);
     let pcid_allocator_head = page_ptr2page_index(pcid_allocator_page);
-    proof {
-        assert(!funding_pages.to_set().contains(thread_page)) by { pages_4k.view().to_set_ensures(); reveal(Seq::contains); };
-        page_ptrs_to_indices_excludes_distinct_valid_page(funding_pages, thread_page);
-        assert_sets_equal!(
-            old(lctx).page_lock_map().dom().difference(page_ptrs_to_indices(funding_pages)).difference(set![
-                page_ptr2page_index(allocator_4k_page), page_ptr2page_index(allocator_2m_page), page_ptr2page_index(allocator_1g_page),
-                page_ptr2page_index(scheduler_page), page_ptr2page_index(cpu_set_page), page_ptr2page_index(process_page),
-                page_ptr2page_index(pagetable_page), page_ptr2page_index(l4_page), container_head, pcid_allocator_head,
-            ]) == set![page_ptr2page_index(thread_page)],
-            page_index => { reveal(Seq::contains); page_ptr_roundtrip(); page_2m_all_ptrs_contains_head(container_head); page_2m_all_ptrs_contains_head(pcid_allocator_head); }
-        );
-    }
     let (Tracked(container_tail_lock_perms), Tracked(pcid_allocator_tail_lock_perms)) = wlock_new_container_2m_page_tails(krnl, Tracked(&mut *lctx), container_head, pcid_allocator_head);
     proof { assert(staged_4k_page_chain(krnl.pg_arr, funding_pages)) by { page_ptr_valid_imply_page_index_valid(); }; }
     let Tracked(transfer_cpu_lock_perm) = krnl.wlock_off_cpu(transfer_cpu_id, parent_cpu_set, Tracked(&mut *lctx));
@@ -383,69 +368,20 @@ pub(super) fn publish_new_container_base(
         Tracked(&container_tail_lock_perms), Tracked(&pcid_allocator_tail_lock_perms),
     );
     let ghost published_k = *krnl;
-    proof {
-        assert(new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).contains(container_page)
-            && new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).contains(pcid_allocator_page)) by {
-            reveal(new_container_moved_pages); page_2m_all_ptrs_contains_head(container_head); page_2m_all_ptrs_contains_head(pcid_allocator_head); page_ptr_roundtrip();
-        };
-        assert(!funding_pages.to_set().contains(allocator_4k_page) && !funding_pages.to_set().contains(allocator_2m_page)
-            && !funding_pages.to_set().contains(allocator_1g_page) && !funding_pages.to_set().contains(scheduler_page)
-            && !funding_pages.to_set().contains(cpu_set_page) && !funding_pages.to_set().contains(process_page)
-            && !funding_pages.to_set().contains(pagetable_page) && !funding_pages.to_set().contains(l4_page)
-            && !funding_pages.to_set().contains(thread_page)) by { new_container_page_positions(pages_4k.view()); };
-        assert({
-            &&& page_ptrs_to_indices(funding_pages).disjoint(page_2m_tail_indices(container_head))
-            &&& page_ptrs_to_indices(funding_pages).disjoint(page_2m_tail_indices(pcid_allocator_head))
-            &&& !page_ptrs_to_indices(funding_pages).contains(page_ptr2page_index(container_page))
-            &&& !page_ptrs_to_indices(funding_pages).contains(page_ptr2page_index(pcid_allocator_page))
-            &&& !page_ptrs_to_indices(funding_pages).contains(page_ptr2page_index(allocator_4k_page))
-            &&& !page_ptrs_to_indices(funding_pages).contains(page_ptr2page_index(allocator_2m_page))
-            &&& !page_ptrs_to_indices(funding_pages).contains(page_ptr2page_index(allocator_1g_page))
-            &&& !page_ptrs_to_indices(funding_pages).contains(page_ptr2page_index(scheduler_page))
-            &&& !page_ptrs_to_indices(funding_pages).contains(page_ptr2page_index(cpu_set_page))
-            &&& !page_ptrs_to_indices(funding_pages).contains(page_ptr2page_index(process_page))
-            &&& !page_ptrs_to_indices(funding_pages).contains(page_ptr2page_index(pagetable_page))
-            &&& !page_ptrs_to_indices(funding_pages).contains(page_ptr2page_index(l4_page))
-            &&& !page_ptrs_to_indices(funding_pages).contains(page_ptr2page_index(thread_page))
-        }) by {
-            page_ptrs_to_indices_excludes_distinct_valid_page(funding_pages, container_page);
-            page_ptrs_to_indices_excludes_distinct_valid_page(funding_pages, pcid_allocator_page);
-            page_ptrs_to_indices_excludes_distinct_valid_page(funding_pages, allocator_4k_page);
-            page_ptrs_to_indices_excludes_distinct_valid_page(funding_pages, allocator_2m_page);
-            page_ptrs_to_indices_excludes_distinct_valid_page(funding_pages, allocator_1g_page);
-            page_ptrs_to_indices_excludes_distinct_valid_page(funding_pages, scheduler_page);
-            page_ptrs_to_indices_excludes_distinct_valid_page(funding_pages, cpu_set_page);
-            page_ptrs_to_indices_excludes_distinct_valid_page(funding_pages, process_page);
-            page_ptrs_to_indices_excludes_distinct_valid_page(funding_pages, pagetable_page);
-            page_ptrs_to_indices_excludes_distinct_valid_page(funding_pages, l4_page);
-            page_ptrs_to_indices_excludes_distinct_valid_page(funding_pages, thread_page);
-        };
-    }
-    cleanup_published_4k_page_chain(krnl, funding_page_count, funding_page_head, Ghost(funding_pages), allocator_4k_page, container_page, Tracked(&mut *lctx), Tracked(funding_page_lock_perms));
-    proof {
-        assert_sets_equal!(
-            lctx.page_lock_map().dom().difference(page_2m_tail_indices(container_head).union(page_2m_tail_indices(pcid_allocator_head)).union(set![
-                page_ptr2page_index(allocator_4k_page), page_ptr2page_index(allocator_2m_page), page_ptr2page_index(allocator_1g_page),
-                page_ptr2page_index(scheduler_page), page_ptr2page_index(cpu_set_page), page_ptr2page_index(process_page),
-                page_ptr2page_index(pagetable_page), page_ptr2page_index(l4_page), container_head, pcid_allocator_head,
-            ])) == set![page_ptr2page_index(thread_page)],
-            page_index => {}
-        );
-    }
     let ghost origin = Share4kOrigin::NewContainer(NewContainerProgress {
         range: *source_range, funding: funding_page_count, process_quota: process_quota_4k, transfer_cpu: transfer_cpu_id, regs,
         endpoint_index, child_container: Some(container_page),
     });
     let ghost sharing = Some(SyscallProgress::Share4k { source_range: *source_range, target_range: *source_range, shared: 0, origin });
-    krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(sharing), Tracked(&*lctx), Tracked(current_thread_lock_perm));
-    let ghost progressed_k = *krnl;
-    let (Tracked(child_container_lock_perm), Tracked(child_process_lock_perm), Tracked(child_pagetable_lock_perm), Tracked(thread_page_lock_perm)) = finish_staged_container_publish(
-        krnl, Tracked(&mut *lctx), pages_4k, container_page, pcid_allocator_page, Tracked(container_tail_lock_perms), Tracked(pcid_allocator_tail_lock_perms),
-        Tracked(container_page_lock_perm), Tracked(pcid_allocator_page_lock_perm), Tracked(allocator_4k_page_lock_perm), Tracked(allocator_2m_page_lock_perm),
-        Tracked(allocator_1g_page_lock_perm), Tracked(scheduler_page_lock_perm), Tracked(cpu_set_page_lock_perm), Tracked(process_page_lock_perm),
-        Tracked(pagetable_page_lock_perm), Tracked(l4_page_lock_perm), Tracked(thread_page_lock_perm), Tracked(child_container_lock_perm),
-        Tracked(child_process_lock_perm), Tracked(child_pagetable_lock_perm), Tracked(child_pcid_allocator_lock_perm),
-    );
+    let (Tracked(child_container_lock_perm), Tracked(child_process_lock_perm), Tracked(child_pagetable_lock_perm), Tracked(thread_page_lock_perm), Ghost(progressed_k)) =
+        release_new_container_publish_staging(
+            krnl, Tracked(&mut *lctx), current_thread_ptr, pages_4k, container_page, pcid_allocator_page, funding_page_count, funding_page_head, Ghost(funding_pages),
+            Ghost(sharing), Tracked(funding_page_lock_perms), Tracked(container_tail_lock_perms), Tracked(pcid_allocator_tail_lock_perms),
+            Tracked(container_page_lock_perm), Tracked(pcid_allocator_page_lock_perm), Tracked(allocator_4k_page_lock_perm), Tracked(allocator_2m_page_lock_perm),
+            Tracked(allocator_1g_page_lock_perm), Tracked(scheduler_page_lock_perm), Tracked(cpu_set_page_lock_perm), Tracked(process_page_lock_perm),
+            Tracked(pagetable_page_lock_perm), Tracked(l4_page_lock_perm), Tracked(thread_page_lock_perm), Tracked(child_container_lock_perm),
+            Tracked(child_process_lock_perm), Tracked(child_pagetable_lock_perm), Tracked(child_pcid_allocator_lock_perm), Tracked(current_thread_lock_perm),
+        );
     proof { assert(krnl.ctn_mp.spec_index(parent_container_ptr).view_ghost().owned_processes.view().contains(parent_process_ptr)) by { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, parent_process_ptr); }; }
     proof { assert(pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, pages_4k.view().spec_index(5), krnl.pt_mp.spec_index(pages_4k.view().spec_index(5)).view())) by { tlb_wf_pagetable_entries_present_at(*krnl, pages_4k.view().spec_index(5)); }; }
     (Tracked(child_container_lock_perm), Tracked(child_process_lock_perm), Tracked(child_pagetable_lock_perm), Tracked(thread_page_lock_perm), Tracked(transfer_cpu_lock_perm), Tracked(child_cpu_set_lock_perm),
