@@ -1,5 +1,6 @@
 use vstd::prelude::*;
 use crate::*;
+use super::syscall_ipc_transition_helpers::ipc_block_current_release_and_end_step;
 use super::syscall_ipc_queue::{ipc_block_thread_on_endpoint, ipc_dequeue_endpoint_waiter, ipc_enqueue_endpoint_waiter, ipc_schedule_endpoint_waiter};
 use super::syscall_ipc_spec::*;
 use super::syscall_ipc_trace::*;
@@ -148,32 +149,11 @@ verus! {
             ipc_block_current_eof(locked_k, *krnl, cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, payload, default_cr3);
         }
 
-        krnl.wunlock_pcid_needflush(cpu_id, KERNEL_DEFAULT_PCID, Tracked(&mut *lctx), Tracked(needflush_perm));
-        krnl.wunlock_endpoint(endpoint_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
-        krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-        proof {
-            let ghost flushed = ipc_block_flushes_default_pcid(*old(krnl), cpu_id);
-            assert(kernel_ipc_block_fields(&steps.snapshot_k(), &*krnl, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, payload, *pt_regs, flushed)) by {
-                container_thread_wf_at(old(krnl).ctn_mp, old(krnl).thr_mp, current_thread_ptr);
-                reveal(kernel_ipc_block_fields); reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
-                reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged);
-            };
-            steps.end_kernel_step_ipc_block(&*krnl, &*lctx, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, payload, *pt_regs, flushed);
-            assert({
-                &&& ipc_block_step_pre(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, endpoint_index, waiting_state)
-                &&& ipc_block_step_pre(steps.nonlock_view().last().old_u, cpu_id, endpoint_index, waiting_state)
-                &&& ipc_ordinary_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, endpoint_index, waiting_state,
-                    payload, *pt_regs, flushed, RetValueType::CpuIdle)
-            }) by {
-                ipc_block_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, payload, *pt_regs, flushed);
-                ipc_block_step_from_u(steps.nonlock_view().last().old_u, steps.nonlock_view().last().new_u, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, payload, *pt_regs, flushed);
-                assert(!old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.being_killed()) by {
-                    reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
-                };
-                ipc_ordinary_trace_block_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, endpoint_index, waiting_state, payload, *pt_regs, flushed);
-            };
-        }
+        proof { assert(old(krnl).ctn_mp.dom().contains(old(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_container)) by { container_thread_wf_at(old(krnl).ctn_mp, old(krnl).thr_mp, current_thread_ptr); }; }
+        ipc_block_current_release_and_end_step(
+            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, payload, pt_regs,
+            Ghost(default_cr3), Ghost(*old(krnl)), Ghost(locked_k), Tracked(cpu_lock_perm), Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(needflush_perm),
+        );
         RetValueType::CpuIdle
     }
 

@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::assert_sets_equal;
 use crate::*;
 
 verus! {
@@ -22,6 +23,11 @@ pub(super) proof fn allocate_new_container_pages_eof(
         page_index_2m_valid(page_ptr2page_index(pcid_allocator_page)),
         pages_4k.to_set().subset_of(post.ctn_mp.spec_index(container_ptr).view().owned_pages.view()),
         !post.thr_mp.dom().contains(pages_4k.spec_index(7)),
+        page_ptrs_to_indices(pages_4k) == set![
+            page_ptr2page_index(pages_4k.spec_index(0)), page_ptr2page_index(pages_4k.spec_index(1)), page_ptr2page_index(pages_4k.spec_index(2)),
+            page_ptr2page_index(pages_4k.spec_index(3)), page_ptr2page_index(pages_4k.spec_index(4)), page_ptr2page_index(pages_4k.spec_index(5)),
+            page_ptr2page_index(pages_4k.spec_index(6)), page_ptr2page_index(pages_4k.spec_index(7)), page_ptr2page_index(pages_4k.spec_index(8)),
+        ],
 {
     page_ptr_roundtrip();
     assert(page_index_2m_valid(page_ptr2page_index(container_page)) && page_index_2m_valid(page_ptr2page_index(pcid_allocator_page))) by { reveal(hugepage_2m_wf); };
@@ -29,6 +35,21 @@ pub(super) proof fn allocate_new_container_pages_eof(
     assert(!post.thr_mp.dom().contains(pages_4k.spec_index(7))) by {
         assert(perms.dom().contains(pages_4k.spec_index(7))) by { pages_4k.to_set_ensures(); };
         reveal(thread_pages_wf);
+    };
+    assert(page_ptrs_to_indices(pages_4k) == set![
+        page_ptr2page_index(pages_4k.spec_index(0)), page_ptr2page_index(pages_4k.spec_index(1)), page_ptr2page_index(pages_4k.spec_index(2)),
+        page_ptr2page_index(pages_4k.spec_index(3)), page_ptr2page_index(pages_4k.spec_index(4)), page_ptr2page_index(pages_4k.spec_index(5)),
+        page_ptr2page_index(pages_4k.spec_index(6)), page_ptr2page_index(pages_4k.spec_index(7)), page_ptr2page_index(pages_4k.spec_index(8)),
+    ]) by {
+        let mapped = pages_4k.map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr));
+        assert(mapped.to_set().contains(mapped.spec_index(0)) && mapped.to_set().contains(mapped.spec_index(1)) && mapped.to_set().contains(mapped.spec_index(2))
+            && mapped.to_set().contains(mapped.spec_index(3)) && mapped.to_set().contains(mapped.spec_index(4)) && mapped.to_set().contains(mapped.spec_index(5))
+            && mapped.to_set().contains(mapped.spec_index(6)) && mapped.to_set().contains(mapped.spec_index(7)) && mapped.to_set().contains(mapped.spec_index(8))) by { mapped.to_set_ensures(); };
+        assert_sets_equal!(page_ptrs_to_indices(pages_4k) == set![
+            page_ptr2page_index(pages_4k.spec_index(0)), page_ptr2page_index(pages_4k.spec_index(1)), page_ptr2page_index(pages_4k.spec_index(2)),
+            page_ptr2page_index(pages_4k.spec_index(3)), page_ptr2page_index(pages_4k.spec_index(4)), page_ptr2page_index(pages_4k.spec_index(5)),
+            page_ptr2page_index(pages_4k.spec_index(6)), page_ptr2page_index(pages_4k.spec_index(7)), page_ptr2page_index(pages_4k.spec_index(8)),
+        ], page_index => { mapped.to_set_ensures(); });
     };
 }
 } // verus!

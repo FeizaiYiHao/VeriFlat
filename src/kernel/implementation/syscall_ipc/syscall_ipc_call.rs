@@ -8,6 +8,7 @@ use super::syscall_ipc_transition::{ipc_block_current, ipc_schedule_waiting_peer
 use super::syscall_ipc_spec::*;
 use super::syscall_ipc_call_spec::*;
 use super::syscall_ipc_call_trace::*;
+use super::syscall_ipc_call_helpers::ipc_reply_handoff_release_and_end_step;
 #[cfg(verus_keep_ghost)]
 use super::syscall_ipc_trace::ipc_rendezvous_result_from_k;
 #[cfg(verus_keep_ghost)]
@@ -593,25 +594,13 @@ verus! {
             lctx.update_lock_id(KernelObjId::Thread(caller_ptr), before_switch.thr_mp.lock_id_by_key(caller_ptr), krnl.thr_mp.lock_id_by_key(caller_ptr));
             assert(ipc_reply_handoff_eof_transition_framing(before_switch, *krnl, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, *old(pt_regs))) by { reveal(ipc_reply_handoff_eof_transition_framing); };
             ipc_reply_handoff_eof(before_switch, *krnl, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, *old(pt_regs));
+            assert(kernel_container_nonlock_fields_and_quotas_unchanged(&before_switch, &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
         }
-        krnl.wunlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx), Tracked(needflush_perm));
-        krnl.wunlock_thread(caller_ptr, Tracked(&mut *lctx), Tracked(caller_lock_perm));
-        krnl.wunlock_thread(callee_ptr, Tracked(&mut *lctx), Tracked(callee_lock_perm));
-        krnl.wunlock_endpoint(endpoint_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-        proof {
-            let ghost flushed_pcid = ipc_handoff_flushed_pcid(old(steps).snapshot_k(), cpu_id, caller_ptr);
-            assert(kernel_ipc_reply_handoff_fields(&steps.snapshot_k(), &*krnl, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, *old(pt_regs), flushed_pcid)) by {
-                reveal(kernel_ipc_reply_handoff_fields); reveal(ipc_reply_handoff_eof_transition_framing);
-                reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
-                reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
-                reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged);
-            };
-            steps.end_kernel_step_ipc_reply_handoff(&*krnl, &*lctx, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, *old(pt_regs), flushed_pcid);
-            ipc_reply_handoff_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, *old(pt_regs), flushed_pcid);
-            ipc_reply_handoff_step_from_u(steps.nonlock_view().last().old_u, steps.nonlock_view().last().new_u, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, *old(pt_regs), flushed_pcid);
-            assert(*pt_regs == *old(steps).snapshot_k().thr_mp.spec_index(caller_ptr).view().trap_frame.get_some_0()) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged); };
-        }
+        ipc_reply_handoff_release_and_end_step(
+            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, pcid, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, &*pt_regs, Ghost(*old(pt_regs)),
+            Ghost(*old(krnl)), Ghost(*old(lctx)), Ghost(before_switch), Tracked(cpu_lock_perm), Tracked(callee_lock_perm), Tracked(endpoint_lock_perm),
+            Tracked(caller_lock_perm), Tracked(needflush_perm),
+        );
     }
 
     /// Under cpu, current-thread, and endpoint locks with an opposite-direction queue head: hand off to a

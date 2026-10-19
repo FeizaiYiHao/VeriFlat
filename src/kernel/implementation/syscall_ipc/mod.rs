@@ -1,6 +1,7 @@
 pub mod syscall_ipc;
 mod syscall_ipc_call;
 mod syscall_ipc_call_eof;
+mod syscall_ipc_call_helpers;
 pub mod syscall_ipc_call_spec;
 mod syscall_ipc_call_trace;
 mod syscall_ipc_dispatch;
@@ -23,4 +24,5 @@ pub mod syscall_ipc_spec;
 mod syscall_ipc_trace;
 mod syscall_ipc_transition;
 mod syscall_ipc_transition_eof;
+mod syscall_ipc_transition_helpers;
 mod syscall_ipc_transition_spec;

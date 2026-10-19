@@ -477,7 +477,7 @@ fn ipc_share_pages_locked(
         };
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, caller_thread);
-        assert(share_mapping_4k_source_range_present(krnl, source_pagetable, source_range)) by { reveal(mapped_4k_page_pagetable_wf); };
+        assert(share_mapping_4k_source_range_present(krnl, source_pagetable, source_range)) by { share_mapping_4k_source_range_present_from_wf(krnl, source_pagetable, source_range); };
         assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable, target_container, source_range)) by { reveal(container_thread_wf); };
         assert({
             &&& krnl.prc_mp.dom().contains(target_process)

@@ -4,6 +4,7 @@ mod syscall_new_container;
 mod syscall_new_container_helpers;
 mod syscall_new_container_allocation;
 mod syscall_new_container_allocation_eof;
+mod syscall_new_container_allocation_2m;
 mod syscall_new_container_publish;
 mod syscall_new_container_publish_release;
 mod syscall_new_container_finish;
@@ -20,6 +21,7 @@ mod syscall_new_container_trace;
 pub mod syscall_new_container_cpu_spec;
 mod syscall_new_container_cpu_eof;
 mod syscall_new_container_cpu;
+mod syscall_new_container_lock_owners;
 
 pub(super) use syscall_new_container_helpers::*;
 pub(super) use syscall_new_container_allocation::*;
