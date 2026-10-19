@@ -14,5 +14,6 @@ mod syscall_thread_exit_quota_eof;
 mod syscall_thread_exit_quota_spec;
 mod syscall_thread_exit_reclaim;
 mod syscall_thread_exit_reclaim_release;
+mod syscall_thread_exit_reclaim_quota_helpers;
 mod syscall_thread_exit_reclaim_eof;
 mod syscall_thread_exit_reclaim_spec;

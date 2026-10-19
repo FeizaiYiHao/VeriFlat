@@ -11,6 +11,7 @@ mod syscall_new_container_commit;
 mod syscall_new_container_commit_share;
 mod syscall_new_container_share;
 mod syscall_new_container_share_eof;
+mod syscall_new_container_share_helpers;
 pub mod syscall_new_container_spec;
 mod syscall_new_container_trace;
 pub mod syscall_new_container_cpu_spec;
