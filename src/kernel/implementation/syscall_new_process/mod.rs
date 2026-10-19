@@ -3,6 +3,7 @@ mod syscall_new_process_trace;
 mod syscall_new_process_with_iommu_release;
 mod syscall_new_process_with_iommu_publish;
 mod syscall_new_process_publish;
+mod syscall_new_process_publish_create;
 mod syscall_new_process_enter;
 mod syscall_new_process_publish_step;
 mod syscall_new_process_share_finish;
