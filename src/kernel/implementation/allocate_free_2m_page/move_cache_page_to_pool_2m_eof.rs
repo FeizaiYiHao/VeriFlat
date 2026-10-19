@@ -28,6 +28,9 @@ pub(super) open spec fn move_cache_page_to_pool_2m_eof_transition_framing(pre: K
     &&& new_cache.view().map() == old_cache.view().map().remove(node)
     &&& !new_cache.view().view().contains(page_ptr)
     &&& forall|q: PagePtr| #![trigger new_cache.view().view().contains(q)] new_cache.view().view().contains(q) <==> old_cache.view().view().contains(q) && q != page_ptr
+    &&& forall|a: RwLockPageAllocatorPtr, c: CpuId, q: PagePtr| #![trigger post.allc_2m_mp.spec_index(a).cpu_caches.spec_index(c).view().view().view().contains(q)]
+        post.allc_2m_mp.dom().contains(a) && index_valid(NUM_CPUS, c) ==> (post.allc_2m_mp.spec_index(a).cpu_caches.spec_index(c).view().view().view().contains(q)
+            <==> pre.allc_2m_mp.spec_index(a).cpu_caches.spec_index(c).view().view().view().contains(q) && !(a == allocator && c == cpu_id && q == page_ptr))
     &&& new_cache.is_init()
     &&& new_cache.locking_thread() == old_cache.locking_thread()
     &&& new_cache.being_killed() == old_cache.being_killed()

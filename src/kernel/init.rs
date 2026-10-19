@@ -2,6 +2,9 @@ use core::mem::offset_of;
 use vstd::prelude::*;
 use vstd::simple_pptr::*;
 
+mod boot_eof_pages;
+use boot_eof_pages::*;
+
 const ASSERT_KERNEL_IRT_OFFSET: [(); 0] = [(); offset_of!(crate::KernelK, irt)];
 
 verus! {
@@ -960,7 +963,8 @@ proof fn boot_memory_management_inv_eof_allocator_free_pages(
     ensures
         krnl.allocator_free_pages_wf(),
 {
-    assert(krnl.allocator_free_pages_wf()) by { reveal(allocator_free_page_ptrs_wf); reveal(boot_page_array_ready); };
+    assert(boot_free_4k_pool_wf(page_array, layout, free_4k_pool) && boot_free_2m_pool_wf(page_array, layout, free_2m_pool) && boot_free_1g_pool_wf(page_array, layout, free_1g_pool)) by { reveal(boot_page_array_ready); };
+    assert(krnl.allocator_free_pages_wf()) by { reveal(allocator_free_page_ptrs_wf); };
 }
 
 proof fn boot_memory_management_inv_eof_free_4k(
@@ -1100,16 +1104,42 @@ proof fn boot_memory_management_inv_eof_object_pages(
         thread_staged_pages_wf(krnl.thr_mp, krnl.pg_arr),
         endpoint_pages_wf(krnl.ep_mp, krnl.pg_arr),
 {
-    hide(Seq::no_duplicates);
-    assert(container_pages_wf(krnl.pg_arr, krnl.ctn_mp)) by { reveal(container_pages_wf); reveal(boot_page_array_ready); };
-    assert(process_pages_wf(krnl.pg_arr, krnl.prc_mp)) by { reveal(process_pages_wf); reveal(boot_page_array_ready); };
-    assert(pagetable_pages_wf(krnl.pt_mp, krnl.pg_arr)) by { reveal(pagetable_pages_wf); reveal(boot_page_array_ready); reveal(PageTable::table_pages_wf); };
-    assert(thread_pages_wf(krnl.thr_mp, krnl.pg_arr)) by { reveal(thread_pages_wf); reveal(boot_page_array_ready); };
-    assert(scheduler_pages_wf(krnl.sched_mp, krnl.pg_arr)) by { reveal(scheduler_pages_wf); reveal(boot_page_array_ready); };
-    assert(cpu_set_pages_wf(krnl.cpu_set_mp, krnl.pg_arr)) by { reveal(cpu_set_pages_wf); reveal(boot_page_array_ready); };
-    assert(pcid_allocator_pages_wf(krnl.pg_arr, krnl.pcid_allc_mp)) by { reveal(pcid_allocator_pages_wf); reveal(boot_page_array_ready); };
-    assert(thread_staged_pages_wf(krnl.thr_mp, krnl.pg_arr)) by { reveal(thread_staged_pages_4k_wf); reveal(thread_staged_pages_2m_wf); reveal(thread_staged_pages_1g_wf); reveal(boot_page_array_ready); };
-    assert(endpoint_pages_wf(krnl.ep_mp, krnl.pg_arr)) by { reveal(endpoint_pages_wf); reveal(boot_page_array_ready); };
+    boot_memory_management_inv_eof_container_pages(
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_published, default_pagetable, cpu_page_closure,
+        free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
+    );
+    boot_memory_management_inv_eof_process_pages(
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_published, default_pagetable, cpu_page_closure,
+        free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
+    );
+    boot_memory_management_inv_eof_pagetable_pages(
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_published, default_pagetable, cpu_page_closure,
+        free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
+    );
+    boot_memory_management_inv_eof_thread_pages(
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_published, default_pagetable, cpu_page_closure,
+        free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
+    );
+    boot_memory_management_inv_eof_scheduler_pages(
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_published, default_pagetable, cpu_page_closure,
+        free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
+    );
+    boot_memory_management_inv_eof_cpu_set_pages(
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_published, default_pagetable, cpu_page_closure,
+        free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
+    );
+    boot_memory_management_inv_eof_pcid_allocator_pages(
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_published, default_pagetable, cpu_page_closure,
+        free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
+    );
+    boot_memory_management_inv_eof_thread_staged_pages(
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_published, default_pagetable, cpu_page_closure,
+        free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
+    );
+    boot_memory_management_inv_eof_endpoint_pages(
+        krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_published, default_pagetable, cpu_page_closure,
+        free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr,
+    );
 }
 
 proof fn boot_memory_management_inv_eof_mappings(

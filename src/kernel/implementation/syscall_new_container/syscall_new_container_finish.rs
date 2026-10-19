@@ -1,9 +1,9 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::syscall_new_container_finish_eof::{finish_staged_container_publish_eof, finish_staged_container_publish_eof_transition_framing, release_container_backing_page_locks_eof, release_container_backing_page_locks_eof_transition_framing};
+use super::syscall_new_container_finish_eof::{finish_staged_container_publish_eof, finish_staged_container_publish_eof_transition_framing};
 use super::*;
-use super::syscall_new_container_tail_unlock::wunlock_new_container_2m_page_tails;
+use super::syscall_new_container_finish_release::{finish_staged_container_unlock_tails, release_backing_page_lock_group, staged_container_backing_page_indices};
 
 verus! {
 #[verifier::spinoff_prover]
@@ -172,38 +172,15 @@ pub(super) fn finish_staged_container_publish(
         ret.3.view().thread_id() == final(lctx).thread_id(),
         ret.3.view().lock_id() == final(krnl).pg_arr.spec_index(page_ptr2page_index(pages_4k.view().spec_index(7))).view().locking_thread()->Write_lock_id,
 {
-    let allocator_4k_page = *pages_4k.get(0);
-    let allocator_2m_page = *pages_4k.get(1);
-    let allocator_1g_page = *pages_4k.get(2);
-    let scheduler_page = *pages_4k.get(3);
-    let cpu_set_page = *pages_4k.get(8);
-    let process_page = *pages_4k.get(4);
-    let pagetable_page = *pages_4k.get(5);
-    let l4_page = *pages_4k.get(6);
-    let thread_page = *pages_4k.get(7);
-    let container_head = page_ptr2page_index(container_page);
-    let pcid_allocator_head = page_ptr2page_index(pcid_allocator_page);
-    wunlock_new_container_2m_page_tails(krnl, Tracked(&mut *lctx), container_head, pcid_allocator_head, Tracked(container_tail_lock_perms), Tracked(pcid_allocator_tail_lock_perms));
-    assert({
-        &&& seq![
-            page_ptr2page_index(allocator_4k_page), page_ptr2page_index(allocator_2m_page), page_ptr2page_index(allocator_1g_page),
-            page_ptr2page_index(scheduler_page), page_ptr2page_index(cpu_set_page), page_ptr2page_index(process_page),
-            page_ptr2page_index(pagetable_page), page_ptr2page_index(l4_page), container_head, pcid_allocator_head,
-        ].no_duplicates()
-        &&& !set![
-            page_ptr2page_index(allocator_4k_page), page_ptr2page_index(allocator_2m_page), page_ptr2page_index(allocator_1g_page),
-            page_ptr2page_index(scheduler_page), page_ptr2page_index(cpu_set_page), page_ptr2page_index(process_page),
-            page_ptr2page_index(pagetable_page), page_ptr2page_index(l4_page), container_head, pcid_allocator_head,
-        ].contains(page_ptr2page_index(thread_page))
-    }) by { page_ptr_roundtrip(); page_2m_all_ptrs_contains_head(container_head); page_2m_all_ptrs_contains_head(pcid_allocator_head); };
+    let (first, second) = staged_container_backing_page_indices(pages_4k, container_page, pcid_allocator_page);
+    finish_staged_container_unlock_tails(
+        krnl, Tracked(&mut *lctx), pages_4k, container_page, pcid_allocator_page, Ghost(first), Ghost(second), Tracked(container_tail_lock_perms),
+        Tracked(pcid_allocator_tail_lock_perms),
+    );
     release_container_backing_page_locks(
-        &mut krnl.pg_arr, Tracked(&mut *lctx),
-        (page_ptr2page_index(allocator_4k_page), page_ptr2page_index(allocator_2m_page), page_ptr2page_index(allocator_1g_page),
-            page_ptr2page_index(scheduler_page), page_ptr2page_index(cpu_set_page), page_ptr2page_index(process_page),
-            page_ptr2page_index(pagetable_page), page_ptr2page_index(l4_page), container_head, pcid_allocator_head),
-        Tracked(allocator_4k_page_lock_perm), Tracked(allocator_2m_page_lock_perm), Tracked(allocator_1g_page_lock_perm), Tracked(scheduler_page_lock_perm),
-        Tracked(cpu_set_page_lock_perm), Tracked(process_page_lock_perm), Tracked(pagetable_page_lock_perm), Tracked(l4_page_lock_perm),
-        Tracked(container_page_lock_perm), Tracked(pcid_allocator_page_lock_perm),
+        &mut krnl.pg_arr, Tracked(&mut *lctx), first, second, Tracked(allocator_4k_page_lock_perm), Tracked(allocator_2m_page_lock_perm),
+        Tracked(allocator_1g_page_lock_perm), Tracked(scheduler_page_lock_perm), Tracked(cpu_set_page_lock_perm), Tracked(process_page_lock_perm),
+        Tracked(pagetable_page_lock_perm), Tracked(l4_page_lock_perm), Tracked(container_page_lock_perm), Tracked(pcid_allocator_page_lock_perm),
     );
     proof {
         assert(finish_staged_container_publish_eof_transition_framing(*old(krnl), *krnl)) by { reveal(finish_staged_container_publish_eof_transition_framing); };
@@ -215,8 +192,7 @@ pub(super) fn finish_staged_container_publish(
 }
 
 fn release_container_backing_page_locks(
-    pages: &mut PageLockedArray, Tracked(lctx): Tracked<&mut LocalContext>,
-    indices: (PageIndex, PageIndex, PageIndex, PageIndex, PageIndex, PageIndex, PageIndex, PageIndex, PageIndex, PageIndex),
+    pages: &mut PageLockedArray, Tracked(lctx): Tracked<&mut LocalContext>, first: (PageIndex, PageIndex, PageIndex, PageIndex, PageIndex), second: (PageIndex, PageIndex, PageIndex, PageIndex, PageIndex),
     Tracked(perm0): Tracked<LockPerm>, Tracked(perm1): Tracked<LockPerm>, Tracked(perm2): Tracked<LockPerm>, Tracked(perm3): Tracked<LockPerm>,
     Tracked(perm4): Tracked<LockPerm>, Tracked(perm5): Tracked<LockPerm>, Tracked(perm6): Tracked<LockPerm>, Tracked(perm7): Tracked<LockPerm>,
     Tracked(perm8): Tracked<LockPerm>, Tracked(perm9): Tracked<LockPerm>,
@@ -225,57 +201,59 @@ fn release_container_backing_page_locks(
         page_array_wf(*old(pages)),
         old(pages).typed_lock_map_aligned(old(lctx).page_lock_map(), old(lctx).thread_id()),
         old(lctx).kernel_view_locking_state() is Release,
-        seq![indices.0, indices.1, indices.2, indices.3, indices.4, indices.5, indices.6, indices.7, indices.8, indices.9].no_duplicates(),
-        index_valid(NUM_PAGES, indices.0),
-        typed_lock_map_contains_mode(old(lctx).page_lock_map(), indices.0, TypedLockMode::Write),
+        seq![first.0, first.1, first.2, first.3, first.4].no_duplicates(),
+        seq![second.0, second.1, second.2, second.3, second.4].no_duplicates(),
+        set![first.0, first.1, first.2, first.3, first.4].disjoint(set![second.0, second.1, second.2, second.3, second.4]),
+        index_valid(NUM_PAGES, first.0),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), first.0, TypedLockMode::Write),
         perm0.state() is WriteLock,
         perm0.thread_id() == old(lctx).thread_id(),
-        perm0.lock_id() == old(pages).spec_index(indices.0).view().locking_thread()->Write_lock_id,
-        index_valid(NUM_PAGES, indices.1),
-        typed_lock_map_contains_mode(old(lctx).page_lock_map(), indices.1, TypedLockMode::Write),
+        perm0.lock_id() == old(pages).spec_index(first.0).view().locking_thread()->Write_lock_id,
+        index_valid(NUM_PAGES, first.1),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), first.1, TypedLockMode::Write),
         perm1.state() is WriteLock,
         perm1.thread_id() == old(lctx).thread_id(),
-        perm1.lock_id() == old(pages).spec_index(indices.1).view().locking_thread()->Write_lock_id,
-        index_valid(NUM_PAGES, indices.2),
-        typed_lock_map_contains_mode(old(lctx).page_lock_map(), indices.2, TypedLockMode::Write),
+        perm1.lock_id() == old(pages).spec_index(first.1).view().locking_thread()->Write_lock_id,
+        index_valid(NUM_PAGES, first.2),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), first.2, TypedLockMode::Write),
         perm2.state() is WriteLock,
         perm2.thread_id() == old(lctx).thread_id(),
-        perm2.lock_id() == old(pages).spec_index(indices.2).view().locking_thread()->Write_lock_id,
-        index_valid(NUM_PAGES, indices.3),
-        typed_lock_map_contains_mode(old(lctx).page_lock_map(), indices.3, TypedLockMode::Write),
+        perm2.lock_id() == old(pages).spec_index(first.2).view().locking_thread()->Write_lock_id,
+        index_valid(NUM_PAGES, first.3),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), first.3, TypedLockMode::Write),
         perm3.state() is WriteLock,
         perm3.thread_id() == old(lctx).thread_id(),
-        perm3.lock_id() == old(pages).spec_index(indices.3).view().locking_thread()->Write_lock_id,
-        index_valid(NUM_PAGES, indices.4),
-        typed_lock_map_contains_mode(old(lctx).page_lock_map(), indices.4, TypedLockMode::Write),
+        perm3.lock_id() == old(pages).spec_index(first.3).view().locking_thread()->Write_lock_id,
+        index_valid(NUM_PAGES, first.4),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), first.4, TypedLockMode::Write),
         perm4.state() is WriteLock,
         perm4.thread_id() == old(lctx).thread_id(),
-        perm4.lock_id() == old(pages).spec_index(indices.4).view().locking_thread()->Write_lock_id,
-        index_valid(NUM_PAGES, indices.5),
-        typed_lock_map_contains_mode(old(lctx).page_lock_map(), indices.5, TypedLockMode::Write),
+        perm4.lock_id() == old(pages).spec_index(first.4).view().locking_thread()->Write_lock_id,
+        index_valid(NUM_PAGES, second.0),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), second.0, TypedLockMode::Write),
         perm5.state() is WriteLock,
         perm5.thread_id() == old(lctx).thread_id(),
-        perm5.lock_id() == old(pages).spec_index(indices.5).view().locking_thread()->Write_lock_id,
-        index_valid(NUM_PAGES, indices.6),
-        typed_lock_map_contains_mode(old(lctx).page_lock_map(), indices.6, TypedLockMode::Write),
+        perm5.lock_id() == old(pages).spec_index(second.0).view().locking_thread()->Write_lock_id,
+        index_valid(NUM_PAGES, second.1),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), second.1, TypedLockMode::Write),
         perm6.state() is WriteLock,
         perm6.thread_id() == old(lctx).thread_id(),
-        perm6.lock_id() == old(pages).spec_index(indices.6).view().locking_thread()->Write_lock_id,
-        index_valid(NUM_PAGES, indices.7),
-        typed_lock_map_contains_mode(old(lctx).page_lock_map(), indices.7, TypedLockMode::Write),
+        perm6.lock_id() == old(pages).spec_index(second.1).view().locking_thread()->Write_lock_id,
+        index_valid(NUM_PAGES, second.2),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), second.2, TypedLockMode::Write),
         perm7.state() is WriteLock,
         perm7.thread_id() == old(lctx).thread_id(),
-        perm7.lock_id() == old(pages).spec_index(indices.7).view().locking_thread()->Write_lock_id,
-        index_valid(NUM_PAGES, indices.8),
-        typed_lock_map_contains_mode(old(lctx).page_lock_map(), indices.8, TypedLockMode::Write),
+        perm7.lock_id() == old(pages).spec_index(second.2).view().locking_thread()->Write_lock_id,
+        index_valid(NUM_PAGES, second.3),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), second.3, TypedLockMode::Write),
         perm8.state() is WriteLock,
         perm8.thread_id() == old(lctx).thread_id(),
-        perm8.lock_id() == old(pages).spec_index(indices.8).view().locking_thread()->Write_lock_id,
-        index_valid(NUM_PAGES, indices.9),
-        typed_lock_map_contains_mode(old(lctx).page_lock_map(), indices.9, TypedLockMode::Write),
+        perm8.lock_id() == old(pages).spec_index(second.3).view().locking_thread()->Write_lock_id,
+        index_valid(NUM_PAGES, second.4),
+        typed_lock_map_contains_mode(old(lctx).page_lock_map(), second.4, TypedLockMode::Write),
         perm9.state() is WriteLock,
         perm9.thread_id() == old(lctx).thread_id(),
-        perm9.lock_id() == old(pages).spec_index(indices.9).view().locking_thread()->Write_lock_id,
+        perm9.lock_id() == old(pages).spec_index(second.4).view().locking_thread()->Write_lock_id,
     ensures
         page_array_wf(*final(pages)),
         page_invariant_fields_unchanged(*old(pages), *final(pages)),
@@ -283,7 +261,7 @@ fn release_container_backing_page_locks(
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
-        final(lctx).page_lock_map() == old(lctx).page_lock_map().remove_keys(set![indices.0, indices.1, indices.2, indices.3, indices.4, indices.5, indices.6, indices.7, indices.8, indices.9]),
+        final(lctx).page_lock_map() == old(lctx).page_lock_map().remove_keys(set![first.0, first.1, first.2, first.3, first.4]).remove_keys(set![second.0, second.1, second.2, second.3, second.4]),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
         final(lctx).cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
@@ -300,46 +278,10 @@ fn release_container_backing_page_locks(
         final(lctx).allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),
         final(lctx).allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
         final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
-        forall|index: PageIndex| #![trigger final(pages).spec_index(index)] index_valid(NUM_PAGES, index) && !set![indices.0, indices.1, indices.2, indices.3, indices.4, indices.5, indices.6, indices.7, indices.8, indices.9].contains(index)
+        forall|index: PageIndex| #![trigger final(pages).spec_index(index)] index_valid(NUM_PAGES, index) && !set![first.0, first.1, first.2, first.3, first.4].contains(index) && !set![second.0, second.1, second.2, second.3, second.4].contains(index)
             ==> final(pages).spec_index(index) == old(pages).spec_index(index),
 {
-    proof { page_array_wf_map(*pages); }
-    assert({
-        &&& pages.spec_index(indices.0).view().wlocked_by(&*lctx)
-        &&& lctx.lock_entry_contains(pages.lock_id_by_index(indices.0), KernelObjId::Page(indices.0))
-        &&& pages.spec_index(indices.1).view().wlocked_by(&*lctx)
-        &&& lctx.lock_entry_contains(pages.lock_id_by_index(indices.1), KernelObjId::Page(indices.1))
-        &&& pages.spec_index(indices.2).view().wlocked_by(&*lctx)
-        &&& lctx.lock_entry_contains(pages.lock_id_by_index(indices.2), KernelObjId::Page(indices.2))
-        &&& pages.spec_index(indices.3).view().wlocked_by(&*lctx)
-        &&& lctx.lock_entry_contains(pages.lock_id_by_index(indices.3), KernelObjId::Page(indices.3))
-        &&& pages.spec_index(indices.4).view().wlocked_by(&*lctx)
-        &&& lctx.lock_entry_contains(pages.lock_id_by_index(indices.4), KernelObjId::Page(indices.4))
-        &&& pages.spec_index(indices.5).view().wlocked_by(&*lctx)
-        &&& lctx.lock_entry_contains(pages.lock_id_by_index(indices.5), KernelObjId::Page(indices.5))
-        &&& pages.spec_index(indices.6).view().wlocked_by(&*lctx)
-        &&& lctx.lock_entry_contains(pages.lock_id_by_index(indices.6), KernelObjId::Page(indices.6))
-        &&& pages.spec_index(indices.7).view().wlocked_by(&*lctx)
-        &&& lctx.lock_entry_contains(pages.lock_id_by_index(indices.7), KernelObjId::Page(indices.7))
-        &&& pages.spec_index(indices.8).view().wlocked_by(&*lctx)
-        &&& lctx.lock_entry_contains(pages.lock_id_by_index(indices.8), KernelObjId::Page(indices.8))
-        &&& pages.spec_index(indices.9).view().wlocked_by(&*lctx)
-        &&& lctx.lock_entry_contains(pages.lock_id_by_index(indices.9), KernelObjId::Page(indices.9))
-    }) by { reveal(LockedArray::typed_lock_map_aligned); };
-    pages.wunlock(indices.0, Tracked(&mut *lctx), Tracked(perm0), Ghost(KernelObjId::Page(indices.0)));
-    pages.wunlock(indices.1, Tracked(&mut *lctx), Tracked(perm1), Ghost(KernelObjId::Page(indices.1)));
-    pages.wunlock(indices.2, Tracked(&mut *lctx), Tracked(perm2), Ghost(KernelObjId::Page(indices.2)));
-    pages.wunlock(indices.3, Tracked(&mut *lctx), Tracked(perm3), Ghost(KernelObjId::Page(indices.3)));
-    pages.wunlock(indices.4, Tracked(&mut *lctx), Tracked(perm4), Ghost(KernelObjId::Page(indices.4)));
-    pages.wunlock(indices.5, Tracked(&mut *lctx), Tracked(perm5), Ghost(KernelObjId::Page(indices.5)));
-    pages.wunlock(indices.6, Tracked(&mut *lctx), Tracked(perm6), Ghost(KernelObjId::Page(indices.6)));
-    pages.wunlock(indices.7, Tracked(&mut *lctx), Tracked(perm7), Ghost(KernelObjId::Page(indices.7)));
-    pages.wunlock(indices.8, Tracked(&mut *lctx), Tracked(perm8), Ghost(KernelObjId::Page(indices.8)));
-    pages.wunlock(indices.9, Tracked(&mut *lctx), Tracked(perm9), Ghost(KernelObjId::Page(indices.9)));
-    proof {
-        assert(release_container_backing_page_locks_eof_transition_framing(*old(pages), *pages, indices)) by { reveal(release_container_backing_page_locks_eof_transition_framing); };
-        release_container_backing_page_locks_eof(*old(pages), *pages, indices);
-    }
-    assert(pages.typed_lock_map_aligned(lctx.page_lock_map(), lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
+    release_backing_page_lock_group(pages, Tracked(&mut *lctx), first, Tracked(perm0), Tracked(perm1), Tracked(perm2), Tracked(perm3), Tracked(perm4));
+    release_backing_page_lock_group(pages, Tracked(&mut *lctx), second, Tracked(perm5), Tracked(perm6), Tracked(perm7), Tracked(perm8), Tracked(perm9));
 }
 }

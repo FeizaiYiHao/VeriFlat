@@ -43,6 +43,13 @@ they must point to these canonical sources instead of redefining their rules.
 - Do not introduce `exists` or `choose` in specs, contracts, or proofs. Pass
   concrete arguments and results, and repair producer contracts or triggers
   instead of selecting hidden witnesses or counterexamples.
+- Do not write invariants keyed on a thread's `SyscallProgress`: no
+  `KernelK::inv`, U-level invariant, or `*_wf` clause of the form
+  `thread.syscall_progress is X ==> <facts about other objects>`. State of a
+  multi-step syscall that must survive a step boundary belongs in the affected
+  object's own (ghost) state, such as a container ghost kill flag, with the
+  invariant stated on that object. `SyscallProgress` may still appear in step
+  specs, trace lemmas, and exec contracts.
 - After changing a contract, simplify its callers' old proofs and verify which
   facts are still necessary. Use typed lock maps directly for lock membership
   and scope; preserve the approved relations described by the kernel-model skill.

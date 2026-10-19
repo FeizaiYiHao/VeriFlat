@@ -3,7 +3,9 @@ use crate::*;
 #[cfg(verus_keep_ghost)]
 use super::syscall_new_process_spec::{new_process_publish_step, new_process_publish_step_pre};
 #[cfg(verus_keep_ghost)]
-use super::syscall_new_process_trace::{new_process_publish_step_from_u, new_process_publish_step_pre_from_k};
+use super::syscall_new_process_trace::new_process_publish_step_pre_from_k;
+use super::syscall_new_process_publish_step::end_new_process_publish_step;
+use super::syscall_new_process_publish_create::create_and_release_staged_process;
 
 verus! {
 pub(super) fn publish_staged_process(
@@ -189,59 +191,21 @@ pub(super) fn publish_staged_process(
 {
     hide(Seq::contains);
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
-    let tracked mut pcid_allocator_lock_perm = pcid_allocator_lock_perm.get();
-    let tracked mut parent_lock_perm = parent_lock_perm.get();
-    let tracked process_page_lock_perm = process_page_lock_perm.get();
-    let tracked pagetable_page_lock_perm = pagetable_page_lock_perm.get();
-    let tracked l4_page_lock_perm = l4_page_lock_perm.get();
     proof {
-        assert(krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().depth < usize::MAX) by {
-            let uppers = krnl.prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
-            assert(uppers.no_duplicates() && uppers.len() == krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().depth) by { process_perms_wf_at(krnl.prc_mp, parent_ptr); };
-            assert(uppers.len() <= NUM_PAGES) by {
-                let c = krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().owning_container;
-                let tree = krnl.ctn_mp.spec_index(c).view_ghost().owned_processes.view();
-                container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, parent_ptr); container_process_wf_container_at(krnl.ctn_mp, krnl.prc_mp, c, parent_ptr);
-                per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, c); process_uppertree_seq_wf_dom_at(krnl.ctn_mp.spec_index(c).view().root_process, tree, krnl.prc_mp, parent_ptr);
-                lemma_kernel_object_ptr_seq_len_bounded(&*krnl, uppers);
-            };
-        };
-        assert(page_ptr2page_index(process_page_ptr) != page_ptr2page_index(pagetable_page_ptr) && page_ptr2page_index(process_page_ptr) != page_ptr2page_index(l4_page_ptr)
-            && page_ptr2page_index(pagetable_page_ptr) != page_ptr2page_index(l4_page_ptr)) by {
-            page_ptr2page_index_neq(process_page_ptr, pagetable_page_ptr); page_ptr2page_index_neq(process_page_ptr, l4_page_ptr);
-            page_ptr2page_index_neq(pagetable_page_ptr, l4_page_ptr);
-        };
-    }
-    let (child_ptr, target_pagetable_ptr, Tracked(child_lock_perm), Tracked(target_pagetable_lock_perm)) = create_process_from_staged_pages(
-        krnl, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, current_thread_ptr, container_ptr, pcid_allocator_ptr, pcid,
-        Tracked(&mut *lctx), Tracked(&process_page_lock_perm), Tracked(&pagetable_page_lock_perm), Tracked(&l4_page_lock_perm),
-        Tracked(&parent_lock_perm), Tracked(&current_thread_lock_perm), Tracked(&pcid_allocator_lock_perm),
-    );
-    krnl.wunlock_page(page_ptr2page_index(l4_page_ptr), Tracked(&mut *lctx), Tracked(l4_page_lock_perm));
-    krnl.wunlock_page(page_ptr2page_index(pagetable_page_ptr), Tracked(&mut *lctx), Tracked(pagetable_page_lock_perm));
-    krnl.wunlock_page(page_ptr2page_index(process_page_ptr), Tracked(&mut *lctx), Tracked(process_page_lock_perm));
-    proof { assert(krnl.prc_mp.spec_index(parent_ptr).view().state.view() is Running || krnl.prc_mp.spec_index(parent_ptr).view().state.view() is Zombie) by { reveal(create_process_from_staged_pages_eof_transition_framing); }; }
-    krnl.wunlock_process(parent_ptr, Tracked(&mut *lctx), Tracked(parent_lock_perm));
-    krnl.wunlock_pcid_allocator(pcid_allocator_ptr, Tracked(&mut *lctx), Tracked(pcid_allocator_lock_perm));
-    let ghost sharing = Some(SyscallProgress::Share4k {
-        source_range: *source_range, target_range: *source_range, shared: 0,
-        origin: Share4kOrigin::NewProcess(NewProcessProgress { range: *source_range, regs, endpoint_index, with_iommu: false, child: Some(child_ptr) }),
-    });
-    krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(sharing), Tracked(&*lctx), Tracked(current_thread_lock_perm));
-    proof {
-        let ghost published_k = *krnl;
-        let ghost published_lctx = *lctx;
-        assert(kernel_process_added(&steps.snapshot_k(), &*krnl, child_ptr)) by { reveal(kernel_process_added); };
-        krnl.kernel_step_boundary_process_added(&mut *lctx, &mut *steps, child_ptr, current_thread_ptr);
-        assert(new_process_publish_step_pre(steps.view().last().old_u, cpu_id) && new_process_publish_step(steps.view().last().old_u, steps.view().last().new_u, cpu_id)) by {
-            reveal(create_process_from_staged_pages_eof_transition_framing); reveal(kernel_thread_quota_4k_changed); process_thread_wf_at(old(krnl).prc_mp, old(krnl).thr_mp, current_thread_ptr);
+        assert(new_process_publish_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id)) by {
+            process_thread_wf_at(old(krnl).prc_mp, old(krnl).thr_mp, current_thread_ptr);
             new_process_publish_step_pre_from_k(old(krnl), old(lctx), cpu_id, parent_ptr, current_thread_ptr, container_ptr, *source_range, regs, endpoint_index, false);
-            kernel_process_published_and_parent_unlocked_implies_u_step(old(krnl), &published_k, &published_lctx, parent_ptr, child_ptr, current_thread_ptr, container_ptr,
-                target_pagetable_ptr, None, pcid_allocator_ptr, pcid, sharing);
-            new_process_publish_step_from_u(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(published_k), cpu_id, parent_ptr, child_ptr, current_thread_ptr, container_ptr,
-                *source_range, regs, endpoint_index, false);
         };
     }
+    let (child_ptr, target_pagetable_ptr, Tracked(child_lock_perm), Tracked(target_pagetable_lock_perm)) = create_and_release_staged_process(
+        krnl, Tracked(&mut *lctx), cpu_id, container_ptr, parent_ptr, current_thread_ptr, pcid_allocator_ptr, source_pagetable_ptr, pcid, process_page_ptr,
+        pagetable_page_ptr, l4_page_ptr, process_page_lock_perm, pagetable_page_lock_perm, l4_page_lock_perm, pcid_allocator_lock_perm, parent_lock_perm,
+        Tracked(current_thread_lock_perm),
+    );
+    end_new_process_publish_step(
+        krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, parent_ptr, child_ptr, current_thread_ptr, pcid_allocator_ptr, source_pagetable_ptr,
+        target_pagetable_ptr, None, source_range, pcid, Tracked(current_thread_lock_perm), Ghost(regs), Ghost(endpoint_index),
+    );
     proof {
         assert(krnl.ctn_mp.dom().contains(container_ptr)) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, current_thread_ptr); };
         assert(krnl.pt_mp.spec_index(source_pagetable_ptr).view().proc_ptr == parent_ptr) by { process_thread_wf_at(old(krnl).prc_mp, old(krnl).thr_mp, current_thread_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); reveal(process_pagetable_match); };

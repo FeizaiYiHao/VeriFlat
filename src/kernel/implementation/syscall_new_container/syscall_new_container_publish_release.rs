@@ -2,8 +2,7 @@ use vstd::assert_sets_equal;
 use vstd::prelude::*;
 use crate::*;
 use super::staged_4k_page_chain::cleanup_published_4k_page_chain;
-#[cfg(verus_keep_ghost)]
-use super::staged_4k_page_chain::page_ptrs_to_indices_excludes_distinct_valid_page;
+use super::syscall_new_container_publish_indices::new_container_publish_staging_heads;
 use super::*;
 
 verus! {
@@ -213,48 +212,7 @@ pub(super) fn release_new_container_publish_staging(
     let pagetable_page = *pages_4k.get(5);
     let l4_page = *pages_4k.get(6);
     let thread_page = *pages_4k.get(7);
-    let container_head = page_ptr2page_index(container_page);
-    let pcid_allocator_head = page_ptr2page_index(pcid_allocator_page);
-    proof {
-        new_container_page_positions(pages_4k.view());
-        assert(new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).contains(container_page)
-            && new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).contains(pcid_allocator_page)) by {
-            reveal(new_container_moved_pages); page_2m_all_ptrs_contains_head(container_head); page_2m_all_ptrs_contains_head(pcid_allocator_head); page_ptr_roundtrip();
-        };
-        assert({
-            &&& !page_ptrs_to_indices(funding_pages).contains(page_ptr2page_index(container_page))
-            &&& !page_ptrs_to_indices(funding_pages).contains(page_ptr2page_index(pcid_allocator_page))
-            &&& !page_ptrs_to_indices(funding_pages).contains(page_ptr2page_index(allocator_4k_page))
-            &&& !page_ptrs_to_indices(funding_pages).contains(page_ptr2page_index(allocator_2m_page))
-            &&& !page_ptrs_to_indices(funding_pages).contains(page_ptr2page_index(allocator_1g_page))
-            &&& !page_ptrs_to_indices(funding_pages).contains(page_ptr2page_index(scheduler_page))
-            &&& !page_ptrs_to_indices(funding_pages).contains(page_ptr2page_index(cpu_set_page))
-            &&& !page_ptrs_to_indices(funding_pages).contains(page_ptr2page_index(process_page))
-            &&& !page_ptrs_to_indices(funding_pages).contains(page_ptr2page_index(pagetable_page))
-            &&& !page_ptrs_to_indices(funding_pages).contains(page_ptr2page_index(l4_page))
-            &&& !page_ptrs_to_indices(funding_pages).contains(page_ptr2page_index(thread_page))
-        }) by {
-            page_ptrs_to_indices_excludes_distinct_valid_page(funding_pages, container_page);
-            page_ptrs_to_indices_excludes_distinct_valid_page(funding_pages, pcid_allocator_page);
-            page_ptrs_to_indices_excludes_distinct_valid_page(funding_pages, allocator_4k_page);
-            page_ptrs_to_indices_excludes_distinct_valid_page(funding_pages, allocator_2m_page);
-            page_ptrs_to_indices_excludes_distinct_valid_page(funding_pages, allocator_1g_page);
-            page_ptrs_to_indices_excludes_distinct_valid_page(funding_pages, scheduler_page);
-            page_ptrs_to_indices_excludes_distinct_valid_page(funding_pages, cpu_set_page);
-            page_ptrs_to_indices_excludes_distinct_valid_page(funding_pages, process_page);
-            page_ptrs_to_indices_excludes_distinct_valid_page(funding_pages, pagetable_page);
-            page_ptrs_to_indices_excludes_distinct_valid_page(funding_pages, l4_page);
-            page_ptrs_to_indices_excludes_distinct_valid_page(funding_pages, thread_page);
-        };
-        assert_sets_equal!(
-            old(lctx).page_lock_map().dom().difference(page_ptrs_to_indices(funding_pages)).difference(page_2m_tail_indices(container_head).union(page_2m_tail_indices(pcid_allocator_head)).union(set![
-                page_ptr2page_index(allocator_4k_page), page_ptr2page_index(allocator_2m_page), page_ptr2page_index(allocator_1g_page),
-                page_ptr2page_index(scheduler_page), page_ptr2page_index(cpu_set_page), page_ptr2page_index(process_page),
-                page_ptr2page_index(pagetable_page), page_ptr2page_index(l4_page), container_head, pcid_allocator_head,
-            ])) == set![page_ptr2page_index(thread_page)],
-            page_index => { reveal(Seq::contains); page_ptr_roundtrip(); page_2m_all_ptrs_contains_head(container_head); page_2m_all_ptrs_contains_head(pcid_allocator_head); }
-        );
-    }
+    let (container_head, pcid_allocator_head) = new_container_publish_staging_heads(pages_4k, container_page, pcid_allocator_page, Ghost(funding_pages), Ghost(lctx.page_lock_map().dom()));
     cleanup_published_4k_page_chain(krnl, funding_page_count, funding_page_head, Ghost(funding_pages), allocator_4k_page, container_page, Tracked(&mut *lctx), Tracked(funding_page_lock_perms));
     proof {
         assert_sets_equal!(

@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use crate::free_4k_page::kill_container_quota_fold::lemma_container_allocator_quota_eq_total_free_without_users;
+use super::super::free_4k_page::kill_container_quota_fold::lemma_container_allocator_quota_eq_total_free_without_users;
 
 verus! {
 #[verifier::opaque]

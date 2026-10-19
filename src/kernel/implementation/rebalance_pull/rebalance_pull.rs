@@ -2,6 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::rebalance_pull_spec::*;
 use super::rebalance_pull_trace::*;
+use super::rebalance_pull_release::rebalance_pull_release_unpulled;
 #[cfg(verus_keep_ghost)]
 use super::rebalance_pull_eof::rebalance_pull_eof;
 #[cfg(verus_keep_ghost)]
@@ -157,7 +158,7 @@ fn rebalance_lock_shards_until_nonempty(krnl: &mut KernelK, Tracked(lctx): Track
 }
 
 /// Releases shards `0..count` of `scheduler_ptr`, the only scheduler shards held.
-fn rebalance_unlock_shard_prefix(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, scheduler_ptr: RwLockSchedulerPtr, count: usize, Tracked(shard_perms): Tracked<Map<CpuId, LockPerm>>)
+pub(super) fn rebalance_unlock_shard_prefix(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, scheduler_ptr: RwLockSchedulerPtr, count: usize, Tracked(shard_perms): Tracked<Map<CpuId, LockPerm>>)
     requires
         old(krnl).inv(),
         old(krnl).sched_mp.dom().contains(scheduler_ptr),
@@ -491,15 +492,10 @@ pub fn rebalance_pull(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalConte
     let ghost queues = scheduler_shards_of(old(krnl).sched_mp.spec_index(scheduler_ptr));
     let (count, found, Tracked(shard_perms)) = rebalance_lock_shards_until_nonempty(krnl, Tracked(&mut *lctx), cpu_id, scheduler_ptr);
     if !found || count - 1 == cpu_id {
-        rebalance_unlock_shard_prefix(krnl, Tracked(&mut *lctx), scheduler_ptr, count, Tracked(shard_perms));
         proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
         proof { assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; }; }
-        release_cpu_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm));
-        proof {
-            assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl); };
-            rebalance_pull_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id);
-            rebalance_pull_result_from_k(old(krnl), cpu_id, RebalanceResult::Nothing);
-        }
+        rebalance_pull_release_unpulled(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, scheduler_ptr, count, Tracked(shard_perms), None, Tracked(cpu_lock_perm));
+        proof { rebalance_pull_result_from_k(old(krnl), cpu_id, RebalanceResult::Nothing); }
         return RebalanceResult::Nothing;
     }
     let victim = count - 1;
@@ -509,16 +505,10 @@ pub fn rebalance_pull(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalConte
         proof { scheduler_perms_wf_map(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, scheduler_ptr); kernel_scheduler_shards_projection_at(krnl.sched_mp.spec_index(scheduler_ptr), cpu_id); krnl.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.lemma_len_view(); }
         let local_len = krnl.sched_mp.borrow_shard_typed(scheduler_ptr, cpu_id, Ghost(lctx.scheduler_lock_map()), Tracked(&*lctx), Tracked(&local_perm)).queue.len();
         if local_len != 0 {
-            krnl.wunlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx), Tracked(local_perm));
-            rebalance_unlock_shard_prefix(krnl, Tracked(&mut *lctx), scheduler_ptr, count, Tracked(shard_perms));
             proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
             proof { assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; }; }
-            release_cpu_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm));
-            proof {
-                assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl); };
-                rebalance_pull_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id);
-                rebalance_pull_result_from_k(old(krnl), cpu_id, RebalanceResult::Nothing);
-            }
+            rebalance_pull_release_unpulled(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, scheduler_ptr, count, Tracked(shard_perms), Some(Tracked(local_perm)), Tracked(cpu_lock_perm));
+            proof { rebalance_pull_result_from_k(old(krnl), cpu_id, RebalanceResult::Nothing); }
             return RebalanceResult::Nothing;
         }
         local_lock_perm = Some(Tracked(local_perm));
@@ -528,16 +518,10 @@ pub fn rebalance_pull(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalConte
     proof { container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp, scheduler_ptr, victim, thread_ptr); }
     let res = krnl.wlock_thread_unless_killed(thread_ptr, Tracked(&mut *lctx));
     if res.is_none() {
-        if let Some(local_perm) = local_lock_perm { krnl.wunlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx), local_perm); }
-        rebalance_unlock_shard_prefix(krnl, Tracked(&mut *lctx), scheduler_ptr, count, Tracked(shard_perms));
         proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
         proof { assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; }; }
-        release_cpu_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm));
-        proof {
-            assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl); };
-            rebalance_pull_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id);
-            rebalance_pull_result_from_k(old(krnl), cpu_id, RebalanceResult::Nothing);
-        }
+        rebalance_pull_release_unpulled(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, scheduler_ptr, count, Tracked(shard_perms), local_lock_perm, Tracked(cpu_lock_perm));
+        proof { rebalance_pull_result_from_k(old(krnl), cpu_id, RebalanceResult::Nothing); }
         return RebalanceResult::Nothing;
     }
     rebalance_pull_move_head(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, scheduler_ptr, victim, thread_ptr, count, Tracked(shard_perms), local_lock_perm, res.unwrap(), Tracked(cpu_lock_perm));

@@ -62,6 +62,12 @@
   unchanged fields directly.
 - At a kernel-step boundary, frame held objects explicitly. Preserve
   `all_objects_unlocked` directly rather than deriving it from an empty ledger.
+- Never key an invariant on a thread's `SyscallProgress`
+  (`thread.syscall_progress is X ==> <facts about other objects>`). What a
+  multi-step syscall leaves behind across a step boundary is recorded in the
+  affected object's own (ghost) state, for example a container or process ghost
+  kill flag, and that object's invariant constrains it. `SyscallProgress` stays
+  in step specs, trace lemmas, and exec contracts.
 - `KernelU` projects the outer physical lock mode as
   `LockStateU::{Unlocked, ReadLocked, WriteLocked}` on containers, processes,
   threads, endpoints, CPUs, and both page-table views, and each container's

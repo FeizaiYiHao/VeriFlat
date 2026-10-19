@@ -3,6 +3,7 @@ use crate::*;
 use super::syscall_new_container_commit::commit_new_container;
 use super::syscall_new_container_spec::*;
 use super::syscall_new_container_trace::*;
+use super::syscall_new_container_lock_owners::new_container_lock_process_and_thread;
 
 verus! {
 /// Exec state handed from the lock-and-check prefix of `syscall_new_container` to its commit.
@@ -16,10 +17,10 @@ pub(super) struct NewContainerEntryLocked {
 }
 
 /// Exec state handed from the owner-locking prefix of `new_container_lock_entry` to its endpoint, pagetable, and cpu-set checks.
-struct NewContainerOwnersLocked {
-    parent_container_ptr: RwLockContainerPtr, parent_process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, source_pagetable_ptr: RwLockPageTableRoot,
-    parent_cpu_set: RwLockCpuSetPtr, source_range: VaRange4K, endpoint: Option<RwLockEndpointPtr>, cpu_lock_perm: Tracked<LockPerm>,
-    container_lock_perm: Tracked<LockPerm>, process_lock_perm: Tracked<LockPerm>, thread_lock_perm: Tracked<LockPerm>,
+pub(super) struct NewContainerOwnersLocked {
+    pub parent_container_ptr: RwLockContainerPtr, pub parent_process_ptr: RwLockProcessPtr, pub current_thread_ptr: RwLockThreadPtr,
+    pub source_pagetable_ptr: RwLockPageTableRoot, pub parent_cpu_set: RwLockCpuSetPtr, pub source_range: VaRange4K, pub endpoint: Option<RwLockEndpointPtr>,
+    pub cpu_lock_perm: Tracked<LockPerm>, pub container_lock_perm: Tracked<LockPerm>, pub process_lock_perm: Tracked<LockPerm>, pub thread_lock_perm: Tracked<LockPerm>,
 }
 
 /// Releases every lock `new_container_lock_entry` holds once its source or CPU-set check fails and ends the step unchanged;
@@ -358,65 +359,15 @@ fn new_container_lock_owners(
         }
         return Err(error);
     }
-    let process_res = krnl.wlock_process_unless_killed(parent_process_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
-    if process_res.is_none() {
-        krnl.wunlock_container(parent_container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-        proof {
-            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(parent_container_ptr), Some(parent_process_ptr), None, None, None, None);
-            new_container_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, endpoint_index,
-                RetValueType::ErrorProcessKilled);
-            new_container_result_from_k(old(krnl), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index, RetValueType::ErrorProcessKilled);
-        }
-        return Err(RetValueType::ErrorProcessKilled);
-    }
-    let Tracked(process_lock_perm) = process_res.unwrap();
-    let thread_res = krnl.wlock_thread_unless_killed(current_thread_ptr, Tracked(&mut *lctx));
-    if thread_res.is_none() {
-        krnl.wunlock_process(parent_process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
-        krnl.wunlock_container(parent_container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-        proof {
-            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(parent_container_ptr), Some(parent_process_ptr), Some(current_thread_ptr), None, None, None);
-            new_container_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, endpoint_index,
-                RetValueType::ErrorThreadKilled);
-            new_container_result_from_k(old(krnl), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index, RetValueType::ErrorThreadKilled);
-        }
-        return Err(RetValueType::ErrorThreadKilled);
-    }
-    let Tracked(thread_lock_perm) = thread_res.unwrap();
-    let thread = krnl.thr_mp.borrow_typed(current_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&thread_lock_perm));
-    let quota_4k = thread.quota_4k;
-    let quota_2m = thread.quota_2m;
-    let source_pagetable_ptr = thread.proc_pagetable_ptr;
-    let endpoint_option = match endpoint_index { Some(index) => *thread.endpoint_descriptors.get(index), None => None };
-    let endpoint_missing = endpoint_index.is_some() && endpoint_option.is_none();
-    let required_4k = 9usize + funding_page_count + 3 * range;
-    let quota_available = quota_4k >= required_4k && quota_2m >= 2;
-    if endpoint_missing || !quota_available {
-        let error = if endpoint_missing { RetValueType::Error } else { RetValueType::ErrorNoQuota };
-        krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
-        krnl.wunlock_process(parent_process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
-        krnl.wunlock_container(parent_container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-        proof {
-            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(parent_container_ptr), Some(parent_process_ptr), Some(current_thread_ptr), None, None, None);
-            new_container_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, endpoint_index,
-                error);
-            new_container_result_from_k(old(krnl), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index, error);
-        }
-        return Err(error);
-    }
     proof {
         assert(source_range == (VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) })) by { source_range.va_range_lemma(); };
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
     }
-    Ok(NewContainerOwnersLocked {
-        parent_container_ptr, parent_process_ptr, current_thread_ptr, source_pagetable_ptr, parent_cpu_set, source_range, endpoint: endpoint_option,
-        cpu_lock_perm: Tracked(cpu_lock_perm), container_lock_perm: Tracked(container_lock_perm), process_lock_perm: Tracked(process_lock_perm),
-        thread_lock_perm: Tracked(thread_lock_perm),
-    })
+    new_container_lock_process_and_thread(
+        krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index, initial_regs,
+        source_range, parent_container_ptr, parent_process_ptr, current_thread_ptr, parent_cpu_set, Tracked(cpu_lock_perm), Tracked(container_lock_perm),
+    )
 }
 
 /// Takes the owner locks from `new_container_lock_owners`, then locks the optional endpoint, source pagetable, and cpu set,

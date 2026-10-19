@@ -369,7 +369,11 @@ pub(crate) fn kill_container_retire_container_object(
         lock_perm.lock_id() == old(krnl).ctn_mp.spec_index(container_ptr).locking_thread()->Write_lock_id,
         old(krnl).cpu_offline_mp.perms_wf(),
         old(krnl).cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(container_ptr)),
-        forall|i: CpuId| #![trigger flag_perms.dom().contains(i)] index_valid(NUM_CPUS, i) ==> {
+        forall|i: CpuId|
+            #![trigger flag_perms.dom().contains(i)]
+            #![trigger flag_perms[i]]
+            #![trigger typed_lock_map_contains_mode(old(lctx).cpu_offline_flag_lock_map(), (cpu_offline_flags_ptr(container_ptr), i), TypedLockMode::Write)]
+            index_valid(NUM_CPUS, i) ==> {
             &&& flag_perms.dom().contains(i)
             &&& flag_perms[i].state() is WriteLock
             &&& flag_perms[i].thread_id() == old(lctx).thread_id()

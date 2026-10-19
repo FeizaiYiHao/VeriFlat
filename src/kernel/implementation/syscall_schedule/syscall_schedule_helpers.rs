@@ -2,6 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_schedule_spec::*;
 use super::syscall_schedule_trace::*;
+use super::syscall_schedule_switch_unlock::schedule_switch_release_locks;
 #[cfg(verus_keep_ghost)]
 use super::syscall_schedule_eof::scheduler_context_switch_eof;
 
@@ -223,14 +224,8 @@ pub(super) fn schedule_switch_unlock_and_record(
         kernel_scheduler_shards_projection_at(entry_k.sched_mp.spec_index(scheduler_ptr), cpu_id);
         scheduler_context_switch_eof(switch_k, *krnl, cpu_id, scheduler_ptr, next_thread, entry_regs);
     }
-    krnl.wunlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx), Tracked(needflush_perm));
-    krnl.wunlock_thread(next_thread, Tracked(&mut *lctx), Tracked(next_lock_perm));
-    krnl.wunlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));
-    if let Some(perm) = current_thread_lock_perm { krnl.wunlock_thread(current_thread.unwrap(), Tracked(&mut *lctx), perm); }
-    if let Some(perm) = process_lock_perm {
-        krnl.wunlock_process(current_process.unwrap(), Tracked(&mut *lctx), perm);
-    }
-    krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+    schedule_switch_release_locks(krnl, Tracked(&mut *lctx), cpu_id, scheduler_ptr, next_thread, current_process, current_thread, pcid, process_lock_perm,
+        current_thread_lock_perm, Tracked(scheduler_lock_perm), Tracked(next_lock_perm), Tracked(cpu_lock_perm), Tracked(needflush_perm));
     proof {
         let ghost flushed_pcid = schedule_flushed_pcid(entry_k, cpu_id, next_thread);
         let ghost switch_before = steps.view();
@@ -240,7 +235,6 @@ pub(super) fn schedule_switch_unlock_and_record(
             broadcast use kernel_process_nonlock_fields_unchanged_transitive;
         };
         steps.end_kernel_step_context_switch(&*krnl, &*lctx, cpu_id, next_thread, entry_regs, flushed_pcid);
-        no_locks_held_imply_all_objects_unlocked(krnl, lctx);
         assert(schedule_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, entry_regs, true, flushed_pcid)
             && schedule_step_pre(steps.nonlock_view().last().old_u, cpu_id)
             && schedule_step(steps.nonlock_view().last().old_u, steps.nonlock_view().last().new_u, cpu_id, entry_regs, flushed_pcid)) by {

@@ -6,7 +6,6 @@ use super::pagetable_spec::*;
 use super::pagemap::*;
 use super::entry::*;
 use vstd::simple_pptr::*;
-use vstd::assert_sets_equal;
 
 impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
     /// First half of 4K unmap: make future page walks miss while retaining the
@@ -44,7 +43,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             final(self).kernel_entries =~= old(self).kernel_entries,
     {
         let va = Ghost(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)));
-        assert(self.mapping_4k.view().dom().contains(va.view())) by { reveal(PageTable::wf_mapping_4k); };
         assert({
             &&& self.l1_tables.view().dom().contains(target_l1_p)
             &&& self.l1_tables.view().spec_index(target_l1_p).addr() == target_l1_p
@@ -71,31 +69,10 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
                 owning_container: old(self).mapping_4k.view().spec_index(va.view()).owning_container }));
         }
 
-        assert(self.wf_l4()) by { reveal(PageTable::wf_l4); };
-        assert(self.wf_l3()) by { reveal(PageTable::wf_l3); };
-        assert(self.wf_l2()) by { reveal(PageTable::wf_l2); };
-        assert(self.wf_l1()) by { reveal(PageTable::wf_l1); };
-        assert(self.disjoint_l4()) by { reveal(PageTable::disjoint_l4); };
-        assert(self.disjoint_l3()) by { reveal(PageTable::disjoint_l3); };
-        assert(self.disjoint_l2()) by { reveal(PageTable::disjoint_l2); };
-        assert(self.wf_mapping_4k()) by {
-            spec_index2va_injective();
-            assert(forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L2Index| #![trigger self.spec_resolve_mapping_4k_l1(l4i,l3i,l2i,l1i)] #![trigger old(self).spec_resolve_mapping_4k_l1(l4i,l3i,l2i,l1i)]
-                self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && (target_l4i, target_l3i, target_l2i) != (l4i, l3i, l2i)
-                ==> self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) == old(self).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)) by {
-                self.resolve_l2_unchanged(old(self));
-                broadcast use PageTable::resolve_l2_addr_unique_at;
-                broadcast use PageTable::resolve_l2_target_exists;
-            };
-            reveal(PageTable::wf_mapping_4k);
-        };
-        assert(self.wf_mapping_2m()) by { reveal(PageTable::wf_mapping_2m); };
-        assert(self.wf_mapping_1g()) by { reveal(PageTable::wf_mapping_1g); };
-        assert(self.user_only()) by { reveal(PageTable::user_only); };
-        assert(self.rwx_upper_level_entries()) by { reveal(PageTable::rwx_upper_level_entries); };
-        assert(self.table_pages_wf()) by { reveal(PageTable::table_pages_wf); };
-        assert(self.tables_reachable_wf()) by { reveal(PageTable::tables_reachable_wf); self.resolve_l2_unchanged(old(self)); };
-        assert(self.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
+        proof {
+            assert(Self::unmap_4k_page_user_view_eof_transition_framing(*old(self), *self, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p)) by { reveal(PageTable::unmap_4k_page_user_view_eof_transition_framing); };
+            Self::unmap_4k_page_user_view_eof(*old(self), *self, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
+        }
     }
 
     /// Final half of 4K unmap: remove the kernel mapping only after its user
@@ -143,31 +120,10 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         page_map_set_published_in_map(target_l1_p, Tracked(self.l1_tables.borrow_mut()), target_l1i, empty_entry, Tracked(&mut *lctx));
         proof { self.mapping_4k = Ghost(self.mapping_4k.view().remove(va.view())); }
 
-        assert(self.wf_l4()) by { reveal(PageTable::wf_l4); };
-        assert(self.wf_l3()) by { reveal(PageTable::wf_l3); };
-        assert(self.wf_l2()) by { reveal(PageTable::wf_l2); };
-        assert(self.wf_l1()) by { reveal(PageTable::wf_l1); };
-        assert(self.disjoint_l4()) by { reveal(PageTable::disjoint_l4); };
-        assert(self.disjoint_l3()) by { reveal(PageTable::disjoint_l3); };
-        assert(self.disjoint_l2()) by { reveal(PageTable::disjoint_l2); };
-        assert(self.wf_mapping_4k()) by {
-            spec_index2va_injective();
-            assert(forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L2Index| #![trigger self.spec_resolve_mapping_4k_l1(l4i,l3i,l2i,l1i)] #![trigger old(self).spec_resolve_mapping_4k_l1(l4i,l3i,l2i,l1i)]
-                self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && (target_l4i, target_l3i, target_l2i) != (l4i, l3i, l2i)
-                ==> self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) == old(self).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)) by {
-                self.resolve_l2_unchanged(old(self));
-                broadcast use PageTable::resolve_l2_addr_unique_at;
-                broadcast use PageTable::resolve_l2_target_exists;
-            };
-            reveal(PageTable::wf_mapping_4k);
-        };
-        assert(self.wf_mapping_2m()) by { reveal(PageTable::wf_mapping_2m); };
-        assert(self.wf_mapping_1g()) by { reveal(PageTable::wf_mapping_1g); };
-        assert(self.user_only()) by { reveal(PageTable::user_only); };
-        assert(self.rwx_upper_level_entries()) by { reveal(PageTable::rwx_upper_level_entries); };
-        assert(self.table_pages_wf()) by { reveal(PageTable::table_pages_wf); };
-        assert(self.tables_reachable_wf()) by { reveal(PageTable::tables_reachable_wf); self.resolve_l2_unchanged(old(self)); };
-        assert(self.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
+        proof {
+            assert(Self::unmap_4k_page_kernel_eof_transition_framing(*old(self), *self, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p)) by { reveal(PageTable::unmap_4k_page_kernel_eof_transition_framing); };
+            Self::unmap_4k_page_kernel_eof(*old(self), *self, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
+        }
     }
 
     pub fn map_2m_page(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_entry: &MapEntry, Tracked(lctx): Tracked<&mut LocalContext>)
@@ -211,21 +167,10 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             Tracked(&mut *lctx));
         proof { self.l2_tables.borrow_mut().tracked_insert(target_l2_p, l2_perm); }
         proof { *self.mapping_2m = self.mapping_2m.view().insert(spec_index2va((target_l4i, target_l3i, target_l2i, 0)), *target_entry); }
-        assert(self.wf_l4()) by { reveal(PageTable::wf_l4); };
-        assert(self.wf_l3()) by { reveal(PageTable::wf_l3); };
-        assert(self.wf_l2()) by { reveal(PageTable::wf_l2); };
-        assert(self.wf_l1()) by { reveal(PageTable::wf_l1); };
-        assert(self.disjoint_l4()) by { reveal(PageTable::disjoint_l4); };
-        assert(self.disjoint_l3()) by { reveal(PageTable::disjoint_l3); };
-        assert(self.disjoint_l2()) by { reveal(PageTable::disjoint_l2); };
-        assert(self.wf_mapping_4k()) by { reveal(PageTable::wf_mapping_4k); };
-        assert(self.wf_mapping_2m()) by { reveal(PageTable::wf_mapping_2m); spec_index2va_injective(); reveal(PageTable::wf_l4); reveal(PageTable::disjoint_l4); reveal(PageTable::disjoint_l3); };
-        assert(self.wf_mapping_1g()) by { reveal(PageTable::wf_mapping_1g); };
-        assert(self.user_only()) by { reveal(PageTable::user_only); };
-        assert(self.rwx_upper_level_entries()) by { reveal(PageTable::rwx_upper_level_entries); };
-        assert(self.table_pages_wf()) by { reveal(PageTable::table_pages_wf); };
-        assert(self.tables_reachable_wf()) by { reveal(PageTable::tables_reachable_wf); };
-        assert(self.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
+        proof {
+            assert(Self::map_2m_page_eof_transition_framing(*old(self), *self, target_l4i, target_l3i, target_l2i, target_l2_p, *target_entry)) by { reveal(PageTable::map_2m_page_eof_transition_framing); };
+            Self::map_2m_page_eof(*old(self), *self, target_l4i, target_l3i, target_l2i, target_l2_p, *target_entry);
+        }
     }
 
     pub fn remove_l2_entry(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: (PageMapPtr, Tracked<PointsTo<PageMap>>))
@@ -281,22 +226,12 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         proof { self.l2_tables.borrow_mut().tracked_insert(target_l2_p, l2_perm); self.l1_rev_map = Ghost(self.l1_rev_map.view().remove(target_l1_p)); }
         let tracked mut l1_perm = self.l1_tables.borrow_mut().tracked_remove(target_l1_p);
         let ret = (target_l1_p, Tracked(l1_perm));
-        assert(self.wf_l4()) by { reveal(PageTable::wf_l4); };
-        assert(self.wf_l3()) by { reveal(PageTable::wf_l3); };
-        assert(self.wf_l2()) by { broadcast use PageTable::l2_entry_addr_unique_at; reveal(PageTable::wf_l2); };
-        assert(self.wf_l1()) by { reveal(PageTable::wf_l1); };
-        assert(self.disjoint_l4()) by { reveal(PageTable::disjoint_l4); };
-        assert(self.disjoint_l3()) by { reveal(PageTable::disjoint_l3); };
-        assert(self.disjoint_l2()) by { reveal(PageTable::disjoint_l2); };
-        assert(self.wf_mapping_4k()) by { reveal(PageTable::wf_mapping_4k); broadcast use PageTable::resolve_l3_addr_unique_at; broadcast use PageTable::resolve_l2_addr_unique_at; };
-        assert(self.wf_mapping_2m()) by { reveal(PageTable::wf_mapping_2m); };
-        assert(self.wf_mapping_1g()) by { reveal(PageTable::wf_mapping_1g); }
-        assert(self.user_only()) by { reveal(PageTable::user_only); };
-        assert(self.rwx_upper_level_entries()) by { reveal(PageTable::rwx_upper_level_entries); };
-        assert(self.table_pages_wf()) by { reveal(PageTable::table_pages_wf); };
-        assert(self.tables_reachable_wf()) by { reveal(PageTable::tables_reachable_wf); };
-        assert(self.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
-        assert(self.page_closure() =~= old(self).page_closure().remove(target_l1_p)) by { reveal(PageTable::table_pages_wf); }
+        proof {
+            Self::remove_l2_entry_eof_tables(*old(self), *self, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
+            Self::remove_l2_entry_eof_mapping_4k(*old(self), *self, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
+            Self::remove_l2_entry_eof_mappings(*old(self), *self, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
+            Self::remove_l2_entry_eof_reachable(*old(self), *self, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
+        }
         return ret;
     }
 
@@ -354,22 +289,12 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         proof { self.l3_tables.borrow_mut().tracked_insert(target_l3_p, l3_perm); self.l2_rev_map = Ghost(self.l2_rev_map.view().remove(target_l2_p)); }
         let tracked mut l2_perm = self.l2_tables.borrow_mut().tracked_remove(target_l2_p);
         let ret = (target_l2_p, Tracked(l2_perm));
-        assert(self.wf_l4()) by { reveal(PageTable::wf_l4); };
-        assert(self.wf_l3()) by { reveal(PageTable::wf_l3); reveal(PageTable::disjoint_l3); };
-        assert(self.wf_l2()) by { reveal(PageTable::wf_l2); };
-        assert(self.wf_l1()) by { reveal(PageTable::wf_l1); };
-        assert(self.disjoint_l4()) by { reveal(PageTable::disjoint_l4); };
-        assert(self.disjoint_l3()) by { reveal(PageTable::disjoint_l3); };
-        assert(self.disjoint_l2()) by { reveal(PageTable::disjoint_l2); };
-        assert(self.wf_mapping_4k()) by { reveal(PageTable::wf_mapping_4k); reveal(PageTable::wf_l4); reveal(PageTable::disjoint_l3); };
-        assert(self.wf_mapping_2m()) by { reveal(PageTable::wf_mapping_2m); reveal(PageTable::wf_l4); reveal(PageTable::disjoint_l3); };
-        assert(self.wf_mapping_1g()) by { reveal(PageTable::wf_mapping_1g); }
-        assert(self.user_only()) by { reveal(PageTable::user_only); };
-        assert(self.rwx_upper_level_entries()) by { reveal(PageTable::rwx_upper_level_entries); };
-        assert(self.table_pages_wf()) by { reveal(PageTable::table_pages_wf); };
-        assert(self.tables_reachable_wf()) by { reveal(PageTable::tables_reachable_wf); reveal(PageTable::wf_l4); reveal(PageTable::disjoint_l4); broadcast use PageTable::resolve_l3_addr_unique_at; };
-        assert(self.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
-        assert(self.page_closure() =~= old(self).page_closure().remove(target_l2_p)) by { reveal(PageTable::table_pages_wf); };
+        proof {
+            Self::remove_l3_entry_eof_tables(*old(self), *self, target_l4i, target_l3i, target_l3_p, target_l2_p);
+            Self::remove_l3_entry_eof_mapping_4k(*old(self), *self, target_l4i, target_l3i, target_l3_p, target_l2_p);
+            Self::remove_l3_entry_eof_mappings(*old(self), *self, target_l4i, target_l3i, target_l3_p, target_l2_p);
+            Self::remove_l3_entry_eof_reachable(*old(self), *self, target_l4i, target_l3i, target_l3_p, target_l2_p);
+        }
         return ret;
     }
 
@@ -419,23 +344,10 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         proof { self.l4_table.borrow_mut().tracked_insert(self.cr3, l4_perm); self.l3_rev_map = Ghost(self.l3_rev_map.view().remove(target_l3_p)); }
         let tracked mut l3_perm = self.l3_tables.borrow_mut().tracked_remove(target_l3_p);
         let ret = (target_l3_p, Tracked(l3_perm));
-        assert(self.wf_l4()) by { reveal(PageTable::wf_l4); reveal(PageTable::disjoint_l4); };
-        assert(self.wf_l3()) by { reveal(PageTable::wf_l3); };
-        assert(self.wf_l2()) by { reveal(PageTable::wf_l2); };
-        assert(self.wf_l1()) by { reveal(PageTable::wf_l1); };
-        assert(self.disjoint_l4()) by { reveal(PageTable::disjoint_l4); };
-        assert(self.disjoint_l3()) by { reveal(PageTable::disjoint_l3); };
-        assert(self.disjoint_l2()) by { reveal(PageTable::disjoint_l2); };
-        assert(self.wf_mapping_4k()) by { reveal(PageTable::wf_mapping_4k); reveal(PageTable::disjoint_l4); };
-        assert(self.wf_mapping_2m()) by { reveal(PageTable::wf_mapping_2m); reveal(PageTable::disjoint_l4); };
-        assert(self.wf_mapping_1g()) by { reveal(PageTable::wf_mapping_1g); reveal(PageTable::disjoint_l4); }
-
-        assert(self.user_only()) by { reveal(PageTable::user_only); };
-        assert(self.rwx_upper_level_entries()) by { reveal(PageTable::rwx_upper_level_entries); };
-        assert(self.table_pages_wf()) by { reveal(PageTable::table_pages_wf); };
-        assert(self.tables_reachable_wf()) by { reveal(PageTable::tables_reachable_wf); reveal(PageTable::disjoint_l4); };
-        assert(self.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
-        proof { assert_sets_equal!(self.page_closure() == old(self).page_closure().remove(target_l3_p), page_ptr => { reveal(PageTable::table_pages_wf); }); }
+        proof {
+            assert(Self::remove_l4_entry_eof_transition_framing(*old(self), *self, target_l4i, target_l3_p)) by { reveal(PageTable::remove_l4_entry_eof_transition_framing); };
+            Self::remove_l4_entry_eof(*old(self), *self, target_l4i, target_l3_p);
+        }
         return ret;
     }
 }
