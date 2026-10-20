@@ -262,6 +262,7 @@ pub(super) fn wlock_new_container_2m_page_tails(krnl: &mut KernelK, Tracked(lctx
             index_valid(NUM_PAGES, index) ==> final(krnl).pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
         owned_2m_tail_lock_perms_wf(ret.0.view(), final(krnl).pg_arr, final(lctx), left),
         owned_2m_tail_lock_perms_wf(ret.1.view(), final(krnl).pg_arr, final(lctx), right),
+        held_pages_unchanged(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx)),
 {
     let (Tracked(left_perms), Tracked(right_perms)) = if left < right {
         let Tracked(left_perms) = wlock_owned_2m_page_tails(krnl, left, Tracked(&mut *lctx));
