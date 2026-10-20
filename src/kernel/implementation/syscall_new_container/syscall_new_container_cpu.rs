@@ -61,6 +61,7 @@ pub(super) fn transfer_new_container_cpu(
         final(lctx).scheduler_lock_map() == old(lctx).scheduler_lock_map(),
         final(lctx).pcid_allocator_lock_map() == old(lctx).pcid_allocator_lock_map(),
         final(lctx).pagetable_lock_map() == old(lctx).pagetable_lock_map(),
+        final(lctx).pagetable_window_lock_map() == old(lctx).pagetable_window_lock_map(),
         final(lctx).iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
         final(lctx).iommu_root_table_lock_map() == old(lctx).iommu_root_table_lock_map(),
         final(lctx).allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),

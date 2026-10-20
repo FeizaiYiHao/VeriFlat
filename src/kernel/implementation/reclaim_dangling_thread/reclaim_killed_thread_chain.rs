@@ -381,6 +381,7 @@ pub fn reclaim_killed_thread_chain(
             lctx.pcid_allocator_lock_map() == old(lctx).pcid_allocator_lock_map(),
             lctx.cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
             lctx.pagetable_lock_map() == old(lctx).pagetable_lock_map(),
+            lctx.pagetable_window_lock_map() == old(lctx).pagetable_window_lock_map(),
             lctx.iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
             lctx.iommu_root_table_lock_map() == old(lctx).iommu_root_table_lock_map(),
             lctx.allocator_quota_4k_lock_map() == old(lctx).allocator_quota_4k_lock_map(),

@@ -53,6 +53,7 @@ pub tracked struct LocalContext {
     ghost pcid_allocator_lock_map: Map<RwLockPcidAllocatorPtr, TypedHeldLock>,
     ghost cpu_set_lock_map: Map<RwLockCpuSetPtr, TypedHeldLock>,
     ghost pagetable_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>,
+    ghost pagetable_window_lock_map: Map<(RwLockPageTableRoot, VAddr), TypedHeldLock>,
     ghost iommu_table_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>,
     ghost iommu_root_table_lock_map: Map<PAddr, TypedHeldLock>,
     ghost allocator_4k_lock_maps: AllocatorLockMaps,
@@ -70,12 +71,14 @@ impl LocalContext {
             ret.thread_id() == thread_id,
             ret.kernel_view_locking_state() is Acquire,
             ret.no_locks_held(),
+            ret.pagetable_window_lock_map().dom().is_empty(),
     {
         let tracked state = LCtxtState { kernel_view_locking_state: LCtxtLockState::Acquire };
         let tracked ret = LocalContext {
             thread_id, cpu_id, page_lock_map: Map::empty(), cpu_lock_map: Map::empty(), pcid_needflush_lock_map: Map::empty(), cpu_offline_flag_lock_map: Map::empty(),
             container_lock_map: Map::empty(), process_lock_map: Map::empty(), thread_lock_map: Map::empty(), endpoint_lock_map: Map::empty(), scheduler_lock_map: Map::empty(),
-            pcid_allocator_lock_map: Map::empty(), cpu_set_lock_map: Map::empty(), pagetable_lock_map: Map::empty(), iommu_table_lock_map: Map::empty(), iommu_root_table_lock_map: Map::empty(),
+            pcid_allocator_lock_map: Map::empty(), cpu_set_lock_map: Map::empty(), pagetable_lock_map: Map::empty(), pagetable_window_lock_map: Map::empty(), iommu_table_lock_map: Map::empty(),
+            iommu_root_table_lock_map: Map::empty(),
             allocator_4k_lock_maps: AllocatorLockMaps { quota: Map::empty(), cache: Map::empty(), global_pool: Map::empty() },
             allocator_2m_lock_maps: AllocatorLockMaps { quota: Map::empty(), cache: Map::empty(), global_pool: Map::empty() },
             allocator_1g_lock_maps: AllocatorLockMaps { quota: Map::empty(), cache: Map::empty(), global_pool: Map::empty() },
@@ -99,6 +102,7 @@ impl LocalContext {
     pub closed spec fn pcid_allocator_lock_map(&self) -> Map<RwLockPcidAllocatorPtr, TypedHeldLock> { self.pcid_allocator_lock_map }
     pub closed spec fn cpu_set_lock_map(&self) -> Map<RwLockCpuSetPtr, TypedHeldLock> { self.cpu_set_lock_map }
     pub closed spec fn pagetable_lock_map(&self) -> Map<RwLockPageTableRoot, TypedHeldLock> { self.pagetable_lock_map }
+    pub closed spec fn pagetable_window_lock_map(&self) -> Map<(RwLockPageTableRoot, VAddr), TypedHeldLock> { self.pagetable_window_lock_map }
     pub closed spec fn iommu_table_lock_map(&self) -> Map<RwLockPageTableRoot, TypedHeldLock> { self.iommu_table_lock_map }
     pub closed spec fn iommu_root_table_lock_map(&self) -> Map<PAddr, TypedHeldLock> { self.iommu_root_table_lock_map }
     pub closed spec fn allocator_4k_lock_maps(&self) -> AllocatorLockMaps { self.allocator_4k_lock_maps }
@@ -129,6 +133,7 @@ impl LocalContext {
             KernelObjId::PcidAllocator(ptr) => if self.pcid_allocator_lock_map().dom().contains(ptr) { Some(self.pcid_allocator_lock_map().index(ptr)) } else { None },
             KernelObjId::CpuSet(ptr) => if self.cpu_set_lock_map().dom().contains(ptr) { Some(self.cpu_set_lock_map().index(ptr)) } else { None },
             KernelObjId::PageTable(ptr) => if self.pagetable_lock_map().dom().contains(ptr) { Some(self.pagetable_lock_map().index(ptr)) } else { None },
+            KernelObjId::PageTableWindow(ptr, va) => if self.pagetable_window_lock_map().dom().contains((ptr, va)) { Some(self.pagetable_window_lock_map().index((ptr, va))) } else { None },
             KernelObjId::IommuTable(ptr) => if self.iommu_table_lock_map().dom().contains(ptr) { Some(self.iommu_table_lock_map().index(ptr)) } else { None },
             KernelObjId::IommuRootTable(table_base) => if self.iommu_root_table_lock_map().dom().contains(table_base) { Some(self.iommu_root_table_lock_map().index(table_base)) } else { None },
             KernelObjId::AllocatorQuota(PageSize::SZ4k, ptr) => if self.allocator_quota_4k_lock_map().dom().contains(ptr) { Some(self.allocator_quota_4k_lock_map().index(ptr)) } else { None },
@@ -150,6 +155,7 @@ impl LocalContext {
         }
     }
 
+    // The `pagetable_window_lock_map` term is added in stage 2 together with `pagetable_window_typed_lock_map_aligned`.
     pub open spec fn no_locks_held(&self) -> bool {
         &&& self.page_lock_map().dom().is_empty()
         &&& self.cpu_lock_map().dom().is_empty()
@@ -177,6 +183,7 @@ impl LocalContext {
     }
 
     /// `lock_id` is strictly greater than every held id.
+    // The `pagetable_window_lock_map` term is added in stage 2 together with `pagetable_window_typed_lock_map_aligned`.
     #[verifier::opaque]
     pub open spec fn lock_id_acyclic(&self, lock_id: LockId) -> bool {
         &&& typed_lock_map_ids_lt(self.page_lock_map(), lock_id)
@@ -205,6 +212,7 @@ impl LocalContext {
     }
 
     /// Every held lock has a major strictly below `major`.
+    // The `pagetable_window_lock_map` term is added in stage 2 together with `pagetable_window_typed_lock_map_aligned`.
     pub open spec fn held_lock_majors_lt(&self, major: LockMajorId) -> bool {
         &&& typed_lock_map_majors_lt(self.page_lock_map(), major)
         &&& typed_lock_map_majors_lt(self.cpu_lock_map(), major)
@@ -321,6 +329,7 @@ pub open spec fn typed_lock_maps_unchanged(old: &LocalContext, new: &LocalContex
     &&& new.pcid_allocator_lock_map() == old.pcid_allocator_lock_map()
     &&& new.cpu_set_lock_map() == old.cpu_set_lock_map()
     &&& new.pagetable_lock_map() == old.pagetable_lock_map()
+    &&& new.pagetable_window_lock_map() == old.pagetable_window_lock_map()
     &&& new.iommu_table_lock_map() == old.iommu_table_lock_map()
     &&& new.iommu_root_table_lock_map() == old.iommu_root_table_lock_map()
     &&& new.allocator_quota_4k_lock_map() == old.allocator_quota_4k_lock_map()
@@ -378,6 +387,10 @@ pub open spec fn typed_lock_maps_inserted(old: &LocalContext, new: &LocalContext
     &&& new.pagetable_lock_map() == match obj_id {
         KernelObjId::PageTable(ptr) => old.pagetable_lock_map().insert(ptr, entry),
         _ => old.pagetable_lock_map(),
+    }
+    &&& new.pagetable_window_lock_map() == match obj_id {
+        KernelObjId::PageTableWindow(ptr, va) => old.pagetable_window_lock_map().insert((ptr, va), entry),
+        _ => old.pagetable_window_lock_map(),
     }
     &&& new.iommu_table_lock_map() == match obj_id {
         KernelObjId::IommuTable(ptr) => old.iommu_table_lock_map().insert(ptr, entry),
@@ -468,6 +481,10 @@ pub open spec fn typed_lock_maps_removed(old: &LocalContext, new: &LocalContext,
         KernelObjId::PageTable(ptr) => old.pagetable_lock_map().remove(ptr),
         _ => old.pagetable_lock_map(),
     }
+    &&& new.pagetable_window_lock_map() == match obj_id {
+        KernelObjId::PageTableWindow(ptr, va) => old.pagetable_window_lock_map().remove((ptr, va)),
+        _ => old.pagetable_window_lock_map(),
+    }
     &&& new.iommu_table_lock_map() == match obj_id {
         KernelObjId::IommuTable(ptr) => old.iommu_table_lock_map().remove(ptr),
         _ => old.iommu_table_lock_map(),
@@ -513,6 +530,13 @@ pub open spec fn lock_ensures(old: &LocalContext, new: &LocalContext, lock_id: L
     &&& new.thread_id() == old.thread_id()
     &&& new.kernel_view_locking_state() is Acquire
     &&& typed_lock_maps_inserted(old, new, obj_id, TypedHeldLock { lock_id, mode: TypedLockMode::Write })
+}
+
+pub open spec fn rlock_lctx_ensures(old: &LocalContext, new: &LocalContext, lock_id: LockId, obj_id: KernelObjId) -> bool {
+    &&& new.cpu_id() == old.cpu_id()
+    &&& new.thread_id() == old.thread_id()
+    &&& new.kernel_view_locking_state() is Acquire
+    &&& typed_lock_maps_inserted(old, new, obj_id, TypedHeldLock { lock_id, mode: TypedLockMode::Read })
 }
 
 pub open spec fn unlock_ensures(old: &LocalContext, new: &LocalContext, obj_id: KernelObjId, lock_id: LockId) -> bool {

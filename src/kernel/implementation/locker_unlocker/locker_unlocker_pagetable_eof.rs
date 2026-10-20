@@ -2,9 +2,9 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// Closes `inv()` after `wlock_pagetable`: only the target table's lock state moved; it was unlocked, so its leaves and
-/// TLB entries are present.
-pub(super) proof fn wlock_pagetable_eof(pre: KernelK, post: KernelK, pagetable_ptr: RwLockPageTableRoot)
+/// Closes `inv()` after `wlock_pagetable`, `rlock_pagetable`, and `runlock_pagetable`: only the target table's lock state
+/// moved; it was not write-locked, so its leaves and TLB entries are present.
+pub(super) proof fn pagetable_lock_state_eof(pre: KernelK, post: KernelK, pagetable_ptr: RwLockPageTableRoot)
     requires
         pre.inv(),
         pre.pt_mp.dom().contains(pagetable_ptr),
@@ -17,8 +17,7 @@ pub(super) proof fn wlock_pagetable_eof(pre: KernelK, post: KernelK, pagetable_p
         post.pt_mp.spec_index(pagetable_ptr).view_ghost() == pre.pt_mp.spec_index(pagetable_ptr).view_ghost(),
         post.pt_mp.spec_index(pagetable_ptr).being_killed() == pre.pt_mp.spec_index(pagetable_ptr).being_killed(),
         post.pt_mp.spec_index(pagetable_ptr).killer_info() == pre.pt_mp.spec_index(pagetable_ptr).killer_info(),
-        !pre.pt_mp.spec_index(pagetable_ptr).locked(),
-        post.pt_mp.spec_index(pagetable_ptr).locking_thread() is Write,
+        !pre.pt_mp.spec_index(pagetable_ptr).wlocked(),
     ensures
         post.inv(),
         pagetable_tlb_entries_present(post.cpu_tlb, post.cpu_arr, post.pcid_needflush, pagetable_ptr, post.pt_mp.spec_index(pagetable_ptr).view()),

@@ -84,6 +84,52 @@ pub fn wunlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
 }
 
 #[verifier::external_body]
+pub fn rlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
+    ROT: LockOwnerIdTrait, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, NO_KILL_STATE>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, NO_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>) -> (ret: Tracked<LockPerm>)
+    requires
+        pptr.addr() == old(perm).addr(),
+        old(perm).is_init(),
+        wlock_requires(old(perm).value(), old(lctx)),
+        old(lctx).lock_id_acyclic(LockId { container: old(perm).value().container_depth(), process: old(perm).value().process_depth(), major: old(perm).value().view().current_lock_major(), minor: old(perm).lock_minor() }),
+    ensures
+        final(perm).addr() == old(perm).addr(),
+        final(perm).is_init(),
+        rlock_ensures(old(perm).value(), final(perm).value(), LockId {
+            container: old(perm).value().container_depth(), process: old(perm).value().process_depth(), major: old(perm).value().view().current_lock_major(), minor: old(perm).lock_minor() }, final(lctx), ret.view()),
+        rlock_lctx_ensures(old(lctx), final(lctx), LockId {
+            container: old(perm).value().container_depth(), process: old(perm).value().process_depth(), major: old(perm).value().view().current_lock_major(), minor: old(perm).lock_minor() }, obj_id.view()),
+{
+    unsafe {
+        let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, ROT, GhostT, NO_KILL_STATE>>;
+        (*uptr).assume_init_mut().rlock_external(Tracked(lctx))
+    }
+}
+
+#[verifier::external_body]
+pub fn runlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
+    ROT: LockOwnerIdTrait, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, NO_KILL_STATE>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, NO_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, obj_id: Ghost<KernelObjId>)
+    requires
+        pptr.addr() == old(perm).addr(),
+        old(perm).is_init(),
+        old(perm).value().rlocked_by(old(lctx)),
+        old(perm).value().inv(),
+        lock_perm.view().state() is ReadLock,
+        lock_perm.view().thread_id() == old(lctx).thread_id(),
+        old(perm).value().read_lock_perm_match(&lock_perm.view()),
+        old(lctx).lock_entry_contains(old(perm).lock_id(), obj_id.view()),
+    ensures
+        old(perm).addr() == final(perm).addr(),
+        final(perm).is_init(),
+        runlock_ensures(old(perm).value(), final(perm).value(), old(lctx).thread_id()),
+        unlock_ensures(old(lctx), final(lctx), obj_id.view(), old(perm).lock_id()),
+{
+    unsafe {
+        let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, ROT, GhostT, NO_KILL_STATE>>;
+        (*uptr).assume_init_mut().runlock_external(Tracked(lctx), lock_perm);
+    }
+}
+
+#[verifier::external_body]
 pub fn wlock_unless_killed<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
     ROT: LockOwnerIdTrait, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>) -> (ret: Option<Tracked<LockPerm>>)
     requires

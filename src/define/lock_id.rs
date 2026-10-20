@@ -242,6 +242,8 @@ pub ghost enum KernelObjId {
     PcidAllocator(RwLockPcidAllocatorPtr),
     CpuSet(RwLockCpuSetPtr),
     PageTable(RwLockPageTableRoot),
+    // One 2M window of a page table: the L2 entry word at the 2M-aligned VA is its spin lock.
+    PageTableWindow(RwLockPageTableRoot, VAddr),
     IommuTable(RwLockPageTableRoot),
     IommuRootTable(PAddr),
     Page(PageIndex),

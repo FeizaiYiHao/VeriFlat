@@ -190,6 +190,7 @@ pub fn create_process_with_iommu_from_staged_pages(
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).process_lock_map() == old(lctx).process_lock_map().insert(process_page_ptr, TypedHeldLock { lock_id: final(krnl).prc_mp.lock_id_by_key(process_page_ptr), mode: TypedLockMode::Write }),
         final(lctx).pagetable_lock_map() == old(lctx).pagetable_lock_map().insert(pagetable_page_ptr, TypedHeldLock { lock_id: final(krnl).pt_mp.lock_id_by_key(pagetable_page_ptr), mode: TypedLockMode::Write }),
+        final(lctx).pagetable_window_lock_map() == old(lctx).pagetable_window_lock_map(),
         final(lctx).iommu_table_lock_map() == old(lctx).iommu_table_lock_map().insert(iommu_table_page_ptr, TypedHeldLock { lock_id: final(krnl).it_mp.lock_id_by_key(iommu_table_page_ptr), mode: TypedLockMode::Write }),
         final(lctx).page_lock_map() == old(lctx).page_lock_map().insert(page_ptr2page_index(l4_page_ptr), TypedHeldLock {
                 lock_id: final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(l4_page_ptr)), mode: TypedLockMode::Write,

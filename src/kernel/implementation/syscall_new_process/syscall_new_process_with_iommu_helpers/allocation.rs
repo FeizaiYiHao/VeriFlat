@@ -63,6 +63,7 @@ pub(super) fn allocate_new_process_with_iommu_pages(
         final(lctx).pcid_allocator_lock_map() == old(lctx).pcid_allocator_lock_map(),
         final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
         final(lctx).pagetable_lock_map() == old(lctx).pagetable_lock_map(),
+        final(lctx).pagetable_window_lock_map() == old(lctx).pagetable_window_lock_map(),
         final(lctx).iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
         final(lctx).iommu_root_table_lock_map() == old(lctx).iommu_root_table_lock_map(),
         ret.0 != ret.1 && ret.0 != ret.2 && ret.0 != ret.3 && ret.0 != ret.4 && ret.1 != ret.2 && ret.1 != ret.3 && ret.1 != ret.4 && ret.2 != ret.3 && ret.2 != ret.4 && ret.3 != ret.4,

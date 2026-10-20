@@ -49,6 +49,7 @@ pub(crate) fn kill_retire_hold_roots(
         final(lctx).thread_lock_map() == old(lctx).thread_lock_map(),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),
         final(lctx).pagetable_lock_map() == old(lctx).pagetable_lock_map(),
+        final(lctx).pagetable_window_lock_map() == old(lctx).pagetable_window_lock_map(),
         final(lctx).iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
         final(lctx).page_lock_map().dom() == ret.0.view().to_set(),
         held_locks_order_below(final(krnl), final(lctx), ALLOCATOR_CACHE_4K_MAJOR),

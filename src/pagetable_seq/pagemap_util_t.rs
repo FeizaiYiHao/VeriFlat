@@ -119,7 +119,7 @@ impl PageTable<PT_TYPE> {
     }
 }
 
-pub(super) fn page_map_set_published(page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<&mut PointsTo<PageMap>>, index: usize, value: PageEntry, Tracked(lctx): Tracked<&mut LocalContext>)
+pub(crate) fn page_map_set_published(page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<&mut PointsTo<PageMap>>, index: usize, value: PageEntry, Tracked(lctx): Tracked<&mut LocalContext>)
     requires
         old(page_map_perm).addr() == page_map_ptr,
         old(page_map_perm).is_init(),
@@ -145,7 +145,7 @@ pub(super) fn page_map_set_published(page_map_ptr: PageMapPtr, Tracked(page_map_
     page_map_set_raw(page_map_ptr, Tracked(page_map_perm), index, value);
 }
 
-pub(super) fn page_map_set_published_in_map(page_map_ptr: PageMapPtr, Tracked(page_map_perms): Tracked<&mut Map<PageMapPtr, PointsTo<PageMap>>>, index: usize, value: PageEntry, Tracked(lctx): Tracked<&mut LocalContext>)
+pub(crate) fn page_map_set_published_in_map(page_map_ptr: PageMapPtr, Tracked(page_map_perms): Tracked<&mut Map<PageMapPtr, PointsTo<PageMap>>>, index: usize, value: PageEntry, Tracked(lctx): Tracked<&mut LocalContext>)
     requires
         old(page_map_perms).dom().contains(page_map_ptr),
         old(page_map_perms).spec_index(page_map_ptr).addr() == page_map_ptr,

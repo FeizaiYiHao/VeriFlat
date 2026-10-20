@@ -184,6 +184,7 @@ pub(super) fn release_new_container_publish_staging(
         final(lctx).pcid_allocator_lock_map().dom() == old(lctx).pcid_allocator_lock_map().dom().remove(pcid_allocator_page),
         final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
         final(lctx).pagetable_lock_map() == old(lctx).pagetable_lock_map(),
+        final(lctx).pagetable_window_lock_map() == old(lctx).pagetable_window_lock_map(),
         final(lctx).iommu_table_lock_map().dom() == old(lctx).iommu_table_lock_map().dom(),
         final(lctx).iommu_root_table_lock_map().dom() == old(lctx).iommu_root_table_lock_map().dom(),
         final(lctx).allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),

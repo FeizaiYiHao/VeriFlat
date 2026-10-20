@@ -323,6 +323,23 @@ impl<T, ROT, GhostT> RwLock<T, ROT, GhostT, NO_KILL_STATE> {
     {
         self.lock.wunlock();
     }
+
+    #[verifier::external_body]
+    pub fn rlock_external(&mut self, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
+        requires
+            true == false, // this function can only be called in the TCB
+    {
+        self.lock.rlock();
+        Tracked::assume_new()
+    }
+
+    #[verifier::external_body]
+    pub fn runlock_external(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>)
+        requires
+            true == false, // this function can only be called in the TCB
+    {
+        self.lock.runlock();
+    }
 }
 impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL_STATE> {
     #[verifier::external_body]
@@ -426,6 +443,40 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL
 }
 
 impl<T: LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, GhostT> RwLock<T, ROT, GhostT, NO_KILL_STATE> {
+    #[verifier::external_body]
+    pub fn rlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>) -> (ret: Tracked<LockPerm>)
+        requires
+            old(self).view().container_depth() == lock_id.view().container,
+            old(self).view().process_depth() == lock_id.view().process,
+            old(self).view().lock_major_sat(lock_id.view().major),
+            old(self).view().lock_minor() == lock_id.view().minor,
+            wlock_requires(*old(self), old(lctx)),
+            old(lctx).lock_id_acyclic(lock_id.view()),
+        ensures
+            rlock_ensures(*old(self), *final(self), lock_id.view(), final(lctx), ret.view()),
+            rlock_lctx_ensures(old(lctx), final(lctx), lock_id.view(), obj_id.view()),
+    {
+        self.lock.rlock();
+        Tracked::assume_new()
+    }
+
+    #[verifier::external_body]
+    pub fn runlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>, obj_id: Ghost<KernelObjId>)
+        requires
+            old(self).rlocked_by(old(lctx)),
+            old(self).inv(),
+            lp.view().state() is ReadLock,
+            lp.view().thread_id() == old(lctx).thread_id(),
+            old(self).read_lock_perm_match(&lp.view()),
+            old(lctx).lock_entry_contains(LockId { container: old(self).view().container_depth(), process: old(self).view().process_depth(), major: old(self).view().current_lock_major(), minor: old(self).view().lock_minor() }, obj_id.view()),
+        ensures
+            runlock_ensures(*old(self), *final(self), old(lctx).thread_id()),
+            unlock_ensures(old(lctx), final(lctx), obj_id.view(), LockId {
+                container: old(self).view().container_depth(), process: old(self).view().process_depth(), major: old(self).view().current_lock_major(), minor: old(self).view().lock_minor() }),
+    {
+        self.lock.runlock();
+    }
+
     #[verifier::external_body]
     pub fn wlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>) -> (ret: Tracked<LockPerm>)
         requires
@@ -628,6 +679,31 @@ pub open spec fn wlock_ensures<T: LockInvTrait + LockMajorTrait, ROT, GhostT, co
     &&& new.locking_thread()->Write_lock_id == lock_perm.lock_id()
     &&& lock_perm.ordering_lock_id() == lock_id
     &&& lock_perm.thread_id() == lctx.thread_id()
+}
+
+/// Readers share the object: the new reader joins the existing reader map (or starts one).
+pub open spec fn rlock_ensures<T: LockInvTrait + LockMajorTrait, ROT, GhostT, const HAS_KILL_STATE: bool>(old: RwLock<T, ROT, GhostT, HAS_KILL_STATE>, new: RwLock<T, ROT, GhostT, HAS_KILL_STATE>, lock_id: LockId, lctx: &LocalContext, lock_perm: LockPerm) -> bool {
+    &&& new.rlocked_by(lctx)
+    &&& new.locking_thread() == RwLockState::Read { reader_map: (if old.locking_thread() is Read { old.locking_thread()->Read_reader_map } else { Map::empty() }).insert(lctx.thread_id(), lock_perm.lock_id()) }
+    &&& new.inv()
+    &&& new.view() == old.view()
+    &&& new.view_rodata() == old.view_rodata()
+    &&& new.view_ghost() == old.view_ghost()
+    &&& new.being_killed() == old.being_killed()
+    &&& old.wlocked() == false
+    &&& lock_perm.state() is ReadLock
+    &&& new.read_lock_perm_match(&lock_perm)
+    &&& lock_perm.ordering_lock_id() == lock_id
+    &&& lock_perm.thread_id() == lctx.thread_id()
+}
+
+pub open spec fn runlock_ensures<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool>(old: RwLock<T, ROT, GhostT, HAS_KILL_STATE>, new: RwLock<T, ROT, GhostT, HAS_KILL_STATE>, thread_id: LockThreadId) -> bool {
+    &&& new.locking_thread() == (if old.locking_thread()->Read_reader_map.remove(thread_id).dom().is_empty() { RwLockState::None } else { RwLockState::Read { reader_map: old.locking_thread()->Read_reader_map.remove(thread_id) } })
+    &&& new.inv()
+    &&& new.view() == old.view()
+    &&& new.view_rodata() == old.view_rodata()
+    &&& new.view_ghost() == old.view_ghost()
+    &&& new.being_killed() == old.being_killed()
 }
 
 pub open spec fn wunlock_ensures<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool>(old: RwLock<T, ROT, GhostT, HAS_KILL_STATE>, new: RwLock<T, ROT, GhostT, HAS_KILL_STATE>) -> bool {

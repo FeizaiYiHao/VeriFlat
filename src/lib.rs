@@ -13,6 +13,7 @@ pub mod cpu;
 pub mod proc;
 pub mod allocator;
 pub mod pagetable_seq;
+pub mod pagetable_concurrent;
 pub mod iommu;
 pub mod kernel;
 
@@ -27,6 +28,7 @@ pub use cpu::*;
 pub use proc::*;
 pub use allocator::*;
 pub use pagetable_seq::*;
+pub use pagetable_concurrent::*;
 pub use iommu::*;
 pub use kernel::*;
 pub use kernel::implementation::free_4k_page::*;

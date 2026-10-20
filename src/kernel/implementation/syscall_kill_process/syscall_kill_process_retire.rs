@@ -633,6 +633,7 @@ pub(crate) fn kill_retire_remove_tables(
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).kernel_view_locking_state() is Release,
         final(lctx).pagetable_lock_map() == old(lctx).pagetable_lock_map().remove(pagetable),
+        final(lctx).pagetable_window_lock_map() == old(lctx).pagetable_window_lock_map(),
         final(lctx).iommu_table_lock_map() == match iommu_table { Some(it) => old(lctx).iommu_table_lock_map().remove(it), None => old(lctx).iommu_table_lock_map() },
         final(lctx).page_lock_map() == old(lctx).page_lock_map(),
         final(lctx).process_lock_map() == old(lctx).process_lock_map(),

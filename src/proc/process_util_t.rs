@@ -92,6 +92,7 @@ pub fn retype_container_rwlock_to_2m_page_perm(
         final(lctx).pcid_allocator_lock_map() == old(lctx).pcid_allocator_lock_map(),
         final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
         final(lctx).pagetable_lock_map() == old(lctx).pagetable_lock_map(),
+        final(lctx).pagetable_window_lock_map() == old(lctx).pagetable_window_lock_map(),
         final(lctx).iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
         final(lctx).iommu_root_table_lock_map() == old(lctx).iommu_root_table_lock_map(),
         final(lctx).allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),
@@ -205,6 +206,7 @@ pub fn retype_scheduler_to_4k_page_perm(
         final(lctx).pcid_allocator_lock_map() == old(lctx).pcid_allocator_lock_map(),
         final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
         final(lctx).pagetable_lock_map() == old(lctx).pagetable_lock_map(),
+        final(lctx).pagetable_window_lock_map() == old(lctx).pagetable_window_lock_map(),
         final(lctx).iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
         final(lctx).iommu_root_table_lock_map() == old(lctx).iommu_root_table_lock_map(),
         final(lctx).allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),
@@ -272,6 +274,7 @@ pub fn retype_allocator_to_4k_page_perm<const SIZE: usize>(
         final(lctx).pcid_allocator_lock_map() == old(lctx).pcid_allocator_lock_map(),
         final(lctx).cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
         final(lctx).pagetable_lock_map() == old(lctx).pagetable_lock_map(),
+        final(lctx).pagetable_window_lock_map() == old(lctx).pagetable_window_lock_map(),
         final(lctx).iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
         final(lctx).iommu_root_table_lock_map() == old(lctx).iommu_root_table_lock_map(),
         final(lctx).allocator_4k_lock_maps() == if size is SZ4k {
