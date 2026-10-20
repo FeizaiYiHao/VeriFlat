@@ -176,7 +176,7 @@ pub(super) fn build_staged_4k_global_pool(
                     &&& pages.spec_index(page_ptr2page_index(page_ptrs.spec_index(i))).view().view().free_list == if i == 0 { STAGED_4K_PAGE_CHAIN_END } else { page_ptrs.spec_index(i - 1) }
                 },
             forall|i: int|
-                #![trigger pages.spec_index(page_ptr2page_index(page_ptrs.spec_index(i),)).view().view().state]
+                #![trigger page_ptrs.spec_index(i)]
                 remaining <= i < count ==> {
                     &&& page_ptr_valid(page_ptrs.spec_index(i))
                     &&& pages.spec_index(page_ptr2page_index(page_ptrs.spec_index(i))).view().view().state == (PageState::Free4k { allocator_ptr: Ghost(child_allocator_ptr), state: FreePageAllocatorState::GlobalList })

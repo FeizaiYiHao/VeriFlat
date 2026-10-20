@@ -776,7 +776,7 @@ pub open spec fn boot_kernel_state(
     &&& krnl.ep_mp.spec_index(layout.root_endpoint).view().queue.view() == Seq::<RwLockThreadPtr>::empty()
     &&& krnl.ep_mp.spec_index(layout.root_endpoint).view().queue.map() == Map::<usize, RwLockThreadPtr>::empty()
     &&& krnl.ep_mp.spec_index(layout.root_endpoint).view().queue.container_depth.view() == Some(0)
-    &&& krnl.ep_mp.spec_index(layout.root_endpoint).view().queue.lock_minor() == layout.root_endpoint
+    &&& krnl.ep_mp.spec_index(layout.root_endpoint).view().queue.lock_minor() == seq![layout.root_endpoint]
     &&& krnl.ep_mp.spec_index(layout.root_endpoint).view().queue_state is RECEIVE
     &&& krnl.ep_mp.spec_index(layout.root_endpoint).view().rf_counter == 1
     &&& krnl.ep_mp.spec_index(layout.root_endpoint).view().owning_threads.view() =~= set![(layout.root_thread, 0usize)]
@@ -788,7 +788,7 @@ pub open spec fn boot_kernel_state(
     &&& krnl.allc_4k_mp.spec_index(layout.allocator_4k).total_free_pages.view() == free_4k_pool.view().len()
     &&& krnl.allc_4k_mp.spec_index(layout.allocator_4k).quota.view().view() == free_4k_pool.view().len()
     &&& krnl.allc_4k_mp.spec_index(layout.allocator_4k).quota.view().container_depth == 0
-    &&& krnl.allc_4k_mp.spec_index(layout.allocator_4k).quota.view().lock_minor() == layout.root_container
+    &&& krnl.allc_4k_mp.spec_index(layout.allocator_4k).quota.view().lock_minor() == seq![layout.root_container]
     &&& !krnl.allc_4k_mp.spec_index(layout.allocator_4k).quota.locked()
     &&& krnl.allc_4k_mp.spec_index(layout.allocator_4k).global_pool.view().view() == free_4k_pool.view()
     &&& krnl.allc_4k_mp.spec_index(layout.allocator_4k).global_pool.view().map() == free_4k_pool.map()
@@ -805,7 +805,7 @@ pub open spec fn boot_kernel_state(
     &&& krnl.allc_2m_mp.spec_index(layout.allocator_2m).total_free_pages.view() == free_2m_pool.view().len()
     &&& krnl.allc_2m_mp.spec_index(layout.allocator_2m).quota.view().view() == free_2m_pool.view().len()
     &&& krnl.allc_2m_mp.spec_index(layout.allocator_2m).quota.view().container_depth == 0
-    &&& krnl.allc_2m_mp.spec_index(layout.allocator_2m).quota.view().lock_minor() == layout.root_container
+    &&& krnl.allc_2m_mp.spec_index(layout.allocator_2m).quota.view().lock_minor() == seq![layout.root_container]
     &&& !krnl.allc_2m_mp.spec_index(layout.allocator_2m).quota.locked()
     &&& krnl.allc_2m_mp.spec_index(layout.allocator_2m).global_pool.view().view() == free_2m_pool.view()
     &&& krnl.allc_2m_mp.spec_index(layout.allocator_2m).global_pool.view().map() == free_2m_pool.map()
@@ -822,7 +822,7 @@ pub open spec fn boot_kernel_state(
     &&& krnl.allc_1g_mp.spec_index(layout.allocator_1g).total_free_pages.view() == free_1g_pool.view().len()
     &&& krnl.allc_1g_mp.spec_index(layout.allocator_1g).quota.view().view() == free_1g_pool.view().len()
     &&& krnl.allc_1g_mp.spec_index(layout.allocator_1g).quota.view().container_depth == 0
-    &&& krnl.allc_1g_mp.spec_index(layout.allocator_1g).quota.view().lock_minor() == layout.root_container
+    &&& krnl.allc_1g_mp.spec_index(layout.allocator_1g).quota.view().lock_minor() == seq![layout.root_container]
     &&& !krnl.allc_1g_mp.spec_index(layout.allocator_1g).quota.locked()
     &&& krnl.allc_1g_mp.spec_index(layout.allocator_1g).global_pool.view().view() == free_1g_pool.view()
     &&& krnl.allc_1g_mp.spec_index(layout.allocator_1g).global_pool.view().map() == free_1g_pool.map()

@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
 use crate::{define::*};
 use core::sync::atomic::*;
 
@@ -9,7 +10,7 @@ verus! {
     #[verifier::reject_recursive_types(T)]
     pub struct LockedArrayElement<T, ROT, GhostT, const HAS_KILL_STATE: bool> {
         pub value: RwLock<T, ROT, GhostT, HAS_KILL_STATE>,
-        pub lock_minor: LockMinorId,
+        pub lock_minor: usize,
     }
     impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedArrayElement<T, ROT, GhostT, HAS_KILL_STATE> {
         pub open spec fn view(&self) -> RwLock<T, ROT, GhostT, HAS_KILL_STATE> { self.value }
@@ -17,7 +18,7 @@ verus! {
     }
 
     impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockMinorTrait for LockedArrayElement<T, ROT, GhostT, HAS_KILL_STATE> {
-        open spec fn lock_minor(&self) -> LockMinorId { self.lock_minor }
+        open spec fn lock_minor(&self) -> LockMinorId { seq![self.lock_minor] }
     }
 
     impl<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool> LockInvTrait for LockedArrayElement<T, ROT, GhostT, HAS_KILL_STATE> {

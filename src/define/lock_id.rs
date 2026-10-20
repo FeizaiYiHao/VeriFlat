@@ -166,7 +166,19 @@ impl LockOwnerId {
 }
 
 pub type LockMajorId = usize;
-pub type LockMinorId = usize;
+// Minor ids compare lexicographically, front to back; a strict prefix sorts before every extension.
+pub type LockMinorId = Seq<usize>;
+
+// The one-element branch repeats the recursive case so singleton minors compare without a second unfolding.
+pub open spec fn lock_minor_lt(lhs: LockMinorId, rhs: LockMinorId) -> bool
+    decreases lhs.len(),
+{
+    if lhs.len() == 0 { rhs.len() > 0 }
+    else if rhs.len() == 0 { false }
+    else if lhs[0] != rhs[0] { lhs[0] < rhs[0] }
+    else if lhs.len() == 1 { rhs.len() > 1 }
+    else { lock_minor_lt(lhs.skip(1), rhs.skip(1)) }
+}
 pub struct LockId {
     pub container: LockOwnerId,
     pub process: LockOwnerId,
@@ -189,7 +201,7 @@ impl LockId {
         if self.container.spec_eq(other.container) == false { self.container.spec_gt(other.container) }
         else if self.process.spec_eq(other.process) == false { self.process.spec_gt(other.process) }
         else if self.major != other.major { self.major > other.major }
-        else { self.minor > other.minor }
+        else { lock_minor_lt(other.minor, self.minor) }
     }
     pub open spec fn spec_ge(self, other: Self) -> bool {
         ||| self == other
@@ -199,7 +211,7 @@ impl LockId {
         if self.container != other.container { self.container < other.container }
         else if self.process != other.process { self.process < other.process }
         else if self.major != other.major { self.major < other.major }
-        else { self.minor < other.minor }
+        else { lock_minor_lt(self.minor, other.minor) }
     }
     pub open spec fn spec_le(self, other: Self) -> bool {
         ||| self == other

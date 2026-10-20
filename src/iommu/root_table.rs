@@ -400,12 +400,12 @@ impl LockMajorTrait for IommuRootTable {
 }
 
 impl LockMinorTrait for IommuRootTable {
-    open spec fn lock_minor(&self) -> LockMinorId { self.table_base() }
+    open spec fn lock_minor(&self) -> LockMinorId { seq![self.table_base()] }
 }
 
 impl LockIdTrait for IommuRootTable {
     open spec fn lock_id(&self) -> LockId {
-        LockId { container: LockOwnerId::NotApp, process: LockOwnerId::NotApp, major: IOMMU_ROOT_TABLE_LOCK_MAJOR, minor: self.table_base() }
+        LockId { container: LockOwnerId::NotApp, process: LockOwnerId::NotApp, major: IOMMU_ROOT_TABLE_LOCK_MAJOR, minor: seq![self.table_base()] }
     }
 }
 

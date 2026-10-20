@@ -357,7 +357,7 @@ impl KernelK {
             ret.view().state() is WriteLock,
             ret.view().thread_id() == final(lctx).thread_id(),
             ret.view().ordering_lock_id() == final(self).prc_mp.lock_id_by_key(page_ptr),
-            final(self).prc_mp.lock_id_by_key(page_ptr) == (LockId { container: rodata.container_depth(), process: rodata.process_depth(), major: process_value.current_lock_major(), minor: page_ptr }),
+            final(self).prc_mp.lock_id_by_key(page_ptr) == (LockId { container: rodata.container_depth(), process: rodata.process_depth(), major: process_value.current_lock_major(), minor: seq![page_ptr] }),
             final(self).prc_mp.spec_index(page_ptr).write_lock_perm_match(&ret.view()),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),

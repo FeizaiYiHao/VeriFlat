@@ -43,8 +43,8 @@ impl<T, const MAJOR: LockMajorId> LockMajorTrait for LinkedList<T, MAJOR> {
 
 impl<T, const MAJOR: LockMajorId> LockMinorTrait for LinkedList<T, MAJOR> {
     open spec fn lock_minor(&self) -> LockMinorId {
-        if self.minor.view() is Some { self.minor.view().unwrap() }
-        else { 233 }
+        if self.minor.view() is Some { seq![self.minor.view().unwrap()] }
+        else { seq![233] }
     }
 }
 

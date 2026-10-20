@@ -5,7 +5,7 @@ use super::*;
 use core::mem::MaybeUninit;
 verus! {
 impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockMinorTrait for PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE>> {
-    open spec fn lock_minor(&self) -> LockMinorId { self.addr() }
+    open spec fn lock_minor(&self) -> LockMinorId { seq![self.addr()] }
 }
 
 impl<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool> LockInvTrait for PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE>> {

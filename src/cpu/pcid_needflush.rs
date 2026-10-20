@@ -50,7 +50,7 @@ impl LockOwnerIdTrait for PcidNeedFlush {
 }
 
 impl LockMinorTrait for PcidNeedFlush {
-    open spec fn lock_minor(&self) -> LockMinorId { (self.index().0 * PCID_NEEDFLUSH_MINOR_STRIDE + self.index().1) as usize }
+    open spec fn lock_minor(&self) -> LockMinorId { seq![(self.index().0 * PCID_NEEDFLUSH_MINOR_STRIDE + self.index().1) as usize] }
 }
 
 impl LockMajorTrait for PcidNeedFlush {

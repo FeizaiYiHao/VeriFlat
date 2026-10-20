@@ -54,7 +54,9 @@ impl KernelK {
                 reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned);
             };
             assert(!self.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view().locked_by_thread(lctx.thread_id())
-                && wlock_requires(self.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view(), &*lctx)) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); };
+                && wlock_requires(self.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cache_cpu).view(), &*lctx)) by {
+                reveal(UnLockedMap::typed_cache_lock_map_aligned); assert(!lctx.allocator_cache_4k_lock_map().dom().contains((alloc_ptr_4k, cache_cpu)));
+            };
         }
         let ret = self.allc_4k_mp.wlock_cache(alloc_ptr_4k, cache_cpu, Tracked(&mut *lctx), Ghost(PageSize::SZ4k));
         proof {

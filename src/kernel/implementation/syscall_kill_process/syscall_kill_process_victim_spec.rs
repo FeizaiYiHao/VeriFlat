@@ -18,6 +18,8 @@ pub open spec fn kill_leave_process_eof_transition_framing(
     let after_victim = post.thr_mp.spec_index(victim_ptr);
     &&& post == (KernelK { prc_mp: post.prc_mp, thr_mp: post.thr_mp, ..pre })
     &&& post.prc_mp.unchanged_except(&pre.prc_mp, process_ptr)
+    &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p).view().owned_threads.view()]
+        pre.prc_mp.dom().contains(p) && p != process_ptr ==> post.prc_mp.spec_index(p).view().owned_threads.view() == pre.prc_mp.spec_index(p).view().owned_threads.view()
     &&& after_process.is_init() == process.is_init()
     &&& after_process.view_rodata() == process.view_rodata()
     &&& after_process.view_ghost() == process.view_ghost()

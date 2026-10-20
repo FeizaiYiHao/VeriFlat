@@ -33,7 +33,7 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
             ret.total_free_pages.view() == linked_list.view().len(),
             ret.quota.view().view() == quota_value,
             ret.quota.view().container_depth == container_depth,
-            ret.quota.view().lock_minor() == owning_container,
+            ret.quota.view().lock_minor() == seq![owning_container],
             !ret.quota.locked(),
             ret.global_pool.view().view() == linked_list.view(),
             ret.global_pool.view().map() == linked_list.map(),
@@ -84,7 +84,7 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
             ret.total_free_pages.view() == 0,
             ret.quota.view().view() == 0,
             ret.quota.view().container_depth == container_depth,
-            ret.quota.view().lock_minor() == owning_container,
+            ret.quota.view().lock_minor() == seq![owning_container],
             !ret.quota.locked(),
             ret.global_pool.view().view() == Seq::<PagePtr>::empty(),
             ret.global_pool.view().map() == Map::<usize, PagePtr>::empty(),
@@ -140,14 +140,14 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
 
     /// The quota's intrinsic minor lock id is the owning container pointer.
     /// `AllocatorQuota` sits in a bare `RwLock` (not in a wrapper that
-    /// provides a minor), so it carries its own `Ghost<LockMinorId>` field;
+    /// provides a minor), so it carries its own `Ghost<usize>` minor field;
     /// this invariant pins that minor to `owning_container`.
-    pub open spec fn quota_minor_wf(&self) -> bool { self.quota.view().lock_minor() == self.owning_container }
+    pub open spec fn quota_minor_wf(&self) -> bool { self.quota.view().lock_minor() == seq![self.owning_container] }
 
     /// The global pool's intrinsic minor lock id is the owning container
     /// pointer. Same reasoning as `quota_minor_wf` — `LinkedList` carries
     /// its own minor.
-    pub open spec fn global_pool_minor_wf(&self) -> bool { self.global_pool.view().lock_minor() == self.owning_container }
+    pub open spec fn global_pool_minor_wf(&self) -> bool { self.global_pool.view().lock_minor() == seq![self.owning_container] }
 
     pub open spec fn total_free_pages_wf(&self) -> bool {
         self.global_pool.view().len() + self.cpu_caches.view().fold_left(0int, |sum: int, cpu_rw_lock: RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + cpu_rw_lock.view().linked_list.len() }) == self.total_free_pages.view()

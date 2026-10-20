@@ -4,7 +4,7 @@ use vstd::simple_pptr::*;
 verus! {
 pub struct AllocatorQuota<const SIZE: usize> {
     pub value: usize,
-    pub minor: Ghost<LockMinorId>,
+    pub minor: Ghost<usize>,
     pub container_depth: usize,
 }
 
@@ -24,7 +24,7 @@ impl<const SIZE: usize> LockMajorTrait for AllocatorQuota<SIZE> {
 }
 
 impl<const SIZE: usize> LockMinorTrait for AllocatorQuota<SIZE> {
-    open spec fn lock_minor(&self) -> LockMinorId { self.minor.view() }
+    open spec fn lock_minor(&self) -> LockMinorId { seq![self.minor.view()] }
 }
 
 impl<const SIZE: usize> LockOwnerIdTrait for AllocatorQuota<SIZE> {

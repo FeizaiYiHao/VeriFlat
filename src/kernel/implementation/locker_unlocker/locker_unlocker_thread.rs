@@ -295,7 +295,7 @@ impl KernelK {
             final(self).thr_mp.spec_index(thread_ptr).being_killed(),
             final(self).thr_mp.spec_index(thread_ptr).locking_thread() == old(self).thr_mp.spec_index(thread_ptr).locking_thread(),
             final(self).thr_mp.spec_index(thread_ptr).view() == old(self).thr_mp.spec_index(thread_ptr).view(),
-            final(self).thr_mp.lock_id_by_key(thread_ptr) == (LockId { container: LockOwnerId::High, process: LockOwnerId::High, major: KILLED_LOCK_MAJOR, minor: thread_ptr }),
+            final(self).thr_mp.lock_id_by_key(thread_ptr) == (LockId { container: LockOwnerId::High, process: LockOwnerId::High, major: KILLED_LOCK_MAJOR, minor: seq![thread_ptr] }),
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Thread(thread_ptr), TypedHeldLock { lock_id: final(self).thr_mp.lock_id_by_key(thread_ptr), mode: TypedLockMode::Write }),
     {
         proof {

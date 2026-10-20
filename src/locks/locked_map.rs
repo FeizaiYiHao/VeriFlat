@@ -66,7 +66,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
             #![trigger held_locks.index(key).lock_id]
             held_locks.dom().contains(key) ==> held_locks.index(key).lock_id == LockId {
                 container: self.spec_index(key).container_depth(), process: self.spec_index(key).process_depth(),
-                major: if self.spec_index(key).being_killed() { KILLED_LOCK_MAJOR } else { self.spec_index(key).view().current_lock_major() }, minor: key })
+                major: if self.spec_index(key).being_killed() { KILLED_LOCK_MAJOR } else { self.spec_index(key).view().current_lock_major() }, minor: seq![key] })
         &&& (forall|key: usize|
             #![trigger typed_lock_map_contains_mode(held_locks, key, TypedLockMode::Read)]
             typed_lock_map_contains_mode(held_locks, key, TypedLockMode::Read) ==> {
@@ -344,7 +344,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             final(self).spec_index(key).view_ghost() == perm.value().view_ghost(),
             final(self).spec_index(key).being_killed() == false,
             final(self).spec_index(key).locking_thread() == perm.value().locking_thread(),
-            final(self).lock_id_by_key(key) == (LockId { container: perm.value().container_depth(), process: perm.value().process_depth(), major: perm.value().view().current_lock_major(), minor: key }),
+            final(self).lock_id_by_key(key) == (LockId { container: perm.value().container_depth(), process: perm.value().process_depth(), major: perm.value().view().current_lock_major(), minor: seq![key] }),
     {
         proof { self.map.borrow_mut().tracked_insert(key, perm); }
     }
@@ -375,14 +375,14 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             old(self).perms_wf(),
             old(self).dom().contains(key),
             wlock_requires(old(self).spec_index(key), old(lctx)),
-            old(lctx).lock_id_acyclic(LockId { container: old(self).spec_index(key).container_depth(), process: old(self).spec_index(key).process_depth(), major: old(self).spec_index(key).view().current_lock_major(), minor: key }),
+            old(lctx).lock_id_acyclic(LockId { container: old(self).spec_index(key).container_depth(), process: old(self).spec_index(key).process_depth(), major: old(self).spec_index(key).view().current_lock_major(), minor: seq![key] }),
         ensures
             final(self).perms_wf(),
             final(self).unchanged_except(old(self), key),
             wlock_ensures(old(self).spec_index(key), final(self).spec_index(key), LockId {
-                container: old(self).spec_index(key).container_depth(), process: old(self).spec_index(key).process_depth(), major: old(self).spec_index(key).view().current_lock_major(), minor: key }, final(lctx), ret.view()),
+                container: old(self).spec_index(key).container_depth(), process: old(self).spec_index(key).process_depth(), major: old(self).spec_index(key).view().current_lock_major(), minor: seq![key] }, final(lctx), ret.view()),
             lock_ensures(old(lctx), final(lctx), LockId {
-                container: old(self).spec_index(key).container_depth(), process: old(self).spec_index(key).process_depth(), major: old(self).spec_index(key).view().current_lock_major(), minor: key }, obj_id.view()),
+                container: old(self).spec_index(key).container_depth(), process: old(self).spec_index(key).process_depth(), major: old(self).spec_index(key).view().current_lock_major(), minor: seq![key] }, obj_id.view()),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
         let ret = wlock(&PPtr::<RwLock<T, ROT, GhostT, NO_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), obj_id);
@@ -475,7 +475,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
                 &&& final(self).spec_index(key).view() == old(self).spec_index(key).view()
                 &&& final(self).spec_index(key).view_rodata() == old(self).spec_index(key).view_rodata()
                 &&& final(self).spec_index(key).view_ghost() == old(self).spec_index(key).view_ghost()
-                &&& final(self).lock_id_by_key(key) == (LockId { container: LockOwnerId::High, process: LockOwnerId::High, major: KILLED_LOCK_MAJOR, minor: key })
+                &&& final(self).lock_id_by_key(key) == (LockId { container: LockOwnerId::High, process: LockOwnerId::High, major: KILLED_LOCK_MAJOR, minor: seq![key] })
                 &&& ret.unwrap().view().state() is WriteLock
                 &&& ret.unwrap().view().thread_id() == final(lctx).thread_id()
                 &&& final(lctx).kernel_view_locking_state() is Release
@@ -506,7 +506,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             final(self).spec_index(key).view() == old(self).spec_index(key).view(),
             final(self).spec_index(key).view_rodata() == old(self).spec_index(key).view_rodata(),
             final(self).spec_index(key).view_ghost() == old(self).spec_index(key).view_ghost(),
-            final(self).lock_id_by_key(key) == (LockId { container: LockOwnerId::High, process: LockOwnerId::High, major: KILLED_LOCK_MAJOR, minor: key }),
+            final(self).lock_id_by_key(key) == (LockId { container: LockOwnerId::High, process: LockOwnerId::High, major: KILLED_LOCK_MAJOR, minor: seq![key] }),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
         mark_kill(&PPtr::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), killer_info);
