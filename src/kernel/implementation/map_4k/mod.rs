@@ -1,6 +1,7 @@
 mod mmap_4k_create_entry_install;
 mod mmap_4k_create_entry_install_eof;
 mod mmap_4k_install_one;
+mod mmap_4k_directory_presence;
 pub mod mmap_4k_build_structure;
 pub mod mmap_4k_build_structure_spec;
 mod mmap_4k_build_structure_trace;
@@ -25,6 +26,7 @@ mod unmap_4k_flush_one_cpu;
 pub mod unmap_4k_reclaim_one;
 mod unmap_4k_reclaim_last;
 mod unmap_4k_reclaim_last_cache;
+mod unmap_4k_mapped_page_ptr;
 pub mod unmap_4k_range;
 pub mod unmap_iommu_4k_present;
 mod unmap_iommu_4k_present_eof;

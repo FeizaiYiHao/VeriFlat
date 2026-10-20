@@ -3,6 +3,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::mmap_4k_create_entry_install::MissingPageTableLevel;
 use super::mmap_4k_install_one::install_one_mmap_4k_directory_page;
+use super::mmap_4k_directory_presence::mmap_4k_directory_presence;
 use super::mmap_4k_build_structure_spec::*;
 
 verus! {
@@ -235,16 +236,7 @@ verus! {
         proof {
             assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable_ptr).inv()) by { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); };
         }
-        let (l4_present, l3_present, l2_present) = {
-            let pagetable = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
-            match pagetable.get_entry_l4(indices.0) {
-                None => (false, false, false),
-                Some(l4_entry) => match pagetable.get_entry_l3(indices.0, indices.1, &l4_entry) {
-                    None => (true, false, false),
-                    Some(l3_entry) => (true, true, pagetable.get_entry_l2(indices.0, indices.1, indices.2, &l3_entry).is_some()),
-                },
-            }
-        };
+        let (l4_present, l3_present, l2_present) = mmap_4k_directory_presence(krnl, pagetable_ptr, (indices.0, indices.1, indices.2), Tracked(&*lctx), Tracked(pagetable_lock_perm));
         if !l4_present {
             install_one_mmap_4k_directory_page(
                 krnl, MissingPageTableLevel::L4, alloc_ptr_4k, quota_thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr,

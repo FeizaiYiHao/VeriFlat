@@ -107,4 +107,27 @@ pub(super) proof fn killed_thread_reclaim_chain_trace(
     reveal(kernel_steps_prefix_unchanged);
     assert(trace =~= (before + desc.subrange(before.len() as int, desc.len() as int) + caller.subrange(desc.len() as int, caller.len() as int)).push(trace[caller.len() as int]));
 }
+
+/// The steps of `trace` after `before`, recorded while keeping the projection at `link_entry`, extend the partial trace
+/// of `before` from `start` at `entry`, once `link_entry` agrees with `entry`.
+pub(super) proof fn killed_thread_reclaim_link_trace(
+    trace: Seq<KernelStep>, start: int, before: Seq<KernelStep>, entry: KernelU, link_entry: KernelU, cpu_id: CpuId, processes: Set<RwLockProcessPtr>,
+    containers: Set<RwLockContainerPtr>,
+)
+    requires
+        0 <= start <= before.len(),
+        kernel_steps_prefix_unchanged(before, trace),
+        killed_thread_reclaim_partial_trace(before, start, entry, cpu_id, processes, containers),
+        killed_thread_reclaim_partial_trace(trace, before.len() as int, link_entry, cpu_id, processes, containers),
+        link_entry.cpu_array[cpu_id as int] == entry.cpu_array[cpu_id as int],
+        link_entry.thread_map[entry.cpu_array[cpu_id as int].current_thread->Some_0] == entry.thread_map[entry.cpu_array[cpu_id as int].current_thread->Some_0],
+        forall|p: RwLockProcessPtr| #![trigger processes.contains(p)]
+            processes.contains(p) ==> link_entry.process_map[p].lock_state == entry.process_map[p].lock_state && link_entry.process_map[p].killed == entry.process_map[p].killed,
+        forall|c: RwLockContainerPtr| #![trigger containers.contains(c)] containers.contains(c) ==> link_entry.container_map[c].lock_state == entry.container_map[c].lock_state,
+    ensures
+        killed_thread_reclaim_partial_trace(trace, start, entry, cpu_id, processes, containers),
+{
+    reveal(kernel_steps_prefix_unchanged);
+    assert(trace =~= before + trace.subrange(before.len() as int, trace.len() as int));
+}
 } // verus!

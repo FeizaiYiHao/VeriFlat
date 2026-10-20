@@ -463,6 +463,7 @@ pub(crate) fn kill_retire_commit(
         final(krnl).it_mp.dom() == match iommu_table { Some(it) => base.it_mp.dom().remove(it), None => base.it_mp.dom() },
         forall|t: RwLockPageTableRoot| #![trigger final(krnl).it_mp.spec_index(t)] final(krnl).it_mp.dom().contains(t) ==> final(krnl).it_mp.spec_index(t) == base.it_mp.spec_index(t),
 {
+    hide(Seq::no_duplicates);
     let ghost entry = *krnl;
     proof {
         allocator_perms_wf_map(krnl.allc_4k_mp);

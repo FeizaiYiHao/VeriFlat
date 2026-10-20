@@ -270,18 +270,35 @@ pub(crate) fn kill_reclaim_flush(
             krnl.cpu_arr.spec_index(cpu_id).view().being_killed() == old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
             krnl.cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
             krnl.cpu_arr.spec_index(cpu_id).view().view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view(),
+            krnl.cpu_published[cpu_id as int].view() == old(krnl).cpu_published[cpu_id as int].view(),
+            held_containers_unchanged(old(krnl).ctn_mp, krnl.ctn_mp, old(lctx)),
+            held_processes_unchanged(old(krnl).prc_mp, krnl.prc_mp, old(lctx)),
+            krnl.thr_mp.dom().contains(thread_ptr),
+            krnl.thr_mp.spec_index(thread_ptr) == old(krnl).thr_mp.spec_index(thread_ptr),
+            krnl.pt_mp.dom().contains(pagetable),
+            krnl.pt_mp.spec_index(pagetable) == old(krnl).pt_mp.spec_index(pagetable),
+            iommu_table is Some ==> krnl.it_mp.dom().contains(iommu_table->Some_0) && krnl.it_mp.spec_index(iommu_table->Some_0) == old(krnl).it_mp.spec_index(iommu_table->Some_0),
+            lctx.cpu_id() == old(lctx).cpu_id(),
+            lctx.thread_id() == old(lctx).thread_id(),
+            lctx.page_lock_map() == old(lctx).page_lock_map(),
+            lctx.cpu_lock_map() == old(lctx).cpu_lock_map(),
+            lctx.pcid_needflush_lock_map().dom().is_empty(),
+            lctx.cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
             lctx.container_lock_map() == old(lctx).container_lock_map(),
-            forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
-                &&& krnl.ctn_mp.dom().contains(c)
-                &&& krnl.ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
-                &&& krnl.ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
-                &&& krnl.ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
-                &&& krnl.ctn_mp.spec_index(c).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq
-                &&& krnl.ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
-                &&& krnl.ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
-                &&& krnl.ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
-            },
-            krnl.prc_mp.spec_index(process_ptr).view_ghost().subtree_set == old(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set,
+            lctx.process_lock_map() == old(lctx).process_lock_map(),
+            lctx.thread_lock_map() == old(lctx).thread_lock_map(),
+            lctx.endpoint_lock_map() == old(lctx).endpoint_lock_map(),
+            lctx.scheduler_lock_map() == old(lctx).scheduler_lock_map(),
+            lctx.pcid_allocator_lock_map() == old(lctx).pcid_allocator_lock_map(),
+            lctx.cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
+            lctx.pagetable_lock_map() == old(lctx).pagetable_lock_map(),
+            lctx.iommu_table_lock_map() == old(lctx).iommu_table_lock_map(),
+            lctx.iommu_root_table_lock_map() == old(lctx).iommu_root_table_lock_map(),
+            lctx.allocator_quota_4k_lock_map() == old(lctx).allocator_quota_4k_lock_map(),
+            lctx.allocator_cache_4k_lock_map() == old(lctx).allocator_cache_4k_lock_map(),
+            lctx.allocator_global_pool_4k_lock_map() == old(lctx).allocator_global_pool_4k_lock_map(),
+            lctx.allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
+            lctx.allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
             krnl.inv(),
             typed_lock_maps_aligned(krnl, lctx),
             lctx.kernel_view_locking_state() is Acquire,
@@ -289,31 +306,31 @@ pub(crate) fn kill_reclaim_flush(
             0 <= start <= old(steps).view().len() <= steps.view().len(),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, steps.view()),
             kill_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, ctx),
-            kill_reclaim_state(*krnl, *lctx, cpu_id, scope, process_ptr, thread_ptr, chain, KillStage::Reclaim { flushed: false }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
-                iommu_table, *pagetable_perm, *iommu_perm),
+            kill_reclaim_state(*old(krnl), *old(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, KillStage::Reclaim { flushed: false }, *cpu_perm, *process_perm, *thread_perm, *chain_perms,
+                pagetable, iommu_table, *pagetable_perm, *iommu_perm),
             target == chain[chain.len() - 1],
-            krnl.thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
-            krnl.pt_mp.spec_index(pagetable).view().kernel_l4_end == kernel_l4_end,
-            krnl.pt_mp.spec_index(pagetable).view().mapping_2m() == locked_pt.mapping_2m(),
-            krnl.pt_mp.spec_index(pagetable).view().mapping_1g() == locked_pt.mapping_1g(),
+            old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
+            old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end == kernel_l4_end,
+            old(krnl).pt_mp.spec_index(pagetable).view().mapping_2m() == locked_pt.mapping_2m(),
+            old(krnl).pt_mp.spec_index(pagetable).view().mapping_1g() == locked_pt.mapping_1g(),
             locked_pt.leaves_present(),
             kernel_l4_end <= start_l4,
             KERNEL_MEM_END_L4INDEX <= start_l4,
             start_l4 == kernel_l4_end || start_l4 == KERNEL_MEM_END_L4INDEX,
             pei_valid(start_l4),
-            forall|va: VAddr| #![trigger krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va)]
-                krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va) && !krnl.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(va).present ==> spec_va_4k_valid(va) && start_l4 <= spec_v2l4index(va),
-            iommu_table is Some ==> krnl.it_mp.spec_index(iommu_table->Some_0).view().leaves_present() && krnl.it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0,
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
-                pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && start_l4 <= l4i && krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
-                    ==> !krnl.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present,
+            forall|va: VAddr| #![trigger old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va)]
+                old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(va) && !old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(va).present ==> spec_va_4k_valid(va) && start_l4 <= spec_v2l4index(va),
+            iommu_table is Some ==> old(krnl).it_mp.spec_index(iommu_table->Some_0).view().leaves_present() && old(krnl).it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0,
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
+                pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && start_l4 <= l4i && old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
+                    ==> !old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present,
             c <= NUM_CPUS,
-            krnl.pt_mp.spec_index(pagetable).view().cr3 == cr3,
-            krnl.pt_mp.spec_index(pagetable).view().pcid == Some(pcid),
+            old(krnl).pt_mp.spec_index(pagetable).view().cr3 == cr3,
+            old(krnl).pt_mp.spec_index(pagetable).view().pcid == Some(pcid),
             page_ptr_valid(cr3),
             pcid_valid(pcid),
             pcid != KERNEL_DEFAULT_PCID,
-            krnl.prc_mp.spec_index(target).view_rodata().view().pcid == pcid,
+            old(krnl).prc_mp.spec_index(target).view_rodata().view().pcid == pcid,
             forall|cc: CpuId| #![trigger krnl.cpu_tlb.spec_index((cc, pcid))] index_valid(c, cc)
                 && (!krnl.pcid_needflush.spec_index(cc, pcid).view().needflush || krnl.cpu_arr.spec_index(cc).view().view().view().current_pcid == pcid)
                 && krnl.cpu_arr.spec_index(cc).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some && krnl.cpu_arr.spec_index(cc).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr == pagetable
