@@ -592,11 +592,10 @@ pub proof fn pagetable_map_create_entry_l3_eof(
     };
 }
 
-// Pending user approval (2026-10-20): quantified consequence of two invariant leaves.
 /// No window of the L2 page `l2_p` linked at `(l4i, l3i)` of the table that `thread_id` write-holds has a holder when `thread_id`
 /// holds no window: a holder would hold the big lock too, so it would be `thread_id`, whose window map would list it. Stated at the
 /// would-be holder `lock_state(i)`, so a caller reads off `lock_state(i) is None`.
-pub proof fn pagetable_l2_windows_unlocked_when_no_windows_held(
+pub proof fn pagetable_l2_windows_unlocked_when_wlocker_holds_no_windows(
     pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, window_lock_map: Map<(RwLockPageTableRoot, VAddr), TypedHeldLock>,
     pagetable_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>, thread_id: LockThreadId, pagetable_ptr: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2_p: PageMapPtr,
 )

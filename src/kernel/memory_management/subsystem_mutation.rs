@@ -1014,7 +1014,7 @@ pub fn pagetable_map_remove_table_page(
             assert(pagetable_map.spec_index(pagetable_ptr).wlocked_by_thread(lctx.thread_id())) by {
                 pagetable_map.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr);
             };
-            pagetable_l2_windows_unlocked_when_no_windows_held(*pagetable_map, *pt_lower, lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr,
+            pagetable_l2_windows_unlocked_when_wlocker_holds_no_windows(*pagetable_map, *pt_lower, lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr,
                 scan->L2_l4i, scan->L2_l3i, scan->L2_l2_p);
         }
     }

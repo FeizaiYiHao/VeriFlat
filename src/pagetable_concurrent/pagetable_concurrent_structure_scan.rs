@@ -3,10 +3,8 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-// Pending user approval (2026-10-20): field-level eq lemma for a deep-trigger scan_wf.
-/// Tables that keep their upper half, L2 ghost entries, and L1 tables resolve every L2, 2M, and 4K entry alike, so
-/// `spec_structure_scan_wf` carries across a change of only the window lock state.
-pub proof fn spec_structure_scan_wf_preserved_for_lower_tables_eq<const TABLE_TYPE: PTType>(old: PageTableC<TABLE_TYPE>, new: PageTableC<TABLE_TYPE>)
+/// Tables with equal upper half, L2 ghost entries, and L1 tables resolve every L2, 2M, and 4K entry alike.
+pub proof fn resolve_mappings_eq_for_higher_and_lower_tables_eq<const TABLE_TYPE: PTType>(old: PageTableC<TABLE_TYPE>, new: PageTableC<TABLE_TYPE>)
     requires
         new.higher == old.higher,
         new.lower.l2_ghost == old.lower.l2_ghost,

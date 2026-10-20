@@ -175,7 +175,7 @@ pub(super) proof fn thread_exit_quota_eof_process(
             lemma_process_thread_wf_preserved_for_process_thread_membership_fields_forall();
         };
         assert(process_state_lock_wf(post.prc_mp)) by { reveal(process_state_lock_wf); };
-        process_emptied_threads_wf_preserved_for_owned_threads_exited_eq(pre.prc_mp, post.prc_mp, pre.thr_mp, post.thr_mp);
+        process_emptied_threads_wf_preserved_for_state_owned_threads_exited_eq(pre.prc_mp, post.prc_mp, pre.thr_mp, post.thr_mp);
         assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.cpu_arr); };
     };
 }

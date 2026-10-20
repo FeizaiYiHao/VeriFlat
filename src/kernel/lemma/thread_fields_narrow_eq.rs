@@ -157,8 +157,7 @@ pub proof fn process_thread_wf_preserved_for_process_thread_link_eq(old_process_
         process_thread_wf(new_process_map, new_thread_map),
 { reveal(process_thread_wf); }
 
-// Pending user approval (2026-10-20): field-level eq lemma for a deep-trigger wf.
-pub proof fn process_emptied_threads_wf_preserved_for_owned_threads_exited_eq(old_process_map: ProcessLockedMap, new_process_map: ProcessLockedMap, old_thread_map: ThreadLockedMap, new_thread_map: ThreadLockedMap)
+pub proof fn process_emptied_threads_wf_preserved_for_state_owned_threads_exited_eq(old_process_map: ProcessLockedMap, new_process_map: ProcessLockedMap, old_thread_map: ThreadLockedMap, new_thread_map: ThreadLockedMap)
     requires
         process_emptied_threads_wf(old_process_map, old_thread_map),
         new_process_map.dom() == old_process_map.dom(),
