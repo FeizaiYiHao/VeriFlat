@@ -2,18 +2,31 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-pub broadcast proof fn kernel_pagetable_nonlock_fields_unchanged_for_equal<const TABLE_TYPE: PTType>(pre: PageTableLockedMapOf<TABLE_TYPE>, post: PageTableLockedMapOf<TABLE_TYPE>)
-    requires pre == post,
-    ensures #[trigger] kernel_pagetable_nonlock_fields_unchanged(pre, post),
+pub broadcast proof fn kernel_pagetable_nonlock_fields_unchanged_for_equal(pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap)
+    requires pre_pt == post_pt, pre_lower == post_lower,
+    ensures #[trigger] kernel_pagetable_nonlock_fields_unchanged(pre_pt, pre_lower, post_pt, post_lower),
 { reveal(kernel_pagetable_nonlock_fields_unchanged); }
 
-pub broadcast proof fn kernel_pagetable_nonlock_fields_unchanged_transitive<const TABLE_TYPE: PTType>(pre: PageTableLockedMapOf<TABLE_TYPE>, middle: PageTableLockedMapOf<TABLE_TYPE>, post: PageTableLockedMapOf<TABLE_TYPE>)
+pub broadcast proof fn kernel_pagetable_nonlock_fields_unchanged_transitive(pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, middle_pt: PageTableLockedMap, middle_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap)
     requires
-        #[trigger] kernel_pagetable_nonlock_fields_unchanged(pre, middle),
-        #[trigger] kernel_pagetable_nonlock_fields_unchanged(middle, post),
+        #[trigger] kernel_pagetable_nonlock_fields_unchanged(pre_pt, pre_lower, middle_pt, middle_lower),
+        #[trigger] kernel_pagetable_nonlock_fields_unchanged(middle_pt, middle_lower, post_pt, post_lower),
     ensures
-        kernel_pagetable_nonlock_fields_unchanged(pre, post),
+        kernel_pagetable_nonlock_fields_unchanged(pre_pt, pre_lower, post_pt, post_lower),
 { reveal(kernel_pagetable_nonlock_fields_unchanged); }
+
+pub broadcast proof fn kernel_iommu_table_nonlock_fields_unchanged_for_equal(pre: IommuTableLockedMap, post: IommuTableLockedMap)
+    requires pre == post,
+    ensures #[trigger] kernel_iommu_table_nonlock_fields_unchanged(pre, post),
+{ reveal(kernel_iommu_table_nonlock_fields_unchanged); }
+
+pub broadcast proof fn kernel_iommu_table_nonlock_fields_unchanged_transitive(pre: IommuTableLockedMap, middle: IommuTableLockedMap, post: IommuTableLockedMap)
+    requires
+        #[trigger] kernel_iommu_table_nonlock_fields_unchanged(pre, middle),
+        #[trigger] kernel_iommu_table_nonlock_fields_unchanged(middle, post),
+    ensures
+        kernel_iommu_table_nonlock_fields_unchanged(pre, post),
+{ reveal(kernel_iommu_table_nonlock_fields_unchanged); }
 
 pub broadcast proof fn kernel_cpu_nonlock_fields_unchanged_for_equal(pre: CpuLockedArray, post: CpuLockedArray)
     requires pre == post,
@@ -57,6 +70,8 @@ pub broadcast proof fn kernel_thread_nonlock_fields_unchanged_transitive(pre: Th
 pub broadcast group group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive {
     kernel_pagetable_nonlock_fields_unchanged_for_equal,
     kernel_pagetable_nonlock_fields_unchanged_transitive,
+    kernel_iommu_table_nonlock_fields_unchanged_for_equal,
+    kernel_iommu_table_nonlock_fields_unchanged_transitive,
     kernel_cpu_nonlock_fields_unchanged_for_equal,
     kernel_cpu_nonlock_fields_unchanged_transitive,
     kernel_process_nonlock_fields_unchanged_for_equal,

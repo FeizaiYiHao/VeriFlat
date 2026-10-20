@@ -236,13 +236,21 @@ pub open spec fn boot_page_array_ready(
 /// populated by the bootloader and consumes exactly their concrete
 /// `PointsTo<PageMap>` permissions. All process identity, PCID, kernel-prefix,
 /// closure, and abstract mapping facts are fixed by the postcondition.
+///
+/// The L4 and L3 pages stay plain `PageMap`s in the big-lock half. Each L2 page
+/// is reinterpreted in place as an `L2PageMap` (the same 512 words, accessed
+/// atomically) together with its two ghost tokens, the entry view and the
+/// per-entry window locks. This assumes that the bootloader leaves bit 9 (the
+/// window lock bit) of every L2 word clear, so that no window lock is held and
+/// every window-lock ghost is `None`; the window half therefore starts with no
+/// locked window. L1 pages move to the window half unchanged.
 #[verifier::external_body]
 pub fn adopt_boot_dom0_pagetable(
     raw_cr3: PageTableRoot, pagetable_ptr: RwLockPageTableRoot, process_ptr: RwLockProcessPtr, kernel_l4_end: usize,
     kernel_entries: Ghost<Seq<PageEntry>>, manifest_4k: Ghost<Map<VAddr, MapEntry>>, root_container: RwLockContainerPtr, rev_maps: Ghost<BootRevMaps>,
     Tracked(l4_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>, Tracked(l3_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
     Tracked(l2_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>, Tracked(l1_tables): Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
-) -> (ret: PageTable<PT_TYPE>)
+) -> (ret: (PageTableHigher<PT_TYPE>, Tracked<PageTableLower<PT_TYPE>>))
     requires
         page_ptr_valid(pagetable_ptr),
         page_ptr_valid(process_ptr),
@@ -263,27 +271,28 @@ pub fn adopt_boot_dom0_pagetable(
         boot_dom0_manifest_wf(manifest_4k.view(), root_container),
         boot_dom0_pagetable_model(raw_cr3, process_ptr, kernel_l4_end, kernel_entries.view(), manifest_4k.view(), l4_tables, l3_tables, l2_tables, l1_tables, rev_maps.view()).wf(),
     ensures
-        ret.wf(),
-        ret.cr3 == raw_cr3,
-        ret.pcid == Some(1),
-        ret.pcid_value() == 1,
-        ret.proc_ptr == process_ptr,
-        ret.kernel_l4_end == kernel_l4_end,
-        ret.kernel_entries == kernel_entries,
-        ret.l4_table.view() == l4_tables,
-        ret.l3_tables.view() == l3_tables,
-        ret.l2_tables.view() == l2_tables,
-        ret.l1_tables.view() == l1_tables,
-        ret.page_closure() =~= l4_tables.dom() + l3_tables.dom() + l2_tables.dom() + l1_tables.dom(),
-        ret.mapping_4k() == manifest_4k.view(),
-        ret.mapping_2m() == Map::<VAddr, MapEntry>::empty(),
-        ret.mapping_1g() == Map::<VAddr, MapEntry>::empty(),
+        (PageTableC { higher: ret.0, lower: ret.1.view() }).wf(),
+        ret.1.view().locked_windows == Set::<VAddr>::empty(),
+        ret.0.cr3 == raw_cr3,
+        ret.0.pcid == Some(1usize),
+        ret.0.pcid_value() == 1,
+        ret.0.proc_ptr == process_ptr,
+        ret.0.kernel_l4_end == kernel_l4_end,
+        ret.0.kernel_entries == kernel_entries,
+        ret.0.l4_table.view() == l4_tables,
+        ret.0.l3_tables.view() == l3_tables,
+        ret.1.view().l2_perms.dom() == l2_tables.dom(),
+        ret.1.view().l1_tables == l1_tables,
+        (PageTableC { higher: ret.0, lower: ret.1.view() }).page_closure() =~= l4_tables.dom() + l3_tables.dom() + l2_tables.dom() + l1_tables.dom(),
+        (PageTableC { higher: ret.0, lower: ret.1.view() }).mapping_4k() == manifest_4k.view(),
+        (PageTableC { higher: ret.0, lower: ret.1.view() }).mapping_2m() == Map::<VAddr, MapEntry>::empty(),
+        (PageTableC { higher: ret.0, lower: ret.1.view() }).mapping_1g() == Map::<VAddr, MapEntry>::empty(),
 {
-    PageTable {
+    let higher = PageTableHigher {
         cr3: raw_cr3, pcid: Some(1), kernel_l4_end, l4_table: Tracked(l4_tables), l3_rev_map: Ghost(rev_maps.view().0), l3_tables: Tracked(l3_tables),
-        l2_rev_map: Ghost(rev_maps.view().1), l2_tables: Tracked(l2_tables), l1_rev_map: Ghost(rev_maps.view().2), l1_tables: Tracked(l1_tables),
-        mapping_4k: manifest_4k, mapping_2m: Ghost(Map::empty()), mapping_1g: Ghost(Map::empty()), kernel_entries, proc_ptr: process_ptr,
-    }
+        l2_rev_map: Ghost(rev_maps.view().1), mapping_1g: Ghost(Map::empty()), kernel_entries, proc_ptr: process_ptr,
+    };
+    (higher, Tracked::assume_new())
 }
 
 pub open spec fn boot_default_pagetable_ready(default_pagetable: ReadOnlyNode<PageTable<PT_TYPE>>, kernel_l4_end: usize) -> bool {
@@ -507,13 +516,13 @@ proof fn prove_boot_process_kernel_pages_owner_wf(
         krnl.prc_mp.dom() =~= set![layout.root_process],
         krnl.prc_mp.spec_index(layout.root_process).view_rodata().view().owning_container == layout.root_container,
         process_pages_wf(krnl.pg_arr, krnl.prc_mp),
-        pagetable_pages_wf(krnl.pt_mp, krnl.pg_arr),
-        pagetable_pages_wf(krnl.it_mp, krnl.pg_arr),
+        pagetable_pages_wf(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr),
+        iommu_table_pages_wf(krnl.it_mp, krnl.pg_arr),
         process_pagetable_match(krnl.prc_mp, krnl.pt_mp),
         process_iommu_table_match(krnl.prc_mp, krnl.it_mp),
     ensures
         process_kernel_pages_owner_wf(krnl.pg_arr, krnl.prc_mp, krnl.pt_mp, krnl.it_mp),
-{ reveal(process_kernel_pages_owner_wf); reveal(boot_page_array_ready); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match); }
+{ reveal(process_kernel_pages_owner_wf); reveal(boot_page_array_ready); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(iommu_table_pages_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match); }
 
 proof fn prove_boot_iommu_table_pages_wf(
     krnl: &KernelK, layout: BootKernelLayout, page_array: PageLockedArray, cpu_page_closure: Set<PagePtr>,
@@ -528,8 +537,8 @@ proof fn prove_boot_iommu_table_pages_wf(
         krnl.it_mp.dom() =~= set![layout.iommu_table],
         krnl.it_mp.spec_index(layout.iommu_table).view().page_closure() =~= set![layout.iommu_l4],
     ensures
-        pagetable_pages_wf(krnl.it_mp, krnl.pg_arr),
-{ reveal(pagetable_pages_wf); reveal(boot_page_array_ready); page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); }
+        iommu_table_pages_wf(krnl.it_mp, krnl.pg_arr),
+{ reveal(iommu_table_pages_wf); reveal(boot_page_array_ready); page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); }
 
 proof fn prove_boot_container_thread_scheduler_wf(krnl: &KernelK, layout: BootKernelLayout, scheduler_node_addr: usize)
     requires
@@ -621,17 +630,19 @@ pub open spec fn boot_kernel_state(
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).inv()
     &&& !krnl.pt_mp.spec_index(layout.cpu_pagetable).being_killed()
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).locking_thread() is None
-    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().wf()
+    &&& krnl.pt_lower.view().dom() =~= set![layout.cpu_pagetable]
+    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).wf()
+    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.locked_windows == Set::<VAddr>::empty()
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().cr3 == layout.cpu_cr3
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().pcid == Some(1usize)
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().pcid_value() == 1
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().proc_ptr == layout.root_process
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().kernel_l4_end == kernel_l4_end
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().kernel_entries.view() == kernel_entries
-    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().page_closure() =~= cpu_page_closure
-    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().mapping_4k() == manifest_4k
-    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().mapping_2m() == Map::<VAddr, MapEntry>::empty()
-    &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().mapping_1g() == Map::<VAddr, MapEntry>::empty()
+    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).page_closure() =~= cpu_page_closure
+    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).mapping_4k() == manifest_4k
+    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).mapping_2m() == Map::<VAddr, MapEntry>::empty()
+    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).mapping_1g() == Map::<VAddr, MapEntry>::empty()
     &&& krnl.it_mp.perms_wf()
     &&& krnl.it_mp.dom() =~= set![layout.iommu_table]
     &&& krnl.it_mp.spec_index(layout.iommu_table).is_init()
@@ -875,7 +886,13 @@ proof fn boot_subsystems_inv_eof(
         krnl.subsystems_inv(),
 {
     assert(krnl.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
-    assert(pagetable_perms_wf(krnl.pt_mp)) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); };
+    assert(pagetable_perms_wf(krnl.pt_mp)) by { reveal(pagetable_perms_wf); };
+    assert(pagetable_lower_wf(krnl.pt_mp, krnl.pt_lower.view())) by { reveal(pagetable_lower_wf); };
+    assert(pagetable_window_holders_hold_pagetable(krnl.pt_mp, krnl.pt_lower.view())) by {
+        reveal(pagetable_window_holders_hold_pagetable); reveal(PageTableC::wf_window_locks); reveal(PageTableC::wf_l3); reveal(PageTableHigher::wf_l4);
+    };
+    assert(pagetable_hidden_leaves_only_when_wlocked(krnl.pt_mp, krnl.pt_lower.view())) by { reveal(pagetable_hidden_leaves_only_when_wlocked); };
+    assert(pagetable_lower_backup_wf(krnl.pt_mp, krnl.pt_lower.view()));
     assert(iommu_table_perms_wf(krnl.it_mp)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); };
     assert(page_array_wf(krnl.pg_arr)) by { reveal(boot_page_array_ready); };
     assert(cpu_array_wf(krnl.cpu_arr, krnl.dflt_pt.view())) by { reveal(cpu_array_wf); };
@@ -1096,7 +1113,7 @@ proof fn boot_memory_management_inv_eof_object_pages(
     ensures
         container_pages_wf(krnl.pg_arr, krnl.ctn_mp),
         process_pages_wf(krnl.pg_arr, krnl.prc_mp),
-        pagetable_pages_wf(krnl.pt_mp, krnl.pg_arr),
+        pagetable_pages_wf(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr),
         thread_pages_wf(krnl.thr_mp, krnl.pg_arr),
         scheduler_pages_wf(krnl.sched_mp, krnl.pg_arr),
         cpu_set_pages_wf(krnl.cpu_set_mp, krnl.pg_arr),
@@ -1172,13 +1189,13 @@ proof fn boot_memory_management_inv_eof_mappings(
     ensures
         hugepage_2m_wf(krnl.pg_arr),
         hugepage_1g_wf(krnl.pg_arr),
-        page_pagetable_wf(krnl.pt_mp, krnl.pg_arr),
+        page_pagetable_wf(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr),
         container_process_page_pagetable_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr),
         page_iommu_table_wf(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr),
 {
     assert(hugepage_2m_wf(krnl.pg_arr)) by { reveal(boot_page_array_ready); };
     assert(hugepage_1g_wf(krnl.pg_arr)) by { reveal(boot_page_array_ready); };
-    assert(page_pagetable_wf(krnl.pt_mp, krnl.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(boot_page_array_ready); };
+    assert(page_pagetable_wf(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr)) by { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(boot_page_array_ready); };
     assert(container_process_page_pagetable_wf(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr)) by { reveal(container_process_page_pagetable_wf); reveal(boot_page_array_ready); };
     assert(page_iommu_table_wf(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr)) by { reveal(page_iommu_table_wf); reveal(boot_page_array_ready); };
 }
@@ -1245,8 +1262,8 @@ proof fn boot_memory_management_inv_eof(
     prove_boot_iommu_table_pages_wf(krnl, layout, page_array, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool);
     assert(process_pagetable_match(krnl.prc_mp, krnl.pt_mp)) by { reveal(process_pagetable_match); };
     assert(process_iommu_table_match(krnl.prc_mp, krnl.it_mp)) by { reveal(process_iommu_table_match); };
-    assert(pagetable_no_huge_leaf_wf(krnl.pt_mp, krnl.it_mp)) by { reveal(pagetable_no_huge_leaf_wf); };
-    assert(process_emptied_tables_wf(krnl.prc_mp, krnl.pt_mp, krnl.it_mp)) by { reveal(process_emptied_tables_wf); };
+    assert(pagetable_no_huge_leaf_wf(krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp)) by { reveal(pagetable_no_huge_leaf_wf); };
+    assert(process_emptied_tables_wf(krnl.prc_mp, krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp)) by { reveal(process_emptied_tables_wf); };
     prove_boot_process_kernel_pages_owner_wf(krnl, layout, page_array, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool);
     prove_boot_page_object_owner_wf(krnl, layout, page_array, cpu_page_closure, manifest_4k, free_4k_pool, free_2m_pool, free_1g_pool);
     prove_boot_container_process_allocator_quota_4k_wf(krnl, layout);
@@ -1373,7 +1390,7 @@ proof fn boot_kernel_inv_eof(
         reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
         reveal(cpu_dirty_map_contains_pagetable_pcid_match);
     };
-    assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(tlb_wf_spec); };
+    assert(tlb_wf_spec(krnl.cpu_tlb, krnl.pt_mp, krnl.pt_lower.view(), krnl.cpu_arr, krnl.pcid_needflush)) by { reveal(tlb_wf_spec); };
 }
 
 pub fn finish_init_from_boot(
@@ -1466,7 +1483,10 @@ pub fn finish_init_from_boot(
     let tracked mut kernel_perm = kernel_perm;
     let default_cr3 = default_pagetable.borrow().cr3;
     let ghost boot_cpu_page_closure = cpu_l4_tables.dom() + cpu_l3_tables.dom() + cpu_l2_tables.dom() + cpu_l1_tables.dom();
-    let cpu_pagetable = adopt_boot_dom0_pagetable(layout.cpu_cr3, layout.cpu_pagetable, layout.root_process, kernel_l4_end, kernel_entries, manifest_4k, layout.root_container, cpu_rev_maps, Tracked(cpu_l4_tables), Tracked(cpu_l3_tables), Tracked(cpu_l2_tables), Tracked(cpu_l1_tables));
+    let (cpu_pagetable, Tracked(cpu_pagetable_lower)) = adopt_boot_dom0_pagetable(
+        layout.cpu_cr3, layout.cpu_pagetable, layout.root_process, kernel_l4_end, kernel_entries, manifest_4k, layout.root_container, cpu_rev_maps,
+        Tracked(cpu_l4_tables), Tracked(cpu_l3_tables), Tracked(cpu_l2_tables), Tracked(cpu_l1_tables),
+    );
     let (iommu_l4, Tracked(iommu_l4_perm)) = page_perm_to_page_map(layout.iommu_l4, Tracked(iommu_l4_page_perm));
     let iommu_table = PageTable::<IOMMU_TYPE>::new(None, Ghost(Seq::empty()), iommu_l4, Tracked(iommu_l4_perm), 0, layout.root_process);
     let thread = Thread::new_boot_root(layout.root_container, layout.root_process, layout.cpu_pagetable, layout.root_endpoint);
@@ -1525,7 +1545,7 @@ pub fn finish_init_from_boot(
     let mut allc_2m_mp = PageAllocatorUnLockedMap::<ALLOCATOR_SIZE_2M>::new_empty();
     let mut allc_1g_mp = PageAllocatorUnLockedMap::<ALLOCATOR_SIZE_1G>::new_empty();
 
-    pt_mp.retype_4k_as_unlocked_singleton(layout.cpu_pagetable, cpu_pagetable, (), Ghost(()), Tracked(cpu_pagetable_page_perm), 0, layout.root_thread, Ghost(KernelObjId::PageTable(layout.cpu_pagetable)));
+    pt_mp.retype_4k_as_unlocked_singleton(layout.cpu_pagetable, cpu_pagetable, (), Ghost(cpu_pagetable_lower), Tracked(cpu_pagetable_page_perm), 0, layout.root_thread, Ghost(KernelObjId::PageTable(layout.cpu_pagetable)));
     it_mp.retype_4k_as_unlocked_singleton(layout.iommu_table, iommu_table, (), Ghost(()), Tracked(iommu_table_page_perm), 0, layout.root_thread, Ghost(KernelObjId::IommuTable(layout.iommu_table)));
     ctn_mp.retype_2m_as_unlocked_singleton(layout.root_container, container, container_rodata, Ghost(container_ghost), Tracked(container_page_perm), 0, layout.root_thread, Ghost(KernelObjId::Container(layout.root_container)));
     let tracked boot_lctx = LocalContext::new_bootstrap(0, layout.root_thread);
@@ -1541,8 +1561,10 @@ pub fn finish_init_from_boot(
     let cpu_offline_flags = CpuOfflineFlags::new_empty(Ghost(layout.root_container), Ghost(0usize), Ghost(cpu_offline_flags_ptr(layout.root_container)));
     cpu_offline_mp.retype_container_page_tail_and_insert(&ctn_mp, layout.root_container, cpu_offline_flags, Tracked(&boot_lctx));
 
+    let tracked mut pt_lower = Map::<RwLockPageTableRoot, PageTableLower<PT_TYPE>>::tracked_empty();
+    proof { pt_lower.tracked_insert(layout.cpu_pagetable, cpu_pagetable_lower); }
     let krnl = KernelK {
-        pt_mp, it_mp, irt, pg_arr: page_array, cpu_arr: cpu_array, pcid_needflush, cpu_offline_mp, cpu_published, ctn_mp, sched_mp, pcid_allc_mp, cpu_set_mp,
+        pt_mp, pt_lower: Tracked(pt_lower), it_mp, irt, pg_arr: page_array, cpu_arr: cpu_array, pcid_needflush, cpu_offline_mp, cpu_published, ctn_mp, sched_mp, pcid_allc_mp, cpu_set_mp,
         prc_mp, thr_mp, ep_mp, allc_4k_mp, allc_2m_mp, allc_1g_mp, cpu_tlb, iommu_tlb, rt_ctn: layout.root_container, dflt_pt: default_pagetable,
     };
     proof {

@@ -101,7 +101,7 @@ pub fn create_process_with_iommu_from_staged_pages(
         iommu_l4_page_lock_perm.lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(iommu_l4_page_ptr)).view().locking_thread()->Write_lock_id,
     ensures
         *final(krnl) == (KernelK {
-            pg_arr: final(krnl).pg_arr, prc_mp: final(krnl).prc_mp, pt_mp: final(krnl).pt_mp, it_mp: final(krnl).it_mp,
+            pg_arr: final(krnl).pg_arr, prc_mp: final(krnl).prc_mp, pt_mp: final(krnl).pt_mp, pt_lower: final(krnl).pt_lower, it_mp: final(krnl).it_mp,
             ctn_mp: final(krnl).ctn_mp, thr_mp: final(krnl).thr_mp, pcid_allc_mp: final(krnl).pcid_allc_mp, ..*old(krnl)
         }),
         final(krnl).prc_mp.dom() == old(krnl).prc_mp.dom().insert(process_page_ptr),
@@ -116,7 +116,7 @@ pub fn create_process_with_iommu_from_staged_pages(
         final(krnl).pt_mp.dom() == old(krnl).pt_mp.dom().insert(pagetable_page_ptr),
         forall|pt: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(pt)]
             old(krnl).pt_mp.dom().contains(pt) ==> final(krnl).pt_mp.spec_index(pt) == old(krnl).pt_mp.spec_index(pt),
-        final(krnl).pt_mp.spec_index(pagetable_page_ptr).view().is_empty(),
+        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_page_ptr).is_empty(),
         final(krnl).pt_mp.spec_index(pagetable_page_ptr).view().proc_ptr == process_page_ptr,
         final(krnl).prc_mp.spec_index(process_page_ptr).view().pagetable == pagetable_page_ptr,
         final(krnl).ctn_mp.dom() == old(krnl).ctn_mp.dom(),
@@ -280,11 +280,12 @@ pub fn create_process_with_iommu_from_staged_pages(
     let default_pt = krnl.dflt_pt.borrow();
     default_pt.copy_kernel_entries_to_unpublished_root(l4_ptr, Tracked(&mut l4_perm));
     proof { assert(default_pt.kernel_entries.view().len() == default_pt.kernel_l4_end) by { default_pt.kernel_entries_wf_len_at(); }; }
-    let pagetable_value = PageTable::<PT_TYPE>::new(Some(pcid), Ghost(default_pt.kernel_entries.view()), l4_ptr, Tracked(l4_perm), default_pt.kernel_l4_end, process_page_ptr);
+    let pagetable_higher = PageTableHigher::<PT_TYPE>::new(Some(pcid), Ghost(default_pt.kernel_entries.view()), l4_ptr, Tracked(l4_perm), default_pt.kernel_l4_end, process_page_ptr);
+    let tracked pagetable_lower = PageTableLower::<PT_TYPE>::tracked_empty(pagetable_higher);
 
     let Tracked(pagetable_page_perm) = page_array_retype_owned_4k(&mut krnl.pg_arr, pagetable_page_index, PageState::Allocated4k { state: Allocated4KPageState::AsPageTableRoot { table_type: PT_TYPE } }, Ghost(l4_page_locks), Tracked(&*lctx), Tracked(pagetable_page_lock_perm));
     let ghost pagetable_page_locks = l4_page_locks.insert(pagetable_page_index, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pagetable_page_index), mode: TypedLockMode::Write });
-    let Tracked(pagetable_lock_perm) = krnl.retype_page_to_pagetable_and_insert(pagetable_page_ptr, pagetable_value, Tracked(pagetable_page_perm), Tracked(&mut *lctx));
+    let Tracked(pagetable_lock_perm) = krnl.retype_page_to_pagetable_and_insert(pagetable_page_ptr, pagetable_higher, Tracked(pagetable_lower), Tracked(pagetable_page_perm), Tracked(&mut *lctx));
 
     let Tracked(iommu_l4_page_perm) = page_array_retype_owned_4k(
         &mut krnl.pg_arr, iommu_l4_page_index, PageState::Allocated4k { state: Allocated4KPageState::PageTable { pagetable_root: iommu_table_page_ptr, table_type: IOMMU_TYPE } },

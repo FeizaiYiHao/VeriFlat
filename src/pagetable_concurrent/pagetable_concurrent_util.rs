@@ -216,6 +216,14 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
 }
 
 impl<const TABLE_TYPE: PTType> PageTableLower<TABLE_TYPE> {
+    /// The window half of a table without L2 pages: every map and the locked-window set are empty.
+    pub open spec fn spec_empty() -> Self {
+        PageTableLower {
+            l2_perms: Map::empty(), l2_ghost: Map::empty(), l2_lock: Map::empty(), l1_rev_map: Map::empty(), l1_tables: Map::empty(),
+            mapping_4k: Map::empty(), mapping_2m: Map::empty(), locked_windows: Set::empty(),
+        }
+    }
+
     /// The window half of a table that owns only its root page.
     pub proof fn tracked_empty(higher: PageTableHigher<TABLE_TYPE>) -> (tracked ret: Self)
         requires
@@ -227,6 +235,7 @@ impl<const TABLE_TYPE: PTType> PageTableLower<TABLE_TYPE> {
             ret.mapping_4k == Map::<VAddr, MapEntry>::empty(),
             ret.mapping_2m == Map::<VAddr, MapEntry>::empty(),
             ret.locked_windows == Set::<VAddr>::empty(),
+            ret == Self::spec_empty(),
             (PageTableC { higher, lower: ret }).wf(),
     {
         let tracked ret = PageTableLower {

@@ -40,6 +40,10 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.wf(),
             post.page_closure() =~= pre.page_closure().remove(target_l1_p),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
+                #![trigger post.window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+                #![trigger pre.window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.window_locked_by_thread(l4i, l3i, l2i, thread_id) == pre.window_locked_by_thread(l4i, l3i, l2i, thread_id),
     {
         Self::remove_l2_entry_eof_frame(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
         Self::remove_l2_entry_eof_wf_l2(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
@@ -59,6 +63,10 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             post.higher.inv(), post.va_addr_valid(), post.wf_l3(), post.l2_tokens_paired(), post.wf_l1(), post.disjoint_l2(), post.user_only(),
             post.rwx_upper_level_entries(), post.table_pages_wf(), post.wf_window_locks(),
             post.page_closure() =~= pre.page_closure().remove(target_l1_p),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
+                #![trigger post.window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+                #![trigger pre.window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.window_locked_by_thread(l4i, l3i, l2i, thread_id) == pre.window_locked_by_thread(l4i, l3i, l2i, thread_id),
     {
         reveal(PageTableC::remove_l2_entry_eof_transition_framing);
         assert(post.wf_l3()) by { reveal(PageTableC::wf_l3); };
@@ -172,12 +180,17 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.wf(),
             post.page_closure() =~= pre.page_closure().remove(target_l2_p),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
+                #![trigger post.window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+                #![trigger pre.window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.window_locked_by_thread(l4i, l3i, l2i, thread_id) == pre.window_locked_by_thread(l4i, l3i, l2i, thread_id),
     {
         Self::remove_l3_entry_eof_higher(pre, post, target_l4i, target_l3i, target_l3_p, target_l2_p);
         Self::remove_l3_entry_eof_frame(pre, post, target_l4i, target_l3i, target_l3_p, target_l2_p);
         Self::remove_l3_entry_eof_mappings(pre, post, target_l4i, target_l3i, target_l3_p, target_l2_p);
         Self::remove_l3_entry_eof_tables_reachable_wf(pre, post, target_l4i, target_l3i, target_l3_p, target_l2_p);
         Self::remove_l3_entry_eof_wf_window_locks(pre, post, target_l4i, target_l3i, target_l3_p, target_l2_p);
+        Self::remove_l3_entry_eof_window_locked_by_thread(pre, post, target_l4i, target_l3i, target_l3_p, target_l2_p);
     }
 
     /// EOF closure of `remove_l3_entry`: the big-lock half `higher.inv()`.
@@ -290,6 +303,29 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
     {
         reveal(PageTableC::remove_l3_entry_eof_transition_framing);
         assert(post.wf_window_locks()) by { reveal(PageTableC::wf_window_locks); broadcast use spec_va_2m_valid_index_roundtrip, iova_2m_valid_index_roundtrip; };
+    }
+
+    /// EOF closure of `remove_l3_entry`: window lock owners. The cleared L3 entry's windows were all unlocked and no
+    /// other walk reaches the freed L2 page.
+    proof fn remove_l3_entry_eof_window_locked_by_thread(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, target_l2_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pre.spec_resolve_mapping_l4(target_l4i) is Some,
+            pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
+            forall|i: L2Index| #![trigger pre.lower.l2_lock_of(target_l2_p).lock_state(i)] pei_valid(i) ==> pre.lower.l2_lock_of(target_l2_p).lock_state(i) is None,
+            Self::remove_l3_entry_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, target_l2_p),
+        ensures
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
+                #![trigger post.window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+                #![trigger pre.window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.window_locked_by_thread(l4i, l3i, l2i, thread_id) == pre.window_locked_by_thread(l4i, l3i, l2i, thread_id),
+    {
+        reveal(PageTableC::remove_l3_entry_eof_transition_framing);
+        broadcast use PageTableHigher::resolve_l3_addr_unique_at;
     }
 }
 } // verus!

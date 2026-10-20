@@ -56,3 +56,5 @@ pub mod process_kernel_pages_owner_spec;
 pub use process_kernel_pages_owner_spec::*;
 pub mod page_object_owner_spec;
 pub use page_object_owner_spec::*;
+pub mod subsystem_mutation_eof;
+pub use subsystem_mutation_eof::*;

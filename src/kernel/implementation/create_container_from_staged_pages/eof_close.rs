@@ -59,7 +59,11 @@ pub(super) proof fn eof_subsystems_inv(
         post.subsystems_inv(),
 {
     reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
-    assert(pagetable_perms_wf(post.pt_mp)) by { reveal(pagetable_perms_wf); reveal(pagetable_hidden_leaves_only_when_wlocked); };
+    assert(pagetable_perms_wf(post.pt_mp)) by { reveal(pagetable_perms_wf); };
+    assert(pagetable_lower_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_lower_wf); };
+    assert(pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_window_holders_hold_pagetable); reveal(PageTableC::wf_window_locks); };
+    assert(pagetable_hidden_leaves_only_when_wlocked(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_hidden_leaves_only_when_wlocked); };
+    assert(pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()));
     assert(container_tree_fields_wf(post.ctn_mp)) by {
         assert(container_tree_fields_wf(pre.ctn_mp)) by { reveal(container_perms_wf); };
         container_perms_wf_at(pre.ctn_mp, parent_container_ptr); reveal(container_tree_fields_wf);

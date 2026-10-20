@@ -315,6 +315,7 @@ impl KernelK {
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).pt_mp == old(self).pt_mp,
+            final(self).pt_lower == old(self).pt_lower,
             final(self).it_mp == old(self).it_mp,
             final(self).irt == old(self).irt,
             final(self).pg_arr == old(self).pg_arr,

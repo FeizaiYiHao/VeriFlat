@@ -81,6 +81,7 @@ pub broadcast proof fn held_pagetables_unchanged_transitive(pre: PageTableLocked
         #[trigger] held_pagetables_unchanged(pre, middle, pre_lctx),
         #[trigger] held_pagetables_unchanged(middle, post, middle_lctx),
         typed_lock_maps_unchanged(pre_lctx, middle_lctx),
+        middle_lctx.thread_id() == pre_lctx.thread_id(),
     ensures
         held_pagetables_unchanged(pre, post, pre_lctx),
 {}
@@ -90,6 +91,7 @@ pub broadcast proof fn held_pagetables_unchanged_except_transitive(pre: PageTabl
         #[trigger] held_pagetables_unchanged_except(pre, middle, pre_lctx, exceptions),
         #[trigger] held_pagetables_unchanged_except(middle, post, middle_lctx, exceptions),
         typed_lock_maps_unchanged(pre_lctx, middle_lctx),
+        middle_lctx.thread_id() == pre_lctx.thread_id(),
     ensures
         held_pagetables_unchanged_except(pre, post, pre_lctx, exceptions),
 {}

@@ -49,7 +49,7 @@ impl KernelK {
             scheduler_perms_wf_map(old(self).sched_mp);
             scheduler_perms_wf_at(old(self).sched_mp, scheduler_ptr);
             assert(old(lctx).lock_id_acyclic(old(self).sched_mp.spec_index(scheduler_ptr).shards.lock_id_by_index(cpu_id))) by {
-                reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_shard_lock_map_aligned); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned);
+                reveal(LocalContext::lock_id_acyclic); reveal(pagetable_window_typed_lock_map_aligned); reveal(UnLockedMap::typed_shard_lock_map_aligned); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned);
                 reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
             };
             assert(!old(self).sched_mp.spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().locked_by_thread(old(lctx).thread_id())) by { reveal(UnLockedMap::typed_shard_lock_map_aligned); };

@@ -2,8 +2,12 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-    pub open spec fn pagetable_map_user_view<const TABLE_TYPE: PTType>(pagetable_map: PageTableLockedMapOf<TABLE_TYPE>) -> Map<RwLockPageTableRoot, PageTableU> {
-        Map::new(pagetable_map.dom(), |ptr: RwLockPageTableRoot| pagetable_map.spec_index(ptr).view().user_view(pagetable_map.spec_index(ptr).lock_state_u()))
+    pub open spec fn pagetable_map_user_view(pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap) -> Map<RwLockPageTableRoot, PageTableU> {
+        Map::new(pt_mp.dom(), |ptr: RwLockPageTableRoot| pagetable_c(pt_mp, pt_lower, ptr).user_view(pt_mp.spec_index(ptr).lock_state_u()))
+    }
+
+    pub open spec fn iommu_table_map_user_view(iommu_table_map: IommuTableLockedMap) -> Map<RwLockPageTableRoot, PageTableU> {
+        Map::new(iommu_table_map.dom(), |ptr: RwLockPageTableRoot| iommu_table_map.spec_index(ptr).view().user_view(iommu_table_map.spec_index(ptr).lock_state_u()))
     }
 
     /// Kernel projection sampled at atomic-section boundaries. Object lock modes
@@ -105,12 +109,12 @@ verus! {
                     lock_state: if include_lock_state { krnl.prc_mp.spec_index(ptr).lock_state_u() } else { LockStateU::Unlocked },
                     zombie: p.zombie,
                     pagetable: if p.zombie { None } else {
-                        let t = pagetable_map_user_view(krnl.pt_mp).spec_index(p.pagetable);
+                        let t = pagetable_map_user_view(krnl.pt_mp, krnl.pt_lower.view()).spec_index(p.pagetable);
                         Some(if include_lock_state { t } else { PageTableU { lock_state: LockStateU::Unlocked, ..t } })
                     },
                     iommu_table: match (p.zombie, p.iommu_table) {
                         (false, Some(iommu_table)) => {
-                            let t = pagetable_map_user_view(krnl.it_mp).spec_index(iommu_table);
+                            let t = iommu_table_map_user_view(krnl.it_mp).spec_index(iommu_table);
                             Some(if include_lock_state { t } else { PageTableU { lock_state: LockStateU::Unlocked, ..t } })
                         },
                         _ => None,

@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_seqs_equal};
 use crate::*;
 
 verus! {
@@ -140,12 +141,12 @@ pub proof fn kernel_process_user_projection_at(krnl: &KernelK, include_lock_stat
             kernel_k_user_projection(*krnl, include_lock_state).process_map[ptr] == (ProcessU {
                 lock_state: if include_lock_state { krnl.prc_mp.spec_index(ptr).lock_state_u() } else { LockStateU::Unlocked }, zombie: p.zombie,
                 pagetable: if p.zombie { None } else {
-                    let t = pagetable_map_user_view(krnl.pt_mp).spec_index(p.pagetable);
+                    let t = pagetable_map_user_view(krnl.pt_mp, krnl.pt_lower.view()).spec_index(p.pagetable);
                     Some(if include_lock_state { t } else { PageTableU { lock_state: LockStateU::Unlocked, ..t } })
                 },
                 iommu_table: match (p.zombie, p.iommu_table) {
                     (false, Some(iommu_table)) => {
-                        let t = pagetable_map_user_view(krnl.it_mp).spec_index(iommu_table);
+                        let t = iommu_table_map_user_view(krnl.it_mp).spec_index(iommu_table);
                         Some(if include_lock_state { t } else { PageTableU { lock_state: LockStateU::Unlocked, ..t } })
                     },
                     _ => None,
@@ -190,4 +191,42 @@ pub proof fn kernel_endpoint_user_projection_at(krnl: &KernelK, include_lock_sta
             })
         }),
 {}
+
+/// Locking or unlocking a 2M window of `root` changes only that table's window half and keeps its three mapping families,
+/// so neither the complete nor the nonlock projection changes.
+pub proof fn kernel_pagetable_window_lock_changed_implies_u_eq(pre: &KernelK, post: &KernelK, root: RwLockPageTableRoot)
+    requires
+        *post == (KernelK { pt_lower: post.pt_lower, ..*pre }),
+        post.pt_lower.view() == pre.pt_lower.view().insert(root, post.pt_lower.view().spec_index(root)),
+        pagetable_c(post.pt_mp, post.pt_lower.view(), root).mapping_4k() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), root).mapping_4k(),
+        pagetable_c(post.pt_mp, post.pt_lower.view(), root).mapping_2m() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), root).mapping_2m(),
+        pagetable_c(post.pt_mp, post.pt_lower.view(), root).mapping_1g() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), root).mapping_1g(),
+    ensures
+        kernel_k_to_kernel_u(*post) == kernel_k_to_kernel_u(*pre),
+        kernel_k_to_nonlock_kernel_u(*post) == kernel_k_to_nonlock_kernel_u(*pre),
+{
+    hide(kernel_k_user_projection);
+    assert_maps_equal!(pagetable_map_user_view(post.pt_mp, post.pt_lower.view()), pagetable_map_user_view(pre.pt_mp, pre.pt_lower.view()), r => {
+        let a = pagetable_c(post.pt_mp, post.pt_lower.view(), r).user_view(post.pt_mp.spec_index(r).lock_state_u());
+        let b = pagetable_c(pre.pt_mp, pre.pt_lower.view(), r).user_view(pre.pt_mp.spec_index(r).lock_state_u());
+        assert_maps_equal!(a.mapping_4k, b.mapping_4k); assert_maps_equal!(a.mapping_2m, b.mapping_2m); assert_maps_equal!(a.mapping_1g, b.mapping_1g);
+    });
+    kernel_u_user_domains_projection(pre, true); kernel_u_user_domains_projection(post, true);
+    kernel_u_user_domains_projection(pre, false); kernel_u_user_domains_projection(post, false);
+    let pre_u = kernel_k_user_projection(*pre, true);
+    let post_u = kernel_k_user_projection(*post, true);
+    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_user_projection_at(pre, true, i as usize); kernel_cpu_user_projection_at(post, true, i as usize); } });
+    assert_maps_equal!(post_u.container_map, pre_u.container_map, c => { if pre.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(pre, true, c); kernel_container_user_projection_at(post, true, c); } });
+    assert_maps_equal!(post_u.process_map, pre_u.process_map, p => { if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, true, p); kernel_process_user_projection_at(post, true, p); } });
+    assert_maps_equal!(post_u.thread_map, pre_u.thread_map, t => { if pre.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, true, t); kernel_thread_user_projection_at(post, true, t); } });
+    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => { if pre.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(pre, true, e); kernel_endpoint_user_projection_at(post, true, e); } });
+    let pre_n = kernel_k_user_projection(*pre, false);
+    let post_n = kernel_k_user_projection(*post, false);
+    assert_seqs_equal!(post_n.cpu_array == pre_n.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_user_projection_at(pre, false, i as usize); kernel_cpu_user_projection_at(post, false, i as usize); } });
+    assert_maps_equal!(post_n.container_map, pre_n.container_map, c => { if pre.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(pre, false, c); kernel_container_user_projection_at(post, false, c); } });
+    assert_maps_equal!(post_n.process_map, pre_n.process_map, p => { if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, false, p); kernel_process_user_projection_at(post, false, p); } });
+    assert_maps_equal!(post_n.thread_map, pre_n.thread_map, t => { if pre.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, false, t); kernel_thread_user_projection_at(post, false, t); } });
+    assert_maps_equal!(post_n.endpoint_map, pre_n.endpoint_map, e => { if pre.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(pre, false, e); kernel_endpoint_user_projection_at(post, false, e); } });
+    reveal(kernel_k_to_kernel_u); reveal(kernel_k_to_nonlock_kernel_u);
+}
 } // verus!

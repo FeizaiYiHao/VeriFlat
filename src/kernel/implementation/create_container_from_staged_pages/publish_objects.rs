@@ -833,13 +833,25 @@ pub(super) fn publish_new_container_process_and_pagetable(
         typed_lock_map_contains_mode(ret.2@, page_ptr2page_index(child_process_ptr), TypedLockMode::Write),
         final(krnl).prc_mp.typed_lock_map_aligned(final(lctx).process_lock_map(), final(lctx).thread_id()),
         final(krnl).pt_mp.typed_lock_map_aligned(final(lctx).pagetable_lock_map(), final(lctx).thread_id()),
-        *final(krnl) == (KernelK { pg_arr: final(krnl).pg_arr, prc_mp: final(krnl).prc_mp, pt_mp: final(krnl).pt_mp, ..*old(krnl) }),
+        *final(krnl) == (KernelK { pg_arr: final(krnl).pg_arr, prc_mp: final(krnl).prc_mp, pt_mp: final(krnl).pt_mp, pt_lower: final(krnl).pt_lower, ..*old(krnl) }),
         final(krnl).pg_arr.inv(),
         page_array_wf(final(krnl).pg_arr),
         final(krnl).prc_mp.perms_wf(),
         process_perms_wf(old(krnl).prc_mp) ==> process_perms_wf(final(krnl).prc_mp),
         final(krnl).pt_mp.perms_wf(),
         pagetable_perms_wf(old(krnl).pt_mp) ==> pagetable_perms_wf(final(krnl).pt_mp),
+        final(krnl).pt_lower.view() == old(krnl).pt_lower.view().insert(child_pagetable_ptr, final(krnl).pt_lower.view().spec_index(child_pagetable_ptr)),
+        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), child_pagetable_ptr).wf(),
+        final(krnl).pt_mp.spec_index(child_pagetable_ptr).view_ghost() == final(krnl).pt_lower.view().spec_index(child_pagetable_ptr),
+        forall|r: RwLockPageTableRoot|
+            #![trigger pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), r)]
+            old(krnl).pt_mp.dom().contains(r) ==> pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), r) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), r),
+        pagetable_lower_wf(old(krnl).pt_mp, old(krnl).pt_lower.view()) ==> pagetable_lower_wf(final(krnl).pt_mp, final(krnl).pt_lower.view()),
+        pagetable_window_holders_hold_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view()) ==> pagetable_window_holders_hold_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view()),
+        pagetable_hidden_leaves_only_when_wlocked(old(krnl).pt_mp, old(krnl).pt_lower.view())
+            ==> pagetable_hidden_leaves_only_when_wlocked(final(krnl).pt_mp, final(krnl).pt_lower.view()),
+        pagetable_window_typed_lock_map_aligned(old(krnl).pt_mp, old(krnl).pt_lower.view(), old(lctx).pagetable_window_lock_map(), old(lctx).pagetable_lock_map(), old(lctx).thread_id())
+            ==> pagetable_window_typed_lock_map_aligned(final(krnl).pt_mp, final(krnl).pt_lower.view(), final(lctx).pagetable_window_lock_map(), final(lctx).pagetable_lock_map(), final(lctx).thread_id()),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx),),
         held_pagetables_unchanged(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx),),
         final(lctx).page_lock_map() == old(lctx).page_lock_map(),
@@ -895,14 +907,14 @@ pub(super) fn publish_new_container_process_and_pagetable(
         forall|ptr: RwLockPageTableRoot|
             #![trigger final(krnl).pt_mp.spec_index(ptr)]
             old(krnl).pt_mp.dom().contains(ptr) ==> final(krnl).pt_mp.spec_index(ptr) == old(krnl).pt_mp.spec_index(ptr),
-        final(krnl).pt_mp.spec_index(child_pagetable_ptr).view().is_empty(),
+        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), child_pagetable_ptr).is_empty(),
         !final(krnl).pt_mp.spec_index(child_pagetable_ptr).being_killed(),
         final(krnl).pt_mp.spec_index(child_pagetable_ptr).view().proc_ptr == child_process_ptr,
         final(krnl).pt_mp.spec_index(child_pagetable_ptr).view().pcid is Some,
         final(krnl).pt_mp.spec_index(child_pagetable_ptr).view().pcid_value() == root_pcid,
         final(krnl).pt_mp.spec_index(child_pagetable_ptr).view().cr3 == l4_page,
         final(krnl).pt_mp.spec_index(child_pagetable_ptr).view().kernel_l4_end == old(krnl).dflt_pt.view().kernel_l4_end,
-        final(krnl).pt_mp.spec_index(child_pagetable_ptr).view().page_closure() == set![l4_page],
+        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), child_pagetable_ptr).page_closure() =~= set![l4_page],
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
         final(lctx).cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
@@ -954,10 +966,11 @@ pub(super) fn publish_new_container_process_and_pagetable(
     let (l4_ptr, Tracked(mut l4_perm)) = page_perm_to_page_map(l4_page, Tracked(l4_page_perm));
     default_pt.copy_kernel_entries_to_unpublished_root(l4_ptr, Tracked(&mut l4_perm));
     proof { assert(default_pt.kernel_entries.view().len() == default_pt.kernel_l4_end) by { default_pt.kernel_entries_wf_len_at(); }; }
-    let pagetable_value = PageTable::<PT_TYPE>::new(Some(root_pcid), Ghost(default_pt.kernel_entries.view()), l4_ptr, Tracked(l4_perm), default_pt.kernel_l4_end, child_process_ptr);
+    let pagetable_higher = PageTableHigher::<PT_TYPE>::new(Some(root_pcid), Ghost(default_pt.kernel_entries.view()), l4_ptr, Tracked(l4_perm), default_pt.kernel_l4_end, child_process_ptr);
+    let tracked pagetable_lower = PageTableLower::<PT_TYPE>::tracked_empty(pagetable_higher);
     let Tracked(pagetable_perm) = page_array_retype_owned_4k_for_container(&mut krnl.pg_arr, child_container_ptr, child_pagetable_ptr, Allocated4KPageState::AsPageTableRoot { table_type: PT_TYPE }, Ghost(l4_page_locks), Tracked(&*lctx), Tracked(pagetable_page_lock_perm));
     let ghost pagetable_page_locks = l4_page_locks.insert(pagetable_index, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(pagetable_index), mode: TypedLockMode::Write });
-    let Tracked(child_pagetable_lock_perm) = krnl.retype_page_to_pagetable_and_insert(child_pagetable_ptr, pagetable_value, Tracked(pagetable_perm), Tracked(&mut *lctx));
+    let Tracked(child_pagetable_lock_perm) = krnl.retype_page_to_pagetable_and_insert(child_pagetable_ptr, pagetable_higher, Tracked(pagetable_lower), Tracked(pagetable_perm), Tracked(&mut *lctx));
     let mut process_value = Process::new_fresh(child_process_ptr, root_pcid, child_pagetable_ptr, child_depth, 0);
     process_value.quota_4k = process_quota_4k;
     let process_rodata = ReadOnlyNode::new(

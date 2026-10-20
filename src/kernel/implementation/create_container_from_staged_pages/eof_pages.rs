@@ -575,7 +575,7 @@ pub(super) broadcast proof fn eof_existing_pagetable_closure_page_backward(
             allocator_quota_4k, process_quota_4k,
         ),
         post.pt_mp.dom().contains(pt_ptr),
-        post.pt_mp.spec_index(pt_ptr).view().page_closure().contains(pt_page_ptr),
+        pagetable_c(post.pt_mp, post.pt_lower.view(), pt_ptr).page_closure().contains(pt_page_ptr),
         pt_ptr != pagetable_page,
     ensures
         #![trigger
@@ -584,7 +584,7 @@ pub(super) broadcast proof fn eof_existing_pagetable_closure_page_backward(
                 allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page,
                 funding_pages, allocator_quota_4k, process_quota_4k,
             ),
-            post.pt_mp.spec_index(pt_ptr).view().page_closure().contains(pt_page_ptr)
+            pagetable_c(post.pt_mp, post.pt_lower.view(), pt_ptr).page_closure().contains(pt_page_ptr)
         ]
         {
             &&& page_ptr_valid(pt_page_ptr)
@@ -595,7 +595,7 @@ pub(super) broadcast proof fn eof_existing_pagetable_closure_page_backward(
         },
 {
     hide(Seq::contains); reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
-    assert(pagetable_closure_page_backward_wf(pre.pt_mp, pre.pg_arr)) by { reveal(pagetable_pages_wf); };
+    assert(pagetable_closure_page_backward_wf(pre.pt_mp, pre.pt_lower.view(), pre.pg_arr)) by { reveal(pagetable_pages_wf); };
     assert(page_ptr2page_index(pt_page_ptr) != page_ptr2page_index(l4_page)) by {
         if page_ptr2page_index(pt_page_ptr) == page_ptr2page_index(l4_page) {
             assert(pt_page_ptr == l4_page) by { page_ptr2page_index_injective(); };
@@ -1172,11 +1172,11 @@ pub(super) proof fn eof_object_page_pagetable_wf_4k(
             allocator_quota_4k, process_quota_4k,
         ),
     ensures
-        mapped_4k_page_pagetable_wf(post.pt_mp, post.pg_arr),
+        mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
     reveal(publish_staged_container_root_eof_transition_framing);
-    assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pg_arr)) by {
-        broadcast use eof_unmodified_object_page_state_eq; reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_perms_wf);
+    assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
+        broadcast use eof_unmodified_object_page_state_eq; reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf);
         page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
     };
 }
@@ -1211,11 +1211,11 @@ pub(super) proof fn eof_object_page_pagetable_wf_2m(
             allocator_quota_4k, process_quota_4k,
         ),
     ensures
-        mapped_2m_page_pagetable_wf(post.pt_mp, post.pg_arr),
+        mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
     reveal(publish_staged_container_root_eof_transition_framing);
-    assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pg_arr)) by {
-        broadcast use eof_unmodified_object_page_state_eq; reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_perms_wf);
+    assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
+        broadcast use eof_unmodified_object_page_state_eq; reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf);
         page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
     };
 }
@@ -1250,10 +1250,10 @@ pub(super) proof fn eof_object_page_pagetable_wf_1g(
             allocator_quota_4k, process_quota_4k,
         ),
     ensures
-        mapped_1g_page_pagetable_wf(post.pt_mp, post.pg_arr),
+        mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
     reveal(publish_staged_container_root_eof_transition_framing);
-    assert(mapped_1g_page_pagetable_wf(post.pt_mp, post.pg_arr)) by {
+    assert(mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
         broadcast use eof_unmodified_object_page_state_eq; reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_perms_wf);
         page_ptr_roundtrip();
     };
@@ -1288,7 +1288,7 @@ pub(super) proof fn eof_object_page_pagetable_wf(
             allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
             allocator_quota_4k, process_quota_4k,
         ),
-    ensures page_pagetable_wf(post.pt_mp, post.pg_arr),
+    ensures page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
     eof_object_page_pagetable_wf_4k(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page,
@@ -1339,11 +1339,11 @@ pub(super) proof fn eof_object_pages_wf(
         ),
     ensures
         allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
-        pagetable_pages_wf(post.pt_mp, post.pg_arr),
-        page_pagetable_wf(post.pt_mp, post.pg_arr),
+        pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
+        page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
         process_pages_wf(post.pg_arr, post.prc_mp),
         thread_pages_wf(post.thr_mp, post.pg_arr),
-        pagetable_pages_wf(post.it_mp, post.pg_arr),
+        iommu_table_pages_wf(post.it_mp, post.pg_arr),
         endpoint_pages_wf(post.ep_mp, post.pg_arr),
         scheduler_pages_wf(post.sched_mp, post.pg_arr),
         cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr),

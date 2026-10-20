@@ -44,7 +44,7 @@ impl KernelK {
             &&& wlock_requires(self.pcid_needflush.spec_index(cpu_id, pcid), &*lctx)
         }) by { pcid_needflush_wf_at(self.pcid_needflush, cpu_id, pcid); reveal(LockedArray2D::typed_lock_map_aligned); };
         assert(old(lctx).lock_id_acyclic(old(self).pcid_needflush.lock_id_by_index(cpu_id, pcid))) by {
-            reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned); reveal(UnLockedMap::typed_shard_lock_map_aligned);
+            reveal(LocalContext::lock_id_acyclic); reveal(pagetable_window_typed_lock_map_aligned); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned); reveal(UnLockedMap::typed_shard_lock_map_aligned);
             reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
         };
         let ret = self.pcid_needflush.wlock(cpu_id, pcid, Tracked(&mut *lctx), Ghost(KernelObjId::PcidNeedFlush(cpu_id, pcid)));

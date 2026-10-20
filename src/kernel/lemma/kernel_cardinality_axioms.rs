@@ -6,12 +6,13 @@ verus! {
 /// The reverse mappings of one mapped 4K page occupy distinct entries in the
 /// finite page-table address space.
 #[verifier::external_body]
-pub proof fn mapped_4k_page_ref_count_lt_usize_max(pagetable_map: PageTableLockedMap, page_array: PageLockedArray, page_index: PageIndex)
+pub proof fn mapped_4k_page_ref_count_lt_usize_max(pagetable_map: PageTableLockedMap, pt_lower: PageTableLowerMap, page_array: PageLockedArray, page_index: PageIndex)
     requires
         pagetable_perms_wf(pagetable_map),
+        pagetable_lower_wf(pagetable_map, pt_lower),
         page_array_wf(page_array),
-        page_pagetable_wf(pagetable_map, page_array),
-        pagetable_pages_wf(pagetable_map, page_array),
+        page_pagetable_wf(pagetable_map, pt_lower, page_array),
+        pagetable_pages_wf(pagetable_map, pt_lower, page_array),
         index_valid(NUM_PAGES, page_index),
         page_array.spec_index(page_index).view().view().state is Mapped4k,
     ensures

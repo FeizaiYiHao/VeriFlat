@@ -140,6 +140,11 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(self).pcid == old(self).pcid,
             final(self).proc_ptr == old(self).proc_ptr,
             final(lower).locked_windows == old(lower).locked_windows,
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
+                #![trigger (PageTableC { higher: *final(self), lower: *final(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+                #![trigger (PageTableC { higher: *old(self), lower: *old(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+                old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
+                    ==> (PageTableC { higher: *final(self), lower: *final(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id) == (PageTableC { higher: *old(self), lower: *old(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id),
             ret.view().is_init(),
             ret.view().addr() == scan.spec_table_page()->Some_0,
     {

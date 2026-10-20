@@ -37,6 +37,7 @@ pub proof fn memory_management_inv_preserved_for_container_invariant_fields(pre:
         container_invariant_fields_unchanged(pre.ctn_mp, post.ctn_mp),
         page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp),
         post.pt_mp == pre.pt_mp,
+        post.pt_lower == pre.pt_lower,
         post.it_mp == pre.it_mp,
         post.pg_arr == pre.pg_arr,
         post.sched_mp == pre.sched_mp,
@@ -99,7 +100,7 @@ pub proof fn process_management_inv_preserved_for_container_invariant_fields(pre
     assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { reveal(container_thread_wf); reveal(container_thread_scheduler_wf); };
     assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { reveal(container_endpoint_wf); };
     assert(container_scheduler_wf(post.ctn_mp, post.sched_mp)) by { reveal(container_scheduler_wf); };
-    assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { reveal(container_thread_wf); };
+    assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { container_thread_wf_preserved_for_container_thread_link_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp); };
     assert(container_cpu_offline_flags_wf(post.ctn_mp, post.cpu_offline_mp)) by { reveal(container_cpu_offline_flags_wf); };
 }
 

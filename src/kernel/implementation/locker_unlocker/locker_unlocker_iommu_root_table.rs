@@ -26,7 +26,7 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::IommuRootTable(old(self).irt.view().table_base()), TypedHeldLock { lock_id: old(self).irt.lock_id(), mode: TypedLockMode::Write }),
     {
         proof {
-            assert(old(lctx).lock_id_acyclic(old(self).irt.lock_id())) by { reveal(LocalContext::lock_id_acyclic); };
+            assert(old(lctx).lock_id_acyclic(old(self).irt.lock_id())) by { reveal(LocalContext::lock_id_acyclic); reveal(pagetable_window_typed_lock_map_aligned); };
             assert(wlock_requires(old(self).irt, old(lctx))) by { reveal(iommu_root_table_typed_lock_map_aligned); };
         }
         let ret = self.irt.wlock(Tracked(&mut *lctx), Ghost(self.irt.lock_id()), Ghost(KernelObjId::IommuRootTable(self.irt.view().table_base())));

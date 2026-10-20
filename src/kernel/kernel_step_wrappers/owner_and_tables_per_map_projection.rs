@@ -117,6 +117,7 @@ pub proof fn kernel_process_tables_lock_state_changed_implies_u_process_map(pre:
         post.prc_mp.spec_index(process).locking_thread() == pre.prc_mp.spec_index(process).locking_thread(),
         post.prc_mp.spec_index(process).being_killed() == pre.prc_mp.spec_index(process).being_killed(),
         post.pt_mp.dom() == pre.pt_mp.dom(),
+        post.pt_lower == pre.pt_lower,
         forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)] pre.pt_mp.dom().contains(p) ==> {
             &&& post.pt_mp.spec_index(p).view() == pre.pt_mp.spec_index(p).view()
             &&& p != pagetable ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()

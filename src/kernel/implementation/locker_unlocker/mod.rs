@@ -28,6 +28,8 @@ mod locker_unlocker_endpoint;
 mod locker_unlocker_endpoint_eof;
 mod locker_unlocker_pagetable;
 mod locker_unlocker_pagetable_eof;
+mod locker_unlocker_pagetable_window;
+mod locker_unlocker_pagetable_window_eof;
 mod locker_unlocker_iommu_table;
 mod locker_unlocker_iommu_root_table;
 mod locker_unlocker_iommu_eof;

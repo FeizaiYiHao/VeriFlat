@@ -21,10 +21,11 @@ pub proof fn page_lock_op_preserves_invariant_fields(pre: PageLockedArray, post:
 pub proof fn memory_management_inv_preserved_for_page_invariant_fields(pre: KernelK, post: KernelK)
     requires
         pre.memory_management_inv(),
-        pagetable_perms_wf(pre.pt_mp),
+        pagetable_lower_wf(pre.pt_mp, pre.pt_lower.view()),
         iommu_table_perms_wf(pre.it_mp),
         page_invariant_fields_unchanged(pre.pg_arr, post.pg_arr),
         post.pt_mp == pre.pt_mp,
+        post.pt_lower == pre.pt_lower,
         post.it_mp == pre.it_mp,
         post.ctn_mp == pre.ctn_mp,
         post.sched_mp == pre.sched_mp,
@@ -49,13 +50,13 @@ pub proof fn memory_management_inv_preserved_for_page_invariant_fields(pre: Kern
     assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(page_object_owner_wf); };
     assert(hugepage_2m_wf(post.pg_arr)) by { reveal(hugepage_2m_wf); };
     assert(hugepage_1g_wf(post.pg_arr)) by { reveal(hugepage_1g_wf); };
-    assert(page_pagetable_wf(post.pt_mp, post.pg_arr)) by { reveal(pagetable_perms_wf); reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); };
+    assert(page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(pagetable_lower_wf); reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); };
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(iommu_table_perms_wf); reveal(page_iommu_table_wf); };
     assert(container_pages_wf(post.pg_arr, post.ctn_mp)) by { container_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.ctn_mp, post.ctn_mp); };
     assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { process_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.prc_mp, post.prc_mp); };
-    assert(pagetable_pages_wf(post.pt_mp, post.pg_arr)) by { reveal(pagetable_pages_wf); };
-    assert(pagetable_pages_wf(post.it_mp, post.pg_arr)) by { reveal(pagetable_pages_wf); };
+    assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { reveal(pagetable_pages_wf); };
+    assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); };
     assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
     assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { scheduler_pages_wf_preserved_for_page_state_eq(pre.sched_mp, post.sched_mp, pre.pg_arr, post.pg_arr); };
     assert(pcid_allocator_pages_wf(post.pg_arr, post.pcid_allc_mp)) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.pcid_allc_mp, post.pcid_allc_mp); };
@@ -88,8 +89,9 @@ pub proof fn lemma_memory_management_inv_preserved_for_page_invariant_fields_for
     ensures
         forall|pre: KernelK, post: KernelK|
             #![trigger pre.memory_management_inv(), post.memory_management_inv()]
-            pre.memory_management_inv() && pagetable_perms_wf(pre.pt_mp) && iommu_table_perms_wf(pre.it_mp) && page_invariant_fields_unchanged(pre.pg_arr, post.pg_arr) && {
+            pre.memory_management_inv() && pagetable_lower_wf(pre.pt_mp, pre.pt_lower.view()) && iommu_table_perms_wf(pre.it_mp) && page_invariant_fields_unchanged(pre.pg_arr, post.pg_arr) && {
                 &&& post.pt_mp == pre.pt_mp
+                &&& post.pt_lower == pre.pt_lower
                 &&& post.it_mp == pre.it_mp
                 &&& post.ctn_mp == pre.ctn_mp
                 &&& post.sched_mp == pre.sched_mp
@@ -104,8 +106,9 @@ pub proof fn lemma_memory_management_inv_preserved_for_page_invariant_fields_for
             } ==> post.memory_management_inv(),
 {
     assert forall|pre: KernelK, post: KernelK| #![auto]
-        pre.memory_management_inv() && pagetable_perms_wf(pre.pt_mp) && iommu_table_perms_wf(pre.it_mp) && page_invariant_fields_unchanged(pre.pg_arr, post.pg_arr) && {
+        pre.memory_management_inv() && pagetable_lower_wf(pre.pt_mp, pre.pt_lower.view()) && iommu_table_perms_wf(pre.it_mp) && page_invariant_fields_unchanged(pre.pg_arr, post.pg_arr) && {
             &&& post.pt_mp == pre.pt_mp
+            &&& post.pt_lower == pre.pt_lower
             &&& post.it_mp == pre.it_mp
             &&& post.ctn_mp == pre.ctn_mp
             &&& post.sched_mp == pre.sched_mp

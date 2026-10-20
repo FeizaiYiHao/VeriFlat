@@ -42,7 +42,7 @@ pub(super) proof fn eof_process_kernel_pages_owner_as_process(
 {
     reveal(create_process_with_iommu_from_staged_pages_eof_transition_framing);
     page_ptr_valid_imply_page_index_valid(); page_ptr2page_index_injective();
-    reveal(process_kernel_pages_owner_wf); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match);
+    reveal(process_kernel_pages_owner_wf); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(iommu_table_pages_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match);
 }
 
 pub(super) proof fn eof_process_kernel_pages_owner_pagetable_root(
@@ -84,7 +84,7 @@ pub(super) proof fn eof_process_kernel_pages_owner_pagetable_root(
 {
     reveal(create_process_with_iommu_from_staged_pages_eof_transition_framing);
     page_ptr_valid_imply_page_index_valid(); page_ptr2page_index_injective();
-    reveal(process_kernel_pages_owner_wf); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match);
+    reveal(process_kernel_pages_owner_wf); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(iommu_table_pages_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match);
 }
 
 pub(super) proof fn eof_process_kernel_pages_owner_iommu_root(
@@ -126,7 +126,7 @@ pub(super) proof fn eof_process_kernel_pages_owner_iommu_root(
 {
     reveal(create_process_with_iommu_from_staged_pages_eof_transition_framing);
     page_ptr_valid_imply_page_index_valid(); page_ptr2page_index_injective();
-    reveal(process_kernel_pages_owner_wf); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match);
+    reveal(process_kernel_pages_owner_wf); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(iommu_table_pages_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match);
 }
 
 pub(super) proof fn eof_process_kernel_pages_owner_pagetable_node(
@@ -168,7 +168,7 @@ pub(super) proof fn eof_process_kernel_pages_owner_pagetable_node(
 {
     reveal(create_process_with_iommu_from_staged_pages_eof_transition_framing);
     page_ptr_valid_imply_page_index_valid(); page_ptr2page_index_injective();
-    reveal(process_kernel_pages_owner_wf); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match);
+    reveal(process_kernel_pages_owner_wf); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(iommu_table_pages_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match);
 }
 
 pub(super) proof fn eof_process_kernel_pages_owner_iommu_node(
@@ -210,6 +210,6 @@ pub(super) proof fn eof_process_kernel_pages_owner_iommu_node(
 {
     reveal(create_process_with_iommu_from_staged_pages_eof_transition_framing);
     page_ptr_valid_imply_page_index_valid(); page_ptr2page_index_injective();
-    reveal(process_kernel_pages_owner_wf); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match);
+    reveal(process_kernel_pages_owner_wf); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(iommu_table_pages_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match);
 }
 }

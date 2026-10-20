@@ -709,7 +709,7 @@ pub fn publish_staged_container_root(
         final(krnl).allc_4k_mp.spec_index(allocator_4k_page).global_pool.view().view() == funding_pages,
         final(krnl).allc_4k_mp.spec_index(allocator_4k_page).total_free_pages.view() == funding_page_count,
         final(krnl).allc_4k_mp.spec_index(allocator_4k_page).quota.view().view() == allocator_quota_4k,
-        final(krnl).pt_mp.spec_index(pagetable_page).view().is_empty(),
+        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_page).is_empty(),
         final(krnl).pt_mp.spec_index(pagetable_page).view().proc_ptr == process_page,
         final(krnl).prc_mp.spec_index(process_page).view().iommu_table is None,
         final(krnl).ctn_mp.spec_index(container_page).view_ghost().uppertree_seq.view() == old(krnl).ctn_mp.spec_index(parent_container_ptr).view_ghost().uppertree_seq.view().push(parent_container_ptr),

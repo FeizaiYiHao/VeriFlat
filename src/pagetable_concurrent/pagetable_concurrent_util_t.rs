@@ -3,7 +3,7 @@ verus! {
 use crate::*;
 use vstd::simple_pptr::*;
 
-pub type PageTableHigherLockedMap = LockedMap<RwLockPageTableRoot, PageTableHigher<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE>;
+pub type PageTableHigherLockedMap = PageTableLockedMap;
 
 /// Publish a fresh page table: retype `page_ptr` into the write-held big lock around `higher_value`, insert it into
 /// `pt_mp`, and file its window half under the same root in `pt_lower`.
@@ -39,6 +39,7 @@ pub fn retype_page_to_pagetable_c_and_insert(pt_mp: &mut PageTableHigherLockedMa
             old(pt_mp).dom().contains(ptr) ==> final(pt_mp).lock_id_by_key(ptr) == old(pt_mp).lock_id_by_key(ptr),
         final(pt_mp).spec_index(page_ptr).is_init(),
         final(pt_mp).spec_index(page_ptr).view() == higher_value,
+        final(pt_mp).spec_index(page_ptr).view_ghost() == lower_value,
         !final(pt_mp).spec_index(page_ptr).being_killed(),
         *final(pt_lower) == old(pt_lower).insert(page_ptr, lower_value),
         typed_lock_map_contains_mode(final(lctx).pagetable_lock_map(), page_ptr, TypedLockMode::Write),
@@ -50,8 +51,8 @@ pub fn retype_page_to_pagetable_c_and_insert(pt_mp: &mut PageTableHigherLockedMa
         typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::PageTable(page_ptr), TypedHeldLock { lock_id: final(pt_mp).lock_id_by_key(page_ptr), mode: TypedLockMode::Write }),
         final(pt_mp).typed_lock_map_aligned(final(lctx).pagetable_lock_map(), final(lctx).thread_id()),
 {
-    let (Tracked(pagetable_rwlock_perm), Tracked(pagetable_perm)) = retype_page_perm_to_rwlock::<PageTableHigher<PT_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE>(
-        page_ptr, higher_value, (), Ghost(()), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::PageTable(page_ptr)));
+    let (Tracked(pagetable_rwlock_perm), Tracked(pagetable_perm)) = retype_page_perm_to_rwlock::<PageTableHigher<PT_TYPE>, (), PageTableLower<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>(
+        page_ptr, higher_value, (), Ghost(lower_value), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::PageTable(page_ptr)));
     pt_mp.insert_with_perm(page_ptr, Tracked(pagetable_rwlock_perm));
     proof {
         pt_lower.tracked_insert(page_ptr, lower_value);

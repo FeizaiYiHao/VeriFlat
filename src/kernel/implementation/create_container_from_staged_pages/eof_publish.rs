@@ -258,8 +258,14 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& post.pt_mp.spec_index(pagetable_page).view().pcid_value() == root_pcid
     &&& post.pt_mp.spec_index(pagetable_page).view().cr3 == l4_page
     &&& post.pt_mp.spec_index(pagetable_page).view().kernel_l4_end == pre.dflt_pt.view().kernel_l4_end
-    &&& post.pt_mp.spec_index(pagetable_page).view().is_empty()
-    &&& post.pt_mp.spec_index(pagetable_page).view().page_closure() == set![l4_page]
+    &&& post.pt_lower.view() == pre.pt_lower.view().insert(pagetable_page, post.pt_lower.view().spec_index(pagetable_page))
+    &&& post.pt_mp.spec_index(pagetable_page).view_ghost() == post.pt_lower.view().spec_index(pagetable_page)
+    &&& forall|pt_ptr: RwLockPageTableRoot|
+        #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), pt_ptr)]
+        pre.pt_mp.dom().contains(pt_ptr) ==> pagetable_c(post.pt_mp, post.pt_lower.view(), pt_ptr) == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pt_ptr)
+    &&& pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_page).wf()
+    &&& pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_page).is_empty()
+    &&& pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_page).page_closure() =~= set![l4_page]
     &&& post.sched_mp.dom() =~= pre.sched_mp.dom().insert(scheduler_page)
     &&& forall|ptr: RwLockSchedulerPtr|
         #![trigger post.sched_mp.spec_index(ptr)]
@@ -426,7 +432,7 @@ pub(super) proof fn eof_publish_postconditions(
         post.allc_4k_mp.spec_index(allocator_4k_page).global_pool.view().view() == funding_pages,
         post.allc_4k_mp.spec_index(allocator_4k_page).total_free_pages.view() == funding_pages.len(),
         post.allc_4k_mp.spec_index(allocator_4k_page).quota.view().view() == allocator_quota_4k,
-        post.pt_mp.spec_index(pagetable_page).view().is_empty(),
+        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_page).is_empty(),
         post.pt_mp.spec_index(pagetable_page).view().proc_ptr == process_page,
         post.prc_mp.spec_index(process_page).view().iommu_table is None,
         post.ctn_mp.spec_index(container_page).view_ghost().uppertree_seq.view() == pre.ctn_mp.spec_index(parent_container_ptr).view_ghost().uppertree_seq.view().push(parent_container_ptr),
@@ -483,7 +489,7 @@ pub(super) proof fn eof_publish_postconditions(
     reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
     assert(held_cpus_unchanged(pre.cpu_arr, post.cpu_arr, &pre_lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
     assert(held_processes_unchanged(pre.prc_mp, post.prc_mp, &pre_lctx)) by { pre.prc_mp.typed_lock_map_aligned_held_in_dom(pre_lctx.process_lock_map(), pre_lctx.thread_id()); };
-    assert(held_pagetables_unchanged(pre.pt_mp, post.pt_mp, &pre_lctx)) by { pre.pt_mp.typed_lock_map_aligned_held_in_dom(pre_lctx.pagetable_lock_map(), pre_lctx.thread_id()); };
+    assert(held_pagetables_unchanged(pre.pt_mp, post.pt_mp, &pre_lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
     assert(held_cpu_sets_unchanged(pre.cpu_set_mp, post.cpu_set_mp, &pre_lctx)) by { pre.cpu_set_mp.typed_lock_map_aligned_held_in_dom(pre_lctx.cpu_set_lock_map(), pre_lctx.thread_id()); };
 }
 }

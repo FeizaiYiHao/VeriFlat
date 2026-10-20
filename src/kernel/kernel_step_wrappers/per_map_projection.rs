@@ -24,8 +24,8 @@ pub proof fn kernel_process_nonlock_fields_and_locks_unchanged_implies_u_process
     requires
         process_pagetable_match(post.prc_mp, post.pt_mp),
         process_iommu_table_match(post.prc_mp, post.it_mp),
-        kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, post.pt_mp),
-        kernel_pagetable_nonlock_fields_unchanged(pre.it_mp, post.it_mp),
+        kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view()),
+        kernel_iommu_table_nonlock_fields_unchanged(pre.it_mp, post.it_mp),
         kernel_process_nonlock_fields_unchanged(pre.prc_mp, post.prc_mp),
         forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
             pre.prc_mp.dom().contains(p) && post.prc_mp.dom().contains(p) ==> post.prc_mp.spec_index(p).locking_thread() == pre.prc_mp.spec_index(p).locking_thread(),
@@ -41,7 +41,7 @@ pub proof fn kernel_process_nonlock_fields_and_locks_unchanged_implies_u_process
     let post_u = kernel_k_user_projection(*post, include_lock_state);
     assert_maps_equal!(post_u.process_map, pre_u.process_map, p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, include_lock_state, p); } if post.prc_mp.dom().contains(p) { kernel_process_user_projection_at(post, include_lock_state, p); }
-        process_pagetable_match_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, p); reveal(kernel_pagetable_nonlock_fields_unchanged);
+        process_pagetable_match_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, p); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
     });
 }
 
@@ -318,12 +318,13 @@ pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_process_map(pr
         post.prc_mp == pre.prc_mp,
         post.it_mp == pre.it_mp,
         post.pt_mp.unchanged_except(&pre.pt_mp, table),
+        post.pt_lower == pre.pt_lower,
         pre.pt_mp.typed_lock_map_aligned(lctx.pagetable_lock_map(), lctx.thread_id()),
         post.pt_mp.typed_lock_map_aligned(lctx.pagetable_lock_map(), lctx.thread_id()),
         typed_lock_map_contains_mode(lctx.pagetable_lock_map(), table, TypedLockMode::Write),
-        post.pt_mp.spec_index(table).view().mapping_4k() == pre.pt_mp.spec_index(table).view().mapping_4k(),
-        post.pt_mp.spec_index(table).view().mapping_2m() == pre.pt_mp.spec_index(table).view().mapping_2m(),
-        post.pt_mp.spec_index(table).view().mapping_1g() == pre.pt_mp.spec_index(table).view().mapping_1g(),
+        pagetable_c(post.pt_mp, post.pt_lower.view(), table).mapping_4k() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).mapping_4k(),
+        pagetable_c(post.pt_mp, post.pt_lower.view(), table).mapping_2m() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).mapping_2m(),
+        pagetable_c(post.pt_mp, post.pt_lower.view(), table).mapping_1g() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).mapping_1g(),
     ensures kernel_k_to_kernel_u(*post).process_map == kernel_k_to_kernel_u(*pre).process_map,
 {
     pre.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), table);
@@ -480,7 +481,7 @@ pub proof fn kernel_process_lock_mode_changed_implies_u_process_map(pre: &Kernel
         post.prc_mp.unchanged_except(&pre.prc_mp, process_ptr),
         post.prc_mp.spec_index(process_ptr).lock_state_u() == mode,
         kernel_process_nonlock_fields_unchanged(pre.prc_mp, post.prc_mp),
-        kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, post.pt_mp),
+        kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view()),
         if pagetable {
             let table = post.prc_mp.spec_index(process_ptr).view().pagetable;
             &&& !post.prc_mp.spec_index(process_ptr).view().zombie

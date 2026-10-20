@@ -72,6 +72,7 @@ pub proof fn memory_management_inv_preserved_for_thread_invariant_fields(pre: Ke
             pre.thr_mp.dom().contains(t) && pre.thr_mp.spec_index(t).locking_thread() is Write && !pre.thr_mp.spec_index(t).view().temp_alloc_clean()
                 ==> post.thr_mp.spec_index(t).locking_thread() is Write && post.thr_mp.spec_index(t).locking_thread()->Write_thread_id == pre.thr_mp.spec_index(t).locking_thread()->Write_thread_id,
         post.pt_mp == pre.pt_mp,
+        post.pt_lower == pre.pt_lower,
         post.it_mp == pre.it_mp,
         post.pg_arr == pre.pg_arr,
         post.ctn_mp == pre.ctn_mp,

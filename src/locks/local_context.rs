@@ -155,7 +155,6 @@ impl LocalContext {
         }
     }
 
-    // The `pagetable_window_lock_map` term is added in stage 2 together with `pagetable_window_typed_lock_map_aligned`.
     pub open spec fn no_locks_held(&self) -> bool {
         &&& self.page_lock_map().dom().is_empty()
         &&& self.cpu_lock_map().dom().is_empty()
@@ -169,6 +168,7 @@ impl LocalContext {
         &&& self.pcid_allocator_lock_map().dom().is_empty()
         &&& self.cpu_set_lock_map().dom().is_empty()
         &&& self.pagetable_lock_map().dom().is_empty()
+        &&& self.pagetable_window_lock_map().dom().is_empty()
         &&& self.iommu_table_lock_map().dom().is_empty()
         &&& self.iommu_root_table_lock_map().dom().is_empty()
         &&& self.allocator_quota_4k_lock_map().dom().is_empty()
@@ -183,7 +183,6 @@ impl LocalContext {
     }
 
     /// `lock_id` is strictly greater than every held id.
-    // The `pagetable_window_lock_map` term is added in stage 2 together with `pagetable_window_typed_lock_map_aligned`.
     #[verifier::opaque]
     pub open spec fn lock_id_acyclic(&self, lock_id: LockId) -> bool {
         &&& typed_lock_map_ids_lt(self.page_lock_map(), lock_id)
@@ -198,6 +197,7 @@ impl LocalContext {
         &&& typed_lock_map_ids_lt(self.pcid_allocator_lock_map(), lock_id)
         &&& typed_lock_map_ids_lt(self.cpu_set_lock_map(), lock_id)
         &&& typed_lock_map_ids_lt(self.pagetable_lock_map(), lock_id)
+        &&& typed_lock_map_2d_ids_lt(self.pagetable_window_lock_map(), lock_id)
         &&& typed_lock_map_ids_lt(self.iommu_table_lock_map(), lock_id)
         &&& typed_lock_map_ids_lt(self.iommu_root_table_lock_map(), lock_id)
         &&& typed_lock_map_ids_lt(self.allocator_quota_4k_lock_map(), lock_id)
@@ -212,7 +212,6 @@ impl LocalContext {
     }
 
     /// Every held lock has a major strictly below `major`.
-    // The `pagetable_window_lock_map` term is added in stage 2 together with `pagetable_window_typed_lock_map_aligned`.
     pub open spec fn held_lock_majors_lt(&self, major: LockMajorId) -> bool {
         &&& typed_lock_map_majors_lt(self.page_lock_map(), major)
         &&& typed_lock_map_majors_lt(self.cpu_lock_map(), major)
@@ -226,6 +225,7 @@ impl LocalContext {
         &&& typed_lock_map_majors_lt(self.pcid_allocator_lock_map(), major)
         &&& typed_lock_map_majors_lt(self.cpu_set_lock_map(), major)
         &&& typed_lock_map_majors_lt(self.pagetable_lock_map(), major)
+        &&& typed_lock_map_2d_majors_lt(self.pagetable_window_lock_map(), major)
         &&& typed_lock_map_majors_lt(self.iommu_table_lock_map(), major)
         &&& typed_lock_map_majors_lt(self.iommu_root_table_lock_map(), major)
         &&& typed_lock_map_majors_lt(self.allocator_quota_4k_lock_map(), major)

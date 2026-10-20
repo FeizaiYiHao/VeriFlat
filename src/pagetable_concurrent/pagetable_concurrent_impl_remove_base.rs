@@ -138,6 +138,11 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(lower).mapping_2m == old(lower).mapping_2m,
             final(lower).l2_lock == old(lower).l2_lock,
             final(lower).locked_windows == old(lower).locked_windows,
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
+                #![trigger (PageTableC { higher: *self, lower: *final(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+                #![trigger (PageTableC { higher: *self, lower: *old(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+                self.kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
+                    ==> (PageTableC { higher: *self, lower: *final(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id) == (PageTableC { higher: *self, lower: *old(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id),
             ret.0 == target_l1_p,
             ret.1.view().is_init(),
             ret.1.view().addr() == target_l1_p,
@@ -206,6 +211,11 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(self).proc_ptr == old(self).proc_ptr,
             final(lower).l2_lock == old(lower).l2_lock.remove(target_l2_p),
             final(lower).locked_windows == old(lower).locked_windows,
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
+                #![trigger (PageTableC { higher: *final(self), lower: *final(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+                #![trigger (PageTableC { higher: *old(self), lower: *old(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+                old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
+                    ==> (PageTableC { higher: *final(self), lower: *final(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id) == (PageTableC { higher: *old(self), lower: *old(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id),
             ret.0 == target_l2_p,
             ret.1.view().is_init(),
             ret.1.view().addr() == target_l2_p,
@@ -260,6 +270,11 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(self).cr3 == old(self).cr3,
             final(self).pcid == old(self).pcid,
             final(self).proc_ptr == old(self).proc_ptr,
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
+                #![trigger (PageTableC { higher: *final(self), lower: *lower }).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+                #![trigger (PageTableC { higher: *old(self), lower: *lower }).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+                old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
+                    ==> (PageTableC { higher: *final(self), lower: *lower }).window_locked_by_thread(l4i, l3i, l2i, thread_id) == (PageTableC { higher: *old(self), lower: *lower }).window_locked_by_thread(l4i, l3i, l2i, thread_id),
             ret.0 == target_l3_p,
             ret.1.view().is_init(),
             ret.1.view().addr() == target_l3_p,

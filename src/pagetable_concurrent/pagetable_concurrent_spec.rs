@@ -49,6 +49,12 @@ pub open spec fn window_obj_id(root: RwLockPageTableRoot, l4i: L4Index, l3i: L3I
     KernelObjId::PageTableWindow(root, spec_index2va((l4i, l3i, l2i, 0)))
 }
 
+/// `window_lock_id` of the 2M window containing `va`.
+pub open spec fn window_lock_id_at(root: RwLockPageTableRoot, va: VAddr) -> LockId { window_lock_id(root, spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) }
+
+/// `window_obj_id` of the 2M window containing `va`.
+pub open spec fn window_obj_id_at(root: RwLockPageTableRoot, va: VAddr) -> KernelObjId { window_obj_id(root, spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) }
+
 impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     pub open spec fn pcid_wf(&self) -> bool {
         &&& TABLE_TYPE == PT_TYPE ==> self.pcid is Some

@@ -157,7 +157,7 @@ impl KernelK {
             endpoint_perms_wf_map(old(self).ep_mp);
             endpoint_perms_wf_at(old(self).ep_mp, endpoint_ptr);
             assert(old(lctx).lock_id_acyclic(old(self).ep_mp.lock_id_by_key(endpoint_ptr))) by {
-                reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
+                reveal(LocalContext::lock_id_acyclic); reveal(pagetable_window_typed_lock_map_aligned); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
                 let cpu = old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view();
                 if killer_held_context(*old(self), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0, old(lctx).container_lock_map().dom())
                     || killed_thread_reclaim_lock_context(*old(self), *old(lctx)) {

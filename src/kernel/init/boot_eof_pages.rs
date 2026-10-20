@@ -98,10 +98,10 @@ pub(super) proof fn boot_memory_management_inv_eof_pagetable_pages(
         forall|bdf: PciBdf| #![trigger owned_pci_functions.contains(bdf)] owned_pci_functions.contains(bdf) <==> pci_bdf_valid(bdf.0, bdf.1, bdf.2),
         boot_kernel_state(krnl, layout, kernel_l4_end, initial_regs, kernel_entries, manifest_4k, page_array, pcid_needflush, cpu_published, default_pagetable,
             cpu_page_closure, free_4k_pool, free_2m_pool, free_1g_pool, owned_pages, owned_pci_functions, scheduler_node_addr, process_node_addr),
-    ensures pagetable_pages_wf(krnl.pt_mp, krnl.pg_arr),
+    ensures pagetable_pages_wf(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr),
 {
     hide(Seq::no_duplicates);
-    reveal(pagetable_pages_wf); reveal(boot_page_array_ready); reveal(PageTable::table_pages_wf);
+    reveal(pagetable_pages_wf); reveal(boot_page_array_ready); reveal(PageTableC::table_pages_wf);
 }
 
 pub(super) proof fn boot_memory_management_inv_eof_thread_pages(

@@ -116,7 +116,20 @@ pub open spec fn kernel_u_only_process2thread_quota_2m_changed(old_u: KernelU, n
 }
 
 #[verifier::opaque]
-pub open spec fn kernel_pagetable_nonlock_fields_unchanged<const TABLE_TYPE: PTType>(pre: PageTableLockedMapOf<TABLE_TYPE>, post: PageTableLockedMapOf<TABLE_TYPE>) -> bool {
+pub open spec fn kernel_pagetable_nonlock_fields_unchanged(pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap) -> bool {
+    &&& post_pt.dom() == pre_pt.dom()
+    &&& forall|p: RwLockPageTableRoot| #![trigger pagetable_c(post_pt, post_lower, p)]
+        pre_pt.dom().contains(p) ==> {
+            let before = pagetable_c(pre_pt, pre_lower, p);
+            let after = pagetable_c(post_pt, post_lower, p);
+            &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
+            &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
+            &&& after.mapping_1g().filter_keys(|va: VAddr| after.mapping_1g().spec_index(va).present) == before.mapping_1g().filter_keys(|va: VAddr| before.mapping_1g().spec_index(va).present)
+        }
+}
+
+#[verifier::opaque]
+pub open spec fn kernel_iommu_table_nonlock_fields_unchanged(pre: IommuTableLockedMap, post: IommuTableLockedMap) -> bool {
     &&& post.dom() == pre.dom()
     &&& forall|p: RwLockPageTableRoot| #![trigger post.spec_index(p)]
         pre.dom().contains(p) ==> {
@@ -190,8 +203,8 @@ pub open spec fn kernel_thread_nonlock_fields_unchanged(pre: ThreadLockedMap, po
 
 #[verifier::opaque]
 pub open spec fn kernel_cpu_process_thread_nonlock_fields_unchanged(pre: &KernelK, post: &KernelK) -> bool {
-    &&& kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, post.pt_mp)
-    &&& kernel_pagetable_nonlock_fields_unchanged(pre.it_mp, post.it_mp)
+    &&& kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view())
+    &&& kernel_iommu_table_nonlock_fields_unchanged(pre.it_mp, post.it_mp)
     &&& kernel_cpu_nonlock_fields_unchanged(pre.cpu_arr, post.cpu_arr)
     &&& kernel_process_nonlock_fields_unchanged(pre.prc_mp, post.prc_mp)
     &&& kernel_thread_nonlock_fields_unchanged(pre.thr_mp, post.thr_mp)
@@ -318,11 +331,11 @@ pub open spec fn kernel_new_thread_fields(
     &&& post.cpu_set_mp == pre.cpu_set_mp
     &&& post.dflt_pt == pre.dflt_pt
     &&& post.pt_mp.dom() == pre.pt_mp.dom()
-    &&& forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
+    &&& forall|p: RwLockPageTableRoot| #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), p)]
         pre.pt_mp.dom().contains(p) ==> {
-            &&& post.pt_mp.spec_index(p).view().mapping_4k() == pre.pt_mp.spec_index(p).view().mapping_4k()
-            &&& post.pt_mp.spec_index(p).view().mapping_2m() == pre.pt_mp.spec_index(p).view().mapping_2m()
-            &&& post.pt_mp.spec_index(p).view().mapping_1g() == pre.pt_mp.spec_index(p).view().mapping_1g()
+            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).mapping_4k() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).mapping_4k()
+            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).mapping_2m() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).mapping_2m()
+            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).mapping_1g() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).mapping_1g()
         }
     &&& post.it_mp.dom() == pre.it_mp.dom()
     &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
@@ -429,8 +442,8 @@ pub open spec fn kernel_context_switch_fields(pre: &KernelK, post: &KernelK, cpu
         pre.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread()
     &&& forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]
         index_valid(NUM_CPUS, i) ==> post.cpu_arr.spec_index(i).value.locking_thread() == pre.cpu_arr.spec_index(i).value.locking_thread()
-    &&& kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, post.pt_mp)
-    &&& kernel_pagetable_nonlock_fields_unchanged(pre.it_mp, post.it_mp)
+    &&& kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view())
+    &&& kernel_iommu_table_nonlock_fields_unchanged(pre.it_mp, post.it_mp)
     &&& kernel_process_nonlock_fields_unchanged(pre.prc_mp, post.prc_mp)
     &&& kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp)
     &&& post.irt.view().owners() == pre.irt.view().owners()
@@ -700,8 +713,8 @@ pub open spec fn kernel_ipc_block_fields(
         pre.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread()
     &&& forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]
         index_valid(NUM_CPUS, i) ==> post.cpu_arr.spec_index(i).value.locking_thread() == pre.cpu_arr.spec_index(i).value.locking_thread()
-    &&& kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, post.pt_mp)
-    &&& kernel_pagetable_nonlock_fields_unchanged(pre.it_mp, post.it_mp)
+    &&& kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view())
+    &&& kernel_iommu_table_nonlock_fields_unchanged(pre.it_mp, post.it_mp)
     &&& kernel_process_nonlock_fields_unchanged(pre.prc_mp, post.prc_mp)
     &&& kernel_container_nonlock_fields_and_quotas_unchanged(pre, post)
     &&& post.irt.view().owners() == pre.irt.view().owners()
@@ -847,8 +860,8 @@ pub open spec fn kernel_ipc_call_handoff_fields(
         pre.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread()
     &&& forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]
         index_valid(NUM_CPUS, i) ==> post.cpu_arr.spec_index(i).value.locking_thread() == pre.cpu_arr.spec_index(i).value.locking_thread()
-    &&& kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, post.pt_mp)
-    &&& kernel_pagetable_nonlock_fields_unchanged(pre.it_mp, post.it_mp)
+    &&& kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view())
+    &&& kernel_iommu_table_nonlock_fields_unchanged(pre.it_mp, post.it_mp)
     &&& kernel_process_nonlock_fields_unchanged(pre.prc_mp, post.prc_mp)
     &&& kernel_container_nonlock_fields_and_quotas_unchanged(pre, post)
     &&& post.irt.view().owners() == pre.irt.view().owners()
@@ -1150,8 +1163,8 @@ pub open spec fn kernel_ipc_reply_handoff_fields(
         pre.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread()
     &&& forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]
         index_valid(NUM_CPUS, i) ==> post.cpu_arr.spec_index(i).value.locking_thread() == pre.cpu_arr.spec_index(i).value.locking_thread()
-    &&& kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, post.pt_mp)
-    &&& kernel_pagetable_nonlock_fields_unchanged(pre.it_mp, post.it_mp)
+    &&& kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view())
+    &&& kernel_iommu_table_nonlock_fields_unchanged(pre.it_mp, post.it_mp)
     &&& kernel_process_nonlock_fields_unchanged(pre.prc_mp, post.prc_mp)
     &&& kernel_container_nonlock_fields_and_quotas_unchanged(pre, post)
     &&& post.irt.view().owners() == pre.irt.view().owners()
@@ -1331,8 +1344,8 @@ pub open spec fn kernel_ipc_rendezvous_fields(
     &&& pre.ctn_mp.dom().contains(caller.view().owning_container)
     &&& (cpu_transfer is Some ==> index_valid(NUM_CPUS, cpu_transfer.unwrap().0) && pre.thr_mp.dom().contains(cpu_transfer.unwrap().1))
     &&& cpu_transfer is Some ==> pre.cpu_arr.spec_index(cpu_transfer.unwrap().0).value.locking_thread() is None
-    &&& kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, post.pt_mp)
-    &&& kernel_pagetable_nonlock_fields_unchanged(pre.it_mp, post.it_mp)
+    &&& kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view())
+    &&& kernel_iommu_table_nonlock_fields_unchanged(pre.it_mp, post.it_mp)
     &&& pci_transfer is None ==> {
         &&& kernel_process_nonlock_fields_unchanged(pre.prc_mp, post.prc_mp)
         &&& post.irt.view().owners() == pre.irt.view().owners()
@@ -1684,8 +1697,8 @@ pub open spec fn kernel_process_quota_4k_changed(pre: &KernelK, post: &KernelK, 
     &&& post.pt_mp.dom() == pre.pt_mp.dom()
     &&& forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
         pre.pt_mp.dom().contains(p) ==> {
-            let before = pre.pt_mp.spec_index(p).view();
-            let after = post.pt_mp.spec_index(p).view();
+            let before = pagetable_c(pre.pt_mp, pre.pt_lower.view(), p);
+            let after = pagetable_c(post.pt_mp, post.pt_lower.view(), p);
             &&& post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
             &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
             &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
@@ -1827,8 +1840,8 @@ pub open spec fn kernel_process_quota_2m_changed(pre: &KernelK, post: &KernelK, 
     &&& post.pt_mp.dom() == pre.pt_mp.dom()
     &&& forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
         pre.pt_mp.dom().contains(p) ==> {
-            let before = pre.pt_mp.spec_index(p).view();
-            let after = post.pt_mp.spec_index(p).view();
+            let before = pagetable_c(pre.pt_mp, pre.pt_lower.view(), p);
+            let after = pagetable_c(post.pt_mp, post.pt_lower.view(), p);
             &&& post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
             &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
             &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
@@ -2063,8 +2076,8 @@ pub open spec fn kernel_process_4k_mapping_changed(pre: &KernelK, post: &KernelK
     &&& post.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr
     &&& pre.pt_mp.dom().contains(pagetable_ptr)
     &&& post.pt_mp.dom().contains(pagetable_ptr)
-    &&& pre.pt_mp.spec_index(pagetable_ptr).view().mapping_4k().filter_keys(|v: VAddr| pre.pt_mp.spec_index(pagetable_ptr).view().mapping_4k().spec_index(v).present).dom().contains(va)
-        != post.pt_mp.spec_index(pagetable_ptr).view().mapping_4k().filter_keys(|v: VAddr| post.pt_mp.spec_index(pagetable_ptr).view().mapping_4k().spec_index(v).present).dom().contains(va)
+    &&& pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k().filter_keys(|v: VAddr| pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(v).present).dom().contains(va)
+        != pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k().filter_keys(|v: VAddr| pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(v).present).dom().contains(va)
 }
 #[verifier::opaque]
 pub open spec fn kernel_u_cpu_tlb_cleared(pre: KernelU, post: KernelU, pcid: Pcid) -> bool {
@@ -2506,8 +2519,8 @@ pub open spec fn kernel_cpu_went_off_fields(pre: &KernelK, post: &KernelK, cpu_i
     &&& post.cpu_set_mp.dom() == pre.cpu_set_mp.dom()
     &&& forall|p: RwLockCpuSetPtr| #![trigger post.cpu_set_mp.spec_index(p)]
         pre.cpu_set_mp.dom().contains(p) ==> post.cpu_set_mp.spec_index(p).locking_thread() == pre.cpu_set_mp.spec_index(p).locking_thread() && post.cpu_set_mp.spec_index(p).being_killed() == pre.cpu_set_mp.spec_index(p).being_killed()
-    &&& kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, post.pt_mp)
-    &&& kernel_pagetable_nonlock_fields_unchanged(pre.it_mp, post.it_mp)
+    &&& kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view())
+    &&& kernel_iommu_table_nonlock_fields_unchanged(pre.it_mp, post.it_mp)
     &&& kernel_process_nonlock_fields_unchanged(pre.prc_mp, post.prc_mp)
     &&& kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp)
     &&& post.irt.view().owners() == pre.irt.view().owners()
@@ -2668,6 +2681,7 @@ pub open spec fn kernel_new_endpoint_fields(
     &&& post.cpu_set_mp == pre.cpu_set_mp
     &&& post.dflt_pt == pre.dflt_pt
     &&& post.pt_mp == pre.pt_mp
+    &&& post.pt_lower == pre.pt_lower
     &&& post.it_mp == pre.it_mp
     &&& kernel_cpu_nonlock_fields_unchanged(pre.cpu_arr, post.cpu_arr)
     &&& kernel_process_nonlock_fields_unchanged(pre.prc_mp, post.prc_mp)
@@ -2752,6 +2766,7 @@ pub open spec fn kernel_thread_exit_fields(pre: &KernelK, post: &KernelK, cpu_id
     } else { pre.cpu_tlb.view() }
     &&& post.dflt_pt == pre.dflt_pt
     &&& post.pt_mp == pre.pt_mp
+    &&& post.pt_lower == pre.pt_lower
     &&& post.it_mp == pre.it_mp
     &&& post.ep_mp == pre.ep_mp
     &&& post.sched_mp == pre.sched_mp

@@ -16,5 +16,5 @@ pub proof fn process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre: Kern
         forall|it: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(it).view()] pre.it_mp.dom().contains(it) ==> post.it_mp.spec_index(it).view().proc_ptr == pre.it_mp.spec_index(it).view().proc_ptr,
     ensures
         process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp),
-{ reveal(process_kernel_pages_owner_wf); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match); }
+{ reveal(process_kernel_pages_owner_wf); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(iommu_table_pages_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match); }
 }

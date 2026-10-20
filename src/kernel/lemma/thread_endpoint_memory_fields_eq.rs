@@ -7,6 +7,7 @@ pub proof fn memory_management_inv_preserved_for_thread_endpoint_memory_fields(p
         pre.memory_management_inv(),
         container_thread_wf(pre.ctn_mp, pre.thr_mp),
         post.pt_mp == pre.pt_mp,
+        post.pt_lower == pre.pt_lower,
         post.it_mp == pre.it_mp,
         post.pg_arr == pre.pg_arr,
         post.ctn_mp == pre.ctn_mp,

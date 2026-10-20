@@ -1,5 +1,5 @@
 #[cfg(verus_keep_ghost)]
-use super::locker_unlocker_pagetable_eof::{pagetable_lock_state_eof, wunlock_pagetable_eof};
+use super::locker_unlocker_pagetable_eof::{pagetable_lock_state_eof, runlock_pagetable_eof, wunlock_pagetable_eof};
 use vstd::prelude::*;
 use crate::*;
 
@@ -23,8 +23,8 @@ impl KernelK {
             forall|held_pagetable: RwLockPageTableRoot| #![trigger old(lctx).pagetable_lock_map().dom().contains(held_pagetable)] old(lctx).pagetable_lock_map().dom().contains(held_pagetable) ==> held_pagetable < pagetable_ptr,
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
-            pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, pagetable_ptr, final(self).pt_mp.spec_index(pagetable_ptr).view()),
-            final(self).pt_mp.spec_index(pagetable_ptr).view().leaves_present(),
+            pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, pagetable_ptr, pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), pagetable_ptr)),
+            pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), pagetable_ptr).leaves_present(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).inv(),
             kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), final(self)),
@@ -40,14 +40,25 @@ impl KernelK {
                     ==> final(self).pt_mp.dom().contains(other_pagetable) && final(self).pt_mp.lock_id_by_key(other_pagetable) == old(self).pt_mp.lock_id_by_key(other_pagetable),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-            wlock_ensures(old(self).pt_mp.spec_index(pagetable_ptr), final(self).pt_mp.spec_index(pagetable_ptr), old(self).pt_mp.lock_id_by_key(pagetable_ptr), final(lctx), ret.view()),
+            !old(self).pt_mp.spec_index(pagetable_ptr).locked(),
+            final(self).pt_mp.spec_index(pagetable_ptr).wlocked_by(final(lctx)),
+            final(self).pt_mp.spec_index(pagetable_ptr).locking_thread() == (RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: ret.view().lock_id() }),
+            final(self).pt_mp.spec_index(pagetable_ptr).inv(),
+            final(self).pt_mp.spec_index(pagetable_ptr).view() == old(self).pt_mp.spec_index(pagetable_ptr).view(),
+            final(self).pt_mp.spec_index(pagetable_ptr).view_rodata() == old(self).pt_mp.spec_index(pagetable_ptr).view_rodata(),
+            final(self).pt_mp.spec_index(pagetable_ptr).view_ghost() == final(self).pt_lower.view().spec_index(pagetable_ptr),
+            final(self).pt_mp.spec_index(pagetable_ptr).being_killed() == old(self).pt_mp.spec_index(pagetable_ptr).being_killed(),
+            final(self).pt_mp.spec_index(pagetable_ptr).killer_info() == old(self).pt_mp.spec_index(pagetable_ptr).killer_info(),
+            ret.view().state() is WriteLock,
+            ret.view().ordering_lock_id() == old(self).pt_mp.lock_id_by_key(pagetable_ptr),
+            ret.view().thread_id() == final(lctx).thread_id(),
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::PageTable(pagetable_ptr), TypedHeldLock { lock_id: final(self).pt_mp.lock_id_by_key(pagetable_ptr), mode: TypedLockMode::Write }),
     {
         proof {
             pagetable_perms_wf_map(old(self).pt_mp);
             pagetable_perms_wf_at(old(self).pt_mp, pagetable_ptr);
             assert(old(lctx).lock_id_acyclic(old(self).pt_mp.lock_id_by_key(pagetable_ptr))) by {
-                reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned);
+                reveal(LocalContext::lock_id_acyclic); reveal(pagetable_window_typed_lock_map_aligned); reveal(UnLockedMap::typed_flag_lock_map_aligned);
                 reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
             };
             assert(!old(self).pt_mp.spec_index(pagetable_ptr).locked_by_thread(old(lctx).thread_id())) by {
@@ -58,7 +69,11 @@ impl KernelK {
         }
         let ret = self.pt_mp.wlock(pagetable_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::PageTable(pagetable_ptr)));
         proof {
-            assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
+            self.pt_mp.update_ghost(pagetable_ptr, self.pt_lower.view().spec_index(pagetable_ptr));
+            assert(typed_lock_maps_aligned(self, &*lctx)) by {
+                reveal(LockedMap::typed_lock_map_aligned); reveal(pagetable_window_typed_lock_map_aligned);
+                pagetable_lock_op_preserves_invariant_fields(old(self).pt_mp, self.pt_mp, self.pt_lower.view(), pagetable_ptr);
+            };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {
                 broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive;
@@ -94,11 +109,13 @@ impl KernelK {
             old(self).pt_mp.spec_index(target_pagetable).locking_thread() is None,
             final(self).pt_mp.spec_index(source_pagetable).view() == old(self).pt_mp.spec_index(source_pagetable).view(),
             final(self).pt_mp.spec_index(target_pagetable).view() == old(self).pt_mp.spec_index(target_pagetable).view(),
+            final(self).pt_mp.spec_index(source_pagetable).view_ghost() == final(self).pt_lower.view().spec_index(source_pagetable),
+            final(self).pt_mp.spec_index(target_pagetable).view_ghost() == final(self).pt_lower.view().spec_index(target_pagetable),
             forall|p: RwLockPageTableRoot| #![trigger final(self).pt_mp.spec_index(p)] old(self).pt_mp.dom().contains(p) && p != source_pagetable && p != target_pagetable ==> final(self).pt_mp.spec_index(p) == old(self).pt_mp.spec_index(p),
-            pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, source_pagetable, final(self).pt_mp.spec_index(source_pagetable).view()),
-            pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, target_pagetable, final(self).pt_mp.spec_index(target_pagetable).view()),
-            final(self).pt_mp.spec_index(source_pagetable).view().leaves_present(),
-            final(self).pt_mp.spec_index(target_pagetable).view().leaves_present(),
+            pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, source_pagetable, pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), source_pagetable)),
+            pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, target_pagetable, pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), target_pagetable)),
+            pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), source_pagetable).leaves_present(),
+            pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), target_pagetable).leaves_present(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).inv(),
             kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), final(self)),
@@ -166,9 +183,10 @@ impl KernelK {
         requires
             old(self).inv(),
             old(self).pt_mp.dom().contains(pagetable_ptr),
-            pagetable_tlb_entries_present(old(self).cpu_tlb, old(self).cpu_arr, old(self).pcid_needflush, pagetable_ptr, old(self).pt_mp.spec_index(pagetable_ptr).view()),
-            old(self).pt_mp.spec_index(pagetable_ptr).view().leaves_present(),
+            pagetable_tlb_entries_present(old(self).cpu_tlb, old(self).cpu_arr, old(self).pcid_needflush, pagetable_ptr, pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr)),
+            pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).leaves_present(),
             typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
+            forall|va: VAddr| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, va))] !old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, va)),
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),
             lock_perm.view().lock_id() == old(self).pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
@@ -195,14 +213,17 @@ impl KernelK {
         assert(self.pt_mp.spec_index(pagetable_ptr).wlocked_by(&*lctx)) by { old(self).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable_ptr); };
         self.pt_mp.wunlock(pagetable_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::PageTable(pagetable_ptr)));
         proof {
-            assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
+            assert(typed_lock_maps_aligned(self, &*lctx)) by {
+                reveal(LockedMap::typed_lock_map_aligned); reveal(pagetable_window_typed_lock_map_aligned);
+                pagetable_lock_op_preserves_invariant_fields(old(self).pt_mp, self.pt_mp, self.pt_lower.view(), pagetable_ptr);
+            };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {
                 broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive;
                 reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged);
             };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-            wunlock_pagetable_eof(*old(self), *self, pagetable_ptr);
+            wunlock_pagetable_eof(*old(self), *self, *old(lctx), pagetable_ptr);
         }
     }
 
@@ -224,8 +245,8 @@ impl KernelK {
             forall|held_pagetable: RwLockPageTableRoot| #![trigger old(lctx).pagetable_lock_map().dom().contains(held_pagetable)] old(lctx).pagetable_lock_map().dom().contains(held_pagetable) ==> held_pagetable < pagetable_ptr,
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
-            pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, pagetable_ptr, final(self).pt_mp.spec_index(pagetable_ptr).view()),
-            final(self).pt_mp.spec_index(pagetable_ptr).view().leaves_present(),
+            pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, pagetable_ptr, pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), pagetable_ptr)),
+            pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), pagetable_ptr).leaves_present(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(self).inv(),
             kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), final(self)),
@@ -248,7 +269,7 @@ impl KernelK {
             pagetable_perms_wf_map(old(self).pt_mp);
             pagetable_perms_wf_at(old(self).pt_mp, pagetable_ptr);
             assert(old(lctx).lock_id_acyclic(old(self).pt_mp.lock_id_by_key(pagetable_ptr))) by {
-                reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned);
+                reveal(LocalContext::lock_id_acyclic); reveal(pagetable_window_typed_lock_map_aligned); reveal(UnLockedMap::typed_flag_lock_map_aligned);
                 reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
             };
             assert(!old(self).pt_mp.spec_index(pagetable_ptr).locked_by_thread(old(lctx).thread_id())) by {
@@ -259,7 +280,10 @@ impl KernelK {
         }
         let ret = self.pt_mp.rlock(pagetable_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::PageTable(pagetable_ptr)));
         proof {
-            assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
+            assert(typed_lock_maps_aligned(self, &*lctx)) by {
+                reveal(LockedMap::typed_lock_map_aligned); reveal(pagetable_window_typed_lock_map_aligned);
+                pagetable_lock_op_preserves_invariant_fields(old(self).pt_mp, self.pt_mp, self.pt_lower.view(), pagetable_ptr);
+            };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {
                 broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive;
@@ -276,6 +300,7 @@ impl KernelK {
             old(self).inv(),
             old(self).pt_mp.dom().contains(pagetable_ptr),
             typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Read),
+            forall|va: VAddr| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, va))] !old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, va)),
             lock_perm.view().state() is ReadLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),
             old(self).pt_mp.spec_index(pagetable_ptr).read_lock_perm_match(&lock_perm.view()),
@@ -302,14 +327,17 @@ impl KernelK {
         assert(self.pt_mp.spec_index(pagetable_ptr).rlocked_by(&*lctx)) by { old(self).pt_mp.typed_lock_map_aligned_read_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable_ptr); };
         self.pt_mp.runlock(pagetable_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::PageTable(pagetable_ptr)));
         proof {
-            assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
+            assert(typed_lock_maps_aligned(self, &*lctx)) by {
+                reveal(LockedMap::typed_lock_map_aligned); reveal(pagetable_window_typed_lock_map_aligned);
+                pagetable_lock_op_preserves_invariant_fields(old(self).pt_mp, self.pt_mp, self.pt_lower.view(), pagetable_ptr);
+            };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {
                 broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive;
                 reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged);
             };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-            pagetable_lock_state_eof(*old(self), *self, pagetable_ptr);
+            runlock_pagetable_eof(*old(self), *self, *old(lctx), pagetable_ptr);
         }
     }
 }

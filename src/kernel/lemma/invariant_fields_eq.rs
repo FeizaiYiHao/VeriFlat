@@ -60,7 +60,7 @@ pub proof fn lemma_container_process_page_pagetable_wf_preserved_for_process_inv
     ensures
         forall|container_map: ContainerLockedMap, pre: ProcessLockedMap, post: ProcessLockedMap, pagetable_map: PageTableLockedMap, page_array: PageLockedArray|
             #![trigger container_process_page_pagetable_wf(container_map, pre, pagetable_map, page_array), container_process_page_pagetable_wf(container_map, post, pagetable_map, page_array)]
-            container_process_page_pagetable_wf(container_map, pre, pagetable_map, page_array) && process_pagetable_match(pre, pagetable_map) && page_pagetable_wf(pagetable_map, page_array) && process_invariant_fields_except_quota_unchanged(pre, post)
+            container_process_page_pagetable_wf(container_map, pre, pagetable_map, page_array) && process_pagetable_match(pre, pagetable_map) && process_invariant_fields_except_quota_unchanged(pre, post)
                 ==> container_process_page_pagetable_wf(container_map, post, pagetable_map, page_array),
 { reveal(container_process_page_pagetable_wf); }
 

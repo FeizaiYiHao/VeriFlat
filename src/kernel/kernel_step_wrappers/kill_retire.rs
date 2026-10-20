@@ -20,7 +20,7 @@ pub proof fn kernel_zombie_process_retired_implies_u_step(
         pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr,
         pre.ctn_mp.dom().contains(container_ptr),
         pre.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == allocator_ptr,
-        *post == (KernelK { prc_mp: post.prc_mp, ctn_mp: post.ctn_mp, pt_mp: post.pt_mp, it_mp: post.it_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..*pre }),
+        *post == (KernelK { prc_mp: post.prc_mp, ctn_mp: post.ctn_mp, pt_mp: post.pt_mp, pt_lower: post.pt_lower, it_mp: post.it_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..*pre }),
         post.prc_mp.dom() == pre.prc_mp.dom().remove(process_ptr),
         forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)] post.prc_mp.dom().contains(p) ==> {
             let old_p = pre.prc_mp.spec_index(p);
@@ -45,7 +45,7 @@ pub proof fn kernel_zombie_process_retired_implies_u_step(
         forall|a: RwLockPageAllocatorPtr| #![trigger post.allc_4k_mp.spec_index(a)]
             pre.allc_4k_mp.dom().contains(a) && a != allocator_ptr ==> post.allc_4k_mp.spec_index(a).quota.view() == pre.allc_4k_mp.spec_index(a).quota.view(),
         post.pt_mp.dom() == pre.pt_mp.dom().remove(pre.prc_mp.spec_index(process_ptr).view().pagetable),
-        forall|t: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(t)] post.pt_mp.dom().contains(t) ==> post.pt_mp.spec_index(t) == pre.pt_mp.spec_index(t),
+        forall|t: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(t)] post.pt_mp.dom().contains(t) ==> post.pt_mp.spec_index(t) == pre.pt_mp.spec_index(t) && post.pt_lower.view().spec_index(t) == pre.pt_lower.view().spec_index(t),
         post.it_mp.dom() == match pre.prc_mp.spec_index(process_ptr).view().iommu_table { Some(it) => pre.it_mp.dom().remove(it), None => pre.it_mp.dom() },
         forall|t: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(t)] post.it_mp.dom().contains(t) ==> post.it_mp.spec_index(t) == pre.it_mp.spec_index(t),
     ensures

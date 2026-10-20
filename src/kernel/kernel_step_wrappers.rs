@@ -219,6 +219,7 @@ impl KernelSteps {
                 },
                 None => krnl.pt_mp == old(self).snapshot_k().pt_mp,
             },
+            krnl.pt_lower == old(self).snapshot_k().pt_lower,
         ensures
             kernel_k_to_nonlock_kernel_u(*krnl) == old(self).nonlock_snapshot_u(),
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
@@ -233,7 +234,7 @@ impl KernelSteps {
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&self.snapshot_k(), krnl)) by {
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
             reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
-            reveal(kernel_pagetable_nonlock_fields_unchanged);
+            reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
         };
         assert(kernel_endpoint_nonlock_fields_unchanged(self.snapshot_k().ep_mp, krnl.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&self.snapshot_k(), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_pcid_allocator_wf); };

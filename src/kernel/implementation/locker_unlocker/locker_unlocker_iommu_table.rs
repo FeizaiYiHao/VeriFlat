@@ -46,7 +46,7 @@ impl KernelK {
             iommu_table_perms_wf_map(old(self).it_mp);
             iommu_table_perms_wf_at(old(self).it_mp, iommu_table_ptr);
             assert(old(lctx).lock_id_acyclic(old(self).it_mp.lock_id_by_key(iommu_table_ptr))) by {
-                reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned);
+                reveal(LocalContext::lock_id_acyclic); reveal(pagetable_window_typed_lock_map_aligned); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned);
                 reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
             };
             assert(!old(self).it_mp.spec_index(iommu_table_ptr).locked_by_thread(old(lctx).thread_id())) by {
@@ -61,7 +61,7 @@ impl KernelK {
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {
                 broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive;
-                reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged);
+                reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
             };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
             wlock_iommu_table_eof(*old(self), *self, *old(lctx), iommu_table_ptr);
@@ -102,7 +102,7 @@ impl KernelK {
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by {
                 broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive;
-                reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged);
+                reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
             };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
             wunlock_iommu_table_eof(*old(self), *self, iommu_table_ptr);
