@@ -510,11 +510,38 @@ pub(super) proof fn eof_memory_management_inv(
     eof_memory_relations(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid);
     eof_allocator_quota_wf(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid);
     eof_process_kernel_pages_owner_wf(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid);
-    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(create_process_from_staged_pages_eof_transition_framing); reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
-    assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
-        reveal(create_process_from_staged_pages_eof_transition_framing); container_process_wf_process_at(pre.ctn_mp, pre.prc_mp, parent_ptr); reveal(container_kill_retire_wf);
-    };
+    eof_page_object_owner_wf(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid);
+    eof_container_kill_retire_wf(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid);
 }
+
+/// The staged pages leave their thread for kernel-object states that name no owner object, so every page keeps its
+/// object owner.
+proof fn eof_page_object_owner_wf(
+    pre: KernelK, post: KernelK, process_page_ptr: PagePtr, pagetable_page_ptr: PagePtr, l4_page_ptr: PagePtr, parent_ptr: RwLockProcessPtr,
+    staging_thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, pcid_allocator_ptr: RwLockPcidAllocatorPtr, pcid: Pcid,
+)
+    requires
+        pre.inv(),
+        create_process_from_staged_pages_eof_transition_framing(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid),
+    ensures
+        page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp),
+{ reveal(create_process_from_staged_pages_eof_transition_framing); reveal(page_object_owner_wf); reveal(container_page_owner_wf); }
+
+/// The new process's container owns its parent, so it is not retire-ready; every other container and the allocators are
+/// unchanged.
+proof fn eof_container_kill_retire_wf(
+    pre: KernelK, post: KernelK, process_page_ptr: PagePtr, pagetable_page_ptr: PagePtr, l4_page_ptr: PagePtr, parent_ptr: RwLockProcessPtr,
+    staging_thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, pcid_allocator_ptr: RwLockPcidAllocatorPtr, pcid: Pcid,
+)
+    requires
+        container_kill_retire_wf(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp),
+        container_process_wf(pre.ctn_mp, pre.prc_mp),
+        pre.prc_mp.dom().contains(parent_ptr),
+        pre.prc_mp.spec_index(parent_ptr).view_rodata().view().owning_container == container_ptr,
+        create_process_from_staged_pages_eof_transition_framing(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid),
+    ensures
+        container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
+{ reveal(create_process_from_staged_pages_eof_transition_framing); container_process_wf_process_at(pre.ctn_mp, pre.prc_mp, parent_ptr); reveal(container_kill_retire_wf); }
 
 /// The new process's object page, page-table root page, and L4 page belong to its container; every other page keeps its
 /// state, owner, and process.

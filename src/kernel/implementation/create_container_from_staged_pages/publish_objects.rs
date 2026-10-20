@@ -390,23 +390,13 @@ pub(super) fn set_new_container_owned_2m_page_tail_pair(
         final(pages).spec_index(page_ptr2page_index(l4_page)) == reference_krnl.pg_arr.spec_index(page_ptr2page_index(l4_page),),
         final(pages).spec_index(page_ptr2page_index(thread_page)) == reference_krnl.pg_arr.spec_index(page_ptr2page_index(thread_page),),
 {
-    hide(Seq::contains);
     let container_head = page_ptr2page_index(container_page);
     let pcid_allocator_head = page_ptr2page_index(pcid_allocator_page);
-    let ghost protected_page_index_seq = seq![
-        container_head,
-        pcid_allocator_head,
-        page_ptr2page_index(allocator_4k_page),
-        page_ptr2page_index(allocator_2m_page),
-        page_ptr2page_index(allocator_1g_page),
-        page_ptr2page_index(scheduler_page),
-        page_ptr2page_index(cpu_set_page),
-        page_ptr2page_index(process_page),
-        page_ptr2page_index(pagetable_page),
-        page_ptr2page_index(l4_page),
-        page_ptr2page_index(thread_page),
+    let ghost protected_page_indices = set![
+        container_head, pcid_allocator_head, page_ptr2page_index(allocator_4k_page), page_ptr2page_index(allocator_2m_page),
+        page_ptr2page_index(allocator_1g_page), page_ptr2page_index(scheduler_page), page_ptr2page_index(cpu_set_page),
+        page_ptr2page_index(process_page), page_ptr2page_index(pagetable_page), page_ptr2page_index(l4_page), page_ptr2page_index(thread_page),
     ];
-    let ghost protected_page_indices = protected_page_index_seq.to_set();
     proof {
         page_ptr_2m_valid_imply_page_index_2m_valid(container_page); page_ptr_2m_valid_imply_page_index_2m_valid(pcid_allocator_page,);
         assert(container_head != pcid_allocator_head) by { page_ptr2page_index_injective(); };
@@ -418,7 +408,6 @@ pub(super) fn set_new_container_owned_2m_page_tail_pair(
             if page_2m_tail_indices(pcid_allocator_head).contains(container_head) { page_2m_all_ptrs_contains_index(pcid_allocator_head, container_head,); }
         };
         assert(page_2m_tail_indices(container_head).disjoint(protected_page_indices) && page_2m_tail_indices(pcid_allocator_head).disjoint(protected_page_indices)) by {
-            reveal(Seq::contains);
             owned_4k_page_not_in_2m_tail(&reference_krnl, allocator_4k_page, container_head,);
             owned_4k_page_not_in_2m_tail(&reference_krnl, allocator_2m_page, container_head,);
             owned_4k_page_not_in_2m_tail(&reference_krnl, allocator_1g_page, container_head,);
@@ -437,7 +426,6 @@ pub(super) fn set_new_container_owned_2m_page_tail_pair(
             owned_4k_page_not_in_2m_tail(&reference_krnl, pagetable_page, pcid_allocator_head,);
             owned_4k_page_not_in_2m_tail(&reference_krnl, l4_page, pcid_allocator_head,);
             owned_4k_page_not_in_2m_tail(&reference_krnl, thread_page, pcid_allocator_head,);
-            protected_page_index_seq.to_set_ensures();
         };
         assert(funding_pages.to_set().disjoint(page_2m_all_ptrs(container_head),)) by { reveal(new_container_moved_pages); };
         assert(funding_pages.to_set().disjoint(page_2m_all_ptrs(pcid_allocator_head),)) by { reveal(new_container_moved_pages); };
@@ -463,7 +451,7 @@ pub(super) fn set_new_container_owned_2m_page_tail_pair(
             &&& pages.spec_index(page_ptr2page_index(pagetable_page)) == reference_krnl.pg_arr.spec_index(page_ptr2page_index(pagetable_page),)
             &&& pages.spec_index(page_ptr2page_index(l4_page)) == reference_krnl.pg_arr.spec_index(page_ptr2page_index(l4_page),)
             &&& pages.spec_index(page_ptr2page_index(thread_page)) == reference_krnl.pg_arr.spec_index(page_ptr2page_index(thread_page),)
-        }) by { page_ptr_valid_imply_page_index_valid(); protected_page_index_seq.to_set_ensures(); };
+        }) by { page_ptr_valid_imply_page_index_valid(); };
     }
 }
 

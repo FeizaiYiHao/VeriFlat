@@ -2,8 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_cpu_hotplug_spec::*;
 use super::syscall_cpu_hotplug_trace::*;
-#[cfg(verus_keep_ghost)]
-use super::cpu_offline_request_child_eof::{cpu_offline_request_child_eof, cpu_offline_request_child_eof_transition_framing};
+use super::cpu_offline_request_child_locked::cpu_offline_request_child_locked;
 
 verus! {
 /// Asks `target`, a cpu of the `child`-th child of the caller's live, non-zombie container, to go Off at its next schedule
@@ -101,102 +100,10 @@ pub fn syscall_cpu_offline_request_child(krnl: &mut KernelK, Tracked(lctx): Trac
         }
         return RetValueType::ErrorCpuOwnerMismatch;
     }
-    let child_ptr = caller.children.get(child);
     proof {
-        assert({
-            &&& krnl.ctn_mp.dom().contains(child_ptr)
-            &&& krnl.ctn_mp.spec_index(child_ptr).view_rodata().view().parent == Some(caller_ptr)
-            &&& child_ptr != caller_ptr
-            &&& krnl.ctn_mp.spec_index(child_ptr).view_rodata().view().depth == krnl.ctn_mp.spec_index(caller_ptr).view_rodata().view().depth + 1
-            &&& krnl.ctn_mp.spec_index(caller_ptr).view_rodata().view().depth == krnl.cpu_arr.spec_index(cpu_id).view().view().view().container_depth
-        }) by {
-            container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); container_children_parent_wf_at(krnl.rt_ctn, krnl.ctn_mp, caller_ptr, child_ptr); container_root_wf_at(krnl.rt_ctn, krnl.ctn_mp, child_ptr); container_root_wf_at(krnl.rt_ctn, krnl.ctn_mp, krnl.rt_ctn); };
-        assert(page_ptr_2m_valid(child_ptr)) by { container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, child_ptr); };
-        assert({
-            &&& krnl.cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(child_ptr))
-            &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(child_ptr)).owning_container.view() == child_ptr
-            &&& krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(child_ptr)).container_depth.view() == krnl.ctn_mp.spec_index(child_ptr).view_rodata().view().depth
-        }) by { container_cpu_offline_flags_wf_container_at(krnl.ctn_mp, krnl.cpu_offline_mp, child_ptr); };
+        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
     }
-    let flags_ptr = child_ptr + 4096;
-    let Tracked(flag_lock_perm) = krnl.wlock_cpu_offline_flag(flags_ptr, target, Tracked(lctx));
-    let child_ro = krnl.ctn_mp.borrow_rodata(child_ptr);
-    let cpu_set_ptr = child_ro.borrow().cpu_set;
-    proof { assert(krnl.cpu_set_mp.dom().contains(cpu_set_ptr) && krnl.cpu_set_mp.spec_index(cpu_set_ptr).inv()) by { container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, child_ptr); cpu_set_perms_wf_at(krnl.cpu_set_mp, cpu_set_ptr); }; }
-    proof {
-        // A marked set belongs to a marked child, whose killer write-holds the caller container held here; that
-        // killer's process lock would then be held here too.
-        assert(!krnl.cpu_set_mp.spec_index(cpu_set_ptr).being_killed()) by {
-            container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, child_ptr); cpu_set_kill_mark_wf_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, cpu_set_ptr);
-            container_kill_mark_wf_at(krnl.ctn_mp, krnl.prc_mp, child_ptr); krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), caller_ptr);
-            if krnl.cpu_set_mp.spec_index(cpu_set_ptr).being_killed() {
-                krnl.prc_mp.typed_lock_map_aligned_locked_at(lctx.process_lock_map(), lctx.thread_id(), krnl.ctn_mp.spec_index(child_ptr).killer_info()->Some_0.process);
-            }
-        };
-    }
-    let Tracked(cpu_set_lock_perm) = krnl.wlock_cpu_set(cpu_set_ptr, Tracked(lctx));
-    let cpu_set = krnl.cpu_set_mp.borrow_typed(cpu_set_ptr, Ghost(lctx.cpu_set_lock_map()), Tracked(&*lctx), Tracked(&cpu_set_lock_perm));
-    let result = if !cpu_set.owned_cpus.contains(target) { RetValueType::ErrorCpuOwnerMismatch }
-        else if cpu_set.owned_cpus.is_closed(target) { RetValueType::ErrorCpuAlreadyOff }
-        else { RetValueType::Success };
-    let pending = krnl.cpu_offline_mp.read_flag(flags_ptr, target, Tracked(&flag_lock_perm));
-    proof {
-        assert(result == cpu_offline_request_child_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, child, target)
-            && (result is Success ==> pending == cpu_offline_request_child_pending(kernel_k_to_kernel_u(*old(krnl)), target))) by {
-            container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, target); container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, child_ptr, target);
-            container_cpu_wf_cpu_at(old(krnl).ctn_mp, old(krnl).cpu_set_mp, old(krnl).cpu_arr, target); container_cpu_wf_container_at(old(krnl).ctn_mp, old(krnl).cpu_set_mp, old(krnl).cpu_arr, child_ptr, target);
-            cpu_offline_request_child_result_from_k(&*old(krnl), cpu_id, child, target, result, pending);
-        };
-        assert(result is Success ==> {
-            &&& krnl.cpu_arr.spec_index(target).view().view().view().owning_container == child_ptr
-            &&& !(krnl.cpu_arr.spec_index(target).view().view().view().state is Off)
-            &&& target != cpu_id
-        }) by {
-            container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, target); container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, child_ptr, target);
-            container_cpu_wf_cpu_at(old(krnl).ctn_mp, old(krnl).cpu_set_mp, old(krnl).cpu_arr, target); container_cpu_wf_container_at(old(krnl).ctn_mp, old(krnl).cpu_set_mp, old(krnl).cpu_arr, child_ptr, target);
-        };
-    }
-    let success = if let RetValueType::Success = result { true } else { false };
-    if !success || pending {
-        krnl.wunlock_cpu_set(cpu_set_ptr, Tracked(lctx), Tracked(cpu_set_lock_perm));
-        krnl.wunlock_cpu_offline_flag(flags_ptr, target, Tracked(lctx), Tracked(flag_lock_perm));
-        krnl.wunlock_container(caller_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
-        krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
-        proof {
-            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-            steps.end_kernel_step_unchanged(&*krnl, &*lctx);
-            cpu_offline_request_child_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, target, result);
-        }
-        return result;
-    }
-    let ghost request_pre = *krnl;
-    krnl.cpu_offline_mp.set_flag(flags_ptr, target, true, Tracked(&*lctx), Tracked(&flag_lock_perm));
-    proof {
-        assert(cpu_offline_request_child_eof_transition_framing(request_pre, *krnl, flags_ptr, target, child_ptr)) by { reveal(cpu_offline_request_child_eof_transition_framing); };
-        cpu_offline_request_child_eof(request_pre, *krnl, flags_ptr, target, child_ptr);
-        assert(typed_lock_maps_aligned(&*krnl, &*lctx)) by { reveal(UnLockedMap::typed_flag_lock_map_aligned); };
-    }
-    krnl.wunlock_cpu_set(cpu_set_ptr, Tracked(lctx), Tracked(cpu_set_lock_perm));
-    krnl.wunlock_cpu_offline_flag(flags_ptr, target, Tracked(lctx), Tracked(flag_lock_perm));
-    krnl.wunlock_container(caller_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
-    krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
-    proof {
-        let ghost request_before = steps.view();
-        assert(kernel_cpu_offline_request_changed(&steps.snapshot_k(), &*krnl, cpu_id, child_ptr, target)) by { reveal(kernel_cpu_offline_request_changed); };
-        steps.end_kernel_step_cpu_offline_request_changed(&*krnl, &*lctx, cpu_id, child_ptr, target);
-        no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx);
-        assert({
-            &&& cpu_offline_request_child_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*krnl), cpu_id, target, RetValueType::Success)
-            &&& cpu_offline_request_child_step_pre(steps.nonlock_view().last().old_u, cpu_id, target)
-            &&& cpu_offline_request_child_step(steps.nonlock_view().last().old_u, steps.nonlock_view().last().new_u, cpu_id, target)
-        }) by {
-            cpu_offline_request_child_step_from_u(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*krnl), cpu_id, child_ptr, target);
-            cpu_offline_request_child_step_from_u(steps.nonlock_view().last().old_u, steps.nonlock_view().last().new_u, cpu_id, child_ptr, target);
-            cpu_offline_request_child_trace_step(&*steps, request_before, kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*krnl), cpu_id, target);
-        };
-    }
-    send_ipi(target, Tracked(&*lctx));
-    RetValueType::Success
+    cpu_offline_request_child_locked(krnl, Tracked(lctx), Tracked(steps), cpu_id, child, target, caller_ptr, Tracked(cpu_lock_perm), Tracked(container_lock_perm))
 }
 }

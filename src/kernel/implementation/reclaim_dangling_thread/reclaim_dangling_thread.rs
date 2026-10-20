@@ -1,9 +1,8 @@
 use vstd::prelude::*;
 use crate::*;
-use super::super::free_4k_page::drain_4k_cache_batch;
 #[cfg(verus_keep_ghost)]
 use super::reclaim_dangling_thread_eof::reclaim_dangling_thread_eof_fields;
-use super::reclaim_dangling_thread_helpers::reclaim_dangling_thread_commit;
+use super::reclaim_dangling_thread_helpers::{reclaim_dangling_thread_commit, reclaim_dangling_thread_drain_full_cache};
 
 verus! {
 /// Reclaim the write-held killed dangling thread `dangling_ptr`: take its page, the 4K allocator cache on `cpu_id` of the page's owner
@@ -84,21 +83,11 @@ pub fn reclaim_dangling_thread(
     let allocator_ptr = krnl.ctn_mp.borrow_rodata(owner).borrow().allocator_ptr_4k;
     proof { assert(krnl.allc_4k_mp.dom().contains(allocator_ptr)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner); }; }
     let Tracked(cache_lock_perm) = krnl.wlock_allocator_cache_4k(allocator_ptr, cpu_id, Tracked(&mut *lctx));
-    let cache = krnl.allc_4k_mp.borrow_cache_typed(allocator_ptr, cpu_id, Ghost(lctx.allocator_cache_4k_lock_map()), Tracked(&*lctx), Tracked(&cache_lock_perm));
-    if cache.linked_list.len() == ALLOCATOR_MAX_WATERMARK {
-        let Tracked(pool_lock_perm) = krnl.wlock_allocator_global_pool_4k(allocator_ptr, Tracked(&mut *lctx));
-        proof {
-            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-            kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl);
-        }
-        drain_4k_cache_batch(krnl, allocator_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&cache_lock_perm), Tracked(&pool_lock_perm));
-        krnl.wunlock_allocator_global_pool_4k(allocator_ptr, Tracked(&mut *lctx), Tracked(pool_lock_perm));
-        proof {
-            kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl);
-            krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-        }
+    proof {
+        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
     }
+    reclaim_dangling_thread_drain_full_cache(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, allocator_ptr, Tracked(&cache_lock_perm));
     proof {
         assert(krnl.ctn_mp.dom().contains(owner) && krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr) by {
             container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_index);

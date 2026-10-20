@@ -289,6 +289,131 @@ pub(super) proof fn ipc_call_handoff_eof(pre: KernelK, post: KernelK, cpu_id: Cp
     assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
 }
 
+/// The cpu and emptied-thread relations close after the acceptance.
+proof fn ipc_accept_call_eof_cpu_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, caller_ptr: RwLockThreadPtr)
+    requires
+        pre.inv(),
+        index_valid(NUM_CPUS, cpu_id),
+        caller_ptr != callee_ptr,
+        pre.thr_mp.dom().contains(caller_ptr),
+        pre.thr_mp.dom().contains(callee_ptr),
+        !pre.thr_mp.spec_index(caller_ptr).being_killed(),
+        !pre.thr_mp.spec_index(callee_ptr).being_killed(),
+        pre.ep_mp.dom().contains(endpoint_ptr),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(callee_ptr),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(pre.thr_mp.spec_index(callee_ptr).view().owning_proc),
+        pre.thr_mp.spec_index(callee_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        pre.thr_mp.spec_index(callee_ptr).view().caller is None,
+        pre.thr_mp.spec_index(callee_ptr).view().callee is None,
+        pre.thr_mp.spec_index(callee_ptr).locking_thread() is Write,
+        pre.thr_mp.spec_index(callee_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr),
+        pre.thr_mp.spec_index(caller_ptr).view().state is CALLING,
+        pre.thr_mp.spec_index(caller_ptr).view().callee is None,
+        pre.thr_mp.spec_index(caller_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
+        pre.thr_mp.spec_index(caller_ptr).view().owning_container == pre.thr_mp.spec_index(callee_ptr).view().owning_container,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().len() > 0,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view()[0] == caller_ptr,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue_state is SEND,
+        !pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().contains(callee_ptr),
+        ipc_accept_call_eof_transition_framing(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr),
+        post.subsystems_inv(),
+    ensures
+        process_emptied_threads_wf(post.prc_mp, post.thr_mp),
+        container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr),
+        thread_cpu_wf(post.thr_mp, post.cpu_arr),
+{
+    reveal(ipc_accept_call_eof_transition_framing);
+    assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
+    assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_thread_wf); reveal(process_thread_wf); };
+    assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_running_thread_eq(pre.thr_mp, post.thr_mp, pre.cpu_arr, post.cpu_arr); };
+}
+
+/// The endpoint queue, descriptor, and reference-counter relations close after the acceptance.
+proof fn ipc_accept_call_eof_endpoint_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, caller_ptr: RwLockThreadPtr)
+    requires
+        pre.inv(),
+        index_valid(NUM_CPUS, cpu_id),
+        caller_ptr != callee_ptr,
+        pre.thr_mp.dom().contains(caller_ptr),
+        pre.thr_mp.dom().contains(callee_ptr),
+        !pre.thr_mp.spec_index(caller_ptr).being_killed(),
+        !pre.thr_mp.spec_index(callee_ptr).being_killed(),
+        pre.ep_mp.dom().contains(endpoint_ptr),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(callee_ptr),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(pre.thr_mp.spec_index(callee_ptr).view().owning_proc),
+        pre.thr_mp.spec_index(callee_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        pre.thr_mp.spec_index(callee_ptr).view().caller is None,
+        pre.thr_mp.spec_index(callee_ptr).view().callee is None,
+        pre.thr_mp.spec_index(callee_ptr).locking_thread() is Write,
+        pre.thr_mp.spec_index(callee_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr),
+        pre.thr_mp.spec_index(caller_ptr).view().state is CALLING,
+        pre.thr_mp.spec_index(caller_ptr).view().callee is None,
+        pre.thr_mp.spec_index(caller_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
+        pre.thr_mp.spec_index(caller_ptr).view().owning_container == pre.thr_mp.spec_index(callee_ptr).view().owning_container,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().len() > 0,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view()[0] == caller_ptr,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue_state is SEND,
+        !pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().contains(callee_ptr),
+        ipc_accept_call_eof_transition_framing(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr),
+        post.subsystems_inv(),
+    ensures
+        thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp),
+        thread_endpoint_queue_wf(post.thr_mp, post.ep_mp),
+        container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp),
+        container_endpoint_wf(post.ctn_mp, post.ep_mp),
+{
+    reveal(ipc_accept_call_eof_transition_framing);
+    assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_descriptor_eq(pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
+    assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { seq_skip_lemma::<RwLockThreadPtr>(); reveal(endpoint_perms_wf); reveal(LinkedList::wf_value_list); reveal(LinkedList::value_list_unique); reveal(thread_endpoint_queue_wf); };
+    assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); container_thread_endpoint_wf_preserved_for_descriptor_owner_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
+    assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { container_endpoint_wf_preserved_for_endpoint_owner_eq(pre.ctn_mp, post.ctn_mp, pre.ep_mp, post.ep_mp); };
+}
+
+/// The call-link and dangling-chain relations close after the caller is linked to the callee.
+proof fn ipc_accept_call_eof_call_chain_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, caller_ptr: RwLockThreadPtr)
+    requires
+        pre.inv(),
+        index_valid(NUM_CPUS, cpu_id),
+        caller_ptr != callee_ptr,
+        pre.thr_mp.dom().contains(caller_ptr),
+        pre.thr_mp.dom().contains(callee_ptr),
+        !pre.thr_mp.spec_index(caller_ptr).being_killed(),
+        !pre.thr_mp.spec_index(callee_ptr).being_killed(),
+        pre.ep_mp.dom().contains(endpoint_ptr),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(callee_ptr),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(pre.thr_mp.spec_index(callee_ptr).view().owning_proc),
+        pre.thr_mp.spec_index(callee_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        pre.thr_mp.spec_index(callee_ptr).view().caller is None,
+        pre.thr_mp.spec_index(callee_ptr).view().callee is None,
+        pre.thr_mp.spec_index(callee_ptr).locking_thread() is Write,
+        forall|u: RwLockThreadPtr| #![trigger pre.thr_mp.spec_index(u).locking_thread()]
+            pre.thr_mp.dom().contains(u) && pre.thr_mp.spec_index(u).wlocked_by_thread(pre.thr_mp.spec_index(callee_ptr).locking_thread()->Write_thread_id) ==> u == caller_ptr || u == callee_ptr,
+        pre.thr_mp.spec_index(callee_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr),
+        pre.thr_mp.spec_index(caller_ptr).view().state is CALLING,
+        pre.thr_mp.spec_index(caller_ptr).view().callee is None,
+        pre.thr_mp.spec_index(caller_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
+        pre.thr_mp.spec_index(caller_ptr).view().owning_container == pre.thr_mp.spec_index(callee_ptr).view().owning_container,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().len() > 0,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view()[0] == caller_ptr,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue_state is SEND,
+        !pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().contains(callee_ptr),
+        ipc_accept_call_eof_transition_framing(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr),
+        post.subsystems_inv(),
+    ensures
+        thread_caller_callee_wf(post.thr_mp),
+        thread_dangling_chain_end_wf(post.thr_mp),
+{
+    reveal(ipc_accept_call_eof_transition_framing);
+    assert(thread_caller_callee_wf(post.thr_mp)) by { reveal(thread_caller_callee_wf); };
+    assert(thread_dangling_chain_end_wf(post.thr_mp)) by {
+        thread_dangling_chain_end_on_caller_chain(pre.thr_mp, callee_ptr, Set::<RwLockThreadPtr>::empty(), pre.thr_mp.spec_index(callee_ptr).view().call_depth.view());
+        reveal(thread_dangling_chain_end_wf); reveal(thread_caller_callee_wf);
+    };
+}
+
 #[verifier::spinoff_prover]
 proof fn ipc_accept_call_eof_process_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, caller_ptr: RwLockThreadPtr)
     requires
@@ -323,22 +448,13 @@ proof fn ipc_accept_call_eof_process_management_inv(pre: KernelK, post: KernelK,
     ensures post.process_management_inv(),
 {
     reveal(ipc_accept_call_eof_transition_framing);
+    ipc_accept_call_eof_cpu_wf(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr);
+    ipc_accept_call_eof_endpoint_wf(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr);
+    ipc_accept_call_eof_call_chain_wf(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr);
     assert(post.process_management_inv()) by {
-        assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
-        assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_thread_wf); reveal(process_thread_wf); };
-        assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_running_thread_eq(pre.thr_mp, post.thr_mp, pre.cpu_arr, post.cpu_arr); };
         assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { container_thread_wf_preserved_for_container_thread_link_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp); };
         assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { process_thread_wf_preserved_for_process_thread_link_eq(pre.prc_mp, post.prc_mp, pre.thr_mp, post.thr_mp); };
         assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { container_thread_scheduler_wf_preserved_for_scheduled_thread_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, post.sched_mp); reveal(container_thread_wf); };
-        assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_descriptor_eq(pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
-        assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { seq_skip_lemma::<RwLockThreadPtr>(); reveal(endpoint_perms_wf); reveal(LinkedList::wf_value_list); reveal(LinkedList::value_list_unique); reveal(thread_endpoint_queue_wf); };
-        assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); container_thread_endpoint_wf_preserved_for_descriptor_owner_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
-        assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { container_endpoint_wf_preserved_for_endpoint_owner_eq(pre.ctn_mp, post.ctn_mp, pre.ep_mp, post.ep_mp); };
-        assert(thread_caller_callee_wf(post.thr_mp)) by { reveal(thread_caller_callee_wf); };
-        assert(thread_dangling_chain_end_wf(post.thr_mp)) by {
-            thread_dangling_chain_end_on_caller_chain(pre.thr_mp, callee_ptr, Set::<RwLockThreadPtr>::empty(), pre.thr_mp.spec_index(callee_ptr).view().call_depth.view());
-            reveal(thread_dangling_chain_end_wf); reveal(thread_caller_callee_wf);
-        };
     };
 }
 

@@ -45,6 +45,94 @@ proof fn scheduler_context_switch_eof_container_thread_scheduler(pre: KernelK, p
     };
 }
 
+/// The cpu relations close after the switch.
+proof fn scheduler_context_switch_eof_cpu_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, scheduler_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr, entry_regs: Registers)
+    requires
+        pre.inv(),
+        scheduler_context_switch_eof_transition_framing(pre, post, cpu_id, scheduler_ptr, next_thread, entry_regs),
+        ({
+            let old_cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
+            let next_process = pre.thr_mp.spec_index(next_thread).view().owning_proc;
+            let queue_before = pre.sched_mp.spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().view().queue;
+            &&& index_valid(NUM_CPUS, cpu_id)
+            &&& !(old_cpu.state is Off)
+            &&& !pre.cpu_arr.spec_index(cpu_id).view().being_killed()
+            &&& pre.thr_mp.dom().contains(next_thread)
+            &&& pre.prc_mp.dom().contains(next_process)
+            &&& pre.sched_mp.dom().contains(scheduler_ptr)
+            &&& pre.ctn_mp.dom().contains(old_cpu.owning_container)
+            &&& pre.thr_mp.spec_index(next_thread).view().state is SCHEDULED
+            &&& pre.sched_mp.spec_index(scheduler_ptr).owning_container == old_cpu.owning_container
+            &&& pre.thr_mp.spec_index(next_thread).view().owning_container == old_cpu.owning_container
+            &&& pre.ctn_mp.spec_index(old_cpu.owning_container).view_rodata().view().scheduler == scheduler_ptr
+            &&& queue_before.view().len() > 0
+            &&& queue_before.view()[0] == next_thread
+            &&& (old_cpu.current_thread is Some ==> {
+                let prev = old_cpu.current_thread.unwrap();
+                &&& prev != next_thread
+                &&& pre.thr_mp.dom().contains(prev)
+                &&& pre.thr_mp.spec_index(prev).view().state == (ThreadState::RUNNING { cpu_id })
+                &&& !queue_before.map().remove(pre.thr_mp.spec_index(next_thread).view().scheduler_linkedlist_node.addr()).dom().contains(pre.thr_mp.spec_index(prev).view().scheduler_linkedlist_node.addr())
+            })
+        }),
+        post.subsystems_inv(),
+    ensures
+        container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr),
+        process_cpu_wf(post.prc_mp, post.cpu_arr),
+        thread_cpu_wf(post.thr_mp, post.cpu_arr),
+{
+    reveal(scheduler_context_switch_eof_transition_framing);
+    assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); reveal(container_thread_wf); reveal(container_process_wf); reveal(process_thread_wf); };
+    assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); reveal(process_pagetable_match); reveal(process_thread_wf); };
+    assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { reveal(thread_cpu_wf); };
+}
+
+/// The endpoint, call-link, and dangling-chain relations close after the switch.
+proof fn scheduler_context_switch_eof_endpoint_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, scheduler_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr, entry_regs: Registers)
+    requires
+        pre.inv(),
+        scheduler_context_switch_eof_transition_framing(pre, post, cpu_id, scheduler_ptr, next_thread, entry_regs),
+        ({
+            let old_cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
+            let next_process = pre.thr_mp.spec_index(next_thread).view().owning_proc;
+            let queue_before = pre.sched_mp.spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().view().queue;
+            &&& index_valid(NUM_CPUS, cpu_id)
+            &&& !(old_cpu.state is Off)
+            &&& !pre.cpu_arr.spec_index(cpu_id).view().being_killed()
+            &&& pre.thr_mp.dom().contains(next_thread)
+            &&& pre.prc_mp.dom().contains(next_process)
+            &&& pre.sched_mp.dom().contains(scheduler_ptr)
+            &&& pre.ctn_mp.dom().contains(old_cpu.owning_container)
+            &&& pre.thr_mp.spec_index(next_thread).view().state is SCHEDULED
+            &&& pre.sched_mp.spec_index(scheduler_ptr).owning_container == old_cpu.owning_container
+            &&& pre.thr_mp.spec_index(next_thread).view().owning_container == old_cpu.owning_container
+            &&& pre.ctn_mp.spec_index(old_cpu.owning_container).view_rodata().view().scheduler == scheduler_ptr
+            &&& queue_before.view().len() > 0
+            &&& queue_before.view()[0] == next_thread
+            &&& (old_cpu.current_thread is Some ==> {
+                let prev = old_cpu.current_thread.unwrap();
+                &&& prev != next_thread
+                &&& pre.thr_mp.dom().contains(prev)
+                &&& pre.thr_mp.spec_index(prev).view().state == (ThreadState::RUNNING { cpu_id })
+                &&& !queue_before.map().remove(pre.thr_mp.spec_index(next_thread).view().scheduler_linkedlist_node.addr()).dom().contains(pre.thr_mp.spec_index(prev).view().scheduler_linkedlist_node.addr())
+            })
+        }),
+        post.subsystems_inv(),
+    ensures
+        thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp),
+        thread_endpoint_queue_wf(post.thr_mp, post.ep_mp),
+        container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp),
+        thread_caller_callee_wf(post.thr_mp),
+        thread_dangling_chain_end_wf(post.thr_mp),
+{
+    reveal(scheduler_context_switch_eof_transition_framing);
+    assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_descriptor_eq(pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
+    assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_endpoint_waiting_eq(pre.thr_mp, post.thr_mp, post.ep_mp); };
+    assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { container_thread_endpoint_wf_preserved_for_descriptor_owner_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
+    assert(thread_caller_callee_wf(post.thr_mp)) by { thread_caller_callee_wf_preserved_for_call_link_eq(pre.thr_mp, post.thr_mp); };
+    assert(thread_dangling_chain_end_wf(post.thr_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thr_mp, post.thr_mp); };
+}
+
 #[verifier::spinoff_prover]
 proof fn scheduler_context_switch_eof_process_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, scheduler_ptr: RwLockSchedulerPtr, next_thread: RwLockThreadPtr, entry_regs: Registers)
     requires
@@ -79,19 +167,13 @@ proof fn scheduler_context_switch_eof_process_management_inv(pre: KernelK, post:
     ensures post.process_management_inv(),
 {
     reveal(scheduler_context_switch_eof_transition_framing);
+    scheduler_context_switch_eof_container_thread_scheduler(pre, post, cpu_id, scheduler_ptr, next_thread, entry_regs);
+    scheduler_context_switch_eof_cpu_wf(pre, post, cpu_id, scheduler_ptr, next_thread, entry_regs);
+    scheduler_context_switch_eof_endpoint_wf(pre, post, cpu_id, scheduler_ptr, next_thread, entry_regs);
     assert(post.process_management_inv()) by {
-        scheduler_context_switch_eof_container_thread_scheduler(pre, post, cpu_id, scheduler_ptr, next_thread, entry_regs);
-        assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); reveal(container_thread_wf); reveal(container_process_wf); reveal(process_thread_wf); };
-        assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); reveal(process_pagetable_match); reveal(process_thread_wf); };
-        assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { reveal(thread_cpu_wf); };
         assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { container_thread_wf_preserved_for_container_thread_link_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp); };
         assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { process_thread_wf_preserved_for_process_thread_link_eq(pre.prc_mp, post.prc_mp, pre.thr_mp, post.thr_mp); };
         assert(container_scheduler_wf(post.ctn_mp, post.sched_mp)) by { container_scheduler_wf_preserved_for_scheduler_owner_eq(pre.ctn_mp, post.ctn_mp, pre.sched_mp, post.sched_mp); };
-        assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_descriptor_eq(pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
-        assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_endpoint_waiting_eq(pre.thr_mp, post.thr_mp, post.ep_mp); };
-        assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { container_thread_endpoint_wf_preserved_for_descriptor_owner_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
-        assert(thread_caller_callee_wf(post.thr_mp)) by { thread_caller_callee_wf_preserved_for_call_link_eq(pre.thr_mp, post.thr_mp); };
-        assert(thread_dangling_chain_end_wf(post.thr_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thr_mp, post.thr_mp); };
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
     };
 }
