@@ -386,11 +386,11 @@ pub(crate) proof fn kill_user_4k_unmapped_pre_from_k(krnl: &KernelK, target: RwL
         !krnl.prc_mp.spec_index(target).view().zombie,
         krnl.pt_mp.dom().contains(krnl.prc_mp.spec_index(target).view().pagetable),
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
-            #![trigger krnl.pt_mp.spec_index(krnl.prc_mp.spec_index(target).view().pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
+            #![trigger pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(target).view().pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
             pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && KERNEL_MEM_END_L4INDEX <= l4i
                 && krnl.pt_mp.spec_index(krnl.prc_mp.spec_index(target).view().pagetable).view().kernel_l4_end <= l4i
-                && krnl.pt_mp.spec_index(krnl.prc_mp.spec_index(target).view().pagetable).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
-                ==> !krnl.pt_mp.spec_index(krnl.prc_mp.spec_index(target).view().pagetable).view().mapping_4k().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present,
+                && pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(target).view().pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
+                ==> !pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(target).view().pagetable).mapping_4k().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present,
     ensures
         kernel_k_to_kernel_u(*krnl).process_map[target].pagetable is Some,
         kill_process_user_4k_unmapped(kernel_k_to_kernel_u(*krnl), kernel_k_to_kernel_u(*krnl).process_map[target].pagetable->Some_0),

@@ -65,6 +65,7 @@ pub(super) fn thread_exit_lock_entry(krnl: &mut KernelK, Tracked(lctx): Tracked<
             &&& final(lctx).pcid_allocator_lock_map().dom().is_empty()
             &&& final(lctx).cpu_set_lock_map().dom().is_empty()
             &&& final(lctx).pagetable_lock_map().dom().is_empty()
+            &&& final(lctx).pagetable_window_lock_map().dom().is_empty()
             &&& final(lctx).iommu_table_lock_map().dom().is_empty()
             &&& final(lctx).iommu_root_table_lock_map().dom().is_empty()
             &&& final(lctx).holds_no_allocator_locks(PageSize::SZ4k)

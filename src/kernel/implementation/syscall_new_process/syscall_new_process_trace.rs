@@ -25,13 +25,13 @@ pub(super) proof fn new_process_result_from_k(krnl: &KernelK, cpu_id: CpuId, va:
             let allocator = krnl.pcid_allc_mp.spec_index(krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator).view();
             let free = PcidAllocator::free_pcids(allocator.ref_counters.view());
             let has_pcid = allocator.pcid_is_free(pcid);
-            let table = krnl.pt_mp.spec_index(process.view().pagetable).view();
+            let table = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), process.view().pagetable);
             let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
             let live = !args_bad && cpu.view().view().state is Running && !cpu.being_killed();
             let unkilled = live && !process.being_killed() && !thread.being_killed();
             let endpoint_missing = endpoint_index is Some && thread.view().endpoint_descriptors.spec_index(endpoint_index->Some_0) is None;
             let funded = unkilled && has_pcid && !endpoint_missing && thread.view().quota_4k >= base + 3 * range;
-            let mapped = table.kernel_l4_end <= spec_v2l4index(va) && forall|j: int| #![trigger va_range.view().spec_index(j)] 0 <= j < range
+            let mapped = table.kernel_l4_end() <= spec_v2l4index(va) && forall|j: int| #![trigger va_range.view().spec_index(j)] 0 <= j < range
                 ==> table.mapping_4k().dom().contains(va_range.view().spec_index(j)) && table.mapping_4k().spec_index(va_range.view().spec_index(j)).present;
             &&& live ==> cpu.view().view().current_thread is Some && krnl.thr_mp.dom().contains(thread_ptr) && krnl.prc_mp.dom().contains(process_ptr)
             &&& unkilled ==> krnl.ctn_mp.dom().contains(container_ptr)
@@ -94,9 +94,9 @@ pub(super) proof fn new_process_enter_step_pre_from_k(
             &&& process.view().pagetable == pagetable_ptr
             &&& krnl.pt_mp.dom().contains(pagetable_ptr)
             &&& table.locking_thread() is None
-            &&& table.view().leaves_present()
+            &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).leaves_present()
             &&& table.view().kernel_l4_end <= spec_v2l4index(range.start)
-            &&& table.view().spec_mapping_4k_va_range_present(&range)
+            &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).spec_mapping_4k_va_range_present(&range)
             &&& range.wf()
             &&& 0 < range.len <= (usize::MAX - base) / 3
             &&& endpoint_index is Some ==> edp_idx_valid(endpoint_index->Some_0) && endpoint_ptr is Some && thread.view().endpoint_descriptors.spec_index(endpoint_index->Some_0) == endpoint_ptr

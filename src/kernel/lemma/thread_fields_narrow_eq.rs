@@ -157,6 +157,23 @@ pub proof fn process_thread_wf_preserved_for_process_thread_link_eq(old_process_
         process_thread_wf(new_process_map, new_thread_map),
 { reveal(process_thread_wf); }
 
+// Pending user approval (2026-10-20): field-level eq lemma for a deep-trigger wf.
+pub proof fn process_emptied_threads_wf_preserved_for_owned_threads_exited_eq(old_process_map: ProcessLockedMap, new_process_map: ProcessLockedMap, old_thread_map: ThreadLockedMap, new_thread_map: ThreadLockedMap)
+    requires
+        process_emptied_threads_wf(old_process_map, old_thread_map),
+        new_process_map.dom() == old_process_map.dom(),
+        new_thread_map.dom() == old_thread_map.dom(),
+        forall|p_ptr: RwLockProcessPtr|
+            #![trigger new_process_map.spec_index(p_ptr)]
+            new_process_map.dom().contains(p_ptr) ==> {
+                &&& new_process_map.spec_index(p_ptr).view().state == old_process_map.spec_index(p_ptr).view().state
+                &&& new_process_map.spec_index(p_ptr).view().owned_threads == old_process_map.spec_index(p_ptr).view().owned_threads
+            },
+        forall|t_ptr: RwLockThreadPtr| #![trigger new_thread_map.spec_index(t_ptr)] new_thread_map.dom().contains(t_ptr) ==> new_thread_map.spec_index(t_ptr).view_ghost().exited == old_thread_map.spec_index(t_ptr).view_ghost().exited,
+    ensures
+        process_emptied_threads_wf(new_process_map, new_thread_map),
+{ reveal(process_emptied_threads_wf); }
+
 pub proof fn thread_cpu_wf_preserved_for_running_thread_eq(old_thread_map: ThreadLockedMap, new_thread_map: ThreadLockedMap, old_cpu_array: CpuLockedArray, new_cpu_array: CpuLockedArray)
     requires
         thread_cpu_wf(old_thread_map, old_cpu_array),

@@ -45,6 +45,7 @@ pub(super) fn thread_exit_destroy(
         old(krnl).prc_mp.spec_index(process_ptr).view().owned_threads.view().len() != 1 ==> old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Running,
         old(lctx).cpu_set_lock_map().dom().is_empty(),
         old(lctx).pagetable_lock_map().dom().is_empty(),
+        old(lctx).pagetable_window_lock_map().dom().is_empty(),
         old(lctx).iommu_table_lock_map().dom().is_empty(),
         old(lctx).iommu_root_table_lock_map().dom().is_empty(),
         old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),

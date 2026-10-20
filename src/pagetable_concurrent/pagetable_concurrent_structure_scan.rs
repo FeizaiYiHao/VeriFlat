@@ -3,6 +3,22 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
+// Pending user approval (2026-10-20): field-level eq lemma for a deep-trigger scan_wf.
+/// Tables that keep their upper half, L2 ghost entries, and L1 tables resolve every L2, 2M, and 4K entry alike, so
+/// `spec_structure_scan_wf` carries across a change of only the window lock state.
+pub proof fn spec_structure_scan_wf_preserved_for_lower_tables_eq<const TABLE_TYPE: PTType>(old: PageTableC<TABLE_TYPE>, new: PageTableC<TABLE_TYPE>)
+    requires
+        new.higher == old.higher,
+        new.lower.l2_ghost == old.lower.l2_ghost,
+        new.lower.l1_tables == old.lower.l1_tables,
+    ensures
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new.spec_resolve_mapping_l2(l4i, l3i, l2i)] new.spec_resolve_mapping_l2(l4i, l3i, l2i) == old.spec_resolve_mapping_l2(l4i, l3i, l2i),
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger new.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)]
+            new.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) == old.spec_resolve_mapping_2m_l2(l4i, l3i, l2i),
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger new.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
+            new.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) == old.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i),
+{}
+
 impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     pub proof fn table_pages_wf_l3_at(&self, p: PageMapPtr)
         requires
@@ -140,6 +156,8 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(self).pcid == old(self).pcid,
             final(self).proc_ptr == old(self).proc_ptr,
             final(lower).locked_windows == old(lower).locked_windows,
+            scan is L1 ==> *final(self) == *old(self),
+            scan is L1 ==> final(lower).l2_lock == old(lower).l2_lock,
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
                 #![trigger (PageTableC { higher: *final(self), lower: *final(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
                 #![trigger (PageTableC { higher: *old(self), lower: *old(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id)]

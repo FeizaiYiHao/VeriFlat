@@ -41,7 +41,7 @@ pub(super) proof fn eof_pop_2m_postconditions(pre: KernelK, post: KernelK, pre_l
     assert(held_pages_unchanged_except(pre.pg_arr, post.pg_arr, &pre_lctx, set![page_ptr2page_index(page)])) by { reveal(LockedArray::typed_lock_map_aligned); };
     assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post)) by {
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
-        kernel_pagetable_nonlock_fields_unchanged_for_equal(pre.pt_mp, post.pt_mp); kernel_pagetable_nonlock_fields_unchanged_for_equal(pre.it_mp, post.it_mp);
+        kernel_pagetable_nonlock_fields_unchanged_for_equal(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view()); kernel_iommu_table_nonlock_fields_unchanged_for_equal(pre.it_mp, post.it_mp);
         kernel_cpu_nonlock_fields_unchanged_for_equal(pre.cpu_arr, post.cpu_arr); kernel_process_nonlock_fields_unchanged_for_equal(pre.prc_mp, post.prc_mp);
     };
     kernel_endpoint_nonlock_fields_unchanged_for_equal(pre.ep_mp, post.ep_mp);

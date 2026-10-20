@@ -411,6 +411,7 @@ verus! {
         &&& killer_held_context_except_tables(k, lctx, killer_process, killer_thread, containers)
         &&& lctx.page_lock_map().dom().is_empty()
         &&& lctx.pagetable_lock_map().dom().is_empty()
+        &&& lctx.pagetable_window_lock_map().dom().is_empty()
         &&& lctx.iommu_table_lock_map().dom().is_empty()
     }
 

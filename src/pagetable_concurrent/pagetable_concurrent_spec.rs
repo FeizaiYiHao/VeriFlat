@@ -40,9 +40,9 @@ pub ghost struct PageTableC<const TABLE_TYPE: PTType> {
     pub lower: PageTableLower<TABLE_TYPE>,
 }
 
-/// Window `(l4i, l3i, l2i)` of the table rooted at `root` sorts directly after that table's big lock `[root]`.
+/// Window `(l4i, l3i, l2i)` of the table rooted at `root`; window locks follow every page-table and IOMMU table lock.
 pub open spec fn window_lock_id(root: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index) -> LockId {
-    LockId { container: LockOwnerId::None, process: LockOwnerId::None, major: PAGE_TABLE_LOCK_MAJOR, minor: seq![root, l4i, l3i, l2i] }
+    LockId { container: LockOwnerId::None, process: LockOwnerId::None, major: PAGE_TABLE_WINDOW_LOCK_MAJOR, minor: seq![root, l4i, l3i, l2i] }
 }
 
 pub open spec fn window_obj_id(root: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index) -> KernelObjId {

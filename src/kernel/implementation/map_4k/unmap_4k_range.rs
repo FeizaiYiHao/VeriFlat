@@ -19,6 +19,7 @@ pub fn unmap_4k_range(
         held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         old(lctx).scheduler_lock_map().dom().is_empty(),
         old(lctx).cpu_set_lock_map().dom().is_empty(),
+        old(lctx).pagetable_window_lock_map().dom().is_empty(),
         old(steps).snapshot_k() == *old(krnl),
         index_valid(NUM_CPUS, cpu_id),
         old(lctx).cpu_id() == cpu_id,
@@ -52,9 +53,9 @@ pub fn unmap_4k_range(
         range.wf(),
         range.len > 0,
         old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_va2index(range.start).0,
-        forall|j: int| #![trigger old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(range.view().spec_index(j))]
-            #![trigger old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(range.view().spec_index(j))] 0 <= j < range.len
-            ==> old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(range.view().spec_index(j)) && old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(range.view().spec_index(j)).present,
+        forall|j: int| #![trigger pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(range.view().spec_index(j))]
+            #![trigger pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().spec_index(range.view().spec_index(j))] 0 <= j < range.len
+            ==> pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(range.view().spec_index(j)) && pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().spec_index(range.view().spec_index(j)).present,
         typed_lock_map_contains_mode(old(lctx).container_lock_map(), old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container, TypedLockMode::Write),
         typed_lock_map_contains_mode(old(lctx).process_lock_map(), old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc, TypedLockMode::Write),
         old(krnl).prc_mp.spec_index(old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc).view_rodata().view().pcid == pcid,
@@ -87,10 +88,10 @@ pub fn unmap_4k_range(
         final(krnl).pt_mp.dom().contains(pagetable),
         final(krnl).pt_mp.spec_index(pagetable).locking_thread() == old(krnl).pt_mp.spec_index(pagetable).locking_thread(),
         final(krnl).pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
-        final(krnl).pt_mp.spec_index(pagetable).view().mapping_4k() == old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().remove_keys(range.view().to_set()),
-        final(krnl).pt_mp.spec_index(pagetable).view().mapping_2m() == old(krnl).pt_mp.spec_index(pagetable).view().mapping_2m(),
-        final(krnl).pt_mp.spec_index(pagetable).view().mapping_1g() == old(krnl).pt_mp.spec_index(pagetable).view().mapping_1g(),
-        pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pagetable, final(krnl).pt_mp.spec_index(pagetable).view()),
+        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_4k() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().remove_keys(range.view().to_set()),
+        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_2m() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m(),
+        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_1g() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g(),
+        pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pagetable, pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable)),
 {
     let ghost process_ptr = krnl.thr_mp.spec_index(thread_ptr).view().owning_proc;
     let ghost container_ptr = krnl.thr_mp.spec_index(thread_ptr).view().owning_container;
@@ -121,6 +122,7 @@ pub fn unmap_4k_range(
             held_locks_order_below(krnl, lctx, ALLOCATOR_CACHE_4K_MAJOR),
             lctx.scheduler_lock_map().dom().is_empty(),
             lctx.cpu_set_lock_map().dom().is_empty(),
+            lctx.pagetable_window_lock_map().dom().is_empty(),
             index_valid(NUM_CPUS, cpu_id),
             lctx.cpu_id() == cpu_id,
             typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
@@ -165,9 +167,9 @@ pub fn unmap_4k_range(
             krnl.thr_mp.spec_index(thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
             krnl.pt_mp.spec_index(pagetable).locking_thread() == old(krnl).pt_mp.spec_index(pagetable).locking_thread(),
             krnl.pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
-            krnl.pt_mp.spec_index(pagetable).view().mapping_2m() == old(krnl).pt_mp.spec_index(pagetable).view().mapping_2m(),
-            krnl.pt_mp.spec_index(pagetable).view().mapping_1g() == old(krnl).pt_mp.spec_index(pagetable).view().mapping_1g(),
-            krnl.pt_mp.spec_index(pagetable).view().mapping_4k().remove_keys(range.view().to_set()) == old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().remove_keys(range.view().to_set()),
+            pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m(),
+            pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_1g() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g(),
+            pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().remove_keys(range.view().to_set()) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().remove_keys(range.view().to_set()),
             i <= range.len,
             old(krnl).thr_mp.dom().contains(thread_ptr),
             old(krnl).thr_mp.spec_index(thread_ptr).inv(),
@@ -178,12 +180,12 @@ pub fn unmap_4k_range(
             krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Unmap4k { range: *range, unmapped: i, flushed: false }),
             krnl.thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
             steps.nonlock_view().len() == old(steps).nonlock_view().len() + i,
-            krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom() == old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().dom(),
-            forall|j: int| #![trigger krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(range.view().spec_index(j))]
-                #![trigger krnl.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(range.view().spec_index(j))] 0 <= j < range.len
+            pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().dom() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom(),
+            forall|j: int| #![trigger pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().dom().contains(range.view().spec_index(j))]
+                #![trigger pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().spec_index(range.view().spec_index(j))] 0 <= j < range.len
                 ==> {
-                    &&& krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(range.view().spec_index(j))
-                    &&& krnl.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(range.view().spec_index(j)).present == (i <= j)
+                    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().dom().contains(range.view().spec_index(j))
+                    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().spec_index(range.view().spec_index(j)).present == (i <= j)
                 },
         decreases range.len - i,
     {
@@ -202,6 +204,8 @@ pub fn unmap_4k_range(
             let ghost leaf_before = steps.view();
             let ghost leaf_k = *krnl;
             krnl.kernel_step_boundary_process_4k_mapping_changed(&mut *lctx, &mut *steps, process_ptr, pagetable, va, process_ptr, pagetable, thread_ptr, thread_ptr);
+            krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
+            pagetable_lower_backup_wf_at(leaf_k.pt_mp, leaf_k.pt_lower.view(), pagetable); pagetable_lower_backup_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
             assert(range.view().contains(va)) by { range.va_range_lemma(); assert(range.view()[i as int] == va); };
             unmap_4k_leaf_range_steps_from_k(&*steps, leaf_before, old(steps).view().len() as int, &leaf_pre, &leaf_k, &leaf_lctx, cpu_id, process_ptr, thread_ptr, pagetable, *range, i, va);
         }
@@ -223,6 +227,8 @@ pub fn unmap_4k_range(
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         unmap_4k_flushed_range_steps_from_k(&*steps, flushed_before, old(steps).view().len() as int, &flushed_pre, &flushed_k, &flushed_lctx, cpu_id, process_ptr, thread_ptr, container_ptr, pagetable, pcid, *range);
+        krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
+        pagetable_lower_backup_wf_at(flush_entry.pt_mp, flush_entry.pt_lower.view(), pagetable); pagetable_lower_backup_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
     }
     assert(krnl.thr_mp.spec_index(thread_ptr).inv()) by { thread_perms_wf_at(krnl.thr_mp, thread_ptr); };
     assert(krnl.thr_mp.spec_index(thread_ptr).view().container_depth <= MAX_CONTAINER_TREE_DEPTH) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); container_perms_wf_at(krnl.ctn_mp, krnl.thr_mp.spec_index(thread_ptr).view().owning_container); };
@@ -250,6 +256,7 @@ pub fn unmap_4k_range(
             held_locks_order_below(krnl, lctx, ALLOCATOR_CACHE_4K_MAJOR),
             lctx.scheduler_lock_map().dom().is_empty(),
             lctx.cpu_set_lock_map().dom().is_empty(),
+            lctx.pagetable_window_lock_map().dom().is_empty(),
             index_valid(NUM_CPUS, cpu_id),
             lctx.cpu_id() == cpu_id,
             typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
@@ -289,9 +296,9 @@ pub fn unmap_4k_range(
             krnl.thr_mp.spec_index(thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
             krnl.pt_mp.spec_index(pagetable).locking_thread() == old(krnl).pt_mp.spec_index(pagetable).locking_thread(),
             krnl.pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),
-            krnl.pt_mp.spec_index(pagetable).view().mapping_2m() == old(krnl).pt_mp.spec_index(pagetable).view().mapping_2m(),
-            krnl.pt_mp.spec_index(pagetable).view().mapping_1g() == old(krnl).pt_mp.spec_index(pagetable).view().mapping_1g(),
-            krnl.pt_mp.spec_index(pagetable).view().mapping_4k().remove_keys(range.view().to_set()) == old(krnl).pt_mp.spec_index(pagetable).view().mapping_4k().remove_keys(range.view().to_set()),
+            pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_2m() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m(),
+            pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_1g() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g(),
+            pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().remove_keys(range.view().to_set()) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().remove_keys(range.view().to_set()),
             i <= range.len,
             old(krnl).thr_mp.dom().contains(thread_ptr),
             old(krnl).thr_mp.spec_index(thread_ptr).inv(),
@@ -308,11 +315,11 @@ pub fn unmap_4k_range(
             direct == krnl.thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k.view(),
             forall|d: int| #![trigger indirect[d]] #![trigger krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().spec_index(d)] 0 <= d < krnl.thr_mp.spec_index(thread_ptr).view().container_depth
                 ==> indirect[d] == krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view().spec_index(d),
-            pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, pagetable, krnl.pt_mp.spec_index(pagetable).view()),
-            forall|j: int| #![trigger krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(range.view().spec_index(j))]
-                #![trigger krnl.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(range.view().spec_index(j))] 0 <= j < range.len
-                ==> (if j < i { !krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(range.view().spec_index(j)) } else { krnl.pt_mp.spec_index(pagetable).view().mapping_4k().dom().contains(range.view().spec_index(j))
-                    && !krnl.pt_mp.spec_index(pagetable).view().mapping_4k().spec_index(range.view().spec_index(j)).present }),
+            pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, pagetable, pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable)),
+            forall|j: int| #![trigger pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().dom().contains(range.view().spec_index(j))]
+                #![trigger pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().spec_index(range.view().spec_index(j))] 0 <= j < range.len
+                ==> (if j < i { !pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().dom().contains(range.view().spec_index(j)) } else { pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().dom().contains(range.view().spec_index(j))
+                    && !pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().spec_index(range.view().spec_index(j)).present }),
         decreases range.len - i,
     {
         let va = range.index(i);

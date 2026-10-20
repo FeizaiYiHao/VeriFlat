@@ -65,6 +65,7 @@ fn new_container_release_entry_locks(
         old(lctx).process_lock_map().dom() =~= set![process_ptr],
         old(lctx).thread_lock_map().dom() =~= set![thread_ptr],
         old(lctx).pagetable_lock_map().dom() =~= set![pagetable_ptr],
+        old(lctx).pagetable_window_lock_map().dom().is_empty(),
         old(lctx).cpu_set_lock_map().dom() =~= set![cpu_set_ptr],
         endpoint is None ==> old(lctx).endpoint_lock_map().dom().is_empty(),
         endpoint is Some ==> old(lctx).endpoint_lock_map().dom() =~= set![endpoint->Some_0],
@@ -98,8 +99,8 @@ fn new_container_release_entry_locks(
         thread_lock_perm.state() is WriteLock && thread_lock_perm.thread_id() == old(lctx).thread_id() && thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
         old(krnl).pt_mp.dom().contains(pagetable_ptr),
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
-        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pagetable_ptr, old(krnl).pt_mp.spec_index(pagetable_ptr).view()),
-        old(krnl).pt_mp.spec_index(pagetable_ptr).view().leaves_present(),
+        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pagetable_ptr, pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr)),
+        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).leaves_present(),
         pagetable_lock_perm.state() is WriteLock && pagetable_lock_perm.thread_id() == old(lctx).thread_id() && pagetable_lock_perm.lock_id() == old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
         old(krnl).cpu_set_mp.dom().contains(cpu_set_ptr),
         typed_lock_map_contains_mode(old(lctx).cpu_set_lock_map(), cpu_set_ptr, TypedLockMode::Write),
@@ -213,7 +214,7 @@ fn new_container_lock_owners(
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(e.parent_process_ptr)
             &&& !final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() && !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed()
             &&& final(krnl).cpu_published[cpu_id as int].view() == (final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid)
-            &&& final(lctx).page_lock_map().dom().is_empty() && final(lctx).endpoint_lock_map().dom().is_empty() && final(lctx).pagetable_lock_map().dom().is_empty()
+            &&& final(lctx).page_lock_map().dom().is_empty() && final(lctx).endpoint_lock_map().dom().is_empty() && final(lctx).pagetable_lock_map().dom().is_empty() && final(lctx).pagetable_window_lock_map().dom().is_empty()
             &&& final(lctx).scheduler_lock_map().dom().is_empty() && final(lctx).pcid_allocator_lock_map().dom().is_empty() && final(lctx).cpu_set_lock_map().dom().is_empty()
             &&& final(lctx).iommu_table_lock_map().dom().is_empty() && final(lctx).iommu_root_table_lock_map().dom().is_empty() && final(lctx).pcid_needflush_lock_map().dom().is_empty()
             &&& final(lctx).cpu_offline_flag_lock_map().dom().is_empty()
@@ -434,8 +435,8 @@ fn new_container_lock_entry(
             &&& old(krnl).pt_mp.spec_index(e.source_pagetable_ptr).locking_thread() is None
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(e.current_thread_ptr)
-            &&& pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, e.source_pagetable_ptr, final(krnl).pt_mp.spec_index(e.source_pagetable_ptr).view())
-            &&& final(krnl).pt_mp.spec_index(e.source_pagetable_ptr).view().leaves_present()
+            &&& pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, e.source_pagetable_ptr, pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), e.source_pagetable_ptr))
+            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), e.source_pagetable_ptr).leaves_present()
             &&& final(krnl).inv()
             &&& final(lctx).kernel_view_locking_state() is Acquire
             &&& kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl))
@@ -490,6 +491,7 @@ fn new_container_lock_entry(
             &&& final(lctx).pcid_allocator_lock_map().dom().is_empty()
             &&& final(lctx).cpu_set_lock_map().dom() =~= set![e.parent_cpu_set]
             &&& final(lctx).pagetable_lock_map().dom() =~= set![e.source_pagetable_ptr]
+            &&& final(lctx).pagetable_window_lock_map().dom().is_empty()
             &&& final(lctx).iommu_table_lock_map().dom().is_empty()
             &&& final(lctx).iommu_root_table_lock_map().dom().is_empty()
             &&& held_locks_order_below(final(krnl), final(lctx), ALLOCATOR_CACHE_4K_MAJOR)

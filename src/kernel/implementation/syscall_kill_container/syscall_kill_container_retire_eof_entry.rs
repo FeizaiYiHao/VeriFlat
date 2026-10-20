@@ -151,7 +151,7 @@ proof fn kill_container_retire_eof_no_process_page_at(pre: KernelK, container_pt
     let state = pre.pg_arr.spec_index(i).view().view().state;
     if page_state_is_process_kernel_page(state) {
         process_kernel_pages_owner_wf_at(pre.pg_arr, pre.prc_mp, pre.pt_mp, pre.it_mp, i);
-        reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(container_process_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match);
+        reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(iommu_table_pages_wf); reveal(container_process_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match);
         if state->Allocated4k_state is AsPageTableRoot {
             assert(state->Allocated4k_state->AsPageTableRoot_table_type == PT_TYPE || state->Allocated4k_state->AsPageTableRoot_table_type == IOMMU_TYPE);
         } else if state->Allocated4k_state is PageTable {

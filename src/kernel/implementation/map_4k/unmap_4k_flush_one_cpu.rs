@@ -51,7 +51,7 @@ pub(super) fn flush_pagetable_tlb_on_cpu(krnl: &mut KernelK, pagetable: RwLockPa
         forall|c: CpuId| #![trigger old(krnl).cpu_tlb.spec_index((c, pcid))] index_valid(cpu_id, c)
             && (!old(krnl).pcid_needflush.spec_index(c, pcid).view().needflush || old(krnl).cpu_arr.spec_index(c).view().view().view().current_pcid == pcid)
             && old(krnl).cpu_arr.spec_index(c).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some && old(krnl).cpu_arr.spec_index(c).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr == pagetable
-                ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(old(krnl).cpu_tlb.spec_index((c, pcid)), old(krnl).pt_mp.spec_index(pagetable).view()),
+                ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(old(krnl).cpu_tlb.spec_index((c, pcid)), pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable)),
     ensures
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() <= final(steps).view().len() <= old(steps).view().len() + 1,
@@ -96,7 +96,7 @@ pub(super) fn flush_pagetable_tlb_on_cpu(krnl: &mut KernelK, pagetable: RwLockPa
         forall|c: CpuId| #![trigger final(krnl).cpu_tlb.spec_index((c, pcid))] index_valid((cpu_id + 1) as usize, c)
             && (!final(krnl).pcid_needflush.spec_index(c, pcid).view().needflush || final(krnl).cpu_arr.spec_index(c).view().view().view().current_pcid == pcid)
             && final(krnl).cpu_arr.spec_index(c).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some && final(krnl).cpu_arr.spec_index(c).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr == pagetable
-                ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(krnl).cpu_tlb.spec_index((c, pcid)), final(krnl).pt_mp.spec_index(pagetable).view()),
+                ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(krnl).cpu_tlb.spec_index((c, pcid)), pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable)),
 {
     proof { unmap_4k_tlb_flush_step_pre_from_k(&*krnl, &entry, &*lctx, &held, local_cpu, thread_ptr, pagetable); }
     let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx));
@@ -109,7 +109,7 @@ pub(super) fn flush_pagetable_tlb_on_cpu(krnl: &mut KernelK, pagetable: RwLockPa
     assert((!krnl.pcid_needflush.spec_index(cpu_id, pcid).view().needflush || krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid)
         && krnl.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some
         && krnl.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr == pagetable
-        ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(krnl.cpu_tlb.spec_index((cpu_id, pcid)), krnl.pt_mp.spec_index(pagetable).view())) by {
+        ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(krnl.cpu_tlb.spec_index((cpu_id, pcid)), pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable))) by {
         cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
         process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap());
     };

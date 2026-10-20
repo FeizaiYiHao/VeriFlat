@@ -14,7 +14,7 @@ pub(super) proof fn mmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAd
             let thread_ptr = cpu.view().view().current_thread->Some_0;
             let thread = krnl.thr_mp.spec_index(thread_ptr);
             let process = krnl.prc_mp.spec_index(thread.view().owning_proc);
-            let table = krnl.pt_mp.spec_index(process.view().pagetable).view();
+            let table = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), process.view().pagetable);
             let va_range = mmap_4k_syscall_va_range(va, range);
             let clear = table.spec_mapping_4k_range_empty(spec_va2index(va), spec_va2index(va_range.view()[range - 1])) && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> {
                 let idx = spec_va2index(va_range.view()[j]);
@@ -28,8 +28,8 @@ pub(super) proof fn mmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAd
             &&& ret is ErrorThreadKilled ==> thread.being_killed()
             &&& ret is ErrorNoQuota ==> !thread.being_killed() && thread.view().quota_4k < 4 * range
             &&& (ret is Success || ret is Error || ret is ErrorVaInUse) ==> !thread.being_killed() && thread.view().quota_4k >= 4 * range && krnl.pt_mp.dom().contains(process.view().pagetable)
-            &&& (ret is Success || ret is ErrorVaInUse) ==> !process.view().zombie && table.leaves_present() && spec_v2l4index(va) >= table.kernel_l4_end
-            &&& ret is Error ==> spec_v2l4index(va) < table.kernel_l4_end
+            &&& (ret is Success || ret is ErrorVaInUse) ==> !process.view().zombie && table.leaves_present() && spec_v2l4index(va) >= table.kernel_l4_end()
+            &&& ret is Error ==> spec_v2l4index(va) < table.kernel_l4_end()
             &&& ret is Success ==> clear
             &&& ret is ErrorVaInUse ==> !clear
             &&& ret is CpuIdle || ret is ErrorThreadKilled || ret is ErrorNoQuota || ret is Error || ret is Success || ret is ErrorVaInUse

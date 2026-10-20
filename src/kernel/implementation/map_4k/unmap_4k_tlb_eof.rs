@@ -38,7 +38,7 @@ pub(super) proof fn flush_remote_pcid_and_clear_eof(pre: KernelK, post: KernelK,
         reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match);
         reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
     };
-    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
+    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
 }
 
 /// Flushes the calling cpu's current TLB for `pcid` and clears its needflush bit; the cpu entry keeps its value and
@@ -92,6 +92,6 @@ pub(super) proof fn flush_local_pcid_and_clear_eof(pre: KernelK, post: KernelK, 
         reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match);
         reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
     };
-    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
+    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
 }
 }

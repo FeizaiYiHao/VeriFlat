@@ -75,6 +75,7 @@ pub(super) fn release_staged_process_with_iommu_input_locks(
         old(lctx).pcid_allocator_lock_map().dom() =~= set![pcid_allocator_ptr],
         old(lctx).cpu_set_lock_map().dom().is_empty(),
         old(lctx).pagetable_lock_map().dom() =~= set![source_pagetable_ptr, target_pagetable_ptr],
+        old(lctx).pagetable_window_lock_map().dom().is_empty(),
         old(lctx).iommu_table_lock_map().dom() =~= set![iommu_table_ptr],
         old(lctx).iommu_root_table_lock_map().dom().is_empty(),
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),

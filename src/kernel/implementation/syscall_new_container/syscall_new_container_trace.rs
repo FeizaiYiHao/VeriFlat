@@ -284,7 +284,7 @@ pub(super) proof fn new_container_result_from_k(
             let t = thread.view();
             let container = krnl.ctn_mp.spec_index(t.owning_container);
             let process = krnl.prc_mp.spec_index(t.owning_proc);
-            let table = krnl.pt_mp.spec_index(process.view().pagetable).view();
+            let table = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), process.view().pagetable);
             let transfer = krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().view();
             let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
             let bad_args = range == 0 || range > usize::MAX / 4096 || range > (usize::MAX - 9) / 3 || !spec_va_4k_valid(va) || transfer_cpu_id >= NUM_CPUS
@@ -305,7 +305,7 @@ pub(super) proof fn new_container_result_from_k(
                 else if thread.being_killed() { RetValueType::ErrorThreadKilled }
                 else if endpoint_index is Some && t.endpoint_descriptors.spec_index(endpoint_index->Some_0) is None { RetValueType::Error }
                 else if t.quota_4k < 9 + funding_page_count + 3 * range || t.quota_2m < 2 { RetValueType::ErrorNoQuota }
-                else if !(spec_v2l4index(va) >= table.kernel_l4_end && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range
+                else if !(spec_v2l4index(va) >= table.kernel_l4_end() && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range
                     ==> table.mapping_4k().dom().contains(va_range.view()[j]) && table.mapping_4k()[va_range.view()[j]].present) { RetValueType::Error }
                 else if transfer.owning_container != t.owning_container { RetValueType::ErrorIpcCpuOwnerMismatch }
                 else if !(transfer.state is Off) { RetValueType::ErrorIpcCpuNotOff }

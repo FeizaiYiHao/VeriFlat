@@ -31,10 +31,10 @@ pub(in super::super) fn create_initial_thread_and_finish_new_process(
         old(krnl).prc_mp.spec_index(child_ptr).view().pagetable == target_pagetable_ptr,
         old(krnl).prc_mp.spec_index(child_ptr).view().iommu_table == iommu_table,
         old(krnl).prc_mp.spec_index(child_ptr).view().state.view() is Creating,
-        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, source_pagetable_ptr, old(krnl).pt_mp.spec_index(source_pagetable_ptr).view()),
-        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, target_pagetable_ptr, old(krnl).pt_mp.spec_index(target_pagetable_ptr).view()),
-        old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().leaves_present(),
-        old(krnl).pt_mp.spec_index(target_pagetable_ptr).view().leaves_present(),
+        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, source_pagetable_ptr, pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr)),
+        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, target_pagetable_ptr, pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable_ptr)),
+        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).leaves_present(),
+        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable_ptr).leaves_present(),
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
@@ -54,6 +54,7 @@ pub(in super::super) fn create_initial_thread_and_finish_new_process(
         old(lctx).pcid_allocator_lock_map().dom().is_empty(),
         old(lctx).cpu_set_lock_map().dom().is_empty(),
         old(lctx).pagetable_lock_map().dom() =~= set![source_pagetable_ptr, target_pagetable_ptr],
+        old(lctx).pagetable_window_lock_map().dom().is_empty(),
         iommu_table is None ==> old(lctx).iommu_table_lock_map().dom().is_empty(),
         old(lctx).iommu_root_table_lock_map().dom().is_empty(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
@@ -173,6 +174,10 @@ pub(in super::super) fn create_initial_thread_and_finish_new_process(
     let ghost finish_k = *krnl;
     let ghost finish_lctx = *lctx;
     proof {
+        krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), source_pagetable_ptr);
+        krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), target_pagetable_ptr);
+        pagetable_lower_backup_wf_at(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr); pagetable_lower_backup_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable_ptr);
+        pagetable_lower_backup_wf_at(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable_ptr); pagetable_lower_backup_wf_at(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable_ptr);
         assert(krnl.prc_mp.dom().contains(parent_ptr) && !krnl.prc_mp.spec_index(parent_ptr).view().zombie && krnl.prc_mp.spec_index(parent_ptr).view().pagetable == source_pagetable_ptr
             && parent_ptr != child_ptr) by { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); };
     }

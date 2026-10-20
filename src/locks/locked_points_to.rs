@@ -130,6 +130,31 @@ pub fn runlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
 }
 
 #[verifier::external_body]
+pub fn downgrade<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
+    ROT: LockOwnerIdTrait, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, NO_KILL_STATE>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, NO_KILL_STATE>>>,
+    Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, obj_id: Ghost<KernelObjId>) -> (ret: Tracked<LockPerm>)
+    requires
+        pptr.addr() == old(perm).addr(),
+        old(perm).is_init(),
+        old(perm).value().wlocked_by(old(lctx)),
+        old(perm).value().inv(),
+        lock_perm.view().state() is WriteLock,
+        lock_perm.view().thread_id() == old(lctx).thread_id(),
+        lock_perm.view().lock_id() == old(perm).value().locking_thread()->Write_lock_id,
+        old(lctx).lock_entry_contains(old(perm).lock_id(), obj_id.view()),
+    ensures
+        old(perm).addr() == final(perm).addr(),
+        final(perm).is_init(),
+        downgrade_ensures(old(perm).value(), final(perm).value(), final(lctx), lock_perm.view(), ret.view()),
+        downgrade_lctx_ensures(old(lctx), final(lctx), old(perm).lock_id(), obj_id.view()),
+{
+    unsafe {
+        let uptr = pptr.addr() as *mut MaybeUninit<RwLock<T, ROT, GhostT, NO_KILL_STATE>>;
+        (*uptr).assume_init_mut().downgrade_external(Tracked(lctx), lock_perm)
+    }
+}
+
+#[verifier::external_body]
 pub fn wlock_unless_killed<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
     ROT: LockOwnerIdTrait, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>) -> (ret: Option<Tracked<LockPerm>>)
     requires

@@ -138,9 +138,9 @@ fn new_process_lock_entry(
             &&& x.current_thread_lock_perm.view().thread_id() == final(lctx).thread_id()
             &&& x.current_thread_lock_perm.view().lock_id() == final(krnl).thr_mp.spec_index(x.current_thread_ptr).locking_thread()->Write_lock_id
             &&& final(krnl).pt_mp.dom().contains(x.source_pagetable_ptr)
-            &&& pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, x.source_pagetable_ptr, final(krnl).pt_mp.spec_index(x.source_pagetable_ptr).view())
-            &&& final(krnl).pt_mp.spec_index(x.source_pagetable_ptr).view().leaves_present()
-            &&& final(krnl).pt_mp.spec_index(x.source_pagetable_ptr).view().wf()
+            &&& pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, x.source_pagetable_ptr, pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), x.source_pagetable_ptr))
+            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), x.source_pagetable_ptr).leaves_present()
+            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), x.source_pagetable_ptr).wf()
             &&& typed_lock_map_contains_mode(final(lctx).pagetable_lock_map(), x.source_pagetable_ptr, TypedLockMode::Write)
             &&& x.source_pagetable_lock_perm.view().state() is WriteLock
             &&& x.source_pagetable_lock_perm.view().thread_id() == final(lctx).thread_id()
@@ -177,6 +177,7 @@ fn new_process_lock_entry(
             &&& final(lctx).pcid_allocator_lock_map().dom() =~= set![x.pcid_allocator_ptr]
             &&& final(lctx).cpu_set_lock_map().dom().is_empty()
             &&& final(lctx).pagetable_lock_map().dom() =~= set![x.source_pagetable_ptr]
+            &&& final(lctx).pagetable_window_lock_map().dom().is_empty()
             &&& final(lctx).iommu_table_lock_map().dom().is_empty()
             &&& final(lctx).iommu_root_table_lock_map().dom().is_empty()
             &&& final(lctx).pcid_needflush_lock_map().dom().is_empty()

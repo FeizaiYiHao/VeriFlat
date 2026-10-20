@@ -11,6 +11,7 @@ pub open spec fn ipc_pci_rendezvous_eof_transition_framing(
     sender_proc: RwLockProcessPtr, receiver_proc: RwLockProcessPtr, bdf: PciBdf, transferred: bool, peer_result: RetValueType, thread_id: LockThreadId,
 ) -> bool {
     &&& post.pt_mp == pre.pt_mp
+    &&& post.pt_lower == pre.pt_lower
     &&& post.it_mp == pre.it_mp
     &&& post.pg_arr == pre.pg_arr
     &&& post.ctn_mp == pre.ctn_mp

@@ -539,6 +539,14 @@ pub open spec fn rlock_lctx_ensures(old: &LocalContext, new: &LocalContext, lock
     &&& typed_lock_maps_inserted(old, new, obj_id, TypedHeldLock { lock_id, mode: TypedLockMode::Read })
 }
 
+/// A downgrade keeps the held entry and its ordering id and turns its mode to Read; the locking phase stays.
+pub open spec fn downgrade_lctx_ensures(old: &LocalContext, new: &LocalContext, lock_id: LockId, obj_id: KernelObjId) -> bool {
+    &&& new.cpu_id() == old.cpu_id()
+    &&& new.thread_id() == old.thread_id()
+    &&& new.kernel_view_locking_state() == old.kernel_view_locking_state()
+    &&& typed_lock_maps_inserted(old, new, obj_id, TypedHeldLock { lock_id, mode: TypedLockMode::Read })
+}
+
 pub open spec fn unlock_ensures(old: &LocalContext, new: &LocalContext, obj_id: KernelObjId, lock_id: LockId) -> bool {
     &&& new.cpu_id() == old.cpu_id()
     &&& new.thread_id() == old.thread_id()

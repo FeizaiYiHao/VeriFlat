@@ -90,6 +90,7 @@ pub open spec fn ipc_schedule_waiting_peer_eof_transition_framing(
     peer_scheduler_ptr: RwLockSchedulerPtr, wake_cpu: CpuId, peer_result: RetValueType, thread_id: LockThreadId,
 ) -> bool {
     &&& post.pt_mp == pre.pt_mp
+    &&& post.pt_lower == pre.pt_lower
     &&& post.it_mp == pre.it_mp
     &&& post.irt == pre.irt
     &&& post.pg_arr == pre.pg_arr

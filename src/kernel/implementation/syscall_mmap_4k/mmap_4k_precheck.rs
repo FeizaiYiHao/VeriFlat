@@ -25,19 +25,20 @@ pub(super) enum Mmap4kPrecheck {
             pagetable_lock_perm.lock_id() == krnl.pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
         ensures
             ret is Ready ==> {
+                let pagetable = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
                 let end_va = range.view().spec_index((range.len - 1) as int);
-                &&& krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(range.start)
-                &&& krnl.pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_va_range_empty(range.start, end_va)
-                &&& krnl.pt_mp.spec_index(pagetable_ptr).view().spec_mapping_4k_va_range_buildable(range)
+                &&& pagetable.kernel_l4_end() <= spec_v2l4index(range.start)
+                &&& pagetable.spec_mapping_4k_va_range_empty(range.start, end_va)
+                &&& pagetable.spec_mapping_4k_va_range_buildable(range)
                 &&& forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len ==> {
                     let indices = spec_va2index(range.view().spec_index(j));
-                    &&& !krnl.pt_mp.spec_index(pagetable_ptr).view().mapping_1g().dom().contains(spec_index2va((indices.0, indices.1, 0, 0)))
-                    &&& !krnl.pt_mp.spec_index(pagetable_ptr).view().mapping_2m().dom().contains(spec_index2va((indices.0, indices.1, indices.2, 0)))
+                    &&& !pagetable.mapping_1g().dom().contains(spec_index2va((indices.0, indices.1, 0, 0)))
+                    &&& !pagetable.mapping_2m().dom().contains(spec_index2va((indices.0, indices.1, indices.2, 0)))
                 }
             },
             (ret is Invalid) == (spec_va2index(range.start).0 < krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end),
             !(ret is Invalid) ==> {
-                let pagetable = krnl.pt_mp.spec_index(pagetable_ptr).view();
+                let pagetable = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
                 let end_va = range.view().spec_index((range.len - 1) as int);
                 (ret is InUse) == !(pagetable.spec_mapping_4k_range_empty(spec_va2index(range.start), spec_va2index(end_va))
                     && forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len ==> {
@@ -54,11 +55,17 @@ pub(super) enum Mmap4kPrecheck {
         let end_va = range.index(end_index);
         assert(end_va == spec_va_add_range(range_start, end_index)) by { range.va_range_lemma(); };
         let start_indices = va2index(range_start);
-        proof { assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable_ptr).inv()) by { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); }; }
+        proof {
+            assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable_ptr).inv()) by { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); };
+            assert(krnl.pt_lower.view().dom().contains(pagetable_ptr) && pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).wf()) by {
+                pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
+            };
+        }
         let pagetable = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
+        let tracked lower = krnl.pt_lower.borrow().tracked_borrow(pagetable_ptr);
         if start_indices.0 < pagetable.kernel_l4_end { return Mmap4kPrecheck::Invalid; }
-        if !pagetable.mapping_4k_va_range_empty(range_start, end_va) { return Mmap4kPrecheck::InUse; }
-        if !pagetable.mapping_4k_va_range_buildable(range) { return Mmap4kPrecheck::InUse; }
+        if !pagetable.mapping_4k_va_range_empty(Tracked(lower), range_start, end_va) { return Mmap4kPrecheck::InUse; }
+        if !pagetable.mapping_4k_va_range_buildable(Tracked(lower), range) { return Mmap4kPrecheck::InUse; }
         Mmap4kPrecheck::Ready
     }
 }

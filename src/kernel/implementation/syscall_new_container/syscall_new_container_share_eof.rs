@@ -22,7 +22,7 @@ pub(super) open spec fn create_new_container_root_thread_and_unlock_eof_transiti
             &&& post.ctn_mp.spec_index(c).being_killed() == mid.ctn_mp.spec_index(c).being_killed()
         }
     &&& post.pt_mp.dom() == mid.pt_mp.dom()
-    &&& forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)] mid.pt_mp.dom().contains(p) ==> post.pt_mp.spec_index(p).view() == mid.pt_mp.spec_index(p).view()
+    &&& forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)] mid.pt_mp.dom().contains(p) ==> pagetable_c(post.pt_mp, post.pt_lower.view(), p) == pagetable_c(mid.pt_mp, mid.pt_lower.view(), p)
     &&& kernel_cpu_nonlock_fields_unchanged(mid.cpu_arr, post.cpu_arr)
     &&& kernel_process_nonlock_fields_unchanged(mid.prc_mp, post.prc_mp)
     &&& post.sched_mp.dom() == mid.sched_mp.dom()

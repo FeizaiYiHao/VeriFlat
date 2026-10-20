@@ -13,6 +13,7 @@ pub mod pagetable_concurrent_lock;
 pub mod pagetable_concurrent_lock_eof;
 pub mod pagetable_concurrent_impl_base;
 mod pagetable_concurrent_create_eof;
+mod pagetable_concurrent_create_window_eof;
 pub mod pagetable_concurrent_impl_map;
 pub mod pagetable_concurrent_map_eof;
 pub mod pagetable_concurrent_map_2m_eof;

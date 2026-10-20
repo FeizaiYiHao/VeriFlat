@@ -38,15 +38,25 @@ pub open spec fn kill_reclaim_unmapped_4k_page_scoped_eof_transition_framing(
     let new_allocator = post.allc_4k_mp.spec_index(allocator_ptr);
     let old_table = pre.pt_mp.spec_index(pagetable);
     let new_table = post.pt_mp.spec_index(pagetable);
-    &&& post == (KernelK { pt_mp: post.pt_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..pre })
+    let old_c = pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable);
+    let new_c = pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable);
+    &&& post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..pre })
     &&& post.pt_mp.dom() == pre.pt_mp.dom()
     &&& post.pt_mp.unchanged_except(&pre.pt_mp, pagetable)
+    &&& post.pt_lower.view() == pre.pt_lower.view().insert(pagetable, post.pt_lower.view().spec_index(pagetable))
+    &&& forall|r: RwLockPageTableRoot| #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), r)]
+        pre.pt_mp.dom().contains(r) && r != pagetable ==> pagetable_c(post.pt_mp, post.pt_lower.view(), r) == pagetable_c(pre.pt_mp, pre.pt_lower.view(), r)
     &&& new_table.locking_thread() == old_table.locking_thread()
     &&& new_table.being_killed() == old_table.being_killed()
-    &&& new_table.view().mapping_4k() == old_table.view().mapping_4k().remove(va)
-    &&& new_table.view().mapping_2m() == old_table.view().mapping_2m()
-    &&& new_table.view().mapping_1g() == old_table.view().mapping_1g()
-    &&& new_table.view().page_closure() == old_table.view().page_closure()
+    &&& new_table.view_ghost() == post.pt_lower.view().spec_index(pagetable)
+    &&& new_c.mapping_4k() == old_c.mapping_4k().remove(va)
+    &&& new_c.mapping_2m() == old_c.mapping_2m()
+    &&& new_c.mapping_1g() == old_c.mapping_1g()
+    &&& new_c.page_closure() == old_c.page_closure()
+    &&& new_c.lower.l2_lock == old_c.lower.l2_lock
+    &&& new_table.view() == old_table.view()
+    &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId| #![trigger new_c.window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+        old_table.view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.window_locked_by_thread(l4i, l3i, l2i, thread_id) == old_c.window_locked_by_thread(l4i, l3i, l2i, thread_id)
     &&& new_table.view().kernel_entries == old_table.view().kernel_entries
     &&& new_table.view().kernel_l4_end == old_table.view().kernel_l4_end
     &&& new_table.view().cr3 == old_table.view().cr3
@@ -87,7 +97,7 @@ pub open spec fn kill_reclaim_unmapped_4k_page_scoped_eof_transition_framing(
     &&& new_allocator.quota.view_ghost() == old_allocator.quota.view_ghost()
     &&& new_allocator.quota.locking_thread() == old_allocator.quota.locking_thread()
     &&& new_allocator.quota.being_killed() == old_allocator.quota.being_killed()
-    &&& pagetable_tlb_entries_present(post.cpu_tlb, post.cpu_arr, post.pcid_needflush, pagetable, post.pt_mp.spec_index(pagetable).view())
+    &&& pagetable_tlb_entries_present(post.cpu_tlb, post.cpu_arr, post.pcid_needflush, pagetable, pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable))
 }
 
 /// The owner of the mapped page `p_i` that the leaf at `iova` of the IOMMU table `it_ptr` maps is the container of that
@@ -193,11 +203,12 @@ pub open spec fn kill_retire_table_page_scoped_eof_transition_framing(
     let old_allocator = pre.allc_4k_mp.spec_index(allocator_ptr);
     let new_allocator = post.allc_4k_mp.spec_index(allocator_ptr);
     let free_state = PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } };
-    &&& post == (KernelK { pt_mp: post.pt_mp, it_mp: post.it_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..pre })
+    &&& post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, it_mp: post.it_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..pre })
     &&& if iommu {
         let old_table = pre.it_mp.spec_index(table);
         let new_table = post.it_mp.spec_index(table);
         &&& post.pt_mp == pre.pt_mp
+        &&& post.pt_lower == pre.pt_lower
         &&& post.it_mp.dom() == pre.it_mp.dom()
         &&& post.it_mp.unchanged_except(&pre.it_mp, table)
         &&& new_table.locking_thread() == old_table.locking_thread()
@@ -214,15 +225,23 @@ pub open spec fn kill_retire_table_page_scoped_eof_transition_framing(
     } else {
         let old_table = pre.pt_mp.spec_index(table);
         let new_table = post.pt_mp.spec_index(table);
+        let old_c = pagetable_c(pre.pt_mp, pre.pt_lower.view(), table);
+        let new_c = pagetable_c(post.pt_mp, post.pt_lower.view(), table);
         &&& post.it_mp == pre.it_mp
         &&& post.pt_mp.dom() == pre.pt_mp.dom()
         &&& post.pt_mp.unchanged_except(&pre.pt_mp, table)
+        &&& post.pt_lower.view() == pre.pt_lower.view().insert(table, post.pt_lower.view().spec_index(table))
+        &&& forall|r: RwLockPageTableRoot| #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), r)]
+            pre.pt_mp.dom().contains(r) && r != table ==> pagetable_c(post.pt_mp, post.pt_lower.view(), r) == pagetable_c(pre.pt_mp, pre.pt_lower.view(), r)
         &&& new_table.locking_thread() == old_table.locking_thread()
         &&& new_table.being_killed() == old_table.being_killed()
-        &&& new_table.view().page_closure() == old_table.view().page_closure().remove(page_ptr)
-        &&& new_table.view().mapping_4k() == old_table.view().mapping_4k()
-        &&& new_table.view().mapping_2m() == old_table.view().mapping_2m()
-        &&& new_table.view().mapping_1g() == old_table.view().mapping_1g()
+        &&& new_table.view_ghost() == post.pt_lower.view().spec_index(table)
+        &&& new_c.page_closure() == old_c.page_closure().remove(page_ptr)
+        &&& new_c.mapping_4k() == old_c.mapping_4k()
+        &&& new_c.mapping_2m() == old_c.mapping_2m()
+        &&& new_c.mapping_1g() == old_c.mapping_1g()
+        &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId| #![trigger new_c.window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+            old_table.view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.window_locked_by_thread(l4i, l3i, l2i, thread_id) == old_c.window_locked_by_thread(l4i, l3i, l2i, thread_id)
         &&& new_table.view().kernel_entries == old_table.view().kernel_entries
         &&& new_table.view().kernel_l4_end == old_table.view().kernel_l4_end
         &&& new_table.view().cr3 == old_table.view().cr3

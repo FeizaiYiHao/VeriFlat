@@ -22,7 +22,7 @@ pub(super) fn end_new_process_publish_step(
         old(lctx).kernel_view_locking_state() is Release,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         *old(krnl) == (KernelK { pg_arr: old(krnl).pg_arr, prc_mp: old(krnl).prc_mp, thr_mp: old(krnl).thr_mp, ctn_mp: old(krnl).ctn_mp,
-            pt_mp: old(krnl).pt_mp, it_mp: old(krnl).it_mp, pcid_allc_mp: old(krnl).pcid_allc_mp, ..old(steps).snapshot_k() }),
+            pt_mp: old(krnl).pt_mp, pt_lower: old(krnl).pt_lower, it_mp: old(krnl).it_mp, pcid_allc_mp: old(krnl).pcid_allc_mp, ..old(steps).snapshot_k() }),
         old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.view().view().current_thread == Some(current_thread_ptr),
         old(steps).snapshot_k().prc_mp.dom().contains(parent_ptr),
         !old(steps).snapshot_k().prc_mp.dom().contains(child_ptr),
@@ -83,9 +83,10 @@ pub(super) fn end_new_process_publish_step(
         PcidAllocator::free_pcids(old(steps).snapshot_k().pcid_allc_mp.spec_index(pcid_allocator_ptr).view().ref_counters.view()).contains(pcid),
         old(krnl).pcid_allc_mp.spec_index(pcid_allocator_ptr).view().alloc_ensures(&old(steps).snapshot_k().pcid_allc_mp.spec_index(pcid_allocator_ptr).view(), child_ptr, pcid),
         old(krnl).pt_mp.dom() == old(steps).snapshot_k().pt_mp.dom().insert(target_pagetable_ptr),
-        forall|p: RwLockPageTableRoot| #![trigger old(krnl).pt_mp.spec_index(p)] old(steps).snapshot_k().pt_mp.dom().contains(p) ==> old(krnl).pt_mp.spec_index(p) == old(steps).snapshot_k().pt_mp.spec_index(p),
+        forall|p: RwLockPageTableRoot| #![trigger old(krnl).pt_mp.spec_index(p)] old(steps).snapshot_k().pt_mp.dom().contains(p)
+            ==> old(krnl).pt_mp.spec_index(p) == old(steps).snapshot_k().pt_mp.spec_index(p) && old(krnl).pt_lower.view().spec_index(p) == old(steps).snapshot_k().pt_lower.view().spec_index(p),
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), target_pagetable_ptr, TypedLockMode::Write),
-        old(krnl).pt_mp.spec_index(target_pagetable_ptr).view().is_empty(),
+        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable_ptr).is_empty(),
         old(krnl).pt_mp.dom().contains(source_pagetable_ptr),
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), source_pagetable_ptr, TypedLockMode::Write),
         iommu_table is None ==> old(krnl).it_mp == old(steps).snapshot_k().it_mp,
@@ -131,8 +132,10 @@ pub(super) fn end_new_process_publish_step(
         final(krnl).pt_mp.spec_index(source_pagetable_ptr) == old(krnl).pt_mp.spec_index(source_pagetable_ptr),
         final(krnl).pt_mp.dom().contains(target_pagetable_ptr),
         final(krnl).pt_mp.spec_index(target_pagetable_ptr) == old(krnl).pt_mp.spec_index(target_pagetable_ptr),
-        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, source_pagetable_ptr, old(krnl).pt_mp.spec_index(source_pagetable_ptr).view())
-            ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, source_pagetable_ptr, final(krnl).pt_mp.spec_index(source_pagetable_ptr).view()),
+        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), source_pagetable_ptr) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr),
+        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable_ptr) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable_ptr),
+        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, source_pagetable_ptr, pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr))
+            ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, source_pagetable_ptr, pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), source_pagetable_ptr)),
         iommu_table matches Some(t) ==> final(krnl).it_mp.dom().contains(t) && final(krnl).it_mp.spec_index(t) == old(krnl).it_mp.spec_index(t),
 {
     let ghost sharing = Some(SyscallProgress::Share4k {

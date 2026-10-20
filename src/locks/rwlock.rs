@@ -159,6 +159,20 @@ impl RwLockInner {
             }
         }
     }
+
+    /// Turn the caller's write lock into its sole read lock without letting another writer in.
+    #[verifier::external_body]
+    pub fn downgrade(&mut self) {
+        loop {
+            if self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok() {
+                debug_assert!(self.writing, "downgrade called on object that is not write-locked");
+                self.writing = false;
+                self.num_of_reader = 1;
+                self.lock.store(false, Ordering::Release);
+                break;
+            }
+        }
+    }
 }
 
 /// Observable mode of a lock, independent of ownership and reader count.
@@ -340,6 +354,15 @@ impl<T, ROT, GhostT> RwLock<T, ROT, GhostT, NO_KILL_STATE> {
     {
         self.lock.runlock();
     }
+
+    #[verifier::external_body]
+    pub fn downgrade_external(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>) -> (ret: Tracked<LockPerm>)
+        requires
+            true == false, // this function can only be called in the TCB
+    {
+        self.lock.downgrade();
+        Tracked::assume_new()
+    }
 }
 impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL_STATE> {
     #[verifier::external_body]
@@ -509,6 +532,26 @@ impl<T: LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, 
                 container: old(self).view().container_depth(), process: old(self).view().process_depth(), major: old(self).view().current_lock_major(), minor: old(self).view().lock_minor() }),
     {
         self.lock.wunlock();
+    }
+
+    /// Turn this thread's write lock into a read lock under the same token and ordering id; the held-lock entry keeps
+    /// its id and changes only its mode.
+    #[verifier::external_body]
+    pub fn downgrade(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>, obj_id: Ghost<KernelObjId>) -> (ret: Tracked<LockPerm>)
+        requires
+            old(self).wlocked_by(old(lctx)),
+            old(self).inv(),
+            lp.view().state() is WriteLock,
+            lp.view().thread_id() == old(lctx).thread_id(),
+            lp.view().lock_id() == old(self).locking_thread()->Write_lock_id,
+            old(lctx).lock_entry_contains(LockId { container: old(self).view().container_depth(), process: old(self).view().process_depth(), major: old(self).view().current_lock_major(), minor: old(self).view().lock_minor() }, obj_id.view()),
+        ensures
+            downgrade_ensures(*old(self), *final(self), final(lctx), lp.view(), ret.view()),
+            downgrade_lctx_ensures(old(lctx), final(lctx), LockId {
+                container: old(self).view().container_depth(), process: old(self).view().process_depth(), major: old(self).view().current_lock_major(), minor: old(self).view().lock_minor() }, obj_id.view()),
+    {
+        self.lock.downgrade();
+        Tracked::assume_new()
     }
 }
 
@@ -714,6 +757,22 @@ pub open spec fn wunlock_ensures<T: LockInvTrait, ROT, GhostT, const HAS_KILL_ST
     &&& new.view_ghost() == old.view_ghost()
     &&& new.being_killed() == old.being_killed()
     &&& new.killer_info() == old.killer_info()
+}
+
+/// The writer becomes the only reader under its write token; payload, ghost slot, and kill state stay.
+pub open spec fn downgrade_ensures<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool>(old: RwLock<T, ROT, GhostT, HAS_KILL_STATE>, new: RwLock<T, ROT, GhostT, HAS_KILL_STATE>, lctx: &LocalContext, old_perm: LockPerm, new_perm: LockPerm) -> bool {
+    &&& new.locking_thread() == RwLockState::Read { reader_map: Map::empty().insert(lctx.thread_id(), old_perm.lock_id()) }
+    &&& new.inv()
+    &&& new.view() == old.view()
+    &&& new.view_rodata() == old.view_rodata()
+    &&& new.view_ghost() == old.view_ghost()
+    &&& new.being_killed() == old.being_killed()
+    &&& new.killer_info() == old.killer_info()
+    &&& new_perm.state() is ReadLock
+    &&& new_perm.lock_id() == old_perm.lock_id()
+    &&& new_perm.ordering_lock_id() == old_perm.ordering_lock_id()
+    &&& new_perm.thread_id() == old_perm.thread_id()
+    &&& new.read_lock_perm_match(&new_perm)
 }
 
 pub open spec fn take_ensures<T, ROT, GhostT, const HAS_KILL_STATE: bool>(old: RwLock<T, ROT, GhostT, HAS_KILL_STATE>, new: RwLock<T, ROT, GhostT, HAS_KILL_STATE>) -> bool {

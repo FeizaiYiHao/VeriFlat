@@ -47,8 +47,10 @@ pub const PAGE_TABLE_LOCK_MAJOR: LockMajorId = THREAD_BLOCKED_LOCK_MAJOR + 1;
 // table and write-locks its own IOMMU table before it releases the root table.
 pub const IOMMU_ROOT_TABLE_LOCK_MAJOR: LockMajorId = PAGE_TABLE_LOCK_MAJOR + 1;
 pub const IOMMU_TABLE_LOCK_MAJOR: LockMajorId = IOMMU_ROOT_TABLE_LOCK_MAJOR + 1;
+// Page-table 2M window locks sit above every page-table and IOMMU table lock and below every page lock.
+pub const PAGE_TABLE_WINDOW_LOCK_MAJOR: LockMajorId = IOMMU_TABLE_LOCK_MAJOR + 1;
 // A table's walk pages follow both table kinds, so the holder of a table can lock the walk pages it unlinks.
-pub const PAGETABLE_PAGE_MAJOR: LockMajorId = IOMMU_TABLE_LOCK_MAJOR + 1;
+pub const PAGETABLE_PAGE_MAJOR: LockMajorId = PAGE_TABLE_WINDOW_LOCK_MAJOR + 1;
 pub const MAPPED_PAGE_LOCK_MAJOR: LockMajorId = PAGETABLE_PAGE_MAJOR + 1;
 
 // CPU sets are discovered through IPC peers; their locks follow mapped pages.

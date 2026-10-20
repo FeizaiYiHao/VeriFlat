@@ -36,6 +36,7 @@ pub(super) fn unmap_4k_lock_pagetable_and_unmap(
         old(lctx).pagetable_lock_map().dom().is_empty(),
         old(lctx).iommu_table_lock_map().dom().is_empty(),
         old(lctx).iommu_root_table_lock_map().dom().is_empty(),
+        old(lctx).pagetable_window_lock_map().dom().is_empty(),
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
         old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
@@ -98,9 +99,9 @@ pub(super) fn unmap_4k_lock_pagetable_and_unmap(
             &&& range > 0
             &&& va_4k_range_valid(va, range)
             &&& final(krnl).pt_mp.dom().contains(pt)
-            &&& final(krnl).pt_mp.spec_index(pt).view().mapping_4k() == old(steps).snapshot_k().pt_mp.spec_index(pt).view().mapping_4k().remove_keys(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize)).to_set())
-            &&& final(krnl).pt_mp.spec_index(pt).view().mapping_2m() == old(steps).snapshot_k().pt_mp.spec_index(pt).view().mapping_2m()
-            &&& final(krnl).pt_mp.spec_index(pt).view().mapping_1g() == old(steps).snapshot_k().pt_mp.spec_index(pt).view().mapping_1g()
+            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_4k() == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).mapping_4k().remove_keys(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize)).to_set())
+            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_2m() == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).mapping_2m()
+            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_1g() == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).mapping_1g()
         },
 {
     let va_range = VaRange4K::new(va, range);
@@ -170,7 +171,18 @@ fn unmap_4k_unlock_all_rejected(
         wlock_ensures(old(steps).snapshot_k().ctn_mp.spec_index(container_ptr), old(krnl).ctn_mp.spec_index(container_ptr), old(steps).snapshot_k().ctn_mp.lock_id_by_key(container_ptr), old(lctx), container_perm),
         wlock_ensures(old(steps).snapshot_k().prc_mp.spec_index(process_ptr), old(krnl).prc_mp.spec_index(process_ptr), old(steps).snapshot_k().prc_mp.lock_id_by_key(process_ptr), old(lctx), process_perm),
         wlock_ensures(old(steps).snapshot_k().thr_mp.spec_index(thread_ptr), old(krnl).thr_mp.spec_index(thread_ptr), old(steps).snapshot_k().thr_mp.lock_id_by_key(thread_ptr), old(lctx), thread_perm),
-        wlock_ensures(old(steps).snapshot_k().pt_mp.spec_index(pagetable), old(krnl).pt_mp.spec_index(pagetable), old(steps).snapshot_k().pt_mp.lock_id_by_key(pagetable), old(lctx), pagetable_perm),
+        !old(steps).snapshot_k().pt_mp.spec_index(pagetable).locked(),
+        old(krnl).pt_mp.spec_index(pagetable).wlocked_by(old(lctx)),
+        old(krnl).pt_mp.spec_index(pagetable).locking_thread() == (RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: pagetable_perm.lock_id() }),
+        old(krnl).pt_mp.spec_index(pagetable).inv(),
+        old(krnl).pt_mp.spec_index(pagetable).view() == old(steps).snapshot_k().pt_mp.spec_index(pagetable).view(),
+        old(krnl).pt_mp.spec_index(pagetable).view_rodata() == old(steps).snapshot_k().pt_mp.spec_index(pagetable).view_rodata(),
+        old(krnl).pt_mp.spec_index(pagetable).view_ghost() == old(krnl).pt_lower.view().spec_index(pagetable),
+        old(krnl).pt_mp.spec_index(pagetable).being_killed() == old(steps).snapshot_k().pt_mp.spec_index(pagetable).being_killed(),
+        old(krnl).pt_mp.spec_index(pagetable).killer_info() == old(steps).snapshot_k().pt_mp.spec_index(pagetable).killer_info(),
+        pagetable_perm.state() is WriteLock,
+        pagetable_perm.ordering_lock_id() == old(steps).snapshot_k().pt_mp.lock_id_by_key(pagetable),
+        pagetable_perm.thread_id() == old(lctx).thread_id(),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
         old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         old(krnl).ctn_mp.dom().contains(container_ptr),
@@ -187,8 +199,8 @@ fn unmap_4k_unlock_all_rejected(
         old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
         old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
         old(krnl).pt_mp.dom().contains(pagetable),
-        old(krnl).pt_mp.spec_index(pagetable).view().leaves_present(),
-        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pagetable, old(krnl).pt_mp.spec_index(pagetable).view()),
+        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).leaves_present(),
+        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pagetable, pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable)),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         typed_lock_map_contains_mode(old(lctx).container_lock_map(), container_ptr, TypedLockMode::Write),
         typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
@@ -206,6 +218,7 @@ fn unmap_4k_unlock_all_rejected(
         old(lctx).cpu_set_lock_map().dom().is_empty(),
         old(lctx).iommu_table_lock_map().dom().is_empty(),
         old(lctx).iommu_root_table_lock_map().dom().is_empty(),
+        old(lctx).pagetable_window_lock_map().dom().is_empty(),
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
         old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),

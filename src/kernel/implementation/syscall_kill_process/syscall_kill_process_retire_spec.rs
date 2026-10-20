@@ -6,8 +6,8 @@ verus! {
 /// and root table page, and, with an IOMMU table, its object page and root table page.
 pub open spec fn kill_retire_pages(k: KernelK, target: RwLockProcessPtr) -> Seq<PageIndex> {
     let process = k.prc_mp.spec_index(target).view();
-    let pt = k.pt_mp.spec_index(process.pagetable).view();
-    let base = seq![page_ptr2page_index(target), page_ptr2page_index(process.pagetable), page_ptr2page_index(pt.cr3)];
+    let pt = pagetable_c(k.pt_mp, k.pt_lower.view(), process.pagetable);
+    let base = seq![page_ptr2page_index(target), page_ptr2page_index(process.pagetable), page_ptr2page_index(pt.cr3())];
     match process.iommu_table {
         Some(it) => base.push(page_ptr2page_index(it)).push(page_ptr2page_index(k.it_mp.spec_index(it).view().cr3)),
         None => base,
@@ -36,7 +36,7 @@ pub open spec fn kill_retire_eof_transition_framing(
     let post_allocator = post.allc_4k_mp.spec_index(allocator_ptr);
     let pre_cache = pre_allocator.cpu_caches.spec_index(cpu_id).view();
     let post_cache = post_allocator.cpu_caches.spec_index(cpu_id).view();
-    &&& post == (KernelK { prc_mp: post.prc_mp, ctn_mp: post.ctn_mp, pt_mp: post.pt_mp, it_mp: post.it_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..pre })
+    &&& post == (KernelK { prc_mp: post.prc_mp, ctn_mp: post.ctn_mp, pt_mp: post.pt_mp, pt_lower: post.pt_lower, it_mp: post.it_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..pre })
     &&& post.prc_mp.dom() == pre.prc_mp.dom().remove(target)
     &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)] post.prc_mp.dom().contains(p) ==> {
         let old_p = pre.prc_mp.spec_index(p);
@@ -66,6 +66,9 @@ pub open spec fn kill_retire_eof_transition_framing(
     &&& post.ctn_mp.spec_index(container_ptr).killer_info() == pre.ctn_mp.spec_index(container_ptr).killer_info()
     &&& post.ctn_mp.unchanged_except(&pre.ctn_mp, container_ptr)
     &&& post.pt_mp.dom() =~= pre.pt_mp.dom().remove(pagetable)
+    &&& post.pt_lower.view() == pre.pt_lower.view().remove(pagetable)
+    &&& forall|r: RwLockPageTableRoot| #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), r)]
+        post.pt_mp.dom().contains(r) ==> pagetable_c(post.pt_mp, post.pt_lower.view(), r) == pagetable_c(pre.pt_mp, pre.pt_lower.view(), r)
     &&& forall|t: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(t)] post.pt_mp.dom().contains(t) ==> post.pt_mp.spec_index(t) == pre.pt_mp.spec_index(t)
     &&& forall|t: RwLockPageTableRoot| #![trigger post.pt_mp.lock_id_by_key(t)] post.pt_mp.dom().contains(t) ==> post.pt_mp.lock_id_by_key(t) == pre.pt_mp.lock_id_by_key(t)
     &&& post.it_mp.dom() =~= match iommu_table { Some(it) => pre.it_mp.dom().remove(it), None => pre.it_mp.dom() }
@@ -141,6 +144,7 @@ pub open spec fn kill_retire_held_state(
         &&& page_perms[p].lock_id() == k.pg_arr.spec_index(p).view().locking_thread()->Write_lock_id
     }
     &&& lctx.pagetable_lock_map().dom() == set![process.pagetable]
+    &&& lctx.pagetable_window_lock_map().dom().is_empty()
     &&& typed_lock_map_contains_mode(lctx.pagetable_lock_map(), process.pagetable, TypedLockMode::Write)
     &&& pt_perm.state() is WriteLock
     &&& pt_perm.thread_id() == lctx.thread_id()
@@ -159,8 +163,8 @@ pub open spec fn kill_retire_held_state(
 /// The page table of the zombie `target` and its IOMMU table, if any, hold only their root tables and map nothing.
 pub open spec fn kill_retire_tables_emptied(k: KernelK, target: RwLockProcessPtr) -> bool {
     let process = k.prc_mp.spec_index(target).view();
-    let pt = k.pt_mp.spec_index(process.pagetable).view();
-    &&& pt.page_closure() =~= set![pt.cr3]
+    let pt = pagetable_c(k.pt_mp, k.pt_lower.view(), process.pagetable);
+    &&& pt.page_closure() =~= set![pt.cr3()]
     &&& pt.mapping_4k().dom() =~= Set::<VAddr>::empty()
     &&& pt.mapping_2m().dom() =~= Set::<VAddr>::empty()
     &&& pt.mapping_1g().dom() =~= Set::<VAddr>::empty()

@@ -366,21 +366,21 @@ pub(super) proof fn ipc_pages_check_result_from_k(
         krnl.prc_mp.spec_index(target_process).view().pagetable == target_pagetable,
         krnl.pt_mp.dom().contains(source_pagetable),
         krnl.pt_mp.dom().contains(target_pagetable),
-        krnl.pt_mp.spec_index(source_pagetable).view().leaves_present(),
-        krnl.pt_mp.spec_index(target_pagetable).view().leaves_present(),
+        pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).leaves_present(),
+        pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).leaves_present(),
         source_range.wf(),
         target_range.wf(),
         target_range.len > 0,
         ({
-            let source_table = krnl.pt_mp.spec_index(source_pagetable).view();
-            let target_table = krnl.pt_mp.spec_index(target_pagetable).view();
-            ret == if spec_va2index(source_range.start).0 < source_table.kernel_l4_end { RetValueType::Error }
+            let source_table = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable);
+            let target_table = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable);
+            ret == if spec_va2index(source_range.start).0 < source_table.kernel_l4_end() { RetValueType::Error }
                 else if !(forall|j: int| #![trigger source_range.view().spec_index(j)] 0 <= j < source_range.len ==> {
                     &&& source_table.mapping_4k().dom().contains(source_range.view().spec_index(j))
                     &&& source_table.mapping_4k().spec_index(source_range.view().spec_index(j)).present
                 }) { RetValueType::ErrorIpcSourceUnmapped }
                 else if krnl.thr_mp.spec_index(target_thread).view().quota_4k < 3 * target_range.len { RetValueType::ErrorNoQuota }
-                else if spec_va2index(target_range.start).0 < target_table.kernel_l4_end { RetValueType::Error }
+                else if spec_va2index(target_range.start).0 < target_table.kernel_l4_end() { RetValueType::Error }
                 else if !target_table.spec_mapping_4k_range_empty(spec_va2index(target_range.start), spec_va2index(target_range.view().spec_index(target_range.len - 1)))
                     || !(forall|j: int| #![trigger target_range.view().spec_index(j)] 0 <= j < target_range.len ==> {
                         let indices = spec_va2index(target_range.view().spec_index(j));

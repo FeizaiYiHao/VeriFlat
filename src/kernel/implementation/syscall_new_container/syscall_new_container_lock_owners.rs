@@ -47,7 +47,7 @@ pub(super) fn new_container_lock_process_and_thread(
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(parent_process_ptr),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() && !old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().being_killed(),
         old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
-        old(lctx).page_lock_map().dom().is_empty() && old(lctx).endpoint_lock_map().dom().is_empty() && old(lctx).pagetable_lock_map().dom().is_empty(),
+        old(lctx).page_lock_map().dom().is_empty() && old(lctx).endpoint_lock_map().dom().is_empty() && old(lctx).pagetable_lock_map().dom().is_empty() && old(lctx).pagetable_window_lock_map().dom().is_empty(),
         old(lctx).scheduler_lock_map().dom().is_empty() && old(lctx).pcid_allocator_lock_map().dom().is_empty() && old(lctx).cpu_set_lock_map().dom().is_empty(),
         old(lctx).iommu_table_lock_map().dom().is_empty() && old(lctx).iommu_root_table_lock_map().dom().is_empty() && old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         old(lctx).cpu_offline_flag_lock_map().dom().is_empty() && old(lctx).process_lock_map().dom().is_empty() && old(lctx).thread_lock_map().dom().is_empty(),
@@ -130,7 +130,7 @@ pub(super) fn new_container_lock_process_and_thread(
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(e.parent_process_ptr)
             &&& !final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() && !old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().being_killed()
             &&& final(krnl).cpu_published[cpu_id as int].view() == (final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid)
-            &&& final(lctx).page_lock_map().dom().is_empty() && final(lctx).endpoint_lock_map().dom().is_empty() && final(lctx).pagetable_lock_map().dom().is_empty()
+            &&& final(lctx).page_lock_map().dom().is_empty() && final(lctx).endpoint_lock_map().dom().is_empty() && final(lctx).pagetable_lock_map().dom().is_empty() && final(lctx).pagetable_window_lock_map().dom().is_empty()
             &&& final(lctx).scheduler_lock_map().dom().is_empty() && final(lctx).pcid_allocator_lock_map().dom().is_empty() && final(lctx).cpu_set_lock_map().dom().is_empty()
             &&& final(lctx).iommu_table_lock_map().dom().is_empty() && final(lctx).iommu_root_table_lock_map().dom().is_empty() && final(lctx).pcid_needflush_lock_map().dom().is_empty()
             &&& final(lctx).cpu_offline_flag_lock_map().dom().is_empty()

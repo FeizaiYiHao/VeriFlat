@@ -38,6 +38,10 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(self).spec_resolve_mapping_l3(target_l4i, target_l3i) is None,
             final(self).spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             final(self).kernel_entries =~= old(self).kernel_entries,
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
+                #![trigger (PageTableC { higher: *final(self), lower: *lower }).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+                old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> (PageTableC { higher: *final(self), lower: *lower }).window_locked_by_thread(l4i, l3i, l2i, thread_id)
+                    == (PageTableC { higher: *old(self), lower: *lower }).window_locked_by_thread(l4i, l3i, l2i, thread_id),
     {
         proof { self.wf_l4_cr3_at(); page_ptr_valid_imply_mem_valid(page_map_ptr); }
         page_map_set_published_in_map(self.cr3, Tracked(self.l4_table.borrow_mut()), target_l4i,
@@ -49,6 +53,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             let post = PageTableC { higher: *self, lower: *lower };
             assert(PageTableC::create_entry_l4_eof_transition_framing(pre, post, target_l4i, page_map_ptr)) by { reveal(PageTableC::create_entry_l4_eof_transition_framing); };
             PageTableC::create_entry_l4_eof(pre, post, target_l4i, page_map_ptr);
+            PageTableC::create_entry_l4_eof_window_locks_unchanged(pre, post, target_l4i, page_map_ptr);
         }
     }
 
@@ -94,7 +99,12 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(self).kernel_entries =~= old(self).kernel_entries,
             final(lower).l2_lock == old(lower).l2_lock.insert(page_map_ptr, final(lower).l2_lock_of(page_map_ptr)),
             !final(lower).l2_lock_of(page_map_ptr).locked(target_l2i),
+            forall|i: L2Index| #![trigger final(lower).l2_lock_of(page_map_ptr).lock_state(i)] pei_valid(i) ==> final(lower).l2_lock_of(page_map_ptr).lock_state(i) is None,
             final(lower).locked_windows == old(lower).locked_windows,
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
+                #![trigger (PageTableC { higher: *final(self), lower: *final(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+                old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> (PageTableC { higher: *final(self), lower: *final(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id)
+                    == (PageTableC { higher: *old(self), lower: *old(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id),
     {
         proof {
             self.wf_l4_at(target_l4i);
@@ -116,6 +126,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             let post = PageTableC { higher: *self, lower: *lower };
             assert(PageTableC::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr)) by { reveal(PageTableC::create_entry_l3_eof_transition_framing); };
             PageTableC::create_entry_l3_eof(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
+            PageTableC::create_entry_l3_eof_window_locks_unchanged(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
         }
     }
 

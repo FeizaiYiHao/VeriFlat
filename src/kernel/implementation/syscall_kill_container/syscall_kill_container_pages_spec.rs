@@ -42,6 +42,7 @@ pub open spec fn kill_container_pages_killer_state(
     &&& forall|s: RwLockCpuSetPtr| #![trigger lctx.cpu_set_lock_map().dom().contains(s)] lctx.cpu_set_lock_map().dom().contains(s) ==> k.cpu_set_mp.spec_index(s).being_killed()
     &&& lctx.page_lock_map().dom().is_empty()
     &&& lctx.pagetable_lock_map().dom().is_empty()
+    &&& lctx.pagetable_window_lock_map().dom().is_empty()
     &&& lctx.iommu_table_lock_map().dom().is_empty()
     &&& lctx.iommu_root_table_lock_map().dom().is_empty()
     &&& lctx.endpoint_lock_map().dom().is_empty()

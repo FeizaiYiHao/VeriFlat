@@ -44,6 +44,7 @@ pub open spec fn kill_reclaim_state(
     &&& lctx.allocator_cache_1g_lock_map().dom().is_empty()
     &&& lctx.allocator_global_pool_1g_lock_map().dom().is_empty()
     &&& lctx.pagetable_lock_map().dom() =~= set![pagetable]
+    &&& lctx.pagetable_window_lock_map().dom().is_empty()
     &&& typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write)
     &&& lctx.iommu_table_lock_map().dom() =~= match iommu_table { Some(it) => set![it], None => Set::empty() }
     &&& iommu_table is Some ==> typed_lock_map_contains_mode(lctx.iommu_table_lock_map(), iommu_table->Some_0, TypedLockMode::Write)

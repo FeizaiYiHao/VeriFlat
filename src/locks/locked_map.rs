@@ -467,6 +467,31 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
         runlock(&PPtr::<RwLock<T, ROT, GhostT, NO_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm, obj_id);
         proof { self.map.borrow_mut().tracked_insert(key, perm); }
     }
+
+    /// Turn this thread's write lock on `key` into its read lock; the held entry keeps its ordering id.
+    pub fn downgrade(&mut self, key: usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, obj_id: Ghost<KernelObjId>) -> (ret: Tracked<LockPerm>)
+        requires
+            old(self).perms_wf(),
+            old(self).dom().contains(key),
+            old(self).spec_index(key).wlocked_by(old(lctx)),
+            old(self).spec_index(key).inv(),
+            lock_perm.view().state() is WriteLock,
+            lock_perm.view().thread_id() == old(lctx).thread_id(),
+            lock_perm.view().lock_id() == old(self).spec_index(key).locking_thread()->Write_lock_id,
+            old(lctx).lock_entry_contains(old(self).lock_id_by_key(key), obj_id.view()),
+        ensures
+            final(self).perms_wf(),
+            final(self).unchanged_except(old(self), key),
+            final(self).lock_id_by_key(key) == old(self).lock_id_by_key(key),
+            downgrade_ensures(old(self).spec_index(key), final(self).spec_index(key), final(lctx), lock_perm.view(), ret.view()),
+            downgrade_lctx_ensures(old(lctx), final(lctx), old(self).lock_id_by_key(key), obj_id.view()),
+    {
+        let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
+        assert(old(self).view().spec_index(key).is_init() && perm.addr() == key) by { vstd::assert_maps_equal!(old(self).view(), self.view().insert(key, perm)); };
+        let ret = downgrade(&PPtr::<RwLock<T, ROT, GhostT, NO_KILL_STATE>>::from_usize(key), Tracked(&mut perm), Tracked(lctx), lock_perm, obj_id);
+        proof { self.map.borrow_mut().tracked_insert(key, perm); }
+        ret
+    }
 }
 
 impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT> LockedMap<usize, T, ROT, GhostT, HAS_KILL_STATE> {

@@ -60,6 +60,7 @@ pub(super) fn thread_exit_lock_running_thread(krnl: &mut KernelK, Tracked(lctx):
             &&& final(lctx).pcid_allocator_lock_map().dom().is_empty()
             &&& final(lctx).cpu_set_lock_map().dom().is_empty()
             &&& final(lctx).pagetable_lock_map().dom().is_empty()
+            &&& final(lctx).pagetable_window_lock_map().dom().is_empty()
             &&& final(lctx).iommu_table_lock_map().dom().is_empty()
             &&& final(lctx).iommu_root_table_lock_map().dom().is_empty()
             &&& final(lctx).holds_no_allocator_locks(PageSize::SZ4k)
@@ -219,6 +220,7 @@ pub(super) fn thread_exit_enter_with_caller(
         old(lctx).pcid_allocator_lock_map().dom().is_empty(),
         old(lctx).cpu_set_lock_map().dom().is_empty(),
         old(lctx).pagetable_lock_map().dom().is_empty(),
+        old(lctx).pagetable_window_lock_map().dom().is_empty(),
         old(lctx).iommu_table_lock_map().dom().is_empty(),
         old(lctx).iommu_root_table_lock_map().dom().is_empty(),
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
@@ -290,6 +292,7 @@ pub(super) fn thread_exit_enter_with_caller(
             &&& final(lctx).pcid_allocator_lock_map().dom().is_empty()
             &&& final(lctx).cpu_set_lock_map().dom().is_empty()
             &&& final(lctx).pagetable_lock_map().dom().is_empty()
+            &&& final(lctx).pagetable_window_lock_map().dom().is_empty()
             &&& final(lctx).iommu_table_lock_map().dom().is_empty()
             &&& final(lctx).iommu_root_table_lock_map().dom().is_empty()
             &&& final(lctx).holds_no_allocator_locks(PageSize::SZ4k)

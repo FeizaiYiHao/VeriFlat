@@ -126,6 +126,7 @@ pub(super) fn new_process_lock_cpu_owner(
             &&& final(lctx).scheduler_lock_map().dom().is_empty()
             &&& final(lctx).cpu_set_lock_map().dom().is_empty()
             &&& final(lctx).pagetable_lock_map().dom().is_empty()
+            &&& final(lctx).pagetable_window_lock_map().dom().is_empty()
             &&& final(lctx).iommu_table_lock_map().dom().is_empty()
             &&& final(lctx).iommu_root_table_lock_map().dom().is_empty()
             &&& final(lctx).pcid_needflush_lock_map().dom().is_empty()
@@ -308,9 +309,9 @@ pub(super) fn new_process_unlock_and_stutter(
             let perm = source_pagetable_lock_perm->Some_0;
             &&& old(krnl).pt_mp.dom().contains(pagetable_ptr)
             &&& old(steps).snapshot_k().pt_mp.spec_index(pagetable_ptr).locking_thread() is None
-            &&& old(krnl).pt_mp.spec_index(pagetable_ptr).view() == old(steps).snapshot_k().pt_mp.spec_index(pagetable_ptr).view()
-            &&& pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pagetable_ptr, old(krnl).pt_mp.spec_index(pagetable_ptr).view())
-            &&& old(krnl).pt_mp.spec_index(pagetable_ptr).view().leaves_present()
+            &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr) == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr)
+            &&& pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pagetable_ptr, pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr))
+            &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).leaves_present()
             &&& typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write)
             &&& perm.state() is WriteLock && perm.thread_id() == old(lctx).thread_id()
             &&& perm.lock_id() == old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id
@@ -322,6 +323,7 @@ pub(super) fn new_process_unlock_and_stutter(
         endpoint is None ==> old(lctx).endpoint_lock_map().dom().is_empty(),
         endpoint is Some ==> old(lctx).endpoint_lock_map().dom() =~= set![endpoint->Some_0],
         source_pagetable is None ==> old(lctx).pagetable_lock_map().dom().is_empty(),
+        old(lctx).pagetable_window_lock_map().dom().is_empty(),
         source_pagetable is Some ==> old(lctx).pagetable_lock_map().dom() =~= set![source_pagetable->Some_0],
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).container_lock_map().dom().is_empty(),
@@ -396,6 +398,7 @@ pub(super) fn new_process_lock_endpoint_and_source(
         old(lctx).scheduler_lock_map().dom().is_empty(),
         old(lctx).cpu_set_lock_map().dom().is_empty(),
         old(lctx).pagetable_lock_map().dom().is_empty(),
+        old(lctx).pagetable_window_lock_map().dom().is_empty(),
         old(lctx).iommu_table_lock_map().dom().is_empty(),
         old(lctx).iommu_root_table_lock_map().dom().is_empty(),
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
@@ -416,10 +419,10 @@ pub(super) fn new_process_lock_endpoint_and_source(
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
         old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread() is None,
-        final(krnl).pt_mp.spec_index(pagetable_ptr).view() == old(krnl).pt_mp.spec_index(pagetable_ptr).view(),
-        pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pagetable_ptr, final(krnl).pt_mp.spec_index(pagetable_ptr).view()),
-        final(krnl).pt_mp.spec_index(pagetable_ptr).view().leaves_present(),
-        final(krnl).pt_mp.spec_index(pagetable_ptr).is_init() && final(krnl).pt_mp.spec_index(pagetable_ptr).view().wf(),
+        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr),
+        pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pagetable_ptr, pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr)),
+        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).leaves_present(),
+        final(krnl).pt_mp.spec_index(pagetable_ptr).is_init() && pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).wf(),
         typed_lock_map_contains_mode(final(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
         ret.1.view().state() is WriteLock && ret.1.view().thread_id() == final(lctx).thread_id(),
         ret.1.view().lock_id() == final(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
@@ -443,6 +446,7 @@ pub(super) fn new_process_lock_endpoint_and_source(
         endpoint is None ==> final(lctx).endpoint_lock_map().dom().is_empty(),
         endpoint is Some ==> final(lctx).endpoint_lock_map().dom() =~= set![endpoint->Some_0],
         final(lctx).pagetable_lock_map().dom() =~= set![pagetable_ptr],
+        final(lctx).pagetable_window_lock_map().dom().is_empty(),
         final(lctx).page_lock_map().dom().is_empty(),
         final(lctx).container_lock_map().dom().is_empty(),
         final(lctx).scheduler_lock_map().dom().is_empty(),
@@ -462,6 +466,7 @@ pub(super) fn new_process_lock_endpoint_and_source(
     }
     let source_pagetable_lock_perm = krnl.wlock_pagetable(pagetable_ptr, Tracked(&mut *lctx));
     proof {
+        pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
     }

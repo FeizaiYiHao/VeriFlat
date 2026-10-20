@@ -20,15 +20,12 @@ impl KernelK {
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).scheduler_lock_map().dom().is_empty(),
             old(lctx).cpu_set_lock_map().dom().is_empty(),
-            old(lctx).iommu_table_lock_map().dom().is_empty(),
-            old(lctx).iommu_root_table_lock_map().dom().is_empty(),
             old(lctx).pcid_needflush_lock_map().dom().is_empty(),
             old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
             old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
             old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
             forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
-            forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(self).pg_arr.lock_id_by_index(held_page).major < PAGE_TABLE_LOCK_MAJOR,
-            forall|held_pagetable: RwLockPageTableRoot| #![trigger old(lctx).pagetable_lock_map().dom().contains(held_pagetable)] old(lctx).pagetable_lock_map().dom().contains(held_pagetable) ==> held_pagetable <= root,
+            forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(self).pg_arr.lock_id_by_index(held_page).major < PAGE_TABLE_WINDOW_LOCK_MAJOR,
             typed_lock_map_2d_ids_lt(old(lctx).pagetable_window_lock_map(), window_lock_id(root, l4i, l3i, l2i)),
             old(lctx).pagetable_lock_map().dom().contains(root),
             big.thread_id() == old(lctx).thread_id(),
@@ -54,6 +51,12 @@ impl KernelK {
             pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_4k() == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_4k(),
             pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_2m() == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_2m(),
             pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_1g() == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_1g(),
+            pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).higher == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).higher,
+            pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_perms == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_perms,
+            pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_ghost == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_ghost,
+            pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l1_tables == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l1_tables,
+            pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l1_rev_map == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l1_rev_map,
+            pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).page_closure() == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).page_closure(),
             pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).window_locked_by_thread(l4i, l3i, l2i, final(lctx).thread_id()),
             pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_lock_of(pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).window_l2_page(l4i, l3i)).lock_perm_match(l2i, &ret.view()),
             ret.view().state() is WriteLock,
@@ -69,7 +72,8 @@ impl KernelK {
             pagetable_lower_wf_at(old(self).pt_mp, old(self).pt_lower.view(), root);
             assert(spec_v2l4index(va) == l4i && spec_v2l3index(va) == l3i && spec_v2l2index(va) == l2i) by { broadcast use spec_va_2m_valid_index_roundtrip; spec_index2va_injective(); };
             assert(old(lctx).lock_id_acyclic(window_lock_id(root, l4i, l3i, l2i))) by {
-                reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned);
+                iommu_table_perms_wf_map(old(self).it_mp);
+                reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned);
                 reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
             };
             assert(!pre_c.window_locked_by_thread(l4i, l3i, l2i, old(lctx).thread_id())) by {
@@ -88,10 +92,10 @@ impl KernelK {
         proof {
             self.pt_lower.borrow_mut().tracked_insert(root, lower);
             if old(self).pt_mp.spec_index(root).wlocked() { self.pt_mp.update_ghost(root, self.pt_lower.view().spec_index(root)); }
-            pagetable_lock_op_preserves_invariant_fields(old(self).pt_mp, self.pt_mp, self.pt_lower.view(), root);
             assert(old(self).pt_mp.spec_index(root).locked_by_thread(lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(lock_pagetable_window_eof_transition_framing(*old(self), *self, root, l4i, l3i, l2i, lctx.thread_id(), ret.view().lock_id())) by {
                 reveal(lock_pagetable_window_eof_transition_framing); broadcast use PageTableHigher::resolve_l3_addr_unique_at;
+                pagetable_lock_op_preserves_invariant_fields(old(self).pt_mp, self.pt_mp, self.pt_lower.view(), root);
             };
             assert(typed_lock_maps_aligned(self, &*lctx)) by {
                 reveal(lock_pagetable_window_eof_transition_framing); reveal(pagetable_window_typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
@@ -145,6 +149,12 @@ impl KernelK {
             pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_4k() == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_4k(),
             pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_2m() == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_2m(),
             pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_1g() == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_1g(),
+            pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).higher == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).higher,
+            pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_perms == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_perms,
+            pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_ghost == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_ghost,
+            pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l1_tables == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l1_tables,
+            pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l1_rev_map == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l1_rev_map,
+            pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).page_closure() == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).page_closure(),
             typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::PageTableWindow(root, spec_index2va((l4i, l3i, l2i, 0)))),
     {
         let ghost va = spec_index2va((l4i, l3i, l2i, 0));
@@ -163,7 +173,6 @@ impl KernelK {
         proof {
             self.pt_lower.borrow_mut().tracked_insert(root, lower);
             if old(self).pt_mp.spec_index(root).wlocked() { self.pt_mp.update_ghost(root, self.pt_lower.view().spec_index(root)); }
-            pagetable_lock_op_preserves_invariant_fields(old(self).pt_mp, self.pt_mp, self.pt_lower.view(), root);
             assert(unlock_pagetable_window_eof_transition_framing(*old(self), *self, root, l4i, l3i, l2i)) by {
                 reveal(unlock_pagetable_window_eof_transition_framing); broadcast use PageTableHigher::resolve_l3_addr_unique_at;
             };

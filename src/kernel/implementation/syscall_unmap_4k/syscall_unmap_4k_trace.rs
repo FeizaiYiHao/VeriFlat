@@ -15,10 +15,10 @@ pub(super) proof fn unmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VA
             let thread = krnl.thr_mp.spec_index(thread_ptr);
             let container = krnl.ctn_mp.spec_index(thread.view().owning_container);
             let process = krnl.prc_mp.spec_index(thread.view().owning_proc);
-            let table = krnl.pt_mp.spec_index(process.view().pagetable).view();
+            let table = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), process.view().pagetable);
             let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
             let live = !container.being_killed() && !container.view().zombie && !process.being_killed() && !thread.being_killed();
-            let mapped = spec_v2l4index(va) >= table.kernel_l4_end && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range
+            let mapped = spec_v2l4index(va) >= table.kernel_l4_end() && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range
                 ==> table.mapping_4k().dom().contains(va_range.view()[j]) && table.mapping_4k()[va_range.view()[j]].present;
             &&& ret is CpuIdle ==> !(cpu.view().view().state is Running) || cpu.being_killed()
             &&& !(ret is CpuIdle) ==> cpu.view().view().state is Running && !cpu.being_killed() && cpu.view().view().current_thread is Some

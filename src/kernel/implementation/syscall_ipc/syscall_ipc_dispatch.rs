@@ -103,6 +103,7 @@ verus! {
             old(lctx).pcid_allocator_lock_map().dom().is_empty(),
             old(lctx).cpu_set_lock_map().dom().is_empty(),
             old(lctx).pagetable_lock_map().dom().is_empty(),
+            old(lctx).pagetable_window_lock_map().dom().is_empty(),
             old(lctx).iommu_table_lock_map().dom().is_empty(),
             old(lctx).iommu_root_table_lock_map().dom().is_empty(),
             old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
@@ -233,6 +234,7 @@ verus! {
                 &&& final(lctx).pcid_allocator_lock_map().dom().is_empty()
                 &&& final(lctx).cpu_set_lock_map().dom().is_empty()
                 &&& final(lctx).pagetable_lock_map().dom().is_empty()
+                &&& final(lctx).pagetable_window_lock_map().dom().is_empty()
                 &&& final(lctx).iommu_table_lock_map().dom().is_empty()
                 &&& final(lctx).iommu_root_table_lock_map().dom().is_empty()
                 &&& final(lctx).allocator_quota_4k_lock_map().dom().is_empty()
@@ -481,6 +483,7 @@ verus! {
                 &&& final(lctx).pcid_allocator_lock_map().dom().is_empty()
                 &&& final(lctx).cpu_set_lock_map().dom().is_empty()
                 &&& final(lctx).pagetable_lock_map().dom().is_empty()
+                &&& final(lctx).pagetable_window_lock_map().dom().is_empty()
                 &&& final(lctx).iommu_table_lock_map().dom().is_empty()
                 &&& final(lctx).iommu_root_table_lock_map().dom().is_empty()
                 &&& final(lctx).allocator_quota_4k_lock_map().dom().is_empty()
@@ -836,6 +839,7 @@ verus! {
             old(lctx).pcid_allocator_lock_map().dom().is_empty(),
             old(lctx).cpu_set_lock_map().dom().is_empty(),
             old(lctx).pagetable_lock_map().dom().is_empty(),
+            old(lctx).pagetable_window_lock_map().dom().is_empty(),
             old(lctx).iommu_table_lock_map().dom().is_empty(),
             old(lctx).iommu_root_table_lock_map().dom().is_empty(),
             old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
@@ -1131,6 +1135,7 @@ verus! {
             old(lctx).pcid_allocator_lock_map().dom().is_empty(),
             old(lctx).cpu_set_lock_map().dom().is_empty(),
             old(lctx).pagetable_lock_map().dom().is_empty(),
+            old(lctx).pagetable_window_lock_map().dom().is_empty(),
             old(lctx).iommu_table_lock_map().dom().is_empty(),
             old(lctx).iommu_root_table_lock_map().dom().is_empty(),
             old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),

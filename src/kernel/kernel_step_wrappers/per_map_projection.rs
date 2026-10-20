@@ -318,7 +318,7 @@ pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_process_map(pr
         post.prc_mp == pre.prc_mp,
         post.it_mp == pre.it_mp,
         post.pt_mp.unchanged_except(&pre.pt_mp, table),
-        post.pt_lower == pre.pt_lower,
+        post.pt_lower.view() == pre.pt_lower.view().insert(table, post.pt_lower.view().spec_index(table)),
         pre.pt_mp.typed_lock_map_aligned(lctx.pagetable_lock_map(), lctx.thread_id()),
         post.pt_mp.typed_lock_map_aligned(lctx.pagetable_lock_map(), lctx.thread_id()),
         typed_lock_map_contains_mode(lctx.pagetable_lock_map(), table, TypedLockMode::Write),
@@ -366,7 +366,7 @@ pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_thread_map(pre
 /// Moving `page` from the owned pages of `source` to those of `target` projects to that container-map update.
 pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_container_map(pre: &KernelK, post: &KernelK, source: RwLockContainerPtr, target: RwLockContainerPtr, page: PagePtr)
     requires
-        *post == (KernelK { pg_arr: post.pg_arr, ctn_mp: post.ctn_mp, thr_mp: post.thr_mp, pt_mp: post.pt_mp, ..*pre }),
+        *post == (KernelK { pg_arr: post.pg_arr, ctn_mp: post.ctn_mp, thr_mp: post.thr_mp, pt_mp: post.pt_mp, pt_lower: post.pt_lower, ..*pre }),
         source != target,
         pre.ctn_mp.dom().contains(source),
         pre.ctn_mp.dom().contains(target),

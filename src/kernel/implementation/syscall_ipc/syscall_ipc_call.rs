@@ -121,6 +121,7 @@ verus! {
             old(lctx).pcid_allocator_lock_map().dom().is_empty(),
             old(lctx).cpu_set_lock_map().dom().is_empty(),
             old(lctx).pagetable_lock_map().dom().is_empty(),
+            old(lctx).pagetable_window_lock_map().dom().is_empty(),
             old(lctx).iommu_table_lock_map().dom().is_empty(),
             old(lctx).iommu_root_table_lock_map().dom().is_empty(),
             old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
@@ -334,6 +335,7 @@ verus! {
             old(lctx).pcid_allocator_lock_map().dom().is_empty(),
             old(lctx).cpu_set_lock_map().dom().is_empty(),
             old(lctx).pagetable_lock_map().dom().is_empty(),
+            old(lctx).pagetable_window_lock_map().dom().is_empty(),
             old(lctx).iommu_table_lock_map().dom().is_empty(),
             old(lctx).iommu_root_table_lock_map().dom().is_empty(),
             old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
@@ -522,6 +524,7 @@ verus! {
             old(lctx).pcid_allocator_lock_map().dom().is_empty(),
             old(lctx).cpu_set_lock_map().dom().is_empty(),
             old(lctx).pagetable_lock_map().dom().is_empty(),
+            old(lctx).pagetable_window_lock_map().dom().is_empty(),
             old(lctx).iommu_table_lock_map().dom().is_empty(),
             old(lctx).iommu_root_table_lock_map().dom().is_empty(),
             old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
@@ -581,7 +584,7 @@ verus! {
         let depth = process.depth;
         assert(page_ptr_valid(cr3) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID) by {
             process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, next_process); process_perms_wf_at(krnl.prc_mp, next_process); pagetable_perms_wf_at(krnl.pt_mp, next_pagetable); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, next_process);
-            reveal(PageTable::table_pages_wf);
+            reveal(PageTableHigher::table_pages_wf);
         };
         let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx));
         let ghost before_switch = *krnl;
@@ -701,6 +704,7 @@ verus! {
             old(lctx).pcid_allocator_lock_map().dom().is_empty(),
             old(lctx).cpu_set_lock_map().dom().is_empty(),
             old(lctx).pagetable_lock_map().dom().is_empty(),
+            old(lctx).pagetable_window_lock_map().dom().is_empty(),
             old(lctx).iommu_table_lock_map().dom().is_empty(),
             old(lctx).iommu_root_table_lock_map().dom().is_empty(),
             old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
@@ -1133,6 +1137,7 @@ verus! {
             old(lctx).pcid_allocator_lock_map().dom().is_empty(),
             old(lctx).cpu_set_lock_map().dom().is_empty(),
             old(lctx).pagetable_lock_map().dom().is_empty(),
+            old(lctx).pagetable_window_lock_map().dom().is_empty(),
             old(lctx).iommu_table_lock_map().dom().is_empty(),
             old(lctx).iommu_root_table_lock_map().dom().is_empty(),
             old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
@@ -1320,6 +1325,7 @@ verus! {
             old(lctx).pcid_allocator_lock_map().dom().is_empty(),
             old(lctx).cpu_set_lock_map().dom().is_empty(),
             old(lctx).pagetable_lock_map().dom().is_empty(),
+            old(lctx).pagetable_window_lock_map().dom().is_empty(),
             old(lctx).iommu_table_lock_map().dom().is_empty(),
             old(lctx).iommu_root_table_lock_map().dom().is_empty(),
             old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
@@ -1479,6 +1485,7 @@ verus! {
             old(lctx).pcid_allocator_lock_map().dom().is_empty(),
             old(lctx).cpu_set_lock_map().dom().is_empty(),
             old(lctx).pagetable_lock_map().dom().is_empty(),
+            old(lctx).pagetable_window_lock_map().dom().is_empty(),
             old(lctx).iommu_table_lock_map().dom().is_empty(),
             old(lctx).iommu_root_table_lock_map().dom().is_empty(),
             old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),

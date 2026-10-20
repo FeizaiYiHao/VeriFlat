@@ -256,6 +256,27 @@ pub(crate) fn wlock_kill_retire_pages<const N: usize>(
     Tracked(perms)
 }
 
+/// Every page of `pages` lies in the domain of `perms`, whose pages `lctx` write-holds with their lock permissions in `k`,
+/// so each carries those facts by its index in `pages`.
+pub proof fn kill_retire_page_perms_dom_implies_indexed(k: KernelK, lctx: LocalContext, pages: Seq<PageIndex>, perms: Map<PageIndex, LockPerm>)
+    requires
+        pages.to_set().subset_of(perms.dom()),
+        forall|p: PageIndex| #![trigger perms.dom().contains(p)] perms.dom().contains(p) ==> {
+            &&& typed_lock_map_contains_mode(lctx.page_lock_map(), p, TypedLockMode::Write)
+            &&& perms[p].state() is WriteLock && perms[p].thread_id() == lctx.thread_id() && perms[p].lock_id() == k.pg_arr.spec_index(p).view().locking_thread()->Write_lock_id
+        },
+    ensures
+        forall|j: int| #![trigger pages[j]] 0 <= j < pages.len() ==> {
+            let p = pages[j];
+            &&& perms.dom().contains(p)
+            &&& typed_lock_map_contains_mode(lctx.page_lock_map(), p, TypedLockMode::Write)
+            &&& perms[p].state() is WriteLock && perms[p].thread_id() == lctx.thread_id() && perms[p].lock_id() == k.pg_arr.spec_index(p).view().locking_thread()->Write_lock_id
+        },
+{
+    pages.to_set_ensures();
+    assert forall|j: int| #![trigger pages[j]] 0 <= j < pages.len() implies perms.dom().contains(pages[j]) by { assert(pages.to_set().contains(pages[j])); };
+}
+
 /// Releases the distinct write-held pages `pages`, in either locking phase.
 pub(crate) fn wunlock_kill_retire_pages(krnl: &mut KernelK, pages: &ArrayVec<PageIndex, 5>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(perms): Tracked<Map<PageIndex, LockPerm>>)
     requires
@@ -266,7 +287,9 @@ pub(crate) fn wunlock_kill_retire_pages(krnl: &mut KernelK, pages: &ArrayVec<Pag
         pages.view().no_duplicates(),
         forall|k: int| #![trigger pages.view()[k]] 0 <= k < pages.view().len() ==> index_valid(NUM_PAGES, pages.view()[k]),
         perms.dom() == pages.view().to_set(),
-        forall|p: PageIndex| #![trigger perms.dom().contains(p)] perms.dom().contains(p) ==> {
+        forall|j: int| #![trigger pages.view()[j]] 0 <= j < pages.view().len() ==> {
+            let p = pages.view()[j];
+            &&& perms.dom().contains(p)
             &&& typed_lock_map_contains_mode(old(lctx).page_lock_map(), p, TypedLockMode::Write)
             &&& perms.spec_index(p).state() is WriteLock
             &&& perms.spec_index(p).thread_id() == old(lctx).thread_id()

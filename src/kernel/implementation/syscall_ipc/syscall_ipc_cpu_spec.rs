@@ -13,6 +13,7 @@ pub open spec fn ipc_cpu_rendezvous_eof_transition_framing(
     transfer_cpu_id: CpuId, transferred: bool, peer_result: RetValueType, thread_id: LockThreadId,
 ) -> bool {
     &&& post.pt_mp == pre.pt_mp
+    &&& post.pt_lower == pre.pt_lower
     &&& post.it_mp == pre.it_mp
     &&& post.irt == pre.irt
     &&& post.pg_arr == pre.pg_arr
