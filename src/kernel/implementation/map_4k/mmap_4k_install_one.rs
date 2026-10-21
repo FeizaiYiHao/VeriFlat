@@ -349,12 +349,8 @@ verus! {
                 };
             }
         }
-        if let Some(source) = transfer_source {
-            let tracked source_lock_perm = transfer_source_lock_perm.tracked_unwrap();
-            let tracked target_lock_perm = transfer_target_lock_perm.tracked_unwrap();
-            proof { assert(krnl.ctn_mp.spec_index(source).view().owned_pages.view().contains(page_ptr)) by { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_ptr2page_index(page_ptr)); }; }
-            transfer_staged_4k_page_to_child_container(krnl, Tracked(&mut *lctx), page_ptr, quota_thread_ptr, source, container_ptr, Tracked(&page_lock_perm), Tracked(source_lock_perm), Tracked(target_lock_perm));
-        }
+        install_one_mmap_4k_directory_page_transfer_if_source(krnl, Tracked(&mut *lctx), page_ptr, quota_thread_ptr, container_ptr, transfer_source, Tracked(&page_lock_perm),
+            Tracked(transfer_source_lock_perm), Tracked(transfer_target_lock_perm));
         let ghost staged_page_lock_id = krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr));
         proof {
             assert(write_held ==> pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr)) by {
@@ -376,7 +372,6 @@ verus! {
                 assert(old(lctx).pagetable_lock_map().dom().contains(pagetable_ptr));
             }
         }
-        let ghost staged_k = *krnl;
         let windows = install_staged_4k_page_table_page(krnl, level, page_ptr, quota_thread_ptr, process_ptr, container_ptr, pagetable_ptr, indices, lo, hi, write_held, Tracked(&mut *lctx),
             Tracked(&page_lock_perm), Tracked(quota_thread_lock_perm), Tracked(pagetable_lock_perm));
         let ghost installed_page_lock_id = krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr));
@@ -420,5 +415,83 @@ verus! {
             assert(share_guard ==> share_4k_objects_k(*krnl, cpu_id) == share_4k_objects_k(before_boundary, cpu_id)) by { reveal(share_4k_objects_k); };
         }
         windows
+    }
+
+    /// Move the staged page from `transfer_source` into `container_ptr` when the quota thread allocated it from the parent container.
+    fn install_one_mmap_4k_directory_page_transfer_if_source(
+        krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, page_ptr: PagePtr, quota_thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr,
+        transfer_source: Option<RwLockContainerPtr>, Tracked(page_lock_perm): Tracked<&LockPerm>, Tracked(transfer_source_lock_perm): Tracked<Option<&LockPerm>>,
+        Tracked(transfer_target_lock_perm): Tracked<Option<&LockPerm>>,
+    )
+        requires
+            old(krnl).inv(),
+            typed_lock_maps_aligned(old(krnl), old(lctx)),
+            page_ptr_valid(page_ptr),
+            old(krnl).thr_mp.dom().contains(quota_thread_ptr),
+            old(krnl).thr_mp.spec_index(quota_thread_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr),
+            typed_lock_map_contains_mode(old(lctx).thread_lock_map(), quota_thread_ptr, TypedLockMode::Write),
+            typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(page_ptr), TypedLockMode::Write),
+            !old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().being_killed(),
+            old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: quota_thread_ptr }),
+            old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == (match transfer_source { Some(source) => source, None => container_ptr }),
+            page_lock_perm.state() is WriteLock,
+            page_lock_perm.thread_id() == old(lctx).thread_id(),
+            page_lock_perm.lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread()->Write_lock_id,
+            transfer_source is Some ==> {
+                let source = transfer_source->Some_0;
+                &&& source != container_ptr
+                &&& old(krnl).ctn_mp.dom().contains(source) && old(krnl).ctn_mp.dom().contains(container_ptr)
+                &&& old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().parent == Some(source)
+                &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), source, TypedLockMode::Write)
+                &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), container_ptr, TypedLockMode::Write)
+                &&& !old(krnl).ctn_mp.spec_index(source).being_killed() && !old(krnl).ctn_mp.spec_index(container_ptr).being_killed()
+                &&& transfer_source_lock_perm is Some && transfer_source_lock_perm->Some_0.state() is WriteLock
+                &&& transfer_source_lock_perm->Some_0.thread_id() == old(lctx).thread_id()
+                &&& transfer_source_lock_perm->Some_0.lock_id() == old(krnl).ctn_mp.spec_index(source).locking_thread()->Write_lock_id
+                &&& transfer_target_lock_perm is Some && transfer_target_lock_perm->Some_0.state() is WriteLock
+                &&& transfer_target_lock_perm->Some_0.thread_id() == old(lctx).thread_id()
+                &&& transfer_target_lock_perm->Some_0.lock_id() == old(krnl).ctn_mp.spec_index(container_ptr).locking_thread()->Write_lock_id
+            },
+        ensures
+            final(krnl).inv(),
+            *final(lctx) == *old(lctx),
+            typed_lock_maps_aligned(final(krnl), final(lctx)),
+            *final(krnl) == (KernelK { pg_arr: final(krnl).pg_arr, ctn_mp: final(krnl).ctn_mp, ..*old(krnl) }),
+            final(krnl).pg_arr.entries_unchanged_except(&old(krnl).pg_arr, page_ptr2page_index(page_ptr)),
+            final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state,
+            final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == container_ptr,
+            !final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().being_killed(),
+            page_lock_perm.lock_id() == final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread()->Write_lock_id,
+            transfer_source is None ==> *final(krnl) == *old(krnl),
+            transfer_source is Some ==> {
+                let source = transfer_source->Some_0;
+                &&& old(krnl).ctn_mp.spec_index(source).view().owned_pages.view().contains(page_ptr)
+                &&& final(krnl).ctn_mp.dom() == old(krnl).ctn_mp.dom()
+                &&& forall|c: RwLockContainerPtr| #![trigger final(krnl).ctn_mp.spec_index(c)]
+                    old(krnl).ctn_mp.dom().contains(c) && c != source && c != container_ptr ==> final(krnl).ctn_mp.spec_index(c) == old(krnl).ctn_mp.spec_index(c)
+                &&& final(krnl).ctn_mp.spec_index(source).is_init() == old(krnl).ctn_mp.spec_index(source).is_init()
+                &&& final(krnl).ctn_mp.spec_index(source).view_rodata() == old(krnl).ctn_mp.spec_index(source).view_rodata()
+                &&& final(krnl).ctn_mp.spec_index(source).view_ghost() == old(krnl).ctn_mp.spec_index(source).view_ghost()
+                &&& final(krnl).ctn_mp.spec_index(source).locking_thread() == old(krnl).ctn_mp.spec_index(source).locking_thread()
+                &&& final(krnl).ctn_mp.spec_index(source).being_killed() == old(krnl).ctn_mp.spec_index(source).being_killed()
+                &&& final(krnl).ctn_mp.spec_index(source).killer_info() == old(krnl).ctn_mp.spec_index(source).killer_info()
+                &&& final(krnl).ctn_mp.spec_index(source).view() == (Container { owned_pages: final(krnl).ctn_mp.spec_index(source).view().owned_pages, ..old(krnl).ctn_mp.spec_index(source).view() })
+                &&& final(krnl).ctn_mp.spec_index(container_ptr).is_init() == old(krnl).ctn_mp.spec_index(container_ptr).is_init()
+                &&& final(krnl).ctn_mp.spec_index(container_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(container_ptr).view_rodata()
+                &&& final(krnl).ctn_mp.spec_index(container_ptr).view_ghost() == old(krnl).ctn_mp.spec_index(container_ptr).view_ghost()
+                &&& final(krnl).ctn_mp.spec_index(container_ptr).locking_thread() == old(krnl).ctn_mp.spec_index(container_ptr).locking_thread()
+                &&& final(krnl).ctn_mp.spec_index(container_ptr).being_killed() == old(krnl).ctn_mp.spec_index(container_ptr).being_killed()
+                &&& final(krnl).ctn_mp.spec_index(container_ptr).killer_info() == old(krnl).ctn_mp.spec_index(container_ptr).killer_info()
+                &&& final(krnl).ctn_mp.spec_index(container_ptr).view() == (Container { owned_pages: final(krnl).ctn_mp.spec_index(container_ptr).view().owned_pages, ..old(krnl).ctn_mp.spec_index(container_ptr).view() })
+                &&& final(krnl).ctn_mp.spec_index(source).view().owned_pages.view() =~= old(krnl).ctn_mp.spec_index(source).view().owned_pages.view().remove(page_ptr)
+                &&& final(krnl).ctn_mp.spec_index(container_ptr).view().owned_pages.view() =~= old(krnl).ctn_mp.spec_index(container_ptr).view().owned_pages.view().insert(page_ptr)
+            },
+    {
+        if let Some(source) = transfer_source {
+            let tracked source_lock_perm = transfer_source_lock_perm.tracked_unwrap();
+            let tracked target_lock_perm = transfer_target_lock_perm.tracked_unwrap();
+            proof { assert(krnl.ctn_mp.spec_index(source).view().owned_pages.view().contains(page_ptr)) by { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_ptr2page_index(page_ptr)); }; }
+            transfer_staged_4k_page_to_child_container(krnl, Tracked(&mut *lctx), page_ptr, quota_thread_ptr, source, container_ptr, Tracked(page_lock_perm), Tracked(source_lock_perm), Tracked(target_lock_perm));
+        }
     }
 } // verus!
