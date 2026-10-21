@@ -140,8 +140,8 @@ pub(super) proof fn thread_exit_enter_step_from_u(
         thread_exit_enter_step(pre, post, cpu_id),
 { reveal(thread_exit_enter_step_pre); reveal(thread_exit_enter_step); }
 
-/// A state holding the cpu, `container_ptr`, `process_ptr`, and the running `thread_ptr` that records exit position
-/// `next` gives the drop step precondition.
+/// A state holding the cpu, `container_ptr`, `process_ptr`, and the running `thread_ptr` of `container_ptr` that records
+/// exit position `next` gives the drop step precondition.
 pub(super) proof fn thread_exit_drop_step_pre_from_k(
     krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, next: EndpointIdx,
 )
@@ -164,6 +164,7 @@ pub(super) proof fn thread_exit_drop_step_pre_from_k(
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_thread == Some(thread_ptr),
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_process == Some(process_ptr),
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].owning_container == container_ptr,
+        kernel_k_to_kernel_u(*krnl).thread_map[thread_ptr].owning_container == container_ptr,
 { kernel_write_held_context_projection(krnl, lctx, cpu_id, process_ptr, thread_ptr, None); kernel_cpu_thread_projection_at(krnl, cpu_id, process_ptr, thread_ptr, None); reveal(thread_exit_drop_step_pre); }
 
 /// Releasing descriptor `index`, the first one at or after the recorded position `next`, is the drop step on
@@ -695,8 +696,9 @@ pub(super) proof fn thread_exit_trace_push(steps: &KernelSteps, before: Seq<Kern
     assert(steps.view().subrange(start, steps.view().len() as int) =~= before.subrange(start, before.len() as int).push(KernelStep { old_u: step_pre, new_u: step_post }));
 }
 
-/// Steps reclaiming killed threads, recorded after the partial trace that starts at `start` while the running thread's
-/// cpu, the thread, and the lock modes of its process and container keep their projection at `entry`, extend it.
+/// Steps reclaiming killed threads of the running thread's container `container_ptr`, recorded after the partial trace
+/// that starts at `start` while the running thread's cpu, the thread, and the lock modes of its process and container keep
+/// their projection at `entry`, extend it.
 pub(super) proof fn thread_exit_trace_from_killed_thread_reclaim(
     steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, entry: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr,
     process_ptr: RwLockProcessPtr,
@@ -708,10 +710,14 @@ pub(super) proof fn thread_exit_trace_from_killed_thread_reclaim(
         thread_exit_drop_step_pre(entry, cpu_id),
         entry.cpu_array[cpu_id as int].owning_container == container_ptr,
         entry.cpu_array[cpu_id as int].current_process == Some(process_ptr),
+        entry.thread_map[entry.cpu_array[cpu_id as int].current_thread->Some_0].owning_container == container_ptr,
         forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
             let old_u = steps.view()[j].old_u;
+            let new_u = steps.view()[j].new_u;
             let thread_ptr = entry.cpu_array[cpu_id as int].current_thread->Some_0;
-            &&& kernel_u_killed_thread_reclaim_step(old_u, steps.view()[j].new_u, cpu_id)
+            &&& kernel_u_killed_thread_reclaim_step(old_u, new_u, cpu_id)
+            &&& forall|t: RwLockThreadPtr| #![trigger old_u.thread_map[t]]
+                old_u.thread_map.dom().contains(t) && (!new_u.thread_map.dom().contains(t) || new_u.thread_map[t] != old_u.thread_map[t]) ==> old_u.thread_map[t].owning_container == container_ptr
             &&& old_u.cpu_array[cpu_id as int] == entry.cpu_array[cpu_id as int]
             &&& old_u.thread_map.dom().contains(thread_ptr)
             &&& old_u.thread_map[thread_ptr] == entry.thread_map[thread_ptr]

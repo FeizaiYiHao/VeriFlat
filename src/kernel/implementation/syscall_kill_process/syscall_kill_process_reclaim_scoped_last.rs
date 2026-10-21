@@ -63,6 +63,9 @@ pub(crate) fn kill_reclaim_last_4k_mapping_scoped(
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
         old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == kill_scope_progress(scope, target, stage),
         scope matches KillScope::Container { container } ==> old(krnl).ctn_mp.dom().contains(container) && typed_lock_map_contains_mode(entry_lctx.container_lock_map(), container, TypedLockMode::Write),
+        scope is Subtree ==> old(krnl).prc_mp.spec_index(target).view_rodata().view().owning_container == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
+        scope matches KillScope::Container { container } ==> old(krnl).prc_mp.spec_index(target).view_rodata().view().owning_container == container
+            && old(krnl).ctn_mp.spec_index(container).view_ghost().uppertree_seq.view().contains(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
         old(krnl).pt_mp.dom().contains(pagetable),
         va_4k_valid(va),
         old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_va2index(va).0,
@@ -215,6 +218,9 @@ pub(crate) fn kill_reclaim_last_iommu_4k_mapping_scoped(
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
         old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == kill_scope_progress(scope, target, stage),
         scope matches KillScope::Container { container } ==> old(krnl).ctn_mp.dom().contains(container) && typed_lock_map_contains_mode(entry_lctx.container_lock_map(), container, TypedLockMode::Write),
+        scope is Subtree ==> old(krnl).prc_mp.spec_index(target).view_rodata().view().owning_container == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
+        scope matches KillScope::Container { container } ==> old(krnl).prc_mp.spec_index(target).view_rodata().view().owning_container == container
+            && old(krnl).ctn_mp.spec_index(container).view_ghost().uppertree_seq.view().contains(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
         old(krnl).it_mp.dom().contains(iommu_table),
         pei_valid(indices.0),
         pei_valid(indices.1),

@@ -4,7 +4,7 @@ use crate::*;
 
 verus! {
 /// Releasing descriptor `index` of the write-held killed thread `thread_ptr` projects to
-/// `kernel_u_killed_descriptor_dropped` and changes both projections.
+/// `kernel_u_killed_descriptor_dropped`, changes both projections, and changes no thread outside `thread_ptr`'s container.
 pub proof fn kernel_killed_descriptor_dropped_implies_u_step(before: &KernelK, after: &KernelK, thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, index: EndpointIdx)
     requires
         index < MAX_NUM_ENDPOINT_DESCRIPTORS,
@@ -31,6 +31,12 @@ pub proof fn kernel_killed_descriptor_dropped_implies_u_step(before: &KernelK, a
         after.ep_mp.spec_index(endpoint_ptr).being_killed() == before.ep_mp.spec_index(endpoint_ptr).being_killed(),
     ensures
         kernel_u_killed_descriptor_dropped(kernel_k_to_kernel_u(*before), kernel_k_to_kernel_u(*after)),
+        ({
+            let pre = kernel_k_to_kernel_u(*before);
+            let post = kernel_k_to_kernel_u(*after);
+            forall|t: RwLockThreadPtr| #![trigger pre.thread_map[t]]
+                pre.thread_map.dom().contains(t) && (!post.thread_map.dom().contains(t) || post.thread_map[t] != pre.thread_map[t]) ==> pre.thread_map[t].owning_container == before.thr_mp.spec_index(thread_ptr).view().owning_container
+        }),
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
         kernel_k_to_nonlock_kernel_u(*before) != kernel_k_to_nonlock_kernel_u(*after),
 {
@@ -45,8 +51,9 @@ pub proof fn kernel_killed_descriptor_dropped_implies_u_step(before: &KernelK, a
     reveal(kernel_u_killed_descriptor_dropped);
 }
 
-/// Waking `caller_ptr`, the unlocked caller of the write-held killed thread `thread_ptr` waiting for its reply,
-/// projects to `kernel_u_killed_caller_woken` and changes both projections.
+/// Waking `caller_ptr`, the unlocked caller of the write-held killed thread `thread_ptr` waiting for its reply in the same
+/// container, projects to `kernel_u_killed_caller_woken`, changes both projections, and changes no thread outside that
+/// container.
 pub proof fn kernel_killed_caller_woken_implies_u_step(before: &KernelK, after: &KernelK, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr)
     requires
         after.inv(),
@@ -58,6 +65,7 @@ pub proof fn kernel_killed_caller_woken_implies_u_step(before: &KernelK, after: 
         before.thr_mp.spec_index(caller_ptr).view().state is WAITING_REPLY,
         before.thr_mp.spec_index(caller_ptr).view().callee == Some(thread_ptr),
         before.thr_mp.spec_index(caller_ptr).locking_thread() is None,
+        before.thr_mp.spec_index(caller_ptr).view().owning_container == before.thr_mp.spec_index(thread_ptr).view().owning_container,
         *after == (KernelK { thr_mp: after.thr_mp, sched_mp: after.sched_mp, ..*before }),
         after.thr_mp.dom() == before.thr_mp.dom(),
         forall|t: RwLockThreadPtr| #![trigger after.thr_mp.spec_index(t)]
@@ -78,6 +86,12 @@ pub proof fn kernel_killed_caller_woken_implies_u_step(before: &KernelK, after: 
             } else { scheduler_shards_of(before.sched_mp.spec_index(s)) },
     ensures
         kernel_u_killed_caller_woken(kernel_k_to_kernel_u(*before), kernel_k_to_kernel_u(*after), cpu_id),
+        ({
+            let pre = kernel_k_to_kernel_u(*before);
+            let post = kernel_k_to_kernel_u(*after);
+            forall|t: RwLockThreadPtr| #![trigger pre.thread_map[t]]
+                pre.thread_map.dom().contains(t) && (!post.thread_map.dom().contains(t) || post.thread_map[t] != pre.thread_map[t]) ==> pre.thread_map[t].owning_container == before.thr_mp.spec_index(thread_ptr).view().owning_container
+        }),
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
         kernel_k_to_nonlock_kernel_u(*before) != kernel_k_to_nonlock_kernel_u(*after),
 {
@@ -90,8 +104,9 @@ pub proof fn kernel_killed_caller_woken_implies_u_step(before: &KernelK, after: 
     reveal(kernel_u_killed_caller_woken);
 }
 
-/// Taking over `caller_ptr`, the unlocked dangling thread of the killed caller of the write-held killed thread `thread_ptr`,
-/// projects to `kernel_u_killed_caller_taken_over` and changes both projections.
+/// Taking over `caller_ptr`, the unlocked dangling thread of the killed caller of the write-held killed thread `thread_ptr`
+/// in the same container, projects to `kernel_u_killed_caller_taken_over`, changes both projections, and changes no thread
+/// outside that container.
 pub proof fn kernel_killed_caller_taken_over_implies_u_step(before: &KernelK, after: &KernelK, thread_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr)
     requires
         before.thr_mp.dom().contains(thread_ptr),
@@ -103,6 +118,7 @@ pub proof fn kernel_killed_caller_taken_over_implies_u_step(before: &KernelK, af
         before.thr_mp.spec_index(caller_ptr).view().state is DANGLING,
         before.thr_mp.spec_index(caller_ptr).view().callee == Some(thread_ptr),
         before.thr_mp.spec_index(caller_ptr).locking_thread() is None,
+        before.thr_mp.spec_index(caller_ptr).view().owning_container == before.thr_mp.spec_index(thread_ptr).view().owning_container,
         *after == (KernelK { thr_mp: after.thr_mp, ..*before }),
         after.thr_mp.dom() == before.thr_mp.dom(),
         forall|t: RwLockThreadPtr| #![trigger after.thr_mp.spec_index(t)]
@@ -115,6 +131,12 @@ pub proof fn kernel_killed_caller_taken_over_implies_u_step(before: &KernelK, af
         after.thr_mp.spec_index(caller_ptr).being_killed() == before.thr_mp.spec_index(caller_ptr).being_killed(),
     ensures
         kernel_u_killed_caller_taken_over(kernel_k_to_kernel_u(*before), kernel_k_to_kernel_u(*after)),
+        ({
+            let pre = kernel_k_to_kernel_u(*before);
+            let post = kernel_k_to_kernel_u(*after);
+            forall|t: RwLockThreadPtr| #![trigger pre.thread_map[t]]
+                pre.thread_map.dom().contains(t) && (!post.thread_map.dom().contains(t) || post.thread_map[t] != pre.thread_map[t]) ==> pre.thread_map[t].owning_container == before.thr_mp.spec_index(thread_ptr).view().owning_container
+        }),
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
         kernel_k_to_nonlock_kernel_u(*before) != kernel_k_to_nonlock_kernel_u(*after),
 {
@@ -216,11 +238,18 @@ pub proof fn kernel_cpu_and_thread_unlocked_implies_u_step(before: &KernelK, aft
     reveal(kernel_k_to_kernel_u);
 }
 
-/// Reclaiming a killed dangling thread projects to `kernel_u_dangling_thread_reclaimed`.
+/// Reclaiming a killed dangling thread projects to `kernel_u_dangling_thread_reclaimed` and changes or removes no thread
+/// outside its container.
 pub proof fn kernel_dangling_thread_reclaimed_implies_u_step(before: &KernelK, after: &KernelK, dangling_ptr: RwLockThreadPtr)
     requires kernel_dangling_thread_reclaimed_fields(before, after, dangling_ptr),
     ensures
         kernel_u_dangling_thread_reclaimed(kernel_k_to_kernel_u(*before), kernel_k_to_kernel_u(*after)),
+        ({
+            let pre = kernel_k_to_kernel_u(*before);
+            let post = kernel_k_to_kernel_u(*after);
+            forall|t: RwLockThreadPtr| #![trigger pre.thread_map[t]]
+                pre.thread_map.dom().contains(t) && (!post.thread_map.dom().contains(t) || post.thread_map[t] != pre.thread_map[t]) ==> pre.thread_map[t].owning_container == before.thr_mp.spec_index(dangling_ptr).view().owning_container
+        }),
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
         kernel_k_to_nonlock_kernel_u(*before) != kernel_k_to_nonlock_kernel_u(*after),
 {
@@ -266,16 +295,17 @@ pub broadcast proof fn kernel_process_lock_state_projection_at(krnl: &KernelK, p
         kernel_k_to_kernel_u(*krnl).process_map[ptr].owning_container == krnl.prc_mp.spec_index(ptr).view_rodata().view().owning_container,
 { kernel_process_projection_at(krnl, ptr); }
 
-/// The lock mode of container `ptr` in the user projection, without unfolding the rest of its entry.
+/// The lock mode and upper tree of container `ptr` in the user projection, without unfolding the rest of its entry.
 pub broadcast proof fn kernel_container_lock_state_projection_at(krnl: &KernelK, ptr: RwLockContainerPtr)
     requires krnl.ctn_mp.dom().contains(ptr),
     ensures
         kernel_k_to_kernel_u(*krnl).container_map.dom().contains(ptr),
         (#[trigger] kernel_k_to_kernel_u(*krnl).container_map[ptr]).lock_state == krnl.ctn_mp.spec_index(ptr).lock_state_u(),
+        kernel_k_to_kernel_u(*krnl).container_map[ptr].uppertree_seq == krnl.ctn_mp.spec_index(ptr).view_ghost().uppertree_seq.view(),
 { kernel_container_projection_at(krnl, ptr); }
 
-/// K states agreeing on the lock modes and kill marks of `processes` and on the lock modes of `containers` project to
-/// user states agreeing on them.
+/// K states agreeing on the lock modes, kill marks, and owning containers of `processes` and on the lock modes and upper
+/// trees of `containers` project to user states agreeing on them.
 pub proof fn kernel_process_container_lock_states_projection_eq(a: &KernelK, b: &KernelK, processes: Set<RwLockProcessPtr>, containers: Set<RwLockContainerPtr>)
     requires
         forall|p: RwLockProcessPtr| #![trigger processes.contains(p)] processes.contains(p) ==> {
@@ -283,21 +313,25 @@ pub proof fn kernel_process_container_lock_states_projection_eq(a: &KernelK, b: 
             &&& b.prc_mp.dom().contains(p)
             &&& a.prc_mp.spec_index(p).locking_thread() == b.prc_mp.spec_index(p).locking_thread()
             &&& a.prc_mp.spec_index(p).being_killed() == b.prc_mp.spec_index(p).being_killed()
+            &&& a.prc_mp.spec_index(p).view_rodata().view().owning_container == b.prc_mp.spec_index(p).view_rodata().view().owning_container
         },
         forall|c: RwLockContainerPtr| #![trigger containers.contains(c)] containers.contains(c) ==> {
             &&& a.ctn_mp.dom().contains(c)
             &&& b.ctn_mp.dom().contains(c)
             &&& a.ctn_mp.spec_index(c).locking_thread() == b.ctn_mp.spec_index(c).locking_thread()
+            &&& a.ctn_mp.spec_index(c).view_ghost().uppertree_seq == b.ctn_mp.spec_index(c).view_ghost().uppertree_seq
         },
     ensures
         forall|p: RwLockProcessPtr| #![trigger processes.contains(p)] processes.contains(p) ==> {
             &&& kernel_k_to_kernel_u(*a).process_map.dom().contains(p)
             &&& kernel_k_to_kernel_u(*a).process_map[p].lock_state == kernel_k_to_kernel_u(*b).process_map[p].lock_state
             &&& kernel_k_to_kernel_u(*a).process_map[p].killed == kernel_k_to_kernel_u(*b).process_map[p].killed
+            &&& kernel_k_to_kernel_u(*a).process_map[p].owning_container == kernel_k_to_kernel_u(*b).process_map[p].owning_container
         },
         forall|c: RwLockContainerPtr| #![trigger containers.contains(c)] containers.contains(c) ==> {
             &&& kernel_k_to_kernel_u(*a).container_map.dom().contains(c)
             &&& kernel_k_to_kernel_u(*a).container_map[c].lock_state == kernel_k_to_kernel_u(*b).container_map[c].lock_state
+            &&& kernel_k_to_kernel_u(*a).container_map[c].uppertree_seq == kernel_k_to_kernel_u(*b).container_map[c].uppertree_seq
         },
 { broadcast use kernel_process_lock_state_projection_at, kernel_container_lock_state_projection_at; }
 } // verus!

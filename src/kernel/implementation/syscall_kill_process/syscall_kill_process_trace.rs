@@ -8,7 +8,9 @@ use super::syscall_kill_process_walk::{KillScope, kill_scope_progress};
 
 verus! {
 /// The killer on `cpu_id` holds its cpu, its process `process_ptr`, and itself `thread_ptr`, and its progress records a
-/// kill of the marked, write-locked `target` at `stage` in `scope`, whose victim container, if any, is write-locked.
+/// kill of the marked, write-locked `target` at `stage` in `scope`, whose victim container, if any, is write-locked. The
+/// target lies in its cpu's container in a subtree kill, and in the victim container, below its cpu's container, in a
+/// container kill.
 pub(crate) proof fn kill_step_pre_from_u(u: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, stage: KillStage, scope: KillScope)
     requires
         index_valid(NUM_CPUS, cpu_id),
@@ -24,6 +26,8 @@ pub(crate) proof fn kill_step_pre_from_u(u: KernelU, cpu_id: CpuId, process_ptr:
         u.process_map[target].lock_state is WriteLocked,
         u.process_map[target].killed,
         scope matches KillScope::Container { container } ==> u.container_map.dom().contains(container) && u.container_map[container].lock_state is WriteLocked,
+        scope is Subtree ==> u.process_map[target].owning_container == u.cpu_array[cpu_id as int].owning_container,
+        scope matches KillScope::Container { container } ==> u.process_map[target].owning_container == container && u.container_map[container].uppertree_seq.contains(u.cpu_array[cpu_id as int].owning_container),
     ensures
         kill_process_step_pre(u, cpu_id),
         kill_killer(u, cpu_id) == thread_ptr,
@@ -33,7 +37,8 @@ pub(crate) proof fn kill_step_pre_from_u(u: KernelU, cpu_id: CpuId, process_ptr:
 
 /// The killer on `cpu_id` write-holding its cpu, its process `process_ptr`, itself `thread_ptr`, the marked `target`, and
 /// the victim container of `scope`, if any, with its progress recording the kill of `target` at `stage` in `scope`,
-/// satisfies the kill's step precondition on `krnl`.
+/// satisfies the kill's step precondition on `krnl`. The target lies in its cpu's container in a subtree kill, and in
+/// the victim container, below its cpu's container, in a container kill; so it does on the projection.
 pub(crate) proof fn kill_step_pre_from_k(
     krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, stage: KillStage, scope: KillScope,
 )
@@ -50,6 +55,9 @@ pub(crate) proof fn kill_step_pre_from_k(
         krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
         krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == kill_scope_progress(scope, target, stage),
         scope matches KillScope::Container { container } ==> krnl.ctn_mp.dom().contains(container) && typed_lock_map_contains_mode(lctx.container_lock_map(), container, TypedLockMode::Write),
+        scope is Subtree ==> krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
+        scope matches KillScope::Container { container } ==> krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == container
+            && krnl.ctn_mp.spec_index(container).view_ghost().uppertree_seq.view().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
     ensures
         kill_process_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
         kill_killer(kernel_k_to_kernel_u(*krnl), cpu_id) == thread_ptr,
@@ -58,6 +66,8 @@ pub(crate) proof fn kill_step_pre_from_k(
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_process == Some(process_ptr),
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_thread == Some(thread_ptr),
         kernel_k_to_kernel_u(*krnl).thread_map[thread_ptr].syscall_progress == kill_scope_progress(scope, target, stage),
+        scope is Subtree ==> kernel_k_to_kernel_u(*krnl).process_map[target].owning_container == kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].owning_container,
+        scope matches KillScope::Container { container } ==> kernel_k_to_kernel_u(*krnl).process_map[target].owning_container == container && kernel_k_to_kernel_u(*krnl).container_map[container].uppertree_seq.contains(kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].owning_container),
 {
     kernel_write_held_context_projection(krnl, lctx, cpu_id, process_ptr, thread_ptr, None); kernel_write_held_context_projection(krnl, lctx, cpu_id, target, thread_ptr, None);
     kernel_cpu_projection_at(krnl, cpu_id); kernel_process_projection_at(krnl, target);
@@ -212,9 +222,9 @@ pub(crate) proof fn kill_mark_thread_pre_from_k(krnl: &KernelK, target: RwLockPr
         }),
 { kernel_process_projection_at(krnl, target); kernel_thread_projection_at(krnl, victim_ptr); }
 
-/// The marked victim `victim_ptr` that the killer on `cpu_id` write-holds with its cpu and the target, recorded by the
-/// kill, in state `state`, owned by `container_ptr`, and waiting on `endpoint`, is the kill's write-locked marked victim
-/// on the projection.
+/// The marked victim `victim_ptr` of the kill's target `target` that the killer on `cpu_id` write-holds with its cpu and
+/// the target, recorded by the kill, in state `state`, owned by `container_ptr`, and waiting on `endpoint`, is the kill's
+/// write-locked marked victim of its target on the projection.
 pub(crate) proof fn kill_victim_pre_from_k(
     krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, target: RwLockProcessPtr, victim_ptr: RwLockThreadPtr, state: ThreadState, container_ptr: RwLockContainerPtr,
     endpoint: Option<RwLockEndpointPtr>,
@@ -230,12 +240,15 @@ pub(crate) proof fn kill_victim_pre_from_k(
         krnl.thr_mp.spec_index(victim_ptr).view().owning_container == container_ptr,
         krnl.thr_mp.spec_index(victim_ptr).view().blocking_endpoint_ptr == endpoint,
         kill_stage(kernel_k_to_kernel_u(*krnl), cpu_id) == (KillStage::Thread { thread: victim_ptr }),
+        kill_target(kernel_k_to_kernel_u(*krnl), cpu_id) == target,
+        krnl.prc_mp.dom().contains(target),
+        krnl.prc_mp.spec_index(target).view().owned_threads.view().contains(victim_ptr),
     ensures
         kill_process_victim_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
         kernel_k_to_kernel_u(*krnl).thread_map[victim_ptr].state == state,
         kernel_k_to_kernel_u(*krnl).thread_map[victim_ptr].owning_container == container_ptr,
         kernel_k_to_kernel_u(*krnl).thread_map[victim_ptr].blocking_endpoint_ptr == endpoint,
-{ kernel_write_held_context_projection(krnl, lctx, cpu_id, target, victim_ptr, None); kernel_thread_projection_at(krnl, victim_ptr); }
+{ kernel_write_held_context_projection(krnl, lctx, cpu_id, target, victim_ptr, None); kernel_thread_projection_at(krnl, victim_ptr); kernel_process_projection_at(krnl, target); }
 
 /// The killer's write-held cpu, process, and thread, with its progress walking its own process, are so on the
 /// projection.
@@ -924,12 +937,13 @@ pub(crate) proof fn kill_trace_push(steps: &KernelSteps, before: Seq<KernelStep>
     assert(steps.view().subrange(start, steps.view().len() as int) =~= before.subrange(start, before.len() as int).push(KernelStep { old_u: step_pre, new_u: step_post }));
 }
 
-/// Steps reclaiming killed threads, recorded after the partial trace that starts at `start` while the killer's cpu, the
-/// killer, the lock modes and kill marks of its held processes, and the lock mode of the victim container of `scope`
-/// keep their projection at `entry`, extend it.
+/// Steps reclaiming killed threads of `victim_container`, the target's container, recorded after the partial trace that
+/// starts at `start` while the killer's cpu, the killer, the lock modes, kill marks, and owning containers of its held
+/// processes, and the lock mode and upper tree of the victim container of `scope` keep their projection at `entry`,
+/// extend it.
 pub(crate) proof fn kill_trace_from_killed_thread_reclaim(
     steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, entry: KernelU, cpu_id: CpuId, ctx: KillTraceCtx, process_ptr: RwLockProcessPtr,
-    target: RwLockProcessPtr, stage: KillStage, scope: KillScope,
+    target: RwLockProcessPtr, victim_container: RwLockContainerPtr, stage: KillStage, scope: KillScope,
 )
     requires
         0 <= start <= before.len(),
@@ -939,10 +953,16 @@ pub(crate) proof fn kill_trace_from_killed_thread_reclaim(
         entry.thread_map[kill_killer(entry, cpu_id)].syscall_progress == kill_scope_progress(scope, target, stage),
         entry.cpu_array[cpu_id as int].current_process == Some(process_ptr),
         kill_target(entry, cpu_id) == target,
+        scope is Subtree ==> entry.process_map[target].owning_container == entry.cpu_array[cpu_id as int].owning_container,
+        scope matches KillScope::Container { container } ==> entry.process_map[target].owning_container == container && entry.container_map[container].uppertree_seq.contains(entry.cpu_array[cpu_id as int].owning_container),
+        entry.process_map[target].owning_container == victim_container,
         forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
             let old_u = steps.view()[j].old_u;
+            let new_u = steps.view()[j].new_u;
             let thread_ptr = entry.cpu_array[cpu_id as int].current_thread->Some_0;
-            &&& kernel_u_killed_thread_reclaim_step(old_u, steps.view()[j].new_u, cpu_id)
+            &&& kernel_u_killed_thread_reclaim_step(old_u, new_u, cpu_id)
+            &&& forall|t: RwLockThreadPtr| #![trigger old_u.thread_map[t]]
+                old_u.thread_map.dom().contains(t) && (!new_u.thread_map.dom().contains(t) || new_u.thread_map[t] != old_u.thread_map[t]) ==> old_u.thread_map[t].owning_container == victim_container
             &&& old_u.cpu_array[cpu_id as int] == entry.cpu_array[cpu_id as int]
             &&& old_u.thread_map.dom().contains(thread_ptr)
             &&& old_u.thread_map[thread_ptr] == entry.thread_map[thread_ptr]
@@ -951,7 +971,9 @@ pub(crate) proof fn kill_trace_from_killed_thread_reclaim(
             &&& old_u.process_map.dom().contains(target)
             &&& old_u.process_map[target].lock_state == entry.process_map[target].lock_state
             &&& old_u.process_map[target].killed == entry.process_map[target].killed
+            &&& old_u.process_map[target].owning_container == entry.process_map[target].owning_container
             &&& scope matches KillScope::Container { container } ==> old_u.container_map.dom().contains(container) && old_u.container_map[container].lock_state == entry.container_map[container].lock_state
+                && old_u.container_map[container].uppertree_seq == entry.container_map[container].uppertree_seq
         },
     ensures kill_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, ctx),
 {
@@ -984,8 +1006,8 @@ pub(crate) proof fn kill_trace_push_tlb_flush(
 
 /// Refund steps, recorded after the partial trace that starts at `start` while the killer's cpu and the lock modes and
 /// kill marks of the killer's process and the target keep their projection at `entry` and the killer keeps its lock
-/// mode and its progress at `stage` in `scope`, each growing the 4K quota of the target's container `container_ptr`,
-/// extend it.
+/// mode and its progress at `stage` in `scope`, each growing the 4K quota of the target's container `container_ptr`, the
+/// container of the killer's cpu, extend it.
 pub(crate) proof fn kill_trace_from_refund(
     steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, entry: KernelU, cpu_id: CpuId, ctx: KillTraceCtx, process_ptr: RwLockProcessPtr,
     thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, stage: KillStage, container_ptr: RwLockContainerPtr, scope: KillScope,
@@ -998,6 +1020,7 @@ pub(crate) proof fn kill_trace_from_refund(
         entry.cpu_array[cpu_id as int].current_process == Some(process_ptr),
         entry.cpu_array[cpu_id as int].current_thread == Some(thread_ptr),
         entry.process_map[target].owning_container == container_ptr,
+        entry.cpu_array[cpu_id as int].owning_container == container_ptr,
         kill_target(entry, cpu_id) == target,
         forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
             let old_u = steps.view()[j].old_u;
@@ -1044,13 +1067,13 @@ pub(crate) proof fn kill_trace_from_scoped_credit(
         krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
         krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == kill_scope_progress(scope, target, stage),
         scope matches KillScope::Container { container } ==> krnl.ctn_mp.dom().contains(container) && typed_lock_map_contains_mode(lctx.container_lock_map(), container, TypedLockMode::Write),
+        scope is Subtree ==> krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
+        scope matches KillScope::Container { container } ==> krnl.prc_mp.spec_index(target).view_rodata().view().owning_container == container
+            && krnl.ctn_mp.spec_index(container).view_ghost().uppertree_seq.view().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
     ensures kill_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, ctx),
 {
-    let container_ptr = krnl.prc_mp.spec_index(target).view_rodata().view().owning_container;
-    kill_step_pre_from_k(krnl, lctx, cpu_id, process_ptr, thread_ptr, target, stage, scope); kill_refund_pre_from_k(krnl, target, container_ptr);
-    kernel_write_held_context_projection(krnl, lctx, cpu_id, process_ptr, thread_ptr, None); kernel_write_held_context_projection(krnl, lctx, cpu_id, target, thread_ptr, None);
-    if let KillScope::Container { container } = scope { krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), container); kernel_container_projection_at(krnl, container); }
-    kill_trace_from_refund(steps, before, start, pre, kernel_k_to_kernel_u(*krnl), cpu_id, ctx, process_ptr, thread_ptr, target, stage, container_ptr, scope);
+    kill_step_pre_from_k(krnl, lctx, cpu_id, process_ptr, thread_ptr, target, stage, scope); kill_refund_pre_from_k(krnl, target, krnl.prc_mp.spec_index(target).view_rodata().view().owning_container);
+    kill_trace_push(steps, before, start, pre, kernel_k_to_kernel_u(*krnl), post_u, cpu_id, ctx);
 }
 
 /// The finish step pushed after the partial trace that starts at `start` completes the trace of a kill.

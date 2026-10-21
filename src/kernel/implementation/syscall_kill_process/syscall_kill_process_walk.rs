@@ -41,9 +41,9 @@ pub open spec fn kill_walk_state(
 /// below the subtree's process, or the root depth of the victim container. The killer's process is running; every chain process
 /// lies in the subtree of the scope's process or is owned by the victim container, is being killed or a zombie, and the
 /// target may also have emptied tables at stage `Zombie`. The chain starts at a child of the scope's process or at the
-/// victim container's root process. A subtree hangs below the killer's process; a victim container is marked, write-held,
-/// and not the killer's cpu's container, which the killer write-holds too, and every other container the killer holds
-/// is marked, by the killer's process.
+/// victim container's root process. A subtree hangs below the killer's process, which lies in its cpu's container; a
+/// victim container is marked, write-held, and below the killer's cpu's container, which the killer write-holds too, and
+/// every other container the killer holds is marked, by the killer's process.
 pub open spec fn kill_chain_state(
     k: KernelK, lctx: LocalContext, cpu_id: CpuId, scope: KillScope, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, chain: Seq<RwLockProcessPtr>,
     stage: KillStage, cpu_perm: LockPerm, process_perm: LockPerm, thread_perm: LockPerm, chain_perms: Map<RwLockProcessPtr, LockPerm>,
@@ -71,11 +71,12 @@ pub open spec fn kill_chain_state(
     &&& thread.view().syscall_progress.view() == kill_scope_progress(scope, if chain.len() == 0 { process_ptr } else { chain[chain.len() - 1] }, stage)
     &&& !thread.view_ghost().exited
     &&& match scope {
-        KillScope::Subtree { process: root } => root == process_ptr && lctx.container_lock_map().dom().is_empty(),
+        KillScope::Subtree { process: root } => root == process_ptr && lctx.container_lock_map().dom().is_empty() && process.view_rodata().view().owning_container == cpu.owning_container,
         KillScope::Container { container } => {
             &&& k.ctn_mp.dom().contains(container)
             &&& k.ctn_mp.spec_index(container).being_killed()
             &&& container != cpu.owning_container
+            &&& k.ctn_mp.spec_index(container).view_ghost().uppertree_seq.view().contains(cpu.owning_container)
             &&& typed_lock_map_contains_mode(lctx.container_lock_map(), container, TypedLockMode::Write)
             &&& typed_lock_map_contains_mode(lctx.container_lock_map(), cpu.owning_container, TypedLockMode::Write)
             &&& forall|c: RwLockContainerPtr| #![trigger lctx.container_lock_map().dom().contains(c)] lctx.container_lock_map().dom().contains(c) ==> {
@@ -283,6 +284,7 @@ pub(crate) fn kill_first_thread(
             let victim = krnl.thr_mp.spec_index(victim_ptr).view();
             &&& krnl.thr_mp.dom().contains(victim_ptr)
             &&& victim.owning_proc == target
+            &&& victim.owning_container == target_ro.owning_container
             &&& victim.container_depth == target_ro.container_depth
             &&& victim.process_depth == target_ro.depth
             &&& !victim.proc_linkedlist_node.is_init()
@@ -366,6 +368,7 @@ pub(crate) fn kill_victim_off_cpu_or_queue(
             *thread_perm, *chain_perms),
         0 < chain.len(),
         target == chain[chain.len() - 1],
+        old(krnl).prc_mp.spec_index(target).view().owned_threads.view().contains(victim_ptr),
         old(krnl).thr_mp.dom().contains(victim_ptr),
         old(krnl).thr_mp.spec_index(victim_ptr).being_killed(),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), victim_ptr, TypedLockMode::Write),
@@ -486,6 +489,7 @@ pub(crate) fn kill_release_victim_caller(
         target == chain[chain.len() - 1],
         old(krnl).thr_mp.dom().contains(victim_ptr),
         old(krnl).thr_mp.spec_index(victim_ptr).being_killed(),
+        old(krnl).thr_mp.spec_index(victim_ptr).view().owning_container == old(krnl).prc_mp.spec_index(target).view_rodata().view().owning_container,
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), victim_ptr, TypedLockMode::Write),
         victim_perm.state() is WriteLock,
         victim_perm.thread_id() == old(lctx).thread_id(),
@@ -528,8 +532,9 @@ pub(crate) fn kill_release_victim_caller(
     proof { assert(kernel_steps_prefix_unchanged(before_steps, before_steps)) by { reveal(kernel_steps_prefix_unchanged); }; }
     let (next, Tracked(next_perm)) = release_killed_thread_caller(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, victim_ptr, Tracked(victim_perm));
     proof {
-        kill_step_pre_from_k(&before, &before_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Thread { thread: victim_ptr }, scope);
-        kill_trace_from_killed_thread_reclaim(&*steps, before_steps, start, pre, kernel_k_to_kernel_u(before), cpu_id, ctx, process_ptr, target, KillStage::Thread { thread: victim_ptr }, scope);
+        let victim_container = before.thr_mp.spec_index(victim_ptr).view().owning_container;
+        kill_step_pre_from_k(&before, &before_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Thread { thread: victim_ptr }, scope); kill_refund_pre_from_k(&before, target, victim_container);
+        kill_trace_from_killed_thread_reclaim(&*steps, before_steps, start, pre, kernel_k_to_kernel_u(before), cpu_id, ctx, process_ptr, target, victim_container, KillStage::Thread { thread: victim_ptr }, scope);
     }
     if let Some(caller_ptr) = next {
         let ghost reclaim_k = *krnl;
@@ -539,8 +544,9 @@ pub(crate) fn kill_release_victim_caller(
         proof { assert(kernel_steps_prefix_unchanged(reclaim_before, reclaim_before)) by { reveal(kernel_steps_prefix_unchanged); }; }
         reclaim_killed_thread_chain(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, caller_ptr, Tracked(caller_perm));
         proof {
-            kill_step_pre_from_k(&reclaim_k, &reclaim_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Thread { thread: victim_ptr }, scope);
-            kill_trace_from_killed_thread_reclaim(&*steps, reclaim_before, start, pre, kernel_k_to_kernel_u(reclaim_k), cpu_id, ctx, process_ptr, target, KillStage::Thread { thread: victim_ptr }, scope);
+            let victim_container = reclaim_k.thr_mp.spec_index(caller_ptr).view().owning_container;
+            kill_step_pre_from_k(&reclaim_k, &reclaim_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Thread { thread: victim_ptr }, scope); kill_refund_pre_from_k(&reclaim_k, target, victim_container);
+            kill_trace_from_killed_thread_reclaim(&*steps, reclaim_before, start, pre, kernel_k_to_kernel_u(reclaim_k), cpu_id, ctx, process_ptr, target, victim_container, KillStage::Thread { thread: victim_ptr }, scope);
             assert(lctx.thread_lock_map() =~= old(lctx).thread_lock_map());
         }
     }
@@ -655,6 +661,7 @@ pub(crate) fn kill_reclaim_victim(
         0 < chain.len(),
         target == chain[chain.len() - 1],
         old(krnl).thr_mp.dom().contains(victim_ptr),
+        old(krnl).thr_mp.spec_index(victim_ptr).view().owning_container == old(krnl).prc_mp.spec_index(target).view_rodata().view().owning_container,
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), victim_ptr, TypedLockMode::Write),
         victim_perm.state() is WriteLock,
         victim_perm.thread_id() == old(lctx).thread_id(),
@@ -701,8 +708,9 @@ pub(crate) fn kill_reclaim_victim(
     proof { assert(kernel_steps_prefix_unchanged(reclaim_before, reclaim_before)) by { reveal(kernel_steps_prefix_unchanged); }; }
     reclaim_killed_thread_chain(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, victim_ptr, Tracked(victim_perm));
     proof {
-        kill_step_pre_from_k(&reclaim_k, &reclaim_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Walk, scope);
-        kill_trace_from_killed_thread_reclaim(&*steps, reclaim_before, start, pre, kernel_k_to_kernel_u(reclaim_k), cpu_id, ctx, process_ptr, target, KillStage::Walk, scope);
+        let victim_container = reclaim_k.thr_mp.spec_index(victim_ptr).view().owning_container;
+        kill_step_pre_from_k(&reclaim_k, &reclaim_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Walk, scope); kill_refund_pre_from_k(&reclaim_k, target, victim_container);
+        kill_trace_from_killed_thread_reclaim(&*steps, reclaim_before, start, pre, kernel_k_to_kernel_u(reclaim_k), cpu_id, ctx, process_ptr, target, victim_container, KillStage::Walk, scope);
     }
 }
 } // verus!

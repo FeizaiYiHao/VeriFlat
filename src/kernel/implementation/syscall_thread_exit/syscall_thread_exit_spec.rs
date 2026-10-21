@@ -384,15 +384,16 @@ pub open spec fn thread_exit_unlock_table_step(old_u: KernelU, new_u: KernelU, c
 }
 
 /// A step between entering and finishing: reclaiming the dangling thread of a killed caller and the killed callers it takes over,
-/// releasing a descriptor, releasing an endpoint with its last descriptor, or, for a process's last
-/// thread, locking the process's tables, clearing one user 4K leaf, flushing one cpu's TLB for the process's PCID,
-/// recording the flush, clearing one IOMMU 4K leaf, refunding 4K quota to the thread's container chain, returning one
-/// size of quota, or unlocking the tables.
+/// changing or removing only threads of the exiting thread's container, releasing a descriptor, releasing an endpoint with
+/// its last descriptor, or, for a process's last thread, locking the process's tables, clearing one user 4K leaf, flushing
+/// one cpu's TLB for the process's PCID, recording the flush, clearing one IOMMU 4K leaf, refunding 4K quota to the
+/// thread's container chain, returning one size of quota, or unlocking the tables.
 pub open spec fn thread_exit_middle_step(step: KernelStep, cpu_id: CpuId) -> bool {
     let old_u = step.old_u;
     let new_u = step.new_u;
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
-    ||| thread_exit_drop_step_pre(old_u, cpu_id) && kernel_u_killed_thread_reclaim_step(old_u, new_u, cpu_id)
+    ||| thread_exit_drop_step_pre(old_u, cpu_id) && kernel_u_killed_thread_reclaim_step(old_u, new_u, cpu_id) && (forall|t: RwLockThreadPtr| #![trigger old_u.thread_map[t]]
+        old_u.thread_map.dom().contains(t) && (!new_u.thread_map.dom().contains(t) || new_u.thread_map[t] != old_u.thread_map[t]) ==> old_u.thread_map[t].owning_container == thread.owning_container)
     ||| thread_exit_drop_step_pre(old_u, cpu_id) && thread_exit_drop_step(old_u, new_u, cpu_id)
     ||| thread_exit_drop_step_pre(old_u, cpu_id) && thread_exit_release_step(old_u, new_u, cpu_id)
     ||| thread_exit_lock_table_step_pre(old_u, cpu_id) && thread_exit_lock_table_step(old_u, new_u, cpu_id)

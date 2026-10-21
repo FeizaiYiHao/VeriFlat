@@ -96,7 +96,7 @@ pub proof fn kernel_endpoint_released_implies_u_step(before: &KernelK, after: &K
 }
 
 /// Releasing the endpoint held only at descriptor `index` of the write-held killed thread `thread_ptr` projects to
-/// `kernel_u_killed_endpoint_released` and changes both projections.
+/// `kernel_u_killed_endpoint_released`, changes both projections, and changes no thread outside `thread_ptr`'s container.
 pub proof fn kernel_killed_endpoint_released_implies_u_step(before: &KernelK, after: &KernelK, thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, index: EndpointIdx)
     requires
         index < MAX_NUM_ENDPOINT_DESCRIPTORS,
@@ -134,6 +134,12 @@ pub proof fn kernel_killed_endpoint_released_implies_u_step(before: &KernelK, af
             },
     ensures
         kernel_u_killed_endpoint_released(kernel_k_to_kernel_u(*before), kernel_k_to_kernel_u(*after)),
+        ({
+            let pre = kernel_k_to_kernel_u(*before);
+            let post = kernel_k_to_kernel_u(*after);
+            forall|t: RwLockThreadPtr| #![trigger pre.thread_map[t]]
+                pre.thread_map.dom().contains(t) && (!post.thread_map.dom().contains(t) || post.thread_map[t] != pre.thread_map[t]) ==> pre.thread_map[t].owning_container == before.thr_mp.spec_index(thread_ptr).view().owning_container
+        }),
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
         kernel_k_to_nonlock_kernel_u(*before) != kernel_k_to_nonlock_kernel_u(*after),
 {

@@ -99,7 +99,7 @@ pub open spec fn kill_process_enter_step(old_u: KernelU, new_u: KernelU, cpu_id:
 
 /// Every step after entering runs while the killer holds its cpu, its process, and itself, records a process kill or a
 /// container kill working on a process, and holds the marked target of the kill; inside a container kill it also holds
-/// the container the kill records.
+/// the container the kill records. The target lies in the killer's cpu's container or in a container below it.
 #[verifier::opaque]
 pub open spec fn kill_process_step_pre(u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = u.cpu_array[cpu_id as int];
@@ -119,6 +119,7 @@ pub open spec fn kill_process_step_pre(u: KernelU, cpu_id: CpuId) -> bool {
     &&& u.process_map.dom().contains(kill_target(u, cpu_id))
     &&& target.lock_state is WriteLocked
     &&& target.killed
+    &&& target.owning_container == cpu.owning_container || u.container_map[target.owning_container].uppertree_seq.contains(cpu.owning_container)
     &&& progress is KillContainer ==> u.container_map.dom().contains(progress->KillContainer_container)
     &&& progress is KillContainer ==> u.container_map[progress->KillContainer_container].lock_state is WriteLocked
 }
@@ -189,13 +190,14 @@ pub open spec fn kill_process_mark_thread_step(old_u: KernelU, new_u: KernelU, c
     })
 }
 
-/// The kill records a marked victim that it write-holds.
+/// The kill records a marked victim of its target that it write-holds.
 pub open spec fn kill_process_victim_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let victim_ptr = kill_stage(old_u, cpu_id)->Thread_thread;
     &&& kill_stage(old_u, cpu_id) is Thread
     &&& old_u.thread_map.dom().contains(victim_ptr)
     &&& old_u.thread_map[victim_ptr].lock_state is WriteLocked
     &&& old_u.thread_map[victim_ptr].killed
+    &&& old_u.process_map[kill_target(old_u, cpu_id)].owned_threads.contains(victim_ptr)
 }
 
 /// The marked victim scheduled on a shard leaves the shard and becomes killed.
@@ -524,7 +526,7 @@ pub open spec fn kill_process_retire_step(old_u: KernelU, new_u: KernelU, cpu_id
 }
 
 /// A step between entering and finishing: descending into a child, turning a thread waiting for a reply into a dangling thread,
-/// marking, dequeuing, evicting, or unlinking a thread, reclaiming killed threads, and, for an empty target,
+/// marking, dequeuing, evicting, or unlinking a thread, reclaiming killed threads of the target's container, and, for an empty target,
 /// reassigning its PCI functions, locking its tables, clearing one 4K leaf, flushing one cpu's TLB for its PCID,
 /// recording the flush, clearing one IOMMU 4K leaf, returning quota of freed pages to the target's container chain,
 /// returning one size of its quota, unlocking its tables, making it a zombie, or retiring it.
@@ -540,7 +542,8 @@ pub open spec fn kill_process_middle_step(step: KernelStep, cpu_id: CpuId) -> bo
         ||| kill_process_dequeue_endpoint_step(old_u, new_u, cpu_id)
         ||| kill_process_evict_step(old_u, new_u, cpu_id)
         ||| kill_process_unlink_step(old_u, new_u, cpu_id)
-        ||| kernel_u_killed_thread_reclaim_step(old_u, new_u, cpu_id)
+        ||| kernel_u_killed_thread_reclaim_step(old_u, new_u, cpu_id) && (forall|t: RwLockThreadPtr| #![trigger old_u.thread_map[t]]
+            old_u.thread_map.dom().contains(t) && (!new_u.thread_map.dom().contains(t) || new_u.thread_map[t] != old_u.thread_map[t]) ==> old_u.thread_map[t].owning_container == old_u.process_map[kill_target(old_u, cpu_id)].owning_container)
         ||| kill_process_reassign_functions_step(old_u, new_u, cpu_id)
         ||| kill_process_lock_table_step(old_u, new_u, cpu_id)
         ||| kill_process_leaf_step(old_u, new_u, cpu_id)

@@ -321,6 +321,7 @@ pub(super) fn thread_exit_enter_with_caller(
                 &&& dp is Some && dp->Some_0.state() is WriteLock && dp->Some_0.thread_id() == final(lctx).thread_id()
                 &&& dp->Some_0.lock_id() == final(krnl).thr_mp.spec_index(dangling_ptr).locking_thread()->Write_lock_id
                 &&& dangling.state is KILLED && dangling.callee is None && dangling.proc_linkedlist_node.is_init()
+                &&& dangling.owning_container == container_ptr
                 &&& dangling.temp_alloc_clean() && dangling.free_quota_pending_clean() && dangling.quota_4k == 0 && dangling.quota_2m == 0 && dangling.quota_1g == 0
             }
         }),

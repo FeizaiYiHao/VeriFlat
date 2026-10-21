@@ -134,8 +134,8 @@ pub(super) fn thread_exit_lock_entry(krnl: &mut KernelK, Tracked(lctx): Tracked<
     })
 }
 
-/// Reclaims the dangling thread `dangling_ptr` taken over from the killed caller of the running `thread_ptr` and every
-/// killed caller it takes over, extending the partial trace that starts at `start`.
+/// Reclaims the dangling thread `dangling_ptr` of the running `thread_ptr`'s container, taken over from the killed caller of
+/// `thread_ptr`, and every killed caller it takes over, extending the partial trace that starts at `start`.
 fn thread_exit_reclaim_dangling_caller(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, container_ptr: RwLockContainerPtr,
     process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, dangling_ptr: RwLockThreadPtr, Tracked(dangling_lock_perm): Tracked<LockPerm>, Ghost(start): Ghost<int>,
@@ -153,6 +153,7 @@ fn thread_exit_reclaim_dangling_caller(
         old(krnl).thr_mp.spec_index(thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
         old(krnl).thr_mp.dom().contains(dangling_ptr),
         old(krnl).thr_mp.spec_index(dangling_ptr).view().state is KILLED,
+        old(krnl).thr_mp.spec_index(dangling_ptr).view().owning_container == container_ptr,
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), dangling_ptr, TypedLockMode::Write),
         dangling_lock_perm.state() is WriteLock,
         dangling_lock_perm.thread_id() == old(lctx).thread_id(),

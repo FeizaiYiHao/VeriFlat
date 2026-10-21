@@ -87,6 +87,7 @@ pub(super) fn reclaim_killed_thread_link(
             &&& final(krnl).thr_mp.dom().contains(caller_ptr)
             &&& final(krnl).thr_mp.spec_index(caller_ptr).view().state is KILLED
             &&& final(krnl).thr_mp.spec_index(caller_ptr).view().callee is None
+            &&& final(krnl).thr_mp.spec_index(caller_ptr).view().owning_container == old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container
             &&& final(krnl).thr_mp.spec_index(caller_ptr).view().call_depth.view() + 1 == old(krnl).thr_mp.spec_index(thread_ptr).view().call_depth.view()
             &&& final(krnl).thr_mp.spec_index(caller_ptr).view().proc_linkedlist_node.is_init()
             &&& final(krnl).thr_mp.spec_index(caller_ptr).view().temp_alloc_clean()
@@ -100,7 +101,7 @@ pub(super) fn reclaim_killed_thread_link(
             &&& forall|held_thread: RwLockThreadPtr| #![trigger final(lctx).thread_lock_map().dom().contains(held_thread)] final(lctx).thread_lock_map().dom().contains(held_thread)
                 ==> !(final(krnl).thr_mp.spec_index(held_thread).view().state is KILLED) || final(krnl).thr_mp.spec_index(held_thread).being_killed() || held_thread == caller_ptr
         },
-        killed_thread_reclaim_partial_trace(final(steps).view(), old(steps).view().len() as int, kernel_k_to_kernel_u(*old(krnl)), cpu_id, old(lctx).process_lock_map().dom(), old(lctx).container_lock_map().dom()),
+        killed_thread_reclaim_partial_trace(final(steps).view(), old(steps).view().len() as int, kernel_k_to_kernel_u(*old(krnl)), cpu_id, old(lctx).process_lock_map().dom(), old(lctx).container_lock_map().dom(), old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container),
 {
     let ghost iter_steps = steps.view();
     proof {
@@ -119,14 +120,14 @@ pub(super) fn reclaim_killed_thread_link(
     proof {
         kernel_dangling_thread_reclaimed_implies_u_step(&reclaim_snap, &*krnl, thread_ptr);
         krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
-        assert(killed_thread_reclaim_partial_trace(steps.view(), old(steps).view().len() as int, kernel_k_to_kernel_u(*old(krnl)), cpu_id, old(lctx).process_lock_map().dom(), old(lctx).container_lock_map().dom())) by {
+        assert(killed_thread_reclaim_partial_trace(steps.view(), old(steps).view().len() as int, kernel_k_to_kernel_u(*old(krnl)), cpu_id, old(lctx).process_lock_map().dom(), old(lctx).container_lock_map().dom(), old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container)) by {
             let processes = old(lctx).process_lock_map().dom();
             let containers = old(lctx).container_lock_map().dom();
             held_kernel_objects_unchanged_reflexive(old(krnl), old(lctx));
             killed_thread_reclaim_step_pre_from_k(&caller_k, old(krnl), cpu_id, processes, containers);
             killed_thread_reclaim_step_pre_from_k(&reclaim_snap, old(krnl), cpu_id, processes, containers);
             killed_thread_reclaim_chain_trace(steps.view(), old(steps).view().len() as int, iter_steps, desc_steps, caller_steps, kernel_k_to_kernel_u(*old(krnl)),
-                kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(caller_k), cpu_id, processes, containers);
+                kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(caller_k), cpu_id, processes, containers, old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container);
         };
         if let Some(caller_ptr) = next {
             assert(lctx.thread_lock_map() =~= old(lctx).thread_lock_map().remove(thread_ptr).insert(caller_ptr, lctx.thread_lock_map()[caller_ptr]));
