@@ -38,6 +38,10 @@ pub proof fn refund_unmap_4k_step_pre_from_k(krnl: &KernelK, entry: &KernelK, lc
                 &&& u.process_map[thread.owning_proc].pagetable is Some
                 &&& u.process_map[thread.owning_proc].pagetable->Some_0.lock_state is WriteLocked
             }
+            &&& !entry.prc_mp.spec_index(thread.owning_proc).view().zombie && typed_lock_map_contains_mode(held.pagetable_lock_map(), entry.prc_mp.spec_index(thread.owning_proc).view().pagetable, TypedLockMode::Read) ==> {
+                &&& u.process_map[thread.owning_proc].pagetable is Some
+                &&& u.process_map[thread.owning_proc].pagetable->Some_0.lock_state is ReadLocked
+            }
             &&& typed_lock_map_contains_mode(held.container_lock_map(), thread.owning_container, TypedLockMode::Write) ==> {
                 &&& u.container_map.dom().contains(thread.owning_container)
                 &&& u.container_map[thread.owning_container].lock_state is WriteLocked
@@ -54,5 +58,9 @@ pub proof fn refund_unmap_4k_step_pre_from_k(krnl: &KernelK, entry: &KernelK, lc
     kernel_write_held_context_projection(krnl, lctx, held.cpu_id(), entry.thr_mp.spec_index(thread_ptr).view().owning_proc, thread_ptr, None);
     kernel_cpu_projection_at(krnl, held.cpu_id()); kernel_cpu_projection_at(entry, held.cpu_id());
     entry.prc_mp.typed_lock_map_aligned_held_in_dom(held.process_lock_map(), held.thread_id()); broadcast use kernel_process_lock_state_projection_at;
+    let owner_table = entry.prc_mp.spec_index(entry.thr_mp.spec_index(thread_ptr).view().owning_proc).view().pagetable;
+    if typed_lock_map_contains_mode(lctx.pagetable_lock_map(), owner_table, TypedLockMode::Read) {
+        krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), owner_table); kernel_process_projection_at(krnl, entry.thr_mp.spec_index(thread_ptr).view().owning_proc);
+    }
 }
 } // verus!

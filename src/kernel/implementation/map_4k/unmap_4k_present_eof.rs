@@ -2,7 +2,8 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// Clears the present bit of the 4K leaf `va` in the window half of `pagetable`; every other kernel field is unchanged.
+/// Clears the present bit of the 4K leaf `va` in the window half of `pagetable`, keeping its stale-CPU map; every other
+/// kernel field is unchanged.
 #[verifier::opaque]
 pub(super) open spec fn clear_4k_mapping_present_eof_transition_framing(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr) -> bool {
     let old_c = pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable);
@@ -19,6 +20,7 @@ pub(super) open spec fn clear_4k_mapping_present_eof_transition_framing(pre: Ker
     &&& new_c.mapping_2m() == old_c.mapping_2m()
     &&& new_c.mapping_1g() == old_c.mapping_1g()
     &&& new_c.page_closure() == old_c.page_closure()
+    &&& new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
 }
 
 pub(super) proof fn clear_4k_mapping_present_eof(pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr)
@@ -27,11 +29,14 @@ pub(super) proof fn clear_4k_mapping_present_eof(pre: KernelK, post: KernelK, pa
         clear_4k_mapping_present_eof_transition_framing(pre, post, pagetable, va),
         pre.pt_mp.dom().contains(pagetable),
         pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom().contains(va),
-        post.pt_mp.spec_index(pagetable).locking_thread() is Write,
+        pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus.dom().contains((pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va))),
+        pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus.spec_index((pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va)))
+            == Set::range(0usize, NUM_CPUS),
         pagetable_perms_wf(post.pt_mp),
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
         pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_leaves_only_when_wlocked(post.pt_mp, post.pt_lower.view()),
+        pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view()),
+        pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view()),
         pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()),
     ensures post.inv(),
 {

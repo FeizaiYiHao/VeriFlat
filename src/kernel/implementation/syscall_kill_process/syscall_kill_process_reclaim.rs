@@ -486,6 +486,7 @@ pub(crate) fn kill_reclaim_lock_table(
             *chain_perms, pagetable, iommu_table, ret.0.view(), ret.1.view()),
         final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).leaves_present(),
+        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
         pei_valid(final(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end),
         iommu_table is Some ==> final(krnl).it_mp.spec_index(iommu_table->Some_0).view().leaves_present() && final(krnl).it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0,
         final(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set == old(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set,

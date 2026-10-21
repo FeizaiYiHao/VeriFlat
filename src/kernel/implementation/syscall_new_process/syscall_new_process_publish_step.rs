@@ -88,7 +88,7 @@ pub(super) fn end_new_process_publish_step(
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), target_pagetable_ptr, TypedLockMode::Write),
         pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable_ptr).is_empty(),
         old(krnl).pt_mp.dom().contains(source_pagetable_ptr),
-        typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), source_pagetable_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), source_pagetable_ptr, TypedLockMode::Read),
         iommu_table is None ==> old(krnl).it_mp == old(steps).snapshot_k().it_mp,
         iommu_table matches Some(t) ==> {
             &&& old(krnl).it_mp.dom() == old(steps).snapshot_k().it_mp.dom().insert(t)
@@ -129,13 +129,11 @@ pub(super) fn end_new_process_publish_step(
         final(krnl).thr_mp.spec_index(current_thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(current_thread_ptr).being_killed(),
         final(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost(),
         final(krnl).pt_mp.dom().contains(source_pagetable_ptr),
-        final(krnl).pt_mp.spec_index(source_pagetable_ptr) == old(krnl).pt_mp.spec_index(source_pagetable_ptr),
+        held_pagetables_unchanged(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx)),
         final(krnl).pt_mp.dom().contains(target_pagetable_ptr),
         final(krnl).pt_mp.spec_index(target_pagetable_ptr) == old(krnl).pt_mp.spec_index(target_pagetable_ptr),
-        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), source_pagetable_ptr) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr),
+        held_pagetable_windows_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), final(krnl).pt_mp, final(krnl).pt_lower.view(), old(lctx)),
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable_ptr) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable_ptr),
-        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, source_pagetable_ptr, pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr))
-            ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, source_pagetable_ptr, pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), source_pagetable_ptr)),
         iommu_table matches Some(t) ==> final(krnl).it_mp.dom().contains(t) && final(krnl).it_mp.spec_index(t) == old(krnl).it_mp.spec_index(t),
 {
     let ghost sharing = Some(SyscallProgress::Share4k {

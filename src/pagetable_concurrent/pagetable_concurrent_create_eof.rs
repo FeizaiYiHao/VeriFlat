@@ -168,13 +168,13 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         assert(post.wf_window_locks()) by { reveal(PageTableC::wf_window_locks); reveal(PageTableHigher::wf_l4); broadcast use spec_va_2m_valid_index_roundtrip, iova_2m_valid_index_roundtrip; };
     }
 
-    /// Operation-state summary of `create_entry_l3`: L3 entry `target_l3i` of `target_l3_p` now links the new empty, unlocked L2 page
+    /// Operation-state summary of `create_entry_l3`: L3 entry `target_l3i` of `target_l3_p` now links the new empty L2 page
     /// `page_map_ptr`, which joins the L2 pages with its three tokens and reverse index `(target_l4i, target_l3i)`; every other
     /// field is unchanged.
     #[verifier::opaque]
-    pub open spec fn create_entry_l3_eof_transition_framing(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr) -> bool {
+    pub open spec fn create_entry_l3_eof_transition_framing(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, lo: L2Index, hi: L2Index, thread_id: LockThreadId) -> bool {
         &&& post.higher == (PageTableHigher { l3_tables: post.higher.l3_tables, l2_rev_map: post.higher.l2_rev_map, ..pre.higher })
-        &&& post.lower == (PageTableLower { l2_perms: post.lower.l2_perms, l2_ghost: post.lower.l2_ghost, l2_lock: post.lower.l2_lock, ..pre.lower })
+        &&& post.lower == (PageTableLower { l2_perms: post.lower.l2_perms, l2_ghost: post.lower.l2_ghost, l2_lock: post.lower.l2_lock, locked_windows: post.lower.locked_windows, ..pre.lower })
         &&& post.higher.l3_tables.view().dom() == pre.higher.l3_tables.view().dom()
         &&& forall|p: PageMapPtr| #![trigger post.higher.l3_tables.view().spec_index(p)]
             pre.higher.l3_tables.view().dom().contains(p) && p != target_l3_p ==> post.higher.l3_tables.view().spec_index(p) == pre.higher.l3_tables.view().spec_index(p)
@@ -202,12 +202,18 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         &&& post.lower.l2_lock == pre.lower.l2_lock.insert(page_map_ptr, post.lower.l2_lock_of(page_map_ptr))
         &&& post.lower.l2_lock_of(page_map_ptr).addr() == page_map_ptr
         &&& post.lower.l2_lock_of(page_map_ptr).wf()
-        &&& forall|i: usize| #![trigger post.lower.l2_lock_of(page_map_ptr).lock_state(i)] pei_valid(i) ==> post.lower.l2_lock_of(page_map_ptr).lock_state(i) is None
+        &&& forall|i: usize| #![trigger post.lower.l2_lock_of(page_map_ptr).lock_state(i)] pei_valid(i) && !(lo <= i <= hi) ==> post.lower.l2_lock_of(page_map_ptr).lock_state(i) is None
+        &&& forall|i: usize| #![trigger post.lower.l2_lock_of(page_map_ptr).lock_state(i)] lo <= i <= hi ==> post.lower.l2_lock_of(page_map_ptr).locked_by_thread(i, thread_id)
+        &&& forall|w: WindowVa| #![trigger post.lower.locked_windows.contains(w)] post.lower.locked_windows.contains(w) == (pre.lower.locked_windows.contains(w)
+            || (lo <= spec_v2l2index(w.va) <= hi && w == (WindowVa { va: spec_index2va((target_l4i, target_l3i, spec_v2l2index(w.va), 0usize)) })))
     }
 
     /// EOF closure of `create_entry_l3`: every page-table invariant leaf.
-    pub(super) proof fn create_entry_l3_eof(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
+    pub(super) proof fn create_entry_l3_eof(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, lo: L2Index, hi: L2Index, thread_id: LockThreadId)
         requires
+            TABLE_TYPE == PT_TYPE,
+            KERNEL_MEM_END_L4INDEX <= target_l4i,
+            pei_valid(hi),
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
             pei_valid(target_l3i),
@@ -217,22 +223,22 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
-            Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr),
+            Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id),
         ensures
             post.wf(),
     {
-        Self::create_entry_l3_eof_higher_inv(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
-        Self::create_entry_l3_eof_table_leaves(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
-        Self::create_entry_l3_eof_wf_mapping_4k(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
-        Self::create_entry_l3_eof_wf_mapping_2m(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
-        Self::create_entry_l3_eof_tables_reachable_wf(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
-        Self::create_entry_l3_eof_wf_window_locks_va(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
-        Self::create_entry_l3_eof_wf_window_locks_slot(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr);
+        Self::create_entry_l3_eof_higher_inv(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id);
+        Self::create_entry_l3_eof_table_leaves(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id);
+        Self::create_entry_l3_eof_wf_mapping_4k(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id);
+        Self::create_entry_l3_eof_wf_mapping_2m(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id);
+        Self::create_entry_l3_eof_tables_reachable_wf(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id);
+        Self::create_entry_l3_eof_wf_window_locks_va(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id);
+        Self::create_entry_l3_eof_wf_window_locks_slot(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id);
         Self::create_entry_l3_eof_wf_window_locks(post);
     }
 
     /// EOF closure of `create_entry_l3`: the big-lock invariant.
-    proof fn create_entry_l3_eof_higher_inv(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
+    proof fn create_entry_l3_eof_higher_inv(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, lo: L2Index, hi: L2Index, thread_id: LockThreadId)
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
@@ -243,7 +249,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
-            Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr),
+            Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id),
         ensures
             post.higher.inv(),
     {
@@ -261,7 +267,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
     }
 
     /// EOF closure of `create_entry_l3`: the table-shape leaves of the window half.
-    proof fn create_entry_l3_eof_table_leaves(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
+    proof fn create_entry_l3_eof_table_leaves(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, lo: L2Index, hi: L2Index, thread_id: LockThreadId)
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
@@ -272,7 +278,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
-            Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr),
+            Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id),
         ensures
             post.wf_l3(),
             post.l2_tokens_paired(),
@@ -296,7 +302,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
     }
 
     /// EOF closure of `create_entry_l3`: `wf_mapping_4k`.
-    proof fn create_entry_l3_eof_wf_mapping_4k(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
+    proof fn create_entry_l3_eof_wf_mapping_4k(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, lo: L2Index, hi: L2Index, thread_id: LockThreadId)
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
@@ -307,7 +313,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
-            Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr),
+            Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id),
         ensures
             post.wf_mapping_4k(),
     {
@@ -316,7 +322,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
     }
 
     /// EOF closure of `create_entry_l3`: `wf_mapping_2m`.
-    proof fn create_entry_l3_eof_wf_mapping_2m(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
+    proof fn create_entry_l3_eof_wf_mapping_2m(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, lo: L2Index, hi: L2Index, thread_id: LockThreadId)
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
@@ -327,7 +333,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
-            Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr),
+            Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id),
         ensures
             post.wf_mapping_2m(),
     {
@@ -336,7 +342,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
     }
 
     /// EOF closure of `create_entry_l3`: `tables_reachable_wf`.
-    proof fn create_entry_l3_eof_tables_reachable_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
+    proof fn create_entry_l3_eof_tables_reachable_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, lo: L2Index, hi: L2Index, thread_id: LockThreadId)
         requires
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
@@ -347,7 +353,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
-            Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr),
+            Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id),
         ensures
             post.tables_reachable_wf(),
     {
@@ -357,8 +363,11 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
 
     /// EOF closure of `create_entry_l3`: the `locked_windows` half of `wf_window_locks`. Proved apart from the lock-bit half:
     /// one query over both halves costs several times the two separate ones.
-    proof fn create_entry_l3_eof_wf_window_locks_va(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
+    proof fn create_entry_l3_eof_wf_window_locks_va(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, lo: L2Index, hi: L2Index, thread_id: LockThreadId)
         requires
+            TABLE_TYPE == PT_TYPE,
+            KERNEL_MEM_END_L4INDEX <= target_l4i,
+            pei_valid(hi),
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
             pei_valid(target_l3i),
@@ -368,22 +377,26 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
-            Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr),
+            Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id),
         ensures
-            forall|va: VAddr| #![trigger post.lower.locked_windows.contains(va)] post.lower.locked_windows.contains(va) ==> {
-                &&& page_table_key_2m_valid::<TABLE_TYPE>(va)
-                &&& post.kernel_l4_end() <= spec_v2l4index(va)
-                &&& post.window_exists(spec_v2l4index(va), spec_v2l3index(va))
-                &&& post.lower.l2_lock_of(post.window_l2_page(spec_v2l4index(va), spec_v2l3index(va))).locked(spec_v2l2index(va))
+            forall|w: WindowVa| #![trigger post.lower.locked_windows.contains(w)] post.lower.locked_windows.contains(w) ==> {
+                &&& page_table_key_2m_valid::<TABLE_TYPE>(w.va)
+                &&& post.kernel_l4_end() <= spec_v2l4index(w.va)
+                &&& post.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
+                &&& post.lower.l2_lock_of(post.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va))).locked(spec_v2l2index(w.va))
             },
     {
         reveal(PageTableC::create_entry_l3_eof_transition_framing);
-        reveal(PageTableC::wf_window_locks); reveal(PageTableHigher::wf_l4); reveal(PageTableC::wf_l3); broadcast use spec_va_2m_valid_index_roundtrip, iova_2m_valid_index_roundtrip;
+        reveal(PageTableC::wf_window_locks); reveal(PageTableHigher::wf_l4); reveal(PageTableC::wf_l3);
+        spec_index2va_injective();
+        broadcast use spec_va_2m_valid_index_roundtrip, iova_2m_valid_index_roundtrip, spec_index2va_2m_valid;
     }
 
     /// EOF closure of `create_entry_l3`: the lock-bit half of `wf_window_locks`.
-    proof fn create_entry_l3_eof_wf_window_locks_slot(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
+    proof fn create_entry_l3_eof_wf_window_locks_slot(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, lo: L2Index, hi: L2Index, thread_id: LockThreadId)
         requires
+            TABLE_TYPE == PT_TYPE,
+            KERNEL_MEM_END_L4INDEX <= target_l4i,
             pre.wf(),
             pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
             pei_valid(target_l3i),
@@ -393,29 +406,31 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             pre.spec_resolve_mapping_1g_l3(target_l4i, target_l3i) is None,
             page_ptr_valid(page_map_ptr),
             pre.page_closure().contains(page_map_ptr) == false,
-            Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr),
+            Self::create_entry_l3_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, page_map_ptr, lo, hi, thread_id),
         ensures
             forall|p: PageMapPtr, i: L2Index| #![trigger post.lower.l2_lock_of(p).lock_state(i)] post.lower.l2_perms.dom().contains(p) && pei_valid(i) && post.lower.l2_lock_of(p).locked(i) ==> {
                 let (l4i, l3i) = post.higher.l2_rev_map.view().spec_index(p);
-                post.lower.locked_windows.contains(spec_index2va((l4i, l3i, i, 0)))
+                post.lower.locked_windows.contains(WindowVa { va: spec_index2va((l4i, l3i, i, 0)) })
             },
     {
         reveal(PageTableC::create_entry_l3_eof_transition_framing);
         reveal(PageTableC::wf_window_locks);
+        spec_index2va_injective();
+        broadcast use spec_index2va_2m_valid, spec_va_2m_valid_index_roundtrip;
     }
 
     /// EOF closure of `create_entry_l3`: `wf_window_locks` from its two halves.
     proof fn create_entry_l3_eof_wf_window_locks(post: Self)
         requires
-            forall|va: VAddr| #![trigger post.lower.locked_windows.contains(va)] post.lower.locked_windows.contains(va) ==> {
-                &&& page_table_key_2m_valid::<TABLE_TYPE>(va)
-                &&& post.kernel_l4_end() <= spec_v2l4index(va)
-                &&& post.window_exists(spec_v2l4index(va), spec_v2l3index(va))
-                &&& post.lower.l2_lock_of(post.window_l2_page(spec_v2l4index(va), spec_v2l3index(va))).locked(spec_v2l2index(va))
+            forall|w: WindowVa| #![trigger post.lower.locked_windows.contains(w)] post.lower.locked_windows.contains(w) ==> {
+                &&& page_table_key_2m_valid::<TABLE_TYPE>(w.va)
+                &&& post.kernel_l4_end() <= spec_v2l4index(w.va)
+                &&& post.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
+                &&& post.lower.l2_lock_of(post.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va))).locked(spec_v2l2index(w.va))
             },
             forall|p: PageMapPtr, i: L2Index| #![trigger post.lower.l2_lock_of(p).lock_state(i)] post.lower.l2_perms.dom().contains(p) && pei_valid(i) && post.lower.l2_lock_of(p).locked(i) ==> {
                 let (l4i, l3i) = post.higher.l2_rev_map.view().spec_index(p);
-                post.lower.locked_windows.contains(spec_index2va((l4i, l3i, i, 0)))
+                post.lower.locked_windows.contains(WindowVa { va: spec_index2va((l4i, l3i, i, 0)) })
             },
         ensures
             post.wf_window_locks(),

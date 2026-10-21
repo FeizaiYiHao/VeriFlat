@@ -43,7 +43,7 @@ impl PageTableHigher<PT_TYPE> {
         let tracked l2_lk = lower.l2_lock.tracked_borrow_mut(l3_entry.addr);
         let ret = l2_tbl.lock(Tracked(l2_lk), l2i, Tracked(&mut *lctx), Ghost(window_lock_id(root, l4i, l3i, l2i)), Ghost(window_obj_id(root, l4i, l3i, l2i)));
         proof {
-            lower.locked_windows = lower.locked_windows.insert(spec_index2va((l4i, l3i, l2i, 0)));
+            lower.locked_windows = lower.locked_windows.insert(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) });
             lock_window_eof(pre, PageTableC { higher: *self, lower: *lower }, l4i, l3i, l2i, lctx.thread_id(), ret.view().lock_id());
         }
         ret
@@ -80,7 +80,7 @@ impl PageTableHigher<PT_TYPE> {
         let tracked l2_lk = lower.l2_lock.tracked_borrow_mut(l3_entry.addr);
         l2_tbl.unlock(Tracked(l2_lk), l2i, Tracked(&mut *lctx), lp, Ghost(window_lock_id(root, l4i, l3i, l2i)), Ghost(window_obj_id(root, l4i, l3i, l2i)));
         proof {
-            lower.locked_windows = lower.locked_windows.remove(spec_index2va((l4i, l3i, l2i, 0)));
+            lower.locked_windows = lower.locked_windows.remove(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) });
             unlock_window_eof(pre, PageTableC { higher: *self, lower: *lower }, l4i, l3i, l2i);
         }
     }

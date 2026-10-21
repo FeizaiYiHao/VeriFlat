@@ -30,6 +30,7 @@ mod locker_unlocker_pagetable;
 mod locker_unlocker_pagetable_eof;
 mod locker_unlocker_pagetable_window;
 mod locker_unlocker_pagetable_window_eof;
+mod locker_unlocker_pagetable_range_windows;
 mod locker_unlocker_iommu_table;
 mod locker_unlocker_iommu_root_table;
 mod locker_unlocker_iommu_eof;

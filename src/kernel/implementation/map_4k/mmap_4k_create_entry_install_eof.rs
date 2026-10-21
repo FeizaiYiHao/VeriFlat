@@ -1,7 +1,6 @@
 use vstd::prelude::*;
 use crate::*;
 use super::mmap_4k_build_structure_spec::*;
-use super::mmap_4k_create_entry_install::MissingPageTableLevel;
 
 verus! {
 /// Retypes the staged page `page_ptr` into a page-table page of `pagetable_ptr`, adds it to the table's page closure,
@@ -27,11 +26,15 @@ pub(super) open spec fn install_staged_4k_page_table_page_eof_transition_framing
         pre.pt_mp.dom().contains(other_pagetable) && other_pagetable != pagetable_ptr ==> pagetable_c(post.pt_mp, post.pt_lower.view(), other_pagetable) == pagetable_c(pre.pt_mp, pre.pt_lower.view(), other_pagetable)
     &&& new_pt.locking_thread() == old_pt.locking_thread()
     &&& new_pt.being_killed() == old_pt.being_killed()
-    &&& new_pt.view_ghost() == post.pt_lower.view().spec_index(pagetable_ptr)
+    &&& old_pt.locking_thread() is Write ==> new_pt.view_ghost() == post.pt_lower.view().spec_index(pagetable_ptr)
+    &&& !(old_pt.locking_thread() is Write) ==> new_pt.view_ghost() == old_pt.view_ghost()
     &&& new_c.page_closure() == old_c.page_closure().insert(page_ptr)
     &&& new_c.mapping_4k() == old_c.mapping_4k()
     &&& new_c.mapping_2m() == old_c.mapping_2m()
     &&& new_c.mapping_1g() == old_c.mapping_1g()
+    &&& new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
+    &&& forall|l4i: L4Index, l3i: L3Index| #![trigger new_c.spec_resolve_mapping_l3(l4i, l3i)]
+        old_c.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && old_c.window_exists(l4i, l3i) ==> new_c.spec_resolve_mapping_l3(l4i, l3i) == old_c.spec_resolve_mapping_l3(l4i, l3i)
     &&& new_pt.view().kernel_entries == old_pt.view().kernel_entries
     &&& new_pt.view().kernel_l4_end == old_pt.view().kernel_l4_end
     &&& new_pt.view().pcid == old_pt.view().pcid
@@ -92,8 +95,9 @@ pub(super) proof fn install_staged_4k_page_table_page_eof(
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
         pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
         pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_leaves_only_when_wlocked(post.pt_mp, post.pt_lower.view()),
-        post.pt_mp.spec_index(pagetable_ptr).locking_thread() is Write,
+        pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view()),
+        pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view()),
+        post.pt_mp.spec_index(pagetable_ptr).locking_thread() is Write || post.pt_mp.spec_index(pagetable_ptr).locking_thread() is Read,
         post.pg_arr.inv(),
         post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread() is Write,
         post.thr_mp.perms_wf(),
@@ -166,6 +170,10 @@ pub(super) proof fn install_staged_4k_page_table_page_eof(
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
     };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
-    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
+    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
+        pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr); pre.default_pagetable_wf_at(pagetable_ptr);
+        broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;
+        reveal(PageTableC::wf_mapping_4k); reveal(PageTableC::wf_mapping_2m); reveal(tlb_wf_spec);
+    };
 }
 }

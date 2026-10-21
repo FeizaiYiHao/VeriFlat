@@ -317,6 +317,7 @@ impl<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, Gh
     pub open spec fn inv(&self) -> bool {
         &&& self.view().inv()
         &&& self.is_init()
+        &&& self.locking_thread() is Read ==> !self.locking_thread()->Read_reader_map.dom().is_empty()
     }
 }
 

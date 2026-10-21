@@ -2,8 +2,8 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// The cpu, its running thread, the thread's process and pagetable, and its container are
-/// write-locked.
+/// The cpu, its running thread, the thread's process, and its container are write-locked; the process's
+/// pagetable is locked in either mode.
 pub open spec fn unmap_4k_locked(u: KernelU, cpu_id: CpuId) -> bool {
     let thread_ptr = u.cpu_array[cpu_id as int].current_thread->Some_0;
     let thread = u.thread_map.spec_index(thread_ptr);
@@ -14,7 +14,7 @@ pub open spec fn unmap_4k_locked(u: KernelU, cpu_id: CpuId) -> bool {
     &&& thread.lock_state is WriteLocked
     &&& u.process_map.dom().contains(thread.owning_proc)
     &&& u.process_map.spec_index(thread.owning_proc).pagetable is Some
-    &&& u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.lock_state is WriteLocked
+    &&& !(u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.lock_state is Unlocked)
     &&& u.process_map.spec_index(thread.owning_proc).lock_state is WriteLocked
     &&& u.container_map.dom().contains(thread.owning_container)
     &&& u.container_map.spec_index(thread.owning_container).lock_state is WriteLocked

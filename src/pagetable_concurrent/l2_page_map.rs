@@ -147,7 +147,7 @@ impl L2PageMap {
         self.ar[index].store(word, Ordering::Release)
     }
 
-    /// TCB: spin until this thread owns the window lock bit of entry `index`.
+    /// TCB: spin until this thread owns the window lock bit of entry `index`; the bit is free when this thread takes it.
     #[verifier::external_body]
     pub(super) fn lock(&self, Tracked(lk): Tracked<&mut L2LockGhost>, index: usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>)
         -> (ret: Tracked<LockPerm>)
@@ -161,6 +161,7 @@ impl L2PageMap {
         ensures
             final(lk).wf(),
             final(lk).addr() == old(lk).addr(),
+            old(lk).lock_state(index) is None,
             forall|i: usize| #![trigger final(lk).lock_state(i)] pei_valid(i) && i != index ==> final(lk).lock_state(i) == old(lk).lock_state(i),
             final(lk).lock_state(index) == (SpinLockState::Some { thread_id: final(lctx).thread_id(), lock_id: ret.view().lock_id() }),
             ret.view().state() is WriteLock,
@@ -242,13 +243,19 @@ impl L2PageMap {
     }
 }
 
-/// TCB: retype a free 4K page into an all-empty, all-unlocked L2 page and mint its two ghost tokens.
+/// TCB: retype a free 4K page into an all-empty L2 page and mint its two ghost tokens. Windows `lo..=hi` start locked by this
+/// thread with the ordering ids of windows `(l4i, l3i, lo..=hi)` of `root`; every other window starts unlocked. Their lock bits
+/// are set before the page is published. No `lock_id_acyclic` is needed: the page is reachable only through the L3 entry that
+/// this thread publishes under the big write lock, so no thread can wait on these windows before that lock is downgraded.
 #[verifier::external_body]
-pub fn page_perm_to_l2_page_map(page_ptr: PagePtr, Tracked(page_perm): Tracked<PagePerm4k>)
-    -> (ret: (PageMapPtr, Tracked<PointsTo<L2PageMap>>, Tracked<L2PageGhost>, Tracked<L2LockGhost>))
+pub fn page_perm_to_l2_page_map(page_ptr: PagePtr, Tracked(page_perm): Tracked<PagePerm4k>, lo: L2Index, hi: L2Index, Tracked(lctx): Tracked<&mut LocalContext>,
+    Ghost(root): Ghost<RwLockPageTableRoot>, Ghost(l4i): Ghost<L4Index>, Ghost(l3i): Ghost<L3Index>)
+    -> (ret: (PageMapPtr, Tracked<PointsTo<L2PageMap>>, Tracked<L2PageGhost>, Tracked<L2LockGhost>, Tracked<Map<L2Index, LockPerm>>))
     requires
         page_perm.is_init(),
         page_perm.addr() == page_ptr,
+        pei_valid(lo) && pei_valid(hi) && lo <= hi,
+        old(lctx).kernel_view_locking_state() is Acquire,
     ensures
         ret.0 == page_ptr,
         ret.1.view().addr() == ret.0,
@@ -264,10 +271,33 @@ pub fn page_perm_to_l2_page_map(page_ptr: PagePtr, Tracked(page_perm): Tracked<P
             pei_valid(i) ==> ret.2.view().spec_index(i).is_empty(),
         ret.3.view().addr() == ret.0,
         ret.3.view().wf(),
-        forall|i: usize| #![trigger ret.3.view().lock_state(i)] pei_valid(i) ==> ret.3.view().lock_state(i) is None,
+        forall|i: usize| #![trigger ret.3.view().lock_state(i)] pei_valid(i) && !(lo <= i <= hi) ==> ret.3.view().lock_state(i) is None,
+        forall|i: usize| #![trigger ret.4.view().dom().contains(i)] ret.4.view().dom().contains(i) == (lo <= i <= hi),
+        forall|i: usize| #![trigger ret.4.view().index(i)] #![trigger ret.3.view().lock_state(i)] lo <= i <= hi ==> {
+            &&& ret.3.view().lock_state(i) == (SpinLockState::Some { thread_id: final(lctx).thread_id(), lock_id: ret.4.view().index(i).lock_id() })
+            &&& ret.4.view().index(i).state() is WriteLock
+            &&& ret.4.view().index(i).ordering_lock_id() == window_lock_id(root, l4i, l3i, i)
+            &&& ret.4.view().index(i).thread_id() == final(lctx).thread_id()
+        },
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() is Acquire,
+        nonwindow_typed_lock_maps_unchanged(old(lctx), final(lctx)),
+        forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger final(lctx).pagetable_window_lock_map().dom().contains((p, w))]
+            final(lctx).pagetable_window_lock_map().dom().contains((p, w)) == (old(lctx).pagetable_window_lock_map().dom().contains((p, w))
+                || (p == root && w.wf() && spec_v2l4index(w.va) == l4i && spec_v2l3index(w.va) == l3i && lo <= spec_v2l2index(w.va) <= hi)),
+        forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger final(lctx).pagetable_window_lock_map().index((p, w))]
+            old(lctx).pagetable_window_lock_map().dom().contains((p, w)) && !(p == root && w.wf() && spec_v2l4index(w.va) == l4i && spec_v2l3index(w.va) == l3i && lo <= spec_v2l2index(w.va) <= hi)
+                ==> final(lctx).pagetable_window_lock_map().index((p, w)) == old(lctx).pagetable_window_lock_map().index((p, w)),
+        forall|w: WindowVa| #![trigger final(lctx).pagetable_window_lock_map().index((root, w))]
+            w.wf() && spec_v2l4index(w.va) == l4i && spec_v2l3index(w.va) == l3i && lo <= spec_v2l2index(w.va) <= hi
+                ==> final(lctx).pagetable_window_lock_map().index((root, w)) == (TypedHeldLock { lock_id: window_lock_id_at(root, w), mode: TypedLockMode::Write }),
 {
-    unsafe { core::ptr::write_bytes(page_ptr as *mut u8, 0u8, PAGE_SZ_4K); }
-    (page_ptr, Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new())
+    unsafe {
+        core::ptr::write_bytes(page_ptr as *mut u8, 0u8, PAGE_SZ_4K);
+        core::slice::from_raw_parts_mut((page_ptr as *mut usize).add(lo), hi - lo + 1).fill(L2_ENTRY_LOCK_MASK);
+    }
+    (page_ptr, Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new())
 }
 
 /// TCB: an unlocked L2 page that its page table no longer links is an ordinary 4K page again; its bytes stay

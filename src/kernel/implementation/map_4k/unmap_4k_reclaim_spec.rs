@@ -28,6 +28,8 @@ pub open spec fn reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing(
     &&& pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).mapping_2m() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m()
     &&& pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).mapping_1g() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g()
     &&& pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).page_closure() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).page_closure()
+    &&& pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).lower.window_stale_cpus == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus
+    &&& post.pt_mp.spec_index(pagetable).view() == pre.pt_mp.spec_index(pagetable).view()
     &&& post.pt_mp.spec_index(pagetable).view().kernel_entries == pre.pt_mp.spec_index(pagetable).view().kernel_entries
     &&& post.pt_mp.spec_index(pagetable).view().kernel_l4_end == pre.pt_mp.spec_index(pagetable).view().kernel_l4_end
     &&& post.pt_mp.spec_index(pagetable).view().cr3 == pre.pt_mp.spec_index(pagetable).view().cr3
@@ -103,6 +105,5 @@ pub open spec fn reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing(
     &&& new_allocator.cpu_caches.spec_index(cpu_id).view().locking_thread() == old_allocator.cpu_caches.spec_index(cpu_id).view().locking_thread()
     &&& new_allocator.global_pool == old_allocator.global_pool
     &&& new_allocator.owning_container == old_allocator.owning_container
-    &&& pagetable_tlb_entries_present(post.cpu_tlb, post.cpu_arr, post.pcid_needflush, pagetable, pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable))
 }
 }

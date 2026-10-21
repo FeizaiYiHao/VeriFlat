@@ -8,7 +8,8 @@
 //! both domains are not covered.
 //!
 //! Output consistency: the kernel pins each syscall's result to the user state at entry
-//! (`*_syscall_result`, and `ipc_entry_result` and `ipc_reply_entry_result` for the IPC rejections), and
+//! (`*_syscall_result`, and `ipc_entry_result` and `ipc_reply_entry_result` for the IPC rejections; mmap
+//! returns the state it decided in, which on success is the state its first step starts from), and
 //! each `*_oc` lemma shows that result reads only the caller's `domain_view` plus the listed peer-side
 //! objects: whether the IPC peer or the recorded caller is killed for the entry rejections, the calling
 //! head's payload for the acceptance result, and the peer thread with the handed-over cpu or its process

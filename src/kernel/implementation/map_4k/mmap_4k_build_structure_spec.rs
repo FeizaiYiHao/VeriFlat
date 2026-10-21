@@ -1,8 +1,12 @@
 use vstd::prelude::*;
 use crate::*;
-use super::mmap_4k_create_entry_install::MissingPageTableLevel;
 
 verus! {
+/// The first absent directory entry on a 4K walk. Each variant installs exactly one already-initialized child table: L4 installs
+/// an L3 table, L3 installs an L2 table, and L2 installs the L1 table that will hold the leaf.
+#[derive(Clone, Copy)]
+pub enum MissingPageTableLevel { L4, L3, L2 }
+
 /// Directory levels are installed from L4 toward L2 for one 4K page.
 pub open spec fn mmap_4k_directory_rank(directory: Mmap4kDirectory) -> nat {
     match directory {
@@ -13,7 +17,7 @@ pub open spec fn mmap_4k_directory_rank(directory: Mmap4kDirectory) -> nat {
     }
 }
 
-pub(super) open spec fn mmap_4k_installed_directory(level: MissingPageTableLevel) -> Mmap4kDirectory {
+pub open spec fn mmap_4k_installed_directory(level: MissingPageTableLevel) -> Mmap4kDirectory {
     match level {
         MissingPageTableLevel::L4 => Mmap4kDirectory::L4,
         MissingPageTableLevel::L3 => Mmap4kDirectory::L3,
@@ -22,9 +26,9 @@ pub(super) open spec fn mmap_4k_installed_directory(level: MissingPageTableLevel
 }
 
 /// Installing a directory records its level in mmap progress and leaves other progress unchanged.
-pub(super) open spec fn mmap_4k_progress_after_directory(progress: Option<SyscallProgress>, level: MissingPageTableLevel) -> Option<SyscallProgress> {
+pub open spec fn mmap_4k_progress_after_directory(progress: Option<SyscallProgress>, level: MissingPageTableLevel) -> Option<SyscallProgress> {
     match progress {
-        Some(SyscallProgress::Mmap4k { range, mapped, directory: _ }) => Some(SyscallProgress::Mmap4k { range, mapped, directory: mmap_4k_installed_directory(level) }),
+        Some(SyscallProgress::Mmap4k { range, mapped, directory: _, phase }) => Some(SyscallProgress::Mmap4k { range, mapped, directory: mmap_4k_installed_directory(level), phase }),
         _ => progress,
     }
 }
@@ -41,7 +45,7 @@ pub open spec fn mmap_4k_quota_thread_container_compatible(k: &KernelK, lctx: &L
     }
 }
 
-/// The cpu's running thread, the cpu, and the pagetable of the thread's process are write-locked.
+/// The cpu and its running thread are write-locked, and the pagetable of the thread's process is locked.
 pub open spec fn mmap_4k_locked(u: KernelU, cpu_id: CpuId) -> bool {
     let thread_ptr = u.cpu_array[cpu_id as int].current_thread->Some_0;
     let process_ptr = u.thread_map.spec_index(thread_ptr).owning_proc;
@@ -52,7 +56,7 @@ pub open spec fn mmap_4k_locked(u: KernelU, cpu_id: CpuId) -> bool {
     &&& u.thread_map.spec_index(thread_ptr).lock_state is WriteLocked
     &&& u.process_map.dom().contains(process_ptr)
     &&& u.process_map.spec_index(process_ptr).pagetable is Some
-    &&& u.process_map.spec_index(process_ptr).pagetable->Some_0.lock_state is WriteLocked
+    &&& !(u.process_map.spec_index(process_ptr).pagetable->Some_0.lock_state is Unlocked)
 }
 
 /// A directory step starts under the three mmap locks, before the recorded range is fully mapped,
@@ -68,7 +72,8 @@ pub open spec fn mmap_4k_directory_step_pre(old_u: KernelU, cpu_id: CpuId) -> bo
     &&& thread.quota_4k >= 1
 }
 
-/// A directory page consumes one 4K quota and records a deeper installed level.
+/// A directory page consumes one 4K quota and records its level in the same phase: an L4 or L3 directory
+/// while filling, and a deeper level than the last recorded one otherwise.
 #[verifier::opaque]
 pub open spec fn mmap_4k_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
@@ -79,7 +84,9 @@ pub open spec fn mmap_4k_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: 
     &&& new_progress is Mmap4k
     &&& new_progress->Mmap4k_range == progress->Mmap4k_range
     &&& new_progress->Mmap4k_mapped == progress->Mmap4k_mapped
-    &&& mmap_4k_directory_rank(progress->Mmap4k_directory) < mmap_4k_directory_rank(new_progress->Mmap4k_directory)
+    &&& new_progress->Mmap4k_phase == progress->Mmap4k_phase
+    &&& progress->Mmap4k_phase is Fill ==> new_progress->Mmap4k_directory is L4 || new_progress->Mmap4k_directory is L3
+    &&& !(progress->Mmap4k_phase is Fill) ==> mmap_4k_directory_rank(progress->Mmap4k_directory) < mmap_4k_directory_rank(new_progress->Mmap4k_directory)
     &&& new_u == (KernelU { thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { quota_4k: (thread.quota_4k - 1) as usize, syscall_progress: Some(new_progress), ..thread }), ..old_u })
 }
 } // verus!

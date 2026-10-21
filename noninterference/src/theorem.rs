@@ -16,7 +16,7 @@ use veriflat_syscall_unmap_4k::syscall_unmap_4k::syscall_unmap_4k_spec::*;
 verus! {
 /// One step of a syscall, with the arguments its step specification takes.
 pub ghost enum StepLabel {
-    Mmap4kEnter { range: VaRange4K }, Mmap4kDirectory, Mmap4kLeaf, Mmap4kExit,
+    Mmap4kEnter { range: VaRange4K, phase: Mmap4kPhase }, Mmap4kDirectory, Mmap4kDowngrade, Mmap4kLeaf, Mmap4kExit,
     Unmap4kEnter { range: VaRange4K }, Unmap4kLeaf { va: VAddr }, Unmap4kTlbCleared { pcid: Pcid }, Unmap4kFlushed, Unmap4kRefund, Unmap4kExit,
     AllocQuota4k { alloc_amount: usize }, AllocThreadQuota4k { alloc_amount: usize },
     AllocQuota2m { alloc_amount: usize }, AllocThreadQuota2m { alloc_amount: usize },
@@ -34,15 +34,16 @@ pub ghost enum StepLabel {
     IpcCallHandoff { channel_index: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid> }, IpcAcceptCall { channel_index: EndpointIdx },
     IpcReplyHandoff { channel_index: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid> },
     IpcEndpointTransit { channel_index: EndpointIdx, waiting_state: ThreadState, payload_index: EndpointIdx }, IpcEndpointFinish,
-    IpcPagesEnter { channel_index: EndpointIdx, waiting_state: ThreadState, range: VaRange4K }, IpcPagesLockTables, IpcPagesCheck, IpcPagesUnlockTables,
-    IpcPagesFinish,
+    IpcPagesEnter { channel_index: EndpointIdx, waiting_state: ThreadState, range: VaRange4K }, IpcPagesLockTables { tables: IpcPagesTables },
+    IpcPagesCheck, IpcPagesDowngrade, IpcPagesUnlockTables, IpcPagesFinish,
 }
 
 /// `new_u` follows `old_u` by the step `label` on cpu `cpu_id`.
 pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     match label {
-        StepLabel::Mmap4kEnter { range } => mmap_4k_enter_step_pre(old_u, cpu_id, range) && mmap_4k_enter_step(old_u, new_u, cpu_id, range),
+        StepLabel::Mmap4kEnter { range, phase } => mmap_4k_enter_step_pre(old_u, cpu_id, range, phase) && mmap_4k_enter_step(old_u, new_u, cpu_id, range, phase),
         StepLabel::Mmap4kDirectory => mmap_4k_directory_step_pre(old_u, cpu_id) && mmap_4k_directory_step(old_u, new_u, cpu_id),
+        StepLabel::Mmap4kDowngrade => mmap_4k_downgrade_step_pre(old_u, cpu_id) && mmap_4k_downgrade_step(old_u, new_u, cpu_id),
         StepLabel::Mmap4kLeaf => mmap_4k_leaf_step_pre(old_u, cpu_id) && mmap_4k_leaf_step(old_u, new_u, cpu_id),
         StepLabel::Mmap4kExit => mmap_4k_exit_step_pre(old_u, cpu_id) && mmap_4k_exit_step(old_u, new_u, cpu_id),
         StepLabel::Unmap4kEnter { range } => unmap_4k_enter_step_pre(old_u, cpu_id, range) && unmap_4k_enter_step(old_u, new_u, cpu_id, range),
@@ -96,8 +97,9 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
         StepLabel::IpcEndpointFinish => ipc_endpoint_finish_step_pre(old_u, cpu_id) && ipc_endpoint_finish_step(old_u, new_u, cpu_id),
         StepLabel::IpcPagesEnter { channel_index, waiting_state, range } => ipc_pages_enter_step_pre(old_u, cpu_id, channel_index, waiting_state, range)
             && ipc_pages_enter_step(old_u, new_u, cpu_id, channel_index, waiting_state, range),
-        StepLabel::IpcPagesLockTables => ipc_pages_lock_tables_step_pre(old_u, cpu_id) && ipc_pages_lock_tables_step(old_u, new_u, cpu_id),
+        StepLabel::IpcPagesLockTables { tables } => ipc_pages_lock_tables_step_pre(old_u, cpu_id, tables) && ipc_pages_lock_tables_step(old_u, new_u, cpu_id, tables),
         StepLabel::IpcPagesCheck => ipc_pages_check_step_pre(old_u, cpu_id) && ipc_pages_check_step(old_u, new_u, cpu_id),
+        StepLabel::IpcPagesDowngrade => ipc_pages_downgrade_step_pre(old_u, cpu_id) && ipc_pages_downgrade_step(old_u, new_u, cpu_id),
         StepLabel::IpcPagesUnlockTables => ipc_pages_unlock_tables_step_pre(old_u, cpu_id) && ipc_pages_unlock_tables_step(old_u, new_u, cpu_id),
         StepLabel::IpcPagesFinish => ipc_pages_finish_step_pre(old_u, cpu_id) && ipc_pages_finish_step(old_u, new_u, cpu_id),
     }
@@ -165,8 +167,9 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
         trace_ni_at(us, labels, cpus, steppers, a, b, m, i);
         if x != a { isolated_symmetric(old_u, a, b); }
         match labels[i] {
-            StepLabel::Mmap4kEnter { range } => { mmap_4k_enter_step_lr(old_u, new_u, cpu_id, range, x, y); mmap_4k_enter_step_iso(old_u, new_u, cpu_id, range, x, y); },
+            StepLabel::Mmap4kEnter { range, phase } => { mmap_4k_enter_step_lr(old_u, new_u, cpu_id, range, phase, x, y); mmap_4k_enter_step_iso(old_u, new_u, cpu_id, range, phase, x, y); },
             StepLabel::Mmap4kDirectory => { mmap_4k_directory_step_lr(old_u, new_u, cpu_id, x, y); mmap_4k_directory_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::Mmap4kDowngrade => { mmap_4k_downgrade_step_lr(old_u, new_u, cpu_id, x, y); mmap_4k_downgrade_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::Mmap4kLeaf => { mmap_4k_leaf_step_lr(old_u, new_u, cpu_id, x, y); mmap_4k_leaf_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::Mmap4kExit => { mmap_4k_exit_step_lr(old_u, new_u, cpu_id, x, y); mmap_4k_exit_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::Unmap4kEnter { range } => { unmap_4k_enter_step_lr(old_u, new_u, cpu_id, range, x, y); unmap_4k_enter_step_iso(old_u, new_u, cpu_id, range, x, y); },
@@ -232,8 +235,9 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
                 ipc_pages_enter_step_lr(old_u, new_u, cpu_id, channel_index, waiting_state, range, x, y);
                 ipc_pages_enter_step_iso(old_u, new_u, cpu_id, channel_index, waiting_state, range, x, y);
             },
-            StepLabel::IpcPagesLockTables => { ipc_pages_lock_tables_step_lr(old_u, new_u, cpu_id, x, y); ipc_pages_lock_tables_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::IpcPagesLockTables { tables } => { ipc_pages_lock_tables_step_lr(old_u, new_u, cpu_id, tables, x, y); ipc_pages_lock_tables_step_iso(old_u, new_u, cpu_id, tables, x, y); },
             StepLabel::IpcPagesCheck => { ipc_pages_check_step_lr(old_u, new_u, cpu_id, x, y); ipc_pages_check_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::IpcPagesDowngrade => { ipc_pages_downgrade_step_lr(old_u, new_u, cpu_id, x, y); ipc_pages_downgrade_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::IpcPagesUnlockTables => { ipc_pages_unlock_tables_step_lr(old_u, new_u, cpu_id, x, y); ipc_pages_unlock_tables_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::IpcPagesFinish => { ipc_pages_finish_step_lr(old_u, new_u, cpu_id, x, y); ipc_pages_finish_step_iso(old_u, new_u, cpu_id, x, y); },
         }

@@ -243,6 +243,7 @@ pub(super) proof fn reclaim_last_4k_mapping_to_cpu_cache_eof(
             &&& pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom().contains(va)
             &&& !pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).present
             &&& pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr == page_ptr
+            &&& !pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus.dom().contains((pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va)))
             &&& page_ptr_valid(page_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
@@ -264,7 +265,8 @@ pub(super) proof fn reclaim_last_4k_mapping_to_cpu_cache_eof(
         pagetable_perms_wf(post.pt_mp),
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
         pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_leaves_only_when_wlocked(post.pt_mp, post.pt_lower.view()),
+        pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view()),
+        pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view()),
         pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()),
         post.pg_arr.inv(),
         post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().inv(),
@@ -291,7 +293,8 @@ pub(super) proof fn reclaim_last_4k_mapping_to_cpu_cache_eof(
         post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } }),
         post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread() == pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread(),
         post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().being_killed() == pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().being_killed(),
-        pagetable_tlb_entries_present(post.cpu_tlb, post.cpu_arr, post.pcid_needflush, pagetable, pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable)),
+        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).lower.window_stale_cpus == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus,
+        post.pt_mp.spec_index(pagetable).view() == pre.pt_mp.spec_index(pagetable).view(),
         new_counter == old_counter + 1,
         post.thr_mp.spec_index(thread_ptr).view().free_quota_pending_4k_at_depth(depth) == new_counter,
         post.thr_mp.spec_index(thread_ptr).locking_thread() == pre.thr_mp.spec_index(thread_ptr).locking_thread(),

@@ -45,7 +45,8 @@ pub open spec fn new_container_syscall_result(
 /// range whose every page the process maps; `process_quota <= funding`, and the thread's quotas pay
 /// for the child's pages, `funding`, and three directory pages per shared page; `transfer_cpu` is an
 /// Off cpu of the container; a present `endpoint_index` names a live descriptor. The cpu, the container
-/// and its cpu set, the process and its page table, the thread, and that endpoint are unlocked.
+/// and its cpu set, the process, the thread, and that endpoint are unlocked, and the page table is not
+/// write-locked.
 #[verifier::opaque]
 pub open spec fn new_container_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, endpoint_index: Option<EndpointIdx>) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -73,7 +74,7 @@ pub open spec fn new_container_enter_step_pre(old_u: KernelU, cpu_id: CpuId, ran
     &&& process.lock_state is Unlocked
     &&& !process.killed
     &&& process.pagetable is Some
-    &&& pagetable.lock_state is Unlocked
+    &&& !(pagetable.lock_state is WriteLocked)
     &&& range.wf()
     &&& 0 < range.len <= (usize::MAX - 9) / 3
     &&& user_va_range(old_u, range)
@@ -92,8 +93,9 @@ pub open spec fn new_container_enter_step_pre(old_u: KernelU, cpu_id: CpuId, ran
     }
 }
 
-/// Entering write-locks the cpu, the container and its cpu set, the process and its page table, the
-/// thread, and the endpoint at `endpoint_index`, and records the call's arguments in the thread's progress.
+/// Entering write-locks the cpu, the container and its cpu set, the process, the thread, and the endpoint
+/// at `endpoint_index`, read-locks the process's page table, and records the call's arguments in the
+/// thread's progress.
 #[verifier::opaque]
 pub open spec fn new_container_enter_step(
     old_u: KernelU, new_u: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, endpoint_index: Option<EndpointIdx>,
@@ -106,7 +108,7 @@ pub open spec fn new_container_enter_step(
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..cpu }),
         container_map: old_u.container_map.insert(thread.owning_container, ContainerU { lock_state: LockStateU::WriteLocked, cpu_set_lock: LockStateU::WriteLocked, ..old_u.container_map[thread.owning_container] }),
-        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { lock_state: LockStateU::WriteLocked, pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..process.pagetable->Some_0 }), ..process }),
+        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { lock_state: LockStateU::WriteLocked, pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..process.pagetable->Some_0 }), ..process }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(progress), ..thread }),
         endpoint_map: match endpoint_index {
             Some(i) => old_u.endpoint_map.insert(thread.endpoint_descriptors[i as int]->Some_0, EndpointU { lock_state: LockStateU::WriteLocked, ..old_u.endpoint_map[thread.endpoint_descriptors[i as int]->Some_0] }),
@@ -117,8 +119,8 @@ pub open spec fn new_container_enter_step(
 }
 
 /// Publication runs while the running thread records a container creation and holds the cpu, its
-/// container and that container's cpu set, its process and that process's page table, and itself; the
-/// recorded transfer cpu is an unlocked Off cpu of the container.
+/// container and that container's cpu set, its process, a read lock on that process's page table, and
+/// itself; the recorded transfer cpu is an unlocked Off cpu of the container.
 #[verifier::opaque]
 pub open spec fn new_container_publish_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -139,7 +141,7 @@ pub open spec fn new_container_publish_step_pre(old_u: KernelU, cpu_id: CpuId) -
     &&& old_u.process_map.dom().contains(thread.owning_proc)
     &&& process.lock_state is WriteLocked
     &&& process.pagetable is Some
-    &&& process.pagetable->Some_0.lock_state is WriteLocked
+    &&& process.pagetable->Some_0.lock_state is ReadLocked
     &&& index_valid(NUM_CPUS, transfer_cpu)
     &&& transfer.lock_state is Unlocked
     &&& transfer.state is Off
@@ -164,8 +166,8 @@ pub open spec fn new_container_publish_step(old_u: KernelU, new_u: KernelU, cpu_
 
 /// Finishing runs after the whole recorded range has been shared into the root process of the recorded
 /// child of the thread's container, while the running thread holds the cpu, its container and the child
-/// container, its process and the root process with their page tables, itself, and the endpoint at the
-/// recorded valid descriptor index.
+/// container, its process with a read lock on its page table, the root process with its page table,
+/// itself, and the endpoint at the recorded valid descriptor index.
 #[verifier::opaque]
 pub open spec fn new_container_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -193,7 +195,7 @@ pub open spec fn new_container_finish_step_pre(old_u: KernelU, cpu_id: CpuId) ->
     &&& old_u.process_map.dom().contains(thread.owning_proc)
     &&& parent.lock_state is WriteLocked
     &&& parent.pagetable is Some
-    &&& parent.pagetable->Some_0.lock_state is WriteLocked
+    &&& parent.pagetable->Some_0.lock_state is ReadLocked
     &&& old_u.process_map.dom().contains(old_u.container_map[child].root_process)
     &&& root.lock_state is WriteLocked
     &&& root.pagetable is Some
@@ -207,7 +209,8 @@ pub open spec fn new_container_finish_step_pre(old_u: KernelU, cpu_id: CpuId) ->
 }
 
 /// The last step creates the root process's first thread with the recorded registers and endpoint,
-/// clears the caller's progress, and releases every retained observable lock.
+/// clears the caller's progress, and releases every retained observable lock; other readers may still
+/// hold the parent's page table.
 #[verifier::opaque]
 pub open spec fn new_container_finish_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -219,11 +222,13 @@ pub open spec fn new_container_finish_step(old_u: KernelU, new_u: KernelU, cpu_i
     let parent = thread.owning_proc;
     let root = old_u.container_map[child].root_process;
     let endpoint = match origin->NewContainer_0.endpoint_index { Some(i) => thread.endpoint_descriptors[i as int], None => None };
-    kernel_u_new_thread_changed(KernelU {
+    let table_lock = new_u.process_map[parent].pagetable->Some_0.lock_state;
+    &&& table_lock is Unlocked || table_lock is ReadLocked
+    &&& kernel_u_new_thread_changed(KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..cpu }),
         container_map: old_u.container_map.insert(container, ContainerU { lock_state: LockStateU::Unlocked, ..old_u.container_map[container] }).insert(child, ContainerU { lock_state: LockStateU::Unlocked, ..old_u.container_map[child] }),
         process_map: old_u.process_map.insert(parent, ProcessU { lock_state: LockStateU::Unlocked,
-            pagetable: Some(PageTableU { lock_state: LockStateU::Unlocked, ..old_u.process_map[parent].pagetable->Some_0 }), ..old_u.process_map[parent]
+            pagetable: Some(PageTableU { lock_state: table_lock, ..old_u.process_map[parent].pagetable->Some_0 }), ..old_u.process_map[parent]
         }).insert(root, ProcessU { lock_state: LockStateU::Unlocked,
             pagetable: Some(PageTableU { lock_state: LockStateU::Unlocked, ..old_u.process_map[root].pagetable->Some_0 }), ..old_u.process_map[root]
         }),

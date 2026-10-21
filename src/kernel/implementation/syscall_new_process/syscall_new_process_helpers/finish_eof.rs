@@ -12,9 +12,14 @@ pub(super) open spec fn create_initial_thread_and_finish_new_process_eof_transit
 ) -> bool {
     &&& kernel_new_thread_fields(&pre, &mid, child_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, None,
         pre.thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view())
-    &&& post == (KernelK { it_mp: post.it_mp, prc_mp: post.prc_mp, pt_mp: post.pt_mp, pg_arr: post.pg_arr, sched_mp: post.sched_mp, thr_mp: post.thr_mp, ep_mp: post.ep_mp, cpu_arr: post.cpu_arr, ..mid })
+    &&& post == (KernelK { it_mp: post.it_mp, prc_mp: post.prc_mp, pt_mp: post.pt_mp, pt_lower: post.pt_lower, pg_arr: post.pg_arr, sched_mp: post.sched_mp, thr_mp: post.thr_mp, ep_mp: post.ep_mp,
+        cpu_arr: post.cpu_arr, ..mid })
     &&& post.pt_mp.dom() == mid.pt_mp.dom()
-    &&& forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)] mid.pt_mp.dom().contains(p) ==> pagetable_c(post.pt_mp, post.pt_lower.view(), p) == pagetable_c(mid.pt_mp, mid.pt_lower.view(), p)
+    &&& forall|p: RwLockPageTableRoot| #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), p)] mid.pt_mp.dom().contains(p) ==> {
+            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).mapping_4k() == pagetable_c(mid.pt_mp, mid.pt_lower.view(), p).mapping_4k()
+            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).mapping_2m() == pagetable_c(mid.pt_mp, mid.pt_lower.view(), p).mapping_2m()
+            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).mapping_1g() == pagetable_c(mid.pt_mp, mid.pt_lower.view(), p).mapping_1g()
+        }
     &&& post.it_mp.dom() == mid.it_mp.dom()
     &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)] mid.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).view() == mid.it_mp.spec_index(p).view()
     &&& kernel_cpu_nonlock_fields_unchanged(mid.cpu_arr, post.cpu_arr)

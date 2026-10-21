@@ -524,7 +524,7 @@ extern "C" fn syscall_dispatch(regs: &mut Registers) {
         vsys::NR_THREAD_EXIT => syscall_thread_exit(k, t!(), t!(), cpu_id),
         vsys::NR_KILL_PROCESS => syscall_kill_process(k, t!(), t!(), cpu_id, a1),
         vsys::NR_KILL_CONTAINER => syscall_kill_container(k, t!(), t!(), cpu_id, a1),
-        vsys::NR_MMAP_4K => syscall_mmap_4k(k, t!(), t!(), cpu_id, a1, a2),
+        vsys::NR_MMAP_4K => syscall_mmap_4k(k, t!(), t!(), cpu_id, a1, a2).0,
         vsys::NR_UNMAP_4K => syscall_unmap_4k(k, t!(), t!(), cpu_id, a1, a2),
         vsys::NR_NEW_PROCESS => {
             require!(user_ip_ok(a3));

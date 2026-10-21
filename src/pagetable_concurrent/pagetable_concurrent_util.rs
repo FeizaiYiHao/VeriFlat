@@ -220,7 +220,7 @@ impl<const TABLE_TYPE: PTType> PageTableLower<TABLE_TYPE> {
     pub open spec fn spec_empty() -> Self {
         PageTableLower {
             l2_perms: Map::empty(), l2_ghost: Map::empty(), l2_lock: Map::empty(), l1_rev_map: Map::empty(), l1_tables: Map::empty(),
-            mapping_4k: Map::empty(), mapping_2m: Map::empty(), locked_windows: Set::empty(),
+            mapping_4k: Map::empty(), mapping_2m: Map::empty(), locked_windows: Set::empty(), window_stale_cpus: Map::empty(),
         }
     }
 
@@ -234,13 +234,13 @@ impl<const TABLE_TYPE: PTType> PageTableLower<TABLE_TYPE> {
             ret.l1_tables.dom() == Set::<PageMapPtr>::empty(),
             ret.mapping_4k == Map::<VAddr, MapEntry>::empty(),
             ret.mapping_2m == Map::<VAddr, MapEntry>::empty(),
-            ret.locked_windows == Set::<VAddr>::empty(),
+            ret.locked_windows == Set::<WindowVa>::empty(),
             ret == Self::spec_empty(),
             (PageTableC { higher, lower: ret }).wf(),
     {
         let tracked ret = PageTableLower {
             l2_perms: Map::tracked_empty(), l2_ghost: Map::tracked_empty(), l2_lock: Map::tracked_empty(), l1_rev_map: Map::empty(), l1_tables: Map::tracked_empty(),
-            mapping_4k: Map::empty(), mapping_2m: Map::empty(), locked_windows: Set::empty(),
+            mapping_4k: Map::empty(), mapping_2m: Map::empty(), locked_windows: Set::empty(), window_stale_cpus: Map::empty(),
         };
         let c = PageTableC { higher, lower: ret };
         assert(c.wf_l3()) by { reveal(PageTableC::wf_l3); };

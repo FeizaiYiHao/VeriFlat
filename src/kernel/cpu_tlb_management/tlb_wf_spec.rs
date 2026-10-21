@@ -54,6 +54,28 @@ verus! {
         &&& forall|va: VAddr| #![trigger cpu_tlb.tlb_1g().spec_index(va)] #![trigger pagetable.mapping_1g().spec_index(va)] cpu_tlb.tlb_1g().dom().contains(va) ==> pagetable.mapping_1g().spec_index(va).present
     }
 
+    /// TLB `cpu_id` keeps a 4K or 2M translation the table no longer shows only while `cpu_id` is listed stale for that
+    /// translation's 2M window; it keeps no hidden 1G translation.
+    pub open spec fn single_tlb_present_or_stale(cpu_tlb: SingleTLB, pagetable: PageTableC<PT_TYPE>, cpu_id: CpuId) -> bool {
+        &&& forall|va: VAddr|
+            #![trigger cpu_tlb.tlb_4k().spec_index(va)]
+            #![trigger pagetable.mapping_4k().spec_index(va)]
+            cpu_tlb.tlb_4k().dom().contains(va) && !pagetable.mapping_4k().spec_index(va).present ==> {
+                let key = (pagetable.window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va));
+                &&& pagetable.lower.window_stale_cpus.dom().contains(key)
+                &&& pagetable.lower.window_stale_cpus.spec_index(key).contains(cpu_id)
+            }
+        &&& forall|va: VAddr|
+            #![trigger cpu_tlb.tlb_2m().spec_index(va)]
+            #![trigger pagetable.mapping_2m().spec_index(va)]
+            cpu_tlb.tlb_2m().dom().contains(va) && !pagetable.mapping_2m().spec_index(va).present ==> {
+                let key = (pagetable.window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va));
+                &&& pagetable.lower.window_stale_cpus.dom().contains(key)
+                &&& pagetable.lower.window_stale_cpus.spec_index(key).contains(cpu_id)
+            }
+        &&& forall|va: VAddr| #![trigger cpu_tlb.tlb_1g().spec_index(va)] #![trigger pagetable.mapping_1g().spec_index(va)] cpu_tlb.tlb_1g().dom().contains(va) ==> pagetable.mapping_1g().spec_index(va).present
+    }
+
     /// Unlock obligation over all non-exempt CPU/PCID associations of this table.
     pub open spec fn pagetable_tlb_entries_present(cpu_tlb: CpuTLB, cpu_array: CpuLockedArray, needflush: PcidNeedFlushArray, pagetable_ptr: RwLockPageTableRoot, pagetable: PageTableC<PT_TYPE>) -> bool {
         forall|cpu_id: CpuId, pcid: Pcid|
@@ -64,7 +86,7 @@ verus! {
                 ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(cpu_tlb.spec_index((cpu_id, pcid)), pagetable)
     }
 
-    /// Non-present backing mappings require the page-table write lock.
+    /// A TLB keeps a backing mapping the table hides only while its CPU is listed stale for that mapping's 2M window.
     /// Inactive, marked PCIDs remain exempt until their next activation flush.
     #[verifier::opaque]
     pub open spec fn tlb_wf_spec(cpu_tlb: CpuTLB, pagetable_map: PageTableLockedMap, pt_lower: PageTableLowerMap, cpu_array: CpuLockedArray, needflush: PcidNeedFlushArray) -> bool {
@@ -76,7 +98,7 @@ verus! {
                 &&& dirty_entry is Some
                 &&& pagetable_map.dom().contains(dirty_entry.unwrap().pagetable_ptr)
                 &&& single_tlb_subset_of_pagetable_c(cpu_tlb.spec_index((cpu_id, pcid)), pagetable_c(pagetable_map, pt_lower, dirty_entry.unwrap().pagetable_ptr))
-                &&& !pagetable_map.spec_index(dirty_entry.unwrap().pagetable_ptr).wlocked() ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(cpu_tlb.spec_index((cpu_id, pcid)), pagetable_c(pagetable_map, pt_lower, dirty_entry.unwrap().pagetable_ptr))
+                &&& single_tlb_present_or_stale(cpu_tlb.spec_index((cpu_id, pcid)), pagetable_c(pagetable_map, pt_lower, dirty_entry.unwrap().pagetable_ptr), cpu_id)
             }
     }
 

@@ -154,6 +154,8 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(self).pcid == old(self).pcid,
             final(self).proc_ptr == old(self).proc_ptr,
             final(lower).locked_windows == old(lower).locked_windows,
+            scan is L2 ==> final(lower).window_stale_cpus == old(lower).window_stale_cpus.filter_keys(|k: (PageMapPtr, L2Index)| k.0 != scan->L2_l2_p),
+            !(scan is L2) ==> final(lower).window_stale_cpus == old(lower).window_stale_cpus,
             scan is L1 ==> *final(self) == *old(self),
             scan is L1 ==> final(lower).l2_lock == old(lower).l2_lock,
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|

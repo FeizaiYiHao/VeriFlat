@@ -5,8 +5,8 @@ use super::share_mapping_4k::share_mapping_4k_leaf_owner_compatible;
 
 verus! {
 /// Copies the source 4K leaf `source_va` into `target_pagetable` at `target_va` and records `(target_pagetable, target_va)` on
-/// the shared page `page_index`; the write-held target keeps its higher half and backs up the new lower half; every other
-/// kernel field is unchanged.
+/// the shared page `page_index`; the target, held in either mode, keeps its higher half and stale-CPU ledger, a write-held
+/// target backs up the new lower half; every other kernel field is unchanged.
 #[verifier::opaque]
 pub(super) open spec fn share_one_mapping_4k_eof_transition_framing(
     pre: KernelK, post: KernelK, page_index: PageIndex, source_pagetable: RwLockPageTableRoot, source_va: VAddr, target_pagetable: RwLockPageTableRoot, target_va: VAddr,
@@ -23,11 +23,13 @@ pub(super) open spec fn share_one_mapping_4k_eof_transition_framing(
     &&& post.pt_mp.spec_index(target_pagetable).locking_thread() == pre.pt_mp.spec_index(target_pagetable).locking_thread()
     &&& post.pt_mp.spec_index(target_pagetable).being_killed() == pre.pt_mp.spec_index(target_pagetable).being_killed()
     &&& post.pt_mp.spec_index(target_pagetable).view() == pre.pt_mp.spec_index(target_pagetable).view()
-    &&& post.pt_mp.spec_index(target_pagetable).view_ghost() == post.pt_lower.view().spec_index(target_pagetable)
+    &&& post.pt_mp.spec_index(target_pagetable).view_ghost()
+        == if pre.pt_mp.spec_index(target_pagetable).wlocked() { post.pt_lower.view().spec_index(target_pagetable) } else { pre.pt_mp.spec_index(target_pagetable).view_ghost() }
     &&& new_pt.mapping_4k() == old_pt.mapping_4k().insert(target_va, pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_va))
     &&& new_pt.mapping_2m() == old_pt.mapping_2m()
     &&& new_pt.mapping_1g() == old_pt.mapping_1g()
     &&& new_pt.page_closure() == old_pt.page_closure()
+    &&& new_pt.lower.window_stale_cpus == old_pt.lower.window_stale_cpus
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, page_index)
     &&& new_page.locking_thread() == old_page.locking_thread()
     &&& new_page.being_killed() == old_page.being_killed()
@@ -75,7 +77,8 @@ pub(super) proof fn share_one_mapping_4k_eof(
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
         pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
         pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_leaves_only_when_wlocked(post.pt_mp, post.pt_lower.view()),
+        pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view()),
+        pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view()),
         page_array_wf(post.pg_arr),
         hugepage_2m_wf(post.pg_arr),
         hugepage_1g_wf(post.pg_arr),

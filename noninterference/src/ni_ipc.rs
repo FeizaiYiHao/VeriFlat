@@ -235,24 +235,24 @@ pub proof fn ipc_pages_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cp
 { reveal(ipc_pages_enter_step_pre); reveal(ipc_rendezvous_step_pre); reveal(ipc_step_pre); reveal(ipc_pages_enter_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }
 
 /// Locking the page tables of a pages rendezvous on a cpu of `a` locks tables of `a` and of its peer outside `b`.
-pub proof fn ipc_pages_lock_tables_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_pages_lock_tables_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, tables: IpcPagesTables, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_pages_lock_tables_step_pre(old_u, cpu_id),
-        ipc_pages_lock_tables_step(old_u, new_u, cpu_id),
+        ipc_pages_lock_tables_step_pre(old_u, cpu_id, tables),
+        ipc_pages_lock_tables_step(old_u, new_u, cpu_id, tables),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 { reveal(ipc_pages_lock_tables_step_pre); reveal(ipc_pages_lock_tables_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
 
 /// The step of `ipc_pages_lock_tables_step_lr` preserves isolation.
-pub proof fn ipc_pages_lock_tables_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_pages_lock_tables_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, tables: IpcPagesTables, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_pages_lock_tables_step_pre(old_u, cpu_id),
-        ipc_pages_lock_tables_step(old_u, new_u, cpu_id),
+        ipc_pages_lock_tables_step_pre(old_u, cpu_id, tables),
+        ipc_pages_lock_tables_step(old_u, new_u, cpu_id, tables),
     ensures isolated(new_u, a, b),
 { reveal(ipc_pages_lock_tables_step_pre); reveal(ipc_pages_lock_tables_step); reveal(kernel_u_thread_ownership_wf); }
 
@@ -278,6 +278,29 @@ pub proof fn ipc_pages_check_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cp
         ipc_pages_check_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 { reveal(ipc_pages_check_step_pre); reveal(ipc_pages_check_step); reveal(kernel_u_cpu_ownership_wf); }
+
+/// Downgrading the receiver's page table of a pages rendezvous on a cpu of `a` read-locks a table of `a` or of
+/// its peer outside `b`.
+pub proof fn ipc_pages_downgrade_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+    requires
+        kernel_u_ownership_wf(old_u),
+        isolated(old_u, a, b),
+        steps_in_domain(old_u, cpu_id, a),
+        ipc_pages_downgrade_step_pre(old_u, cpu_id),
+        ipc_pages_downgrade_step(old_u, new_u, cpu_id),
+    ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
+{ reveal(ipc_pages_downgrade_step_pre); reveal(ipc_pages_downgrade_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
+
+/// The step of `ipc_pages_downgrade_step_lr` preserves isolation.
+pub proof fn ipc_pages_downgrade_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+    requires
+        kernel_u_ownership_wf(old_u),
+        isolated(old_u, a, b),
+        steps_in_domain(old_u, cpu_id, a),
+        ipc_pages_downgrade_step_pre(old_u, cpu_id),
+        ipc_pages_downgrade_step(old_u, new_u, cpu_id),
+    ensures isolated(new_u, a, b),
+{ reveal(ipc_pages_downgrade_step_pre); reveal(ipc_pages_downgrade_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
 
 /// Unlocking the page tables of a shared pages rendezvous on a cpu of `a` unlocks tables of `a` and of its
 /// peer outside `b`.

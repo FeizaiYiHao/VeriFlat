@@ -45,6 +45,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(lower).l2_perms == old(lower).l2_perms,
             final(lower).l2_lock == old(lower).l2_lock,
             final(lower).locked_windows == old(lower).locked_windows,
+            final(lower).window_stale_cpus == old(lower).window_stale_cpus,
     {
         proof {
             let c = PageTableC { higher: *self, lower: *lower };
@@ -98,6 +99,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(lower).l2_perms == old(lower).l2_perms,
             final(lower).l2_lock == old(lower).l2_lock,
             final(lower).locked_windows == old(lower).locked_windows,
+            final(lower).window_stale_cpus == old(lower).window_stale_cpus,
     {
         proof {
             let c = PageTableC { higher: *self, lower: *lower };

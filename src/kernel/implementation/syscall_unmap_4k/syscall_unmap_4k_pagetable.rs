@@ -6,8 +6,9 @@ use super::syscall_unmap_4k_helpers::unmap_4k_unmap_and_finish;
 
 verus! {
 /// With cpu `cpu_id`, its container, process, and running thread write-held since the entry snapshot `entry_lctx` was
-/// aligned with: write-locks the process pagetable and unmaps the range when every page of it is a present user 4K leaf;
-/// otherwise releases all five locks with no step and returns Error.
+/// aligned with: read-locks the process pagetable, locks the 2M windows of the range whose L3 entry links an L2 page, and
+/// unmaps the range when every page of it is a present user 4K leaf; otherwise releases every lock with no step and returns
+/// Error.
 pub(super) fn unmap_4k_lock_pagetable_and_unmap(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, range: usize,
     container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, Ghost(entry_lctx): Ghost<LocalContext>,
@@ -96,11 +97,20 @@ pub(super) fn unmap_4k_lock_pagetable_and_unmap(
         ret is Success ==> {
             let process = old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap();
             let pt = old(steps).snapshot_k().prc_mp.spec_index(process).view().pagetable;
+            let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
             &&& range > 0
             &&& va_4k_range_valid(va, range)
             &&& final(krnl).pt_mp.dom().contains(pt)
-            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_4k() == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).mapping_4k().remove_keys(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize)).to_set())
-            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_2m() == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).mapping_2m()
+            &&& forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> !pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_4k().dom().contains(va_range.view()[j])
+            &&& forall|j: int, v: VAddr|
+                #![trigger va_range.view()[j], pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_4k().dom().contains(v)]
+                #![trigger va_range.view()[j], pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).mapping_4k().dom().contains(v)]
+                0 <= j < range && spec_v2l4index(v) == spec_v2l4index(va_range.view()[j]) && spec_v2l3index(v) == spec_v2l3index(va_range.view()[j]) && spec_v2l2index(v) == spec_v2l2index(va_range.view()[j])
+                    && !va_range.view().contains(v) ==> {
+                    &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_4k().dom().contains(v) == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).mapping_4k().dom().contains(v)
+                    &&& pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).mapping_4k().dom().contains(v)
+                        ==> pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_4k().spec_index(v) == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).mapping_4k().spec_index(v)
+                }
             &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_1g() == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).mapping_1g()
         },
 {
@@ -129,15 +139,24 @@ pub(super) fn unmap_4k_lock_pagetable_and_unmap(
         process_cpu_wf_at(old(steps).snapshot_k().prc_mp, old(steps).snapshot_k().cpu_arr, cpu_id);
         process_pagetable_match_process_at(old(steps).snapshot_k().prc_mp, old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap());
     };
-    let Tracked(pagetable_perm) = krnl.wlock_pagetable(pagetable, Tracked(&mut *lctx));
+    proof {
+        krnl.pt_mp.typed_lock_map_aligned_locked_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
+        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
+    }
+    let Tracked(pagetable_perm) = krnl.rlock_pagetable(pagetable, Tracked(&mut *lctx));
     assert(krnl.pt_mp.perms_wf()) by { pagetable_perms_wf_map(krnl.pt_mp); };
     let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_perm));
     let indices = va2index(va);
+    let l4_ok = pt.kernel_l4_end <= indices.0;
     proof { assert(va_range == (VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) })) by { va_range.va_range_lemma(); }; }
-    if pt.kernel_l4_end <= indices.0 && share_mapping_4k_source_precheck(krnl, &va_range, pagetable, Tracked(&*lctx), Tracked(&pagetable_perm)) {
-        unmap_4k_unmap_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, &va_range, container_ptr, process_ptr, thread_ptr, pagetable, cr3, pcid,
-            Ghost(entry_lctx), Tracked(cpu_perm), Tracked(container_perm), Tracked(process_perm), Tracked(thread_perm), Tracked(pagetable_perm));
-        return RetValueType::Success;
+    if l4_ok {
+        let Tracked(window_perms) = krnl.lock_pagetable_range_existing_windows(pagetable, &va_range, Tracked(&pagetable_perm), Tracked(&mut *lctx));
+        if share_mapping_4k_source_precheck(krnl, &va_range, pagetable, Tracked(&*lctx), Tracked(&pagetable_perm)) {
+            unmap_4k_unmap_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, &va_range, container_ptr, process_ptr, thread_ptr, pagetable, cr3, pcid,
+                Ghost(entry_lctx), Tracked(cpu_perm), Tracked(container_perm), Tracked(process_perm), Tracked(thread_perm), Tracked(pagetable_perm), Tracked(window_perms));
+            return RetValueType::Success;
+        }
+        krnl.unlock_pagetable_range_existing_windows(pagetable, &va_range, Tracked(&pagetable_perm), Tracked(&mut *lctx), Tracked(window_perms));
     }
     unmap_4k_unlock_all_rejected(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, Ghost(entry_lctx),
         Tracked(cpu_perm), Tracked(container_perm), Tracked(process_perm), Tracked(thread_perm), Tracked(pagetable_perm));
@@ -145,8 +164,9 @@ pub(super) fn unmap_4k_lock_pagetable_and_unmap(
     RetValueType::Error
 }
 
-/// With cpu `cpu_id`, its container, process, running thread, and the process pagetable `pagetable` write-held since the
-/// entry snapshot `entry_lctx` was aligned with and nothing else changed: releases all five locks and records no step.
+/// With cpu `cpu_id`, its container, process, and running thread write-held and the process pagetable `pagetable` read-held
+/// since the entry snapshot `entry_lctx` was aligned with, no window held, and no mapping changed: releases all five locks and
+/// records no step.
 fn unmap_4k_unlock_all_rejected(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
     container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot, Ghost(entry_lctx): Ghost<LocalContext>,
@@ -157,11 +177,12 @@ fn unmap_4k_unlock_all_rejected(
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
-        old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(steps).snapshot_k().inv(),
         typed_lock_maps_aligned(&old(steps).snapshot_k(), &entry_lctx),
-        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, ctn_mp: old(krnl).ctn_mp, prc_mp: old(krnl).prc_mp, thr_mp: old(krnl).thr_mp, pt_mp: old(krnl).pt_mp, ..old(steps).snapshot_k() }),
+        *old(krnl) == (KernelK {
+            cpu_arr: old(krnl).cpu_arr, ctn_mp: old(krnl).ctn_mp, prc_mp: old(krnl).prc_mp, thr_mp: old(krnl).thr_mp, pt_mp: old(krnl).pt_mp, pt_lower: old(krnl).pt_lower, ..old(steps).snapshot_k()
+        }),
         old(krnl).cpu_arr.unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
         old(krnl).ctn_mp.unchanged_except(&old(steps).snapshot_k().ctn_mp, container_ptr),
         old(krnl).prc_mp.unchanged_except(&old(steps).snapshot_k().prc_mp, process_ptr),
@@ -171,17 +192,20 @@ fn unmap_4k_unlock_all_rejected(
         wlock_ensures(old(steps).snapshot_k().ctn_mp.spec_index(container_ptr), old(krnl).ctn_mp.spec_index(container_ptr), old(steps).snapshot_k().ctn_mp.lock_id_by_key(container_ptr), old(lctx), container_perm),
         wlock_ensures(old(steps).snapshot_k().prc_mp.spec_index(process_ptr), old(krnl).prc_mp.spec_index(process_ptr), old(steps).snapshot_k().prc_mp.lock_id_by_key(process_ptr), old(lctx), process_perm),
         wlock_ensures(old(steps).snapshot_k().thr_mp.spec_index(thread_ptr), old(krnl).thr_mp.spec_index(thread_ptr), old(steps).snapshot_k().thr_mp.lock_id_by_key(thread_ptr), old(lctx), thread_perm),
-        !old(steps).snapshot_k().pt_mp.spec_index(pagetable).locked(),
-        old(krnl).pt_mp.spec_index(pagetable).wlocked_by(old(lctx)),
-        old(krnl).pt_mp.spec_index(pagetable).locking_thread() == (RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: pagetable_perm.lock_id() }),
-        old(krnl).pt_mp.spec_index(pagetable).inv(),
+        old(steps).snapshot_k().pt_mp.spec_index(pagetable).inv(),
+        !old(steps).snapshot_k().pt_mp.spec_index(pagetable).wlocked(),
+        !old(steps).snapshot_k().pt_mp.spec_index(pagetable).locked_by_thread(old(lctx).thread_id()),
+        old(krnl).pt_mp.spec_index(pagetable).locking_thread() == (RwLockState::Read {
+            reader_map: (if old(steps).snapshot_k().pt_mp.spec_index(pagetable).locking_thread() is Read { old(steps).snapshot_k().pt_mp.spec_index(pagetable).locking_thread()->Read_reader_map } else { Map::empty() })
+                .insert(old(lctx).thread_id(), pagetable_perm.lock_id()),
+        }),
         old(krnl).pt_mp.spec_index(pagetable).view() == old(steps).snapshot_k().pt_mp.spec_index(pagetable).view(),
-        old(krnl).pt_mp.spec_index(pagetable).view_rodata() == old(steps).snapshot_k().pt_mp.spec_index(pagetable).view_rodata(),
-        old(krnl).pt_mp.spec_index(pagetable).view_ghost() == old(krnl).pt_lower.view().spec_index(pagetable),
         old(krnl).pt_mp.spec_index(pagetable).being_killed() == old(steps).snapshot_k().pt_mp.spec_index(pagetable).being_killed(),
-        old(krnl).pt_mp.spec_index(pagetable).killer_info() == old(steps).snapshot_k().pt_mp.spec_index(pagetable).killer_info(),
-        pagetable_perm.state() is WriteLock,
-        pagetable_perm.ordering_lock_id() == old(steps).snapshot_k().pt_mp.lock_id_by_key(pagetable),
+        old(krnl).pt_lower.view() =~= old(steps).snapshot_k().pt_lower.view().insert(pagetable, old(krnl).pt_lower.view().spec_index(pagetable)),
+        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k() == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable).mapping_4k(),
+        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m() == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable).mapping_2m(),
+        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g() == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable).mapping_1g(),
+        pagetable_perm.state() is ReadLock,
         pagetable_perm.thread_id() == old(lctx).thread_id(),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
         old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
@@ -199,13 +223,11 @@ fn unmap_4k_unlock_all_rejected(
         old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
         old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
         old(krnl).pt_mp.dom().contains(pagetable),
-        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).leaves_present(),
-        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pagetable, pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable)),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         typed_lock_map_contains_mode(old(lctx).container_lock_map(), container_ptr, TypedLockMode::Write),
         typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
-        typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, TypedLockMode::Write),
+        typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, TypedLockMode::Read),
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
         old(lctx).container_lock_map().dom() =~= set![container_ptr],
         old(lctx).process_lock_map().dom() =~= set![process_ptr],
@@ -237,7 +259,15 @@ fn unmap_4k_unlock_all_rejected(
         final(steps).nonlock_view() == old(steps).nonlock_view(),
         kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(old(steps).snapshot_k()),
 {
-    krnl.wunlock_pagetable(pagetable, Tracked(&mut *lctx), Tracked(pagetable_perm));
+    proof {
+        if old(steps).snapshot_k().pt_mp.spec_index(pagetable).locking_thread() is Read {
+            assert(old(steps).snapshot_k().pt_mp.spec_index(pagetable).locking_thread()->Read_reader_map.insert(lctx.thread_id(), pagetable_perm.lock_id()).remove(lctx.thread_id())
+                =~= old(steps).snapshot_k().pt_mp.spec_index(pagetable).locking_thread()->Read_reader_map);
+        } else {
+            assert(Map::<LockThreadId, LockToken>::empty().insert(lctx.thread_id(), pagetable_perm.lock_id()).remove(lctx.thread_id()).dom() =~= Set::empty());
+        }
+    }
+    krnl.runlock_pagetable(pagetable, Tracked(&mut *lctx), Tracked(pagetable_perm));
     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_perm));
     krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_perm));
     krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_perm));

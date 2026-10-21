@@ -105,7 +105,7 @@ pub open spec fn held_cpu_sets_unchanged(pre: CpuSetLockedMap, post: CpuSetLocke
 }
 
 /// A write-held page table keeps its whole big-lock entry; a read-held one keeps its payload, this thread's read
-/// hold, and its kill mark, while other readers may come and go.
+/// hold and reader token, and its kill mark, while other readers may come and go.
 pub open spec fn held_pagetables_unchanged(pre: PageTableLockedMap, post: PageTableLockedMap, lctx: &LocalContext) -> bool {
     forall|pt: RwLockPageTableRoot|
         #![trigger lctx.pagetable_lock_map().dom().contains(pt)]
@@ -118,6 +118,7 @@ pub open spec fn held_pagetables_unchanged(pre: PageTableLockedMap, post: PageTa
                 &&& post.spec_index(pt).view() == pre.spec_index(pt).view()
                 &&& post.spec_index(pt).rlocked_by_thread(lctx.thread_id())
                 &&& post.spec_index(pt).being_killed() == pre.spec_index(pt).being_killed()
+                &&& post.spec_index(pt).locking_thread()->Read_reader_map.spec_index(lctx.thread_id()) == pre.spec_index(pt).locking_thread()->Read_reader_map.spec_index(lctx.thread_id())
             }
         }
 }
@@ -134,46 +135,41 @@ pub open spec fn held_pagetables_unchanged_except(pre: PageTableLockedMap, post:
                 &&& post.spec_index(pt).view() == pre.spec_index(pt).view()
                 &&& post.spec_index(pt).rlocked_by_thread(lctx.thread_id())
                 &&& post.spec_index(pt).being_killed() == pre.spec_index(pt).being_killed()
+                &&& post.spec_index(pt).locking_thread()->Read_reader_map.spec_index(lctx.thread_id()) == pre.spec_index(pt).locking_thread()->Read_reader_map.spec_index(lctx.thread_id())
             }
         }
 }
 
-/// Each held 2M window `(pt, va)` keeps its L2 page, its L2 entry and lock owner, the L1 page that entry links,
-/// every 4K leaf inside the window, and the 2M leaf at `va`.
+/// Each held 2M window `(pt, w)` keeps its window record (L2 page and entry, lock owner, linked L1 page, stale CPUs),
+/// every 4K leaf inside the window, and the 2M leaf at `w`.
 pub open spec fn held_pagetable_windows_unchanged(pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, lctx: &LocalContext) -> bool {
-    forall|pt: RwLockPageTableRoot, va: VAddr|
-        #![trigger lctx.pagetable_window_lock_map().dom().contains((pt, va))]
-        lctx.pagetable_window_lock_map().dom().contains((pt, va)) ==> {
+    forall|pt: RwLockPageTableRoot, w: WindowVa|
+        #![trigger lctx.pagetable_window_lock_map().dom().contains((pt, w))]
+        lctx.pagetable_window_lock_map().dom().contains((pt, w)) ==> {
             let pre = pagetable_c(pre_pt, pre_lower, pt);
             let post = pagetable_c(post_pt, post_lower, pt);
-            let l2_page = pre.window_l2_page(spec_v2l4index(va), spec_v2l3index(va));
-            let l2i = spec_v2l2index(va);
-            let l1_page = pre.lower.l2_page(l2_page).spec_index(l2i).addr;
-            &&& post.window_l2_page(spec_v2l4index(va), spec_v2l3index(va)) == l2_page
-            &&& post.lower.l2_page(l2_page).spec_index(l2i) == pre.lower.l2_page(l2_page).spec_index(l2i)
-            &&& post.lower.l2_lock_of(l2_page).lock_state(l2i) == pre.lower.l2_lock_of(l2_page).lock_state(l2i)
-            &&& pre.lower.l1_tables.dom().contains(l1_page) ==> post.lower.l1_tables.dom().contains(l1_page) && post.lower.l1_tables.spec_index(l1_page) == pre.lower.l1_tables.spec_index(l1_page)
+            &&& post.window_view(w) == pre.window_view(w)
             &&& forall|v: VAddr|
                 #![trigger pagetable_c(post_pt, post_lower, pt).mapping_4k().dom().contains(v)]
                 #![trigger pagetable_c(pre_pt, pre_lower, pt).mapping_4k().dom().contains(v)]
-                spec_v2l4index(v) == spec_v2l4index(va) && spec_v2l3index(v) == spec_v2l3index(va) && spec_v2l2index(v) == spec_v2l2index(va) ==> {
+                spec_v2l4index(v) == spec_v2l4index(w.va) && spec_v2l3index(v) == spec_v2l3index(w.va) && spec_v2l2index(v) == spec_v2l2index(w.va) ==> {
                     &&& pagetable_c(post_pt, post_lower, pt).mapping_4k().dom().contains(v) == pagetable_c(pre_pt, pre_lower, pt).mapping_4k().dom().contains(v)
                     &&& pagetable_c(pre_pt, pre_lower, pt).mapping_4k().dom().contains(v)
                         ==> pagetable_c(post_pt, post_lower, pt).mapping_4k().spec_index(v) == pagetable_c(pre_pt, pre_lower, pt).mapping_4k().spec_index(v)
                 }
-            &&& post.mapping_2m().dom().contains(va) == pre.mapping_2m().dom().contains(va)
-            &&& pre.mapping_2m().dom().contains(va) ==> post.mapping_2m().spec_index(va) == pre.mapping_2m().spec_index(va)
+            &&& post.mapping_2m().dom().contains(w.va) == pre.mapping_2m().dom().contains(w.va)
+            &&& pre.mapping_2m().dom().contains(w.va) ==> post.mapping_2m().spec_index(w.va) == pre.mapping_2m().spec_index(w.va)
         }
 }
 
-/// The 4K leaf `v` inside the held window `(pt, va)` is unchanged.
+/// The 4K leaf `v` inside the held window `(pt, w)` is unchanged.
 pub proof fn held_pagetable_window_mapping_4k_unchanged_at(
-    pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, lctx: &LocalContext, pt: RwLockPageTableRoot, va: VAddr, v: VAddr,
+    pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, lctx: &LocalContext, pt: RwLockPageTableRoot, w: WindowVa, v: VAddr,
 )
     requires
         held_pagetable_windows_unchanged(pre_pt, pre_lower, post_pt, post_lower, lctx),
-        lctx.pagetable_window_lock_map().dom().contains((pt, va)),
-        spec_v2l4index(v) == spec_v2l4index(va) && spec_v2l3index(v) == spec_v2l3index(va) && spec_v2l2index(v) == spec_v2l2index(va),
+        lctx.pagetable_window_lock_map().dom().contains((pt, w)),
+        spec_v2l4index(v) == spec_v2l4index(w.va) && spec_v2l3index(v) == spec_v2l3index(w.va) && spec_v2l2index(v) == spec_v2l2index(w.va),
     ensures
         pagetable_c(post_pt, post_lower, pt).mapping_4k().dom().contains(v) == pagetable_c(pre_pt, pre_lower, pt).mapping_4k().dom().contains(v),
         pagetable_c(pre_pt, pre_lower, pt).mapping_4k().dom().contains(v) ==> pagetable_c(post_pt, post_lower, pt).mapping_4k().spec_index(v) == pagetable_c(pre_pt, pre_lower, pt).mapping_4k().spec_index(v),

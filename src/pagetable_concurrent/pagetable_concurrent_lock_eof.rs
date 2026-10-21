@@ -2,8 +2,8 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-/// `lock_window` moved only the lock bit of window `(l4i, l3i, l2i)`, now owned by `thread_id`, and added its base
-/// address to `locked_windows`.
+/// `lock_window` moved only the lock bit of window `(l4i, l3i, l2i)`, free before and now owned by `thread_id`, and
+/// added its base address to `locked_windows`; the stale-CPU map is untouched.
 pub open spec fn lock_window_eof_transition_framing(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId,
     lock_token: LockToken) -> bool
 {
@@ -20,12 +20,14 @@ pub open spec fn lock_window_eof_transition_framing(pre: PageTableC<PT_TYPE>, po
     &&& post.lower.l2_lock_of(p).addr() == pre.lower.l2_lock_of(p).addr()
     &&& post.lower.l2_lock_of(p).wf()
     &&& forall|i: usize| #![trigger post.lower.l2_lock_of(p).lock_state(i)] pei_valid(i) && i != l2i ==> post.lower.l2_lock_of(p).lock_state(i) == pre.lower.l2_lock_of(p).lock_state(i)
+    &&& pre.lower.l2_lock_of(p).lock_state(l2i) is None
     &&& post.lower.l2_lock_of(p).lock_state(l2i) == (SpinLockState::Some { thread_id, lock_id: lock_token })
-    &&& post.lower.locked_windows == pre.lower.locked_windows.insert(spec_index2va((l4i, l3i, l2i, 0)))
+    &&& post.lower.locked_windows == pre.lower.locked_windows.insert(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) })
+    &&& post.lower.window_stale_cpus == pre.lower.window_stale_cpus
 }
 
 /// `unlock_window` cleared only the lock bit of window `(l4i, l3i, l2i)` and dropped its base address from
-/// `locked_windows`.
+/// `locked_windows`; the stale-CPU map is untouched.
 pub open spec fn unlock_window_eof_transition_framing(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index) -> bool {
     let p = pre.window_l2_page(l4i, l3i);
     &&& post.higher == pre.higher
@@ -41,7 +43,8 @@ pub open spec fn unlock_window_eof_transition_framing(pre: PageTableC<PT_TYPE>, 
     &&& post.lower.l2_lock_of(p).wf()
     &&& forall|i: usize| #![trigger post.lower.l2_lock_of(p).lock_state(i)] pei_valid(i) && i != l2i ==> post.lower.l2_lock_of(p).lock_state(i) == pre.lower.l2_lock_of(p).lock_state(i)
     &&& post.lower.l2_lock_of(p).lock_state(l2i) is None
-    &&& post.lower.locked_windows == pre.lower.locked_windows.remove(spec_index2va((l4i, l3i, l2i, 0)))
+    &&& post.lower.locked_windows == pre.lower.locked_windows.remove(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) })
+    &&& post.lower.window_stale_cpus == pre.lower.window_stale_cpus
 }
 
 /// EOF closure of `lock_window`.

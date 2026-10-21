@@ -5,24 +5,24 @@ use veriflat_syscall_mmap_4k::syscall_mmap_4k::syscall_mmap_4k_spec::*;
 
 verus! {
 /// Entering mmap on a cpu of `a` locks only objects of `a`.
-pub proof fn mmap_4k_enter_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, range: VaRange4K, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn mmap_4k_enter_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, range: VaRange4K, phase: Mmap4kPhase, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        mmap_4k_enter_step_pre(old_u, cpu_id, range),
-        mmap_4k_enter_step(old_u, new_u, cpu_id, range),
+        mmap_4k_enter_step_pre(old_u, cpu_id, range, phase),
+        mmap_4k_enter_step(old_u, new_u, cpu_id, range, phase),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 { reveal(mmap_4k_enter_step_pre); reveal(mmap_4k_enter_step); reveal(kernel_u_cpu_ownership_wf); }
 
 /// The step of `mmap_4k_enter_step_lr` preserves isolation.
-pub proof fn mmap_4k_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, range: VaRange4K, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn mmap_4k_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, range: VaRange4K, phase: Mmap4kPhase, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        mmap_4k_enter_step_pre(old_u, cpu_id, range),
-        mmap_4k_enter_step(old_u, new_u, cpu_id, range),
+        mmap_4k_enter_step_pre(old_u, cpu_id, range, phase),
+        mmap_4k_enter_step(old_u, new_u, cpu_id, range, phase),
     ensures isolated(new_u, a, b),
 { reveal(mmap_4k_enter_step_pre); reveal(mmap_4k_enter_step); }
 
@@ -47,6 +47,28 @@ pub proof fn mmap_4k_directory_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: 
         mmap_4k_directory_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 { reveal(mmap_4k_directory_step_pre); reveal(mmap_4k_directory_step); }
+
+/// Downgrading the pagetable lock on a cpu of `a` changes only its running thread and that thread's process.
+pub proof fn mmap_4k_downgrade_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+    requires
+        kernel_u_ownership_wf(old_u),
+        isolated(old_u, a, b),
+        steps_in_domain(old_u, cpu_id, a),
+        mmap_4k_downgrade_step_pre(old_u, cpu_id),
+        mmap_4k_downgrade_step(old_u, new_u, cpu_id),
+    ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
+{ reveal(mmap_4k_downgrade_step_pre); reveal(mmap_4k_downgrade_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
+
+/// The step of `mmap_4k_downgrade_step_lr` preserves isolation.
+pub proof fn mmap_4k_downgrade_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+    requires
+        kernel_u_ownership_wf(old_u),
+        isolated(old_u, a, b),
+        steps_in_domain(old_u, cpu_id, a),
+        mmap_4k_downgrade_step_pre(old_u, cpu_id),
+        mmap_4k_downgrade_step(old_u, new_u, cpu_id),
+    ensures isolated(new_u, a, b),
+{ reveal(mmap_4k_downgrade_step_pre); reveal(mmap_4k_downgrade_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
 
 /// An mmap leaf on a cpu of `a` maps a page that no process maps, into a process of `a`.
 pub proof fn mmap_4k_leaf_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)

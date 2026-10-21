@@ -468,6 +468,17 @@ pub broadcast proof fn spec_va_2m_valid_index_roundtrip(va: VAddr)
         && spec_index2va((spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), 0usize)) == va) by (bit_vector);
 }
 
+/// Valid user L4/L3/L2 indices with a zero L1 index build a valid user 2M address.
+pub broadcast proof fn spec_index2va_2m_valid(l4i: L4Index, l3i: L3Index, l2i: L2Index)
+    requires KERNEL_MEM_END_L4INDEX <= l4i, pei_valid(l4i), pei_valid(l3i), pei_valid(l2i),
+    ensures
+        spec_va_2m_valid(#[trigger] spec_index2va((l4i, l3i, l2i, 0usize))),
+        spec_va2index(spec_index2va((l4i, l3i, l2i, 0usize))) == (l4i, l3i, l2i, 0usize),
+{
+    assert(spec_va_2m_valid(spec_index2va((l4i, l3i, l2i, 0usize)))) by (bit_vector) requires KERNEL_MEM_END_L4INDEX <= l4i < 512, l3i < 512, l2i < 512;
+    spec_va_4k_index_roundtrip_at(spec_index2va((l4i, l3i, l2i, 0usize)), l4i, l3i, l2i, 0usize);
+}
+
 /// A valid user 1G address has valid user page-table indices that rebuild it.
 pub broadcast proof fn spec_va_1g_valid_index_roundtrip(va: VAddr)
     requires #[trigger] spec_va_1g_valid(va),

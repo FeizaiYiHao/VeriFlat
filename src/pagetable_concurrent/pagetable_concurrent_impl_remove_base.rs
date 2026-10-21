@@ -33,6 +33,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(lower).l2_ghost == old(lower).l2_ghost,
             final(lower).l2_lock == old(lower).l2_lock,
             final(lower).locked_windows == old(lower).locked_windows,
+            final(lower).window_stale_cpus == old(lower).window_stale_cpus,
     {
         proof {
             let c = PageTableC { higher: *self, lower: *lower };
@@ -88,6 +89,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(lower).l2_ghost == old(lower).l2_ghost,
             final(lower).l2_lock == old(lower).l2_lock,
             final(lower).locked_windows == old(lower).locked_windows,
+            final(lower).window_stale_cpus == old(lower).window_stale_cpus,
     {
         proof {
             let c = PageTableC { higher: *self, lower: *lower };
@@ -138,6 +140,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(lower).mapping_2m == old(lower).mapping_2m,
             final(lower).l2_lock == old(lower).l2_lock,
             final(lower).locked_windows == old(lower).locked_windows,
+            final(lower).window_stale_cpus == old(lower).window_stale_cpus,
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
                 #![trigger (PageTableC { higher: *self, lower: *final(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
                 #![trigger (PageTableC { higher: *self, lower: *old(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
@@ -211,6 +214,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(self).proc_ptr == old(self).proc_ptr,
             final(lower).l2_lock == old(lower).l2_lock.remove(target_l2_p),
             final(lower).locked_windows == old(lower).locked_windows,
+            final(lower).window_stale_cpus == old(lower).window_stale_cpus.filter_keys(|k: (PageMapPtr, L2Index)| k.0 != target_l2_p),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
                 #![trigger (PageTableC { higher: *final(self), lower: *final(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
                 #![trigger (PageTableC { higher: *old(self), lower: *old(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
@@ -235,6 +239,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         let tracked l2_lk = lower.l2_lock.tracked_remove(target_l2_p);
         let page_perm = l2_page_map_to_page_perm(target_l2_p, Tracked(l2_perm), Tracked(l2_g), Tracked(l2_lk));
         proof {
+            lower.window_stale_cpus = lower.window_stale_cpus.filter_keys(|k: (PageMapPtr, L2Index)| k.0 != target_l2_p);
             let pre = PageTableC { higher: *old(self), lower: *old(lower) };
             let post = PageTableC { higher: *self, lower: *lower };
             assert(PageTableC::remove_l3_entry_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, target_l2_p)) by {

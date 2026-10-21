@@ -6,10 +6,13 @@ use super::unmap_4k_reclaim_eof::reclaim_last_4k_mapping_to_cpu_cache_eof;
 use super::unmap_4k_reclaim_spec::reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing;
 
 verus! {
+/// Remove the hidden 4K leaf `va` of `pagetable`, held in write mode iff `write_held`, and move its page, whose last
+/// mapping it was, into the owner allocator's CPU cache; the caller holds the leaf's window and page, and no CPU is listed
+/// stale for the window.
 pub fn remove_last_4k_mapping_to_allocator(
     krnl: &mut KernelK, pagetable: RwLockPageTableRoot, va: VAddr, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, depth: usize, allocator_ptr: RwLockPageAllocatorPtr,
-    cpu_id: CpuId, counter: &mut usize, Tracked(lctx): Tracked<&mut LocalContext>, pagetable_perm: Tracked<&LockPerm>, page_perm: Tracked<&LockPerm>, thread_perm: Tracked<&LockPerm>,
-    cache_perm: Tracked<&LockPerm>,
+    cpu_id: CpuId, counter: &mut usize, write_held: bool, Tracked(lctx): Tracked<&mut LocalContext>, pagetable_perm: Tracked<&LockPerm>, page_perm: Tracked<&LockPerm>,
+    thread_perm: Tracked<&LockPerm>, cache_perm: Tracked<&LockPerm>,
 )
     requires
         old(krnl).inv(),
@@ -43,16 +46,18 @@ pub fn remove_last_4k_mapping_to_allocator(
         thread_perm.view().state() is WriteLock,
         thread_perm.view().thread_id() == old(lctx).thread_id(),
         thread_perm.view().lock_id() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
-        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pagetable, pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable)),
+        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_view(window_of(va)).stale_cpus is None,
         typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(page_ptr), TypedLockMode::Write),
         page_perm.view().state() is WriteLock,
         page_perm.view().thread_id() == old(lctx).thread_id(),
         page_perm.view().lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread()->Write_lock_id,
-        typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, TypedLockMode::Write),
-        pagetable_perm.view().state() is WriteLock,
+        typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, if write_held { TypedLockMode::Write } else { TypedLockMode::Read }),
         pagetable_perm.view().thread_id() == old(lctx).thread_id(),
-        pagetable_perm.view().lock_id() == old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id,
-        typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (pagetable, spec_index2va((spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), 0usize))), TypedLockMode::Write),
+        write_held ==> pagetable_perm.view().state() is WriteLock,
+        write_held ==> pagetable_perm.view().lock_id() == old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id,
+        !write_held ==> pagetable_perm.view().state() is ReadLock,
+        !write_held ==> old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Read_reader_map.contains_pair(old(lctx).thread_id(), pagetable_perm.view().lock_id()),
+        typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (pagetable, WindowVa { va: spec_index2va((spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), 0usize)) }), TypedLockMode::Write),
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -79,7 +84,8 @@ pub fn remove_last_4k_mapping_to_allocator(
         final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } }),
         final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread() == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread(),
         final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().being_killed() == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().being_killed(),
-        pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pagetable, pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable)),
+        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus,
+        !write_held ==> final(krnl).pt_mp == old(krnl).pt_mp,
         *final(counter) == *old(counter) + 1,
         final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_4k_at_depth(depth) == *final(counter),
         final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread(),
@@ -109,11 +115,11 @@ pub fn remove_last_4k_mapping_to_allocator(
     let indices = va2index(va);
     assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable).inv() && spec_index2va(indices) == va) by { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); spec_va_4k_index_roundtrip_at(va, indices.0, indices.1, indices.2, indices.3); };
     proof {
-        let window_va = spec_index2va((indices.0, indices.1, indices.2, 0usize));
+        let window_va = WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0usize)) };
         pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).wf_mapping_4k_at(indices.0, indices.1, indices.2, indices.3);
         pagetable_window_typed_lock_map_aligned_at(krnl.pt_mp, krnl.pt_lower.view(), lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), pagetable, window_va);
-        assert(spec_v2l4index(window_va) == indices.0 && spec_v2l3index(window_va) == indices.1 && spec_v2l2index(window_va) == indices.2) by {
+        assert(spec_v2l4index(window_va.va) == indices.0 && spec_v2l3index(window_va.va) == indices.1 && spec_v2l2index(window_va.va) == indices.2) by {
             broadcast use spec_va_2m_valid_index_roundtrip; spec_index2va_injective();
         };
     }
@@ -138,7 +144,11 @@ pub fn remove_last_4k_mapping_to_allocator(
     let (node_addr, node_perm) = page_array_remove_last_4k_mapping_to_cache(&mut krnl.pg_arr, page_index, pagetable, va, allocator_ptr, cpu_id, Tracked(&*lctx), page_perm);
     krnl.allc_4k_mp.push_cache_page_typed(allocator_ptr, cpu_id, node_addr, node_perm, Ghost(lctx.allocator_quota_4k_lock_map()), Ghost(lctx.allocator_cache_4k_lock_map()), Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), cache_perm);
     thread_map_add_free_quota_pending_4k(&mut krnl.thr_mp, thread_ptr, depth, counter, Tracked(&*lctx), thread_perm);
-    pagetable_map_unmap_4k_kernel(&mut krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), pagetable, indices, l1_ptr, Tracked(&mut *lctx), pagetable_perm);
+    if write_held {
+        pagetable_map_unmap_4k_kernel(&mut krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), pagetable, indices, l1_ptr, Tracked(&mut *lctx), pagetable_perm);
+    } else {
+        pagetable_map_unmap_4k_kernel_rlocked(&krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), pagetable, indices, l1_ptr, Tracked(&mut *lctx), pagetable_perm);
+    }
     proof {
         lctx.update_lock_id(KernelObjId::Page(page_index), old_page_lock_id, krnl.pg_arr.lock_id_by_index(page_index));
         assert(typed_lock_maps_inserted(old(lctx), lctx, KernelObjId::Page(page_index), TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(page_index), mode: TypedLockMode::Write })) by {

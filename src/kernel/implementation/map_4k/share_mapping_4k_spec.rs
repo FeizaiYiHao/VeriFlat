@@ -42,7 +42,7 @@ pub open spec fn share_4k_directory_at(pre: KernelU, post: KernelU, quota_thread
 }
 
 /// The next recorded source page of `progress_thread`'s share is mapped and the next recorded target
-/// address is free while both page tables are write-locked.
+/// address is free while both page tables are read- or write-locked.
 #[verifier::opaque]
 pub open spec fn share_4k_leaf_pre_at(old_u: KernelU, progress_thread: RwLockThreadPtr, source: RwLockProcessPtr, target: RwLockProcessPtr) -> bool {
     let progress = old_u.thread_map[progress_thread].syscall_progress->Some_0;
@@ -59,8 +59,8 @@ pub open spec fn share_4k_leaf_pre_at(old_u: KernelU, progress_thread: RwLockThr
     &&& old_u.process_map.dom().contains(target)
     &&& old_u.process_map[source].pagetable is Some
     &&& old_u.process_map[target].pagetable is Some
-    &&& source_table.lock_state is WriteLocked
-    &&& target_table.lock_state is WriteLocked
+    &&& (source_table.lock_state is ReadLocked || source_table.lock_state is WriteLocked)
+    &&& (target_table.lock_state is ReadLocked || target_table.lock_state is WriteLocked)
     &&& source_table.mapping_4k.dom().contains(progress->Share4k_source_range.view()[shared as int])
     &&& !target_table.mapping_4k.dom().contains(progress->Share4k_target_range.view()[shared as int])
 }
@@ -82,7 +82,7 @@ pub open spec fn share_4k_leaf_at(old_u: KernelU, new_u: KernelU, progress_threa
 }
 
 /// A directory step runs before the next recorded page is shared, while the target page table is
-/// write-locked and the quota thread can pay for one target directory page. The target process belongs
+/// read- or write-locked and the quota thread can pay for one target directory page. The target process belongs
 /// to the target container. With a transfer source, the target container is a child of the source and
 /// both are write-locked.
 #[verifier::opaque]
@@ -95,7 +95,7 @@ pub open spec fn share_4k_directory_step_pre(old_u: KernelU, cpu_id: CpuId) -> b
     &&& share_4k_directory_pre_at(old_u, caller, objects.quota_thread)
     &&& old_u.process_map.dom().contains(objects.target)
     &&& old_u.process_map[objects.target].pagetable is Some
-    &&& old_u.process_map[objects.target].pagetable->Some_0.lock_state is WriteLocked
+    &&& (old_u.process_map[objects.target].pagetable->Some_0.lock_state is ReadLocked || old_u.process_map[objects.target].pagetable->Some_0.lock_state is WriteLocked)
     &&& old_u.process_map[objects.target].owning_container == objects.target_container
     &&& objects.transfer_source matches Some(source) ==> {
         &&& old_u.container_map.dom().contains(source)

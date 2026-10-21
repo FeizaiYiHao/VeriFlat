@@ -167,6 +167,7 @@ pub(super) fn thread_exit_reclaim_release_tables(
         old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitQuota { returned: PageSize::SZ1g }),
         old(krnl).pt_mp.dom().contains(pagetable),
         pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).leaves_present(),
+        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
         pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom() =~= Set::<VAddr>::empty(),
         (iommu_table_lock_perm is Some) == (iommu_table is Some),
         iommu_table is Some ==> {
@@ -229,9 +230,6 @@ pub(super) fn thread_exit_reclaim_release_tables(
     }
     if let Some(it) = iommu_table {
         krnl.wunlock_iommu_table(it, Tracked(&mut *lctx), Tracked(iommu_table_lock_perm.tracked_unwrap()));
-    }
-    proof {
-        assert(pagetable_tlb_entries_present(krnl.cpu_tlb, krnl.cpu_arr, krnl.pcid_needflush, pagetable, pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable))) by { tlb_wf_pagetable_entries_present_at(*krnl, pagetable); };
     }
     krnl.wunlock_pagetable(pagetable, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
     proof {

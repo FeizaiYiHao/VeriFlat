@@ -10,13 +10,14 @@ use super::mmap_4k_map_owned_eof::{map_owned_4k_page_eof, map_owned_4k_page_eof_
     /// Publish one staged 4K page at a fresh virtual address whose L1 table
     /// already exists.
     ///
-    /// The caller holds the page, owner-thread, and target-page-table write
-    /// locks. The thread lock is needed because mapping consumes the page from
-    /// its temporary allocation cache and charges its quota. Hidden page/thread
-    /// metadata is updated while the krnl phase is Acquire; the published PTE
-    /// store is the operation that closes the section into Release. The caller
-    /// later ends the krnl step, which observes the changed `PageTableU` and
-    /// records exactly one non-stuttering transition.
+    /// The caller holds the page and owner-thread write locks, the target page
+    /// table's big read lock, and the 2M window of `va`. The thread lock is
+    /// needed because mapping consumes the page from its temporary allocation
+    /// cache and charges its quota. Hidden page/thread metadata is updated while
+    /// the krnl phase is Acquire; the published PTE store into the window half
+    /// closes the section into Release. The caller later ends the krnl step,
+    /// which observes the changed `PageTableU` and records exactly one
+    /// non-stuttering transition.
     pub(super) fn map_owned_4k_page(
         krnl: &mut KernelK, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr, pagetable_ptr: RwLockPageTableRoot, va: VAddr, Tracked(lctx): Tracked<&mut LocalContext>,
         page_lock_perm: Tracked<&LockPerm>, thread_lock_perm: Tracked<&LockPerm>, pagetable_lock_perm: Tracked<&LockPerm>,
@@ -50,18 +51,15 @@ use super::mmap_4k_map_owned_eof::{map_owned_4k_page_eof, map_owned_4k_page_eof_
             thread_lock_perm.view().state() is WriteLock,
             thread_lock_perm.view().thread_id() == old(lctx).thread_id(),
             thread_lock_perm.view().lock_id() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
-            typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
-            pagetable_lock_perm.view().state() is WriteLock,
+            typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Read),
+            pagetable_lock_perm.view().state() is ReadLock,
             pagetable_lock_perm.view().thread_id() == old(lctx).thread_id(),
-            pagetable_lock_perm.view().lock_id() == old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
+            old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map.contains_pair(old(lctx).thread_id(), pagetable_lock_perm.view().lock_id()),
             pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(va) == false,
             pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l2(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2) is Some,
             pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_locked_by_thread(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, old(lctx).thread_id()),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
-            forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt))]
-                old(lctx).pagetable_lock_map().dom().contains(pt) && pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pt))
-                    ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt)),
             final(krnl).inv(),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Page(page_ptr2page_index(page_ptr)), TypedHeldLock { lock_id: final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), mode: TypedLockMode::Write, }),
@@ -69,12 +67,9 @@ use super::mmap_4k_map_owned_eof::{map_owned_4k_page_eof, map_owned_4k_page_eof_
             final(lctx).thread_id() == old(lctx).thread_id(),
             typed_lock_map_contains_mode(final(lctx).page_lock_map(), page_ptr2page_index(page_ptr), TypedLockMode::Write),
             typed_lock_map_contains_mode(final(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
-            typed_lock_map_contains_mode(final(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
             final(krnl).thr_mp.lock_id_by_key(thread_ptr) == old(krnl).thr_mp.lock_id_by_key(thread_ptr),
-            final(krnl).pt_mp.lock_id_by_key(pagetable_ptr) == old(krnl).pt_mp.lock_id_by_key(pagetable_ptr),
             page_lock_perm.view().lock_id() == final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread()->Write_lock_id,
             thread_lock_perm.view().lock_id() == final(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
-            pagetable_lock_perm.view().lock_id() == final(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
             final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container,
             final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().is_io_page == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().is_io_page,
             final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().free_list_node_storage == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().free_list_node_storage,
@@ -90,14 +85,13 @@ use super::mmap_4k_map_owned_eof::{map_owned_4k_page_eof, map_owned_4k_page_eof_
             final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view() == old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().remove(page_ptr),
             final(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k == old(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k - 1,
             final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == mmap_4k_progress_after_leaf(old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view()),
+            final(krnl).thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
             !final(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited,
-            final(krnl).pt_mp.spec_index(pagetable_ptr).view() == old(krnl).pt_mp.spec_index(pagetable_ptr).view(),
-            pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end(),
-            final(krnl).pt_mp.unchanged_except(&old(krnl).pt_mp, pagetable_ptr),
+            final(krnl).pt_mp == old(krnl).pt_mp,
             final(krnl).pt_lower.view() == old(krnl).pt_lower.view().insert(pagetable_ptr, final(krnl).pt_lower.view().spec_index(pagetable_ptr)),
             final(krnl).pg_arr.entries_unchanged_except(&old(krnl).pg_arr, page_ptr2page_index(page_ptr)),
             final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, thread_ptr),
-            *final(krnl) == (KernelK { pt_mp: final(krnl).pt_mp, pt_lower: final(krnl).pt_lower, pg_arr: final(krnl).pg_arr, thr_mp: final(krnl).thr_mp, ..*old(krnl) }),
+            *final(krnl) == (KernelK { pt_lower: final(krnl).pt_lower, pg_arr: final(krnl).pg_arr, thr_mp: final(krnl).thr_mp, ..*old(krnl) }),
             final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == PageState::Mapped4k,
             final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().perm_4k.view() == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().perm_4k.view(),
             final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().mappings() == Set::empty().insert((pagetable_ptr, va)),
@@ -109,6 +103,7 @@ use super::mmap_4k_map_owned_eof::{map_owned_4k_page_eof, map_owned_4k_page_eof_
             pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_1g() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_1g(),
             pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).page_closure() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).page_closure(),
             pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_lock == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.l2_lock,
+            pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.window_stale_cpus == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.window_stale_cpus,
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
                 #![trigger pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
                 pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)
@@ -147,13 +142,11 @@ use super::mmap_4k_map_owned_eof::{map_owned_4k_page_eof, map_owned_4k_page_eof_
             thread.syscall_progress = Ghost(mmap_4k_progress_after_leaf(thread.syscall_progress.view()));
         }
         let target_entry = MapEntry { addr: page_ptr, present: true, write: true, execute_disable: false, owning_container: Ghost(page_owner) };
-        pagetable_map_insert_4k_wlocked(&mut krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), pagetable_ptr, indices, target_l1_ptr, &target_entry, Tracked(&mut *lctx), pagetable_lock_perm);
+        pagetable_map_insert_4k(&krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), pagetable_ptr, indices, target_l1_ptr, &target_entry, Tracked(&mut *lctx), pagetable_lock_perm);
         proof {
             lctx.update_lock_id(KernelObjId::Page(page_index), old_page_lock_id, krnl.pg_arr.lock_id_by_index(page_index));
-            krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr);
             assert(map_owned_4k_page_eof_transition_framing(*old(krnl), *krnl, page_ptr, thread_ptr, pagetable_ptr, va)) by { reveal(map_owned_4k_page_eof_transition_framing); };
             map_owned_4k_page_eof(*old(krnl), *krnl, page_ptr, thread_ptr, pagetable_ptr, va);
-            held_pagetables_unchanged_except_for_unchanged_except(old(krnl).pt_mp, krnl.pt_mp, old(lctx), pagetable_ptr);
         }
     }
 }

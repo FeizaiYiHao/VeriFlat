@@ -9,6 +9,7 @@ use veriflat_alloc_page::free_4k_page::{drain_4k_cache_batch, refund_unmap_4k_qu
 
 pub mod map_4k;
 pub use map_4k::mmap_4k_build_structure::mmap_4k_build_one_structure;
+pub use map_4k::mmap_4k_install_one::install_one_mmap_4k_directory_page;
 pub use map_4k::mmap_4k_build_structure_spec::*;
 pub use map_4k::share_mapping_4k_spec::*;
 pub use map_4k::unmap_4k_spec::*;

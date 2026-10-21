@@ -75,9 +75,6 @@ pub(super) fn transfer_new_container_cpu(
             old(krnl).cpu_set_mp.dom().contains(p) && p != parent_cpu_set && p != child_cpu_set ==> final(krnl).cpu_set_mp.spec_index(p) == old(krnl).cpu_set_mp.spec_index(p),
         forall|cpu_id: CpuId| #![trigger final(krnl).cpu_arr.spec_index(cpu_id)]
             index_valid(NUM_CPUS, cpu_id) && cpu_id != transfer_cpu_id ==> final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
-        forall|pt: RwLockPageTableRoot| #![trigger pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt))]
-            pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pt, pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pt))
-            ==> pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pt, pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt)),
 {
     proof {
         assert({

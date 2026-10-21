@@ -231,9 +231,9 @@ pub(super) fn new_process_lock_cpu_owner(
     })
 }
 
-/// With cpu `cpu_id`, `parent_ptr`, `current_thread_ptr`, `pcid_allocator_ptr`, and the optional `endpoint` and
-/// `source_pagetable` write-held unchanged since the entry snapshot: releases them all and finishes the call with `error`
-/// and a stutter trace.
+/// With cpu `cpu_id`, `parent_ptr`, `current_thread_ptr`, `pcid_allocator_ptr`, and the optional `endpoint` write-held and
+/// the optional `source_pagetable` read-held, all unchanged since the entry snapshot and no window held: releases them all
+/// and finishes the call with `error` and a stutter trace.
 pub(super) fn new_process_unlock_and_stutter(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, parent_ptr: RwLockProcessPtr,
     current_thread_ptr: RwLockThreadPtr, pcid_allocator_ptr: RwLockPcidAllocatorPtr, endpoint: Option<RwLockEndpointPtr>, source_pagetable: Option<RwLockPageTableRoot>,
@@ -249,13 +249,16 @@ pub(super) fn new_process_unlock_and_stutter(
         old(steps).nonlock_view().len() == 0,
         !(error is SuccessPairUsize || error is SuccessThreeUsize),
         *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, prc_mp: old(krnl).prc_mp, thr_mp: old(krnl).thr_mp, ep_mp: old(krnl).ep_mp, pt_mp: old(krnl).pt_mp,
-            pcid_allc_mp: old(krnl).pcid_allc_mp, ..old(steps).snapshot_k() }),
+            pt_lower: old(krnl).pt_lower, pcid_allc_mp: old(krnl).pcid_allc_mp, ..old(steps).snapshot_k() }),
         old(krnl).cpu_arr.unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
         old(krnl).prc_mp.unchanged_except(&old(steps).snapshot_k().prc_mp, parent_ptr),
         old(krnl).thr_mp.unchanged_except(&old(steps).snapshot_k().thr_mp, current_thread_ptr),
         old(krnl).pcid_allc_mp.unchanged_except(&old(steps).snapshot_k().pcid_allc_mp, pcid_allocator_ptr),
         match endpoint { Some(e) => old(krnl).ep_mp.unchanged_except(&old(steps).snapshot_k().ep_mp, e), None => old(krnl).ep_mp == old(steps).snapshot_k().ep_mp },
-        match source_pagetable { Some(p) => old(krnl).pt_mp.unchanged_except(&old(steps).snapshot_k().pt_mp, p), None => old(krnl).pt_mp == old(steps).snapshot_k().pt_mp },
+        match source_pagetable {
+            Some(p) => old(krnl).pt_mp.unchanged_except(&old(steps).snapshot_k().pt_mp, p),
+            None => old(krnl).pt_mp == old(steps).snapshot_k().pt_mp && old(krnl).pt_lower == old(steps).snapshot_k().pt_lower,
+        },
         old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
         old(krnl).cpu_arr.spec_index(cpu_id).value.killer_info() == old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.killer_info(),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
@@ -307,14 +310,21 @@ pub(super) fn new_process_unlock_and_stutter(
         source_pagetable is Some ==> {
             let pagetable_ptr = source_pagetable->Some_0;
             let perm = source_pagetable_lock_perm->Some_0;
+            let entry = old(steps).snapshot_k().pt_mp.spec_index(pagetable_ptr);
+            let entry_table = pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr);
             &&& old(krnl).pt_mp.dom().contains(pagetable_ptr)
-            &&& old(steps).snapshot_k().pt_mp.spec_index(pagetable_ptr).locking_thread() is None
-            &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr) == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr)
-            &&& pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pagetable_ptr, pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr))
-            &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).leaves_present()
-            &&& typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write)
-            &&& perm.state() is WriteLock && perm.thread_id() == old(lctx).thread_id()
-            &&& perm.lock_id() == old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id
+            &&& entry.inv() && !entry.wlocked() && !entry.locked_by_thread(old(lctx).thread_id())
+            &&& old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread() == (RwLockState::Read {
+                reader_map: (if entry.locking_thread() is Read { entry.locking_thread()->Read_reader_map } else { Map::empty() }).insert(old(lctx).thread_id(), perm.lock_id()),
+            })
+            &&& old(krnl).pt_mp.spec_index(pagetable_ptr).view() == entry.view()
+            &&& old(krnl).pt_mp.spec_index(pagetable_ptr).being_killed() == entry.being_killed()
+            &&& old(krnl).pt_lower.view() =~= old(steps).snapshot_k().pt_lower.view().insert(pagetable_ptr, old(krnl).pt_lower.view().spec_index(pagetable_ptr))
+            &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k() == entry_table.mapping_4k()
+            &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_2m() == entry_table.mapping_2m()
+            &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_1g() == entry_table.mapping_1g()
+            &&& typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Read)
+            &&& perm.state() is ReadLock && perm.thread_id() == old(lctx).thread_id()
         },
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
         old(lctx).process_lock_map().dom() =~= set![parent_ptr],
@@ -351,7 +361,15 @@ pub(super) fn new_process_unlock_and_stutter(
 {
     if source_pagetable.is_some() {
         let tracked perm = source_pagetable_lock_perm.tracked_unwrap();
-        krnl.wunlock_pagetable(source_pagetable.unwrap(), Tracked(&mut *lctx), Tracked(perm));
+        proof {
+            let entry = steps.snapshot_k().pt_mp.spec_index(source_pagetable->Some_0);
+            if entry.locking_thread() is Read {
+                assert(entry.locking_thread()->Read_reader_map.insert(lctx.thread_id(), perm.lock_id()).remove(lctx.thread_id()) =~= entry.locking_thread()->Read_reader_map);
+            } else {
+                assert(Map::<LockThreadId, LockToken>::empty().insert(lctx.thread_id(), perm.lock_id()).remove(lctx.thread_id()).dom() =~= Set::empty());
+            }
+        }
+        krnl.runlock_pagetable(source_pagetable.unwrap(), Tracked(&mut *lctx), Tracked(perm));
     }
     if endpoint.is_some() {
         let tracked perm = endpoint_lock_perm.tracked_unwrap();
@@ -368,7 +386,7 @@ pub(super) fn new_process_unlock_and_stutter(
 }
 
 /// With cpu `cpu_id`, its current process and thread, and its container's pcid allocator write-held: write-locks
-/// `endpoint`, if any, and then the source page table `pagetable_ptr`, and returns their perms.
+/// `endpoint`, if any, read-locks the source page table `pagetable_ptr`, and returns their perms.
 pub(super) fn new_process_lock_endpoint_and_source(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, cpu_id: CpuId, parent_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr,
     pcid_allocator_ptr: RwLockPcidAllocatorPtr, endpoint: Option<RwLockEndpointPtr>, pagetable_ptr: RwLockPageTableRoot,
@@ -418,14 +436,18 @@ pub(super) fn new_process_lock_endpoint_and_source(
         kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
-        old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread() is None,
+        old(krnl).pt_mp.spec_index(pagetable_ptr).inv() && !old(krnl).pt_mp.spec_index(pagetable_ptr).wlocked(),
+        !old(krnl).pt_mp.spec_index(pagetable_ptr).locked_by_thread(old(lctx).thread_id()),
+        final(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread() == (RwLockState::Read {
+            reader_map: (if old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread() is Read { old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map } else { Map::empty() })
+                .insert(old(lctx).thread_id(), ret.1.view().lock_id()),
+        }),
+        final(krnl).pt_mp.spec_index(pagetable_ptr).view() == old(krnl).pt_mp.spec_index(pagetable_ptr).view(),
+        final(krnl).pt_mp.spec_index(pagetable_ptr).being_killed() == old(krnl).pt_mp.spec_index(pagetable_ptr).being_killed(),
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr),
-        pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pagetable_ptr, pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr)),
-        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).leaves_present(),
         final(krnl).pt_mp.spec_index(pagetable_ptr).is_init() && pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).wf(),
-        typed_lock_map_contains_mode(final(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
-        ret.1.view().state() is WriteLock && ret.1.view().thread_id() == final(lctx).thread_id(),
-        ret.1.view().lock_id() == final(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
+        typed_lock_map_contains_mode(final(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Read),
+        ret.1.view().state() is ReadLock && ret.1.view().thread_id() == final(lctx).thread_id(),
         (ret.0.view() is Some) == (endpoint is Some),
         endpoint is Some ==> {
             let endpoint_ptr = endpoint->Some_0;
@@ -464,7 +486,11 @@ pub(super) fn new_process_lock_endpoint_and_source(
         let Tracked(endpoint_lock_perm) = krnl.wlock_endpoint(endpoint.unwrap(), Tracked(&mut *lctx));
         proof { endpoint_lock_perm_opt = Some(endpoint_lock_perm); }
     }
-    let source_pagetable_lock_perm = krnl.wlock_pagetable(pagetable_ptr, Tracked(&mut *lctx));
+    proof {
+        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr);
+        krnl.pt_mp.typed_lock_map_aligned_locked_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr);
+    }
+    let source_pagetable_lock_perm = krnl.rlock_pagetable(pagetable_ptr, Tracked(&mut *lctx));
     proof {
         pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };

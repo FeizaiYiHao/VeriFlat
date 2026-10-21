@@ -347,8 +347,8 @@ pub open spec fn ipc_pages_held(u: KernelU, cpu_id: CpuId) -> bool {
     &&& u.endpoint_map[channel].lock_state is WriteLocked
 }
 
-/// The sender's and receiver's processes differ and both of their page tables have lock mode `state`.
-pub open spec fn ipc_pages_tables_in(u: KernelU, cpu_id: CpuId, state: LockStateU) -> bool {
+/// The sender's and receiver's processes differ and both have page tables.
+pub open spec fn ipc_pages_tables_present(u: KernelU, cpu_id: CpuId) -> bool {
     let source = u.thread_map[ipc_pages_sender(u, cpu_id)].owning_proc;
     let target = u.thread_map[ipc_pages_receiver(u, cpu_id)].owning_proc;
     &&& source != target
@@ -356,8 +356,6 @@ pub open spec fn ipc_pages_tables_in(u: KernelU, cpu_id: CpuId, state: LockState
     &&& u.process_map.dom().contains(target)
     &&& u.process_map[source].pagetable is Some
     &&& u.process_map[target].pagetable is Some
-    &&& u.process_map[source].pagetable->Some_0.lock_state == state
-    &&& u.process_map[target].pagetable->Some_0.lock_state == state
 }
 
 /// Every page of `range` is mapped in `table`.
@@ -391,7 +389,7 @@ pub open spec fn ipc_pages_owners_compatible(u: KernelU, table: PageTableU, cont
     }
 }
 
-/// The checks a pages rendezvous makes under both write-locked page tables, in the implementation's order:
+/// The checks a pages rendezvous makes under both locked page tables, in the implementation's order:
 /// the source range lies above the user-VA bound, every source page is mapped, the receiver has 4K quota for
 /// the worst-case target directories, the target range lies above the user-VA bound and is free, and every
 /// source page is owned by the receiver's container or one of its ancestors.
@@ -437,52 +435,64 @@ pub open spec fn ipc_pages_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: Cp
         endpoint_map: old_u.endpoint_map.insert(channel, EndpointU { lock_state: LockStateU::WriteLocked, ..old_u.endpoint_map[channel] }),
         ..old_u
     };
-    let progress = SyscallProgress::IpcPages { source_range: if sends { range } else { peer_range }, target_range: if sends { peer_range } else { range }, peer, locked: false, released: None };
+    let progress = SyscallProgress::IpcPages { source_range: if sends { range } else { peer_range }, target_range: if sends { peer_range } else { range }, peer, tables: IpcPagesTables::Unlocked, released: None };
     new_u == (KernelU { thread_map: locked.thread_map.insert(caller, ThreadU { syscall_progress: Some(progress), ..locked.thread_map[caller] }), ..locked })
 }
 
-/// Locking runs after entering, while the sender's and receiver's page tables are unlocked.
+/// Locking runs after entering, while no other thread write-locks the sender's page table, and no other thread write-locks
+/// the receiver's page table to read it or holds it at all to fill it.
 #[verifier::opaque]
-pub open spec fn ipc_pages_lock_tables_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+pub open spec fn ipc_pages_lock_tables_step_pre(old_u: KernelU, cpu_id: CpuId, tables: IpcPagesTables) -> bool {
     let progress = old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0;
+    let source = old_u.process_map[old_u.thread_map[ipc_pages_sender(old_u, cpu_id)].owning_proc].pagetable->Some_0;
+    let target = old_u.process_map[old_u.thread_map[ipc_pages_receiver(old_u, cpu_id)].owning_proc].pagetable->Some_0;
     &&& ipc_pages_held(old_u, cpu_id)
-    &&& !progress->IpcPages_locked
+    &&& progress->IpcPages_tables is Unlocked
     &&& progress->IpcPages_released is None
-    &&& ipc_pages_tables_in(old_u, cpu_id, LockStateU::Unlocked)
+    &&& tables is Read || tables is Fill
+    &&& ipc_pages_tables_present(old_u, cpu_id)
+    &&& !(source.lock_state is WriteLocked)
+    &&& if tables is Fill { target.lock_state is Unlocked } else { !(target.lock_state is WriteLocked) }
 }
 
-/// Locking write-locks the sender's and receiver's page tables and records that they are locked.
+/// Locking read-locks the sender's page table, read-locks the receiver's or write-locks it to fill it, and records
+/// `tables`.
 #[verifier::opaque]
-pub open spec fn ipc_pages_lock_tables_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+pub open spec fn ipc_pages_lock_tables_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, tables: IpcPagesTables) -> bool {
     let caller = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let progress = old_u.thread_map[caller].syscall_progress->Some_0;
     let source = old_u.thread_map[ipc_pages_sender(old_u, cpu_id)].owning_proc;
     let target = old_u.thread_map[ipc_pages_receiver(old_u, cpu_id)].owning_proc;
-    let locked = SyscallProgress::IpcPages { source_range: progress->IpcPages_source_range, target_range: progress->IpcPages_target_range, peer: progress->IpcPages_peer, locked: true, released: None };
+    let locked = SyscallProgress::IpcPages { source_range: progress->IpcPages_source_range, target_range: progress->IpcPages_target_range, peer: progress->IpcPages_peer, tables, released: None };
     new_u == (KernelU {
         thread_map: old_u.thread_map.insert(caller, ThreadU { syscall_progress: Some(locked), ..old_u.thread_map[caller] }),
         process_map: old_u.process_map.insert(source, ProcessU {
-            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..old_u.process_map[source].pagetable->Some_0 }), ..old_u.process_map[source]
+            pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..old_u.process_map[source].pagetable->Some_0 }), ..old_u.process_map[source]
         }).insert(target, ProcessU {
-            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..old_u.process_map[target].pagetable->Some_0 }), ..old_u.process_map[target]
+            pagetable: Some(PageTableU { lock_state: if tables is Fill { LockStateU::WriteLocked } else { LockStateU::ReadLocked }, ..old_u.process_map[target].pagetable->Some_0 }),
+            ..old_u.process_map[target]
         }),
         ..old_u
     })
 }
 
-/// Checking runs after locking, while the sender's and receiver's page tables are write-locked and nothing is
-/// released.
+/// Checking runs after locking, while the sender's page table is read-locked, the receiver's is read-locked or write-locked
+/// to fill it as recorded, and nothing is released.
 #[verifier::opaque]
 pub open spec fn ipc_pages_check_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let progress = old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0;
+    let source = old_u.process_map[old_u.thread_map[ipc_pages_sender(old_u, cpu_id)].owning_proc].pagetable->Some_0;
+    let target = old_u.process_map[old_u.thread_map[ipc_pages_receiver(old_u, cpu_id)].owning_proc].pagetable->Some_0;
     &&& ipc_pages_held(old_u, cpu_id)
-    &&& progress->IpcPages_locked
+    &&& progress->IpcPages_tables is Read || progress->IpcPages_tables is Fill
     &&& progress->IpcPages_released is None
-    &&& ipc_pages_tables_in(old_u, cpu_id, LockStateU::WriteLocked)
+    &&& ipc_pages_tables_present(old_u, cpu_id)
+    &&& source.lock_state is ReadLocked
+    &&& target.lock_state == if progress->IpcPages_tables is Fill { LockStateU::WriteLocked } else { LockStateU::ReadLocked }
 }
 
-/// A passed check starts sharing the recorded ranges at their first page; a failed check unlocks both page
-/// tables and records its result.
+/// A passed check starts sharing the recorded ranges at their first page; a failed check releases both page tables, which
+/// other readers may still hold, and records its result.
 #[verifier::opaque]
 pub open spec fn ipc_pages_check_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let caller = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
@@ -490,27 +500,61 @@ pub open spec fn ipc_pages_check_step(old_u: KernelU, new_u: KernelU, cpu_id: Cp
     let result = ipc_pages_check_result(old_u, cpu_id);
     let source = old_u.thread_map[ipc_pages_sender(old_u, cpu_id)].owning_proc;
     let target = old_u.thread_map[ipc_pages_receiver(old_u, cpu_id)].owning_proc;
+    let source_state = new_u.process_map[source].pagetable->Some_0.lock_state;
+    let target_state = new_u.process_map[target].pagetable->Some_0.lock_state;
     let next = if result is Success {
         SyscallProgress::Share4k { source_range: progress->IpcPages_source_range, target_range: progress->IpcPages_target_range, shared: 0, origin: Share4kOrigin::IpcPages { peer: progress->IpcPages_peer } }
     } else {
-        SyscallProgress::IpcPages { source_range: progress->IpcPages_source_range, target_range: progress->IpcPages_target_range, peer: progress->IpcPages_peer, locked: false, released: Some(result) }
+        SyscallProgress::IpcPages { source_range: progress->IpcPages_source_range, target_range: progress->IpcPages_target_range, peer: progress->IpcPages_peer, tables: IpcPagesTables::Unlocked, released: Some(result) }
     };
     let threads = old_u.thread_map.insert(caller, ThreadU { syscall_progress: Some(next), ..old_u.thread_map[caller] });
     if result is Success { new_u == (KernelU { thread_map: threads, ..old_u }) } else {
-        new_u == (KernelU {
+        &&& source_state is Unlocked || source_state is ReadLocked
+        &&& target_state is Unlocked || target_state is ReadLocked
+        &&& new_u == (KernelU {
             thread_map: threads,
             process_map: old_u.process_map.insert(source, ProcessU {
-                pagetable: Some(PageTableU { lock_state: LockStateU::Unlocked, ..old_u.process_map[source].pagetable->Some_0 }), ..old_u.process_map[source]
+                pagetable: Some(PageTableU { lock_state: source_state, ..old_u.process_map[source].pagetable->Some_0 }), ..old_u.process_map[source]
             }).insert(target, ProcessU {
-                pagetable: Some(PageTableU { lock_state: LockStateU::Unlocked, ..old_u.process_map[target].pagetable->Some_0 }), ..old_u.process_map[target]
+                pagetable: Some(PageTableU { lock_state: target_state, ..old_u.process_map[target].pagetable->Some_0 }), ..old_u.process_map[target]
             }),
             ..old_u
         })
     }
 }
 
-/// Unlocking runs after every page of a pages rendezvous is shared, while the sender's and receiver's page
-/// tables are write-locked.
+/// Downgrading runs after the receiver's missing directories are installed and before the first page is shared, while the
+/// sender's page table is read-locked and the receiver's is write-locked.
+#[verifier::opaque]
+pub open spec fn ipc_pages_downgrade_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+    let progress = old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0;
+    let objects = share_4k_objects(old_u, cpu_id);
+    let source = old_u.thread_map[objects.source_thread].owning_proc;
+    &&& share_4k_locked(old_u, cpu_id)
+    &&& progress->Share4k_origin is IpcPages
+    &&& progress->Share4k_shared == 0
+    &&& source != objects.target
+    &&& old_u.process_map.dom().contains(source)
+    &&& old_u.process_map.dom().contains(objects.target)
+    &&& old_u.process_map[source].pagetable is Some
+    &&& old_u.process_map[objects.target].pagetable is Some
+    &&& old_u.process_map[source].pagetable->Some_0.lock_state is ReadLocked
+    &&& old_u.process_map[objects.target].pagetable->Some_0.lock_state is WriteLocked
+}
+
+/// Downgrading turns the write lock on the receiver's page table into a read lock.
+#[verifier::opaque]
+pub open spec fn ipc_pages_downgrade_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    let target = share_4k_objects(old_u, cpu_id).target;
+    new_u == (KernelU {
+        process_map: old_u.process_map.insert(target, ProcessU {
+            pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..old_u.process_map[target].pagetable->Some_0 }), ..old_u.process_map[target]
+        }),
+        ..old_u
+    })
+}
+
+/// Unlocking runs after every page of a pages rendezvous is shared, while both page tables are read-locked.
 #[verifier::opaque]
 pub open spec fn ipc_pages_unlock_tables_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let progress = old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0;
@@ -525,27 +569,31 @@ pub open spec fn ipc_pages_unlock_tables_step_pre(old_u: KernelU, cpu_id: CpuId)
     &&& old_u.process_map.dom().contains(objects.target)
     &&& old_u.process_map[source].pagetable is Some
     &&& old_u.process_map[objects.target].pagetable is Some
-    &&& old_u.process_map[source].pagetable->Some_0.lock_state is WriteLocked
-    &&& old_u.process_map[objects.target].pagetable->Some_0.lock_state is WriteLocked
+    &&& old_u.process_map[source].pagetable->Some_0.lock_state is ReadLocked
+    &&& old_u.process_map[objects.target].pagetable->Some_0.lock_state is ReadLocked
 }
 
-/// Unlocking both page tables records that the rendezvous succeeded.
+/// Releasing both page tables, which other readers may still hold, records that the rendezvous succeeded.
 #[verifier::opaque]
 pub open spec fn ipc_pages_unlock_tables_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let caller = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let progress = old_u.thread_map[caller].syscall_progress->Some_0;
     let objects = share_4k_objects(old_u, cpu_id);
     let source = old_u.thread_map[objects.source_thread].owning_proc;
+    let source_state = new_u.process_map[source].pagetable->Some_0.lock_state;
+    let target_state = new_u.process_map[objects.target].pagetable->Some_0.lock_state;
     let released = SyscallProgress::IpcPages {
         source_range: progress->Share4k_source_range, target_range: progress->Share4k_target_range, peer: progress->Share4k_origin->IpcPages_peer,
-        locked: false, released: Some(RetValueType::Success),
+        tables: IpcPagesTables::Unlocked, released: Some(RetValueType::Success),
     };
-    new_u == (KernelU {
+    &&& source_state is Unlocked || source_state is ReadLocked
+    &&& target_state is Unlocked || target_state is ReadLocked
+    &&& new_u == (KernelU {
         thread_map: old_u.thread_map.insert(caller, ThreadU { syscall_progress: Some(released), ..old_u.thread_map[caller] }),
         process_map: old_u.process_map.insert(source, ProcessU {
-            pagetable: Some(PageTableU { lock_state: LockStateU::Unlocked, ..old_u.process_map[source].pagetable->Some_0 }), ..old_u.process_map[source]
+            pagetable: Some(PageTableU { lock_state: source_state, ..old_u.process_map[source].pagetable->Some_0 }), ..old_u.process_map[source]
         }).insert(objects.target, ProcessU {
-            pagetable: Some(PageTableU { lock_state: LockStateU::Unlocked, ..old_u.process_map[objects.target].pagetable->Some_0 }), ..old_u.process_map[objects.target]
+            pagetable: Some(PageTableU { lock_state: target_state, ..old_u.process_map[objects.target].pagetable->Some_0 }), ..old_u.process_map[objects.target]
         }),
         ..old_u
     })
@@ -560,48 +608,51 @@ pub open spec fn ipc_pages_trace_after_enter(trace: Seq<KernelStep>, pre: Kernel
     &&& ipc_pages_enter_step(pre, trace[0].new_u, cpu_id, endpoint_index, waiting_state, range)
 }
 
-/// The two steps of a pages transfer recorded after locking both page tables.
+/// The two steps of a pages transfer recorded after locking both page tables in mode `tables`.
 #[verifier::opaque]
-pub open spec fn ipc_pages_trace_after_lock(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, range: VaRange4K) -> bool {
+pub open spec fn ipc_pages_trace_after_lock(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, range: VaRange4K, tables: IpcPagesTables) -> bool {
     &&& trace.len() == 2
     &&& trace[0].old_u == pre
     &&& ipc_pages_enter_step_pre(pre, cpu_id, endpoint_index, waiting_state, range)
     &&& ipc_pages_enter_step(pre, trace[0].new_u, cpu_id, endpoint_index, waiting_state, range)
-    &&& ipc_pages_lock_tables_step_pre(trace[1].old_u, cpu_id)
-    &&& ipc_pages_lock_tables_step(trace[1].old_u, trace[1].new_u, cpu_id)
+    &&& ipc_pages_lock_tables_step_pre(trace[1].old_u, cpu_id, tables)
+    &&& ipc_pages_lock_tables_step(trace[1].old_u, trace[1].new_u, cpu_id, tables)
 }
 
-/// The steps of a pages transfer recorded from `start` on after a passed check and every share step.
+/// The steps of a pages transfer recorded from `start` on after a passed check and every directory, downgrade, and share
+/// step.
 #[verifier::opaque]
 pub open spec fn ipc_pages_trace_after_share(trace: Seq<KernelStep>, start: int, pre: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, range: VaRange4K) -> bool {
     &&& 0 <= start
-    &&& start + range.len + 3 <= trace.len() <= start + 4 * range.len + 3
+    &&& start + range.len + 3 <= trace.len() <= start + 4 * range.len + 4
     &&& trace[start].old_u == pre
     &&& ipc_pages_enter_step_pre(pre, cpu_id, endpoint_index, waiting_state, range)
     &&& ipc_pages_enter_step(pre, trace[start].new_u, cpu_id, endpoint_index, waiting_state, range)
-    &&& ipc_pages_lock_tables_step_pre(trace[start + 1].old_u, cpu_id)
-    &&& ipc_pages_lock_tables_step(trace[start + 1].old_u, trace[start + 1].new_u, cpu_id)
+    &&& (ipc_pages_lock_tables_step_pre(trace[start + 1].old_u, cpu_id, IpcPagesTables::Read) && ipc_pages_lock_tables_step(trace[start + 1].old_u, trace[start + 1].new_u, cpu_id, IpcPagesTables::Read)
+        || ipc_pages_lock_tables_step_pre(trace[start + 1].old_u, cpu_id, IpcPagesTables::Fill) && ipc_pages_lock_tables_step(trace[start + 1].old_u, trace[start + 1].new_u, cpu_id, IpcPagesTables::Fill))
     &&& ipc_pages_check_step_pre(trace[start + 2].old_u, cpu_id)
     &&& ipc_pages_check_step(trace[start + 2].old_u, trace[start + 2].new_u, cpu_id)
     &&& ipc_pages_check_result(trace[start + 2].old_u, cpu_id) is Success
-    &&& forall|j: int| #![trigger trace[j]] start + 3 <= j < trace.len() ==> share_4k_range_step(trace[j], cpu_id)
+    &&& forall|j: int| #![trigger trace[j]] start + 3 <= j < trace.len()
+        ==> share_4k_range_step(trace[j], cpu_id) || ipc_pages_downgrade_step_pre(trace[j].old_u, cpu_id) && ipc_pages_downgrade_step(trace[j].old_u, trace[j].new_u, cpu_id)
 }
 
-/// The steps of a pages transfer before it finishes: enter, lock both page tables, and check, then on a
-/// passed check the share steps and unlocking both page tables. `result` is the check result.
+/// The steps of a pages transfer before it finishes: enter, lock both page tables to read or to fill, and check, then on a
+/// passed check the directory, downgrade, and share steps and unlocking both page tables. `result` is the check result.
 #[verifier::opaque]
 pub open spec fn ipc_pages_mapping_trace(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, range: VaRange4K, result: RetValueType) -> bool {
-    &&& if result is Success { range.len + 4 <= trace.len() <= 4 * range.len + 4 } else { trace.len() == 3 }
+    &&& if result is Success { range.len + 4 <= trace.len() <= 4 * range.len + 5 } else { trace.len() == 3 }
     &&& trace[0].old_u == pre
     &&& ipc_pages_enter_step_pre(pre, cpu_id, endpoint_index, waiting_state, range)
     &&& ipc_pages_enter_step(pre, trace[0].new_u, cpu_id, endpoint_index, waiting_state, range)
-    &&& ipc_pages_lock_tables_step_pre(trace[1].old_u, cpu_id)
-    &&& ipc_pages_lock_tables_step(trace[1].old_u, trace[1].new_u, cpu_id)
+    &&& (ipc_pages_lock_tables_step_pre(trace[1].old_u, cpu_id, IpcPagesTables::Read) && ipc_pages_lock_tables_step(trace[1].old_u, trace[1].new_u, cpu_id, IpcPagesTables::Read)
+        || ipc_pages_lock_tables_step_pre(trace[1].old_u, cpu_id, IpcPagesTables::Fill) && ipc_pages_lock_tables_step(trace[1].old_u, trace[1].new_u, cpu_id, IpcPagesTables::Fill))
     &&& ipc_pages_check_step_pre(trace[2].old_u, cpu_id)
     &&& ipc_pages_check_step(trace[2].old_u, trace[2].new_u, cpu_id)
     &&& result == ipc_pages_check_result(trace[2].old_u, cpu_id)
     &&& result is Success ==> {
-        &&& forall|j: int| #![trigger trace[j]] 3 <= j < trace.len() - 1 ==> share_4k_range_step(trace[j], cpu_id)
+        &&& forall|j: int| #![trigger trace[j]] 3 <= j < trace.len() - 1
+            ==> share_4k_range_step(trace[j], cpu_id) || ipc_pages_downgrade_step_pre(trace[j].old_u, cpu_id) && ipc_pages_downgrade_step(trace[j].old_u, trace[j].new_u, cpu_id)
         &&& ipc_pages_unlock_tables_step_pre(trace.last().old_u, cpu_id)
         &&& ipc_pages_unlock_tables_step(trace.last().old_u, trace.last().new_u, cpu_id)
     }
@@ -650,7 +701,7 @@ pub open spec fn ipc_pages_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -> boo
     let channel = old_u.endpoint_map[peer.blocking_endpoint_ptr->Some_0];
     &&& ipc_pages_held(old_u, cpu_id)
     &&& progress->IpcPages_released is Some
-    &&& !progress->IpcPages_locked
+    &&& progress->IpcPages_tables is Unlocked
     &&& channel.queue.len() > 0
     &&& channel.queue[0] == progress->IpcPages_peer
     &&& old_u.container_map.dom().contains(peer.owning_container)

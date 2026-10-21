@@ -52,7 +52,8 @@ verus! {
             &&& pagetable_lower_wf(self.pt_mp, self.pt_lower.view())
             &&& pagetable_window_holders_hold_pagetable(self.pt_mp, self.pt_lower.view())
             &&& pagetable_lower_backup_wf(self.pt_mp, self.pt_lower.view())
-            &&& pagetable_hidden_leaves_only_when_wlocked(self.pt_mp, self.pt_lower.view())
+            &&& pagetable_hidden_leaves_only_when_locked(self.pt_mp, self.pt_lower.view())
+            &&& pagetable_window_stale_cpus_only_when_locked(self.pt_mp, self.pt_lower.view())
             &&& iommu_table_perms_wf(self.it_mp)
             &&& self.irt.inv()
             &&& page_array_wf(self.pg_arr)
@@ -208,9 +209,6 @@ verus! {
         ///     unchanged even without its CPU lock;
         ///   - needflush entries are independent of the CPU lock: only entries
         ///     held in the typed needflush map are preserved;
-        ///   - held page tables cannot acquire stale translations after their
-        ///     present-submap condition has been established. Rebinding a PCID
-        ///     or ending its deferred-flush exemption establishes that condition;
         ///   - everything else may change arbitrarily, including map
         ///     domains (except for the fixed-size arrays `cpu_array` and
         ///     `page_array`);
@@ -254,23 +252,6 @@ verus! {
                 // while its identity and exact held-lock set stay put.
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 typed_lock_maps_unchanged(old(lctx), final(lctx)),
-                forall|pt: RwLockPageTableRoot|
-                    #![trigger pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, pt, pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), pt))]
-                    old(lctx).pagetable_lock_map().dom().contains(pt) && pagetable_tlb_entries_present(old(self).cpu_tlb, old(self).cpu_arr, old(self).pcid_needflush, pt, pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), pt))
-                        ==> pagetable_tlb_entries_present(final(self).cpu_tlb, final(self).cpu_arr, final(self).pcid_needflush, pt, pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), pt)),
-                forall|pagetable_ptr: RwLockPageTableRoot, cpu_id: CpuId, pcid: Pcid|
-                    #![trigger old(lctx).pagetable_lock_map().dom().contains(pagetable_ptr), final(self).cpu_tlb.spec_index((cpu_id, pcid))]
-                    old(lctx).pagetable_lock_map().dom().contains(pagetable_ptr) && index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID ==> {
-                        let before = old(self).cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
-                        let after = final(self).cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
-                        after is Some && after.unwrap().pagetable_ptr == pagetable_ptr
-                        && (before is None || before.unwrap().pagetable_ptr != pagetable_ptr
-                            || single_cpu_single_pcid_tlb_subset_of_present_pagetable(old(self).cpu_tlb.spec_index((cpu_id, pcid)), pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr))
-                            || (old(self).pcid_needflush.spec_index(cpu_id, pcid).view().needflush
-                                && old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid
-                                && (!final(self).pcid_needflush.spec_index(cpu_id, pcid).view().needflush || final(self).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid)))
-                        ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(self).cpu_tlb.spec_index((cpu_id, pcid)), pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), pagetable_ptr))
-                    },
                 forall|cpu_id: CpuId, pcid: Pcid|
                     #![trigger old(lctx).pcid_needflush_lock_map().dom().contains((cpu_id, pcid))]
                     old(lctx).pcid_needflush_lock_map().dom().contains((cpu_id, pcid))
@@ -317,6 +298,7 @@ verus! {
                             &&& final(self).pt_mp.spec_index(pagetable_ptr).view() == old(self).pt_mp.spec_index(pagetable_ptr).view()
                             &&& final(self).pt_mp.spec_index(pagetable_ptr).rlocked_by_thread(old(lctx).thread_id())
                             &&& final(self).pt_mp.spec_index(pagetable_ptr).being_killed() == old(self).pt_mp.spec_index(pagetable_ptr).being_killed()
+                            &&& final(self).pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map.spec_index(old(lctx).thread_id()) == old(self).pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map.spec_index(old(lctx).thread_id())
                         }
                     },
                 typed_lock_maps_aligned(final(self), final(lctx)),

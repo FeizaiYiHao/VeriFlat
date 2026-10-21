@@ -12,7 +12,7 @@ pub(super) fn enter_new_process_commit(
 )
     requires
         *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, prc_mp: old(krnl).prc_mp,
-            thr_mp: old(krnl).thr_mp, ep_mp: old(krnl).ep_mp, pt_mp: old(krnl).pt_mp, pcid_allc_mp: old(krnl).pcid_allc_mp, ..old(steps).snapshot_k() }),
+            thr_mp: old(krnl).thr_mp, ep_mp: old(krnl).ep_mp, pt_mp: old(krnl).pt_mp, pt_lower: old(krnl).pt_lower, pcid_allc_mp: old(krnl).pcid_allc_mp, ..old(steps).snapshot_k() }),
         old(krnl).cpu_arr.unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
         old(krnl).prc_mp.unchanged_except(&old(steps).snapshot_k().prc_mp, parent_ptr),
         old(krnl).thr_mp.unchanged_except(&old(steps).snapshot_k().thr_mp, current_thread_ptr),
@@ -20,7 +20,6 @@ pub(super) fn enter_new_process_commit(
         old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
         old(steps).snapshot_k().prc_mp.spec_index(parent_ptr).locking_thread() is None,
         old(steps).snapshot_k().thr_mp.spec_index(current_thread_ptr).locking_thread() is None,
-        old(steps).snapshot_k().pt_mp.spec_index(source_pagetable_ptr).locking_thread() is None,
         endpoint is Some ==> old(steps).snapshot_k().ep_mp.spec_index(endpoint->Some_0).locking_thread() is None,
         match endpoint { Some(e) => old(krnl).ep_mp.unchanged_except(&old(steps).snapshot_k().ep_mp, e), None => old(krnl).ep_mp == old(steps).snapshot_k().ep_mp },
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(current_thread_ptr),
@@ -35,6 +34,7 @@ pub(super) fn enter_new_process_commit(
         old(krnl).pcid_allc_mp.dom().contains(pcid_allocator_ptr),
         typed_lock_map_contains_mode(old(lctx).pcid_allocator_lock_map(), pcid_allocator_ptr, TypedLockMode::Write),
         old(krnl).prc_mp.dom().contains(parent_ptr),
+        !old(krnl).prc_mp.spec_index(parent_ptr).view().zombie,
         typed_lock_map_contains_mode(old(lctx).process_lock_map(), parent_ptr, TypedLockMode::Write),
         old(krnl).thr_mp.dom().contains(current_thread_ptr),
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_proc == parent_ptr,
@@ -46,8 +46,7 @@ pub(super) fn enter_new_process_commit(
         current_thread_lock_perm.thread_id() == old(lctx).thread_id(),
         current_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
         old(krnl).pt_mp.dom().contains(source_pagetable_ptr),
-        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, source_pagetable_ptr, pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr)),
-        typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), source_pagetable_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), source_pagetable_ptr, TypedLockMode::Read),
         endpoint is Some ==> {
             let endpoint_ptr = endpoint->Some_0;
             &&& edp_idx_valid(endpoint_index)
@@ -93,9 +92,9 @@ pub(super) fn enter_new_process_commit(
         final(krnl).thr_mp.spec_index(current_thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(current_thread_ptr).being_killed(),
         final(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost(),
         final(krnl).pt_mp.dom().contains(source_pagetable_ptr),
-        final(krnl).pt_mp.spec_index(source_pagetable_ptr) == old(krnl).pt_mp.spec_index(source_pagetable_ptr),
+        held_pagetables_unchanged(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx)),
+        held_pagetable_windows_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), final(krnl).pt_mp, final(krnl).pt_lower.view(), old(lctx)),
         endpoint is Some ==> final(krnl).ep_mp.dom().contains(endpoint->Some_0) && final(krnl).ep_mp.spec_index(endpoint->Some_0) == old(krnl).ep_mp.spec_index(endpoint->Some_0),
-        pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, source_pagetable_ptr, pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), source_pagetable_ptr)),
 {
     let ghost endpoint_index_opt: Option<EndpointIdx> = if endpoint is Some { Some(endpoint_index) } else { None };
     let ghost entry_u = kernel_k_to_kernel_u(old(steps).snapshot_k());
@@ -112,8 +111,8 @@ pub(super) fn enter_new_process_commit(
         assert(new_process_trace_after_enter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), entry_u, cpu_id,
             *source_range, regs, endpoint_index_opt, with_iommu)) by {
             process_thread_wf_at(old(krnl).prc_mp, old(krnl).thr_mp, current_thread_ptr); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
-            kernel_cpu_process_thread_endpoint_lock_modes_changed_implies_u_step(&old(steps).snapshot_k(), old(krnl), old(lctx),
-                cpu_id, parent_ptr, current_thread_ptr, endpoint, true, None, true, None);
+            kernel_cpu_process_thread_endpoint_wlocked_pagetable_rlocked_implies_u_step(&old(steps).snapshot_k(), old(krnl), old(lctx), cpu_id, parent_ptr, current_thread_ptr, endpoint,
+                None, None);
             kernel_thread_syscall_progress_changed_implies_u_step(old(krnl), &entered_k, current_thread_ptr);
             new_process_enter_step_from_u(entry_u, kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(entered_k), cpu_id, parent_ptr, current_thread_ptr, endpoint,
                 *source_range, regs, endpoint_index_opt, with_iommu);

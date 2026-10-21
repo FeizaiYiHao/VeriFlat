@@ -290,7 +290,7 @@ verus! {
                 &&& progress->Some_0 is IpcPages
                 &&& progress->Some_0->IpcPages_peer == peer_thread_ptr
                 &&& progress->Some_0->IpcPages_released == Some(result)
-                &&& !progress->Some_0->IpcPages_locked
+                &&& progress->Some_0->IpcPages_tables is Unlocked
                 &&& pre.thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr)
                 &&& pre.ep_mp.spec_index(endpoint_ptr).view().queue.len() != 0
                 &&& pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().spec_index(0) == peer_thread_ptr
@@ -466,7 +466,7 @@ verus! {
                 &&& progress->Some_0 is IpcPages
                 &&& progress->Some_0->IpcPages_peer == peer_thread_ptr
                 &&& progress->Some_0->IpcPages_released == Some(result)
-                &&& !progress->Some_0->IpcPages_locked
+                &&& progress->Some_0->IpcPages_tables is Unlocked
             },
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state.is_endpoint_waiting(),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),

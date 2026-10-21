@@ -48,16 +48,17 @@ pub open spec fn mmap_4k_syscall_result(pre: KernelU, cpu_id: CpuId, va: VAddr, 
 /// Publishing a leaf moves mmap progress to the next page with no directory installed.
 pub open spec fn mmap_4k_progress_after_leaf(progress: Option<SyscallProgress>) -> Option<SyscallProgress> {
     match progress {
-        Some(SyscallProgress::Mmap4k { range, mapped, directory: _ }) => Some(SyscallProgress::Mmap4k { range, mapped: (mapped + 1) as usize, directory: Mmap4kDirectory::None }),
+        Some(SyscallProgress::Mmap4k { range, mapped, directory: _, phase }) => Some(SyscallProgress::Mmap4k { range, mapped: (mapped + 1) as usize, directory: Mmap4kDirectory::None, phase }),
         _ => progress,
     }
 }
 
 /// The cpu runs a live thread of an existing container with no multi-step syscall in progress; the
-/// cpu, the thread, and its process's pagetable are unlocked; and the thread has four 4K quota per
-/// page of a valid, non-empty user range none of whose VAs is covered by a 4K, 2M, or 1G leaf.
+/// cpu and the thread are unlocked, and its process's pagetable is not write-locked when entering to
+/// read and unlocked when entering to fill; and the thread has four 4K quota per page of a valid,
+/// non-empty user range none of whose VAs is covered by a 4K, 2M, or 1G leaf.
 #[verifier::opaque]
-pub open spec fn mmap_4k_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: VaRange4K) -> bool {
+pub open spec fn mmap_4k_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: VaRange4K, phase: Mmap4kPhase) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
     let thread = old_u.thread_map.spec_index(cpu.current_thread->Some_0);
     let pagetable = old_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0;
@@ -72,7 +73,9 @@ pub open spec fn mmap_4k_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: Va
     &&& old_u.process_map.dom().contains(thread.owning_proc)
     &&& old_u.container_map.dom().contains(thread.owning_container)
     &&& old_u.process_map.spec_index(thread.owning_proc).pagetable is Some
-    &&& pagetable.lock_state is Unlocked
+    &&& !(phase is Filled)
+    &&& phase is Read ==> !(pagetable.lock_state is WriteLocked)
+    &&& phase is Fill ==> pagetable.lock_state is Unlocked
     &&& range.wf()
     &&& range.len > 0
     &&& user_va_range(old_u, range)
@@ -85,23 +88,53 @@ pub open spec fn mmap_4k_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: Va
     }
 }
 
-/// Entering write-locks the cpu, its running thread, and the thread's pagetable and starts progress
-/// at the first page.
+/// Entering write-locks the cpu and its running thread, read-locks the thread's pagetable to read or
+/// write-locks it to fill, and starts progress in that phase at the first page.
 #[verifier::opaque]
-pub open spec fn mmap_4k_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, range: VaRange4K) -> bool {
+pub open spec fn mmap_4k_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, range: VaRange4K, phase: Mmap4kPhase) -> bool {
     let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let thread = old_u.thread_map.spec_index(thread_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
-    let progress = SyscallProgress::Mmap4k { range, mapped: 0, directory: Mmap4kDirectory::None };
+    let progress = SyscallProgress::Mmap4k { range, mapped: 0, directory: Mmap4kDirectory::None, phase };
+    let table_lock = if phase is Read { LockStateU::ReadLocked } else { LockStateU::WriteLocked };
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..old_u.cpu_array[cpu_id as int] }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(progress), ..thread }),
-        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..process.pagetable->Some_0 }), ..process }),
+        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { lock_state: table_lock, ..process.pagetable->Some_0 }), ..process }),
         ..old_u
     })
 }
 
-/// A leaf step maps the next unmapped VA of the recorded range under the three mmap locks.
+/// Downgrading happens in the fill phase under the mmap locks with the pagetable write-locked.
+#[verifier::opaque]
+pub open spec fn mmap_4k_downgrade_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+    let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
+    let progress = thread.syscall_progress->Some_0;
+    &&& mmap_4k_locked(old_u, cpu_id)
+    &&& thread.syscall_progress is Some
+    &&& progress is Mmap4k
+    &&& progress->Mmap4k_phase is Fill
+    &&& old_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.lock_state is WriteLocked
+}
+
+/// Downgrading turns the pagetable's write lock into a read lock and moves progress to the filled
+/// phase with no directory installed.
+#[verifier::opaque]
+pub open spec fn mmap_4k_downgrade_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map.spec_index(thread_ptr);
+    let process = old_u.process_map.spec_index(thread.owning_proc);
+    let progress = thread.syscall_progress->Some_0;
+    let filled = SyscallProgress::Mmap4k { range: progress->Mmap4k_range, mapped: progress->Mmap4k_mapped, directory: Mmap4kDirectory::None, phase: Mmap4kPhase::Filled };
+    new_u == (KernelU {
+        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(filled), ..thread }),
+        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..process.pagetable->Some_0 }), ..process }),
+        ..old_u
+    })
+}
+
+/// A leaf step maps the next unmapped VA of the recorded range under the three mmap locks, outside
+/// the fill phase.
 #[verifier::opaque]
 pub open spec fn mmap_4k_leaf_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
@@ -110,6 +143,7 @@ pub open spec fn mmap_4k_leaf_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     &&& mmap_4k_locked(old_u, cpu_id)
     &&& thread.syscall_progress is Some
     &&& progress is Mmap4k
+    &&& !(progress->Mmap4k_phase is Fill)
     &&& progress->Mmap4k_mapped < progress->Mmap4k_range.len
     &&& thread.quota_4k >= 1
     &&& !old_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.mapping_4k.dom().contains(va)
@@ -139,7 +173,7 @@ pub open spec fn mmap_4k_leaf_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
     })
 }
 
-/// Exiting happens after every page of the recorded range has been mapped.
+/// Exiting happens outside the fill phase after every page of the recorded range has been mapped.
 #[verifier::opaque]
 pub open spec fn mmap_4k_exit_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
@@ -147,65 +181,74 @@ pub open spec fn mmap_4k_exit_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     &&& mmap_4k_locked(old_u, cpu_id)
     &&& thread.syscall_progress is Some
     &&& progress is Mmap4k
+    &&& !(progress->Mmap4k_phase is Fill)
     &&& progress->Mmap4k_mapped == progress->Mmap4k_range.len
     &&& progress->Mmap4k_directory is None
 }
 
-/// Exiting clears mmap progress and unlocks the cpu, its running thread, and the thread's pagetable.
+/// Exiting clears mmap progress, unlocks the cpu and its running thread, and drops the thread's read
+/// lock on its pagetable, which other readers may still hold.
 #[verifier::opaque]
 pub open spec fn mmap_4k_exit_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let thread = old_u.thread_map.spec_index(thread_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
-    new_u == (KernelU {
+    let table_lock = new_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.lock_state;
+    &&& table_lock is Unlocked || table_lock is ReadLocked
+    &&& new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..old_u.cpu_array[cpu_id as int] }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..thread }),
-        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { lock_state: LockStateU::Unlocked, ..process.pagetable->Some_0 }), ..process }),
+        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { lock_state: table_lock, ..process.pagetable->Some_0 }), ..process }),
         ..old_u
     })
 }
 
-/// A step inside the mmap loop installs one directory page or publishes one leaf.
+/// A step inside the mmap loop installs one directory page, downgrades the pagetable lock, or
+/// publishes one leaf.
 #[verifier::opaque]
 pub open spec fn mmap_4k_range_step(step: KernelStep, cpu_id: CpuId) -> bool {
     ||| mmap_4k_directory_step_pre(step.old_u, cpu_id) && mmap_4k_directory_step(step.old_u, step.new_u, cpu_id)
+    ||| mmap_4k_downgrade_step_pre(step.old_u, cpu_id) && mmap_4k_downgrade_step(step.old_u, step.new_u, cpu_id)
     ||| mmap_4k_leaf_step_pre(step.old_u, cpu_id) && mmap_4k_leaf_step(step.old_u, step.new_u, cpu_id)
 }
 
-/// The partial trace after entering: the single enter step.
+/// The partial trace after entering in `phase`: the single enter step.
 #[verifier::opaque]
-pub open spec fn mmap_4k_trace_after_enter(trace: Seq<KernelStep>, cpu_id: CpuId, range: VaRange4K) -> bool {
+pub open spec fn mmap_4k_trace_after_enter(trace: Seq<KernelStep>, cpu_id: CpuId, range: VaRange4K, phase: Mmap4kPhase) -> bool {
     &&& trace.len() == 1
-    &&& mmap_4k_enter_step_pre(trace[0].old_u, cpu_id, range)
-    &&& mmap_4k_enter_step(trace[0].old_u, trace[0].new_u, cpu_id, range)
+    &&& mmap_4k_enter_step_pre(trace[0].old_u, cpu_id, range, phase)
+    &&& mmap_4k_enter_step(trace[0].old_u, trace[0].new_u, cpu_id, range, phase)
 }
 
-/// The partial trace after mapping the range: the enter step followed by one directory or leaf step
-/// per recorded mutation.
+/// The partial trace after mapping the range: the enter step in `phase` followed by one directory,
+/// downgrade, or leaf step per recorded mutation.
 #[verifier::opaque]
-pub open spec fn mmap_4k_trace_after_range(trace: Seq<KernelStep>, cpu_id: CpuId, range: VaRange4K) -> bool {
-    &&& range.len + 1 <= trace.len() <= 4 * range.len + 1
-    &&& mmap_4k_enter_step_pre(trace[0].old_u, cpu_id, range)
-    &&& mmap_4k_enter_step(trace[0].old_u, trace[0].new_u, cpu_id, range)
+pub open spec fn mmap_4k_trace_after_range(trace: Seq<KernelStep>, cpu_id: CpuId, range: VaRange4K, phase: Mmap4kPhase) -> bool {
+    &&& range.len + 1 <= trace.len() <= 4 * range.len + 2
+    &&& mmap_4k_enter_step_pre(trace[0].old_u, cpu_id, range, phase)
+    &&& mmap_4k_enter_step(trace[0].old_u, trace[0].new_u, cpu_id, range, phase)
     &&& forall|j: int| #![trigger trace[j]] 0 < j < trace.len() ==> mmap_4k_range_step(trace[j], cpu_id)
 }
 
-/// The full trace of a successful mmap: one enter step, one directory or leaf step per recorded
-/// mutation, and one exit step.
+/// The full trace of a successful mmap: one enter step to read or to fill, one directory, downgrade,
+/// or leaf step per recorded mutation, and one exit step.
 #[verifier::opaque]
 pub open spec fn mmap_4k_syscall_trace(trace: Seq<KernelStep>, cpu_id: CpuId, va: VAddr, range: usize) -> bool {
-    &&& range + 2 <= trace.len() <= 4 * range + 2
-    &&& mmap_4k_enter_step_pre(trace[0].old_u, cpu_id, mmap_4k_syscall_va_range(va, range))
-    &&& mmap_4k_enter_step(trace[0].old_u, trace[0].new_u, cpu_id, mmap_4k_syscall_va_range(va, range))
+    let va_range = mmap_4k_syscall_va_range(va, range);
+    &&& range + 2 <= trace.len() <= 4 * range + 3
+    &&& {
+        ||| mmap_4k_enter_step_pre(trace[0].old_u, cpu_id, va_range, Mmap4kPhase::Read) && mmap_4k_enter_step(trace[0].old_u, trace[0].new_u, cpu_id, va_range, Mmap4kPhase::Read)
+        ||| mmap_4k_enter_step_pre(trace[0].old_u, cpu_id, va_range, Mmap4kPhase::Fill) && mmap_4k_enter_step(trace[0].old_u, trace[0].new_u, cpu_id, va_range, Mmap4kPhase::Fill)
+    }
     &&& forall|j: int| #![trigger trace[j]] 0 < j < trace.len() - 1 ==> mmap_4k_range_step(trace[j], cpu_id)
     &&& mmap_4k_exit_step_pre(trace.last().old_u, cpu_id)
     &&& mmap_4k_exit_step(trace.last().old_u, trace.last().new_u, cpu_id)
 }
 
 /// A successful mmap maps every page of the requested range in the current process's pagetable.
-pub open spec fn mmap_4k_syscall_success_mapped(pre: &KernelK, post: &KernelK, cpu_id: CpuId, va: VAddr, range: usize) -> bool {
-    let process_ptr = pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process->Some_0;
-    let pagetable_ptr = pre.prc_mp.spec_index(process_ptr).view().pagetable;
+pub open spec fn mmap_4k_syscall_success_mapped(post: &KernelK, cpu_id: CpuId, va: VAddr, range: usize) -> bool {
+    let process_ptr = post.cpu_arr.spec_index(cpu_id).view().view().view().current_process->Some_0;
+    let pagetable_ptr = post.prc_mp.spec_index(process_ptr).view().pagetable;
     &&& range > 0
     &&& va_4k_valid(va)
     &&& post.pt_mp.dom().contains(pagetable_ptr)

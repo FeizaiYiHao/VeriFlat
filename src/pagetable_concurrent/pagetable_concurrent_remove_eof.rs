@@ -155,7 +155,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             #![trigger post.higher.l3_tables.view().spec_index(target_l3_p).value().spec_index(i)]
             pei_valid(i) && i != target_l3i ==> post.higher.l3_tables.view().spec_index(target_l3_p).value().spec_index(i) =~= pre.higher.l3_tables.view().spec_index(target_l3_p).value().spec_index(i)
         &&& post.higher.l3_tables.view().spec_index(target_l3_p).value().spec_index(target_l3i).is_empty()
-        &&& post.lower == (PageTableLower { l2_perms: post.lower.l2_perms, l2_ghost: post.lower.l2_ghost, l2_lock: post.lower.l2_lock, ..pre.lower })
+        &&& post.lower == (PageTableLower { l2_perms: post.lower.l2_perms, l2_ghost: post.lower.l2_ghost, l2_lock: post.lower.l2_lock, window_stale_cpus: post.lower.window_stale_cpus, ..pre.lower })
         &&& post.lower.l2_perms == pre.lower.l2_perms.remove(target_l2_p)
         &&& post.lower.l2_ghost == pre.lower.l2_ghost.remove(target_l2_p)
         &&& post.lower.l2_lock == pre.lower.l2_lock.remove(target_l2_p)

@@ -14,6 +14,7 @@ mod pagetable_remove_l4_eof;
 mod pagetable_unmap_kernel_eof;
 pub mod pagetable_util;
 pub mod pagetable_util_t;
+mod pagetable_window_stale_eof;
 pub mod pagetable_structure_scan;
 pub mod pagetable_range;
 

@@ -4,8 +4,8 @@ use crate::*;
 use super::syscall_mmap_4k_spec::mmap_4k_progress_after_leaf;
 
 verus! {
-/// Publishes the staged 4K page `page_ptr` of `thread_ptr` at `va` in `pagetable_ptr`: the page becomes mapped once, the thread
-/// consumes it from its 4K cache and quota and advances its mmap progress; every other kernel field is unchanged.
+/// Publishes the staged 4K page `page_ptr` of `thread_ptr` at `va` in the window half of `pagetable_ptr`: the page becomes mapped
+/// once, the thread consumes it from its 4K cache and quota and advances its mmap progress; every other kernel field is unchanged.
 #[verifier::opaque]
 pub(super) open spec fn map_owned_4k_page_eof_transition_framing(pre: KernelK, post: KernelK, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr, pagetable_ptr: RwLockPageTableRoot, va: VAddr) -> bool {
     let page_index = page_ptr2page_index(page_ptr);
@@ -15,19 +15,15 @@ pub(super) open spec fn map_owned_4k_page_eof_transition_framing(pre: KernelK, p
     let new_page = post.pg_arr.spec_index(page_index).view();
     let old_thread = pre.thr_mp.spec_index(thread_ptr);
     let new_thread = post.thr_mp.spec_index(thread_ptr);
-    &&& post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, pg_arr: post.pg_arr, thr_mp: post.thr_mp, ..pre })
-    &&& post.pt_mp.unchanged_except(&pre.pt_mp, pagetable_ptr)
+    &&& post == (KernelK { pt_lower: post.pt_lower, pg_arr: post.pg_arr, thr_mp: post.thr_mp, ..pre })
     &&& post.pt_lower.view() == pre.pt_lower.view().insert(pagetable_ptr, post.pt_lower.view().spec_index(pagetable_ptr))
     &&& forall|other_pagetable: RwLockPageTableRoot|
         #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), other_pagetable)]
         pre.pt_mp.dom().contains(other_pagetable) && other_pagetable != pagetable_ptr ==> pagetable_c(post.pt_mp, post.pt_lower.view(), other_pagetable) == pagetable_c(pre.pt_mp, pre.pt_lower.view(), other_pagetable)
-    &&& post.pt_mp.spec_index(pagetable_ptr).locking_thread() == pre.pt_mp.spec_index(pagetable_ptr).locking_thread()
-    &&& post.pt_mp.spec_index(pagetable_ptr).being_killed() == pre.pt_mp.spec_index(pagetable_ptr).being_killed()
-    &&& post.pt_mp.spec_index(pagetable_ptr).view() == pre.pt_mp.spec_index(pagetable_ptr).view()
-    &&& post.pt_mp.spec_index(pagetable_ptr).view_ghost() == post.pt_lower.view().spec_index(pagetable_ptr)
     &&& new_pt.mapping_4k() == old_pt.mapping_4k().insert(va, MapEntry { addr: page_ptr, present: true, write: true, execute_disable: false, owning_container: Ghost(old_page.view().owning_container) })
     &&& new_pt.mapping_2m() == old_pt.mapping_2m()
     &&& new_pt.page_closure() == old_pt.page_closure()
+    &&& new_pt.lower.window_stale_cpus == old_pt.lower.window_stale_cpus
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, page_index)
     &&& new_page.is_init()
     &&& new_page.locking_thread() == old_page.locking_thread()
@@ -68,12 +64,11 @@ pub(super) proof fn map_owned_4k_page_eof(pre: KernelK, post: KernelK, page_ptr:
         pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr),
         pre.thr_mp.spec_index(thread_ptr).view().quota_4k >= 1,
         pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(va) == false,
-        pagetable_perms_wf(post.pt_mp),
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
         pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
         pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_leaves_only_when_wlocked(post.pt_mp, post.pt_lower.view()),
-        post.pt_mp.spec_index(pagetable_ptr).locking_thread() is Write,
+        pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view()),
+        pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view()),
         post.pg_arr.inv(),
         post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread() is Write,
         post.thr_mp.perms_wf(),

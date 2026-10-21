@@ -27,7 +27,7 @@ pub(super) proof fn unmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VA
             &&& ret is ErrorContainerZombie ==> !container.being_killed() && container.view().zombie
             &&& ret is ErrorProcessKilled ==> !container.being_killed() && !container.view().zombie && process.being_killed()
             &&& ret is ErrorThreadKilled ==> !container.being_killed() && !container.view().zombie && !process.being_killed() && thread.being_killed()
-            &&& (ret is Success || ret is Error) ==> live && !process.view().zombie && krnl.pt_mp.dom().contains(process.view().pagetable) && table.leaves_present()
+            &&& (ret is Success || ret is Error) ==> live && !process.view().zombie && krnl.pt_mp.dom().contains(process.view().pagetable)
             &&& ret is Success ==> mapped
             &&& ret is Error ==> !mapped
             &&& ret is CpuIdle || ret is ErrorContainerKilled || ret is ErrorContainerZombie || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is Success || ret is Error
@@ -41,7 +41,7 @@ pub(super) proof fn unmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VA
     if !(ret is CpuIdle) {
         kernel_cpu_thread_projection_at(krnl, cpu_id, thread.owning_proc, c.current_thread->Some_0, None); kernel_container_projection_at(krnl, thread.owning_container);
         if ret is Success || ret is Error {
-            kernel_l4_end_projection_at(krnl, krnl.prc_mp.spec_index(thread.owning_proc).view().pagetable); kernel_pagetable_mappings_projection_at(krnl, thread.owning_proc);
+            kernel_l4_end_projection_at(krnl, krnl.prc_mp.spec_index(thread.owning_proc).view().pagetable); kernel_process_projection_at(krnl, thread.owning_proc);
         }
     }
 }
@@ -69,7 +69,7 @@ pub(super) proof fn unmap_4k_enter_step_from_u(pre: KernelU, post: KernelU, cpu_
             &&& process.lock_state is Unlocked
             &&& !process.killed
             &&& process.pagetable is Some
-            &&& pagetable.lock_state is Unlocked
+            &&& !(pagetable.lock_state is WriteLocked)
             &&& pre.container_map.dom().contains(container_ptr)
             &&& container.lock_state is Unlocked
             &&& !container.killed
@@ -84,7 +84,7 @@ pub(super) proof fn unmap_4k_enter_step_from_u(pre: KernelU, post: KernelU, cpu_
             container_map: pre.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::WriteLocked, ..pre.container_map.spec_index(container_ptr) }),
             process_map: pre.process_map.insert(process_ptr, ProcessU {
                 lock_state: LockStateU::WriteLocked,
-                pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..pre.process_map.spec_index(process_ptr).pagetable->Some_0 }),
+                pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..pre.process_map.spec_index(process_ptr).pagetable->Some_0 }),
                 ..pre.process_map.spec_index(process_ptr)
             }),
             thread_map: pre.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(SyscallProgress::Unmap4k { range, unmapped: 0, flushed: false }), ..pre.thread_map.spec_index(thread_ptr) }),
@@ -95,8 +95,11 @@ pub(super) proof fn unmap_4k_enter_step_from_u(pre: KernelU, post: KernelU, cpu_
         unmap_4k_enter_step(pre, post, cpu_id, range),
 { reveal(unmap_4k_enter_step_pre); reveal(unmap_4k_enter_step); }
 
-/// Clearing the progress and releasing the unmap locks after the flushed range is the exit step on `pre`/`post`.
-pub(super) proof fn unmap_4k_exit_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr)
+/// Clearing the progress and releasing the unmap locks after the flushed range, leaving the pagetable in `table_lock`, is the
+/// exit step on `pre`/`post`.
+pub(super) proof fn unmap_4k_exit_step_from_u(
+    pre: KernelU, post: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, table_lock: LockStateU,
+)
     requires
         index_valid(NUM_CPUS, cpu_id),
         {
@@ -112,7 +115,7 @@ pub(super) proof fn unmap_4k_exit_step_from_u(pre: KernelU, post: KernelU, cpu_i
             &&& pre.process_map.dom().contains(process_ptr)
             &&& process.lock_state is WriteLocked
             &&& process.pagetable is Some
-            &&& process.pagetable->Some_0.lock_state is WriteLocked
+            &&& !(process.pagetable->Some_0.lock_state is Unlocked)
             &&& pre.container_map.dom().contains(container_ptr)
             &&& pre.container_map.spec_index(container_ptr).lock_state is WriteLocked
             &&& thread.syscall_progress is Some
@@ -120,12 +123,13 @@ pub(super) proof fn unmap_4k_exit_step_from_u(pre: KernelU, post: KernelU, cpu_i
             &&& progress->Unmap4k_unmapped == progress->Unmap4k_range.len
             &&& progress->Unmap4k_flushed
         },
+        table_lock is Unlocked || table_lock is ReadLocked,
         post == (KernelU {
             cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre.cpu_array[cpu_id as int] }),
             container_map: pre.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, ..pre.container_map.spec_index(container_ptr) }),
             process_map: pre.process_map.insert(process_ptr, ProcessU {
                 lock_state: LockStateU::Unlocked,
-                pagetable: Some(PageTableU { lock_state: LockStateU::Unlocked, ..pre.process_map.spec_index(process_ptr).pagetable->Some_0 }),
+                pagetable: Some(PageTableU { lock_state: table_lock, ..pre.process_map.spec_index(process_ptr).pagetable->Some_0 }),
                 ..pre.process_map.spec_index(process_ptr)
             }),
             thread_map: pre.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..pre.thread_map.spec_index(thread_ptr) }),

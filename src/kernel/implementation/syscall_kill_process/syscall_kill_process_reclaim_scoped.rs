@@ -32,12 +32,12 @@ pub(crate) fn kill_reclaim_last_4k_mapping_scoped_to_cache(
         pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(va),
         !pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().spec_index(va).present,
         pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr == page_ptr,
-        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pagetable, pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable)),
+        !pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus.dom().contains((pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va))),
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, TypedLockMode::Write),
         pagetable_perm.state() is WriteLock,
         pagetable_perm.thread_id() == old(lctx).thread_id(),
         pagetable_perm.lock_id() == old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id,
-        typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (pagetable, spec_index2va((spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), 0))), TypedLockMode::Write),
+        typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (pagetable, WindowVa { va: spec_index2va((spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), 0)) }), TypedLockMode::Write),
         page_ptr_valid(page_ptr),
         old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().ref_count == 1,
         !old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().is_io_page,
@@ -77,7 +77,7 @@ pub(crate) fn kill_reclaim_last_4k_mapping_scoped_to_cache(
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_2m() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m(),
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_1g() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g(),
         final(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end == old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end,
-        pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pagetable, pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable)),
+        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus,
         final(krnl).pg_arr.entries_unchanged_except(&old(krnl).pg_arr, page_ptr2page_index(page_ptr)),
         final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread() == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread(),
         final(krnl).allc_4k_mp.dom() == old(krnl).allc_4k_mp.dom(),
@@ -121,7 +121,7 @@ pub(crate) fn kill_reclaim_last_4k_mapping_scoped_to_cache(
     }
     proof {
         pagetable_window_typed_lock_map_aligned_at(krnl.pt_mp, krnl.pt_lower.view(), lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), pagetable,
-            spec_index2va((indices.0, indices.1, indices.2, 0)));
+            WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0)) });
         assert(spec_v2l4index(spec_index2va((indices.0, indices.1, indices.2, 0))) == indices.0 && spec_v2l3index(spec_index2va((indices.0, indices.1, indices.2, 0))) == indices.1
             && spec_v2l2index(spec_index2va((indices.0, indices.1, indices.2, 0))) == indices.2) by { broadcast use spec_va_2m_valid_index_roundtrip; spec_index2va_injective(); };
     }
@@ -183,7 +183,7 @@ pub(crate) fn kill_reclaim_unmapped_4k_page_scoped(
         old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_va2index(va).0,
         pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(va),
         !pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().spec_index(va).present,
-        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, pagetable, pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable)),
+        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_view(window_of(va)).stale_cpus is None,
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, TypedLockMode::Write),
         pagetable_perm.state() is WriteLock,
         pagetable_perm.thread_id() == old(lctx).thread_id(),
@@ -214,7 +214,7 @@ pub(crate) fn kill_reclaim_unmapped_4k_page_scoped(
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_2m() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m(),
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_1g() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g(),
         final(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end == old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end,
-        pagetable_tlb_entries_present(final(krnl).cpu_tlb, final(krnl).cpu_arr, final(krnl).pcid_needflush, pagetable, pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable)),
+        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus,
 {
     let indices = va2index(va);
     proof {
@@ -223,6 +223,7 @@ pub(crate) fn kill_reclaim_unmapped_4k_page_scoped(
         assert(spec_index2va(indices) == va) by { spec_va_4k_index_roundtrip_at(va, indices.0, indices.1, indices.2, indices.3); };
         assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some) by { reveal(PageTableC::wf_mapping_4k); };
         assert(KERNEL_MEM_END_L4INDEX <= indices.0 && pei_valid(indices.0) && pei_valid(indices.1) && pei_valid(indices.2)) by { broadcast use spec_va_4k_valid_index_roundtrip; };
+        spec_va_4k_index_roundtrip_at(window_of(va).va, indices.0, indices.1, indices.2, 0usize);
         let l4i = indices.0;
         let l3i = indices.1;
         let l2i = indices.2;
@@ -259,8 +260,8 @@ pub(crate) fn kill_reclaim_unmapped_4k_page_scoped(
                 map_insert_overwrite_lemma(old(lctx).page_lock_map(), page_index, TypedHeldLock { lock_id: old_page_lock_id, mode: TypedLockMode::Write },
                     TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(page_index), mode: TypedLockMode::Write });
                 map_insert_remove_absent_lemma(old(lctx).page_lock_map(), page_index, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(page_index), mode: TypedLockMode::Write });
-                map_insert_remove_absent_lemma(old(lctx).pagetable_window_lock_map(), (pagetable, spec_index2va((indices.0, indices.1, indices.2, 0))),
-                    TypedHeldLock { lock_id: window_lock_id_at(pagetable, spec_index2va((indices.0, indices.1, indices.2, 0))), mode: TypedLockMode::Write });
+                map_insert_remove_absent_lemma(old(lctx).pagetable_window_lock_map(), (pagetable, WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0)) }),
+                    TypedHeldLock { lock_id: window_lock_id_at(pagetable, WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0)) }), mode: TypedLockMode::Write });
             };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
@@ -272,8 +273,8 @@ pub(crate) fn kill_reclaim_unmapped_4k_page_scoped(
             Tracked(pagetable_perm), Tracked(page_perm), Tracked(window_perm), Ghost(stage), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx), Ghost(entry_lctx));
         proof {
             assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
-                map_insert_remove_absent_lemma(old(lctx).pagetable_window_lock_map(), (pagetable, spec_index2va((indices.0, indices.1, indices.2, 0))),
-                    TypedHeldLock { lock_id: window_lock_id_at(pagetable, spec_index2va((indices.0, indices.1, indices.2, 0))), mode: TypedLockMode::Write });
+                map_insert_remove_absent_lemma(old(lctx).pagetable_window_lock_map(), (pagetable, WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0)) }),
+                    TypedHeldLock { lock_id: window_lock_id_at(pagetable, WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0)) }), mode: TypedLockMode::Write });
             };
         }
     }

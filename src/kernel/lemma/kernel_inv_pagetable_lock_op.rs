@@ -74,8 +74,6 @@ pub proof fn lemma_tlb_wf_spec_preserved_for_pagetable_invariant_fields_forall()
     ensures
         forall|cpu_tlb: CpuTLB, needflush: PcidNeedFlushArray, cpu_array: CpuLockedArray, pre: PageTableLockedMap, post: PageTableLockedMap, pt_lower: PageTableLowerMap|
             #![trigger tlb_wf_spec(cpu_tlb, pre, pt_lower, cpu_array, needflush), tlb_wf_spec(cpu_tlb, post, pt_lower, cpu_array, needflush)]
-            tlb_wf_spec(cpu_tlb, pre, pt_lower, cpu_array, needflush) && pagetable_invariant_fields_unchanged(pre, post, pt_lower)
-                && (forall|pt: RwLockPageTableRoot| #![trigger pre.spec_index(pt).wlocked()] #![trigger post.spec_index(pt).wlocked()] pre.dom().contains(pt) ==> (post.spec_index(pt).wlocked() || !pre.spec_index(pt).wlocked()))
-                ==> tlb_wf_spec(cpu_tlb, post, pt_lower, cpu_array, needflush),
+            tlb_wf_spec(cpu_tlb, pre, pt_lower, cpu_array, needflush) && pagetable_invariant_fields_unchanged(pre, post, pt_lower) ==> tlb_wf_spec(cpu_tlb, post, pt_lower, cpu_array, needflush),
 { reveal(tlb_wf_spec); }
 }

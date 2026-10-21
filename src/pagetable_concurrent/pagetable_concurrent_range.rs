@@ -623,6 +623,76 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
 }
 
 impl PageTableHigher<PT_TYPE> {
+    /// Every 2M window that covers `range` has its L3 entry linking an L2 page, so each of those windows has a lock.
+    pub open spec fn spec_mapping_4k_va_range_windows_exist(&self, range: &VaRange4K) -> bool {
+        forall|w: WindowVa| #![trigger va_range_2m_windows(*range).contains(w)] va_range_2m_windows(*range).contains(w) ==> self.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some
+    }
+
+    /// Check that every 2M window covering `range` has an L2 page. This reads only the L4 and L3 directories of the
+    /// big-lock payload, so a big read lock suffices.
+    #[verifier(when_used_as_spec(spec_mapping_4k_va_range_windows_exist))]
+    pub fn mapping_4k_va_range_windows_exist(&self, range: &VaRange4K) -> (ret: bool)
+        requires
+            self.inv(),
+            range.wf(),
+            range.len > 0,
+            self.kernel_l4_end <= spec_va2index(range.start).0,
+        ensures
+            ret == self.spec_mapping_4k_va_range_windows_exist(range),
+    {
+        let (first_l4i, first_l3i, first_l2i, _) = va2index(range.start);
+        let last_va = range.index(range.len - 1);
+        let (last_l4i, last_l3i, last_l2i, _) = va2index(last_va);
+        proof {
+            assert(first_l4i < last_l4i || (first_l4i == last_l4i && (first_l3i < last_l3i || (first_l3i == last_l3i && first_l2i <= last_l2i)))) by {
+                range.va_range_lemma(); broadcast use spec_va_4k_valid_index_roundtrip;
+                spec_index2va_le_implies_4k_indices_lex_le(spec_va2index(range.start), spec_va2index(last_va));
+            };
+        }
+        let mut l4i = first_l4i;
+        let mut l3i = first_l3i;
+        while l4i < last_l4i || (l4i == last_l4i && l3i <= last_l3i)
+            invariant
+                self.inv(),
+                range.wf(),
+                range.len > 0,
+                (first_l4i, first_l3i, first_l2i) == (spec_va2index(range.start).0, spec_va2index(range.start).1, spec_va2index(range.start).2),
+                (last_l4i, last_l3i, last_l2i) == (spec_va2index(range.view().spec_index(range.len - 1)).0, spec_va2index(range.view().spec_index(range.len - 1)).1,
+                    spec_va2index(range.view().spec_index(range.len - 1)).2),
+                KERNEL_MEM_END_L4INDEX <= first_l4i,
+                self.kernel_l4_end <= first_l4i,
+                pei_valid(last_l4i) && pei_valid(last_l3i) && pei_valid(last_l2i) && pei_valid(first_l3i) && pei_valid(first_l2i),
+                first_l4i < last_l4i || (first_l4i == last_l4i && (first_l3i < last_l3i || (first_l3i == last_l3i && first_l2i <= last_l2i))),
+                pei_valid(l3i),
+                first_l4i < l4i || (first_l4i == l4i && first_l3i <= l3i),
+                l4i < last_l4i || (l4i == last_l4i && l3i <= last_l3i) || (l4i == last_l4i + 1 && l3i == 0 && last_l3i == 511) || (l4i == last_l4i && l3i == last_l3i + 1),
+                forall|a: L4Index, b: L3Index|
+                    #![trigger self.spec_resolve_mapping_l3(a, b)]
+                    pei_valid(b) && (first_l4i < a || (first_l4i == a && first_l3i <= b)) && (a < l4i || (a == l4i && b < l3i)) ==> self.spec_resolve_mapping_l3(a, b) is Some,
+            decreases (last_l4i * 512 + last_l3i + 1) - (l4i * 512 + l3i),
+        {
+            let w2 = if l4i == first_l4i && l3i == first_l3i { first_l2i } else { 0 };
+            let ghost witness = spec_index2va((l4i, l3i, w2, 0usize));
+            proof {
+                assert(spec_va_2m_valid(witness)) by (bit_vector) requires witness == spec_index2va((l4i, l3i, w2, 0usize)), KERNEL_MEM_END_L4INDEX <= l4i < 512, l3i < 512, w2 < 512;
+                spec_va_4k_index_roundtrip_at(witness, l4i, l3i, w2, 0);
+            }
+            let l4_entry = self.get_entry_l4(l4i);
+            if l4_entry.is_none() {
+                proof { assert(va_range_2m_windows(*range).contains(WindowVa { va: witness })); }
+                return false;
+            }
+            let l3_entry = self.get_entry_l3(l4i, l3i, &l4_entry.unwrap());
+            if l3_entry.is_none() {
+                proof { assert(va_range_2m_windows(*range).contains(WindowVa { va: witness })); }
+                return false;
+            }
+            if l3i < 511 { l3i = l3i + 1; } else { l3i = 0; l4i = l4i + 1; }
+        }
+        proof { assert(self.spec_mapping_4k_va_range_windows_exist(range)) by { broadcast use spec_va_2m_valid_index_roundtrip; }; }
+        true
+    }
+
     /// Check whether every address in a 4K range has a user-present leaf. This scans only the page table and does
     /// not mutate any page-table state.
     pub fn mapping_4k_va_range_present(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, range: &VaRange4K) -> (ret: bool)
@@ -811,6 +881,42 @@ impl PageTableHigher<PT_TYPE> {
             i = i + 1;
         }
         true
+    }
+}
+
+/// Every 4K index between the first and last page of `range` lies in a covering 2M window, whose base has that index's L4, L3,
+/// and L2 indices and a zero L1 index.
+pub proof fn va_range_2m_windows_contains_window_of_every_va_in_range(range: VaRange4K)
+    requires range.wf(), range.len > 0,
+    ensures
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger spec_index2va((l4i, l3i, l2i, l1i))]
+            pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && spec_l4_index_path_le(spec_va2index(range.start), (l4i, l3i, l2i, l1i))
+                && spec_l4_index_path_le((l4i, l3i, l2i, l1i), spec_va2index(range.view()[range.len - 1])) ==> {
+                let w = WindowVa { va: spec_index2va((l4i, l3i, l2i, 0usize)) };
+                &&& spec_va2index(w.va) == (l4i, l3i, l2i, 0usize)
+                &&& va_range_2m_windows(range).contains(w)
+            },
+{ broadcast use spec_va_4k_valid_index_roundtrip, spec_va_4k_index_roundtrip_at, spec_index2va_2m_valid; }
+
+/// Each of the first `n` pages of `range` lies in a 2M window of the range at the page's own L4, L3 and L2 indices.
+pub proof fn va_range_2m_windows_contains_window_of_first_n_pages(range: VaRange4K, n: int)
+    requires range.wf(), range.len > 0, 0 <= n <= range.len,
+    ensures
+        forall|j: int| #![trigger range.view()[j]] 0 <= j < n ==> {
+            &&& va_range_2m_windows(range).contains(window_of(range.view()[j]))
+            &&& spec_va2index(window_of(range.view()[j]).va) == (spec_v2l4index(range.view()[j]), spec_v2l3index(range.view()[j]), spec_v2l2index(range.view()[j]), 0usize)
+        },
+    decreases n,
+{
+    if n > 0 {
+        va_range_2m_windows_contains_window_of_first_n_pages(range, n - 1);
+        let va = range.view()[n - 1];
+        let last_va = range.view()[range.len - 1];
+        range.va_range_lemma();
+        broadcast use spec_va_4k_valid_index_roundtrip;
+        spec_index2va_le_implies_4k_indices_lex_le(spec_va2index(range.start), spec_va2index(va));
+        spec_index2va_le_implies_4k_indices_lex_le(spec_va2index(va), spec_va2index(last_va));
+        va_range_2m_windows_contains_window_of_every_va_in_range(range);
     }
 }
 } // verus!

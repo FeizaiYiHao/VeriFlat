@@ -8,6 +8,7 @@ use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_
 use super::syscall_new_process_spec::*;
 use super::syscall_new_process_trace::*;
 use super::syscall_new_process_helpers::create_initial_thread_and_finish_new_process;
+use super::syscall_new_process_build::build_new_process_child_structure;
 
 verus! {
 /// Shares the caller's range into the published child and finishes the call: the share steps and the finish step
@@ -19,7 +20,8 @@ pub(super) fn share_and_finish_new_process(
     iommu_table: Option<RwLockPageTableRoot>, endpoint: Option<RwLockEndpointPtr>, endpoint_index: EndpointIdx, cpu_lock_perm: Tracked<LockPerm>,
     child_lock_perm: Tracked<LockPerm>, current_thread_lock_perm: Tracked<LockPerm>, endpoint_lock_perm: Tracked<Option<LockPerm>>,
     source_pagetable_lock_perm: Tracked<LockPerm>, target_pagetable_lock_perm: Tracked<LockPerm>, iommu_table_lock_perm: Tracked<Option<LockPerm>>,
-    initial_regs: &Registers, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>,
+    Tracked(source_window_perms): Tracked<Map<WindowVa, LockPerm>>, initial_regs: &Registers, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(entry_k): Ghost<KernelK>,
+    Ghost(entry_lctx): Ghost<LocalContext>,
 ) -> (new_thread_ptr: RwLockThreadPtr)
     requires
         0 <= start <= old(steps).view().len(),
@@ -61,7 +63,6 @@ pub(super) fn share_and_finish_new_process(
         old(lctx).pcid_allocator_lock_map().dom().is_empty(),
         old(lctx).cpu_set_lock_map().dom().is_empty(),
         old(lctx).pagetable_lock_map().dom() =~= set![source_pagetable_ptr, target_pagetable_ptr],
-        old(lctx).pagetable_window_lock_map().dom().is_empty(),
         iommu_table is None ==> old(lctx).iommu_table_lock_map().dom().is_empty(),
         iommu_table is Some ==> {
             let iommu_table_ptr = iommu_table->Some_0;
@@ -121,21 +122,43 @@ pub(super) fn share_and_finish_new_process(
         current_thread_lock_perm.view().lock_id() == old(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
         source_pagetable_ptr != target_pagetable_ptr,
         old(krnl).pt_mp.dom().contains(source_pagetable_ptr),
-        typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), source_pagetable_ptr, TypedLockMode::Write),
         old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().proc_ptr == parent_ptr,
-        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).leaves_present(),
-        old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(source_range.start),
-        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, source_pagetable_ptr, pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr)),
-        share_mapping_4k_source_range_present(old(krnl), source_pagetable_ptr, source_range),
-        source_pagetable_lock_perm.view().state() is WriteLock,
+        typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), source_pagetable_ptr, TypedLockMode::Read),
+        source_pagetable_lock_perm.view().state() is ReadLock,
         source_pagetable_lock_perm.view().thread_id() == old(lctx).thread_id(),
-        source_pagetable_lock_perm.view().lock_id() == old(krnl).pt_mp.spec_index(source_pagetable_ptr).locking_thread()->Write_lock_id,
+        old(krnl).pt_mp.spec_index(source_pagetable_ptr).locking_thread() is Read,
+        old(krnl).pt_mp.spec_index(source_pagetable_ptr).locking_thread()->Read_reader_map.contains_pair(old(lctx).thread_id(), source_pagetable_lock_perm.view().lock_id()),
+        entry_k.pt_mp.dom().contains(source_pagetable_ptr),
+        pagetable_c(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).wf(),
+        entry_k.pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(source_range.start),
+        forall|j: int| #![trigger source_range.view().spec_index(j)] 0 <= j < source_range.len ==> {
+            &&& pagetable_c(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).mapping_4k().dom().contains(source_range.view().spec_index(j))
+            &&& pagetable_c(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).mapping_4k().spec_index(source_range.view().spec_index(j)).present
+        },
+        forall|w: WindowVa| #![trigger va_range_2m_windows(*source_range).contains(w)]
+            va_range_2m_windows(*source_range).contains(w) && pagetable_c(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some ==> source_window_perms.dom().contains(w),
+        forall|w: WindowVa| #![trigger source_window_perms.dom().contains(w)] source_window_perms.dom().contains(w) ==> {
+            &&& va_range_2m_windows(*source_range).contains(w)
+            &&& pagetable_c(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some
+            &&& typed_lock_map_contains_mode(entry_lctx.pagetable_window_lock_map(), (source_pagetable_ptr, w), TypedLockMode::Write)
+            &&& source_window_perms.index(w).state() is WriteLock
+            &&& source_window_perms.index(w).thread_id() == entry_lctx.thread_id()
+            &&& pagetable_c(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).lower.l2_lock_of(pagetable_c(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)))
+                .lock_perm_match(spec_v2l2index(w.va), &source_window_perms.index(w))
+            &&& pagetable_c(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_leaves_present(w)
+            &&& !pagetable_c(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).lower.window_stale_cpus.dom().contains((pagetable_c(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
+        },
+        forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger entry_lctx.pagetable_window_lock_map().dom().contains((p, w))]
+            entry_lctx.pagetable_window_lock_map().dom().contains((p, w)) == (p == source_pagetable_ptr && source_window_perms.dom().contains(w)),
+        held_pagetable_windows_unchanged(entry_k.pt_mp, entry_k.pt_lower.view(), old(krnl).pt_mp, old(krnl).pt_lower.view(), &entry_lctx),
+        old(krnl).pt_mp.spec_index(source_pagetable_ptr).view() == entry_k.pt_mp.spec_index(source_pagetable_ptr).view(),
+        old(lctx).pagetable_window_lock_map() == entry_lctx.pagetable_window_lock_map(),
+        entry_lctx.thread_id() == old(lctx).thread_id(),
         old(krnl).pt_mp.dom().contains(target_pagetable_ptr),
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), target_pagetable_ptr, TypedLockMode::Write),
         old(krnl).pt_mp.spec_index(target_pagetable_ptr).view().proc_ptr == child_ptr,
         old(krnl).pt_mp.spec_index(target_pagetable_ptr).view().kernel_l4_end == old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end,
         pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable_ptr).is_empty(),
-        pagetable_tlb_entries_present(old(krnl).cpu_tlb, old(krnl).cpu_arr, old(krnl).pcid_needflush, target_pagetable_ptr, pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable_ptr)),
         target_pagetable_lock_perm.view().state() is WriteLock,
         target_pagetable_lock_perm.view().thread_id() == old(lctx).thread_id(),
         target_pagetable_lock_perm.view().lock_id() == old(krnl).pt_mp.spec_index(target_pagetable_ptr).locking_thread()->Write_lock_id,
@@ -173,11 +196,6 @@ pub(super) fn share_and_finish_new_process(
     let ghost endpoint_index_opt: Option<EndpointIdx> = if endpoint is Some { Some(endpoint_index) } else { None };
     proof {
         assert(krnl.allc_4k_mp.dom().contains(allocator_ptr)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); };
-        assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable_ptr, container_ptr, source_range)) by {
-            process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, parent_ptr);
-            share_mapping_4k_range_owner_compatible_own_container(krnl, source_pagetable_ptr, container_ptr, source_range);
-        };
-        assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable_ptr).spec_mapping_4k_va_range_empty(source_range.start, source_range.view().spec_index((source_range.len - 1) as int))) by { reveal(PageTableC::spec_mapping_4k_va_range_empty); };
         assert({
             &&& share_4k_objects_k(*krnl, cpu_id).source_thread == current_thread_ptr && share_4k_objects_k(*krnl, cpu_id).quota_thread == current_thread_ptr
             &&& share_4k_objects_k(*krnl, cpu_id).target == child_ptr && share_4k_objects_k(*krnl, cpu_id).target_container == container_ptr
@@ -185,15 +203,24 @@ pub(super) fn share_and_finish_new_process(
         }) by { reveal(share_4k_objects_k); };
     }
     let ghost origin = Share4kOrigin::NewProcess(NewProcessProgress { range: *source_range, regs: *initial_regs, endpoint_index: endpoint_index_opt, with_iommu: iommu_table is Some, child: Some(child_ptr) });
-    let ghost share_before = steps.view();
+    let Tracked(target_window_perms) = build_new_process_child_structure(
+        krnl, source_range, allocator_ptr, current_thread_ptr, child_ptr, container_ptr, cpu_id, source_pagetable_ptr, target_pagetable_ptr, Ghost(origin), Ghost(entry_k),
+        Ghost(entry_lctx), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&current_thread_lock_perm), Tracked(&target_pagetable_lock_perm),
+    );
+    proof {
+        assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable_ptr, container_ptr, source_range)) by {
+            process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, parent_ptr);
+            share_mapping_4k_range_owner_compatible_own_container(krnl, source_pagetable_ptr, container_ptr, source_range);
+        };
+    }
     share_mapping_4k_build_and_share(
         krnl, source_range, source_range, allocator_ptr, current_thread_ptr, current_thread_ptr, current_thread_ptr, child_ptr, container_ptr, cpu_id,
-        source_pagetable_ptr, target_pagetable_ptr, None, Ghost(origin), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&current_thread_lock_perm),
+        source_pagetable_ptr, target_pagetable_ptr, true, None, Ghost(origin), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&current_thread_lock_perm),
         Tracked(&current_thread_lock_perm), Tracked(&source_pagetable_lock_perm), Tracked(&target_pagetable_lock_perm), Tracked(None), Tracked(None),
     );
     proof {
         assert(new_process_trace_after_share(steps.view(), start, pre, cpu_id, *source_range, *initial_regs, endpoint_index_opt, iommu_table is Some)) by {
-            new_process_trace_share_steps(&*steps, share_before, start, pre, cpu_id, *source_range, *initial_regs, endpoint_index_opt, iommu_table is Some);
+            new_process_trace_share_steps(&*steps, old(steps).view(), start, pre, cpu_id, *source_range, *initial_regs, endpoint_index_opt, iommu_table is Some);
         };
         assert(krnl.sched_mp.dom().contains(scheduler_ptr) && krnl.sched_mp.spec_index(scheduler_ptr).shards.lock_id_by_index(cpu_id).major == SCHEDULER_LOCK_MAJOR) by { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, container_ptr); };
     }
@@ -213,7 +240,8 @@ pub(super) fn share_and_finish_new_process(
         krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, child_ptr, current_thread_ptr, scheduler_ptr,
         endpoint, endpoint_index, source_pagetable_ptr, target_pagetable_ptr, iommu_table, cpu_lock_perm,
         child_lock_perm, Tracked(current_thread_lock_perm), Tracked(scheduler_lock_perm), Tracked(endpoint_lock_perm),
-        Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm), iommu_table_lock_perm, initial_regs,
+        Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm), iommu_table_lock_perm, initial_regs, source_range, Tracked(source_window_perms),
+        Tracked(target_window_perms), Ghost(entry_k), Ghost(entry_lctx),
     );
     proof {
         assert(new_process_commit_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id, *source_range, *initial_regs, endpoint_index_opt, iommu_table is Some)) by {

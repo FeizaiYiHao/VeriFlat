@@ -97,7 +97,7 @@ pub open spec fn kill_reclaim_unmapped_4k_page_scoped_eof_transition_framing(
     &&& new_allocator.quota.view_ghost() == old_allocator.quota.view_ghost()
     &&& new_allocator.quota.locking_thread() == old_allocator.quota.locking_thread()
     &&& new_allocator.quota.being_killed() == old_allocator.quota.being_killed()
-    &&& pagetable_tlb_entries_present(post.cpu_tlb, post.cpu_arr, post.pcid_needflush, pagetable, pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable))
+    &&& new_c.lower.window_stale_cpus == old_c.lower.window_stale_cpus
 }
 
 /// The owner of the mapped page `p_i` that the leaf at `iova` of the IOMMU table `it_ptr` maps is the container of that

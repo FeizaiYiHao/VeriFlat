@@ -215,15 +215,15 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
                 && self.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0))).present == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.present,
     { reveal(PageTableC::wf_mapping_2m); }
 
-    pub proof fn wf_window_locks_va_at(&self, va: VAddr)
+    pub proof fn wf_window_locks_va_at(&self, w: WindowVa)
         requires
             self.wf_window_locks(),
-            self.lower.locked_windows.contains(va),
+            self.lower.locked_windows.contains(w),
         ensures
-            page_table_key_2m_valid::<TABLE_TYPE>(va),
-            self.kernel_l4_end() <= spec_v2l4index(va),
-            self.window_exists(spec_v2l4index(va), spec_v2l3index(va)),
-            self.lower.l2_lock_of(self.window_l2_page(spec_v2l4index(va), spec_v2l3index(va))).locked(spec_v2l2index(va)),
+            page_table_key_2m_valid::<TABLE_TYPE>(w.va),
+            self.kernel_l4_end() <= spec_v2l4index(w.va),
+            self.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va)),
+            self.lower.l2_lock_of(self.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va))).locked(spec_v2l2index(w.va)),
     { reveal(PageTableC::wf_window_locks); }
 
     pub proof fn wf_window_locks_slot_at(&self, p: PageMapPtr, i: L2Index)
@@ -233,7 +233,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             pei_valid(i),
             self.lower.l2_lock_of(p).locked(i),
         ensures
-            self.lower.locked_windows.contains(spec_index2va((self.higher.l2_rev_map.view().spec_index(p).0, self.higher.l2_rev_map.view().spec_index(p).1, i, 0))),
+            self.lower.locked_windows.contains(WindowVa { va: spec_index2va((self.higher.l2_rev_map.view().spec_index(p).0, self.higher.l2_rev_map.view().spec_index(p).1, i, 0)) }),
     { reveal(PageTableC::wf_window_locks); }
 
     pub broadcast proof fn resolve_l2_addr_unique_at(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, l4j: L4Index, l3j: L3Index, l2j: L2Index)

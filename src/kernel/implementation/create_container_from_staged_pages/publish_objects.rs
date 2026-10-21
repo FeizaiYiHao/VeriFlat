@@ -848,8 +848,10 @@ pub(super) fn publish_new_container_process_and_pagetable(
             old(krnl).pt_mp.dom().contains(r) ==> pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), r) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), r),
         pagetable_lower_wf(old(krnl).pt_mp, old(krnl).pt_lower.view()) ==> pagetable_lower_wf(final(krnl).pt_mp, final(krnl).pt_lower.view()),
         pagetable_window_holders_hold_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view()) ==> pagetable_window_holders_hold_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view()),
-        pagetable_hidden_leaves_only_when_wlocked(old(krnl).pt_mp, old(krnl).pt_lower.view())
-            ==> pagetable_hidden_leaves_only_when_wlocked(final(krnl).pt_mp, final(krnl).pt_lower.view()),
+        pagetable_hidden_leaves_only_when_locked(old(krnl).pt_mp, old(krnl).pt_lower.view())
+            ==> pagetable_hidden_leaves_only_when_locked(final(krnl).pt_mp, final(krnl).pt_lower.view()),
+        pagetable_window_stale_cpus_only_when_locked(old(krnl).pt_mp, old(krnl).pt_lower.view())
+            ==> pagetable_window_stale_cpus_only_when_locked(final(krnl).pt_mp, final(krnl).pt_lower.view()),
         pagetable_window_typed_lock_map_aligned(old(krnl).pt_mp, old(krnl).pt_lower.view(), old(lctx).pagetable_window_lock_map(), old(lctx).pagetable_lock_map(), old(lctx).thread_id())
             ==> pagetable_window_typed_lock_map_aligned(final(krnl).pt_mp, final(krnl).pt_lower.view(), final(lctx).pagetable_window_lock_map(), final(lctx).pagetable_lock_map(), final(lctx).thread_id()),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx),),

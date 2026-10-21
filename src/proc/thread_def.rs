@@ -7,6 +7,12 @@ use crate::*;
 /// Deepest page-table level installed so far for the 4K page being mapped.
 pub ghost enum Mmap4kDirectory { None, L4, L3, L2 }
 
+/// Page-table lock mode of a 4K mapping: big lock read, small locks filling, or small locks after filling.
+pub ghost enum Mmap4kPhase { Read, Fill, Filled }
+
+/// Page-table lock state of a pages rendezvous: unlocked, big lock read, small locks filling, or small locks after filling.
+pub ghost enum IpcPagesTables { Unlocked, Read, Fill, Filled }
+
 /// Process creation: the shared `range`, the child's initial registers and endpoint, whether it
 /// gets an IOMMU table, and the child once it is published.
 pub ghost struct NewProcessProgress {
@@ -63,7 +69,7 @@ pub ghost enum ContainerKillStage {
 /// Progress of a multi-step syscall owned by the write-locked thread.
 #[allow(inconsistent_fields)]
 pub ghost enum SyscallProgress {
-    Mmap4k { range: VaRange4K, mapped: usize, directory: Mmap4kDirectory },
+    Mmap4k { range: VaRange4K, mapped: usize, directory: Mmap4kDirectory, phase: Mmap4kPhase },
     Unmap4k { range: VaRange4K, unmapped: usize, flushed: bool },
     /// Process creation before its range is shared into the child.
     NewProcess(NewProcessProgress),
@@ -71,9 +77,9 @@ pub ghost enum SyscallProgress {
     NewContainer(NewContainerProgress),
     /// Sharing the first `shared` pages of `source_range` into `target_range` for `origin`.
     Share4k { source_range: VaRange4K, target_range: VaRange4K, shared: usize, origin: Share4kOrigin },
-    /// A pages rendezvous with `peer` before its checks, with both page tables write-locked when `locked`, or
+    /// A pages rendezvous with `peer` before its checks, with both page tables locked as `tables`, or
     /// after its page tables are released with the recorded result.
-    IpcPages { source_range: VaRange4K, target_range: VaRange4K, peer: RwLockThreadPtr, locked: bool, released: Option<RetValueType> },
+    IpcPages { source_range: VaRange4K, target_range: VaRange4K, peer: RwLockThreadPtr, tables: IpcPagesTables, released: Option<RetValueType> },
     /// An endpoint rendezvous whose `peer` is in transit; the caller sends when `caller_sends`, and its
     /// own payload names descriptor `payload_index`.
     IpcEndpoint { peer: RwLockThreadPtr, caller_sends: bool, payload_index: EndpointIdx },

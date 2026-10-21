@@ -22,7 +22,8 @@ pub struct PageTableHigher<const TABLE_TYPE: PTType> {
 }
 
 /// Window half: L2 pages (each entry a 2M-window spin lock) with their two ghost tokens, L1 pages, 4K and 2M
-/// leaves, and the base addresses of the currently locked 2M windows.
+/// leaves, the base addresses of the currently locked 2M windows, and for each 2M window `(L2 page, L2 index)` that
+/// still hides cleared leaves from some TLB, the CPUs that have neither flushed nor skipped it yet.
 pub tracked struct PageTableLower<const TABLE_TYPE: PTType> {
     pub tracked l2_perms: Map<PageMapPtr, PointsTo<L2PageMap>>,
     pub tracked l2_ghost: Map<PageMapPtr, L2PageGhost>,
@@ -31,7 +32,8 @@ pub tracked struct PageTableLower<const TABLE_TYPE: PTType> {
     pub tracked l1_tables: Map<PageMapPtr, PointsTo<PageMap>>,
     pub ghost mapping_4k: Map<VAddr, MapEntry>,
     pub ghost mapping_2m: Map<VAddr, MapEntry>,
-    pub ghost locked_windows: Set<VAddr>,
+    pub ghost locked_windows: Set<WindowVa>,
+    pub ghost window_stale_cpus: Map<(PageMapPtr, L2Index), Set<CpuId>>,
 }
 
 /// One whole page table: the big-lock payload and its window half.
@@ -40,20 +42,53 @@ pub ghost struct PageTableC<const TABLE_TYPE: PTType> {
     pub lower: PageTableLower<TABLE_TYPE>,
 }
 
+/// One 2M window as its holder sees it: its L2 page and entry, the entry's lock owner, the L1 page that entry links,
+/// and the CPUs that still owe the window a TLB flush.
+pub ghost struct PageTableWindowView {
+    pub l2_page: PageMapPtr,
+    pub l2_entry: PageEntry,
+    pub lock_state: SpinLockState,
+    pub l1_table: Option<PointsTo<PageMap>>,
+    pub stale_cpus: Option<Set<CpuId>>,
+}
+
+/// Base address of one 2M window. Alignment is `wf`, not a type invariant: the window lock map and `locked_windows`
+/// carry it in their invariants.
+pub ghost struct WindowVa { pub va: VAddr }
+
+impl WindowVa {
+    /// A 2M-aligned user address.
+    pub open spec fn wf(&self) -> bool { page_table_key_2m_valid::<PT_TYPE>(self.va) }
+    pub open spec fn l4i(&self) -> L4Index { spec_v2l4index(self.va) }
+    pub open spec fn l3i(&self) -> L3Index { spec_v2l3index(self.va) }
+    pub open spec fn l2i(&self) -> L2Index { spec_v2l2index(self.va) }
+}
+
+/// The 2M window that contains `va`.
+pub open spec fn window_of(va: VAddr) -> WindowVa { WindowVa { va: spec_index2va((spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), 0)) } }
+
 /// Window `(l4i, l3i, l2i)` of the table rooted at `root`; window locks follow every page-table and IOMMU table lock.
 pub open spec fn window_lock_id(root: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index) -> LockId {
     LockId { container: LockOwnerId::None, process: LockOwnerId::None, major: PAGE_TABLE_WINDOW_LOCK_MAJOR, minor: seq![root, l4i, l3i, l2i] }
 }
 
 pub open spec fn window_obj_id(root: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index) -> KernelObjId {
-    KernelObjId::PageTableWindow(root, spec_index2va((l4i, l3i, l2i, 0)))
+    KernelObjId::PageTableWindow(root, WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) })
 }
 
-/// `window_lock_id` of the 2M window containing `va`.
-pub open spec fn window_lock_id_at(root: RwLockPageTableRoot, va: VAddr) -> LockId { window_lock_id(root, spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) }
+/// `window_lock_id` of window `w`.
+pub open spec fn window_lock_id_at(root: RwLockPageTableRoot, w: WindowVa) -> LockId { window_lock_id(root, spec_v2l4index(w.va), spec_v2l3index(w.va), spec_v2l2index(w.va)) }
 
-/// `window_obj_id` of the 2M window containing `va`.
-pub open spec fn window_obj_id_at(root: RwLockPageTableRoot, va: VAddr) -> KernelObjId { window_obj_id(root, spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) }
+/// `window_obj_id` of window `w`.
+pub open spec fn window_obj_id_at(root: RwLockPageTableRoot, w: WindowVa) -> KernelObjId { window_obj_id(root, spec_v2l4index(w.va), spec_v2l3index(w.va), spec_v2l2index(w.va)) }
+
+/// Bases of the 2M windows that cover `range`: the 2M-aligned user addresses in path order between the windows of its
+/// first and last page.
+pub open spec fn va_range_2m_windows(range: VaRange4K) -> ISet<WindowVa> {
+    let first = spec_va2index(range.start);
+    let last = spec_va2index(range.view().spec_index(range.len - 1));
+    ISet::new(|w: WindowVa| page_table_key_2m_valid::<PT_TYPE>(w.va) && spec_l4_index_path_le((first.0, first.1, first.2, 0), spec_va2index(w.va)) && spec_l4_index_path_le(spec_va2index(w.va), (last.0, last.1, last.2, 0)))
+}
 
 impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     pub open spec fn pcid_wf(&self) -> bool {
@@ -315,7 +350,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         &&& self.mapping_4k() == Map::<VAddr, MapEntry>::empty()
         &&& self.mapping_2m() == Map::<VAddr, MapEntry>::empty()
         &&& self.mapping_1g() == Map::<VAddr, MapEntry>::empty()
-        &&& self.lower.locked_windows == Set::<VAddr>::empty()
+        &&& self.lower.locked_windows == Set::<WindowVa>::empty()
+        &&& self.lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty()
     }
 
     pub open spec fn page_closure(&self) -> Set<PagePtr> {
@@ -393,6 +429,44 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
     pub open spec fn window_locked_by_thread(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId) -> bool {
         &&& self.window_exists(l4i, l3i)
         &&& self.lower.l2_lock_of(self.window_l2_page(l4i, l3i)).locked_by_thread(l2i, thread_id)
+    }
+
+    /// Window `(l4i, l3i, l2i)` exists and some thread holds its lock; that holder is named so the window-holder
+    /// invariant can fire on it.
+    pub open spec fn window_locked(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index) -> bool {
+        self.window_locked_by_thread(l4i, l3i, l2i, self.lower.l2_lock_of(self.window_l2_page(l4i, l3i)).lock_state(l2i)->Some_thread_id)
+    }
+
+    /// Every 4K leaf the user cannot see lies in a locked 2M window; every 2M and 1G leaf is present.
+    pub open spec fn hidden_leaves_in_locked_windows(&self) -> bool {
+        &&& forall|va: VAddr|
+            #![trigger self.mapping_4k().spec_index(va)]
+            self.mapping_4k().dom().contains(va) && !self.mapping_4k().spec_index(va).present ==> self.window_locked(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))
+        &&& forall|va: VAddr| #![trigger self.mapping_2m().dom().contains(va)] self.mapping_2m().dom().contains(va) ==> self.mapping_2m().spec_index(va).present
+        &&& forall|va: VAddr| #![trigger self.mapping_1g().dom().contains(va)] self.mapping_1g().dom().contains(va) ==> self.mapping_1g().spec_index(va).present
+    }
+
+    /// The 4K leaves of window `w` and its 2M leaf are present.
+    pub open spec fn window_leaves_present(&self, w: WindowVa) -> bool {
+        &&& forall|va: VAddr|
+            #![trigger self.mapping_4k().spec_index(va)]
+            self.mapping_4k().dom().contains(va) && spec_v2l4index(va) == spec_v2l4index(w.va) && spec_v2l3index(va) == spec_v2l3index(w.va)
+                && spec_v2l2index(va) == spec_v2l2index(w.va) ==> self.mapping_4k().spec_index(va).present
+        &&& self.mapping_2m().dom().contains(w.va) ==> self.mapping_2m().spec_index(w.va).present
+    }
+
+    /// Window `w`: its L2 page and entry, that entry's lock owner, the L1 page the entry links, and its stale-CPU set.
+    pub open spec fn window_view(&self, w: WindowVa) -> PageTableWindowView {
+        let l2_page = self.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va));
+        let l2i = spec_v2l2index(w.va);
+        let l2_entry = self.lower.l2_page(l2_page).spec_index(l2i);
+        PageTableWindowView {
+            l2_page,
+            l2_entry,
+            lock_state: self.lower.l2_lock_of(l2_page).lock_state(l2i),
+            l1_table: if l2_entry.perm.present && !l2_entry.perm.ps && self.lower.l1_tables.dom().contains(l2_entry.addr) { Some(self.lower.l1_tables.spec_index(l2_entry.addr)) } else { None },
+            stale_cpus: if self.lower.window_stale_cpus.dom().contains((l2_page, l2i)) { Some(self.lower.window_stale_cpus.spec_index((l2_page, l2i))) } else { None },
+        }
     }
 
     /// No thread other than `thread_id` holds window `(l4i, l3i, l2i)`.
@@ -575,19 +649,19 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
     /// `locked_windows` holds exactly the base addresses of the windows whose lock bit has an owner.
     #[verifier::opaque]
     pub open spec fn wf_window_locks(&self) -> bool {
-        &&& forall|va: VAddr|
-            #![trigger self.lower.locked_windows.contains(va)]
-            self.lower.locked_windows.contains(va) ==> {
-                &&& page_table_key_2m_valid::<TABLE_TYPE>(va)
-                &&& self.kernel_l4_end() <= spec_v2l4index(va)
-                &&& self.window_exists(spec_v2l4index(va), spec_v2l3index(va))
-                &&& self.lower.l2_lock_of(self.window_l2_page(spec_v2l4index(va), spec_v2l3index(va))).locked(spec_v2l2index(va))
+        &&& forall|w: WindowVa|
+            #![trigger self.lower.locked_windows.contains(w)]
+            self.lower.locked_windows.contains(w) ==> {
+                &&& page_table_key_2m_valid::<TABLE_TYPE>(w.va)
+                &&& self.kernel_l4_end() <= spec_v2l4index(w.va)
+                &&& self.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
+                &&& self.lower.l2_lock_of(self.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va))).locked(spec_v2l2index(w.va))
             }
         &&& forall|p: PageMapPtr, i: L2Index|
             #![trigger self.lower.l2_lock_of(p).lock_state(i)]
             self.lower.l2_perms.dom().contains(p) && pei_valid(i) && self.lower.l2_lock_of(p).locked(i) ==> {
                 let (l4i, l3i) = self.higher.l2_rev_map.view().spec_index(p);
-                self.lower.locked_windows.contains(spec_index2va((l4i, l3i, i, 0)))
+                self.lower.locked_windows.contains(WindowVa { va: spec_index2va((l4i, l3i, i, 0)) })
             }
     }
 

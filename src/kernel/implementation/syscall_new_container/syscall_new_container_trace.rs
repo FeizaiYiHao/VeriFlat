@@ -40,7 +40,7 @@ pub(super) proof fn new_container_enter_step_from_u(
             &&& process.lock_state is Unlocked
             &&& !process.killed
             &&& process.pagetable is Some
-            &&& process.pagetable->Some_0.lock_state is Unlocked
+            &&& !(process.pagetable->Some_0.lock_state is WriteLocked)
             &&& range.wf()
             &&& 0 < range.len <= (usize::MAX - 9) / 3
             &&& user_va_range(pre, range)
@@ -60,7 +60,7 @@ pub(super) proof fn new_container_enter_step_from_u(
             container_map: pre.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::WriteLocked, cpu_set_lock: LockStateU::WriteLocked, ..pre.container_map[container_ptr] }),
             process_map: pre.process_map.insert(process_ptr, ProcessU {
                 lock_state: LockStateU::WriteLocked,
-                pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..pre.process_map[process_ptr].pagetable->Some_0 }),
+                pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..pre.process_map[process_ptr].pagetable->Some_0 }),
                 ..pre.process_map[process_ptr]
             }),
             thread_map: pre.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, ..pre.thread_map.spec_index(thread_ptr) }),
@@ -100,7 +100,7 @@ pub(super) proof fn new_container_publish_step_pre_from_k(
         typed_lock_map_contains_mode(lctx.container_lock_map(), container_ptr, TypedLockMode::Write),
         typed_lock_map_contains_mode(lctx.cpu_set_lock_map(), krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set, TypedLockMode::Write),
         typed_lock_map_contains_mode(lctx.process_lock_map(), process_ptr, TypedLockMode::Write),
-        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), krnl.prc_mp.spec_index(process_ptr).view().pagetable, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), krnl.prc_mp.spec_index(process_ptr).view().pagetable, TypedLockMode::Read),
         typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
         krnl.prc_mp.dom().contains(process_ptr),
         !krnl.prc_mp.spec_index(process_ptr).view().zombie,
@@ -115,7 +115,10 @@ pub(super) proof fn new_container_publish_step_pre_from_k(
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_thread == Some(thread_ptr),
         kernel_k_to_kernel_u(*krnl).thread_map.spec_index(thread_ptr).syscall_progress == Some(SyscallProgress::NewContainer(record)),
         kernel_k_to_kernel_u(*krnl).thread_map.spec_index(thread_ptr).owning_container == container_ptr,
-{ kernel_write_held_context_projection(krnl, lctx, cpu_id, process_ptr, thread_ptr, None); kernel_cpu_projection_at(krnl, record.transfer_cpu); reveal(new_container_publish_step_pre); }
+{
+    kernel_write_held_context_projection(krnl, lctx, cpu_id, process_ptr, thread_ptr, None); kernel_cpu_projection_at(krnl, record.transfer_cpu); reveal(new_container_publish_step_pre);
+    krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), krnl.prc_mp.spec_index(process_ptr).view().pagetable); kernel_pagetable_mappings_projection_at(krnl, process_ptr);
+}
 
 /// Creating the child container with its root process from `pre` to `post` is the publish step.
 pub(super) proof fn new_container_publish_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, child_ptr: RwLockContainerPtr, root_ptr: RwLockProcessPtr, record: NewContainerProgress)
@@ -147,7 +150,7 @@ pub(super) proof fn new_container_finish_step_pre_from_k(
         typed_lock_map_contains_mode(lctx.process_lock_map(), process_ptr, TypedLockMode::Write),
         typed_lock_map_contains_mode(lctx.process_lock_map(), root_ptr, TypedLockMode::Write),
         typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
-        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), krnl.prc_mp.spec_index(process_ptr).view().pagetable, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), krnl.prc_mp.spec_index(process_ptr).view().pagetable, TypedLockMode::Read),
         typed_lock_map_contains_mode(lctx.pagetable_lock_map(), krnl.prc_mp.spec_index(root_ptr).view().pagetable, TypedLockMode::Write),
         endpoint_ptr matches Some(e) ==> krnl.ep_mp.dom().contains(e) && typed_lock_map_contains_mode(lctx.endpoint_lock_map(), e, TypedLockMode::Write),
         krnl.thr_mp.dom().contains(thread_ptr),
@@ -175,6 +178,7 @@ pub(super) proof fn new_container_finish_step_pre_from_k(
     kernel_write_held_context_projection(krnl, lctx, cpu_id, root_ptr, thread_ptr, None);
     kernel_share_4k_objects_projection(krnl, lctx, cpu_id);
     kernel_cpu_thread_projection_at(krnl, cpu_id, process_ptr, thread_ptr, None);
+    krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), krnl.prc_mp.spec_index(process_ptr).view().pagetable); kernel_pagetable_mappings_projection_at(krnl, process_ptr);
     reveal(new_container_finish_step_pre);
 }
 
@@ -204,13 +208,15 @@ pub(super) proof fn new_container_finish_step_from_u(
             &&& (record.endpoint_index is None ==> endpoint_ptr is None)
         },
         post.process_map.spec_index(root_ptr).owned_threads.last() == new_thread_ptr,
+        post.process_map[process_ptr].pagetable->Some_0.lock_state is Unlocked || post.process_map[process_ptr].pagetable->Some_0.lock_state is ReadLocked,
         kernel_u_new_thread_changed(KernelU {
             cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre.cpu_array[cpu_id as int] }),
             container_map: pre.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, ..pre.container_map[container_ptr] })
                 .insert(child_ptr, ContainerU { lock_state: LockStateU::Unlocked, ..pre.container_map[child_ptr] }),
             process_map: pre.process_map.insert(process_ptr, ProcessU {
                 lock_state: LockStateU::Unlocked,
-                pagetable: Some(PageTableU { lock_state: LockStateU::Unlocked, ..pre.process_map[process_ptr].pagetable->Some_0 }), ..pre.process_map[process_ptr]
+                pagetable: Some(PageTableU { lock_state: post.process_map[process_ptr].pagetable->Some_0.lock_state, ..pre.process_map[process_ptr].pagetable->Some_0 }),
+                ..pre.process_map[process_ptr]
             }).insert(root_ptr, ProcessU {
                 lock_state: LockStateU::Unlocked, pagetable: Some(PageTableU { lock_state: LockStateU::Unlocked, ..pre.process_map[root_ptr].pagetable->Some_0 }),
                 iommu_table: None, ..pre.process_map[root_ptr]
@@ -257,6 +263,20 @@ pub(super) proof fn new_container_trace_share_steps(steps: &KernelSteps, before:
         new_container_trace_after_share(steps.view(), start, pre, cpu_id, range, funding, process_quota, transfer_cpu, regs, endpoint_index),
 { reveal(new_container_trace_after_publish); reveal(new_container_trace_after_share); }
 
+/// Share directory steps appended after share range steps that start at `start` are share range steps.
+pub(super) proof fn new_container_share_steps_from_directory(steps: &KernelSteps, before: Seq<KernelStep>, start: int, cpu_id: CpuId)
+    requires
+        0 <= start <= before.len() <= steps.view().len(),
+        forall|j: int| #![trigger before[j]] start <= j < before.len() ==> share_4k_range_step(before[j], cpu_id),
+        forall|j: int| #![trigger steps.view()[j]] 0 <= j < before.len() ==> steps.view()[j] == before[j],
+        forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
+            &&& share_4k_directory_step_pre(steps.view()[j].old_u, cpu_id)
+            &&& share_4k_directory_step(steps.view()[j].old_u, steps.view()[j].new_u, cpu_id)
+        },
+    ensures
+        forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> share_4k_range_step(steps.view()[j], cpu_id),
+{ reveal(share_4k_range_step); }
+
 /// The finish step pushed after the shared partial trace that starts at `start` completes the commit trace.
 pub(super) proof fn new_container_trace_finish_step(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, endpoint_index: Option<EndpointIdx>)
     requires
@@ -295,7 +315,7 @@ pub(super) proof fn new_container_result_from_k(
                 && !process.being_killed() && !thread.being_killed() && !(endpoint_index is Some && t.endpoint_descriptors.spec_index(endpoint_index->Some_0) is None)
                 && t.quota_4k >= 9 + funding_page_count + 3 * range && t.quota_2m >= 2;
             &&& live ==> krnl.thr_mp.dom().contains(c.current_thread->Some_0) && krnl.ctn_mp.dom().contains(t.owning_container) && krnl.prc_mp.dom().contains(t.owning_proc)
-            &&& funded ==> !process.view().zombie && krnl.pt_mp.dom().contains(process.view().pagetable) && table.leaves_present()
+            &&& funded ==> !process.view().zombie && krnl.pt_mp.dom().contains(process.view().pagetable)
             &&& ret == if bad_args { RetValueType::Error }
                 else if !(c.state is Running) || cpu.being_killed() { RetValueType::CpuIdle }
                 else if container.being_killed() { RetValueType::ErrorContainerKilled }
@@ -323,7 +343,7 @@ pub(super) proof fn new_container_result_from_k(
     if krnl.thr_mp.dom().contains(thread_ptr) && krnl.prc_mp.dom().contains(t.owning_proc) {
         kernel_cpu_thread_projection_at(krnl, cpu_id, t.owning_proc, thread_ptr, None);
         if !process.zombie && krnl.pt_mp.dom().contains(process.pagetable) {
-            kernel_l4_end_projection_at(krnl, process.pagetable); kernel_pagetable_mappings_projection_at(krnl, t.owning_proc);
+            kernel_l4_end_projection_at(krnl, process.pagetable); kernel_process_projection_at(krnl, t.owning_proc);
         }
     }
 }

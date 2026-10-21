@@ -22,6 +22,7 @@ pub(super) proof fn ipc_enqueue_endpoint_waiter_eof(pre: EndpointLockedMap, post
         post.unchanged_except(&pre, endpoint_ptr),
         post.spec_index(endpoint_ptr).is_init(),
         post.spec_index(endpoint_ptr).view().inv(),
+        post.spec_index(endpoint_ptr).locking_thread() is Write,
     ensures endpoint_perms_wf(post),
 { reveal(endpoint_perms_wf); }
 
@@ -69,6 +70,7 @@ pub(super) proof fn ipc_dequeue_endpoint_waiter_eof(pre: EndpointLockedMap, post
         post.unchanged_except(&pre, endpoint_ptr),
         post.spec_index(endpoint_ptr).is_init(),
         post.spec_index(endpoint_ptr).view().inv(),
+        post.spec_index(endpoint_ptr).locking_thread() is Write,
     ensures endpoint_perms_wf(post),
 { reveal(endpoint_perms_wf); }
 } // verus!

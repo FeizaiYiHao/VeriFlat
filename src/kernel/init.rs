@@ -243,7 +243,7 @@ pub open spec fn boot_page_array_ready(
 /// per-entry window locks. This assumes that the bootloader leaves bit 9 (the
 /// window lock bit) of every L2 word clear, so that no window lock is held and
 /// every window-lock ghost is `None`; the window half therefore starts with no
-/// locked window. L1 pages move to the window half unchanged.
+/// locked window and no stale CPU. L1 pages move to the window half unchanged.
 #[verifier::external_body]
 pub fn adopt_boot_dom0_pagetable(
     raw_cr3: PageTableRoot, pagetable_ptr: RwLockPageTableRoot, process_ptr: RwLockProcessPtr, kernel_l4_end: usize,
@@ -272,7 +272,8 @@ pub fn adopt_boot_dom0_pagetable(
         boot_dom0_pagetable_model(raw_cr3, process_ptr, kernel_l4_end, kernel_entries.view(), manifest_4k.view(), l4_tables, l3_tables, l2_tables, l1_tables, rev_maps.view()).wf(),
     ensures
         (PageTableC { higher: ret.0, lower: ret.1.view() }).wf(),
-        ret.1.view().locked_windows == Set::<VAddr>::empty(),
+        ret.1.view().locked_windows == Set::<WindowVa>::empty(),
+        ret.1.view().window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
         ret.0.cr3 == raw_cr3,
         ret.0.pcid == Some(1usize),
         ret.0.pcid_value() == 1,
@@ -632,7 +633,8 @@ pub open spec fn boot_kernel_state(
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).locking_thread() is None
     &&& krnl.pt_lower.view().dom() =~= set![layout.cpu_pagetable]
     &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).wf()
-    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.locked_windows == Set::<VAddr>::empty()
+    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.locked_windows == Set::<WindowVa>::empty()
+    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty()
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().cr3 == layout.cpu_cr3
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().pcid == Some(1usize)
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().pcid_value() == 1
@@ -891,7 +893,8 @@ proof fn boot_subsystems_inv_eof(
     assert(pagetable_window_holders_hold_pagetable(krnl.pt_mp, krnl.pt_lower.view())) by {
         reveal(pagetable_window_holders_hold_pagetable); reveal(PageTableC::wf_window_locks); reveal(PageTableC::wf_l3); reveal(PageTableHigher::wf_l4);
     };
-    assert(pagetable_hidden_leaves_only_when_wlocked(krnl.pt_mp, krnl.pt_lower.view())) by { reveal(pagetable_hidden_leaves_only_when_wlocked); };
+    assert(pagetable_hidden_leaves_only_when_locked(krnl.pt_mp, krnl.pt_lower.view())) by { reveal(pagetable_hidden_leaves_only_when_locked); };
+    assert(pagetable_window_stale_cpus_only_when_locked(krnl.pt_mp, krnl.pt_lower.view())) by { reveal(pagetable_window_stale_cpus_only_when_locked); };
     assert(pagetable_lower_backup_wf(krnl.pt_mp, krnl.pt_lower.view()));
     assert(iommu_table_perms_wf(krnl.it_mp)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); };
     assert(page_array_wf(krnl.pg_arr)) by { reveal(boot_page_array_ready); };

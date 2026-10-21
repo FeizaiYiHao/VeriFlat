@@ -7,6 +7,7 @@ mod syscall_new_process_publish_create;
 mod syscall_new_process_enter;
 mod syscall_new_process_publish_step;
 mod syscall_new_process_share_finish;
+mod syscall_new_process_build;
 pub mod syscall_new_process_helpers;
 mod syscall_new_process_common;
 mod syscall_new_process_lock_helpers;

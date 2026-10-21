@@ -12,7 +12,8 @@ pub(super) open spec fn create_new_container_root_thread_and_unlock_eof_transiti
 ) -> bool {
     &&& kernel_new_thread_fields(&pre, &mid, child_process_ptr, current_thread_ptr, child_container_ptr, caller_cpu_id, new_thread_ptr, initial_regs, None,
         pre.thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view())
-    &&& post == (KernelK { ctn_mp: post.ctn_mp, prc_mp: post.prc_mp, pt_mp: post.pt_mp, pg_arr: post.pg_arr, sched_mp: post.sched_mp, thr_mp: post.thr_mp, ep_mp: post.ep_mp, cpu_arr: post.cpu_arr, ..mid })
+    &&& post == (KernelK { ctn_mp: post.ctn_mp, prc_mp: post.prc_mp, pt_mp: post.pt_mp, pt_lower: post.pt_lower, pg_arr: post.pg_arr, sched_mp: post.sched_mp, thr_mp: post.thr_mp,
+        ep_mp: post.ep_mp, cpu_arr: post.cpu_arr, ..mid })
     &&& post.ctn_mp.dom() == mid.ctn_mp.dom()
     &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)]
         mid.ctn_mp.dom().contains(c) ==> {
@@ -22,7 +23,11 @@ pub(super) open spec fn create_new_container_root_thread_and_unlock_eof_transiti
             &&& post.ctn_mp.spec_index(c).being_killed() == mid.ctn_mp.spec_index(c).being_killed()
         }
     &&& post.pt_mp.dom() == mid.pt_mp.dom()
-    &&& forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)] mid.pt_mp.dom().contains(p) ==> pagetable_c(post.pt_mp, post.pt_lower.view(), p) == pagetable_c(mid.pt_mp, mid.pt_lower.view(), p)
+    &&& forall|p: RwLockPageTableRoot| #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), p)] mid.pt_mp.dom().contains(p) ==> {
+            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).mapping_4k() == pagetable_c(mid.pt_mp, mid.pt_lower.view(), p).mapping_4k()
+            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).mapping_2m() == pagetable_c(mid.pt_mp, mid.pt_lower.view(), p).mapping_2m()
+            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).mapping_1g() == pagetable_c(mid.pt_mp, mid.pt_lower.view(), p).mapping_1g()
+        }
     &&& kernel_cpu_nonlock_fields_unchanged(mid.cpu_arr, post.cpu_arr)
     &&& kernel_process_nonlock_fields_unchanged(mid.prc_mp, post.prc_mp)
     &&& post.sched_mp.dom() == mid.sched_mp.dom()

@@ -41,6 +41,10 @@ pub mod kill_per_map_projection;
 pub mod owner_and_tables_per_map_projection;
 /// Per-entry and domain K->U lemmas of the nonlock and lock-selectable user projections.
 pub mod nonlock_projection;
+/// K->U lemmas of read-mode page-table steps: held-window mappings, read-mode entry and exit, and downgrade.
+pub mod pagetable_read_mode;
+pub mod new_process_read_mode;
+pub mod ipc_pages_tables;
 
 pub use projection::*;
 pub use boundary::*;
@@ -60,6 +64,9 @@ pub use per_map_projection::*;
 pub use kill_per_map_projection::*;
 pub use owner_and_tables_per_map_projection::*;
 pub use nonlock_projection::*;
+pub use pagetable_read_mode::*;
+pub use new_process_read_mode::*;
+pub use ipc_pages_tables::*;
 
 verus! {
 /// Each boundary refreshes both stored snapshots after recording its own section.
@@ -216,10 +223,16 @@ impl KernelSteps {
                     &&& krnl.pt_mp.spec_index(p).view() == old(self).snapshot_k().pt_mp.spec_index(p).view()
                     &&& (krnl.pt_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().pt_mp.spec_index(p).locking_thread() is Write)
                     &&& (krnl.pt_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().pt_mp.spec_index(p).locking_thread() is Read)
+                    &&& forall|q: RwLockPageTableRoot| #![trigger krnl.pt_lower.view().spec_index(q)] q != p ==> krnl.pt_lower.view().spec_index(q) == old(self).snapshot_k().pt_lower.view().spec_index(q)
+                    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_4k() == pagetable_c(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_4k()
+                    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_2m() == pagetable_c(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_2m()
+                    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_1g() == pagetable_c(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_1g()
                 },
-                None => krnl.pt_mp == old(self).snapshot_k().pt_mp,
+                None => {
+                    &&& krnl.pt_mp == old(self).snapshot_k().pt_mp
+                    &&& krnl.pt_lower == old(self).snapshot_k().pt_lower
+                },
             },
-            krnl.pt_lower == old(self).snapshot_k().pt_lower,
         ensures
             kernel_k_to_nonlock_kernel_u(*krnl) == old(self).nonlock_snapshot_u(),
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),

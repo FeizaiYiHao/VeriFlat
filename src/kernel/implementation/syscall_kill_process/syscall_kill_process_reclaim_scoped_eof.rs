@@ -149,6 +149,7 @@ pub(crate) proof fn kill_reclaim_unmapped_4k_page_scoped_eof(
             &&& pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom().contains(va)
             &&& !pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).present
             &&& pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr == page_ptr
+            &&& !pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus.dom().contains((pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va)))
             &&& page_ptr_valid(page_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
@@ -165,7 +166,8 @@ pub(crate) proof fn kill_reclaim_unmapped_4k_page_scoped_eof(
         post.pt_mp.spec_index(pagetable).inv(),
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
         pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_leaves_only_when_wlocked(post.pt_mp, post.pt_lower.view()),
+        pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view()),
+        pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view()),
         pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()),
         post.pg_arr.inv(),
         post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().inv(),
@@ -401,7 +403,8 @@ proof fn kill_retire_table_page_scoped_eof_subsystems_inv(
         iommu_table_perms_wf(post.it_mp),
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
         pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_leaves_only_when_wlocked(post.pt_mp, post.pt_lower.view()),
+        pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view()),
+        pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view()),
         pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()),
         page_array_wf(post.pg_arr),
         post.allc_4k_mp.perms_wf(),
@@ -570,13 +573,15 @@ pub(crate) proof fn kill_retire_table_page_scoped_eof(
         pre.allc_4k_mp.dom().contains(allocator_ptr),
         iommu ==> pre.it_mp.dom().contains(table) && pre.it_mp.spec_index(table).view().page_closure().contains(page_ptr),
         !iommu ==> pre.pt_mp.dom().contains(table) && pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).page_closure().contains(page_ptr),
+        !iommu ==> pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).leaves_present(),
         pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().free_list_node_storage.addr() == node_addr,
         !pre.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(node_addr),
         pagetable_perms_wf(post.pt_mp),
         iommu_table_perms_wf(post.it_mp),
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
         pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
-        pagetable_hidden_leaves_only_when_wlocked(post.pt_mp, post.pt_lower.view()),
+        pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view()),
+        pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view()),
         pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()),
         page_array_wf(post.pg_arr),
         post.allc_4k_mp.perms_wf(),
@@ -585,8 +590,6 @@ pub(crate) proof fn kill_retire_table_page_scoped_eof(
         post.inv(),
         kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post),
         kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp),
-        !iommu ==> (pagetable_tlb_entries_present(pre.cpu_tlb, pre.cpu_arr, pre.pcid_needflush, table, pagetable_c(pre.pt_mp, pre.pt_lower.view(), table))
-            ==> pagetable_tlb_entries_present(post.cpu_tlb, post.cpu_arr, post.pcid_needflush, table, pagetable_c(post.pt_mp, post.pt_lower.view(), table))),
         !iommu ==> (pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).leaves_present() ==> pagetable_c(post.pt_mp, post.pt_lower.view(), table).leaves_present()),
         iommu ==> (pre.it_mp.spec_index(table).view().leaves_present() ==> post.it_mp.spec_index(table).view().leaves_present()),
 {

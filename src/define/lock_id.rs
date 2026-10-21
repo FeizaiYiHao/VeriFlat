@@ -4,6 +4,7 @@ use vstd::std_specs::cmp::*;
 use core::cmp::Ordering;
 
 use crate::define::*;
+use crate::pagetable_concurrent::WindowVa;
 verus! {
 // -------------------- Begin of const ------------------------
 // A being-killed object (any kill-state type) reports the minimal id (High, High, KILLED_LOCK_MAJOR,
@@ -244,8 +245,8 @@ pub ghost enum KernelObjId {
     PcidAllocator(RwLockPcidAllocatorPtr),
     CpuSet(RwLockCpuSetPtr),
     PageTable(RwLockPageTableRoot),
-    // One 2M window of a page table: the L2 entry word at the 2M-aligned VA is its spin lock.
-    PageTableWindow(RwLockPageTableRoot, VAddr),
+    // One 2M window of a page table: the L2 entry word of the window is its spin lock.
+    PageTableWindow(RwLockPageTableRoot, WindowVa),
     IommuTable(RwLockPageTableRoot),
     IommuRootTable(PAddr),
     Page(PageIndex),
