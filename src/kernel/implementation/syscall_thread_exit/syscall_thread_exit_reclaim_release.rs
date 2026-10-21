@@ -519,18 +519,12 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
     {
         let next = found.unwrap();
         let va = index2va(next);
-        let ghost iter_pt = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         proof {
             assert(spec_va_4k_valid(va) && spec_va2index(va) == next) by { spec_va_4k_index_roundtrip_at(va, next.0, next.1, next.2, next.3); };
         }
         reclaim_unmapped_4k_page(krnl, pagetable, va, thread_ptr, cpu_id, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&pagetable_lock_perm), Tracked(thread_lock_perm));
         cursor = (next.0, next.1, next.2, next.3 + 1);
         proof {
-            assert forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
-                pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && start_l4 <= l4i && !spec_l4_index_path_le(cursor, (l4i, l3i, l2i, l1i))
-                implies !pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))) by {
-                if spec_index2va((l4i, l3i, l2i, l1i)) != va { assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))) == iter_pt.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))); }
-            };
             pagetable_perms_wf_map(krnl.pt_mp);
             pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         }
@@ -538,13 +532,7 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
     }
     let ghost reclaimed_k = *krnl;
     proof {
-        assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).leaves_present()) by {
-            assert forall|va: VAddr| #![trigger pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().dom().contains(va)]
-                pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().dom().contains(va) implies pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().spec_index(va).present by {
-                let index = spec_va2index(va);
-                if !pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().spec_index(va).present { spec_va_4k_index_roundtrip_at(va, index.0, index.1, index.2, index.3); }
-            };
-        };
+        assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).leaves_present()) by { broadcast use spec_va_4k_valid_index_roundtrip; };
         assert(entry_lctx.container_lock_map().dom().contains(container_ptr) && entry_lctx.process_lock_map().dom().contains(process_ptr) && entry_lctx.cpu_lock_map().dom().contains(cpu_id)
             && lctx.pagetable_lock_map().dom().contains(pagetable));
     }

@@ -8,8 +8,6 @@ use super::syscall_kill_container_retire_objects::*;
 use super::syscall_kill_container_retire_free::{kill_container_retire_pages_4k_to_pool, kill_container_retire_head_2m_to_pool};
 use super::super::syscall_kill_process::syscall_kill_process_retire_pages_lock::wunlock_kill_retire_pages;
 #[cfg(verus_keep_ghost)]
-use super::super::syscall_kill_process::syscall_kill_process_retire_pages_lock::kill_retire_page_perms_dom_implies_indexed;
-#[cfg(verus_keep_ghost)]
 use super::syscall_kill_container_retire_spec::*;
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_container_retire_eof::*;
@@ -190,7 +188,6 @@ pub(crate) fn kill_container_retire_commit(
     proof { assert(pages.view() =~= kill_container_retire_pages_4k(ro)); }
     let container_head = page_ptr2page_index(container_ptr);
     let pcid_head = page_ptr2page_index(pcid_ptr);
-    proof { assert(page_perms.dom().contains(container_head) && page_perms.dom().contains(pcid_head)); kill_retire_page_perms_dom_implies_indexed(*old(krnl), *old(lctx), pages.view(), page_perms); }
     kill_container_retire_fill_pools(krnl, Tracked(&mut *lctx), o4, o2, owner_ptr, &pages, Tracked(page_objects), container_head, Tracked(container_page), pcid_head, Tracked(pcid_page),
         Tracked(&page_perms), Tracked(&tails_container), Tracked(&tails_pcid), Tracked(pools_4k.tracked_borrow(o4)), Tracked(quotas_4k.tracked_borrow(o4)), Tracked(pools_2m.tracked_borrow(o2)),
         Tracked(quotas_2m.tracked_borrow(o2)));
@@ -708,7 +705,6 @@ fn kill_container_retire_unlock(
     let tracked mut pools_2m = pools_2m;
     let tracked mut quotas_4k = quotas_4k;
     let tracked mut quotas_2m = quotas_2m;
-    proof { kill_retire_page_perms_dom_implies_indexed(*old(krnl), *old(lctx), pages.view(), page_perms); }
     let tracked mut page_perms = page_perms;
     let ghost entry = *krnl;
     wunlock_owned_2m_page_tails(krnl, container_head, Tracked(&mut *lctx), Tracked(tails_container));

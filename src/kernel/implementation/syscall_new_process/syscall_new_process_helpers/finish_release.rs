@@ -157,9 +157,9 @@ pub(super) fn release_new_process_child_locks(
         forall|s: RwLockSchedulerPtr| #![trigger scheduler_shards_of(final(krnl).sched_mp.spec_index(s))]
             old(krnl).sched_mp.dom().contains(s) ==> scheduler_shards_of(final(krnl).sched_mp.spec_index(s)) == scheduler_shards_of(old(krnl).sched_mp.spec_index(s)),
 {
-    krnl.unlock_pagetable_range_existing_windows(target_pagetable_ptr, source_range, Tracked(&target_pagetable_lock_perm), Tracked(&mut *lctx), Tracked(target_window_perms));
-    proof { assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable_ptr) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr)); }
     krnl.unlock_pagetable_range_existing_windows(source_pagetable_ptr, source_range, Tracked(&source_pagetable_lock_perm), Tracked(&mut *lctx), Tracked(source_window_perms));
+    proof { assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable_ptr) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable_ptr)); }
+    krnl.unlock_pagetable_range_existing_windows(target_pagetable_ptr, source_range, Tracked(&target_pagetable_lock_perm), Tracked(&mut *lctx), Tracked(target_window_perms));
     wunlock_new_process_iommu_table(krnl, iommu_table, Tracked(&mut *lctx), Tracked(iommu_table_lock_perm));
     krnl.wunlock_process(child_ptr, Tracked(&mut *lctx), Tracked(child_lock_perm));
     krnl.runlock_pagetable(source_pagetable_ptr, Tracked(&mut *lctx), Tracked(source_pagetable_lock_perm));

@@ -745,7 +745,6 @@ fn thread_exit_reclaim_clear_leaves(
     {
         let next = found.unwrap();
         let va = index2va(next);
-        let ghost iter_pt = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         proof {
             pagetable_perms_wf_map(krnl.pt_mp);
             pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
@@ -764,11 +763,6 @@ fn thread_exit_reclaim_clear_leaves(
         }
         cursor = (next.0, next.1, next.2, next.3 + 1);
         proof {
-            assert forall|key: VAddr| #![trigger pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().dom().contains(key)]
-                pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().dom().contains(key) && !pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().spec_index(key).present
-                implies spec_va_4k_valid(key) && start_l4 <= spec_v2l4index(key) by {
-                if key != va { assert(iter_pt.mapping_4k().dom().contains(key) && iter_pt.mapping_4k().spec_index(key) == pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().spec_index(key)); }
-            };
             pagetable_perms_wf_map(krnl.pt_mp);
             pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         }
