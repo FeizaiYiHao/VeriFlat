@@ -1,10 +1,11 @@
 use vstd::prelude::*;
 use crate::*;
-use crate::{ni_alloc_quota::*, ni_cpu_hotplug::*, ni_ipc::*, ni_mmap_4k::*, ni_new_container::*, ni_new_endpoint::*, ni_new_process::*, ni_new_thread::*, ni_pci::*, ni_rebalance::*, ni_schedule::*, ni_share_4k::*, ni_unmap_4k::*, ni_kill_container::*};
+use crate::{ni_alloc_quota::*, ni_cpu_hotplug::*, ni_ipc::*, ni_mmap_4k::*, ni_new_container::*, ni_new_endpoint::*, ni_new_process::*, ni_new_thread::*, ni_pci::*,
+    ni_rebalance::*, ni_schedule::*, ni_share_4k::*, ni_unmap_4k::*, ni_kill_container::*, ni_kill_process::*, ni_thread_exit::*};
 use veriflat_map_4k::*;
 use veriflat_syscall_alloc_quota::syscall_alloc_quota::syscall_alloc_quota_spec::*;
 use veriflat_syscall_cpu_hotplug::syscall_cpu_hotplug::{cpu_offline_check_spec::*, syscall_cpu_hotplug_spec::*};
-use veriflat_syscall_kill_process::syscall_kill_container::syscall_kill_container_spec::*;
+use veriflat_syscall_kill_process::{syscall_kill_container::syscall_kill_container_spec::*, syscall_kill_process::syscall_kill_process_spec::*};
 use veriflat_syscall_ipc::syscall_ipc::{syscall_ipc_call_spec::*, syscall_ipc_spec::*};
 use veriflat_syscall_mmap_4k::syscall_mmap_4k::syscall_mmap_4k_spec::*;
 use veriflat_syscall_new_container::syscall_new_container::syscall_new_container_spec::*;
@@ -12,6 +13,7 @@ use veriflat_syscall_new_process::syscall_new_process::syscall_new_process_spec:
 use veriflat_syscall_new_thread::{syscall_new_endpoint::syscall_new_endpoint_spec::*, syscall_new_thread::syscall_new_thread_spec::*};
 use veriflat_syscall_pci::syscall_pci::syscall_pci_spec::*;
 use veriflat_syscall_schedule::{rebalance_pull::rebalance_pull_spec::*, syscall_schedule::syscall_schedule_spec::*};
+use veriflat_syscall_thread_exit::syscall_thread_exit::syscall_thread_exit_spec::*;
 use veriflat_syscall_unmap_4k::syscall_unmap_4k::syscall_unmap_4k_spec::*;
 
 verus! {
@@ -39,6 +41,14 @@ pub ghost enum StepLabel {
     IpcPagesCheck, IpcPagesDowngrade, IpcPagesUnlockTables, IpcPagesFinish,
     KillContainerEnter { child_index: usize }, KillContainerMarkChild, KillContainerMarkRoot, KillContainerRetireRoot, KillContainerCpus, KillContainerMoveCpu,
     KillContainerPages, KillContainerMovePage { size: PageSize }, KillContainerRetireStage, KillContainerRetire, KillContainerFinish,
+    KillProcessEnter { child_index: usize }, KillProcessMarkChild, KillProcessDangling, KillProcessMarkThread, KillProcessDequeueScheduled,
+    KillProcessDequeueEndpoint, KillProcessEvict, KillProcessUnlink, KillProcessDescriptorDropped, KillProcessCallerWoken, KillProcessCallerTakenOver,
+    KillProcessDanglingReclaimed, KillProcessEndpointReleased, KillProcessReassignFunctions, KillProcessLockTable, KillProcessLeaf, KillProcessTlbCleared,
+    KillProcessFlushed, KillProcessIommuLeaf, KillProcessRefund, KillProcessQuota, KillProcessUnlockTable, KillProcessZombify, KillProcessZombieRetire,
+    KillProcessRetire, KillProcessFinish,
+    ThreadExitEnter, ThreadExitDescriptorDropped, ThreadExitCallerWoken, ThreadExitCallerTakenOver, ThreadExitDanglingReclaimed, ThreadExitEndpointReleased,
+    ThreadExitDrop, ThreadExitRelease, ThreadExitLockTable, ThreadExitLeaf, ThreadExitTlbCleared, ThreadExitFlushed, ThreadExitIommuLeaf, ThreadExitRefund,
+    ThreadExitQuota, ThreadExitUnlockTable, ThreadExitFinish,
 }
 
 /// `new_u` follows `old_u` by the step `label` on cpu `cpu_id`.
@@ -116,6 +126,53 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
         StepLabel::KillContainerRetireStage => kill_container_step_pre(old_u, cpu_id) && kill_container_retire_stage_step(old_u, new_u, cpu_id),
         StepLabel::KillContainerRetire => kill_container_step_pre(old_u, cpu_id) && kill_container_retire_step(old_u, new_u, cpu_id),
         StepLabel::KillContainerFinish => kill_container_finish_step_pre(old_u, cpu_id) && kill_container_finish_step(old_u, new_u, cpu_id),
+        StepLabel::KillProcessEnter { child_index } => kill_process_enter_step_pre(old_u, cpu_id, child_index) && kill_process_enter_step(old_u, new_u, cpu_id, child_index),
+        StepLabel::KillProcessMarkChild => kill_process_step_pre(old_u, cpu_id) && kill_process_mark_child_step(old_u, new_u, cpu_id),
+        StepLabel::KillProcessDangling => kill_process_step_pre(old_u, cpu_id) && kill_process_dangling_step(old_u, new_u, cpu_id),
+        StepLabel::KillProcessMarkThread => kill_process_step_pre(old_u, cpu_id) && kill_process_mark_thread_step(old_u, new_u, cpu_id),
+        StepLabel::KillProcessDequeueScheduled => kill_process_step_pre(old_u, cpu_id) && kill_process_dequeue_scheduled_step(old_u, new_u, cpu_id),
+        StepLabel::KillProcessDequeueEndpoint => kill_process_step_pre(old_u, cpu_id) && kill_process_dequeue_endpoint_step(old_u, new_u, cpu_id),
+        StepLabel::KillProcessEvict => kill_process_step_pre(old_u, cpu_id) && kill_process_evict_step(old_u, new_u, cpu_id),
+        StepLabel::KillProcessUnlink => kill_process_step_pre(old_u, cpu_id) && kill_process_unlink_step(old_u, new_u, cpu_id),
+        StepLabel::KillProcessDescriptorDropped => kill_process_step_pre(old_u, cpu_id) && kill_process_reclaim_in_target(old_u, new_u, cpu_id) && kernel_u_killed_descriptor_dropped(old_u, new_u),
+        StepLabel::KillProcessCallerWoken => kill_process_step_pre(old_u, cpu_id) && kill_process_reclaim_in_target(old_u, new_u, cpu_id) && kernel_u_killed_caller_woken(old_u, new_u, cpu_id),
+        StepLabel::KillProcessCallerTakenOver => kill_process_step_pre(old_u, cpu_id) && kill_process_reclaim_in_target(old_u, new_u, cpu_id) && kernel_u_killed_caller_taken_over(old_u, new_u),
+        StepLabel::KillProcessDanglingReclaimed => kill_process_step_pre(old_u, cpu_id) && kill_process_reclaim_in_target(old_u, new_u, cpu_id)
+            && kill_process_reclaimed_thread_not_peer(old_u, new_u) && kernel_u_dangling_thread_reclaimed(old_u, new_u),
+        StepLabel::KillProcessEndpointReleased => kill_process_step_pre(old_u, cpu_id) && kill_process_reclaim_in_target(old_u, new_u, cpu_id) && kernel_u_killed_endpoint_released(old_u, new_u),
+        StepLabel::KillProcessReassignFunctions => kill_process_step_pre(old_u, cpu_id) && kill_process_reassign_functions_step(old_u, new_u, cpu_id),
+        StepLabel::KillProcessLockTable => kill_process_step_pre(old_u, cpu_id) && kill_process_lock_table_step(old_u, new_u, cpu_id),
+        StepLabel::KillProcessLeaf => kill_process_step_pre(old_u, cpu_id) && kill_process_leaf_step(old_u, new_u, cpu_id),
+        StepLabel::KillProcessTlbCleared => kill_process_step_pre(old_u, cpu_id) && kill_process_flush_step_pre(old_u, cpu_id) && kernel_u_cpu_tlb_cleared(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].pcid),
+        StepLabel::KillProcessFlushed => kill_process_step_pre(old_u, cpu_id) && kill_process_flush_step_pre(old_u, cpu_id) && kill_process_flushed_step(old_u, new_u, cpu_id),
+        StepLabel::KillProcessIommuLeaf => kill_process_step_pre(old_u, cpu_id) && kill_process_iommu_leaf_step(old_u, new_u, cpu_id),
+        StepLabel::KillProcessRefund => kill_process_step_pre(old_u, cpu_id) && kernel_u_container_quota_4k_increased(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].owning_container),
+        StepLabel::KillProcessQuota => kill_process_step_pre(old_u, cpu_id) && kill_process_quota_step(old_u, new_u, cpu_id),
+        StepLabel::KillProcessUnlockTable => kill_process_step_pre(old_u, cpu_id) && kill_process_unlock_table_step(old_u, new_u, cpu_id),
+        StepLabel::KillProcessZombify => kill_process_step_pre(old_u, cpu_id) && kill_process_zombify_step(old_u, new_u, cpu_id),
+        StepLabel::KillProcessZombieRetire => kill_process_step_pre(old_u, cpu_id) && kill_process_zombie_retire_step(old_u, new_u, cpu_id),
+        StepLabel::KillProcessRetire => kill_process_step_pre(old_u, cpu_id) && kill_process_retire_step(old_u, new_u, cpu_id),
+        StepLabel::KillProcessFinish => kill_process_finish_step_pre(old_u, cpu_id) && kill_process_finish_step(old_u, new_u, cpu_id),
+        StepLabel::ThreadExitEnter => thread_exit_enter_step_pre(old_u, cpu_id) && thread_exit_enter_step(old_u, new_u, cpu_id),
+        StepLabel::ThreadExitDescriptorDropped => thread_exit_drop_step_pre(old_u, cpu_id) && thread_exit_reclaim_in_container(old_u, new_u, cpu_id) && kernel_u_killed_descriptor_dropped(old_u, new_u),
+        StepLabel::ThreadExitCallerWoken => thread_exit_drop_step_pre(old_u, cpu_id) && thread_exit_reclaim_in_container(old_u, new_u, cpu_id) && kernel_u_killed_caller_woken(old_u, new_u, cpu_id),
+        StepLabel::ThreadExitCallerTakenOver => thread_exit_drop_step_pre(old_u, cpu_id) && thread_exit_reclaim_in_container(old_u, new_u, cpu_id) && kernel_u_killed_caller_taken_over(old_u, new_u),
+        StepLabel::ThreadExitDanglingReclaimed => thread_exit_drop_step_pre(old_u, cpu_id) && thread_exit_reclaim_in_container(old_u, new_u, cpu_id)
+            && thread_exit_reclaimed_thread_not_peer(old_u, new_u) && kernel_u_dangling_thread_reclaimed(old_u, new_u),
+        StepLabel::ThreadExitEndpointReleased => thread_exit_drop_step_pre(old_u, cpu_id) && thread_exit_reclaim_in_container(old_u, new_u, cpu_id) && kernel_u_killed_endpoint_released(old_u, new_u),
+        StepLabel::ThreadExitDrop => thread_exit_drop_step_pre(old_u, cpu_id) && thread_exit_drop_step(old_u, new_u, cpu_id),
+        StepLabel::ThreadExitRelease => thread_exit_drop_step_pre(old_u, cpu_id) && thread_exit_release_step(old_u, new_u, cpu_id),
+        StepLabel::ThreadExitLockTable => thread_exit_lock_table_step_pre(old_u, cpu_id) && thread_exit_lock_table_step(old_u, new_u, cpu_id),
+        StepLabel::ThreadExitLeaf => thread_exit_reclaim_step_pre(old_u, cpu_id, false) && thread_exit_leaf_step(old_u, new_u, cpu_id),
+        StepLabel::ThreadExitTlbCleared => thread_exit_flush_step_pre(old_u, cpu_id)
+            && kernel_u_cpu_tlb_cleared(old_u, new_u, old_u.process_map[old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_proc].pcid),
+        StepLabel::ThreadExitFlushed => thread_exit_flush_step_pre(old_u, cpu_id) && thread_exit_flushed_step(old_u, new_u, cpu_id),
+        StepLabel::ThreadExitIommuLeaf => thread_exit_reclaim_step_pre(old_u, cpu_id, true) && thread_exit_iommu_leaf_step(old_u, new_u, cpu_id),
+        StepLabel::ThreadExitRefund => thread_exit_reclaim_step_pre(old_u, cpu_id, true)
+            && kernel_u_container_quota_4k_increased(old_u, new_u, old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container),
+        StepLabel::ThreadExitQuota => thread_exit_quota_step_pre(old_u, cpu_id) && thread_exit_quota_step(old_u, new_u, cpu_id),
+        StepLabel::ThreadExitUnlockTable => thread_exit_unlock_table_step_pre(old_u, cpu_id) && thread_exit_unlock_table_step(old_u, new_u, cpu_id),
+        StepLabel::ThreadExitFinish => thread_exit_finish_step_pre(old_u, cpu_id) && thread_exit_exiting_thread_not_peer(old_u, cpu_id) && thread_exit_finish_step(old_u, new_u, cpu_id),
     }
 }
 
@@ -125,7 +182,7 @@ pub proof fn isolated_symmetric(u: KernelU, a: RwLockContainerPtr, b: RwLockCont
     ensures isolated(u, b, a),
 {}
 
-/// Unwinding over a trace. `us[i + 1]` follows `us[i]`, the user projection of a well-formed kernel, by the
+/// Unwinding over a trace. `us[i + 1]` follows `us[i]`, both user projections of well-formed kernels, by the
 /// step `labels[i]` of cpu `cpus[i]` of domain `steppers[i]`, which is `a` or `b`. When a step receives an
 /// endpoint or shares a page from a peer outside its domain, that peer is honest: the other domain neither
 /// holds nor waits on the endpoint, no peer of a rendezvous the other domain has in flight waits on it, and
@@ -148,6 +205,7 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
             let source = u.thread_map[share_4k_objects(u, cpus[i]).source_thread].owning_proc;
             &&& x == a || x == b
             &&& kernel_u_ownership_wf(u)
+            &&& kernel_u_ownership_wf(us[i + 1])
             &&& steps_in_domain(u, cpus[i], x)
             &&& labeled_step(labels[i], u, us[i + 1], cpus[i])
             &&& labels[i] is IpcEndpointFinish && !progress->IpcEndpoint_caller_sends && !in_domain(u, x, u.thread_map[peer].owning_container) ==> {
@@ -269,6 +327,51 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
             StepLabel::KillContainerRetireStage => { kill_container_retire_stage_step_lr(old_u, new_u, cpu_id, x, y); kill_container_retire_stage_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::KillContainerRetire => { kill_container_retire_step_lr(old_u, new_u, cpu_id, x, y); kill_container_retire_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::KillContainerFinish => { kill_container_finish_step_lr(old_u, new_u, cpu_id, x, y); kill_container_finish_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessEnter { child_index } => {
+                kill_process_enter_step_lr(old_u, new_u, cpu_id, child_index, x, y); kill_process_enter_step_iso(old_u, new_u, cpu_id, child_index, x, y);
+            },
+            StepLabel::KillProcessMarkChild => { kill_process_mark_child_step_lr(old_u, new_u, cpu_id, x, y); kill_process_mark_child_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessDangling => { kill_process_dangling_step_lr(old_u, new_u, cpu_id, x, y); kill_process_dangling_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessMarkThread => { kill_process_mark_thread_step_lr(old_u, new_u, cpu_id, x, y); kill_process_mark_thread_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessDequeueScheduled => { kill_process_dequeue_scheduled_step_lr(old_u, new_u, cpu_id, x, y); kill_process_dequeue_scheduled_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessDequeueEndpoint => { kill_process_dequeue_endpoint_step_lr(old_u, new_u, cpu_id, x, y); kill_process_dequeue_endpoint_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessEvict => { kill_process_evict_step_lr(old_u, new_u, cpu_id, x, y); kill_process_evict_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessUnlink => { kill_process_unlink_step_lr(old_u, new_u, cpu_id, x, y); kill_process_unlink_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessDescriptorDropped => { kill_process_descriptor_dropped_step_lr(old_u, new_u, cpu_id, x, y); kill_process_descriptor_dropped_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessCallerWoken => { kill_process_caller_woken_step_lr(old_u, new_u, cpu_id, x, y); kill_process_caller_woken_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessCallerTakenOver => { kill_process_caller_taken_over_step_lr(old_u, new_u, cpu_id, x, y); kill_process_caller_taken_over_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessDanglingReclaimed => { kill_process_dangling_reclaimed_step_lr(old_u, new_u, cpu_id, x, y); kill_process_dangling_reclaimed_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessEndpointReleased => { kill_process_endpoint_released_step_lr(old_u, new_u, cpu_id, x, y); kill_process_endpoint_released_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessReassignFunctions => { kill_process_reassign_functions_step_lr(old_u, new_u, cpu_id, x, y); kill_process_reassign_functions_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessLockTable => { kill_process_lock_table_step_lr(old_u, new_u, cpu_id, x, y); kill_process_lock_table_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessLeaf => { kill_process_leaf_step_lr(old_u, new_u, cpu_id, x, y); kill_process_leaf_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessTlbCleared => { kill_process_tlb_cleared_step_lr(old_u, new_u, cpu_id, x, y); kill_process_tlb_cleared_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessFlushed => { kill_process_flushed_step_lr(old_u, new_u, cpu_id, x, y); kill_process_flushed_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessIommuLeaf => { kill_process_iommu_leaf_step_lr(old_u, new_u, cpu_id, x, y); kill_process_iommu_leaf_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessRefund => { kill_process_refund_step_lr(old_u, new_u, cpu_id, x, y); kill_process_refund_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessQuota => { kill_process_quota_step_lr(old_u, new_u, cpu_id, x, y); kill_process_quota_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessUnlockTable => { kill_process_unlock_table_step_lr(old_u, new_u, cpu_id, x, y); kill_process_unlock_table_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessZombify => { kill_process_zombify_step_lr(old_u, new_u, cpu_id, x, y); kill_process_zombify_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessZombieRetire => { kill_process_zombie_retire_step_lr(old_u, new_u, cpu_id, x, y); kill_process_zombie_retire_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessRetire => { kill_process_retire_step_lr(old_u, new_u, cpu_id, x, y); kill_process_retire_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessFinish => { kill_process_finish_step_lr(old_u, new_u, cpu_id, x, y); kill_process_finish_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::ThreadExitEnter => { thread_exit_enter_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_enter_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::ThreadExitDescriptorDropped => { thread_exit_descriptor_dropped_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_descriptor_dropped_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::ThreadExitCallerWoken => { thread_exit_caller_woken_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_caller_woken_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::ThreadExitCallerTakenOver => { thread_exit_caller_taken_over_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_caller_taken_over_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::ThreadExitDanglingReclaimed => { thread_exit_dangling_reclaimed_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_dangling_reclaimed_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::ThreadExitEndpointReleased => { thread_exit_endpoint_released_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_endpoint_released_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::ThreadExitDrop => { thread_exit_drop_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_drop_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::ThreadExitRelease => { thread_exit_release_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_release_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::ThreadExitLockTable => { thread_exit_lock_table_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_lock_table_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::ThreadExitLeaf => { thread_exit_leaf_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_leaf_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::ThreadExitTlbCleared => { thread_exit_tlb_cleared_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_tlb_cleared_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::ThreadExitFlushed => { thread_exit_flushed_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_flushed_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::ThreadExitIommuLeaf => { thread_exit_iommu_leaf_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_iommu_leaf_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::ThreadExitRefund => { thread_exit_refund_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_refund_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::ThreadExitQuota => { thread_exit_quota_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_quota_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::ThreadExitUnlockTable => { thread_exit_unlock_table_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_unlock_table_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::ThreadExitFinish => { thread_exit_finish_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_finish_step_iso(old_u, new_u, cpu_id, x, y); },
         }
         if x != a { isolated_symmetric(new_u, b, a); }
     }
