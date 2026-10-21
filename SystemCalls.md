@@ -1626,7 +1626,8 @@ Status: implemented, including the container walk, the process kill of each
 emptied container (the §18 middle steps in a container scope), the root
 retire, and the Cpus, Pages, and Retire stages. No `TODO` remains in
 `syscall_kill_container/`. Verified: kill focused run #TBD, workspace run
-#TBD, monolith run #TBD; not covered by the noninterference theorem (below).
+#TBD, monolith run #TBD; noninterference run #33949 covers its own steps but
+not the reused §18 process kill steps (below).
 
 - Arguments: `child_index` (boot `NR_KILL_CONTAINER`). The running thread `T`
   of `cpu_id`, in container `C = cpu.owning_container`, kills
@@ -1849,10 +1850,13 @@ table become their 2M page), `retype_pcid_allocator_rwlock_to_2m_page_perm`,
 and `retype_allocator_to_4k_page_perm` (4K, 2M, and 1G). Each requires the
 object already out of its map and every lock of it held by the killer.
 
-Noninterference: not covered. `StepLabel` in
-`noninterference/src/theorem.rs` has no kill_container label (nor
-thread_exit or kill_process ones), so `trace_ni_at` admits no step of this
-syscall.
+Noninterference: the eleven kill_container steps (Enter, MarkChild,
+MarkRoot, RetireRoot, Cpus, MoveCpu, Pages, MovePage, RetireStage, Retire,
+Finish) have `StepLabel`s in `noninterference/src/theorem.rs` and are proved
+in `noninterference/src/ni_kill_container.rs` (run #33949, 145 verified, 0
+errors). Not covered: the §18 process kill steps (`kill_process_middle_step`)
+that the Process stage reuses, and kill_process and thread_exit themselves,
+which have no noninterference theorem yet.
 
 Differences:
 
