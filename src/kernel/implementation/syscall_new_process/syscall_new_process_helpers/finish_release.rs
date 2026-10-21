@@ -144,11 +144,7 @@ pub(super) fn release_new_process_child_locks(
         forall|p: RwLockPageTableRoot| #![trigger final(krnl).it_mp.spec_index(p)]
             old(krnl).it_mp.dom().contains(p) ==> if iommu_table == Some(p) { final(krnl).it_mp.spec_index(p).locking_thread() is None } else { final(krnl).it_mp.spec_index(p).locking_thread() == old(krnl).it_mp.spec_index(p).locking_thread() },
         final(krnl).pt_mp.dom() == old(krnl).pt_mp.dom(),
-        forall|p: RwLockPageTableRoot| #![trigger pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), p)] old(krnl).pt_mp.dom().contains(p) ==> {
-            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), p).mapping_4k() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), p).mapping_4k()
-            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), p).mapping_2m() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), p).mapping_2m()
-            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), p).mapping_1g() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), p).mapping_1g()
-        },
+        kernel_pagetable_nonlock_fields_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), final(krnl).pt_mp, final(krnl).pt_lower.view()),
         final(krnl).it_mp.dom() == old(krnl).it_mp.dom(),
         forall|p: RwLockPageTableRoot| #![trigger final(krnl).it_mp.spec_index(p)] old(krnl).it_mp.dom().contains(p) ==> final(krnl).it_mp.spec_index(p).view() == old(krnl).it_mp.spec_index(p).view(),
         kernel_process_nonlock_fields_unchanged(old(krnl).prc_mp, final(krnl).prc_mp),
@@ -166,7 +162,12 @@ pub(super) fn release_new_process_child_locks(
     krnl.wunlock_pagetable(target_pagetable_ptr, Tracked(&mut *lctx), Tracked(target_pagetable_lock_perm));
     krnl.wunlock_page(page_ptr2page_index(new_thread_ptr), Tracked(&mut *lctx), Tracked(thread_page_lock_perm));
     krnl.wunlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));
-    proof { assert(kernel_process_nonlock_fields_unchanged(old(krnl).prc_mp, krnl.prc_mp)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); }; }
+    proof {
+        assert(kernel_process_nonlock_fields_unchanged(old(krnl).prc_mp, krnl.prc_mp)
+            && kernel_pagetable_nonlock_fields_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), krnl.pt_mp, krnl.pt_lower.view())) by {
+            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); broadcast use kernel_pagetable_nonlock_fields_unchanged_transitive;
+        };
+    }
 }
 
 /// Second release phase of new-process finish: clears the staging thread's progress, attaches the initial endpoint to

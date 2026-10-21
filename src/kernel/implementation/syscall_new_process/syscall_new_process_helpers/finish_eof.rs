@@ -15,11 +15,7 @@ pub(super) open spec fn create_initial_thread_and_finish_new_process_eof_transit
     &&& post == (KernelK { it_mp: post.it_mp, prc_mp: post.prc_mp, pt_mp: post.pt_mp, pt_lower: post.pt_lower, pg_arr: post.pg_arr, sched_mp: post.sched_mp, thr_mp: post.thr_mp, ep_mp: post.ep_mp,
         cpu_arr: post.cpu_arr, ..mid })
     &&& post.pt_mp.dom() == mid.pt_mp.dom()
-    &&& forall|p: RwLockPageTableRoot| #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), p)] mid.pt_mp.dom().contains(p) ==> {
-            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).mapping_4k() == pagetable_c(mid.pt_mp, mid.pt_lower.view(), p).mapping_4k()
-            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).mapping_2m() == pagetable_c(mid.pt_mp, mid.pt_lower.view(), p).mapping_2m()
-            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).mapping_1g() == pagetable_c(mid.pt_mp, mid.pt_lower.view(), p).mapping_1g()
-        }
+    &&& kernel_pagetable_nonlock_fields_unchanged(mid.pt_mp, mid.pt_lower.view(), post.pt_mp, post.pt_lower.view())
     &&& post.it_mp.dom() == mid.it_mp.dom()
     &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)] mid.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).view() == mid.it_mp.spec_index(p).view()
     &&& kernel_cpu_nonlock_fields_unchanged(mid.cpu_arr, post.cpu_arr)
@@ -63,6 +59,7 @@ pub(super) proof fn create_initial_thread_and_finish_new_process_eof(
 {
     reveal(create_initial_thread_and_finish_new_process_eof_transition_framing); reveal(kernel_new_thread_fields);
     reveal(kernel_cpu_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged);
+    kernel_pagetable_nonlock_fields_unchanged_transitive(pre.pt_mp, pre.pt_lower.view(), mid.pt_mp, mid.pt_lower.view(), post.pt_mp, post.pt_lower.view());
     assert_seqs_equal!(post.thr_mp.spec_index(new_thread_ptr).view().endpoint_descriptors.view() == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| if i == 0 { endpoint } else { None }), i => {});
 }
 }

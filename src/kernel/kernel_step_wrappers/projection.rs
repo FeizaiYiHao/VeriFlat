@@ -3387,7 +3387,8 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_process_map(
     let process = unlocked.spec_index(process_ptr);
     assert_maps_equal!(post_u.process_map, unlocked.insert(process_ptr, ProcessU { owned_threads: process.owned_threads.push(new_thread_ptr), ..process }), p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }
-        reveal(kernel_new_thread_fields); process_pagetable_match_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, p);
+        reveal(kernel_new_thread_fields); reveal(kernel_pagetable_nonlock_fields_unchanged);
+        process_pagetable_match_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, p);
         process_pagetable_match_process_at(post.prc_mp, post.pt_mp, process_ptr); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, process_ptr);
         assert(post.prc_mp.spec_index(process_ptr).view().pagetable == pre.prc_mp.spec_index(process_ptr).view().pagetable);
         if let Some(source) = release_source_process {
@@ -3450,7 +3451,7 @@ pub proof fn kernel_new_thread_fields_and_parent_unlocks_implies_u_process_map(
     let process = unlocked.spec_index(process_ptr);
     assert_maps_equal!(post_u.process_map, unlocked.insert(process_ptr, ProcessU { owned_threads: process.owned_threads.push(new_thread_ptr), ..process }), p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }
-        reveal(process_pagetable_match); reveal(process_iommu_table_match);
+        reveal(process_pagetable_match); reveal(process_iommu_table_match); reveal(kernel_pagetable_nonlock_fields_unchanged);
         assert(post.prc_mp.spec_index(process_ptr).view().pagetable == pre.prc_mp.spec_index(process_ptr).view().pagetable);
         assert(post.prc_mp.spec_index(release_source_process).view().pagetable == pre.prc_mp.spec_index(release_source_process).view().pagetable);
     });

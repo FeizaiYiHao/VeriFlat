@@ -311,11 +311,7 @@ pub(super) fn build_new_process_child_structure(
         );
         proof {
             new_process_share_steps_from_directory(&*steps, before, old(steps).view().len() as int, cpu_id);
-            broadcast use Set::lemma_map_by_contains;
-            let key_map = Map::new(minted.dom().map_by(|l2i: L2Index| WindowVa { va: spec_index2va((cur.0, cur.1, l2i, 0usize)) }, |w: WindowVa| spec_v2l2index(w.va)),
-                |w: WindowVa| spec_v2l2index(w.va));
-            let tracked moved = Map::<L2Index, LockPerm>::tracked_map_keys(minted, key_map);
-            window_perms.tracked_union_prefer_right(moved);
+            window_perms.tracked_union_prefer_right(minted);
         }
         i = i + 1;
     }

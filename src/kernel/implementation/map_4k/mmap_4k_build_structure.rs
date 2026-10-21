@@ -7,14 +7,14 @@ use super::mmap_4k_build_structure_spec::*;
 verus! {
     /// Install the missing L4, L3 and L2 directories on the walk to `va` under the table's big write lock. When the L3 entry
     /// already exists this thread holds the 2M window of `va`; when this call creates the L2 page, its windows `lo..=hi` start
-    /// held by this thread and their lock perms are returned.
+    /// held by this thread and their lock perms are returned, keyed by window.
     pub fn mmap_4k_build_one_structure(
         krnl: &mut KernelK, va: VAddr, lo: L2Index, hi: L2Index, alloc_ptr_4k: RwLockPageAllocatorPtr, quota_thread_ptr: RwLockThreadPtr,
         process_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr, cpu_id: CpuId, pagetable_ptr: RwLockPageTableRoot,
         transfer_source: Option<RwLockContainerPtr>, Ghost(progress_thread): Ghost<RwLockThreadPtr>, Tracked(lctx): Tracked<&mut LocalContext>,
         Tracked(steps): Tracked<&mut KernelSteps>, Tracked(quota_thread_lock_perm): Tracked<&LockPerm>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
         Tracked(transfer_source_lock_perm): Tracked<Option<&LockPerm>>, Tracked(transfer_target_lock_perm): Tracked<Option<&LockPerm>>,
-    ) -> (ret: Tracked<Map<L2Index, LockPerm>>)
+    ) -> (ret: Tracked<Map<WindowVa, LockPerm>>)
         requires
             old(krnl).inv(),
             old(lctx).kernel_view_locking_state() is Acquire,
@@ -154,12 +154,14 @@ verus! {
                 !pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_exists(spec_v2l4index(va), spec_v2l3index(va)) && w.wf() && spec_v2l4index(w.va) == spec_v2l4index(va) && spec_v2l3index(w.va) == spec_v2l3index(va) && lo <= spec_v2l2index(w.va) <= hi
                     ==> final(lctx).pagetable_window_lock_map().index((pagetable_ptr, w)) == (TypedHeldLock { lock_id: window_lock_id_at(pagetable_ptr, w), mode: TypedLockMode::Write }),
             final(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, window_of(va))),
-            pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_exists(spec_v2l4index(va), spec_v2l3index(va)) ==> ret.view() == Map::<L2Index, LockPerm>::empty(),
-            forall|i: L2Index| #![trigger ret.view().dom().contains(i)] ret.view().dom().contains(i) == (!pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_exists(spec_v2l4index(va), spec_v2l3index(va)) && lo <= i <= hi),
-            forall|i: L2Index| #![trigger ret.view().index(i)] !pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_exists(spec_v2l4index(va), spec_v2l3index(va)) && lo <= i <= hi ==> {
-                &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_lock_of(pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(spec_v2l4index(va), spec_v2l3index(va))).lock_perm_match(i, &ret.view().index(i))
-                &&& ret.view().index(i).state() is WriteLock
-                &&& ret.view().index(i).thread_id() == final(lctx).thread_id()
+            forall|w: WindowVa| #![trigger ret.view().dom().contains(w)]
+                ret.view().dom().contains(w) == (!pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_exists(spec_v2l4index(va), spec_v2l3index(va)) && w.wf() && spec_v2l4index(w.va) == spec_v2l4index(va)
+                    && spec_v2l3index(w.va) == spec_v2l3index(va) && lo <= spec_v2l2index(w.va) <= hi),
+            forall|w: WindowVa| #![trigger ret.view().index(w)] ret.view().dom().contains(w) ==> {
+                &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_lock_of(pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr)
+                    .window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va))).lock_perm_match(spec_v2l2index(w.va), &ret.view().index(w))
+                &&& ret.view().index(w).state() is WriteLock
+                &&& ret.view().index(w).thread_id() == final(lctx).thread_id()
             },
             held_pages_unchanged(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx)),
             transfer_source is None ==> held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
@@ -320,7 +322,7 @@ verus! {
         transfer_source: Option<RwLockContainerPtr>, Ghost(progress_thread): Ghost<RwLockThreadPtr>, Tracked(lctx): Tracked<&mut LocalContext>,
         Tracked(steps): Tracked<&mut KernelSteps>, Tracked(quota_thread_lock_perm): Tracked<&LockPerm>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
         Tracked(transfer_source_lock_perm): Tracked<Option<&LockPerm>>, Tracked(transfer_target_lock_perm): Tracked<Option<&LockPerm>>,
-    ) -> (ret: Tracked<Map<L2Index, LockPerm>>)
+    ) -> (ret: Tracked<Map<WindowVa, LockPerm>>)
         requires
             old(krnl).inv(),
             old(lctx).kernel_view_locking_state() is Acquire,
@@ -467,12 +469,14 @@ verus! {
                 !pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_exists(indices.0, indices.1) && w.wf() && spec_v2l4index(w.va) == indices.0 && spec_v2l3index(w.va) == indices.1 && lo <= spec_v2l2index(w.va) <= hi
                     ==> final(lctx).pagetable_window_lock_map().index((pagetable_ptr, w)) == (TypedHeldLock { lock_id: window_lock_id_at(pagetable_ptr, w), mode: TypedLockMode::Write }),
             final(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0usize)) })),
-            pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_exists(indices.0, indices.1) ==> ret.view() == Map::<L2Index, LockPerm>::empty(),
-            forall|i: L2Index| #![trigger ret.view().dom().contains(i)] ret.view().dom().contains(i) == (!pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_exists(indices.0, indices.1) && lo <= i <= hi),
-            forall|i: L2Index| #![trigger ret.view().index(i)] !pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_exists(indices.0, indices.1) && lo <= i <= hi ==> {
-                &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_lock_of(pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(indices.0, indices.1)).lock_perm_match(i, &ret.view().index(i))
-                &&& ret.view().index(i).state() is WriteLock
-                &&& ret.view().index(i).thread_id() == final(lctx).thread_id()
+            forall|w: WindowVa| #![trigger ret.view().dom().contains(w)]
+                ret.view().dom().contains(w) == (!pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_exists(indices.0, indices.1) && w.wf() && spec_v2l4index(w.va) == indices.0 && spec_v2l3index(w.va) == indices.1
+                    && lo <= spec_v2l2index(w.va) <= hi),
+            forall|w: WindowVa| #![trigger ret.view().index(w)] ret.view().dom().contains(w) ==> {
+                &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_lock_of(pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr)
+                    .window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va))).lock_perm_match(spec_v2l2index(w.va), &ret.view().index(w))
+                &&& ret.view().index(w).state() is WriteLock
+                &&& ret.view().index(w).thread_id() == final(lctx).thread_id()
             },
             held_pages_unchanged(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx)),
             transfer_source is None ==> held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
@@ -578,7 +582,7 @@ verus! {
         hide(Set::is_empty);
         proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
         let ghost window_va = WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0usize)) };
-        let tracked mut windows: Map<L2Index, LockPerm> = Map::tracked_empty();
+        let tracked mut windows: Map<WindowVa, LockPerm> = Map::tracked_empty();
         if !l3_present {
             let Tracked(minted) = install_one_mmap_4k_directory_page(
                 krnl, MissingPageTableLevel::L3, alloc_ptr_4k, quota_thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, indices, lo, hi, true, transfer_source,
@@ -586,8 +590,10 @@ verus! {
                 Tracked(transfer_target_lock_perm),
             );
             proof {
-                windows = minted;
-                broadcast use spec_va_2m_valid_index_roundtrip, spec_index2va_2m_valid;
+                broadcast use spec_va_2m_valid_index_roundtrip, spec_index2va_2m_valid, Set::lemma_map_by_contains;
+                let key_map = Map::new(minted.dom().map_by(|l2i: L2Index| WindowVa { va: spec_index2va((indices.0, indices.1, l2i, 0usize)) }, |w: WindowVa| spec_v2l2index(w.va)),
+                    |w: WindowVa| spec_v2l2index(w.va));
+                windows = Map::<L2Index, LockPerm>::tracked_map_keys(minted, key_map);
                 spec_va_4k_index_roundtrip_at(window_va.va, indices.0, indices.1, indices.2, 0usize);
                 assert(lctx.pagetable_window_lock_map().dom().contains((pagetable_ptr, window_va)));
             }

@@ -60,7 +60,7 @@ pub(super) proof fn kernel_new_thread_fields_implies_u_step(
         owned_threads: process.owned_threads.push(new_thread_ptr), ..process
     }), p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_nonlock_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_nonlock_projection_at(post, p); }
-        reveal(process_pagetable_match); reveal(process_iommu_table_match);
+        reveal(process_pagetable_match); reveal(process_iommu_table_match); reveal(kernel_pagetable_nonlock_fields_unchanged);
     });
 }
 

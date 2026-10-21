@@ -363,6 +363,7 @@ pub(super) proof fn eof_create_thread_new_thread_fields(
         kernel_new_thread_fields(&pre, &post, process_ptr, staging_thread_ptr, container_ptr, cpu_id, page_ptr, initial_regs, None, pre.thr_mp.spec_index(staging_thread_ptr).view().syscall_progress.view()),
 {
     reveal(create_thread_from_staged_page_eof_transition_framing); reveal(kernel_new_thread_fields);
+    kernel_pagetable_nonlock_fields_unchanged_for_equal(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view());
     assert_seqs_equal!(Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| None::<RwLockEndpointPtr>) == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| if i == 0 { None } else { None }), i => {});
 }
 }

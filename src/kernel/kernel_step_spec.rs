@@ -331,12 +331,7 @@ pub open spec fn kernel_new_thread_fields(
     &&& post.cpu_set_mp == pre.cpu_set_mp
     &&& post.dflt_pt == pre.dflt_pt
     &&& post.pt_mp.dom() == pre.pt_mp.dom()
-    &&& forall|p: RwLockPageTableRoot| #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), p)]
-        pre.pt_mp.dom().contains(p) ==> {
-            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).mapping_4k() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).mapping_4k()
-            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).mapping_2m() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).mapping_2m()
-            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).mapping_1g() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).mapping_1g()
-        }
+    &&& kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view())
     &&& post.it_mp.dom() == pre.it_mp.dom()
     &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
         pre.it_mp.dom().contains(p) ==> {

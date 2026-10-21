@@ -119,12 +119,11 @@ pub(crate) fn kill_retire_next_table_page_scoped(
     let ghost locked_k = *krnl;
     let ghost locked_lctx = *lctx;
     let Tracked(page_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));
-    let ghost held_lctx = *lctx;
     proof {
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-        kernel_endpoint_nonlock_fields_unchanged_for_equal(steps.snapshot_k().ep_mp, krnl.ep_mp); kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl);
+        kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl);
         krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
         page_array_wf_map(krnl.pg_arr);
         page_array_wf_at(krnl.pg_arr, page_index);
@@ -136,15 +135,12 @@ pub(crate) fn kill_retire_next_table_page_scoped(
     }
     let allocator_ptr = krnl.ctn_mp.borrow_rodata(owner).borrow().allocator_ptr_4k;
     proof { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner); }
-    let ghost cache_lctx = *lctx;
     let Tracked(cache_perm) = kill_retire_lock_cache(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), allocator_ptr, cpu_id, 1, Ghost(page_index));
     let ghost snap = *krnl;
     let ghost snap_lctx = *lctx;
     let ghost before = steps.view();
     proof {
-        assert(held_lctx.page_lock_map().dom().contains(page_index) && held_lctx.process_lock_map().dom().contains(target));
-        assert(cache_lctx.page_lock_map().dom().contains(page_index) && cache_lctx.process_lock_map().dom().contains(target));
-        process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target);
+        process_perms_wf_at(krnl.prc_mp, target);
         if iommu {
             process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target);
             iommu_table_pages_wf_closure_entry_at(krnl.it_mp, krnl.pg_arr, table, page_ptr);

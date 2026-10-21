@@ -23,11 +23,7 @@ pub(super) open spec fn create_new_container_root_thread_and_unlock_eof_transiti
             &&& post.ctn_mp.spec_index(c).being_killed() == mid.ctn_mp.spec_index(c).being_killed()
         }
     &&& post.pt_mp.dom() == mid.pt_mp.dom()
-    &&& forall|p: RwLockPageTableRoot| #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), p)] mid.pt_mp.dom().contains(p) ==> {
-            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).mapping_4k() == pagetable_c(mid.pt_mp, mid.pt_lower.view(), p).mapping_4k()
-            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).mapping_2m() == pagetable_c(mid.pt_mp, mid.pt_lower.view(), p).mapping_2m()
-            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).mapping_1g() == pagetable_c(mid.pt_mp, mid.pt_lower.view(), p).mapping_1g()
-        }
+    &&& kernel_pagetable_nonlock_fields_unchanged(mid.pt_mp, mid.pt_lower.view(), post.pt_mp, post.pt_lower.view())
     &&& kernel_cpu_nonlock_fields_unchanged(mid.cpu_arr, post.cpu_arr)
     &&& kernel_process_nonlock_fields_unchanged(mid.prc_mp, post.prc_mp)
     &&& post.sched_mp.dom() == mid.sched_mp.dom()
@@ -69,6 +65,7 @@ pub(super) proof fn create_new_container_root_thread_and_unlock_eof(
 {
     reveal(create_new_container_root_thread_and_unlock_eof_transition_framing); reveal(kernel_new_thread_fields);
     reveal(kernel_cpu_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged);
+    kernel_pagetable_nonlock_fields_unchanged_transitive(pre.pt_mp, pre.pt_lower.view(), mid.pt_mp, mid.pt_lower.view(), post.pt_mp, post.pt_lower.view());
     assert_seqs_equal!(post.thr_mp.spec_index(new_thread_ptr).view().endpoint_descriptors.view() == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| if i == 0 { endpoint } else { None }), i => {});
 }
 }

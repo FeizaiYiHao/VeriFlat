@@ -206,11 +206,7 @@ pub(super) fn release_new_container_root_thread_locks_and_attach_endpoint(
                 &&& final(krnl).ctn_mp.spec_index(c).being_killed() == old(krnl).ctn_mp.spec_index(c).being_killed()
             },
         final(krnl).pt_mp.dom() == old(krnl).pt_mp.dom(),
-        forall|p: RwLockPageTableRoot| #![trigger pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), p)] old(krnl).pt_mp.dom().contains(p) ==> {
-            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), p).mapping_4k() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), p).mapping_4k()
-            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), p).mapping_2m() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), p).mapping_2m()
-            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), p).mapping_1g() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), p).mapping_1g()
-        },
+        kernel_pagetable_nonlock_fields_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), final(krnl).pt_mp, final(krnl).pt_lower.view()),
         kernel_cpu_nonlock_fields_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr),
         kernel_process_nonlock_fields_unchanged(old(krnl).prc_mp, final(krnl).prc_mp),
         final(krnl).sched_mp.dom() == old(krnl).sched_mp.dom(),
@@ -429,11 +425,7 @@ fn release_new_container_child_side_locks_and_attach_endpoint(
                 else if p == source_pagetable_ptr { !(final(krnl).pt_mp.spec_index(p).locking_thread() is Write) }
                 else { final(krnl).pt_mp.spec_index(p).locking_thread() == old(krnl).pt_mp.spec_index(p).locking_thread() },
         final(krnl).pt_mp.dom() == old(krnl).pt_mp.dom(),
-        forall|p: RwLockPageTableRoot| #![trigger pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), p)] old(krnl).pt_mp.dom().contains(p) ==> {
-            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), p).mapping_4k() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), p).mapping_4k()
-            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), p).mapping_2m() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), p).mapping_2m()
-            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), p).mapping_1g() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), p).mapping_1g()
-        },
+        kernel_pagetable_nonlock_fields_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), final(krnl).pt_mp, final(krnl).pt_lower.view()),
         final(krnl).sched_mp.dom() == old(krnl).sched_mp.dom(),
         forall|s: RwLockSchedulerPtr| #![trigger scheduler_shards_of(final(krnl).sched_mp.spec_index(s))]
             old(krnl).sched_mp.dom().contains(s) ==> scheduler_shards_of(final(krnl).sched_mp.spec_index(s)) == scheduler_shards_of(old(krnl).sched_mp.spec_index(s)),
@@ -480,7 +472,10 @@ fn release_new_container_child_side_locks_and_attach_endpoint(
         None => krnl.wunlock_thread(new_thread_ptr, Tracked(&mut *lctx), Tracked(new_thread_lock_perm)),
     }
     proof {
-        assert(kernel_process_nonlock_fields_unchanged(old(krnl).prc_mp, krnl.prc_mp)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
+        assert(kernel_process_nonlock_fields_unchanged(old(krnl).prc_mp, krnl.prc_mp)
+            && kernel_pagetable_nonlock_fields_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), krnl.pt_mp, krnl.pt_lower.view())) by {
+            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); broadcast use kernel_pagetable_nonlock_fields_unchanged_transitive;
+        };
     }
 }
 

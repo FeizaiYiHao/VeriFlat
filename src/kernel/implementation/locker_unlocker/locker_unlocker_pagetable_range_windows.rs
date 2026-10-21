@@ -657,10 +657,8 @@ impl KernelK {
                 assert(spec_va_2m_valid(spec_index2va((l4i, l3i, l2i, 0usize)))) by (bit_vector) requires KERNEL_MEM_END_L4INDEX <= l4i < 512, l3i < 512, l2i < 512;
                 spec_va_4k_index_roundtrip_at(window_va.va, l4i, l3i, l2i, 0);
                 assert(va_range_2m_windows(*range).contains(window_va));
-                pagetable_perms_wf_map(self.pt_mp); pagetable_perms_wf_at(self.pt_mp, root);
             }
-            let higher = self.pt_mp.borrow_typed(root, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(big));
-            let l2_exists = match higher.get_entry_l4(l4i) { Some(l4_entry) => higher.get_entry_l3(l4i, l3i, &l4_entry).is_some(), None => false };
+            let l2_exists = self.pagetable_l3_entry_links_l2(root, l4i, l3i, Tracked(big), Tracked(&*lctx));
             if l2_exists {
                 proof {
                     assert(typed_lock_map_2d_ids_lt(lctx.pagetable_window_lock_map(), window_lock_id(root, l4i, l3i, l2i))) by {
@@ -879,10 +877,8 @@ impl KernelK {
                 assert(spec_va_2m_valid(spec_index2va((l4i, l3i, l2i, 0usize)))) by (bit_vector) requires KERNEL_MEM_END_L4INDEX <= l4i < 512, l3i < 512, l2i < 512;
                 spec_va_4k_index_roundtrip_at(window_va.va, l4i, l3i, l2i, 0);
                 assert(va_range_2m_windows(*range).contains(window_va));
-                pagetable_perms_wf_map(self.pt_mp); pagetable_perms_wf_at(self.pt_mp, root);
             }
-            let higher = self.pt_mp.borrow_typed(root, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(big));
-            let l2_exists = match higher.get_entry_l4(l4i) { Some(l4_entry) => higher.get_entry_l3(l4i, l3i, &l4_entry).is_some(), None => false };
+            let l2_exists = self.pagetable_l3_entry_links_l2(root, l4i, l3i, Tracked(big), Tracked(&*lctx));
             if l2_exists {
                 let tracked perm = perms.tracked_remove(window_va);
                 self.unlock_pagetable_window(root, l4i, l3i, l2i, Tracked(big), Tracked(&mut *lctx), Tracked(perm));
@@ -906,6 +902,27 @@ impl KernelK {
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
         }
+    }
+
+    /// Whether the L3 entry `(l4i, l3i)` of page table `root` links an L2 page, read while this thread holds the big lock of
+    /// `root` in either mode through `big`.
+    fn pagetable_l3_entry_links_l2(&self, root: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, Tracked(big): Tracked<&LockPerm>, Tracked(lctx): Tracked<&LocalContext>) -> (ret: bool)
+        requires
+            self.inv(),
+            self.pt_mp.dom().contains(root),
+            pagetable_c(self.pt_mp, self.pt_lower.view(), root).kernel_l4_end() <= l4i && pei_valid(l4i),
+            pei_valid(l3i),
+            big.thread_id() == lctx.thread_id(),
+            big.state() is WriteLock ==> typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write),
+            big.state() is WriteLock ==> big.lock_id() == self.pt_mp.spec_index(root).locking_thread()->Write_lock_id,
+            big.state() is ReadLock ==> typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Read),
+            big.state() is ReadLock ==> self.pt_mp.spec_index(root).locking_thread()->Read_reader_map.contains_pair(lctx.thread_id(), big.lock_id()),
+            typed_lock_maps_aligned(self, lctx),
+        ensures ret == pagetable_c(self.pt_mp, self.pt_lower.view(), root).higher.spec_resolve_mapping_l3(l4i, l3i) is Some,
+    {
+        proof { pagetable_perms_wf_map(self.pt_mp); pagetable_perms_wf_at(self.pt_mp, root); }
+        let higher = self.pt_mp.borrow_typed(root, Ghost(lctx.pagetable_lock_map()), Tracked(lctx), Tracked(big));
+        match higher.get_entry_l4(l4i) { Some(l4_entry) => higher.get_entry_l3(l4i, l3i, &l4_entry).is_some(), None => false }
     }
 }
 } // verus!

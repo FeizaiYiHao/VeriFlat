@@ -224,11 +224,7 @@ pub(super) fn release_new_process_locks_and_attach_endpoint(
         forall|i: CpuId| #![trigger final(krnl).cpu_arr.spec_index(i)]
             index_valid(NUM_CPUS, i) ==> if i == cpu_id { final(krnl).cpu_arr.spec_index(i).value.locking_thread() is None } else { final(krnl).cpu_arr.spec_index(i).value.locking_thread() == old(krnl).cpu_arr.spec_index(i).value.locking_thread() },
         final(krnl).pt_mp.dom() == old(krnl).pt_mp.dom(),
-        forall|p: RwLockPageTableRoot| #![trigger pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), p)] old(krnl).pt_mp.dom().contains(p) ==> {
-            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), p).mapping_4k() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), p).mapping_4k()
-            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), p).mapping_2m() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), p).mapping_2m()
-            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), p).mapping_1g() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), p).mapping_1g()
-        },
+        kernel_pagetable_nonlock_fields_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), final(krnl).pt_mp, final(krnl).pt_lower.view()),
         final(krnl).it_mp.dom() == old(krnl).it_mp.dom(),
         forall|p: RwLockPageTableRoot| #![trigger final(krnl).it_mp.spec_index(p)] old(krnl).it_mp.dom().contains(p) ==> final(krnl).it_mp.spec_index(p).view() == old(krnl).it_mp.spec_index(p).view(),
         kernel_cpu_nonlock_fields_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr),
