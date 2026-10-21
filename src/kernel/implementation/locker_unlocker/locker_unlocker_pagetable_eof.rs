@@ -42,7 +42,7 @@ pub(super) proof fn pagetable_lock_state_eof(pre: KernelK, post: KernelK, pageta
         if !pre.pt_mp.spec_index(pagetable_ptr).locked() { tlb_wf_pagetable_entries_present_at(pre, pagetable_ptr); }
     };
     assert(!pre.pt_mp.spec_index(pagetable_ptr).locked() ==> pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.window_stale_cpus =~= Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty()) by {
-        broadcast use pagetable_lock_state_eof_stale_key_absent;
+        broadcast use pagetable_unlocked_stale_key_absent_at;
     };
     assert(post.subsystems_inv()) by {
         lemma_pagetable_perms_wf_preserved_for_lock_op_forall(); reveal(KernelK::default_pagetable_wf); reveal(pagetable_lower_wf);
@@ -63,7 +63,7 @@ pub(super) proof fn pagetable_lock_state_eof(pre: KernelK, post: KernelK, pageta
 
 /// A page table that no thread locks lists no stale CPU under key `k`: a listed window is locked, and its holder would
 /// hold the table.
-broadcast proof fn pagetable_lock_state_eof_stale_key_absent(pre: KernelK, pagetable_ptr: RwLockPageTableRoot, k: (PageMapPtr, L2Index))
+broadcast proof fn pagetable_unlocked_stale_key_absent_at(pre: KernelK, pagetable_ptr: RwLockPageTableRoot, k: (PageMapPtr, L2Index))
     requires
         pre.inv(),
         pre.pt_mp.dom().contains(pagetable_ptr),

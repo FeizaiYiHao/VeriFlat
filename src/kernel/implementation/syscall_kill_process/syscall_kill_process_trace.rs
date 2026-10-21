@@ -420,7 +420,6 @@ pub(crate) proof fn kill_refund_pre_from_k(krnl: &KernelK, target: RwLockProcess
     ensures kernel_k_to_kernel_u(*krnl).process_map[target].owning_container == container_ptr,
 { kernel_process_projection_at(krnl, target); }
 
-
 /// Write-locking the cpu, the process, and the thread, marking and write-locking the live child at `child_index`, and
 /// recording the walk of that child is the enter step on `pre`/`post`.
 pub(crate) proof fn kill_enter_step_from_u(

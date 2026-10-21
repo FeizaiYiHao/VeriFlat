@@ -40,7 +40,6 @@ pub fn retype_process_rwlock_to_4k_page_perm(
     Tracked::assume_new()
 }
 
-
 /// TCB: retire the write-held, killed, childless container object at `container_ptr` together with the offline
 /// request table in its second 4K and reclaim its 2M page as raw memory.
 ///

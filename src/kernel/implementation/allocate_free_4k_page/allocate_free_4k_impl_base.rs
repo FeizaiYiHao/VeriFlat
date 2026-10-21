@@ -229,7 +229,8 @@ verus! {
                 &&& old(lctx).page_lock_map().dom().subset_of(lctx.page_lock_map().dom())
             }) by {
                 vstd::set_lib::lemma_set_disjoint(old(lctx).allocator_cache_4k_lock_map().dom(), allocator_cache_key_prefix(alloc_ptr_4k, NUM_CPUS));
-                map_union_remove_right_domain_disjoint_lemma(old(lctx).allocator_cache_4k_lock_map(), Map::new(allocator_cache_key_prefix(alloc_ptr_4k, NUM_CPUS), |key: (RwLockPageAllocatorPtr, CpuId)| TypedHeldLock { lock_id: allocator_cache_lock_id(ALLOCATOR_SIZE_4K, key.1), mode: TypedLockMode::Write }));
+                map_union_remove_right_domain_disjoint_lemma(old(lctx).allocator_cache_4k_lock_map(),
+                    Map::new(allocator_cache_key_prefix(alloc_ptr_4k, NUM_CPUS), |key: (RwLockPageAllocatorPtr, CpuId)| TypedHeldLock { lock_id: allocator_cache_lock_id(ALLOCATOR_SIZE_4K, key.1), mode: TypedLockMode::Write }));
                 map_insert_remove_absent_lemma(old(lctx).allocator_global_pool_4k_lock_map(), alloc_ptr_4k, TypedHeldLock { lock_id: old(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.lock_id(), mode: TypedLockMode::Write });
             };
         }

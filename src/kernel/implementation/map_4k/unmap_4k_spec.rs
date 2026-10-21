@@ -71,7 +71,6 @@ pub open spec fn unmap_4k_leaf_trace_step(old_u: KernelU, new_u: KernelU, cpu_id
     let removed = pagetable.mapping_4k.dom().difference(kept);
     &&& kept.subset_of(pagetable.mapping_4k.dom())
     &&& removed.subset_of(progress->Unmap4k_range.view().to_set())
-    &&& removed.finite()
     &&& removed.len() == 1
     &&& new_u == (KernelU {
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(SyscallProgress::Unmap4k { range: progress->Unmap4k_range, unmapped: (progress->Unmap4k_unmapped + 1) as usize, flushed: false }), ..thread }),

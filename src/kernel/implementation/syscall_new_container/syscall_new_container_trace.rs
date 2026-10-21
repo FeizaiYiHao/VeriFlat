@@ -425,7 +425,6 @@ pub(super) proof fn new_container_root_published_from_k(
     kernel_container_root_published_implies_u_step(pre, post, parent, container_page, pages[4], thread, transfer_cpu, funding, process_quota_4k, moved, pages[7], pcid_allocator_page, progress);
 }
 
-
 pub(super) proof fn kernel_container_publication_composes(
     pre: KernelU, published: KernelU, post: KernelU, parent: RwLockContainerPtr, child: RwLockContainerPtr, process: RwLockProcessPtr,
     thread: RwLockThreadPtr, cpu: CpuId, funding: usize, process_quota: usize, moved: Set<PagePtr>, thread_page: PagePtr, progress: Option<SyscallProgress>,

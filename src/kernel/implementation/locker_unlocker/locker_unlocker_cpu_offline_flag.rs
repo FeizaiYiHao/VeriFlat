@@ -6,7 +6,6 @@ use crate::*;
 
 verus! {
 
-
 impl KernelK {
     pub fn wlock_cpu_offline_flag(&mut self, flags_ptr: RwLockCpuOfflineFlagsPtr, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
         requires

@@ -1343,7 +1343,8 @@ impl KernelSteps {
             kernel_ipc_rendezvous_fields(&old(self).snapshot_k(), krnl, cpu_id, caller_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer, pci_transfer),
             krnl.cpu_set_mp.dom() == old(self).snapshot_k().cpu_set_mp.dom(),
             forall|p: RwLockCpuSetPtr| #![trigger krnl.cpu_set_mp.spec_index(p)]
-                old(self).snapshot_k().cpu_set_mp.dom().contains(p) ==> krnl.cpu_set_mp.spec_index(p).locking_thread() == old(self).snapshot_k().cpu_set_mp.spec_index(p).locking_thread() && krnl.cpu_set_mp.spec_index(p).being_killed() == old(self).snapshot_k().cpu_set_mp.spec_index(p).being_killed(),
+                old(self).snapshot_k().cpu_set_mp.dom().contains(p) ==> krnl.cpu_set_mp.spec_index(p).locking_thread() == old(self).snapshot_k().cpu_set_mp.spec_index(p).locking_thread()
+                    && krnl.cpu_set_mp.spec_index(p).being_killed() == old(self).snapshot_k().cpu_set_mp.spec_index(p).being_killed(),
             cpu_sets_locked ==> {
                 let snap = old(self).snapshot_k();
                 &&& snap.cpu_set_mp.spec_index(snap.ctn_mp.spec_index(snap.thr_mp.spec_index(caller_thread_ptr).view().owning_container).view_rodata().view().cpu_set).locking_thread() is None

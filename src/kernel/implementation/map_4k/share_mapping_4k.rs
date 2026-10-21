@@ -419,7 +419,6 @@ fn share_one_mapping_4k(
     }
 }
 
-
 /// Read-only owner precheck for every present source 4K mapping.
 ///
 /// The source page table is read- or write-held with every source 2M window held by the caller; the target thread is a stable root. Each physical
