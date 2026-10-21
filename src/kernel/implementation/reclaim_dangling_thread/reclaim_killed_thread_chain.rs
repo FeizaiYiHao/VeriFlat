@@ -4,12 +4,13 @@ use super::reclaim_dangling_thread::reclaim_dangling_thread;
 use super::take_over_dangling_caller::take_over_dangling_caller;
 use super::wake_waiting_reply_caller::wake_waiting_reply_caller;
 use super::drop_endpoint_descriptor::drop_endpoint_descriptor;
+use super::reclaim_killed_thread_chain_link::reclaim_killed_thread_link;
 #[cfg(verus_keep_ghost)]
-use super::reclaim_killed_thread_chain_trace::{killed_thread_reclaim_partial_trace, killed_thread_reclaim_chain_trace, killed_thread_reclaim_step_pre_from_k};
+use super::reclaim_killed_thread_chain_trace::{killed_thread_reclaim_partial_trace, killed_thread_reclaim_link_trace, killed_thread_reclaim_step_pre_from_k};
 
 verus! {
 /// Release every descriptor of the write-held killed thread `thread_ptr`, one step per descriptor holding an endpoint.
-fn release_killed_thread_descriptors(
+pub(super) fn release_killed_thread_descriptors(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, thread_ptr: RwLockThreadPtr,
     Tracked(thread_lock_perm): Tracked<&LockPerm>,
 )
@@ -397,31 +398,15 @@ pub fn reclaim_killed_thread_chain(
     {
         let ghost iter_k = *krnl;
         let ghost iter_steps = steps.view();
+        let (next, Tracked(next_perm)) = reclaim_killed_thread_link(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, cur, Tracked(cur_perm));
         proof {
-            thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id);
-            assert(kernel_steps_prefix_unchanged(iter_steps, iter_steps)) by { reveal(kernel_steps_prefix_unchanged); };
-        }
-        release_killed_thread_descriptors(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, cur, Tracked(&cur_perm));
-        let ghost caller_k = *krnl;
-        let ghost desc_steps = steps.view();
-        proof { assert(kernel_steps_prefix_unchanged(desc_steps, desc_steps)) by { reveal(kernel_steps_prefix_unchanged); }; }
-        let (next, Tracked(next_perm)) = release_killed_thread_caller(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, cur, Tracked(&cur_perm));
-        let ghost caller_steps = steps.view();
-        proof { assert(kernel_steps_prefix_unchanged(caller_steps, caller_steps)) by { reveal(kernel_steps_prefix_unchanged); }; }
-        reclaim_dangling_thread(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, cur, Tracked(cur_perm));
-        let ghost reclaim_snap = steps.snapshot_k();
-        proof {
-            kernel_dangling_thread_reclaimed_implies_u_step(&reclaim_snap, &*krnl, cur);
-            krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
             assert(killed_thread_reclaim_partial_trace(steps.view(), old(steps).view().len() as int, kernel_k_to_kernel_u(*old(krnl)), cpu_id, old(lctx).process_lock_map().dom(), old(lctx).container_lock_map().dom())) by {
                 let processes = old(lctx).process_lock_map().dom();
                 let containers = old(lctx).container_lock_map().dom();
                 held_kernel_objects_unchanged_reflexive(old(krnl), old(lctx));
+                assert(kernel_steps_prefix_unchanged(iter_steps, iter_steps)) by { reveal(kernel_steps_prefix_unchanged); };
                 killed_thread_reclaim_step_pre_from_k(&iter_k, old(krnl), cpu_id, processes, containers);
-                killed_thread_reclaim_step_pre_from_k(&caller_k, old(krnl), cpu_id, processes, containers);
-                killed_thread_reclaim_step_pre_from_k(&reclaim_snap, old(krnl), cpu_id, processes, containers);
-                killed_thread_reclaim_chain_trace(steps.view(), old(steps).view().len() as int, iter_steps, desc_steps, caller_steps, kernel_k_to_kernel_u(*old(krnl)),
-                    kernel_k_to_kernel_u(iter_k), kernel_k_to_kernel_u(caller_k), cpu_id, processes, containers);
+                killed_thread_reclaim_link_trace(steps.view(), old(steps).view().len() as int, iter_steps, kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(iter_k), cpu_id, processes, containers);
             };
         }
         if let Some(caller_ptr) = next {

@@ -2,6 +2,38 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
+/// Inserts `page`, absent from the strictly increasing `ret`, at the index it returns, keeping `ret` strictly increasing.
+fn kill_retire_sort_insert<const N: usize>(ret: &mut ArrayVec<PageIndex, N>, page: PageIndex) -> (j: usize)
+    requires
+        old(ret).wf(),
+        old(ret).view().len() < N,
+        forall|a: int| #![trigger old(ret).view()[a]] 0 <= a < old(ret).view().len() ==> old(ret).view()[a] != page,
+        forall|a: int, b: int| #![trigger old(ret).view()[a], old(ret).view()[b]] 0 <= a < b < old(ret).view().len() ==> old(ret).view()[a] < old(ret).view()[b],
+    ensures
+        final(ret).wf(),
+        j <= old(ret).view().len(),
+        final(ret).view() == old(ret).view().insert(j as int, page),
+        forall|a: int, b: int| #![trigger final(ret).view()[a], final(ret).view()[b]] 0 <= a < b < final(ret).view().len() ==> final(ret).view()[a] < final(ret).view()[b],
+{
+    let ghost cur = ret.view();
+    let mut j: usize = ret.len();
+    ret.push(page);
+    while j > 0 && *ret.get(j - 1) > page
+        invariant
+            ret.wf(),
+            0 <= j <= cur.len(),
+            ret.view() == cur.insert(j as int, page),
+            forall|a: int| #![trigger cur[a]] j <= a < cur.len() ==> page < cur[a],
+        decreases j,
+    {
+        let prev = *ret.get(j - 1);
+        ret.set(j, prev);
+        ret.set(j - 1, page);
+        j = j - 1;
+    }
+    j
+}
+
 /// Sorts the distinct retired pages into strictly increasing index order, the order in which pages of one lock major are acquired.
 pub(crate) fn kill_retire_sort_pages<const N: usize>(pages: &ArrayVec<PageIndex, N>) -> (ret: ArrayVec<PageIndex, N>)
     requires
@@ -31,21 +63,7 @@ pub(crate) fn kill_retire_sort_pages<const N: usize>(pages: &ArrayVec<PageIndex,
         broadcast use vstd::seq_lib::lemma_seq_concat_contains_all_elements, vstd::seq_lib::lemma_seq_contains_after_push;
         let page = *pages.get(i);
         let ghost cur = ret.view();
-        ret.push(page);
-        let mut j: usize = i;
-        while j > 0 && *ret.get(j - 1) > page
-            invariant
-                ret.wf(),
-                0 <= j <= cur.len(),
-                ret.view() == cur.insert(j as int, page),
-                forall|a: int| #![trigger cur[a]] j <= a < cur.len() ==> page < cur[a],
-            decreases j,
-        {
-            let prev = *ret.get(j - 1);
-            ret.set(j, prev);
-            ret.set(j - 1, page);
-            j = j - 1;
-        }
+        let j = kill_retire_sort_insert(&mut ret, page);
         proof {
             assert(cur =~= cur.subrange(0, j as int) + cur.subrange(j as int, cur.len() as int));
             assert(pages.view().subrange(0, i + 1) =~= pages.view().subrange(0, i as int).push(page));

@@ -25,6 +25,7 @@ mod unmap_4k_flush_one_cpu;
 pub mod unmap_4k_reclaim_one;
 mod unmap_4k_reclaim_last;
 mod unmap_4k_reclaim_last_cache;
+mod unmap_4k_mapped_page_ptr;
 pub mod unmap_4k_range;
 pub mod unmap_iommu_4k_present;
 mod unmap_iommu_4k_present_eof;

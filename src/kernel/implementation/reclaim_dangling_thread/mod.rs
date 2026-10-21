@@ -20,4 +20,5 @@ mod release_endpoint_eof;
 mod release_endpoint_spec;
 pub mod reclaim_killed_thread_chain;
 pub use reclaim_killed_thread_chain::*;
+mod reclaim_killed_thread_chain_link;
 pub mod reclaim_killed_thread_chain_trace;

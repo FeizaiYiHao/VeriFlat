@@ -4,8 +4,8 @@ use super::super::allocator_cache_spec::*;
 use vstd::prelude::*;
 use vstd::simple_pptr::*;
 use crate::*;
+use super::allocate_free_4k_page_sources::{allocate_free_4k_page_from_cache, allocate_free_4k_page_from_pool};
 use super::allocate_free_4k_page_pop_impl::pop_stage_4k_page;
-use super::refill_4k_cache_batch::refill_4k_cache_batch;
 
 verus! {
     /// Allocate a single 4k page from the container's allocator.
@@ -110,92 +110,14 @@ verus! {
         let cache_len = cache_ref.linked_list.len();
 
         if cache_len > 0 {
-            let (page_ptr, Tracked(page_lock_perm)) = pop_stage_4k_page(krnl, alloc_ptr_4k, Some(cpu_id), thread_ptr, container_ptr, Tracked(&mut *lctx), Tracked(&cache_lock_perm), Tracked(thread_lock_perm));
-            krnl.wunlock_allocator_cache_4k(alloc_ptr_4k, cpu_id, Tracked(&mut *lctx), Tracked(cache_lock_perm));
-            proof {
-                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-                assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-                assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {
-                    broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive;
-                    kernel_thread_write_held_section_implies_u_eq(old(krnl), &*krnl, old(lctx), &*lctx, thread_ptr);
-                };
-                krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-                assert(typed_lock_maps_inserted(old(lctx), lctx, KernelObjId::Page(page_ptr2page_index(page_ptr)), TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), mode: TypedLockMode::Write })
-                    && old(lctx).page_lock_map().dom().subset_of(lctx.page_lock_map().dom())) by {
-                    map_insert_remove_absent_lemma(old(lctx).allocator_cache_4k_lock_map(), (alloc_ptr_4k, cpu_id), TypedHeldLock { lock_id: allocator_cache_lock_id(ALLOCATOR_SIZE_4K, cpu_id), mode: TypedLockMode::Write });
-                };
-                assert({
-                    &&& krnl.ctn_mp.dom().contains(container_ptr)
-                    &&& krnl.thr_mp.spec_index(thread_ptr).view().state == old(krnl).thr_mp.spec_index(thread_ptr).view().state
-                    &&& krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress == old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress
-                }) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); };
-            }
-            return (page_ptr, Tracked(page_lock_perm));
+            return allocate_free_4k_page_from_cache(krnl, alloc_ptr_4k, cpu_id, thread_ptr, container_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(cache_lock_perm), Tracked(thread_lock_perm),
+                Ghost(*old(krnl)), Ghost(*old(lctx)));
         }
-
-        let Tracked(gp_lock_perm) = krnl.wlock_allocator_global_pool_4k(alloc_ptr_4k, Tracked(&mut *lctx));
-        let pool_ref = krnl.allc_4k_mp.borrow_global_pool_typed(alloc_ptr_4k, Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), Tracked(&gp_lock_perm));
-        let pool_len = pool_ref.len();
-
-        if pool_len > 0 {
-            proof {
-                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-                assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-                assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {
-                    broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive;
-                    kernel_thread_write_held_section_implies_u_eq(old(krnl), &*krnl, old(lctx), &*lctx, thread_ptr);
-                };
-                steps.rebase_snapshot_k_if_unchanged(&*krnl);
-            }
-            refill_4k_cache_batch(krnl, alloc_ptr_4k, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&cache_lock_perm), Tracked(&gp_lock_perm));
-            let ghost refilled_krnl = *krnl;
-            let ghost refilled_lctx = *lctx;
-            let (page_ptr, Tracked(page_lock_perm)) = pop_stage_4k_page(krnl, alloc_ptr_4k, Some(cpu_id), thread_ptr, container_ptr, Tracked(&mut *lctx), Tracked(&cache_lock_perm), Tracked(thread_lock_perm));
-            krnl.wunlock_allocator_global_pool_4k(alloc_ptr_4k, Tracked(&mut *lctx), Tracked(gp_lock_perm));
-            krnl.wunlock_allocator_cache_4k(alloc_ptr_4k, cpu_id, Tracked(&mut *lctx), Tracked(cache_lock_perm));
-            proof {
-                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-                assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-                assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(refilled_krnl)) by {
-                    broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive;
-                    kernel_thread_write_held_section_implies_u_eq(&refilled_krnl, &*krnl, &refilled_lctx, &*lctx, thread_ptr);
-                };
-                krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-                assert(typed_lock_maps_inserted(old(lctx), lctx, KernelObjId::Page(page_ptr2page_index(page_ptr)), TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), mode: TypedLockMode::Write })
-                    && old(lctx).page_lock_map().dom().subset_of(lctx.page_lock_map().dom())) by {
-                    map_insert_remove_absent_lemma(old(lctx).allocator_cache_4k_lock_map(), (alloc_ptr_4k, cpu_id), TypedHeldLock { lock_id: allocator_cache_lock_id(ALLOCATOR_SIZE_4K, cpu_id), mode: TypedLockMode::Write });
-                    map_insert_remove_absent_lemma(old(lctx).allocator_global_pool_4k_lock_map(), alloc_ptr_4k, TypedHeldLock { lock_id: old(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.lock_id(), mode: TypedLockMode::Write });
-                };
-                assert({
-                    &&& krnl.ctn_mp.dom().contains(container_ptr)
-                    &&& krnl.thr_mp.spec_index(thread_ptr).view().state == old(krnl).thr_mp.spec_index(thread_ptr).view().state
-                    &&& krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress == old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress
-                }) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); };
-            }
-            return (page_ptr, Tracked(page_lock_perm));
-        }
-
-        krnl.wunlock_allocator_global_pool_4k(alloc_ptr_4k, Tracked(&mut *lctx), Tracked(gp_lock_perm));
-        krnl.wunlock_allocator_cache_4k(alloc_ptr_4k, cpu_id, Tracked(&mut *lctx), Tracked(cache_lock_perm));
-        proof {
-            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-            assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-            assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {
-                broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive;
-                kernel_thread_write_held_section_implies_u_eq(old(krnl), &*krnl, old(lctx), &*lctx, thread_ptr);
-            };
-            krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-            assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
-                map_insert_remove_absent_lemma(old(lctx).allocator_cache_4k_lock_map(), (alloc_ptr_4k, cpu_id), TypedHeldLock { lock_id: allocator_cache_lock_id(ALLOCATOR_SIZE_4K, cpu_id), mode: TypedLockMode::Write });
-                map_insert_remove_absent_lemma(old(lctx).allocator_global_pool_4k_lock_map(), alloc_ptr_4k, TypedHeldLock { lock_id: old(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.lock_id(), mode: TypedLockMode::Write });
-            };
-            assert(krnl.ctn_mp.dom().contains(container_ptr)) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); };
-        }
-        let ret = alloc_4k_scan_all_caches_and_pool(krnl, thread_ptr, container_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
-        ret
+        allocate_free_4k_page_from_pool(krnl, alloc_ptr_4k, cpu_id, thread_ptr, container_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(cache_lock_perm), Tracked(thread_lock_perm),
+            Ghost(*old(krnl)), Ghost(*old(lctx)))
     }
 
-    fn alloc_4k_scan_all_caches_and_pool(
+    pub(super) fn alloc_4k_scan_all_caches_and_pool(
         krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, Tracked(lctx): Tracked<&mut LocalContext>,
         Tracked(steps): Tracked<&mut KernelSteps>, Tracked(thread_lock_perm): Tracked<&LockPerm>,
     ) -> (ret: (PagePtr, Tracked<LockPerm>))

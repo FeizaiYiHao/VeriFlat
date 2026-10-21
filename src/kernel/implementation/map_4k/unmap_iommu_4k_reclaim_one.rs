@@ -2,6 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::unmap_iommu_4k_remove::remove_iommu_4k_mapping_without_free;
 use super::unmap_4k_reclaim_last::reclaim_last_iommu_4k_mapping;
+use super::unmap_4k_mapped_page_ptr::unmap_iommu_4k_mapped_page_ptr;
 
 verus! {
 /// Unmaps one hidden 4K leaf of a write-locked IOMMU table and frees its page when no other mapping remains.
@@ -79,12 +80,7 @@ pub fn reclaim_unmapped_iommu_4k_page(
         iommu_table_perms_wf_at(krnl.it_mp, iommu_table);
         iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, iommu_table);
     }
-    let it = krnl.it_mp.borrow_typed(iommu_table, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), iommu_table_perm);
-    assert(it.spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some) by { reveal(PageTable::wf_mapping_4k); };
-    let l4 = it.get_entry_l4(indices.0).unwrap();
-    let l3 = it.get_entry_l3(indices.0, indices.1, &l4).unwrap();
-    let l2 = it.get_entry_l2(indices.0, indices.1, indices.2, &l3).unwrap();
-    let page_ptr = it.get_entry_l1(indices.0, indices.1, indices.2, indices.3, &l2).unwrap().addr;
+    let page_ptr = unmap_iommu_4k_mapped_page_ptr(krnl, iommu_table, indices, Tracked(&*lctx), iommu_table_perm);
     let page_index = page_ptr2page_index(page_ptr);
     proof { assert(krnl.pg_arr.lock_id_by_index(page_index).major == MAPPED_PAGE_LOCK_MAJOR) by { page_iommu_table_wf_table_at(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr, iommu_table, iova); }; }
     let Tracked(page_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));
