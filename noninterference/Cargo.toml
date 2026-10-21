@@ -29,6 +29,7 @@ veriflat_syscall_unmap_4k = { path = "../crates/veriflat_syscall_unmap_4k" }
 veriflat_syscall_ipc = { path = "../crates/veriflat_syscall_ipc" }
 veriflat_syscall_cpu_hotplug = { path = "../crates/veriflat_syscall_cpu_hotplug" }
 veriflat_syscall_pci = { path = "../crates/veriflat_syscall_pci" }
+veriflat_syscall_kill_process = { path = "../crates/veriflat_syscall_kill_process" }
 
 [package.metadata.verus]
 verify = true

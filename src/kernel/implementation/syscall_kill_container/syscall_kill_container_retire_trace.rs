@@ -7,8 +7,8 @@ use super::super::syscall_kill_process::syscall_kill_process_spec::kill_killer;
 
 verus! {
 /// The killer on `cpu_id` write-holding its cpu, its cpu's container, its process `process_ptr`, itself `thread_ptr`,
-/// and the marked container `container_ptr` it retires, which has a parent and owns no child and no process, satisfies
-/// the container kill's step precondition on `krnl` with that container retiring.
+/// and the marked container `container_ptr` below its cpu's container it retires, which has a parent and owns no child
+/// and no process, satisfies the container kill's step precondition on `krnl` with that container retiring.
 pub(crate) proof fn kill_container_retire_pre_from_k(
     krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr,
 )
@@ -25,6 +25,7 @@ pub(crate) proof fn kill_container_retire_pre_from_k(
         krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container != container_ptr,
         krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == kill_container_progress(container_ptr, ContainerKillStage::Retire),
         krnl.ctn_mp.spec_index(container_ptr).being_killed(),
+        krnl.ctn_mp.spec_index(container_ptr).view_ghost().uppertree_seq.view().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
         krnl.ctn_mp.spec_index(container_ptr).view().children.view().len() == 0,
         krnl.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().is_empty(),
         krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().parent is Some,

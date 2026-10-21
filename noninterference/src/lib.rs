@@ -17,7 +17,8 @@
 //! rendezvous, endpoint transfer, and pages check results. With `trace_ni_at`, steps of A between two
 //! states leave B's results unchanged.
 //!
-//! Not covered: object pointers and page addresses returned on success come from the shared global
+//! Not covered: the steps of `kill_process` and `thread_exit`, including the process kill steps a container kill
+//! runs inside its marked containers. Object pointers and page addresses returned on success come from the shared global
 //! allocator and are guaranteed only to be fresh, so which pointer or page a domain receives can
 //! depend on allocations by other domains. This allocator channel is outside the proof.
 #![feature(adt_const_params)]
@@ -42,6 +43,7 @@ pub mod ni_new_process;
 pub mod ni_new_container;
 pub mod ni_share_4k;
 pub mod ni_pci;
+pub mod ni_kill_container;
 pub mod theorem;
 
 pub use domain::*;

@@ -1,9 +1,10 @@
 use vstd::prelude::*;
 use crate::*;
-use crate::{ni_alloc_quota::*, ni_cpu_hotplug::*, ni_ipc::*, ni_mmap_4k::*, ni_new_container::*, ni_new_endpoint::*, ni_new_process::*, ni_new_thread::*, ni_pci::*, ni_rebalance::*, ni_schedule::*, ni_share_4k::*, ni_unmap_4k::*};
+use crate::{ni_alloc_quota::*, ni_cpu_hotplug::*, ni_ipc::*, ni_mmap_4k::*, ni_new_container::*, ni_new_endpoint::*, ni_new_process::*, ni_new_thread::*, ni_pci::*, ni_rebalance::*, ni_schedule::*, ni_share_4k::*, ni_unmap_4k::*, ni_kill_container::*};
 use veriflat_map_4k::*;
 use veriflat_syscall_alloc_quota::syscall_alloc_quota::syscall_alloc_quota_spec::*;
 use veriflat_syscall_cpu_hotplug::syscall_cpu_hotplug::{cpu_offline_check_spec::*, syscall_cpu_hotplug_spec::*};
+use veriflat_syscall_kill_process::syscall_kill_container::syscall_kill_container_spec::*;
 use veriflat_syscall_ipc::syscall_ipc::{syscall_ipc_call_spec::*, syscall_ipc_spec::*};
 use veriflat_syscall_mmap_4k::syscall_mmap_4k::syscall_mmap_4k_spec::*;
 use veriflat_syscall_new_container::syscall_new_container::syscall_new_container_spec::*;
@@ -36,6 +37,8 @@ pub ghost enum StepLabel {
     IpcEndpointTransit { channel_index: EndpointIdx, waiting_state: ThreadState, payload_index: EndpointIdx }, IpcEndpointFinish,
     IpcPagesEnter { channel_index: EndpointIdx, waiting_state: ThreadState, range: VaRange4K }, IpcPagesLockTables { tables: IpcPagesTables },
     IpcPagesCheck, IpcPagesDowngrade, IpcPagesUnlockTables, IpcPagesFinish,
+    KillContainerEnter { child_index: usize }, KillContainerMarkChild, KillContainerMarkRoot, KillContainerRetireRoot, KillContainerCpus, KillContainerMoveCpu,
+    KillContainerPages, KillContainerMovePage { size: PageSize }, KillContainerRetireStage, KillContainerRetire, KillContainerFinish,
 }
 
 /// `new_u` follows `old_u` by the step `label` on cpu `cpu_id`.
@@ -102,6 +105,17 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
         StepLabel::IpcPagesDowngrade => ipc_pages_downgrade_step_pre(old_u, cpu_id) && ipc_pages_downgrade_step(old_u, new_u, cpu_id),
         StepLabel::IpcPagesUnlockTables => ipc_pages_unlock_tables_step_pre(old_u, cpu_id) && ipc_pages_unlock_tables_step(old_u, new_u, cpu_id),
         StepLabel::IpcPagesFinish => ipc_pages_finish_step_pre(old_u, cpu_id) && ipc_pages_finish_step(old_u, new_u, cpu_id),
+        StepLabel::KillContainerEnter { child_index } => kill_container_enter_step_pre(old_u, cpu_id, child_index) && kill_container_enter_step(old_u, new_u, cpu_id, child_index),
+        StepLabel::KillContainerMarkChild => kill_container_step_pre(old_u, cpu_id) && kill_container_mark_child_step(old_u, new_u, cpu_id),
+        StepLabel::KillContainerMarkRoot => kill_container_step_pre(old_u, cpu_id) && kill_container_mark_root_step(old_u, new_u, cpu_id),
+        StepLabel::KillContainerRetireRoot => kill_container_step_pre(old_u, cpu_id) && kill_container_retire_root_step(old_u, new_u, cpu_id),
+        StepLabel::KillContainerCpus => kill_container_step_pre(old_u, cpu_id) && kill_container_cpus_step(old_u, new_u, cpu_id),
+        StepLabel::KillContainerMoveCpu => kill_container_step_pre(old_u, cpu_id) && kill_container_move_cpu_step(old_u, new_u, cpu_id),
+        StepLabel::KillContainerPages => kill_container_step_pre(old_u, cpu_id) && kill_container_pages_step(old_u, new_u, cpu_id),
+        StepLabel::KillContainerMovePage { size } => kill_container_step_pre(old_u, cpu_id) && kill_container_move_page_step(old_u, new_u, cpu_id, size),
+        StepLabel::KillContainerRetireStage => kill_container_step_pre(old_u, cpu_id) && kill_container_retire_stage_step(old_u, new_u, cpu_id),
+        StepLabel::KillContainerRetire => kill_container_step_pre(old_u, cpu_id) && kill_container_retire_step(old_u, new_u, cpu_id),
+        StepLabel::KillContainerFinish => kill_container_finish_step_pre(old_u, cpu_id) && kill_container_finish_step(old_u, new_u, cpu_id),
     }
 }
 
@@ -240,6 +254,21 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
             StepLabel::IpcPagesDowngrade => { ipc_pages_downgrade_step_lr(old_u, new_u, cpu_id, x, y); ipc_pages_downgrade_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::IpcPagesUnlockTables => { ipc_pages_unlock_tables_step_lr(old_u, new_u, cpu_id, x, y); ipc_pages_unlock_tables_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::IpcPagesFinish => { ipc_pages_finish_step_lr(old_u, new_u, cpu_id, x, y); ipc_pages_finish_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillContainerEnter { child_index } => {
+                kill_container_enter_step_lr(old_u, new_u, cpu_id, child_index, x, y); kill_container_enter_step_iso(old_u, new_u, cpu_id, child_index, x, y);
+            },
+            StepLabel::KillContainerMarkChild => { kill_container_mark_child_step_lr(old_u, new_u, cpu_id, x, y); kill_container_mark_child_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillContainerMarkRoot => { kill_container_mark_root_step_lr(old_u, new_u, cpu_id, x, y); kill_container_mark_root_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillContainerRetireRoot => { kill_container_retire_root_step_lr(old_u, new_u, cpu_id, x, y); kill_container_retire_root_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillContainerCpus => { kill_container_cpus_step_lr(old_u, new_u, cpu_id, x, y); kill_container_cpus_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillContainerMoveCpu => { kill_container_move_cpu_step_lr(old_u, new_u, cpu_id, x, y); kill_container_move_cpu_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillContainerPages => { kill_container_pages_step_lr(old_u, new_u, cpu_id, x, y); kill_container_pages_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillContainerMovePage { size } => {
+                kill_container_move_page_step_lr(old_u, new_u, cpu_id, size, x, y); kill_container_move_page_step_iso(old_u, new_u, cpu_id, size, x, y);
+            },
+            StepLabel::KillContainerRetireStage => { kill_container_retire_stage_step_lr(old_u, new_u, cpu_id, x, y); kill_container_retire_stage_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillContainerRetire => { kill_container_retire_step_lr(old_u, new_u, cpu_id, x, y); kill_container_retire_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillContainerFinish => { kill_container_finish_step_lr(old_u, new_u, cpu_id, x, y); kill_container_finish_step_iso(old_u, new_u, cpu_id, x, y); },
         }
         if x != a { isolated_symmetric(new_u, b, a); }
     }

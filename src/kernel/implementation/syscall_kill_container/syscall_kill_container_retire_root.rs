@@ -49,6 +49,7 @@ pub(crate) fn kill_container_retire_root(
         container_perm.state() is WriteLock,
         container_perm.thread_id() == old(lctx).thread_id(),
         container_perm.lock_id() == old(krnl).ctn_mp.spec_index(scope->Container_container).locking_thread()->Write_lock_id,
+        old(krnl).ctn_mp.spec_index(scope->Container_container).view_ghost().uppertree_seq.view().contains(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -146,6 +147,7 @@ pub(crate) fn kill_container_retire_root_process(
         container_perm.state() is WriteLock,
         container_perm.thread_id() == old(lctx).thread_id(),
         container_perm.lock_id() == old(krnl).ctn_mp.spec_index(scope->Container_container).locking_thread()->Write_lock_id,
+        old(krnl).ctn_mp.spec_index(scope->Container_container).view_ghost().uppertree_seq.view().contains(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -388,7 +390,7 @@ pub(crate) fn kill_container_retire_root_commit(
             base.allc_4k_mp.dom().contains(a) && a != allocator_ptr ==> final(krnl).allc_4k_mp.spec_index(a).quota.view() == base.allc_4k_mp.spec_index(a).quota.view(),
         base.allc_4k_mp.spec_index(allocator_ptr).quota.view().view() < final(krnl).allc_4k_mp.spec_index(allocator_ptr).quota.view().view(),
         final(krnl).pt_mp.dom() == base.pt_mp.dom().remove(pagetable),
-        forall|t: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(t)]
+        forall|t: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(t)] #![trigger final(krnl).pt_lower.view().spec_index(t)]
             final(krnl).pt_mp.dom().contains(t) ==> final(krnl).pt_mp.spec_index(t) == base.pt_mp.spec_index(t) && final(krnl).pt_lower.view().spec_index(t) == base.pt_lower.view().spec_index(t),
         final(krnl).it_mp.dom() == match iommu_table { Some(it) => base.it_mp.dom().remove(it), None => base.it_mp.dom() },
         forall|t: RwLockPageTableRoot| #![trigger final(krnl).it_mp.spec_index(t)] final(krnl).it_mp.dom().contains(t) ==> final(krnl).it_mp.spec_index(t) == base.it_mp.spec_index(t),

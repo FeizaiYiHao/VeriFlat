@@ -8,8 +8,8 @@ use super::super::syscall_kill_process::syscall_kill_process_spec::*;
 use super::super::syscall_kill_process::syscall_kill_process_walk::{KillScope, kill_scope_progress};
 
 verus! {
-/// The killer's write-held cpu container and the marked container `container_ptr` on `krnl`, and the empty zombie root
-/// `target` of `container_ptr`, which has no parent and owns no PCI function, are so on the projection.
+/// The killer's write-held cpu container and the marked container `container_ptr` below it on `krnl`, and the empty
+/// zombie root `target` of `container_ptr`, which has no parent and owns no PCI function, are so on the projection.
 pub(crate) proof fn kill_container_retire_root_pre_from_k(krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, container_ptr: RwLockContainerPtr, target: RwLockProcessPtr)
     requires
         typed_lock_maps_aligned(krnl, lctx),
@@ -17,6 +17,7 @@ pub(crate) proof fn kill_container_retire_root_pre_from_k(krnl: &KernelK, lctx: 
         typed_lock_map_contains_mode(lctx.container_lock_map(), krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container, TypedLockMode::Write),
         krnl.ctn_mp.dom().contains(container_ptr),
         krnl.ctn_mp.spec_index(container_ptr).being_killed(),
+        krnl.ctn_mp.spec_index(container_ptr).view_ghost().uppertree_seq.view().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
         krnl.prc_mp.dom().contains(target),
         krnl.prc_mp.spec_index(target).view().children.view().len() == 0,
         krnl.prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
@@ -33,6 +34,7 @@ pub(crate) proof fn kill_container_retire_root_pre_from_k(krnl: &KernelK, lctx: 
             &&& u.container_map[owner].lock_state is WriteLocked
             &&& u.container_map.dom().contains(container_ptr)
             &&& u.container_map[container_ptr].killed
+            &&& u.container_map[container_ptr].uppertree_seq.contains(owner)
             &&& process.children.len() == 0
             &&& process.owned_threads.len() == 0
             &&& process.zombie
@@ -58,6 +60,7 @@ pub(crate) proof fn kill_container_retire_root_step_from_u(
         pre.container_map.dom().contains(pre.cpu_array[cpu_id as int].owning_container),
         pre.container_map[pre.cpu_array[cpu_id as int].owning_container].lock_state is WriteLocked,
         pre.container_map[container_ptr].killed,
+        pre.container_map[container_ptr].uppertree_seq.contains(pre.cpu_array[cpu_id as int].owning_container),
         pre.process_map[target].children.len() == 0,
         pre.process_map[target].owned_threads.len() == 0,
         pre.process_map[target].zombie,

@@ -7,8 +7,8 @@ use super::super::syscall_kill_process::syscall_kill_process_spec::kill_killer;
 
 verus! {
 /// The killer on `cpu_id` write-holding its cpu, its cpu's container, its process `process_ptr`, itself `thread_ptr`,
-/// and the marked container `container_ptr` whose free pages it moves satisfies the container kill's step precondition
-/// on `krnl` with that container at its pages.
+/// and the marked container `container_ptr` below its cpu's container whose free pages it moves satisfies the container
+/// kill's step precondition on `krnl` with that container at its pages.
 pub(crate) proof fn kill_container_pages_pre_from_k(
     krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr,
 )
@@ -24,6 +24,7 @@ pub(crate) proof fn kill_container_pages_pre_from_k(
         krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
         krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == kill_container_progress(container_ptr, ContainerKillStage::Pages),
         krnl.ctn_mp.spec_index(container_ptr).being_killed(),
+        krnl.ctn_mp.spec_index(container_ptr).view_ghost().uppertree_seq.view().contains(krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container),
     ensures
         ({
             let u = kernel_k_to_kernel_u(*krnl);

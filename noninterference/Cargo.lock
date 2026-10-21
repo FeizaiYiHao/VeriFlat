@@ -109,6 +109,7 @@ dependencies = [
  "veriflat_syscall_alloc_quota",
  "veriflat_syscall_cpu_hotplug",
  "veriflat_syscall_ipc",
+ "veriflat_syscall_kill_process",
  "veriflat_syscall_mmap_4k",
  "veriflat_syscall_new_container",
  "veriflat_syscall_new_process",
@@ -138,6 +139,16 @@ dependencies = [
 
 [[package]]
 name = "veriflat_syscall_ipc"
+version = "0.1.0"
+dependencies = [
+ "veriflat_alloc_page",
+ "veriflat_kernel_core",
+ "veriflat_map_4k",
+ "vstd",
+]
+
+[[package]]
+name = "veriflat_syscall_kill_process"
 version = "0.1.0"
 dependencies = [
  "veriflat_alloc_page",
