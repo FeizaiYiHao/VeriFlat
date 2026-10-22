@@ -19,8 +19,8 @@ impl KernelK {
             old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
             old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
             old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
-            forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
-            forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(self).pg_arr.lock_id_by_index(held_page).major < IOMMU_TABLE_LOCK_MAJOR,
+            typed_lock_map_majors_lt(old(lctx).cpu_lock_map(), CPU_LOCK_MAJOR_OFF),
+            typed_lock_map_majors_lt(old(lctx).page_lock_map(), IOMMU_TABLE_LOCK_MAJOR),
             forall|held_iommu_table: RwLockPageTableRoot| #![trigger old(lctx).iommu_table_lock_map().dom().contains(held_iommu_table)] old(lctx).iommu_table_lock_map().dom().contains(held_iommu_table) ==> held_iommu_table < iommu_table_ptr,
             typed_lock_map_contains_mode(old(lctx).process_lock_map(), old(self).it_mp.spec_index(iommu_table_ptr).view().proc_ptr, TypedLockMode::Write),
             forall|bus: usize, device: usize, function: usize| #![trigger old(self).irt.view().spec_index_iommu_root(bus, device, function)]

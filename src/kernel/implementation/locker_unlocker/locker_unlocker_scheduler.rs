@@ -18,10 +18,9 @@ impl KernelK {
             old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
             old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
             old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
-            forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
-            forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(self).pg_arr.lock_id_by_index(held_page).major < SCHEDULER_LOCK_MAJOR,
-            forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread)
-                ==> !(old(self).thr_mp.spec_index(held_thread).view().state is SCHEDULED) || old(self).thr_mp.spec_index(held_thread).being_killed(),
+            typed_lock_map_majors_lt(old(lctx).cpu_lock_map(), CPU_LOCK_MAJOR_OFF),
+            typed_lock_map_majors_lt(old(lctx).page_lock_map(), SCHEDULER_LOCK_MAJOR),
+            typed_lock_map_majors_lt(old(lctx).thread_lock_map(), THREAD_SCHEDULED_LOCK_MAJOR),
             forall|held_scheduler: RwLockSchedulerPtr, held_cpu: CpuId| #![trigger old(lctx).scheduler_lock_map().dom().contains((held_scheduler, held_cpu))] old(lctx).scheduler_lock_map().dom().contains((held_scheduler, held_cpu)) ==> held_cpu < cpu_id,
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
