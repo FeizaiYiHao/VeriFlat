@@ -166,6 +166,7 @@ pub(super) proof fn ipc_call_handoff_eof_subsystems(pre: KernelK, post: KernelK,
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(caller_ptr),
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(pre.thr_mp.spec_index(caller_ptr).view().owning_proc),
         pre.thr_mp.spec_index(caller_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        pre.thr_mp.spec_index(caller_ptr).view().syscall_progress.view() is None,
         pre.thr_mp.spec_index(caller_ptr).view().callee is None,
         pre.thr_mp.spec_index(caller_ptr).view().owning_container == pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
         pre.thr_mp.spec_index(caller_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr),
@@ -192,8 +193,8 @@ pub(super) proof fn ipc_call_handoff_eof_subsystems(pre: KernelK, post: KernelK,
     assert(post.subsystems_inv()) by {
         assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); };
         assert(thread_perms_wf(post.thr_mp)) by {
-            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
-            reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
+            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked);
+            reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
         };
         assert(pcid_needflush_wf(post.pcid_needflush)) by { reveal(pcid_needflush_wf); };
         assert(cpu_published_wf(post.cpu_published, post.cpu_arr, post.pcid_needflush)) by { reveal(process_thread_wf); reveal(process_pagetable_match); reveal(pagetable_perms_wf); reveal(PageTableHigher::table_pages_wf); reveal(cpu_published_wf); };
@@ -257,6 +258,7 @@ pub(super) proof fn ipc_call_handoff_eof(pre: KernelK, post: KernelK, cpu_id: Cp
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(caller_ptr),
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(pre.thr_mp.spec_index(caller_ptr).view().owning_proc),
         pre.thr_mp.spec_index(caller_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        pre.thr_mp.spec_index(caller_ptr).view().syscall_progress.view() is None,
         pre.thr_mp.spec_index(caller_ptr).view().callee is None,
         pre.thr_mp.spec_index(caller_ptr).view().owning_container == pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
         pre.thr_mp.spec_index(caller_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr),
@@ -499,8 +501,8 @@ pub(super) proof fn ipc_accept_call_eof(pre: KernelK, post: KernelK, cpu_id: Cpu
     reveal(ipc_accept_call_eof_transition_framing);
     assert(post.subsystems_inv()) by {
         assert(thread_perms_wf(post.thr_mp)) by {
-            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
-            reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
+            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked);
+            reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
         };
         reveal(cpu_array_wf); reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf);
     };
@@ -655,6 +657,7 @@ pub(super) proof fn ipc_reply_handoff_eof_subsystems(pre: KernelK, post: KernelK
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(callee_ptr),
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(pre.thr_mp.spec_index(callee_ptr).view().owning_proc),
         pre.thr_mp.spec_index(callee_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        pre.thr_mp.spec_index(callee_ptr).view().syscall_progress.view() is None,
         pre.thr_mp.spec_index(callee_ptr).view().caller == Some(caller_ptr),
         pre.thr_mp.spec_index(callee_ptr).view().callee is None,
         pre.thr_mp.spec_index(callee_ptr).view().owning_container == pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
@@ -679,8 +682,8 @@ pub(super) proof fn ipc_reply_handoff_eof_subsystems(pre: KernelK, post: KernelK
     assert(post.subsystems_inv()) by {
         assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); };
         assert(thread_perms_wf(post.thr_mp)) by {
-            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
-            reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
+            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked);
+            reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
         };
         assert(pcid_needflush_wf(post.pcid_needflush)) by { reveal(pcid_needflush_wf); };
         assert(cpu_published_wf(post.cpu_published, post.cpu_arr, post.pcid_needflush)) by { reveal(process_thread_wf); reveal(process_pagetable_match); reveal(pagetable_perms_wf); reveal(PageTableHigher::table_pages_wf); reveal(cpu_published_wf); };
@@ -740,6 +743,7 @@ pub(super) proof fn ipc_reply_handoff_eof(pre: KernelK, post: KernelK, cpu_id: C
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(callee_ptr),
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(pre.thr_mp.spec_index(callee_ptr).view().owning_proc),
         pre.thr_mp.spec_index(callee_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        pre.thr_mp.spec_index(callee_ptr).view().syscall_progress.view() is None,
         pre.thr_mp.spec_index(callee_ptr).view().caller == Some(caller_ptr),
         pre.thr_mp.spec_index(callee_ptr).view().callee is None,
         pre.thr_mp.spec_index(callee_ptr).view().owning_container == pre.cpu_arr.spec_index(cpu_id).view().view().view().owning_container,

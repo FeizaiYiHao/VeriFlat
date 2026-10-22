@@ -94,6 +94,8 @@ verus! {
                 && share_4k_objects_k(*old(krnl), cpu_id).quota_thread == quota_thread_ptr && share_4k_objects_k(*old(krnl), cpu_id).target_container == container_ptr
                 && share_4k_objects_k(*old(krnl), cpu_id).transfer_source == transfer_source
                 && typed_lock_map_contains_mode(old(lctx).thread_lock_map(), share_4k_objects_k(*old(krnl), cpu_id).source_thread, TypedLockMode::Write)
+                && (old(krnl).thr_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_origin matches Share4kOrigin::IpcPages { peer }
+                    ==> old(krnl).thr_mp.spec_index(peer).view().state is IPC_TRANSIT && old(krnl).thr_mp.spec_index(peer).view().state->IPC_TRANSIT_partner == progress_thread)
                 && (progress_thread == quota_thread_ptr || old(krnl).thr_mp.spec_index(quota_thread_ptr).view().syscall_progress.view() is None) ==> {
                 &&& final(steps).snapshot_k() == *final(krnl)
                 &&& share_4k_objects_k(*final(krnl), cpu_id) == share_4k_objects_k(*old(krnl), cpu_id)
@@ -260,6 +262,7 @@ verus! {
             final(krnl).pt_mp.spec_index(pagetable_ptr).view().proc_ptr == old(krnl).pt_mp.spec_index(pagetable_ptr).view().proc_ptr,
             final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
     {
+        hide(Set::is_empty);
         proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
 
         let indices = va2index(va);
@@ -287,38 +290,19 @@ verus! {
                 },
             }
         };
-        if !l4_present {
-            let _ = install_one_mmap_4k_directory_page(
-                krnl, MissingPageTableLevel::L4, alloc_ptr_4k, quota_thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, (indices.0, indices.1, indices.2), indices.2, indices.2, true,
-                transfer_source, Ghost(progress_thread), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(quota_thread_lock_perm), Tracked(pagetable_lock_perm),
-                Tracked(transfer_source_lock_perm), Tracked(transfer_target_lock_perm),
-            );
-        }
-        let ghost before_lower = *krnl;
-        let ghost lctx_lower = *lctx;
-        let windows = install_missing_mmap_4k_l3_l2_directories(
-            krnl, alloc_ptr_4k, quota_thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, (indices.0, indices.1, indices.2), lo, hi, l3_present, l2_present, transfer_source, Ghost(progress_thread),
-            Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(quota_thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(transfer_source_lock_perm), Tracked(transfer_target_lock_perm),
+        let windows = install_missing_mmap_4k_directories(
+            krnl, alloc_ptr_4k, quota_thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, (indices.0, indices.1, indices.2), lo, hi, l4_present, l3_present, l2_present,
+            transfer_source, Ghost(progress_thread), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(quota_thread_lock_perm), Tracked(pagetable_lock_perm),
+            Tracked(transfer_source_lock_perm), Tracked(transfer_target_lock_perm),
         );
-        proof {
-            if !l4_present {
-                if transfer_source is None { held_containers_unchanged_transitive(old(krnl).ctn_mp, before_lower.ctn_mp, krnl.ctn_mp, old(lctx), &lctx_lower); }
-                held_processes_unchanged_transitive(old(krnl).prc_mp, before_lower.prc_mp, krnl.prc_mp, old(lctx), &lctx_lower);
-                held_endpoints_unchanged_transitive(old(krnl).ep_mp, before_lower.ep_mp, krnl.ep_mp, old(lctx), &lctx_lower);
-                held_iommu_tables_unchanged_transitive(old(krnl).it_mp, before_lower.it_mp, krnl.it_mp, old(lctx), &lctx_lower);
-                held_cpus_unchanged_transitive(old(krnl).cpu_arr, before_lower.cpu_arr, krnl.cpu_arr, old(lctx), &lctx_lower);
-                held_threads_unchanged_except_transitive(old(krnl).thr_mp, before_lower.thr_mp, krnl.thr_mp, old(lctx), &lctx_lower, set![quota_thread_ptr]);
-                held_pagetables_unchanged_except_transitive(old(krnl).pt_mp, before_lower.pt_mp, krnl.pt_mp, old(lctx), &lctx_lower, set![pagetable_ptr]);
-            }
-        }
         assert(krnl.thr_mp.lock_id_by_key(quota_thread_ptr) == old(krnl).thr_mp.lock_id_by_key(quota_thread_ptr)) by { thread_lock_id_preserved_for_typed_maps_unchanged(old(krnl), krnl, old(lctx), lctx, quota_thread_ptr); };
         windows
     }
 
-    /// Install the missing L3 and L2 directories below a present L4 entry.
-    fn install_missing_mmap_4k_l3_l2_directories(
+    /// Install the missing L4, L3 and L2 directories on the walk to `indices`, in that order.
+    fn install_missing_mmap_4k_directories(
         krnl: &mut KernelK, alloc_ptr_4k: RwLockPageAllocatorPtr, quota_thread_ptr: RwLockThreadPtr, process_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr,
-        cpu_id: CpuId, pagetable_ptr: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index), lo: L2Index, hi: L2Index, l3_present: bool, l2_present: bool,
+        cpu_id: CpuId, pagetable_ptr: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index), lo: L2Index, hi: L2Index, l4_present: bool, l3_present: bool, l2_present: bool,
         transfer_source: Option<RwLockContainerPtr>, Ghost(progress_thread): Ghost<RwLockThreadPtr>, Tracked(lctx): Tracked<&mut LocalContext>,
         Tracked(steps): Tracked<&mut KernelSteps>, Tracked(quota_thread_lock_perm): Tracked<&LockPerm>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
         Tracked(transfer_source_lock_perm): Tracked<Option<&LockPerm>>, Tracked(transfer_target_lock_perm): Tracked<Option<&LockPerm>>,
@@ -387,13 +371,14 @@ verus! {
             old(krnl).thr_mp.spec_index(quota_thread_ptr).view().temp_alloc_cache_2m.view().len() == 0,
             old(krnl).thr_mp.spec_index(quota_thread_ptr).view().temp_alloc_cache_1g.view().len() == 0,
             old(krnl).thr_mp.spec_index(quota_thread_ptr).view().free_quota_pending_clean(),
-            thread_effective_quota_4k(old(krnl).thr_mp.spec_index(quota_thread_ptr)) >= 2,
+            thread_effective_quota_4k(old(krnl).thr_mp.spec_index(quota_thread_ptr)) >= 3,
             pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).wf(),
             pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() <= indices.0 && pei_valid(indices.0),
             pei_valid(indices.1),
             pei_valid(indices.2),
             pei_valid(lo) && pei_valid(hi) && lo <= indices.2 <= hi,
-            pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l4(indices.0) is Some,
+            l4_present == (pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l4(indices.0) is Some),
+            !l4_present ==> !l3_present,
             l3_present == (pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(indices.0, indices.1) is Some),
             !l3_present ==> !l2_present && pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_1g_l3(indices.0, indices.1) is None,
             l3_present ==> l2_present == (pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some),
@@ -409,10 +394,12 @@ verus! {
                 && share_4k_objects_k(*old(krnl), cpu_id).quota_thread == quota_thread_ptr && share_4k_objects_k(*old(krnl), cpu_id).target_container == container_ptr
                 && share_4k_objects_k(*old(krnl), cpu_id).transfer_source == transfer_source
                 && typed_lock_map_contains_mode(old(lctx).thread_lock_map(), share_4k_objects_k(*old(krnl), cpu_id).source_thread, TypedLockMode::Write)
+                && (old(krnl).thr_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_origin matches Share4kOrigin::IpcPages { peer }
+                    ==> old(krnl).thr_mp.spec_index(peer).view().state is IPC_TRANSIT && old(krnl).thr_mp.spec_index(peer).view().state->IPC_TRANSIT_partner == progress_thread)
                 && (progress_thread == quota_thread_ptr || old(krnl).thr_mp.spec_index(quota_thread_ptr).view().syscall_progress.view() is None) ==> {
                 &&& final(steps).snapshot_k() == *final(krnl)
                 &&& share_4k_objects_k(*final(krnl), cpu_id) == share_4k_objects_k(*old(krnl), cpu_id)
-                &&& old(steps).view().len() <= final(steps).view().len() <= old(steps).view().len() + 2
+                &&& old(steps).view().len() <= final(steps).view().len() <= old(steps).view().len() + 3
                 &&& forall|j: int| #![trigger final(steps).view()[j]] 0 <= j < old(steps).view().len() ==> final(steps).view()[j] == old(steps).view()[j]
                 &&& forall|j: int| #![trigger final(steps).view()[j]] old(steps).view().len() <= j < final(steps).view().len() ==> {
                     &&& share_4k_directory_step_pre(final(steps).view()[j].old_u, cpu_id)
@@ -445,7 +432,7 @@ verus! {
             typed_lock_map_contains_mode(final(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
             pagetable_lock_perm.lock_id() == final(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
             old(steps).nonlock_view().len() <= final(steps).nonlock_view().len(),
-            final(steps).nonlock_view().len() <= old(steps).nonlock_view().len() + 2,
+            final(steps).nonlock_view().len() <= old(steps).nonlock_view().len() + 3,
             final(steps).nonlock_view().subrange(0, old(steps).nonlock_view().len() as int) == old(steps).nonlock_view(),
             final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             kernel_cpu_process_thread_nonlock_fields_unchanged(&final(steps).snapshot_k(), final(krnl)),
@@ -542,7 +529,7 @@ verus! {
             final(krnl).thr_mp.spec_index(quota_thread_ptr).view().temp_alloc_cache_1g.view().len() == 0,
             final(krnl).thr_mp.spec_index(quota_thread_ptr).view().free_quota_pending_clean(),
             final(krnl).thr_mp.spec_index(quota_thread_ptr).view().quota_4k <= old(krnl).thr_mp.spec_index(quota_thread_ptr).view().quota_4k,
-            final(krnl).thr_mp.spec_index(quota_thread_ptr).view().quota_4k >= old(krnl).thr_mp.spec_index(quota_thread_ptr).view().quota_4k - 2,
+            final(krnl).thr_mp.spec_index(quota_thread_ptr).view().quota_4k >= old(krnl).thr_mp.spec_index(quota_thread_ptr).view().quota_4k - 3,
             final(krnl).thr_mp.spec_index(quota_thread_ptr).view().owning_proc == old(krnl).thr_mp.spec_index(quota_thread_ptr).view().owning_proc,
             final(krnl).thr_mp.spec_index(quota_thread_ptr).view().proc_pagetable_ptr == old(krnl).thr_mp.spec_index(quota_thread_ptr).view().proc_pagetable_ptr,
             final(krnl).thr_mp.spec_index(quota_thread_ptr).view().state == old(krnl).thr_mp.spec_index(quota_thread_ptr).view().state,
@@ -583,6 +570,15 @@ verus! {
         proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
         let ghost window_va = WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0usize)) };
         let tracked mut windows: Map<WindowVa, LockPerm> = Map::tracked_empty();
+        if !l4_present {
+            let _ = install_one_mmap_4k_directory_page(
+                krnl, MissingPageTableLevel::L4, alloc_ptr_4k, quota_thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, indices, indices.2, indices.2, true, transfer_source,
+                Ghost(progress_thread), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(quota_thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(transfer_source_lock_perm),
+                Tracked(transfer_target_lock_perm),
+            );
+        }
+        let ghost before_l3 = *krnl;
+        let ghost lctx_l3 = *lctx;
         if !l3_present {
             let Tracked(minted) = install_one_mmap_4k_directory_page(
                 krnl, MissingPageTableLevel::L3, alloc_ptr_4k, quota_thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, indices, lo, hi, true, transfer_source,
@@ -613,25 +609,36 @@ verus! {
             held_kernel_objects_unchanged_reflexive(old(krnl), old(lctx));
             if !l3_present {
                 if transfer_source is None {
-                    assert(held_containers_unchanged(before_l2.ctn_mp, krnl.ctn_mp, old(lctx)));
-                    held_containers_unchanged_transitive(old(krnl).ctn_mp, before_l2.ctn_mp, krnl.ctn_mp, old(lctx), old(lctx));
+                    assert(held_containers_unchanged(before_l2.ctn_mp, krnl.ctn_mp, &lctx_l3));
+                    held_containers_unchanged_transitive(before_l3.ctn_mp, before_l2.ctn_mp, krnl.ctn_mp, &lctx_l3, &lctx_l3);
                 }
-                assert(held_processes_unchanged(before_l2.prc_mp, krnl.prc_mp, old(lctx)));
-                held_processes_unchanged_transitive(old(krnl).prc_mp, before_l2.prc_mp, krnl.prc_mp, old(lctx), old(lctx));
-                assert(held_endpoints_unchanged(before_l2.ep_mp, krnl.ep_mp, old(lctx)));
-                held_endpoints_unchanged_transitive(old(krnl).ep_mp, before_l2.ep_mp, krnl.ep_mp, old(lctx), old(lctx));
-                assert(held_schedulers_unchanged(before_l2.sched_mp, krnl.sched_mp, old(lctx)));
-                held_schedulers_unchanged_transitive(old(krnl).sched_mp, before_l2.sched_mp, krnl.sched_mp, old(lctx), old(lctx));
-                assert(held_pcid_allocators_unchanged(before_l2.pcid_allc_mp, krnl.pcid_allc_mp, old(lctx)));
-                held_pcid_allocators_unchanged_transitive(old(krnl).pcid_allc_mp, before_l2.pcid_allc_mp, krnl.pcid_allc_mp, old(lctx), old(lctx));
-                assert(held_iommu_tables_unchanged(before_l2.it_mp, krnl.it_mp, old(lctx)));
-                held_iommu_tables_unchanged_transitive(old(krnl).it_mp, before_l2.it_mp, krnl.it_mp, old(lctx), old(lctx));
-                assert(held_cpus_unchanged(before_l2.cpu_arr, krnl.cpu_arr, old(lctx)));
-                held_cpus_unchanged_transitive(old(krnl).cpu_arr, before_l2.cpu_arr, krnl.cpu_arr, old(lctx), old(lctx));
-                assert(held_threads_unchanged_except(before_l2.thr_mp, krnl.thr_mp, old(lctx), set![quota_thread_ptr]));
-                held_threads_unchanged_except_transitive(old(krnl).thr_mp, before_l2.thr_mp, krnl.thr_mp, old(lctx), old(lctx), set![quota_thread_ptr]);
-                assert(held_pagetables_unchanged_except(before_l2.pt_mp, krnl.pt_mp, old(lctx), set![pagetable_ptr]));
-                held_pagetables_unchanged_except_transitive(old(krnl).pt_mp, before_l2.pt_mp, krnl.pt_mp, old(lctx), old(lctx), set![pagetable_ptr]);
+                assert(held_processes_unchanged(before_l2.prc_mp, krnl.prc_mp, &lctx_l3));
+                held_processes_unchanged_transitive(before_l3.prc_mp, before_l2.prc_mp, krnl.prc_mp, &lctx_l3, &lctx_l3);
+                assert(held_endpoints_unchanged(before_l2.ep_mp, krnl.ep_mp, &lctx_l3));
+                held_endpoints_unchanged_transitive(before_l3.ep_mp, before_l2.ep_mp, krnl.ep_mp, &lctx_l3, &lctx_l3);
+                assert(held_schedulers_unchanged(before_l2.sched_mp, krnl.sched_mp, &lctx_l3));
+                held_schedulers_unchanged_transitive(before_l3.sched_mp, before_l2.sched_mp, krnl.sched_mp, &lctx_l3, &lctx_l3);
+                assert(held_pcid_allocators_unchanged(before_l2.pcid_allc_mp, krnl.pcid_allc_mp, &lctx_l3));
+                held_pcid_allocators_unchanged_transitive(before_l3.pcid_allc_mp, before_l2.pcid_allc_mp, krnl.pcid_allc_mp, &lctx_l3, &lctx_l3);
+                assert(held_iommu_tables_unchanged(before_l2.it_mp, krnl.it_mp, &lctx_l3));
+                held_iommu_tables_unchanged_transitive(before_l3.it_mp, before_l2.it_mp, krnl.it_mp, &lctx_l3, &lctx_l3);
+                assert(held_cpus_unchanged(before_l2.cpu_arr, krnl.cpu_arr, &lctx_l3));
+                held_cpus_unchanged_transitive(before_l3.cpu_arr, before_l2.cpu_arr, krnl.cpu_arr, &lctx_l3, &lctx_l3);
+                assert(held_threads_unchanged_except(before_l2.thr_mp, krnl.thr_mp, &lctx_l3, set![quota_thread_ptr]));
+                held_threads_unchanged_except_transitive(before_l3.thr_mp, before_l2.thr_mp, krnl.thr_mp, &lctx_l3, &lctx_l3, set![quota_thread_ptr]);
+                assert(held_pagetables_unchanged_except(before_l2.pt_mp, krnl.pt_mp, &lctx_l3, set![pagetable_ptr]));
+                held_pagetables_unchanged_except_transitive(before_l3.pt_mp, before_l2.pt_mp, krnl.pt_mp, &lctx_l3, &lctx_l3, set![pagetable_ptr]);
+            }
+            if !l4_present {
+                if transfer_source is None { held_containers_unchanged_transitive(old(krnl).ctn_mp, before_l3.ctn_mp, krnl.ctn_mp, old(lctx), &lctx_l3); }
+                held_processes_unchanged_transitive(old(krnl).prc_mp, before_l3.prc_mp, krnl.prc_mp, old(lctx), &lctx_l3);
+                held_endpoints_unchanged_transitive(old(krnl).ep_mp, before_l3.ep_mp, krnl.ep_mp, old(lctx), &lctx_l3);
+                held_schedulers_unchanged_transitive(old(krnl).sched_mp, before_l3.sched_mp, krnl.sched_mp, old(lctx), &lctx_l3);
+                held_pcid_allocators_unchanged_transitive(old(krnl).pcid_allc_mp, before_l3.pcid_allc_mp, krnl.pcid_allc_mp, old(lctx), &lctx_l3);
+                held_iommu_tables_unchanged_transitive(old(krnl).it_mp, before_l3.it_mp, krnl.it_mp, old(lctx), &lctx_l3);
+                held_cpus_unchanged_transitive(old(krnl).cpu_arr, before_l3.cpu_arr, krnl.cpu_arr, old(lctx), &lctx_l3);
+                held_threads_unchanged_except_transitive(old(krnl).thr_mp, before_l3.thr_mp, krnl.thr_mp, old(lctx), &lctx_l3, set![quota_thread_ptr]);
+                held_pagetables_unchanged_except_transitive(old(krnl).pt_mp, before_l3.pt_mp, krnl.pt_mp, old(lctx), &lctx_l3, set![pagetable_ptr]);
             }
         }
         assert(krnl.thr_mp.lock_id_by_key(quota_thread_ptr) == old(krnl).thr_mp.lock_id_by_key(quota_thread_ptr)) by { thread_lock_id_preserved_for_typed_maps_unchanged(old(krnl), krnl, old(lctx), lctx, quota_thread_ptr); };

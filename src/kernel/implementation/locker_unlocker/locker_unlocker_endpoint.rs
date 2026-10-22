@@ -130,7 +130,7 @@ impl KernelK {
                                 &&& threads.len() == 2
                                 &&& forall|peer_thread_ptr: RwLockThreadPtr|
                                     #![trigger old(lctx).thread_lock_map().dom().contains(peer_thread_ptr)]
-                                    threads.contains(peer_thread_ptr) && peer_thread_ptr != current_thread_ptr ==> old(self).thr_mp.spec_index(peer_thread_ptr).view().state is IPC_ENDPOINT_TRANSIT
+                                    threads.contains(peer_thread_ptr) && peer_thread_ptr != current_thread_ptr ==> old(self).thr_mp.spec_index(peer_thread_ptr).view().state is IPC_TRANSIT
                             }
                         }
                     }

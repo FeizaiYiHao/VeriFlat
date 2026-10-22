@@ -239,6 +239,8 @@ fn share_one_mapping_4k(
             &&& progress->Share4k_target_range.view()[progress->Share4k_shared as int] == target_va
         }),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(progress_thread),
+        old(krnl).thr_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_origin matches Share4kOrigin::IpcPages { peer }
+            ==> old(krnl).thr_mp.spec_index(peer).view().state is IPC_TRANSIT && old(krnl).thr_mp.spec_index(peer).view().state->IPC_TRANSIT_partner == progress_thread,
         share_4k_objects_k(*old(krnl), cpu_id).source_thread == source_thread && share_4k_objects_k(*old(krnl), cpu_id).quota_thread == target_thread,
         share_4k_objects_k(*old(krnl), cpu_id).target == target_process && share_4k_objects_k(*old(krnl), cpu_id).target_container == target_container,
         share_4k_objects_k(*old(krnl), cpu_id).transfer_source is Some ==> old(lctx).container_lock_map().dom().contains(target_container),
@@ -384,7 +386,6 @@ fn share_one_mapping_4k(
 {
     share_one_mapping_4k_copy_leaf(krnl, target_thread, target_process, target_container, source_pagetable, target_pagetable, target_write_held, source_va, target_va, Tracked(&mut *lctx),
         Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm));
-    proof { thread_peer_implies_ipc_partner_at(krnl.thr_mp, progress_thread); }
     krnl.set_thread_syscall_progress(progress_thread, Ghost(share_4k_progress_after_leaf(krnl.thr_mp.spec_index(progress_thread).view().syscall_progress.view())), Tracked(&*lctx),
         Tracked(if progress_thread == source_thread { source_thread_lock_perm } else { target_thread_lock_perm }));
     proof {
@@ -884,6 +885,8 @@ pub fn share_mapping_4k_build_and_share(
         share_4k_objects_k(*old(krnl), cpu_id).target == target_process && share_4k_objects_k(*old(krnl), cpu_id).target_container == target_container,
         share_4k_objects_k(*old(krnl), cpu_id).transfer_source == transfer_source,
         quota_thread != progress_thread ==> old(krnl).thr_mp.spec_index(quota_thread).view().syscall_progress.view() is None,
+        origin matches Share4kOrigin::IpcPages { peer }
+            ==> old(krnl).thr_mp.spec_index(peer).view().state is IPC_TRANSIT && old(krnl).thr_mp.spec_index(peer).view().state->IPC_TRANSIT_partner == progress_thread,
         old(krnl).thr_mp.spec_index(quota_thread).view().free_quota_pending_clean(),
         old(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= spec_v2l4index(target_range.start),
         forall|j: int| #![trigger target_range.view().spec_index(j)] 0 <= j < target_range.len ==> !pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).mapping_4k().dom().contains(target_range.view().spec_index(j)),
@@ -1097,6 +1100,7 @@ pub fn share_mapping_4k_build_and_share(
         pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).user_view(LockStateU::Unlocked).mapping_4k,
         pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).user_view(LockStateU::Unlocked).mapping_4k, source_range, target_range, 0,
     )) by { reveal(share_mapping_4k_target_map_with_shared_prefix); };
+    proof { assert(origin matches Share4kOrigin::IpcPages { peer } ==> peer == source_thread || peer == quota_thread) by { reveal(share_4k_objects_k); }; }
     let mut i: usize = 0;
     while i < source_range.len
         invariant
@@ -1285,6 +1289,8 @@ pub fn share_mapping_4k_build_and_share(
             progress_thread != source_thread ==> krnl.thr_mp.spec_index(source_thread).view() == old(krnl).thr_mp.spec_index(source_thread).view(),
             source_thread != quota_thread ==> krnl.thr_mp.spec_index(source_thread).view() == (Thread { syscall_progress: krnl.thr_mp.spec_index(source_thread).view().syscall_progress, ..old(krnl).thr_mp.spec_index(source_thread).view() }),
             krnl.thr_mp.spec_index(progress_thread).view().syscall_progress.view() == Some(SyscallProgress::Share4k { source_range: *source_range, target_range: *target_range, shared: i, origin }),
+            origin matches Share4kOrigin::IpcPages { peer }
+                ==> (peer == source_thread || peer == quota_thread) && krnl.thr_mp.spec_index(peer).view().state is IPC_TRANSIT && krnl.thr_mp.spec_index(peer).view().state->IPC_TRANSIT_partner == progress_thread,
             krnl.thr_mp.spec_index(progress_thread).view_ghost() == old(krnl).thr_mp.spec_index(progress_thread).view_ghost(),
             krnl.thr_mp.spec_index(quota_thread).view_ghost() == old(krnl).thr_mp.spec_index(quota_thread).view_ghost(),
             krnl.thr_mp.spec_index(source_thread).view_ghost() == old(krnl).thr_mp.spec_index(source_thread).view_ghost(),

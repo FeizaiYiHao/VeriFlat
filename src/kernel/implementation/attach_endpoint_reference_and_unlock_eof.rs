@@ -55,7 +55,7 @@ pub(super) proof fn attach_endpoint_reference_and_unlock_eof(pre: KernelK, post:
     assert(post.subsystems_inv()) by {
         assert(thread_perms_wf(post.thr_mp)) by {
             reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
-            reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
+            reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
         };
         assert(endpoint_perms_wf(post.ep_mp)) by { reveal(endpoint_perms_wf); };
         reveal(KernelK::default_pagetable_wf);

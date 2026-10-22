@@ -74,7 +74,10 @@ pub proof fn new_process_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id:
         new_process_finish_step_pre(old_u, cpu_id),
         new_process_finish_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(new_process_finish_step_pre); reveal(new_process_finish_step); reveal(kernel_u_new_thread_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }
+{
+    reveal(new_process_finish_step_pre); reveal(new_process_finish_step); reveal(kernel_u_new_thread_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf);
+    reveal(kernel_u_ipc_transit_wf);
+}
 
 /// The process creation result of a running cpu of `b` reads only the view of `b`.
 pub proof fn new_process_syscall_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, va: VAddr, range: usize, endpoint_index: Option<EndpointIdx>, with_iommu: bool, b: RwLockContainerPtr)

@@ -456,7 +456,7 @@ verus! {
         &&& forall|t: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(t)] lctx.thread_lock_map().dom().contains(t) ==> {
             let state = k.thr_mp.spec_index(t).view().state;
             &&& t == cpu.current_thread->Some_0 || state is KILLED || k.thr_mp.spec_index(t).being_killed()
-            &&& !(state.is_endpoint_waiting() || state.is_reply_waiting() || state is IPC_ENDPOINT_TRANSIT || state is SCHEDULED)
+            &&& !(state.is_endpoint_waiting() || state.is_reply_waiting() || state is IPC_TRANSIT || state is SCHEDULED)
         }
         &&& lctx.page_lock_map().dom().is_empty()
         &&& lctx.pcid_needflush_lock_map().dom().is_empty()

@@ -54,21 +54,12 @@ pub open spec fn endpoint_iso(u: KernelU, a: RwLockContainerPtr, b: RwLockContai
         }
 }
 
-/// Every IPC rendezvous a thread of `x` has in flight is with a live peer outside `y`, and the channel that
-/// peer waits on is a live endpoint that `y` neither owns nor holds.
+/// Every thread in IPC transit whose live partner is a thread of `x` lies outside `y`.
 pub open spec fn inflight_iso(u: KernelU, x: RwLockContainerPtr, y: RwLockContainerPtr) -> bool {
-    forall|t: RwLockThreadPtr| #![trigger u.thread_map[t].syscall_progress]
-        u.thread_map.dom().contains(t) && in_domain(u, x, u.thread_map[t].owning_container) && progress_peer_of(u.thread_map[t].syscall_progress) is Some ==> {
-            let peer = progress_peer_of(u.thread_map[t].syscall_progress)->Some_0;
-            let channel = u.thread_map[peer].blocking_endpoint_ptr->Some_0;
-            &&& u.thread_map.dom().contains(peer)
-            &&& !in_domain(u, y, u.thread_map[peer].owning_container)
-            &&& u.thread_map[peer].blocking_endpoint_ptr is Some ==> u.endpoint_map.dom().contains(channel)
-            &&& u.thread_map[peer].blocking_endpoint_ptr is Some ==> !in_domain(u, y, u.endpoint_map[channel].owning_container)
-            &&& u.thread_map[peer].blocking_endpoint_ptr is Some ==> forall|h: RwLockThreadPtr, i: EndpointIdx|
-                #![trigger u.endpoint_map[channel].owning_threads.contains((h, i))]
-                u.endpoint_map[channel].owning_threads.contains((h, i)) ==> !in_domain(u, y, u.thread_map[h].owning_container)
-        }
+    forall|d: RwLockThreadPtr| #![trigger u.thread_map[d].state] u.thread_map.dom().contains(d) && u.thread_map[d].state is IPC_TRANSIT ==> {
+        let partner = u.thread_map[d].state->IPC_TRANSIT_partner;
+        u.thread_map.dom().contains(partner) && in_domain(u, x, u.thread_map[partner].owning_container) ==> !in_domain(u, y, u.thread_map[d].owning_container)
+    }
 }
 
 /// Isolation between the container subtrees rooted at `a` and `b`.

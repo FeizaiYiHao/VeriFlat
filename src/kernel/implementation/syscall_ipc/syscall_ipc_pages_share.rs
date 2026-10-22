@@ -42,7 +42,6 @@ fn ipc_pages_fill_target(
         cpu_id == old(lctx).cpu_id(),
         current_thread_ptr != peer_thread_ptr,
         source_thread == current_thread_ptr && target_thread == peer_thread_ptr || source_thread == peer_thread_ptr && target_thread == current_thread_ptr,
-        (source_thread == current_thread_ptr) == (old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is RECEIVING),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
@@ -56,12 +55,11 @@ fn ipc_pages_fill_target(
         current_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k { source_range: *source_range, target_range: *target_range, shared: 0, origin: Share4kOrigin::IpcPages { peer: peer_thread_ptr } }),
         old(krnl).thr_mp.dom().contains(peer_thread_ptr),
-        old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is SENDING || old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is RECEIVING,
+        old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state == (ThreadState::IPC_TRANSIT { partner: current_thread_ptr, wait: if source_thread == current_thread_ptr { IpcWait::Receive } else { IpcWait::Send } }),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), peer_thread_ptr, TypedLockMode::Write),
         peer_thread_lock_perm.state() is WriteLock,
         peer_thread_lock_perm.thread_id() == old(lctx).thread_id(),
         peer_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(peer_thread_ptr).locking_thread()->Write_lock_id,
-        old(krnl).thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
         old(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
         !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
         !old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
@@ -207,7 +205,6 @@ fn ipc_pages_fill_target(
         cpu_id == final(lctx).cpu_id(),
         current_thread_ptr != peer_thread_ptr,
         source_thread == current_thread_ptr && target_thread == peer_thread_ptr || source_thread == peer_thread_ptr && target_thread == current_thread_ptr,
-        (source_thread == current_thread_ptr) == (final(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is RECEIVING),
         typed_lock_map_contains_mode(final(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
         final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
@@ -221,12 +218,11 @@ fn ipc_pages_fill_target(
         current_thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k { source_range: *source_range, target_range: *target_range, shared: 0, origin: Share4kOrigin::IpcPages { peer: peer_thread_ptr } }),
         final(krnl).thr_mp.dom().contains(peer_thread_ptr),
-        final(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is SENDING || final(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is RECEIVING,
+        final(krnl).thr_mp.spec_index(peer_thread_ptr).view().state == (ThreadState::IPC_TRANSIT { partner: current_thread_ptr, wait: if source_thread == current_thread_ptr { IpcWait::Receive } else { IpcWait::Send } }),
         typed_lock_map_contains_mode(final(lctx).thread_lock_map(), peer_thread_ptr, TypedLockMode::Write),
         peer_thread_lock_perm.state() is WriteLock,
         peer_thread_lock_perm.thread_id() == final(lctx).thread_id(),
         peer_thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(peer_thread_ptr).locking_thread()->Write_lock_id,
-        final(krnl).thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
         final(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
         !final(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
         !final(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
@@ -318,10 +314,10 @@ fn ipc_pages_fill_target(
                 &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).spec_resolve_mapping_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some
             },
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().state == old(krnl).thr_mp.spec_index(current_thread_ptr).view().state,
-        final(krnl).thr_mp.spec_index(current_thread_ptr).view().blocking_endpoint_ptr == old(krnl).thr_mp.spec_index(current_thread_ptr).view().blocking_endpoint_ptr,
+        final(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.view() == old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.view(),
         final(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost(),
         final(krnl).thr_mp.spec_index(peer_thread_ptr).view().state == old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state,
-        final(krnl).thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == old(krnl).thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr,
+        final(krnl).thr_mp.spec_index(peer_thread_ptr).view().endpoint_descriptors.view() == old(krnl).thr_mp.spec_index(peer_thread_ptr).view().endpoint_descriptors.view(),
         final(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost(),
         final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
         final(krnl).cpu_published[cpu_id as int].view() == old(krnl).cpu_published[cpu_id as int].view(),
@@ -406,6 +402,7 @@ fn ipc_pages_fill_target(
             held_threads_unchanged_except(old(krnl).thr_mp, krnl.thr_mp, old(lctx), set![target_thread]),
             krnl.thr_mp.dom().contains(current_thread_ptr),
             krnl.thr_mp.dom().contains(peer_thread_ptr),
+            krnl.thr_mp.spec_index(peer_thread_ptr).view().state == (ThreadState::IPC_TRANSIT { partner: current_thread_ptr, wait: if source_thread == current_thread_ptr { IpcWait::Receive } else { IpcWait::Send } }),
             held_pagetables_unchanged_except(old(krnl).pt_mp, krnl.pt_mp, old(lctx), set![target_pagetable]),
             forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((source_pagetable, w))]
                 old(lctx).pagetable_window_lock_map().dom().contains((source_pagetable, w)) ==> {
@@ -429,7 +426,7 @@ fn ipc_pages_fill_target(
             krnl.thr_mp.spec_index(target_thread).view().owning_proc == old(krnl).thr_mp.spec_index(target_thread).view().owning_proc,
             krnl.thr_mp.spec_index(target_thread).view().proc_pagetable_ptr == old(krnl).thr_mp.spec_index(target_thread).view().proc_pagetable_ptr,
             krnl.thr_mp.spec_index(target_thread).view().state == old(krnl).thr_mp.spec_index(target_thread).view().state,
-            krnl.thr_mp.spec_index(target_thread).view().blocking_endpoint_ptr == old(krnl).thr_mp.spec_index(target_thread).view().blocking_endpoint_ptr,
+            krnl.thr_mp.spec_index(target_thread).view().endpoint_descriptors.view() == old(krnl).thr_mp.spec_index(target_thread).view().endpoint_descriptors.view(),
             krnl.thr_mp.spec_index(target_thread).view().upper_container_seq == old(krnl).thr_mp.spec_index(target_thread).view().upper_container_seq,
             krnl.thr_mp.spec_index(target_thread).view().syscall_progress.view() == old(krnl).thr_mp.spec_index(target_thread).view().syscall_progress.view(),
             krnl.thr_mp.spec_index(target_thread).view().temp_alloc_clean(),
@@ -536,7 +533,6 @@ fn ipc_pages_downgrade_target(
         cpu_id == old(lctx).cpu_id(),
         current_thread_ptr != peer_thread_ptr,
         source_thread == current_thread_ptr && target_thread == peer_thread_ptr || source_thread == peer_thread_ptr && target_thread == current_thread_ptr,
-        (source_thread == current_thread_ptr) == (old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is RECEIVING),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
@@ -550,12 +546,11 @@ fn ipc_pages_downgrade_target(
         current_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k { source_range: *source_range, target_range: *target_range, shared: 0, origin: Share4kOrigin::IpcPages { peer: peer_thread_ptr } }),
         old(krnl).thr_mp.dom().contains(peer_thread_ptr),
-        old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is SENDING || old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is RECEIVING,
+        old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state == (ThreadState::IPC_TRANSIT { partner: current_thread_ptr, wait: if source_thread == current_thread_ptr { IpcWait::Receive } else { IpcWait::Send } }),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), peer_thread_ptr, TypedLockMode::Write),
         peer_thread_lock_perm.state() is WriteLock,
         peer_thread_lock_perm.thread_id() == old(lctx).thread_id(),
         peer_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(peer_thread_ptr).locking_thread()->Write_lock_id,
-        old(krnl).thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
         old(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
         !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
         !old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
@@ -700,7 +695,6 @@ fn ipc_pages_downgrade_target(
         cpu_id == final(lctx).cpu_id(),
         current_thread_ptr != peer_thread_ptr,
         source_thread == current_thread_ptr && target_thread == peer_thread_ptr || source_thread == peer_thread_ptr && target_thread == current_thread_ptr,
-        (source_thread == current_thread_ptr) == (final(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is RECEIVING),
         typed_lock_map_contains_mode(final(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
         final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
@@ -714,12 +708,11 @@ fn ipc_pages_downgrade_target(
         current_thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k { source_range: *source_range, target_range: *target_range, shared: 0, origin: Share4kOrigin::IpcPages { peer: peer_thread_ptr } }),
         final(krnl).thr_mp.dom().contains(peer_thread_ptr),
-        final(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is SENDING || final(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is RECEIVING,
+        final(krnl).thr_mp.spec_index(peer_thread_ptr).view().state == (ThreadState::IPC_TRANSIT { partner: current_thread_ptr, wait: if source_thread == current_thread_ptr { IpcWait::Receive } else { IpcWait::Send } }),
         typed_lock_map_contains_mode(final(lctx).thread_lock_map(), peer_thread_ptr, TypedLockMode::Write),
         peer_thread_lock_perm.state() is WriteLock,
         peer_thread_lock_perm.thread_id() == final(lctx).thread_id(),
         peer_thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(peer_thread_ptr).locking_thread()->Write_lock_id,
-        final(krnl).thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
         final(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
         !final(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
         !final(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
@@ -813,10 +806,10 @@ fn ipc_pages_downgrade_target(
                 &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).spec_resolve_mapping_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some
             },
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().state == old(krnl).thr_mp.spec_index(current_thread_ptr).view().state,
-        final(krnl).thr_mp.spec_index(current_thread_ptr).view().blocking_endpoint_ptr == old(krnl).thr_mp.spec_index(current_thread_ptr).view().blocking_endpoint_ptr,
+        final(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.view() == old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.view(),
         final(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost(),
         final(krnl).thr_mp.spec_index(peer_thread_ptr).view().state == old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state,
-        final(krnl).thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == old(krnl).thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr,
+        final(krnl).thr_mp.spec_index(peer_thread_ptr).view().endpoint_descriptors.view() == old(krnl).thr_mp.spec_index(peer_thread_ptr).view().endpoint_descriptors.view(),
         final(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost(),
         final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
         final(krnl).cpu_published[cpu_id as int].view() == old(krnl).cpu_published[cpu_id as int].view(),
@@ -864,7 +857,7 @@ fn ipc_pages_prepare_target(
     target_container: RwLockContainerPtr, target_pagetable: RwLockPageTableRoot, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
     Tracked(current_thread_lock_perm): Tracked<&LockPerm>, Tracked(peer_thread_lock_perm): Tracked<&LockPerm>,
     fill: bool, Tracked(source_pagetable_lock_perm): Tracked<&LockPerm>, Tracked(target_pagetable_lock_perm): Tracked<LockPerm>,
-    Ghost(source_windows): Ghost<Map<WindowVa, LockPerm>>, Tracked(target_windows): Tracked<Map<WindowVa, LockPerm>>,
+    Ghost(source_windows): Ghost<Map<WindowVa, LockPerm>>, Tracked(target_windows): Tracked<Map<WindowVa, LockPerm>>, Ghost(channel_index): Ghost<EndpointIdx>,
 ) -> (ret: (usize, Tracked<LockPerm>, Tracked<Map<WindowVa, LockPerm>>))
     requires
         old(krnl).inv(),
@@ -892,7 +885,6 @@ fn ipc_pages_prepare_target(
         cpu_id == old(lctx).cpu_id(),
         current_thread_ptr != peer_thread_ptr,
         source_thread == current_thread_ptr && target_thread == peer_thread_ptr || source_thread == peer_thread_ptr && target_thread == current_thread_ptr,
-        (source_thread == current_thread_ptr) == (old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is RECEIVING),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
@@ -907,12 +899,13 @@ fn ipc_pages_prepare_target(
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view()
             == Some(SyscallProgress::IpcPages { source_range: *source_range, target_range: *target_range, peer: peer_thread_ptr, tables: if fill { IpcPagesTables::Fill } else { IpcPagesTables::Read }, released: None }),
         old(krnl).thr_mp.dom().contains(peer_thread_ptr),
-        old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is SENDING || old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is RECEIVING,
+        old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state == (ThreadState::IPC_TRANSIT { partner: current_thread_ptr, wait: if source_thread == current_thread_ptr { IpcWait::Receive } else { IpcWait::Send } }),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), peer_thread_ptr, TypedLockMode::Write),
         peer_thread_lock_perm.state() is WriteLock,
         peer_thread_lock_perm.thread_id() == old(lctx).thread_id(),
         peer_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(peer_thread_ptr).locking_thread()->Write_lock_id,
-        old(krnl).thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
+        edp_idx_valid(channel_index),
+        old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.view()[channel_index as int] == Some(endpoint_ptr),
         old(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
         !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
         !old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
@@ -1036,7 +1029,7 @@ fn ipc_pages_prepare_target(
         old(steps).view().len() + 1 <= final(steps).view().len() <= old(steps).view().len() + 3 * target_range.len + 2,
         old(steps).nonlock_view().len() + 1 <= final(steps).nonlock_view().len() <= old(steps).nonlock_view().len() + 3 * target_range.len + 1,
         ipc_pages_check_result(final(steps).view()[old(steps).view().len() as int].old_u, cpu_id) is Success,
-        ipc_pages_check_step_pre(final(steps).view()[old(steps).view().len() as int].old_u, cpu_id),
+        ipc_pages_check_step_pre(final(steps).view()[old(steps).view().len() as int].old_u, cpu_id, channel_index),
         ipc_pages_check_step(final(steps).view()[old(steps).view().len() as int].old_u, final(steps).view()[old(steps).view().len() as int].new_u, cpu_id),
         forall|j: int| #![trigger final(steps).view()[j]] 0 <= j < old(steps).view().len() ==> final(steps).view()[j] == old(steps).view()[j],
         forall|j: int| #![trigger final(steps).view()[j]] old(steps).view().len() < j < final(steps).view().len()
@@ -1061,7 +1054,6 @@ fn ipc_pages_prepare_target(
         cpu_id == final(lctx).cpu_id(),
         current_thread_ptr != peer_thread_ptr,
         source_thread == current_thread_ptr && target_thread == peer_thread_ptr || source_thread == peer_thread_ptr && target_thread == current_thread_ptr,
-        (source_thread == current_thread_ptr) == (final(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is RECEIVING),
         typed_lock_map_contains_mode(final(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
         final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
@@ -1075,12 +1067,12 @@ fn ipc_pages_prepare_target(
         current_thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k { source_range: *source_range, target_range: *target_range, shared: 0, origin: Share4kOrigin::IpcPages { peer: peer_thread_ptr } }),
         final(krnl).thr_mp.dom().contains(peer_thread_ptr),
-        final(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is SENDING || final(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is RECEIVING,
+        final(krnl).thr_mp.spec_index(peer_thread_ptr).view().state == (ThreadState::IPC_TRANSIT { partner: current_thread_ptr, wait: if source_thread == current_thread_ptr { IpcWait::Receive } else { IpcWait::Send } }),
         typed_lock_map_contains_mode(final(lctx).thread_lock_map(), peer_thread_ptr, TypedLockMode::Write),
         peer_thread_lock_perm.state() is WriteLock,
         peer_thread_lock_perm.thread_id() == final(lctx).thread_id(),
         peer_thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(peer_thread_ptr).locking_thread()->Write_lock_id,
-        final(krnl).thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
+        final(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.view()[channel_index as int] == Some(endpoint_ptr),
         final(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
         !final(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
         !final(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
@@ -1174,10 +1166,10 @@ fn ipc_pages_prepare_target(
                 &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).spec_resolve_mapping_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some
             },
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().state == old(krnl).thr_mp.spec_index(current_thread_ptr).view().state,
-        final(krnl).thr_mp.spec_index(current_thread_ptr).view().blocking_endpoint_ptr == old(krnl).thr_mp.spec_index(current_thread_ptr).view().blocking_endpoint_ptr,
+        final(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.view() == old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.view(),
         final(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost(),
         final(krnl).thr_mp.spec_index(peer_thread_ptr).view().state == old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state,
-        final(krnl).thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == old(krnl).thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr,
+        final(krnl).thr_mp.spec_index(peer_thread_ptr).view().endpoint_descriptors.view() == old(krnl).thr_mp.spec_index(peer_thread_ptr).view().endpoint_descriptors.view(),
         final(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost(),
         final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
         final(krnl).cpu_published[cpu_id as int].view() == old(krnl).cpu_published[cpu_id as int].view(),
@@ -1190,9 +1182,8 @@ fn ipc_pages_prepare_target(
     let ghost check_pre_k = *krnl;
     let ghost check_before = steps.view();
     proof {
-        ipc_pages_check_step_pre_from_k(&*krnl, &*lctx, cpu_id, current_thread_ptr, peer_thread_ptr, endpoint_ptr, source_thread, target_thread, source_process, target_process,
+        ipc_pages_check_step_pre_from_k(&*krnl, &*lctx, cpu_id, current_thread_ptr, peer_thread_ptr, endpoint_ptr, channel_index, source_thread, target_thread, source_process, target_process,
             source_pagetable, target_pagetable, tables);
-        thread_peer_implies_ipc_partner_at(krnl.thr_mp, current_thread_ptr);
     }
     krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(Some(SyscallProgress::Share4k { source_range: *source_range, target_range: *target_range, shared: 0, origin: Share4kOrigin::IpcPages { peer: peer_thread_ptr } })), Tracked(&*lctx),
         Tracked(current_thread_lock_perm));
@@ -1290,7 +1281,6 @@ pub(super) fn ipc_pages_share_locked(
         cpu_id == old(lctx).cpu_id(),
         current_thread_ptr != peer_thread_ptr,
         source_thread == current_thread_ptr && target_thread == peer_thread_ptr || source_thread == peer_thread_ptr && target_thread == current_thread_ptr,
-        (source_thread == current_thread_ptr) == (old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is RECEIVING),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
@@ -1305,12 +1295,13 @@ pub(super) fn ipc_pages_share_locked(
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view()
             == Some(SyscallProgress::IpcPages { source_range: *source_range, target_range: *target_range, peer: peer_thread_ptr, tables: if fill { IpcPagesTables::Fill } else { IpcPagesTables::Read }, released: None }),
         old(krnl).thr_mp.dom().contains(peer_thread_ptr),
-        old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is SENDING || old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is RECEIVING,
+        old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state == (ThreadState::IPC_TRANSIT { partner: current_thread_ptr, wait: if source_thread == current_thread_ptr { IpcWait::Receive } else { IpcWait::Send } }),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), peer_thread_ptr, TypedLockMode::Write),
         peer_thread_lock_perm.state() is WriteLock,
         peer_thread_lock_perm.thread_id() == old(lctx).thread_id(),
         peer_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(peer_thread_ptr).locking_thread()->Write_lock_id,
-        old(krnl).thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
+        edp_idx_valid(channel_index),
+        old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.view()[channel_index as int] == Some(endpoint_ptr),
         old(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
         !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
         !old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
@@ -1454,7 +1445,6 @@ pub(super) fn ipc_pages_share_locked(
         cpu_id == final(lctx).cpu_id(),
         current_thread_ptr != peer_thread_ptr,
         source_thread == current_thread_ptr && target_thread == peer_thread_ptr || source_thread == peer_thread_ptr && target_thread == current_thread_ptr,
-        (source_thread == current_thread_ptr) == (final(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is RECEIVING),
         typed_lock_map_contains_mode(final(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
         final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
@@ -1468,12 +1458,12 @@ pub(super) fn ipc_pages_share_locked(
         current_thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k { source_range: *source_range, target_range: *target_range, shared: source_range.len, origin: Share4kOrigin::IpcPages { peer: peer_thread_ptr } }),
         final(krnl).thr_mp.dom().contains(peer_thread_ptr),
-        final(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is SENDING || final(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is RECEIVING,
+        final(krnl).thr_mp.spec_index(peer_thread_ptr).view().state == (ThreadState::IPC_TRANSIT { partner: current_thread_ptr, wait: if source_thread == current_thread_ptr { IpcWait::Receive } else { IpcWait::Send } }),
         typed_lock_map_contains_mode(final(lctx).thread_lock_map(), peer_thread_ptr, TypedLockMode::Write),
         peer_thread_lock_perm.state() is WriteLock,
         peer_thread_lock_perm.thread_id() == final(lctx).thread_id(),
         peer_thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(peer_thread_ptr).locking_thread()->Write_lock_id,
-        final(krnl).thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
+        final(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.view()[channel_index as int] == Some(endpoint_ptr),
         final(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
         !final(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
         !final(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
@@ -1550,10 +1540,10 @@ pub(super) fn ipc_pages_share_locked(
                     pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
             },
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().state == old(krnl).thr_mp.spec_index(current_thread_ptr).view().state,
-        final(krnl).thr_mp.spec_index(current_thread_ptr).view().blocking_endpoint_ptr == old(krnl).thr_mp.spec_index(current_thread_ptr).view().blocking_endpoint_ptr,
+        final(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.view() == old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.view(),
         final(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost(),
         final(krnl).thr_mp.spec_index(peer_thread_ptr).view().state == old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state,
-        final(krnl).thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == old(krnl).thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr,
+        final(krnl).thr_mp.spec_index(peer_thread_ptr).view().endpoint_descriptors.view() == old(krnl).thr_mp.spec_index(peer_thread_ptr).view().endpoint_descriptors.view(),
         final(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost(),
         final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
         final(krnl).cpu_published[cpu_id as int].view() == old(krnl).cpu_published[cpu_id as int].view(),
@@ -1565,7 +1555,7 @@ pub(super) fn ipc_pages_share_locked(
     let (target_allocator, Tracked(read_perm), Tracked(read_windows)) = ipc_pages_prepare_target(
         krnl, source_range, target_range, source_thread, target_thread, cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, peer_thread_ptr, source_process,
         source_container, source_pagetable, target_process, target_container, target_pagetable, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(current_thread_lock_perm),
-        Tracked(peer_thread_lock_perm), fill, Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm), Ghost(source_windows), Tracked(target_windows),
+        Tracked(peer_thread_lock_perm), fill, Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm), Ghost(source_windows), Tracked(target_windows), Ghost(channel_index),
     );
     proof {
         thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); thread_perms_wf_at(krnl.thr_mp, peer_thread_ptr);
@@ -1639,7 +1629,6 @@ pub(super) fn ipc_pages_release_tables_and_record(
         cpu_id == old(lctx).cpu_id(),
         current_thread_ptr != peer_thread_ptr,
         source_thread == current_thread_ptr && target_thread == peer_thread_ptr || source_thread == peer_thread_ptr && target_thread == current_thread_ptr,
-        (source_thread == current_thread_ptr) == (old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is RECEIVING),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
@@ -1654,12 +1643,13 @@ pub(super) fn ipc_pages_release_tables_and_record(
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() == (if result is Success { Some(SyscallProgress::Share4k { source_range: *source_range, target_range: *target_range, shared: source_range.len,
             origin: Share4kOrigin::IpcPages { peer: peer_thread_ptr } }) } else { Some(SyscallProgress::IpcPages { source_range: *source_range, target_range: *target_range, peer: peer_thread_ptr, tables: if fill { IpcPagesTables::Fill } else { IpcPagesTables::Read }, released: None }) }),
         old(krnl).thr_mp.dom().contains(peer_thread_ptr),
-        old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is SENDING || old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is RECEIVING,
+        old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state == (ThreadState::IPC_TRANSIT { partner: current_thread_ptr, wait: if source_thread == current_thread_ptr { IpcWait::Receive } else { IpcWait::Send } }),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), peer_thread_ptr, TypedLockMode::Write),
         peer_thread_lock_perm.state() is WriteLock,
         peer_thread_lock_perm.thread_id() == old(lctx).thread_id(),
         peer_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(peer_thread_ptr).locking_thread()->Write_lock_id,
-        old(krnl).thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
+        edp_idx_valid(channel_index),
+        old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.view()[channel_index as int] == Some(endpoint_ptr),
         old(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
         !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
         !old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
@@ -1780,7 +1770,7 @@ pub(super) fn ipc_pages_release_tables_and_record(
             &&& final(krnl).thr_mp.spec_index(t).being_killed() == old(krnl).thr_mp.spec_index(t).being_killed()
             &&& final(krnl).thr_mp.spec_index(t).view().state == old(krnl).thr_mp.spec_index(t).view().state
             &&& final(krnl).thr_mp.spec_index(t).view().owning_proc == old(krnl).thr_mp.spec_index(t).view().owning_proc
-            &&& final(krnl).thr_mp.spec_index(t).view().blocking_endpoint_ptr == old(krnl).thr_mp.spec_index(t).view().blocking_endpoint_ptr
+            &&& final(krnl).thr_mp.spec_index(t).view().endpoint_descriptors.view() == old(krnl).thr_mp.spec_index(t).view().endpoint_descriptors.view()
             &&& final(krnl).thr_mp.spec_index(t).view().free_quota_pending_clean()
             &&& final(krnl).thr_mp.spec_index(t).view().temp_alloc_clean()
         },
@@ -1799,7 +1789,7 @@ pub(super) fn ipc_pages_release_tables_and_record(
             ipc_pages_unlock_tables_step_pre_from_k(&*krnl, &*lctx, cpu_id, current_thread_ptr, peer_thread_ptr, source_thread, target_thread, source_process, target_process,
                 source_pagetable, target_pagetable, *source_range, *target_range);
         } else {
-            ipc_pages_check_step_pre_from_k(&*krnl, &*lctx, cpu_id, current_thread_ptr, peer_thread_ptr, endpoint_ptr, source_thread, target_thread, source_process,
+            ipc_pages_check_step_pre_from_k(&*krnl, &*lctx, cpu_id, current_thread_ptr, peer_thread_ptr, endpoint_ptr, channel_index, source_thread, target_thread, source_process,
                 target_process, source_pagetable, target_pagetable, tables);
         }
     }
@@ -1813,7 +1803,6 @@ pub(super) fn ipc_pages_release_tables_and_record(
     } else {
         krnl.runlock_pagetable(target_pagetable, Tracked(&mut *lctx), Tracked(target_pagetable_lock_perm));
     }
-    proof { thread_peer_implies_ipc_partner_at(krnl.thr_mp, current_thread_ptr); }
     krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(Some(SyscallProgress::IpcPages { source_range: *source_range, target_range: *target_range, peer: peer_thread_ptr, tables: IpcPagesTables::Unlocked, released: Some(result) })),
         Tracked(&*lctx), Tracked(current_thread_lock_perm));
     proof {

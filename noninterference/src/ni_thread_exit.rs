@@ -237,7 +237,7 @@ pub proof fn thread_exit_drop_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: C
         thread_exit_drop_step_pre(old_u, cpu_id),
         thread_exit_drop_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(thread_exit_drop_step); }
+{ reveal(thread_exit_drop_step); assert(old_u.thread_map.dom().contains(old_u.cpu_array[cpu_id as int].current_thread->Some_0)) by { reveal(thread_exit_drop_step_pre); }; }
 
 /// Releasing the last descriptor of an endpoint held by the exiting thread on a cpu of `a` removes an endpoint that `b`
 /// neither owns nor holds, so it leaves the view of `b` unchanged.
@@ -268,7 +268,10 @@ pub proof fn thread_exit_release_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
         thread_exit_drop_step_pre(old_u, cpu_id),
         thread_exit_release_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(thread_exit_release_step); reveal(kernel_u_endpoint_released); reveal(kernel_u_thread_ownership_wf); reveal(kernel_u_endpoint_wait_wf); }
+{
+    reveal(thread_exit_release_step); reveal(kernel_u_endpoint_released); reveal(kernel_u_thread_ownership_wf); reveal(kernel_u_endpoint_wait_wf);
+    assert(old_u.thread_map.dom().contains(old_u.cpu_array[cpu_id as int].current_thread->Some_0)) by { reveal(thread_exit_drop_step_pre); };
+}
 
 /// Locking the tables of the exiting thread's process on a cpu of `a` detaches only PCI functions that process owns, so
 /// it leaves the view of `b` unchanged.
@@ -357,7 +360,7 @@ pub proof fn thread_exit_flushed_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
         thread_exit_flush_step_pre(old_u, cpu_id),
         thread_exit_flushed_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(thread_exit_flushed_step); }
+{ reveal(thread_exit_flushed_step); assert(old_u.thread_map.dom().contains(old_u.cpu_array[cpu_id as int].current_thread->Some_0)) by { reveal(thread_exit_flush_step_pre); reveal(thread_exit_reclaim_step_pre); }; }
 
 /// An IOMMU reclaim leaf on a cpu of `a` removes one IOMMU mapping of the exiting thread's process, a process of `a`.
 pub proof fn thread_exit_iommu_leaf_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)

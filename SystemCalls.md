@@ -560,12 +560,12 @@ and IPC pages. Both steps take only `cpu_id` and derive their objects through
 | `NewContainer(record)` | `P` | `u.container_map[CC].root_process`, `CC = record.child_container` | `T` | `CC` | `C` |
 | `IpcPages { peer }` | sender's process | receiver's process | receiver | receiver's container | none |
 
-  In IpcPages, the caller sends when `peer.state` is RECEIVING; the sender and
-  receiver are the caller and `peer` accordingly.
+  In IpcPages, the caller sends when `peer.state` is `IPC_TRANSIT` with `wait`
+  `Receive`; the sender and receiver are the caller and `peer` accordingly.
 - Stability: publish records the child (or child container) in the origin, so
   no step relies on `children.last()`. The IPC peer stays locked by the caller.
-  `share_4k_locked`, part of both pres, also requires `W(peer)` for origin
-  IpcPages.
+  `share_4k_locked`, part of both pres, also requires `W(peer)` and `peer` in
+  `IPC_TRANSIT` with partner `T` for origin IpcPages.
 
 **Directory**
 
@@ -862,6 +862,13 @@ Status: conforms (workspace run #27613, monolith run #27612).
   `ipc_payload.endpoint_index` on the peer's side; the target index is the
   other one. The payload endpoint is the sender's descriptor at the source
   index.
+- Transit state: from transit to finish `peer` is `IPC_TRANSIT { partner: T,
+  wait }`, where `wait` is `Send` when `peer` was SENDING and `Receive`
+  otherwise. `thread_ipc_transit_wf` (in `thread_perms_wf`) states for every
+  thread `d` in `IPC_TRANSIT { partner: t, .. }`: `d` is write-held and not
+  marked for kill, `t` is present and RUNNING, and `progress_peer_of(t.prog) ==
+  Some(d)`. The pages rendezvous (§13) uses the same state; the single-step
+  rendezvous paths (§11, §11a) never enter it.
 
 **Transit**
 
@@ -869,19 +876,21 @@ Status: conforms (workspace run #27613, monolith run #27612).
   the peer waits in the opposite direction with an Endpoint payload; the
   source descriptor is present and the target descriptor is empty.
 - Effect: write-locks `cpu`, `T`, `peer`; dequeues `peer` into
-  `IPC_ENDPOINT_TRANSIT` with no blocking endpoint; records `IpcEndpoint`.
+  `IPC_TRANSIT { partner: T, wait }` with no blocking endpoint; records
+  `IpcEndpoint`.
 
 **Finish**
 
-- Pre: `prog is IpcEndpoint`; `W` for `cpu`, `T`, `peer`; the payload
-  endpoint is present and `Unlocked`.
+- Pre: `prog is IpcEndpoint`; `W` for `cpu`, `T`, `peer`; `peer` is
+  `IPC_TRANSIT` with partner `T`; the payload endpoint is present and
+  `Unlocked`.
 - Result (`ipc_endpoint_finish_result`): Success when the payload endpoint's
   container is the receiver's container or in its `uppertree_seq`, otherwise
   EndpointOwnerMismatch. The syscall returns this result.
 - Effect: on Success the receiver's descriptor at the target index becomes the
-  payload endpoint and the endpoint gains that owner. `peer` is scheduled with
-  the result and an Empty payload and joins the wake shard (§11) of its
-  container's scheduler. The
+  payload endpoint and the endpoint gains that owner. `peer` leaves transit: it
+  is scheduled with the result and an Empty payload and joins the wake shard
+  (§11) of its container's scheduler. The
   step unlocks `cpu`, `T`, `peer`, and the payload endpoint and clears
   `prog`.
 
@@ -895,7 +904,8 @@ Status: conforms (workspace run #27816).
 - Arguments: `endpoint_index` (the channel), `va`, `range`, `regs`; the entry
   point fixes the direction. `R = VaRange4K { start: va, len: range }` is the
   caller's payload. `regs` and the K-internal `flushed_default_pcid` serve only
-  the §11 block step. Every later step takes only `cpu_id`.
+  the §11 block step. Lock tables, check, and finish also take
+  `endpoint_index`; the other later steps take only `cpu_id`.
 - U locks: enter write-locks `cpu`, `T`, `peer`, and the channel
   `E(endpoint_index)`. Lock tables write-locks both processes' page tables; a
   failed check or unlock tables releases them; finish releases the rest.
@@ -911,13 +921,16 @@ Status: conforms (workspace run #27816).
   caller's check pre.
   `source_range` is the sender's range, `target_range` the receiver's, and
   `len = source_range.len`.
-- Derivation: `peer` is recorded in `prog`; the channel is
-  `peer.blocking_endpoint_ptr`; the caller sends exactly when `peer.state` is
-  RECEIVING (`ipc_pages_sender`, `ipc_pages_receiver`); the source and target
-  processes are the sender's and receiver's `owning_proc`. These hold until
-  finish because `peer` stays write-locked and heads the write-locked channel.
-- `ipc_pages_held(u, cpu_id)`: `prog is IpcPages`; `cpu`,
-  `cpu.current_process`, `T`, `peer`, and the channel are present and `W`.
+- Derivation: `peer` is recorded in `prog` and is `IPC_TRANSIT { partner: T,
+  wait }` (§12) from enter to finish; the channel is `T`'s descriptor at
+  `endpoint_index`; the caller sends exactly when `wait` is `Receive`
+  (`ipc_pages_sender`, `ipc_pages_receiver`, `share_4k_objects`); the source and
+  target processes are the sender's and receiver's `owning_proc`. These hold
+  until finish because `peer` stays write-locked in transit and `T` stays
+  write-locked.
+- `ipc_pages_held(u, cpu_id, endpoint_index)`: `prog is IpcPages`; `cpu`,
+  `cpu.current_process`, `T`, `peer`, and the channel are present and `W`;
+  `peer` is `IPC_TRANSIT` with partner `T`; `edp_idx_valid(endpoint_index)`.
 - `ipc_pages_tables_in(u, cpu_id, s)`: the source and target processes differ,
   are present with page tables, and both tables have lock mode `s`.
 - Page-table view: `PageTableU` shows only present leaves.
@@ -934,7 +947,9 @@ Status: conforms (workspace run #27816).
   `ipc_rendezvous_result` is Success: `peer` waits in the opposite direction
   with a Pages payload of the same length, and the sender's and receiver's
   processes differ.
-- Effect: write-locks `cpu`, `T`, `peer`, and the channel;
+- Effect: write-locks `cpu`, `T`, `peer`, and the channel; dequeues `peer` from
+  the channel into `IPC_TRANSIT { partner: T, wait }` with no blocking
+  endpoint;
   `prog = IpcPages { source_range, target_range, peer, locked: false, released: None }`, where
   the caller's `R` is the source range when it sends and the target range
   otherwise, and `peer.ipc_payload`'s range is the other.
@@ -968,7 +983,8 @@ Status: conforms (workspace run #27816).
 **Unlock tables** (`ipc_pages_unlock_tables_step_pre`, `ipc_pages_unlock_tables_step`)
 
 - Pre (success only): `share_4k_locked` (which for origin IpcPages also
-  requires `peer` present and `W`), origin IpcPages, `shared == len`;
+  requires `peer` present, `W`, and `IPC_TRANSIT` with partner `T`), origin
+  IpcPages, `shared == len`;
   the source and target processes named by `share_4k_objects` differ, are
   present with page tables, and both tables are `W`.
 - Effect: both tables become Unlocked;
@@ -976,12 +992,13 @@ Status: conforms (workspace run #27816).
 
 **Finish** (`ipc_pages_finish_step_pre`, `ipc_pages_finish_step`)
 
-- Pre: `ipc_pages_held`, `!locked`, `released is Some`, the channel's queue is non-empty
-  with head `peer`, and `peer`'s container is present.
-- Effect: `peer` becomes SCHEDULED with no blocking endpoint, an Empty payload,
-  and the recorded result as `error_code`; it leaves the channel queue and
-  joins the wake shard (§11) of its container's scheduler. The step unlocks `cpu`, `T`, `peer`,
-  and the channel and clears `prog`. The syscall returns the same result.
+- Pre: `ipc_pages_held`, `!locked`, `released is Some`, and `peer`'s container
+  is present.
+- Effect: `peer` leaves transit and becomes SCHEDULED with no blocking
+  endpoint, an Empty payload, and the recorded result as `error_code`; it joins
+  the wake shard (§11) of its container's scheduler. The step unlocks `cpu`,
+  `T`, `peer`, and the channel and clears `prog`. The syscall returns the same
+  result.
 
 Trace (`ipc_pages_syscall_trace`): CpuIdle is the §11 block step; SameProcess
 and TypeMismatch (including unequal lengths) are one §11 rendezvous error step.
@@ -996,6 +1013,18 @@ result. Every step changes a non-lock field (`prog`, or the receiver's
 
 Stutters: argument errors (Error before any step), CpuIdle (cpu not Running or killed), ThreadKilled,
 InvalidEndpoint, and PeerKilled.
+
+Noninterference (§12, §13): `inflight_iso` (`noninterference/src/isolation.rs`)
+is keyed on the peer's state: a thread in `IPC_TRANSIT` whose live partner
+belongs to one domain lies outside the other domain. The user fact
+`kernel_u_ipc_transit_wf` (`noninterference/u_facts/src/ownership.rs`), proved
+from `thread_ipc_transit_wf` by `kernel_wf_implies_u_ownership_wf`, gives every
+transit thread a live RUNNING partner whose progress names it, so the reclaim
+and exit steps need no assumption. The endpoint finish pre and
+`share_4k_locked` (share, downgrade, and unlock-tables steps) state that the
+recorded peer is `IPC_TRANSIT` with partner `T`, and `ipc_pages_held` states
+`edp_idx_valid(endpoint_index)`; the proof assumes nothing beyond the step
+specifications.
 
 ## 14. Syscall entry list
 

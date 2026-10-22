@@ -1,18 +1,17 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::syscall_ipc_endpoint_spec::ipc_finish_endpoint_transit_eof_transition_framing;
+use super::syscall_ipc_endpoint_spec::ipc_finish_transit_eof_transition_framing;
 use super::syscall_ipc_spec::*;
 use super::syscall_ipc_trace::*;
 
 verus! {
 /// Releases the caller, the scheduled transit peer, the peer's scheduler shard, the payload endpoint, and the cpu after the
-/// transition `cleared` → `*old(krnl)` summarized by `ipc_finish_endpoint_transit_eof_transition_framing`, where `cleared` is `transit_k`
-/// with the caller's progress and the peer's partner cleared, and records the finish step.
+/// transition `transit_k` → `*old(krnl)` summarized by `ipc_finish_transit_eof_transition_framing`, and records the finish step.
 pub(super) fn ipc_finish_endpoint_transit_release_and_end_step(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
     process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, payload_endpoint_ptr: RwLockEndpointPtr, peer_thread_ptr: RwLockThreadPtr,
-    peer_scheduler_ptr: RwLockSchedulerPtr, wake_cpu: CpuId, result: RetValueType, Ghost(transit_k): Ghost<KernelK>, Ghost(cleared): Ghost<KernelK>, Ghost(receiver_thread_ptr): Ghost<RwLockThreadPtr>,
+    peer_scheduler_ptr: RwLockSchedulerPtr, wake_cpu: CpuId, result: RetValueType, Ghost(transit_k): Ghost<KernelK>, Ghost(receiver_thread_ptr): Ghost<RwLockThreadPtr>,
     Ghost(target_endpoint_index): Ghost<EndpointIdx>, Ghost(source_endpoint_index): Ghost<EndpointIdx>, Tracked(cpu_lock_perm): Tracked<LockPerm>,
     Tracked(current_thread_lock_perm): Tracked<LockPerm>, Tracked(payload_endpoint_lock_perm): Tracked<LockPerm>, Tracked(peer_thread_lock_perm): Tracked<LockPerm>,
     Tracked(peer_scheduler_lock_perm): Tracked<LockPerm>,
@@ -73,27 +72,15 @@ pub(super) fn ipc_finish_endpoint_transit_release_and_end_step(
         forall|p: RwLockSchedulerPtr| #![trigger transit_k.sched_mp.spec_index(p)]
             transit_k.sched_mp.dom().contains(p) ==> scheduler_shards_of(transit_k.sched_mp.spec_index(p)) == scheduler_shards_of(old(steps).snapshot_k().sched_mp.spec_index(p)),
         old(steps).snapshot_k().thr_mp.dom().contains(peer_thread_ptr),
-        old(steps).snapshot_k().thr_mp.spec_index(peer_thread_ptr).view().state is IPC_ENDPOINT_TRANSIT,
+        old(steps).snapshot_k().thr_mp.spec_index(peer_thread_ptr).view().state is IPC_TRANSIT,
+        old(steps).snapshot_k().thr_mp.spec_index(peer_thread_ptr).view().state->IPC_TRANSIT_partner == current_thread_ptr,
         current_thread_ptr != peer_thread_ptr,
         index_valid(NUM_CPUS, cpu_id),
         index_valid(NUM_CPUS, wake_cpu),
         transit_k.thr_mp.dom().contains(current_thread_ptr),
         transit_k.thr_mp.dom().contains(peer_thread_ptr),
         transit_k.ctn_mp.spec_index(transit_k.thr_mp.spec_index(peer_thread_ptr).view().owning_container).view_rodata().view().scheduler == peer_scheduler_ptr,
-        ipc_finish_endpoint_transit_eof_transition_framing(cleared, *old(krnl), current_thread_ptr, peer_thread_ptr, peer_scheduler_ptr, wake_cpu, result),
-        cleared == (KernelK { thr_mp: cleared.thr_mp, ..transit_k }),
-        cleared.thr_mp.dom() == transit_k.thr_mp.dom(),
-        forall|t: RwLockThreadPtr| #![trigger cleared.thr_mp.spec_index(t)]
-            transit_k.thr_mp.dom().contains(t) && t != current_thread_ptr && t != peer_thread_ptr ==> cleared.thr_mp.spec_index(t) == transit_k.thr_mp.spec_index(t),
-        {
-            let current_before = transit_k.thr_mp.spec_index(current_thread_ptr);
-            let current_after = cleared.thr_mp.spec_index(current_thread_ptr);
-            let peer_before = transit_k.thr_mp.spec_index(peer_thread_ptr);
-            let peer_after = cleared.thr_mp.spec_index(peer_thread_ptr);
-            &&& current_after.view() == (Thread { syscall_progress: current_after.view().syscall_progress, ..current_before.view() })
-            &&& current_after.locking_thread() == current_before.locking_thread() && current_after.being_killed() == current_before.being_killed()
-            &&& peer_after.view() == peer_before.view() && peer_after.locking_thread() == peer_before.locking_thread() && peer_after.being_killed() == peer_before.being_killed()
-        },
+        ipc_finish_transit_eof_transition_framing(transit_k, *old(krnl), current_thread_ptr, peer_thread_ptr, peer_scheduler_ptr, wake_cpu, result),
         old(lctx).kernel_view_locking_state() is Release,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
@@ -109,7 +96,10 @@ pub(super) fn ipc_finish_endpoint_transit_release_and_end_step(
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_clean(),
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is None,
+        old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::IpcEndpoint {
+            peer: peer_thread_ptr, caller_sends: receiver_thread_ptr == peer_thread_ptr,
+            payload_index: if receiver_thread_ptr == peer_thread_ptr { source_endpoint_index } else { target_endpoint_index },
+        }),
         current_thread_lock_perm.state() is WriteLock,
         current_thread_lock_perm.thread_id() == old(lctx).thread_id(),
         current_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
@@ -177,12 +167,13 @@ pub(super) fn ipc_finish_endpoint_transit_release_and_end_step(
 {
     hide(Set::is_empty);
     krnl.wunlock_thread(peer_thread_ptr, Tracked(&mut *lctx), Tracked(peer_thread_lock_perm));
+    krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(None), Tracked(&*lctx), Tracked(&current_thread_lock_perm));
     krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
     krnl.wunlock_scheduler_shard(peer_scheduler_ptr, wake_cpu, Tracked(&mut *lctx), Tracked(peer_scheduler_lock_perm));
     krnl.wunlock_endpoint(payload_endpoint_ptr, Tracked(&mut *lctx), Tracked(payload_endpoint_lock_perm));
     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
-        reveal(ipc_finish_endpoint_transit_eof_transition_framing);
+        reveal(ipc_finish_transit_eof_transition_framing);
         assert(kernel_thread_state_changed(&steps.snapshot_k(), &*krnl, peer_thread_ptr)) by { reveal(kernel_thread_state_changed); };
         let pre_k = steps.snapshot_k();
         let descriptor = if result is Success { Some((receiver_thread_ptr, target_endpoint_index)) } else { None };

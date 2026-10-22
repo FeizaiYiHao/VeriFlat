@@ -292,7 +292,7 @@ pub(super) fn thread_exit_finish_destroy_and_record(
     proof {
         steps.end_kernel_step_thread_exit(&*krnl, &*lctx, cpu_id, thread_ptr, flushed);
         assert(thread_exit_syscall_trace(steps.view().subrange(start, steps.view().len() as int), pre, kernel_k_to_kernel_u(*krnl), cpu_id, true)) by {
-            thread_ipc_partner_only_when_wlocked_at(finish_k.thr_mp, thread_ptr); thread_exit_finish_step_pre_from_k(&finish_k, &finish_lctx, cpu_id, container_ptr, process_ptr, thread_ptr);
+            thread_exit_finish_step_pre_from_k(&finish_k, &finish_lctx, cpu_id, container_ptr, process_ptr, thread_ptr);
             kernel_thread_exit_fields_and_unlocks_implies_u_step(&finish_k, &*krnl, cpu_id, container_ptr, process_ptr, thread_ptr, flushed);
             thread_exit_finish_step_from_u(kernel_k_to_kernel_u(finish_k), kernel_k_to_kernel_u(*krnl), cpu_id, container_ptr, process_ptr, thread_ptr, flushed);
             thread_exit_trace_finish_step(&*steps, finish_before, start, pre, kernel_k_to_kernel_u(finish_k), kernel_k_to_kernel_u(*krnl), cpu_id);

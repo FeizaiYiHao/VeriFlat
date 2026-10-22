@@ -73,6 +73,7 @@ pub(super) fn cpu_offline_commit_unlock_and_record(
             &&& !thread.being_killed()
             &&& thread.view().state == (ThreadState::RUNNING { cpu_id })
             &&& thread.view().owning_proc == current_process.unwrap()
+            &&& thread.view().syscall_progress.view() is None
         },
         before_k == (KernelK { pcid_needflush: before_k.pcid_needflush, ..entry_k }),
         before_k.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID).view() == entry_k.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID).view(),

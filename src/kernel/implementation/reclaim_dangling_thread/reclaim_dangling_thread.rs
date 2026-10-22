@@ -46,7 +46,6 @@ pub fn reclaim_dangling_thread(
         final(steps).view() == old(steps).view(),
         final(steps).nonlock_view() == old(steps).nonlock_view(),
         kernel_dangling_thread_reclaimed_fields(&final(steps).snapshot_k(), final(krnl), dangling_ptr),
-        thread_perms_wf(final(steps).snapshot_k().thr_mp),
         final(krnl).cpu_arr == final(steps).snapshot_k().cpu_arr,
         final(krnl).prc_mp == final(steps).snapshot_k().prc_mp,
         final(krnl).thr_mp.dom() == final(steps).snapshot_k().thr_mp.dom().remove(dangling_ptr),

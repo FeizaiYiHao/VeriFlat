@@ -71,7 +71,7 @@ pub proof fn kill_process_mark_child_step_iso(old_u: KernelU, new_u: KernelU, cp
         kill_process_step_pre(old_u, cpu_id),
         kill_process_mark_child_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_process_mark_child_step); }
+{ reveal(kill_process_mark_child_step); assert(old_u.thread_map.dom().contains(kill_killer(old_u, cpu_id))) by { reveal(kill_process_step_pre); }; }
 
 /// Turning the first thread of the target of a process kill on a cpu of `a`, which lies in `a`, into a dangling thread
 /// changes only the target and that thread, which shares its container, so it leaves the view of `b` unchanged.
@@ -141,7 +141,7 @@ pub proof fn kill_process_mark_thread_step_iso(old_u: KernelU, new_u: KernelU, c
         kill_process_step_pre(old_u, cpu_id),
         kill_process_mark_thread_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_process_mark_thread_step); }
+{ reveal(kill_process_mark_thread_step); assert(old_u.thread_map.dom().contains(kill_killer(old_u, cpu_id))) by { reveal(kill_process_step_pre); }; }
 
 /// Dequeuing the marked victim of a process kill on a cpu of `a` from a scheduler shard changes only the victim, a thread
 /// of the target in `a`, and its container, so it leaves the view of `b` unchanged.
@@ -733,7 +733,7 @@ pub proof fn kill_process_flushed_step_iso(old_u: KernelU, new_u: KernelU, cpu_i
         kill_process_flush_step_pre(old_u, cpu_id),
         kill_process_flushed_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_process_flushed_step); }
+{ reveal(kill_process_flushed_step); assert(old_u.thread_map.dom().contains(kill_killer(old_u, cpu_id))) by { reveal(kill_process_step_pre); }; }
 
 /// A process kill IOMMU leaf step on a cpu of `a` removes one IOMMU mapping of the target, which lies in `a`, so it
 /// leaves the view of `b` unchanged.
@@ -905,7 +905,7 @@ pub proof fn kill_process_zombify_step_iso(old_u: KernelU, new_u: KernelU, cpu_i
         kill_process_step_pre(old_u, cpu_id),
         kill_process_zombify_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_process_zombify_step); }
+{ reveal(kill_process_zombify_step); assert(old_u.thread_map.dom().contains(kill_killer(old_u, cpu_id))) by { reveal(kill_process_step_pre); }; }
 
 /// Moving an already zombie target of a process kill on a cpu of `a` to retiring changes only the killer, a thread of
 /// `a`.
@@ -928,7 +928,7 @@ pub proof fn kill_process_zombie_retire_step_iso(old_u: KernelU, new_u: KernelU,
         kill_process_step_pre(old_u, cpu_id),
         kill_process_zombie_retire_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_process_zombie_retire_step); }
+{ reveal(kill_process_zombie_retire_step); assert(old_u.thread_map.dom().contains(kill_killer(old_u, cpu_id))) by { reveal(kill_process_step_pre); }; }
 
 /// Retiring the empty zombie target of a process kill on a cpu of `a`, which lies in `a`, removes it from its ancestors,
 /// which share its container, and from its container, so it leaves the view of `b` unchanged.
@@ -962,7 +962,7 @@ pub proof fn kill_process_retire_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
         kill_process_step_pre(old_u, cpu_id),
         kill_process_retire_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_process_retire_step); }
+{ reveal(kill_process_retire_step); assert(old_u.thread_map.dom().contains(kill_killer(old_u, cpu_id))) by { reveal(kill_process_step_pre); }; }
 
 /// Finishing a process kill on a cpu of `a` unlocks the cpu and its running process and thread, all of `a`, so it leaves
 /// the view of `b` unchanged.

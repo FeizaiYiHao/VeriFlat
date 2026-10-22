@@ -18,6 +18,7 @@ pub(super) fn ipc_block_thread_on_endpoint(
         thread_lock_perm.view().thread_id() == lctx.thread_id(),
         thread_lock_perm.view().lock_id() == old(thread_map).spec_index(thread_ptr).locking_thread()->Write_lock_id,
         old(thread_map).spec_index(thread_ptr).view().state is RUNNING,
+        old(thread_map).spec_index(thread_ptr).view().syscall_progress.view() is None,
         waiting_state.is_endpoint_waiting(),
         payload.wf(),
         waiting_state is RECEIVING_CALL ==> old(thread_map).spec_index(thread_ptr).view().caller is None,
@@ -133,7 +134,6 @@ pub(super) fn ipc_schedule_endpoint_waiter(
         thread_lock_perm.view().thread_id() == lctx.thread_id(),
         thread_lock_perm.view().lock_id() == old(thread_map).spec_index(thread_ptr).locking_thread()->Write_lock_id,
         old(thread_map).spec_index(thread_ptr).view().state.is_endpoint_waiting(),
-        old(thread_map).spec_index(thread_ptr).view_ghost().ipc_partner is None,
         endpoint_node_perm.view().is_init(),
         endpoint_node_perm.view().addr() == old(thread_map).spec_index(thread_ptr).view().endpoint_linkedlist_node.addr(),
         endpoint_node_perm.view().value().view() == thread_ptr,
@@ -180,7 +180,11 @@ pub(super) fn ipc_schedule_endpoint_waiter(
     ret
 }
 
-pub(super) fn ipc_move_endpoint_waiter_to_transit(thread_map: &mut ThreadLockedMap, Tracked(lctx): Tracked<&LocalContext>, thread_ptr: RwLockThreadPtr, current_thread_ptr: RwLockThreadPtr, endpoint_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>, thread_lock_perm: Tracked<&LockPerm>)
+/// Moves the dequeued waiter `thread_ptr` into transit with the running thread `current_thread_ptr`, whose progress already names it.
+pub(super) fn ipc_move_endpoint_waiter_to_transit(
+    thread_map: &mut ThreadLockedMap, Tracked(lctx): Tracked<&LocalContext>, thread_ptr: RwLockThreadPtr, current_thread_ptr: RwLockThreadPtr,
+    endpoint_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>, thread_lock_perm: Tracked<&LockPerm>,
+)
     requires
         thread_perms_wf(*old(thread_map)),
         old(thread_map).typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()),
@@ -192,7 +196,9 @@ pub(super) fn ipc_move_endpoint_waiter_to_transit(thread_map: &mut ThreadLockedM
         thread_lock_perm.view().thread_id() == lctx.thread_id(),
         thread_lock_perm.view().lock_id() == old(thread_map).spec_index(thread_ptr).locking_thread()->Write_lock_id,
         old(thread_map).spec_index(thread_ptr).view().state is SENDING || old(thread_map).spec_index(thread_ptr).view().state is RECEIVING,
-        old(thread_map).spec_index(thread_ptr).view().ipc_payload is Endpoint,
+        !old(thread_map).spec_index(thread_ptr).being_killed(),
+        old(thread_map).spec_index(current_thread_ptr).view().state is RUNNING,
+        progress_peer_of(old(thread_map).spec_index(current_thread_ptr).view().syscall_progress.view()) == Some(thread_ptr),
         endpoint_node_perm.view().is_init(),
         endpoint_node_perm.view().addr() == old(thread_map).spec_index(thread_ptr).view().endpoint_linkedlist_node.addr(),
         endpoint_node_perm.view().value().view() == thread_ptr,
@@ -212,7 +218,8 @@ pub(super) fn ipc_move_endpoint_waiter_to_transit(thread_map: &mut ThreadLockedM
         final(thread_map).spec_index(thread_ptr).view().caller == old(thread_map).spec_index(thread_ptr).view().caller,
         final(thread_map).spec_index(thread_ptr).view().syscall_progress == old(thread_map).spec_index(thread_ptr).view().syscall_progress,
         final(thread_map).spec_index(thread_ptr).view().callee == old(thread_map).spec_index(thread_ptr).view().callee,
-        final(thread_map).spec_index(thread_ptr).view().state is IPC_ENDPOINT_TRANSIT,
+        final(thread_map).spec_index(thread_ptr).view().state
+            == (ThreadState::IPC_TRANSIT { partner: current_thread_ptr, wait: if old(thread_map).spec_index(thread_ptr).view().state is SENDING { IpcWait::Send } else { IpcWait::Receive } }),
         final(thread_map).spec_index(thread_ptr).view().blocking_endpoint_ptr is None,
         final(thread_map).spec_index(thread_ptr).view().blocking_endpoint_index is None,
         final(thread_map).spec_index(thread_ptr).view().endpoint_linkedlist_node.is_init(),
@@ -222,12 +229,13 @@ pub(super) fn ipc_move_endpoint_waiter_to_transit(thread_map: &mut ThreadLockedM
     proof { thread_perms_wf_map(*old(thread_map)); thread_perms_wf_at(*old(thread_map), thread_ptr); }
     {
         let thread_mut = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
-        thread_mut.endpoint_waiter_to_endpoint_transit(thread_ptr, endpoint_node_perm);
+        thread_mut.endpoint_waiter_to_ipc_transit(thread_ptr, current_thread_ptr, endpoint_node_perm);
     }
-    proof { ipc_move_endpoint_waiter_to_transit_eof(*old(thread_map), *thread_map, thread_ptr); }
+    proof { ipc_move_endpoint_waiter_to_transit_eof(*old(thread_map), *thread_map, thread_ptr, current_thread_ptr); }
 }
 
-pub(super) fn ipc_schedule_endpoint_transit(
+/// Schedules the transit peer `thread_ptr` on `wake_cpu` with the rendezvous result.
+pub(super) fn ipc_schedule_transit_peer(
     thread_map: &mut ThreadLockedMap, Tracked(lctx): Tracked<&LocalContext>, thread_ptr: RwLockThreadPtr, wake_cpu: CpuId,
     current_thread_ptr: RwLockThreadPtr, result: RetValueType, thread_lock_perm: Tracked<&LockPerm>,
 ) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
@@ -242,8 +250,7 @@ pub(super) fn ipc_schedule_endpoint_transit(
         thread_lock_perm.view().state() is WriteLock,
         thread_lock_perm.view().thread_id() == lctx.thread_id(),
         thread_lock_perm.view().lock_id() == old(thread_map).spec_index(thread_ptr).locking_thread()->Write_lock_id,
-        old(thread_map).spec_index(thread_ptr).view().state is IPC_ENDPOINT_TRANSIT,
-        old(thread_map).spec_index(thread_ptr).view_ghost().ipc_partner is None,
+        old(thread_map).spec_index(thread_ptr).view().state is IPC_TRANSIT,
     ensures
         final(thread_map).spec_index(thread_ptr).view().trap_frame == old(thread_map).spec_index(thread_ptr).view().trap_frame,
         thread_perms_wf(*final(thread_map)),
@@ -274,9 +281,9 @@ pub(super) fn ipc_schedule_endpoint_transit(
     proof { thread_perms_wf_map(*old(thread_map)); thread_perms_wf_at(*old(thread_map), thread_ptr); }
     let ret = {
         let thread_mut = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), thread_lock_perm);
-        thread_mut.endpoint_transit_to_scheduled(thread_ptr, wake_cpu, result)
+        thread_mut.ipc_transit_to_scheduled(thread_ptr, wake_cpu, result)
     };
-    proof { ipc_schedule_endpoint_transit_eof(*old(thread_map), *thread_map, thread_ptr); }
+    proof { ipc_schedule_transit_peer_eof(*old(thread_map), *thread_map, thread_ptr); }
     ret
 }
 

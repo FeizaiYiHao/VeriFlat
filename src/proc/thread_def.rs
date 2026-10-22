@@ -179,9 +179,6 @@ pub ghost struct ThreadGhost {
     pub chain_end: Option<RwLockThreadPtr>,
     /// Set once by the exit of its process's last thread, after the process's tables were released; never cleared.
     pub exited: bool,
-    /// The thread whose IPC rendezvous names this thread as its peer: set while that rendezvous is in flight, cleared by
-    /// its finish.
-    pub ipc_partner: Option<RwLockThreadPtr>,
 }
 
 pub type ThreadRwLock = RwLock<Thread, (), ThreadGhost, THREAD_HAS_KILL_STATE>;
@@ -571,20 +568,18 @@ impl Thread {
         (node_addr, node_perm)
     }
 
-    /// Remove a matched endpoint sender/receiver from the channel while its
-    /// endpoint descriptor is kept stable by the thread write lock.
-    pub fn endpoint_waiter_to_endpoint_transit(&mut self, thread_ptr: RwLockThreadPtr, endpoint_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>)
+    /// Remove a matched sender/receiver from its endpoint into transit with the rendezvous thread `partner`, recording whether it was sending.
+    pub fn endpoint_waiter_to_ipc_transit(&mut self, thread_ptr: RwLockThreadPtr, partner: RwLockThreadPtr, endpoint_node_perm: Tracked<PointsTo<Node<RwLockThreadPtr>>>)
         requires
             old(self).inv(),
             old(self).state is SENDING || old(self).state is RECEIVING,
-            old(self).ipc_payload is Endpoint,
             endpoint_node_perm.view().is_init(),
             endpoint_node_perm.view().addr() == old(self).endpoint_linkedlist_node.addr(),
             endpoint_node_perm.view().value().view() == thread_ptr,
         ensures
             final(self).inv(),
             final(self).non_ipc_fields_unchanged(old(self)),
-            final(self).state is IPC_ENDPOINT_TRANSIT,
+            final(self).state == (ThreadState::IPC_TRANSIT { partner, wait: if old(self).state is SENDING { IpcWait::Send } else { IpcWait::Receive } }),
             final(self).blocking_endpoint_ptr is None,
             final(self).blocking_endpoint_index is None,
             final(self).endpoint_linkedlist_node.is_init(),
@@ -596,18 +591,18 @@ impl Thread {
             final(self).syscall_progress == old(self).syscall_progress,
             final(self).callee == old(self).callee,
     {
+        let wait = match self.state { ThreadState::SENDING => IpcWait::Send, _ => IpcWait::Receive };
         self.endpoint_linkedlist_node.put(endpoint_node_perm);
         self.blocking_endpoint_ptr = None;
         self.blocking_endpoint_index = None;
-        self.state = ThreadState::IPC_ENDPOINT_TRANSIT;
+        self.state = ThreadState::IPC_TRANSIT { partner, wait };
     }
 
-    /// Prepare an endpoint-transit peer for its scheduler with the rendezvous
-    /// result that the current thread also receives.
-    pub fn endpoint_transit_to_scheduled(&mut self, thread_ptr: RwLockThreadPtr, cpu_id: CpuId, result: RetValueType) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
+    /// Prepare a peer in IPC transit for its scheduler with the rendezvous result that the current thread also receives.
+    pub fn ipc_transit_to_scheduled(&mut self, thread_ptr: RwLockThreadPtr, cpu_id: CpuId, result: RetValueType) -> (ret: (usize, Tracked<PointsTo<Node<RwLockThreadPtr>>>))
         requires
             old(self).inv(),
-            old(self).state is IPC_ENDPOINT_TRANSIT,
+            old(self).state is IPC_TRANSIT,
             index_valid(NUM_CPUS, cpu_id),
         ensures
             final(self).inv(),
@@ -944,8 +939,7 @@ impl LockInvTrait for Thread {
         &&& self.state is SCHEDULED ==> self.trap_frame.is_some()
         &&& self.state is SCHEDULED ==> index_valid(NUM_CPUS, self.state->SCHEDULED_cpu_id)
         &&& index_valid(NUM_CPUS, self.last_cpu)
-        &&& (self.state.is_endpoint_waiting() || self.state is WAITING_REPLY || self.state is IPC_ENDPOINT_TRANSIT) ==> self.trap_frame.is_some()
-        &&& self.state is IPC_ENDPOINT_TRANSIT ==> self.ipc_payload is Endpoint
+        &&& (self.state.is_endpoint_waiting() || self.state is WAITING_REPLY || self.state is IPC_TRANSIT) ==> self.trap_frame.is_some()
         &&& self.state.is_endpoint_waiting() == self.blocking_endpoint_ptr is Some
         &&& self.state.is_endpoint_waiting() == self.blocking_endpoint_index is Some
         &&& self.state.is_endpoint_waiting() ==> edp_idx_valid(self.blocking_endpoint_index.unwrap())
@@ -1030,17 +1024,17 @@ impl LockMajorTrait for Thread {
     open spec fn lock_major_1_predicate(&self) -> bool { self.state is RUNNING }
     open spec fn lock_major_2_predicate(&self) -> bool { self.state.is_endpoint_waiting() || self.state.is_reply_waiting() }
     open spec fn lock_major_3_predicate(&self) -> bool { self.state is SCHEDULED }
-    open spec fn lock_major_default_predicate(&self) -> bool { self.state is IPC_ENDPOINT_TRANSIT || self.state is KILLED }
+    open spec fn lock_major_default_predicate(&self) -> bool { self.state is IPC_TRANSIT || self.state is KILLED }
 }
 
 impl LockOwnerIdTrait for Thread {
     open spec fn container_depth(&self) -> LockOwnerId {
-        if self.state.is_endpoint_waiting() || self.state.is_reply_waiting() || self.state is IPC_ENDPOINT_TRANSIT { LockOwnerId::NotApp }
+        if self.state.is_endpoint_waiting() || self.state.is_reply_waiting() || self.state is IPC_TRANSIT { LockOwnerId::NotApp }
         else { LockOwnerId::Some(self.container_depth) }
     }
 
     open spec fn process_depth(&self) -> LockOwnerId {
-        if self.state.is_endpoint_waiting() || self.state.is_reply_waiting() || self.state is IPC_ENDPOINT_TRANSIT || self.state is SCHEDULED || self.state is KILLED { LockOwnerId::NotApp }
+        if self.state.is_endpoint_waiting() || self.state.is_reply_waiting() || self.state is IPC_TRANSIT || self.state is SCHEDULED || self.state is KILLED { LockOwnerId::NotApp }
         else { LockOwnerId::Some(self.process_depth) }
     }
 }

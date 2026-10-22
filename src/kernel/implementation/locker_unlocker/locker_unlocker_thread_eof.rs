@@ -16,11 +16,10 @@ pub(super) proof fn wlock_thread_eof(pre: KernelK, post: KernelK, thread_ptr: Rw
         post.inv(),
         ret is Some ==> post.thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean() && post.thr_mp.spec_index(thread_ptr).view().temp_alloc_clean() && post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None,
         ret is Some ==> !post.thr_mp.spec_index(thread_ptr).view_ghost().exited,
-        ret is Some ==> post.thr_mp.spec_index(thread_ptr).view_ghost().ipc_partner is None,
 {
     assert(thread_perms_wf(post.thr_mp)) by {
         reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
-        reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
+        reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
     };
     assert(thread_invariant_fields_unchanged(pre.thr_mp, post.thr_mp)) by { thread_lock_op_preserves_invariant_fields(pre.thr_mp, post.thr_mp, thread_ptr); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
@@ -34,9 +33,8 @@ pub(super) proof fn wlock_thread_eof(pre: KernelK, post: KernelK, thread_ptr: Rw
     assert(post.process_management_inv()) by { process_management_inv_preserved_for_thread_invariant_fields(pre, post); };
     if ret is Some {
         assert(post.thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean() && post.thr_mp.spec_index(thread_ptr).view().temp_alloc_clean() && post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None
-            && !post.thr_mp.spec_index(thread_ptr).view_ghost().exited && post.thr_mp.spec_index(thread_ptr).view_ghost().ipc_partner is None) by {
-            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
-            reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
+            && !post.thr_mp.spec_index(thread_ptr).view_ghost().exited) by {
+            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
         };
     }
 }
@@ -54,7 +52,7 @@ pub(super) proof fn mark_thread_kill_eof(pre: KernelK, post: KernelK, pre_lctx: 
         pre.thr_mp.dom().contains(thread_ptr),
         !pre.thr_mp.spec_index(thread_ptr).being_killed(),
         !pre.thr_mp.spec_index(thread_ptr).view().state.is_reply_waiting(),
-        pre.thr_mp.spec_index(thread_ptr).view_ghost().ipc_partner is None,
+        !(pre.thr_mp.spec_index(thread_ptr).view().state is IPC_TRANSIT),
         typed_lock_maps_aligned(&pre, &pre_lctx),
         post == (KernelK { thr_mp: post.thr_mp, ..pre }),
         post.thr_mp.perms_wf(),
@@ -70,7 +68,7 @@ pub(super) proof fn mark_thread_kill_eof(pre: KernelK, post: KernelK, pre_lctx: 
 {
     assert(thread_perms_wf(post.thr_mp)) by {
         reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
-        reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
+        reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
     };
     assert(thread_invariant_fields_unchanged(pre.thr_mp, post.thr_mp)) by { thread_lock_op_preserves_invariant_fields(pre.thr_mp, post.thr_mp, thread_ptr); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
@@ -99,13 +97,12 @@ pub(super) proof fn wunlock_thread_eof(pre: KernelK, post: KernelK, thread_ptr: 
             pre.thr_mp.dom().contains(t) && pre.thr_mp.spec_index(t).locked_by_thread(holder) ==> !(pre.thr_mp.spec_index(t).view().state is KILLED) || pre.thr_mp.spec_index(t).being_killed()
                 || pre.thr_mp.spec_index(thread_ptr).view().call_depth.view() < pre.thr_mp.spec_index(t).view().call_depth.view(),
         pre.thr_mp.spec_index(thread_ptr).being_killed() == false,
-        !(pre.thr_mp.spec_index(thread_ptr).view().state is IPC_ENDPOINT_TRANSIT),
+        !(pre.thr_mp.spec_index(thread_ptr).view().state is IPC_TRANSIT),
         !(pre.thr_mp.spec_index(thread_ptr).view().state is KILLED),
         pre.thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
         pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
         pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None,
         !pre.thr_mp.spec_index(thread_ptr).view_ghost().exited,
-        pre.thr_mp.spec_index(thread_ptr).view().state is SENDING || pre.thr_mp.spec_index(thread_ptr).view().state is RECEIVING ==> pre.thr_mp.spec_index(thread_ptr).view_ghost().ipc_partner is None,
         post == (KernelK { thr_mp: post.thr_mp, ..pre }),
         post.thr_mp.perms_wf(),
         post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr),
@@ -115,7 +112,7 @@ pub(super) proof fn wunlock_thread_eof(pre: KernelK, post: KernelK, thread_ptr: 
 {
     assert(thread_perms_wf(post.thr_mp)) by {
         reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
-        reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
+        reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
     };
     assert(thread_invariant_fields_unchanged(pre.thr_mp, post.thr_mp)) by { thread_lock_op_preserves_invariant_fields(pre.thr_mp, post.thr_mp, thread_ptr); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
@@ -131,7 +128,7 @@ pub(super) proof fn wunlock_thread_eof(pre: KernelK, post: KernelK, thread_ptr: 
     assert(post.process_management_inv()) by { process_management_inv_preserved_for_thread_invariant_fields(pre, post); };
 }
 
-/// Closes `inv()` after `set_thread_syscall_progress`: only the write-held thread's syscall progress changed.
+/// Closes `inv()` after `set_thread_syscall_progress`: only the write-held thread's progress changed, still naming any peer in transit with it.
 pub(super) proof fn set_thread_syscall_progress_eof(pre: KernelK, post: KernelK, lctx: LocalContext, thread_ptr: RwLockThreadPtr, progress: Ghost<Option<SyscallProgress>>)
     requires
         pre.inv(),
@@ -147,15 +144,15 @@ pub(super) proof fn set_thread_syscall_progress_eof(pre: KernelK, post: KernelK,
         post.thr_mp.spec_index(thread_ptr).being_killed() == pre.thr_mp.spec_index(thread_ptr).being_killed(),
         post.thr_mp.spec_index(thread_ptr).killer_info() == pre.thr_mp.spec_index(thread_ptr).killer_info(),
         post.thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: progress, ..pre.thr_mp.spec_index(thread_ptr).view() }),
-        progress_peer_of(progress.view()) is Some ==> pre.thr_mp.dom().contains(progress_peer_of(progress.view())->Some_0)
-            && pre.thr_mp.spec_index(progress_peer_of(progress.view())->Some_0).view_ghost().ipc_partner == Some(thread_ptr),
+        progress_peer_of(progress.view()) == progress_peer_of(pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view())
+            || (progress_peer_of(pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view()) matches Some(peer_ptr) ==> !(pre.thr_mp.spec_index(peer_ptr).view().state matches ThreadState::IPC_TRANSIT { partner, .. } && partner == thread_ptr)),
     ensures
         post.inv(),
 {
     assert(post.subsystems_inv()) by {
         assert(thread_perms_wf(post.thr_mp)) by {
             reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
-            reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
+            reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
         };
         reveal(KernelK::default_pagetable_wf);
     };
@@ -173,41 +170,5 @@ pub(super) proof fn set_thread_syscall_progress_eof(pre: KernelK, post: KernelK,
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
         assert(thread_dangling_chain_end_wf(post.thr_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thr_mp, post.thr_mp); };
     };
-}
-
-/// Closes `inv()` after `set_thread_ipc_partner`: only the write-held thread's IPC partner changed; a recorded partner needs
-/// the thread waiting unmarked in a rendezvous, and a replaced partner's progress no longer names the thread.
-pub(super) proof fn set_thread_ipc_partner_eof(pre: KernelK, post: KernelK, thread_ptr: RwLockThreadPtr, partner: Option<RwLockThreadPtr>)
-    requires
-        pre.inv(),
-        pre.thr_mp.dom().contains(thread_ptr),
-        pre.thr_mp.spec_index(thread_ptr).locking_thread() is Write,
-        partner is Some ==> !pre.thr_mp.spec_index(thread_ptr).being_killed(),
-        partner is Some ==> pre.thr_mp.spec_index(thread_ptr).view().state is SENDING || pre.thr_mp.spec_index(thread_ptr).view().state is RECEIVING
-            || pre.thr_mp.spec_index(thread_ptr).view().state is IPC_ENDPOINT_TRANSIT,
-        pre.thr_mp.spec_index(thread_ptr).view_ghost().ipc_partner matches Some(p) ==> progress_peer_of(pre.thr_mp.spec_index(p).view().syscall_progress.view()) != Some(thread_ptr),
-        post == (KernelK { thr_mp: post.thr_mp, ..pre }),
-        post.thr_mp.perms_wf(),
-        post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr),
-        update_ghost_ensures(pre.thr_mp.spec_index(thread_ptr), post.thr_mp.spec_index(thread_ptr), ThreadGhost { ipc_partner: partner, ..pre.thr_mp.spec_index(thread_ptr).view_ghost() }),
-    ensures
-        post.inv(),
-{
-    assert(thread_perms_wf(post.thr_mp)) by {
-        reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
-        reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
-    };
-    assert(thread_invariant_fields_unchanged(pre.thr_mp, post.thr_mp)) by { thread_lock_op_preserves_invariant_fields(pre.thr_mp, post.thr_mp, thread_ptr); };
-    assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
-    assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_thread_invariant_fields(pre, post); };
-    assert(process_thread_wf(post.prc_mp, post.thr_mp)) by {
-        thread_invariant_fields_unchanged_implies_process_management_fields(pre.thr_mp, post.thr_mp);
-        process_thread_wf_preserved_for_thread_process_management_fields(post.prc_mp, pre.thr_mp, post.thr_mp);
-    };
-    assert(thread_dangling_chain_end_wf(post.thr_mp)) by {
-        thread_ipc_partner_only_when_wlocked_at(pre.thr_mp, thread_ptr); thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thr_mp, post.thr_mp);
-    };
-    assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
-    assert(post.process_management_inv()) by { process_management_inv_preserved_for_thread_invariant_fields(pre, post); };
 }
 } // verus!

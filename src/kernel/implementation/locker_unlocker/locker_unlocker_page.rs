@@ -48,7 +48,7 @@ impl KernelK {
                     &&& old(lctx).iommu_root_table_lock_map().dom().is_empty()
                     &&& forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread) ==> {
                         let state = old(self).thr_mp.spec_index(held_thread).view().state;
-                        !(state.is_endpoint_waiting() || state.is_reply_waiting() || state is IPC_ENDPOINT_TRANSIT)
+                        !(state.is_endpoint_waiting() || state.is_reply_waiting() || state is IPC_TRANSIT)
                     }
                 }
             },

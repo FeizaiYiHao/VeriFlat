@@ -1280,10 +1280,12 @@ proof fn kernel_thread_dequeued_implies_u_process_map(before: &KernelK, entry: &
     });
 }
 
+/// Write-locking the cpu and both threads and dequeuing the channel head into transit with the running thread projects to that user
+/// step; the channel ends write-locked exactly when `channel_held`.
 #[verifier::spinoff_prover]
 pub proof fn kernel_thread_dequeued_and_locks_changed_implies_u_step(
     before: &KernelK, entry: &KernelK, after: &KernelK, lctx: &LocalContext, cpu_id: CpuId,
-    current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr, channel_endpoint_ptr: RwLockEndpointPtr,
+    current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr, channel_endpoint_ptr: RwLockEndpointPtr, channel_held: bool,
 )
     requires
         after.inv(),
@@ -1308,7 +1310,7 @@ pub proof fn kernel_thread_dequeued_and_locks_changed_implies_u_step(
         }),
         after.thr_mp.spec_index(current_thread_ptr).being_killed() == entry.thr_mp.spec_index(current_thread_ptr).being_killed(),
         after.thr_mp.spec_index(peer_thread_ptr).view().non_ipc_fields_unchanged(&entry.thr_mp.spec_index(peer_thread_ptr).view()),
-        after.thr_mp.spec_index(peer_thread_ptr).view().state is IPC_ENDPOINT_TRANSIT,
+        after.thr_mp.spec_index(peer_thread_ptr).view().state == (ThreadState::IPC_TRANSIT { partner: current_thread_ptr, wait: if entry.thr_mp.spec_index(peer_thread_ptr).view().state is SENDING { IpcWait::Send } else { IpcWait::Receive } }),
         after.thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr is None,
         after.thr_mp.spec_index(peer_thread_ptr).view().caller == entry.thr_mp.spec_index(peer_thread_ptr).view().caller,
         after.thr_mp.spec_index(peer_thread_ptr).view().callee == entry.thr_mp.spec_index(peer_thread_ptr).view().callee,
@@ -1330,8 +1332,9 @@ pub proof fn kernel_thread_dequeued_and_locks_changed_implies_u_step(
             after.prc_mp.spec_index(p).locking_thread() == before.prc_mp.spec_index(p).locking_thread(),
         forall|p: RwLockThreadPtr| #![trigger after.thr_mp.spec_index(p)] before.thr_mp.dom().contains(p) && after.thr_mp.dom().contains(p) && p != current_thread_ptr && p != peer_thread_ptr ==>
             after.thr_mp.spec_index(p).locking_thread() == before.thr_mp.spec_index(p).locking_thread(),
-        forall|p: RwLockEndpointPtr| #![trigger after.ep_mp.spec_index(p)] before.ep_mp.dom().contains(p) && after.ep_mp.dom().contains(p) ==>
+        forall|p: RwLockEndpointPtr| #![trigger after.ep_mp.spec_index(p)] before.ep_mp.dom().contains(p) && after.ep_mp.dom().contains(p) && !(channel_held && p == channel_endpoint_ptr) ==>
             after.ep_mp.spec_index(p).locking_thread() == before.ep_mp.spec_index(p).locking_thread(),
+        channel_held ==> typed_lock_map_contains_mode(lctx.endpoint_lock_map(), channel_endpoint_ptr, TypedLockMode::Write),
         forall|p: RwLockPageTableRoot| #![trigger after.pt_mp.spec_index(p)] before.pt_mp.dom().contains(p) && after.pt_mp.dom().contains(p) ==>
             after.pt_mp.spec_index(p).locking_thread() == before.pt_mp.spec_index(p).locking_thread(),
         forall|p: RwLockPageTableRoot| #![trigger after.it_mp.spec_index(p)] before.it_mp.dom().contains(p) && after.it_mp.dom().contains(p) ==>
@@ -1349,9 +1352,12 @@ pub proof fn kernel_thread_dequeued_and_locks_changed_implies_u_step(
                 cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre.cpu_array[cpu_id as int] }),
                 thread_map: pre.thread_map.insert(current_thread_ptr, ThreadU {
                     lock_state: LockStateU::WriteLocked, syscall_progress: after.thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view(), ..pre.thread_map[current_thread_ptr]
-                }).insert(peer_thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, state: ThreadState::IPC_ENDPOINT_TRANSIT,
-                    blocking_endpoint_ptr: None, ..pre.thread_map[peer_thread_ptr] }),
-                endpoint_map: pre.endpoint_map.insert(channel_endpoint_ptr, EndpointU { queue: pre.endpoint_map[channel_endpoint_ptr].queue.skip(1), ..pre.endpoint_map[channel_endpoint_ptr] }),
+                }).insert(peer_thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, blocking_endpoint_ptr: None,
+                    state: ThreadState::IPC_TRANSIT { partner: current_thread_ptr, wait: if pre.thread_map[peer_thread_ptr].state is SENDING { IpcWait::Send } else { IpcWait::Receive } }, ..pre.thread_map[peer_thread_ptr] }),
+                endpoint_map: pre.endpoint_map.insert(channel_endpoint_ptr, EndpointU {
+                    lock_state: if channel_held { LockStateU::WriteLocked } else { pre.endpoint_map[channel_endpoint_ptr].lock_state }, queue: pre.endpoint_map[channel_endpoint_ptr].queue.skip(1),
+                    ..pre.endpoint_map[channel_endpoint_ptr]
+                }),
                 ..pre
             })
         }),
@@ -1366,6 +1372,7 @@ pub proof fn kernel_thread_dequeued_and_locks_changed_implies_u_step(
     let post = kernel_k_to_kernel_u(*after);
     after.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), current_thread_ptr);
     after.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), peer_thread_ptr);
+    if channel_held { after.ep_mp.typed_lock_map_aligned_write_at(lctx.endpoint_lock_map(), lctx.thread_id(), channel_endpoint_ptr); }
     reveal(LockedArray::typed_lock_map_aligned);
     assert(post.iommu_root_table == pre.iommu_root_table) by { reveal(IommuRootTable::user_view); };
     assert(pre.thread_map.dom().contains(current_thread_ptr) && pre.thread_map[current_thread_ptr].syscall_progress == entry.thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view()) by {
@@ -1377,13 +1384,14 @@ pub proof fn kernel_thread_dequeued_and_locks_changed_implies_u_step(
     });
     assert_maps_equal!(post.thread_map, pre.thread_map.insert(current_thread_ptr, ThreadU {
         lock_state: LockStateU::WriteLocked, syscall_progress: after.thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view(), ..pre.thread_map[current_thread_ptr]
-    }).insert(peer_thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, state: ThreadState::IPC_ENDPOINT_TRANSIT,
-        blocking_endpoint_ptr: None, ..pre.thread_map[peer_thread_ptr] }), p => {
+    }).insert(peer_thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, blocking_endpoint_ptr: None,
+        state: ThreadState::IPC_TRANSIT { partner: current_thread_ptr, wait: if pre.thread_map[peer_thread_ptr].state is SENDING { IpcWait::Send } else { IpcWait::Receive } }, ..pre.thread_map[peer_thread_ptr] }), p => {
         if before.thr_mp.dom().contains(p) { kernel_thread_projection_at(before, p); } if after.thr_mp.dom().contains(p) { kernel_thread_projection_at(after, p); }
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
     });
     assert_maps_equal!(post.endpoint_map, pre.endpoint_map.insert(channel_endpoint_ptr, EndpointU {
-        queue: pre.endpoint_map[channel_endpoint_ptr].queue.skip(1), ..pre.endpoint_map[channel_endpoint_ptr]
+        lock_state: if channel_held { LockStateU::WriteLocked } else { pre.endpoint_map[channel_endpoint_ptr].lock_state }, queue: pre.endpoint_map[channel_endpoint_ptr].queue.skip(1),
+        ..pre.endpoint_map[channel_endpoint_ptr]
     }), p => {
         if before.ep_mp.dom().contains(p) { kernel_endpoint_projection_at(before, p); } if after.ep_mp.dom().contains(p) { kernel_endpoint_projection_at(after, p); }
         reveal(kernel_endpoint_nonlock_fields_unchanged);
@@ -2901,6 +2909,11 @@ pub proof fn kernel_share_4k_objects_projection(krnl: &KernelK, lctx: &LocalCont
         krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread is Some,
         typed_lock_map_contains_mode(lctx.thread_lock_map(), krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0, TypedLockMode::Write),
         krnl.thr_mp.spec_index(krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0).view().syscall_progress.view() matches Some(SyscallProgress::Share4k { .. }),
+        ({
+            let caller = krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0;
+            krnl.thr_mp.spec_index(caller).view().syscall_progress.view()->Some_0->Share4k_origin matches Share4kOrigin::IpcPages { peer }
+                ==> krnl.thr_mp.spec_index(peer).view().state is IPC_TRANSIT && krnl.thr_mp.spec_index(peer).view().state->IPC_TRANSIT_partner == caller
+        }),
         krnl.thr_mp.dom().contains(share_4k_objects_k(*krnl, cpu_id).source_thread),
         krnl.thr_mp.dom().contains(share_4k_objects_k(*krnl, cpu_id).quota_thread),
         typed_lock_map_contains_mode(lctx.thread_lock_map(), share_4k_objects_k(*krnl, cpu_id).source_thread, TypedLockMode::Write),

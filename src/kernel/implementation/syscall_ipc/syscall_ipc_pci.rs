@@ -102,7 +102,6 @@ verus! {
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
             !old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
-            old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().ipc_partner is None,
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state == (if is_send { ThreadState::RECEIVING } else { ThreadState::SENDING }),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().ipc_payload == (IPCPayLoad::Pci { bus, dev, fun }),
             old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.len() != 0,
@@ -158,7 +157,7 @@ verus! {
             final(krnl).all_objects_unlocked(final(lctx)),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
     {
-        proof { thread_perms_wf_at(krnl.thr_mp, peer_thread_ptr); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); thread_ipc_partner_only_when_wlocked_at(krnl.thr_mp, current_thread_ptr); }
+        proof { thread_perms_wf_at(krnl.thr_mp, peer_thread_ptr); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); }
         let current_container = krnl.thr_mp.borrow_typed(current_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&current_thread_lock_perm)).owning_container;
         let peer_thread_ref = krnl.thr_mp.borrow_typed(peer_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&peer_thread_lock_perm));
         let peer_container = peer_thread_ref.owning_container;
@@ -189,7 +188,7 @@ verus! {
             proof { ipc_rendezvous_result_from_k(&steps.snapshot_k(), cpu_id, endpoint_index, waiting_state, payload, current_thread_ptr, endpoint_ptr, peer_thread_ptr, RetValueType::ErrorIpcSameProcess); }
             return ipc_schedule_waiting_peer_and_finish(
                 krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr,
-                Ghost(Some((endpoint_index, waiting_state, payload))), false, peer_thread_ptr, RetValueType::ErrorIpcSameProcess, Tracked(cpu_lock_perm),
+                Ghost(endpoint_index), Ghost(waiting_state), Ghost(payload), peer_thread_ptr, RetValueType::ErrorIpcSameProcess, Tracked(cpu_lock_perm),
                 Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm),
             );
         }

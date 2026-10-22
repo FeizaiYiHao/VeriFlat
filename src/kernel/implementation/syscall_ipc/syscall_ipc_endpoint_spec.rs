@@ -35,10 +35,10 @@ pub open spec fn ipc_copy_endpoint_reference_eof_transition_framing(
     &&& endpoint_after.view().owning_threads.view() =~= endpoint_before.view().owning_threads.view().insert((receiver_thread_ptr, target_endpoint_index))
 }
 
-/// Dequeues the head waiter `peer_thread_ptr` of the write-held channel endpoint and moves it to endpoint transit;
-/// no other object changes.
+/// Dequeues the head waiter `peer_thread_ptr` of the write-held channel endpoint and moves it into transit with the
+/// running thread `current_thread_ptr`; no other object changes.
 #[verifier::opaque]
-pub open spec fn ipc_begin_endpoint_transfer_eof_transition_framing(
+pub open spec fn ipc_begin_transit_eof_transition_framing(
     pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr, channel_endpoint_ptr: RwLockEndpointPtr,
 ) -> bool {
     let peer_before = pre.thr_mp.spec_index(peer_thread_ptr);
@@ -58,7 +58,7 @@ pub open spec fn ipc_begin_endpoint_transfer_eof_transition_framing(
     &&& peer_after.view().syscall_progress == peer_before.view().syscall_progress
     &&& peer_after.view().error_code == peer_before.view().error_code
     &&& peer_after.view().trap_frame == peer_before.view().trap_frame
-    &&& peer_after.view().state is IPC_ENDPOINT_TRANSIT
+    &&& peer_after.view().state == (ThreadState::IPC_TRANSIT { partner: current_thread_ptr, wait: if peer_before.view().state is SENDING { IpcWait::Send } else { IpcWait::Receive } })
     &&& peer_after.view().blocking_endpoint_ptr is None
     &&& peer_after.view().blocking_endpoint_index is None
     &&& peer_after.view().endpoint_linkedlist_node.is_init()
@@ -89,9 +89,9 @@ pub open spec fn ipc_begin_endpoint_transfer_eof_transition_framing(
     &&& forall|t_ptr: RwLockThreadPtr| #![trigger channel_before.view().queue.view().contains(t_ptr)] #![trigger channel_after.view().queue.view().contains(t_ptr)]
         channel_after.view().queue.view().contains(t_ptr) ==> channel_before.view().queue.view().contains(t_ptr)
 }
-/// Schedules the endpoint-transit peer on `wake_cpu`; no other object changes.
+/// Schedules the transit peer on `wake_cpu`; no other object changes.
 #[verifier::opaque]
-pub open spec fn ipc_finish_endpoint_transit_eof_transition_framing(
+pub open spec fn ipc_finish_transit_eof_transition_framing(
     pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr, peer_scheduler_ptr: RwLockSchedulerPtr,
     wake_cpu: CpuId, peer_result: RetValueType,
 ) -> bool {

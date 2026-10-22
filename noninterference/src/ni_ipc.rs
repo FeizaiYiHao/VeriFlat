@@ -124,8 +124,8 @@ pub proof fn ipc_reply_handoff_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: 
     ensures isolated(new_u, a, b),
 { reveal(kernel_u_ipc_reply_handoff_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }
 
-/// Moving the queue head of an endpoint a running thread of `a` holds into transit locks only objects of `a`
-/// and that head, which is outside `b`, and records it as the thread's peer.
+/// Moving the queue head of an endpoint a running thread of `a` holds into transit with that thread as its partner locks
+/// only objects of `a` and that head, which is outside `b`.
 pub proof fn ipc_endpoint_transit_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, payload_index: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
@@ -149,7 +149,7 @@ pub proof fn ipc_endpoint_transit_step_iso(old_u: KernelU, new_u: KernelU, cpu_i
 { reveal(ipc_endpoint_transit_step_pre); reveal(ipc_rendezvous_step_pre); reveal(ipc_step_pre); reveal(ipc_endpoint_transit_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }
 
 /// Finishing an endpoint transfer on a cpu of `a` hands an endpoint between its running thread and its
-/// in-transit `peer` outside `b`. `payload` is the endpoint at the peer's payload descriptor; when the
+/// `peer` in transit with it, which is outside `b`. `payload` is the endpoint at the peer's payload descriptor; when the
 /// running thread receives from a peer outside `a`, no thread of `b` holds `payload`. The step also keeps
 /// the memory of `a` and `b` disjoint; `ipc_endpoint_finish_step_iso` gives the other isolation clauses.
 pub proof fn ipc_endpoint_finish_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, peer: RwLockThreadPtr, payload: RwLockEndpointPtr, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -172,8 +172,7 @@ pub proof fn ipc_endpoint_finish_step_lr(old_u: KernelU, new_u: KernelU, cpu_id:
 
 /// The step of `ipc_endpoint_finish_step_lr` preserves every isolation clause except `memory_iso`, which that
 /// lemma gives; one query over every clause does not close. When the running thread receives from a
-/// peer outside `a`, no thread of `b` holds or waits on `payload`, and no peer of a rendezvous `b` has in
-/// flight waits on it.
+/// peer outside `a`, no thread of `b` holds or waits on `payload`.
 #[verifier::spinoff_prover]
 pub proof fn ipc_endpoint_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, peer: RwLockThreadPtr, payload: RwLockEndpointPtr, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
@@ -190,9 +189,6 @@ pub proof fn ipc_endpoint_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
                 old_u.endpoint_map[payload].owning_threads.contains((t, i)) ==> !in_domain(old_u, b, old_u.thread_map[t].owning_container)
             &&& forall|j: int| #![trigger old_u.endpoint_map[payload].queue[j]]
                 0 <= j < old_u.endpoint_map[payload].queue.len() ==> !in_domain(old_u, b, old_u.thread_map[old_u.endpoint_map[payload].queue[j]].owning_container)
-            &&& forall|t: RwLockThreadPtr| #![trigger old_u.thread_map[t].syscall_progress]
-                old_u.thread_map.dom().contains(t) && in_domain(old_u, b, old_u.thread_map[t].owning_container) && progress_peer_of(old_u.thread_map[t].syscall_progress) is Some
-                ==> old_u.thread_map[progress_peer_of(old_u.thread_map[t].syscall_progress)->Some_0].blocking_endpoint_ptr != Some(payload)
         },
     ensures
         domains_disjoint(new_u, a, b),
@@ -210,8 +206,8 @@ pub proof fn ipc_endpoint_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
     reveal(ipc_endpoint_finish_step_pre); reveal(ipc_endpoint_finish_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); reveal(kernel_u_container_tree_wf);
 }
 
-/// Entering a pages rendezvous on a cpu of `a` locks only objects of `a`, the queue head of a channel its
-/// running thread holds, which is outside `b`, and that channel, and records the head as its peer.
+/// Entering a pages rendezvous on a cpu of `a` locks only objects of `a`, the queue head of a channel its running thread
+/// holds, which is outside `b`, and that channel, and moves the head into transit with the running thread as its partner.
 pub proof fn ipc_pages_enter_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, range: VaRange4K, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
@@ -235,46 +231,46 @@ pub proof fn ipc_pages_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cp
 { reveal(ipc_pages_enter_step_pre); reveal(ipc_rendezvous_step_pre); reveal(ipc_step_pre); reveal(ipc_pages_enter_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }
 
 /// Locking the page tables of a pages rendezvous on a cpu of `a` locks tables of `a` and of its peer outside `b`.
-pub proof fn ipc_pages_lock_tables_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, tables: IpcPagesTables, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_pages_lock_tables_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, tables: IpcPagesTables, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_pages_lock_tables_step_pre(old_u, cpu_id, tables),
+        ipc_pages_lock_tables_step_pre(old_u, cpu_id, endpoint_index, tables),
         ipc_pages_lock_tables_step(old_u, new_u, cpu_id, tables),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 { reveal(ipc_pages_lock_tables_step_pre); reveal(ipc_pages_lock_tables_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
 
 /// The step of `ipc_pages_lock_tables_step_lr` preserves isolation.
-pub proof fn ipc_pages_lock_tables_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, tables: IpcPagesTables, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_pages_lock_tables_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, tables: IpcPagesTables, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_pages_lock_tables_step_pre(old_u, cpu_id, tables),
+        ipc_pages_lock_tables_step_pre(old_u, cpu_id, endpoint_index, tables),
         ipc_pages_lock_tables_step(old_u, new_u, cpu_id, tables),
     ensures isolated(new_u, a, b),
 { reveal(ipc_pages_lock_tables_step_pre); reveal(ipc_pages_lock_tables_step); reveal(kernel_u_thread_ownership_wf); }
 
 /// Checking a pages rendezvous on a cpu of `a` records its result and may unlock tables of `a` and of its
 /// peer outside `b`.
-pub proof fn ipc_pages_check_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_pages_check_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_pages_check_step_pre(old_u, cpu_id),
+        ipc_pages_check_step_pre(old_u, cpu_id, endpoint_index),
         ipc_pages_check_step(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 { reveal(ipc_pages_check_step_pre); reveal(ipc_pages_check_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
 
 /// The step of `ipc_pages_check_step_lr` preserves isolation.
-pub proof fn ipc_pages_check_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_pages_check_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_pages_check_step_pre(old_u, cpu_id),
+        ipc_pages_check_step_pre(old_u, cpu_id, endpoint_index),
         ipc_pages_check_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 { reveal(ipc_pages_check_step_pre); reveal(ipc_pages_check_step); reveal(kernel_u_cpu_ownership_wf); }
@@ -325,27 +321,27 @@ pub proof fn ipc_pages_unlock_tables_step_iso(old_u: KernelU, new_u: KernelU, cp
     ensures isolated(new_u, a, b),
 { reveal(ipc_pages_unlock_tables_step_pre); reveal(ipc_pages_unlock_tables_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_ownership_wf); }
 
-/// Finishing a pages rendezvous on a cpu of `a` schedules its peer outside `b` and dequeues it from a channel
-/// that `b` neither owns nor holds.
-pub proof fn ipc_pages_finish_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+/// Finishing a pages rendezvous on a cpu of `a` schedules its transit peer outside `b` and unlocks the channel at the
+/// running thread's descriptor `endpoint_index`.
+pub proof fn ipc_pages_finish_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_pages_finish_step_pre(old_u, cpu_id),
-        ipc_pages_finish_step(old_u, new_u, cpu_id),
+        ipc_pages_finish_step_pre(old_u, cpu_id, endpoint_index),
+        ipc_pages_finish_step(old_u, new_u, cpu_id, endpoint_index),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 { reveal(ipc_pages_finish_step_pre); reveal(ipc_pages_finish_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }
 
 /// The step of `ipc_pages_finish_step_lr` preserves isolation.
 #[verifier::spinoff_prover]
-pub proof fn ipc_pages_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn ipc_pages_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
-        ipc_pages_finish_step_pre(old_u, cpu_id),
-        ipc_pages_finish_step(old_u, new_u, cpu_id),
+        ipc_pages_finish_step_pre(old_u, cpu_id, endpoint_index),
+        ipc_pages_finish_step(old_u, new_u, cpu_id, endpoint_index),
     ensures isolated(new_u, a, b),
 { reveal(ipc_pages_finish_step_pre); reveal(ipc_pages_finish_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }
 
@@ -498,12 +494,12 @@ pub proof fn ipc_endpoint_finish_result_oc(u1: KernelU, u2: KernelU, cpu_id: Cpu
 
 /// The pages check result of a cpu of `b` reads only the view of `b`, the peer, the peer's process, and the
 /// peer's container.
-pub proof fn ipc_pages_check_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, b: RwLockContainerPtr)
+pub proof fn ipc_pages_check_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(u1),
         kernel_u_ownership_wf(u2),
         steps_in_domain(u1, cpu_id, b),
-        ipc_pages_check_step_pre(u1, cpu_id),
+        ipc_pages_check_step_pre(u1, cpu_id, endpoint_index),
         domain_view(u1, b) =~~= domain_view(u2, b),
         ({
             let peer_ptr = u1.thread_map[u1.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0->IpcPages_peer;

@@ -299,7 +299,9 @@ pub(crate) fn kill_first_thread(
     let Tracked(victim_perm) = krnl.wlock_thread_unless_killed(victim_ptr, Tracked(&mut *lctx)).unwrap();
     proof {
         thread_perms_wf_at(krnl.thr_mp, victim_ptr); thread_caller_callee_wf_at(krnl.thr_mp, victim_ptr);
-        assert(!(before.thr_mp.spec_index(victim_ptr).view().state is IPC_ENDPOINT_TRANSIT || before.thr_mp.spec_index(victim_ptr).view().state is KILLED)) by { thread_endpoint_transit_only_when_wlocked_at(before.thr_mp, victim_ptr); };
+        assert(!(before.thr_mp.spec_index(victim_ptr).view().state is IPC_TRANSIT || before.thr_mp.spec_index(victim_ptr).view().state is KILLED)) by {
+            thread_killed_only_when_wlocked_at(before.thr_mp, victim_ptr); thread_ipc_transit_wf_at(before.thr_mp, victim_ptr);
+        };
     }
     let waiting_reply = match krnl.thr_mp.borrow_typed(victim_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&victim_perm)).state {
         ThreadState::WAITING_REPLY => true,
@@ -371,6 +373,7 @@ pub(crate) fn kill_victim_off_cpu_or_queue(
         old(krnl).prc_mp.spec_index(target).view().owned_threads.view().contains(victim_ptr),
         old(krnl).thr_mp.dom().contains(victim_ptr),
         old(krnl).thr_mp.spec_index(victim_ptr).being_killed(),
+        old(krnl).thr_mp.spec_index(victim_ptr).view().syscall_progress.view() is None,
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), victim_ptr, TypedLockMode::Write),
         victim_perm.state() is WriteLock,
         victim_perm.thread_id() == old(lctx).thread_id(),

@@ -854,7 +854,7 @@ verus! {
         let rendezvous_result = if call_meets_receive_call || receive_call_meets_call { RetValueType::ErrorCallAcrossContainers } else { RetValueType::ErrorIpcTypeMismatch };
         proof { ipc_rendezvous_result_from_k(&old(steps).snapshot_k(), cpu_id, endpoint_index, waiting_state, payload, current_thread_ptr, endpoint_ptr, peer_thread_ptr, rendezvous_result); }
         let step_result = ipc_schedule_waiting_peer_and_finish(
-            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, Ghost(Some((endpoint_index, waiting_state, payload))), false,
+            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, Ghost(endpoint_index), Ghost(waiting_state), Ghost(payload),
             peer_thread_ptr, rendezvous_result, Tracked(cpu_lock_perm), Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm),
         );
         proof {

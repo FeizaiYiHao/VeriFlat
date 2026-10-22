@@ -14,6 +14,8 @@ pub proof fn share_4k_leaf_step_pre_from_k(krnl: &KernelK, lctx: &LocalContext, 
         krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(progress_thread),
         typed_lock_map_contains_mode(lctx.thread_lock_map(), progress_thread, TypedLockMode::Write),
         krnl.thr_mp.spec_index(progress_thread).view().syscall_progress.view() matches Some(SyscallProgress::Share4k { .. }),
+        krnl.thr_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_origin matches Share4kOrigin::IpcPages { peer }
+            ==> krnl.thr_mp.spec_index(peer).view().state is IPC_TRANSIT && krnl.thr_mp.spec_index(peer).view().state->IPC_TRANSIT_partner == progress_thread,
         krnl.thr_mp.dom().contains(source_thread),
         typed_lock_map_contains_mode(lctx.thread_lock_map(), source_thread, TypedLockMode::Write),
         krnl.thr_mp.dom().contains(share_4k_objects_k(*krnl, cpu_id).quota_thread),
@@ -110,6 +112,8 @@ pub proof fn share_4k_leaf_step_from_k(
             &&& progress->Some_0->Share4k_target_range.view()[progress->Some_0->Share4k_shared as int] == target_va
             &&& post.thr_mp.spec_index(progress_thread).view().syscall_progress.view() == share_4k_progress_after_leaf(progress)
         }),
+        pre.thr_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_origin matches Share4kOrigin::IpcPages { peer }
+            ==> pre.thr_mp.spec_index(peer).view().state is IPC_TRANSIT && pre.thr_mp.spec_index(peer).view().state->IPC_TRANSIT_partner == progress_thread,
         pre.thr_mp.dom().contains(source_thread),
         typed_lock_map_contains_mode(lctx.thread_lock_map(), source_thread, TypedLockMode::Write),
         pre.thr_mp.dom().contains(share_4k_objects_k(*pre, cpu_id).quota_thread),
@@ -225,6 +229,8 @@ pub proof fn share_4k_directory_step_from_k(
         pre.thr_mp.dom().contains(progress_thread),
         typed_lock_map_contains_mode(pre_lctx.thread_lock_map(), progress_thread, TypedLockMode::Write),
         pre.thr_mp.spec_index(progress_thread).view().syscall_progress.view() is Some && pre.thr_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0 is Share4k,
+        pre.thr_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_origin matches Share4kOrigin::IpcPages { peer }
+            ==> pre.thr_mp.spec_index(peer).view().state is IPC_TRANSIT && pre.thr_mp.spec_index(peer).view().state->IPC_TRANSIT_partner == progress_thread,
         pre.thr_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_shared < pre.thr_mp.spec_index(progress_thread).view().syscall_progress.view()->Some_0->Share4k_source_range.len,
         share_4k_objects_k(*pre, cpu_id).target == process_ptr && share_4k_objects_k(*pre, cpu_id).quota_thread == quota_thread_ptr,
         share_4k_objects_k(*pre, cpu_id).target_container == container_ptr && share_4k_objects_k(*pre, cpu_id).transfer_source == transfer_source,

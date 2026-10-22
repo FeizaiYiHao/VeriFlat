@@ -23,6 +23,7 @@ proof fn thread_exit_destroy_eof_subsystems_inv(
         forall|j: int| #![trigger pre.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().spec_index(j)] 0 <= j < MAX_NUM_ENDPOINT_DESCRIPTORS ==> pre.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().spec_index(j) is None,
         pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
         pre.thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
+        progress_peer_of(pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view()) is None,
         pre.thr_mp.spec_index(thread_ptr).view().proc_linkedlist_node.addr() == proc_node_addr,
         pre.prc_mp.dom().contains(process_ptr),
         pre.prc_mp.spec_index(process_ptr).view().quota_4k + pre.thr_mp.spec_index(thread_ptr).view().quota_4k <= usize::MAX,
@@ -65,7 +66,7 @@ proof fn thread_exit_destroy_eof_subsystems_inv(
     assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };
     assert(thread_perms_wf(post.thr_mp)) by {
         reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
-        reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
+        reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
     };
     assert(allocator_perms_wf(post.allc_4k_mp)) by { reveal(allocator_perms_wf); };
     reveal(KernelK::default_pagetable_wf);
@@ -468,6 +469,7 @@ pub(super) proof fn thread_exit_destroy_eof(
         forall|j: int| #![trigger pre.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().spec_index(j)] 0 <= j < MAX_NUM_ENDPOINT_DESCRIPTORS ==> pre.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view().spec_index(j) is None,
         pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
         pre.thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
+        progress_peer_of(pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view()) is None,
         pre.thr_mp.spec_index(thread_ptr).view().proc_linkedlist_node.addr() == proc_node_addr,
         pre.prc_mp.dom().contains(process_ptr),
         pre.prc_mp.spec_index(process_ptr).view().quota_4k + pre.thr_mp.spec_index(thread_ptr).view().quota_4k <= usize::MAX,

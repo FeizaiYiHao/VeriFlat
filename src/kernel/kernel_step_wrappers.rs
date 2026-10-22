@@ -45,8 +45,6 @@ pub mod nonlock_projection;
 pub mod pagetable_read_mode;
 pub mod new_process_read_mode;
 pub mod ipc_pages_tables;
-/// K->U equality of the IPC partner ghost update.
-pub mod ipc_partner;
 
 pub use projection::*;
 pub use boundary::*;
@@ -69,7 +67,6 @@ pub use nonlock_projection::*;
 pub use pagetable_read_mode::*;
 pub use new_process_read_mode::*;
 pub use ipc_pages_tables::*;
-pub use ipc_partner::*;
 
 verus! {
 /// Each boundary refreshes both stored snapshots after recording its own section.

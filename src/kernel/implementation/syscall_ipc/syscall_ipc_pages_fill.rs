@@ -28,6 +28,8 @@ pub(super) fn ipc_pages_fill_target_page(
         old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(current_thread_ptr),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
+        old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view()->Some_0->Share4k_origin matches Share4kOrigin::IpcPages { peer }
+            ==> old(krnl).thr_mp.spec_index(peer).view().state is IPC_TRANSIT && old(krnl).thr_mp.spec_index(peer).view().state->IPC_TRANSIT_partner == current_thread_ptr,
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is Some,
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view()->Some_0 is Share4k,
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view()->Some_0->Share4k_shared < old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view()->Some_0->Share4k_source_range.len,
@@ -141,7 +143,7 @@ pub(super) fn ipc_pages_fill_target_page(
         final(krnl).thr_mp.spec_index(target_thread).view().owning_proc == old(krnl).thr_mp.spec_index(target_thread).view().owning_proc,
         final(krnl).thr_mp.spec_index(target_thread).view().proc_pagetable_ptr == old(krnl).thr_mp.spec_index(target_thread).view().proc_pagetable_ptr,
         final(krnl).thr_mp.spec_index(target_thread).view().state == old(krnl).thr_mp.spec_index(target_thread).view().state,
-        final(krnl).thr_mp.spec_index(target_thread).view().blocking_endpoint_ptr == old(krnl).thr_mp.spec_index(target_thread).view().blocking_endpoint_ptr,
+        final(krnl).thr_mp.spec_index(target_thread).view().endpoint_descriptors.view() == old(krnl).thr_mp.spec_index(target_thread).view().endpoint_descriptors.view(),
         final(krnl).thr_mp.spec_index(target_thread).view().upper_container_seq == old(krnl).thr_mp.spec_index(target_thread).view().upper_container_seq,
         final(krnl).thr_mp.spec_index(target_thread).view().syscall_progress.view() == old(krnl).thr_mp.spec_index(target_thread).view().syscall_progress.view(),
         final(krnl).thr_mp.spec_index(target_thread).view().temp_alloc_clean(),

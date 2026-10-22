@@ -234,8 +234,7 @@ pub(super) proof fn commit_alloc_thread_quota_4k_eof(pre: &KernelK, post: &Kerne
     reveal(commit_alloc_thread_quota_4k_eof_transition_framing);
     assert(post.subsystems_inv()) by {
         reveal(KernelK::default_pagetable_wf); reveal(process_perms_wf);
-        reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); reveal(thread_free_quota_pending_empty_unless_wlocked);
-        reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
+        reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_ipc_transit_wf);
     };
     assert(post.memory_management_inv()) by {
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { lemma_container_process_page_pagetable_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
@@ -342,8 +341,7 @@ pub(super) proof fn commit_alloc_thread_quota_2m_eof(pre: &KernelK, post: &Kerne
     reveal(commit_alloc_thread_quota_2m_eof_transition_framing);
     assert(post.subsystems_inv()) by {
         reveal(KernelK::default_pagetable_wf); reveal(process_perms_wf);
-        reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); reveal(thread_free_quota_pending_empty_unless_wlocked);
-        reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
+        reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_ipc_transit_wf);
     };
     assert(post.memory_management_inv()) by {
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { lemma_container_process_page_pagetable_wf_preserved_for_process_invariant_fields_except_quota_forall(); };

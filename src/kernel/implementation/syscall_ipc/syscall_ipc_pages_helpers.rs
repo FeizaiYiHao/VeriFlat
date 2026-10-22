@@ -14,7 +14,7 @@ pub(super) proof fn ipc_share_pages_source_owners_in_target_uppertree(
         krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(caller_thread),
         krnl.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
         krnl.thr_mp.dom().contains(peer_thread),
-        krnl.thr_mp.spec_index(peer_thread).view().blocking_endpoint_ptr is Some,
+        krnl.thr_mp.spec_index(peer_thread).view().state is IPC_TRANSIT,
         krnl.thr_mp.spec_index(source_thread).view().owning_container == source_container,
         krnl.pt_mp.spec_index(source_pagetable).view().proc_ptr == krnl.thr_mp.spec_index(source_thread).view().owning_proc,
         krnl.ctn_mp.dom().contains(target_container),

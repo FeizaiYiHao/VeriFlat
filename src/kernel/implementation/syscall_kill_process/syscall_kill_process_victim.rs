@@ -263,6 +263,7 @@ pub(crate) fn kill_evict_running_victim(krnl: &mut KernelK, Tracked(lctx): Track
         old(krnl).thr_mp.dom().contains(victim_ptr),
         old(krnl).thr_mp.spec_index(victim_ptr).being_killed(),
         old(krnl).thr_mp.spec_index(victim_ptr).view().state is RUNNING,
+        old(krnl).thr_mp.spec_index(victim_ptr).view().syscall_progress.view() is None,
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), victim_ptr, TypedLockMode::Write),
         victim_lock_perm.state() is WriteLock,
         victim_lock_perm.thread_id() == old(lctx).thread_id(),

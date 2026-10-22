@@ -40,7 +40,7 @@ pub(super) proof fn thread_exit_quota_eof_subsystems(
     assert(post.subsystems_inv()) by {
         reveal(KernelK::default_pagetable_wf); reveal(process_perms_wf); reveal(allocator_perms_wf);
         reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
-        reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
+        reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_ipc_transit_wf);
     };
 }
 

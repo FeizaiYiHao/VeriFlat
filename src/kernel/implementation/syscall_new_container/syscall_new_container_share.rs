@@ -512,7 +512,7 @@ fn create_new_container_root_thread_and_unlock(
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_4k.view() == set![thread_page_ptr],
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_2m.view().is_empty(),
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_1g.view().is_empty(),
-        old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() matches Some(SyscallProgress::Share4k { .. }),
+        old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() matches Some(SyscallProgress::Share4k { origin: Share4kOrigin::NewContainer(..), .. }),
         !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
         old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_thread == Some(current_thread_ptr),
         old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().state is Running,

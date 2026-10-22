@@ -157,6 +157,9 @@ pub(crate) fn kill_container_retire_commit(
         container_pcid_allocator_wf_container_at(krnl.ctn_mp, krnl.pcid_allc_mp, container_ptr);
         allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_map(krnl.allc_2m_mp);
         allocator_perms_wf_at(krnl.allc_4k_mp, owner_ro.allocator_ptr_4k); allocator_perms_wf_at(krnl.allc_2m_mp, owner_ro.allocator_ptr_2m);
+        let (ps, hs) = (kill_container_retire_pages_4k(ro), kill_container_retire_heads(container_ptr, ro));
+        assert(page_perms.dom().contains(hs[0]) && page_perms.dom().contains(hs[1]));
+        assert(page_perms.dom().contains(ps[0]) && page_perms.dom().contains(ps[1]) && page_perms.dom().contains(ps[2]) && page_perms.dom().contains(ps[3]) && page_perms.dom().contains(ps[4]));
     }
     let a4 = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_4k;
     let a2 = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_2m;

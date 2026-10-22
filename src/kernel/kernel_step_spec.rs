@@ -2233,7 +2233,7 @@ pub ghost struct Share4kObjects {
 /// The objects of the share recorded by the thread running on `cpu_id`: a new process shares into
 /// its recorded child, a new container into its recorded child container's root process, and a
 /// pages rendezvous from the sender into the receiver, which is the recorded peer exactly when the
-/// peer is receiving.
+/// peer was dequeued into transit while receiving.
 pub open spec fn share_4k_objects(u: KernelU, cpu_id: CpuId) -> Share4kObjects {
     let caller = u.cpu_array[cpu_id as int].current_thread->Some_0;
     let thread = u.thread_map[caller];
@@ -2246,9 +2246,9 @@ pub open spec fn share_4k_objects(u: KernelU, cpu_id: CpuId) -> Share4kObjects {
             target_container: record.child_container->Some_0, transfer_source: Some(thread.owning_container),
         },
         Share4kOrigin::IpcPages { peer } => {
-            let receiver = if u.thread_map[peer].state is RECEIVING { peer } else { caller };
+            let receiver = if u.thread_map[peer].state->IPC_TRANSIT_wait is Receive { peer } else { caller };
             Share4kObjects {
-                source_thread: if u.thread_map[peer].state is RECEIVING { caller } else { peer }, target: u.thread_map[receiver].owning_proc,
+                source_thread: if u.thread_map[peer].state->IPC_TRANSIT_wait is Receive { caller } else { peer }, target: u.thread_map[receiver].owning_proc,
                 quota_thread: receiver, target_container: u.thread_map[receiver].owning_container, transfer_source: None,
             }
         },
@@ -2256,7 +2256,7 @@ pub open spec fn share_4k_objects(u: KernelU, cpu_id: CpuId) -> Share4kObjects {
 }
 
 /// The cpu and its running thread are write-locked while the thread records a share, and so is the peer of a
-/// pages rendezvous.
+/// pages rendezvous, which is in transit with the running thread.
 pub open spec fn share_4k_locked(u: KernelU, cpu_id: CpuId) -> bool {
     let caller = u.cpu_array[cpu_id as int].current_thread->Some_0;
     let origin = u.thread_map[caller].syscall_progress->Some_0->Share4k_origin;
@@ -2267,7 +2267,13 @@ pub open spec fn share_4k_locked(u: KernelU, cpu_id: CpuId) -> bool {
     &&& u.thread_map[caller].lock_state is WriteLocked
     &&& u.thread_map[caller].syscall_progress is Some
     &&& u.thread_map[caller].syscall_progress->Some_0 is Share4k
-    &&& origin is IpcPages ==> u.thread_map.dom().contains(origin->IpcPages_peer) && u.thread_map[origin->IpcPages_peer].lock_state is WriteLocked
+    &&& origin is IpcPages ==> {
+        let peer = origin->IpcPages_peer;
+        &&& u.thread_map.dom().contains(peer)
+        &&& u.thread_map[peer].lock_state is WriteLocked
+        &&& u.thread_map[peer].state is IPC_TRANSIT
+        &&& u.thread_map[peer].state->IPC_TRANSIT_partner == caller
+    }
 }
 
 /// `share_4k_objects` read from the kernel objects it projects from.
@@ -2284,9 +2290,9 @@ pub open spec fn share_4k_objects_k(krnl: KernelK, cpu_id: CpuId) -> Share4kObje
             target_container: record.child_container->Some_0, transfer_source: Some(thread.owning_container),
         },
         Share4kOrigin::IpcPages { peer } => {
-            let receiver = if krnl.thr_mp.spec_index(peer).view().state is RECEIVING { peer } else { caller };
+            let receiver = if krnl.thr_mp.spec_index(peer).view().state->IPC_TRANSIT_wait is Receive { peer } else { caller };
             Share4kObjects {
-                source_thread: if krnl.thr_mp.spec_index(peer).view().state is RECEIVING { caller } else { peer },
+                source_thread: if krnl.thr_mp.spec_index(peer).view().state->IPC_TRANSIT_wait is Receive { caller } else { peer },
                 target: krnl.thr_mp.spec_index(receiver).view().owning_proc, quota_thread: receiver,
                 target_container: krnl.thr_mp.spec_index(receiver).view().owning_container, transfer_source: None,
             }
@@ -2930,9 +2936,8 @@ pub open spec fn kernel_dangling_thread_reclaimed_fields(pre: &KernelK, post: &K
     &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)] post.thr_mp.dom().contains(t) ==> post.thr_mp.spec_index(t) == pre.thr_mp.spec_index(t)
 }
 
-/// One killed dangling thread, write-locked, linked to no thread, and the peer of no thread's IPC rendezvous, leaves the
-/// thread map and its container's thread set, and the container owning its page regains one 4K quota; the kernel chooses
-/// the dangling thread (R1).
+/// One killed dangling thread, write-locked and linked to no thread, leaves the thread map and its container's thread
+/// set, and the container owning its page regains one 4K quota; the kernel chooses the dangling thread (R1).
 #[verifier::opaque]
 pub open spec fn kernel_u_dangling_thread_reclaimed(old_u: KernelU, new_u: KernelU) -> bool {
     let removed = old_u.thread_map.dom().difference(new_u.thread_map.dom());
@@ -2945,7 +2950,6 @@ pub open spec fn kernel_u_dangling_thread_reclaimed(old_u: KernelU, new_u: Kerne
             &&& dangling.lock_state is WriteLocked
             &&& dangling.caller is None
             &&& dangling.callee is None
-            &&& forall|t: RwLockThreadPtr| #![trigger old_u.thread_map.spec_index(t)] old_u.thread_map.dom().contains(t) ==> progress_peer_of(old_u.thread_map.spec_index(t).syscall_progress) != Some(dangling_ptr)
             &&& new_u == (KernelU {
                 container_map: Map::new(old_u.container_map.dom(), |c: RwLockContainerPtr| {
                     let container = old_u.container_map[c];

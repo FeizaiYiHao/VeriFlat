@@ -189,6 +189,17 @@ pub open spec fn kernel_u_thread_caller_wf(u: KernelU) -> bool {
         ==> u.thread_map.dom().contains(u.thread_map[t].caller->Some_0) && u.thread_map[u.thread_map[t].caller->Some_0].owning_container == u.thread_map[t].owning_container
 }
 
+/// A thread in IPC transit has a live running partner whose rendezvous names it as its peer.
+#[verifier::opaque]
+pub open spec fn kernel_u_ipc_transit_wf(u: KernelU) -> bool {
+    forall|d: RwLockThreadPtr| #![trigger u.thread_map[d].state] u.thread_map.dom().contains(d) && u.thread_map[d].state is IPC_TRANSIT ==> {
+        let partner = u.thread_map[d].state->IPC_TRANSIT_partner;
+        &&& u.thread_map.dom().contains(partner)
+        &&& u.thread_map[partner].state is RUNNING
+        &&& progress_peer_of(u.thread_map[partner].syscall_progress) == Some(d)
+    }
+}
+
 /// Ownership, reference, and tree facts that hold in the user projection of every well-formed kernel.
 pub open spec fn kernel_u_ownership_wf(u: KernelU) -> bool {
     &&& kernel_u_container_tree_wf(u)
@@ -206,6 +217,7 @@ pub open spec fn kernel_u_ownership_wf(u: KernelU) -> bool {
     &&& kernel_u_endpoint_holder_wf(u)
     &&& kernel_u_object_page_owner_wf(u)
     &&& kernel_u_thread_caller_wf(u)
+    &&& kernel_u_ipc_transit_wf(u)
 }
 
 /// The user projection of a well-formed kernel satisfies the user-level ownership facts.
@@ -248,5 +260,6 @@ pub proof fn kernel_wf_implies_u_ownership_wf(krnl: &KernelK)
         reveal(container_thread_wf); reveal(container_endpoint_wf); page_ptr_roundtrip(); page_ptr_valid_imply_page_index_valid();
     };
     assert(kernel_u_thread_caller_wf(kernel_k_to_kernel_u(*krnl))) by { reveal(kernel_u_thread_caller_wf); reveal(thread_caller_callee_wf); };
+    assert(kernel_u_ipc_transit_wf(kernel_k_to_kernel_u(*krnl))) by { reveal(kernel_u_ipc_transit_wf); reveal(thread_perms_wf); reveal(thread_ipc_transit_wf); };
 }
 } // verus!

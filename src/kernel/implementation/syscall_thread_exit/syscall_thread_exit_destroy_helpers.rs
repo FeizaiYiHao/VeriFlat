@@ -65,6 +65,7 @@ pub(super) fn thread_exit_destroy_remove_thread(
         thread_lock_perm.state() is WriteLock,
         thread_lock_perm.thread_id() == old(lctx).thread_id(),
         thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
+        progress_peer_of(old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view()) is None,
         typed_lock_map_contains_mode(old(lctx).page_lock_map(), page_ptr2page_index(thread_ptr), TypedLockMode::Write),
         page_lock_perm.state() is WriteLock,
         page_lock_perm.thread_id() == old(lctx).thread_id(),

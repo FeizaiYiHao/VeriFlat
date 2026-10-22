@@ -34,12 +34,20 @@ pub type L3Index = usize;
 pub type L2Index = usize;
 pub type L1Index = usize;
 
+/// Whether a thread dequeued by a rendezvous was sending or receiving.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum IpcWait {
+    Send,
+    Receive,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[allow(non_camel_case_types)]
 pub enum ThreadState {
     /// Queued on the `cpu_id` shard of its container's scheduler.
     SCHEDULED { cpu_id: CpuId },
-    IPC_ENDPOINT_TRANSIT,
+    /// Dequeued from its endpoint by the running rendezvous thread `partner`, which write-holds it until it schedules it; `wait` says whether it was sending or receiving.
+    IPC_TRANSIT { partner: RwLockThreadPtr, wait: IpcWait },
     SENDING,
     RECEIVING,
     CALLING,

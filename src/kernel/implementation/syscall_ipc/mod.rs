@@ -17,6 +17,7 @@ mod syscall_ipc_endpoint_spec;
 mod syscall_ipc_pages;
 mod syscall_ipc_pages_check;
 mod syscall_ipc_pages_fill;
+mod syscall_ipc_pages_finish;
 mod syscall_ipc_pages_helpers;
 mod syscall_ipc_pages_lock;
 mod syscall_ipc_pages_share;

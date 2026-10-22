@@ -23,7 +23,7 @@ pub fn release_endpoint_last_reference(
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
         forall|t: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(t)] old(lctx).thread_lock_map().dom().contains(t) ==> {
             let state = old(krnl).thr_mp.spec_index(t).view().state;
-            !(state.is_endpoint_waiting() || state.is_reply_waiting() || state is IPC_ENDPOINT_TRANSIT || state is SCHEDULED)
+            !(state.is_endpoint_waiting() || state.is_reply_waiting() || state is IPC_TRANSIT || state is SCHEDULED)
         },
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),

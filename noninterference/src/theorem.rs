@@ -37,8 +37,8 @@ pub ghost enum StepLabel {
     IpcCallHandoff { channel_index: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid> }, IpcAcceptCall { channel_index: EndpointIdx },
     IpcReplyHandoff { channel_index: EndpointIdx, regs: Registers, flushed_pcid: Option<Pcid> },
     IpcEndpointTransit { channel_index: EndpointIdx, waiting_state: ThreadState, payload_index: EndpointIdx }, IpcEndpointFinish,
-    IpcPagesEnter { channel_index: EndpointIdx, waiting_state: ThreadState, range: VaRange4K }, IpcPagesLockTables { tables: IpcPagesTables },
-    IpcPagesCheck, IpcPagesDowngrade, IpcPagesUnlockTables, IpcPagesFinish,
+    IpcPagesEnter { channel_index: EndpointIdx, waiting_state: ThreadState, range: VaRange4K }, IpcPagesLockTables { channel_index: EndpointIdx, tables: IpcPagesTables },
+    IpcPagesCheck { channel_index: EndpointIdx }, IpcPagesDowngrade, IpcPagesUnlockTables, IpcPagesFinish { channel_index: EndpointIdx },
     KillContainerEnter { child_index: usize }, KillContainerMarkChild, KillContainerMarkRoot, KillContainerRetireRoot, KillContainerCpus, KillContainerMoveCpu,
     KillContainerPages, KillContainerMovePage { size: PageSize }, KillContainerRetireStage, KillContainerRetire, KillContainerFinish,
     KillProcessEnter { child_index: usize }, KillProcessMarkChild, KillProcessDangling, KillProcessMarkThread, KillProcessDequeueScheduled,
@@ -110,11 +110,13 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
         StepLabel::IpcEndpointFinish => ipc_endpoint_finish_step_pre(old_u, cpu_id) && ipc_endpoint_finish_step(old_u, new_u, cpu_id),
         StepLabel::IpcPagesEnter { channel_index, waiting_state, range } => ipc_pages_enter_step_pre(old_u, cpu_id, channel_index, waiting_state, range)
             && ipc_pages_enter_step(old_u, new_u, cpu_id, channel_index, waiting_state, range),
-        StepLabel::IpcPagesLockTables { tables } => ipc_pages_lock_tables_step_pre(old_u, cpu_id, tables) && ipc_pages_lock_tables_step(old_u, new_u, cpu_id, tables),
-        StepLabel::IpcPagesCheck => ipc_pages_check_step_pre(old_u, cpu_id) && ipc_pages_check_step(old_u, new_u, cpu_id),
+        StepLabel::IpcPagesLockTables { channel_index, tables } =>
+            ipc_pages_lock_tables_step_pre(old_u, cpu_id, channel_index, tables) && ipc_pages_lock_tables_step(old_u, new_u, cpu_id, tables),
+        StepLabel::IpcPagesCheck { channel_index } => ipc_pages_check_step_pre(old_u, cpu_id, channel_index) && ipc_pages_check_step(old_u, new_u, cpu_id),
         StepLabel::IpcPagesDowngrade => ipc_pages_downgrade_step_pre(old_u, cpu_id) && ipc_pages_downgrade_step(old_u, new_u, cpu_id),
         StepLabel::IpcPagesUnlockTables => ipc_pages_unlock_tables_step_pre(old_u, cpu_id) && ipc_pages_unlock_tables_step(old_u, new_u, cpu_id),
-        StepLabel::IpcPagesFinish => ipc_pages_finish_step_pre(old_u, cpu_id) && ipc_pages_finish_step(old_u, new_u, cpu_id),
+        StepLabel::IpcPagesFinish { channel_index } =>
+            ipc_pages_finish_step_pre(old_u, cpu_id, channel_index) && ipc_pages_finish_step(old_u, new_u, cpu_id, channel_index),
         StepLabel::KillContainerEnter { child_index } => kill_container_enter_step_pre(old_u, cpu_id, child_index) && kill_container_enter_step(old_u, new_u, cpu_id, child_index),
         StepLabel::KillContainerMarkChild => kill_container_step_pre(old_u, cpu_id) && kill_container_mark_child_step(old_u, new_u, cpu_id),
         StepLabel::KillContainerMarkRoot => kill_container_step_pre(old_u, cpu_id) && kill_container_mark_root_step(old_u, new_u, cpu_id),
@@ -183,9 +185,8 @@ pub proof fn isolated_symmetric(u: KernelU, a: RwLockContainerPtr, b: RwLockCont
 /// Unwinding over a trace. `us[i + 1]` follows `us[i]`, both user projections of well-formed kernels, by the
 /// step `labels[i]` of cpu `cpus[i]` of domain `steppers[i]`, which is `a` or `b`. When a step receives an
 /// endpoint or shares a page from a peer outside its domain, that peer is honest: the other domain neither
-/// holds nor waits on the endpoint, no peer of a rendezvous the other domain has in flight waits on it, and
-/// the other domain maps no copy of the page. Then `us[n]` is isolated, and steps of `a` from `us[m]` to
-/// `us[n]` leave the view of `b` unchanged.
+/// holds nor waits on the endpoint, and the other domain maps no copy of the page. Then `us[n]` is isolated,
+/// and steps of `a` from `us[m]` to `us[n]` leave the view of `b` unchanged.
 pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<CpuId>, steppers: Seq<RwLockContainerPtr>, a: RwLockContainerPtr, b: RwLockContainerPtr, m: int, n: int)
     requires
         us.len() == labels.len() + 1,
@@ -211,9 +212,6 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
                     u.endpoint_map[payload].owning_threads.contains((t, j)) ==> !in_domain(u, y, u.thread_map[t].owning_container)
                 &&& forall|j: int| #![trigger u.endpoint_map[payload].queue[j]]
                     0 <= j < u.endpoint_map[payload].queue.len() ==> !in_domain(u, y, u.thread_map[u.endpoint_map[payload].queue[j]].owning_container)
-                &&& forall|t: RwLockThreadPtr| #![trigger u.thread_map[t].syscall_progress]
-                    u.thread_map.dom().contains(t) && in_domain(u, y, u.thread_map[t].owning_container) && progress_peer_of(u.thread_map[t].syscall_progress) is Some
-                    ==> u.thread_map[progress_peer_of(u.thread_map[t].syscall_progress)->Some_0].blocking_endpoint_ptr != Some(payload)
             }
             &&& labels[i] is Share4kLeaf && !in_domain(u, x, u.process_map[source].owning_container) ==> forall|q: RwLockProcessPtr, v: VAddr|
                 #![trigger u.process_map[q].pagetable->Some_0.mapping_4k[v]]
@@ -305,11 +303,13 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
                 ipc_pages_enter_step_lr(old_u, new_u, cpu_id, channel_index, waiting_state, range, x, y);
                 ipc_pages_enter_step_iso(old_u, new_u, cpu_id, channel_index, waiting_state, range, x, y);
             },
-            StepLabel::IpcPagesLockTables { tables } => { ipc_pages_lock_tables_step_lr(old_u, new_u, cpu_id, tables, x, y); ipc_pages_lock_tables_step_iso(old_u, new_u, cpu_id, tables, x, y); },
-            StepLabel::IpcPagesCheck => { ipc_pages_check_step_lr(old_u, new_u, cpu_id, x, y); ipc_pages_check_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::IpcPagesLockTables { channel_index, tables } => {
+                ipc_pages_lock_tables_step_lr(old_u, new_u, cpu_id, channel_index, tables, x, y); ipc_pages_lock_tables_step_iso(old_u, new_u, cpu_id, channel_index, tables, x, y);
+            },
+            StepLabel::IpcPagesCheck { channel_index } => { ipc_pages_check_step_lr(old_u, new_u, cpu_id, channel_index, x, y); ipc_pages_check_step_iso(old_u, new_u, cpu_id, channel_index, x, y); },
             StepLabel::IpcPagesDowngrade => { ipc_pages_downgrade_step_lr(old_u, new_u, cpu_id, x, y); ipc_pages_downgrade_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::IpcPagesUnlockTables => { ipc_pages_unlock_tables_step_lr(old_u, new_u, cpu_id, x, y); ipc_pages_unlock_tables_step_iso(old_u, new_u, cpu_id, x, y); },
-            StepLabel::IpcPagesFinish => { ipc_pages_finish_step_lr(old_u, new_u, cpu_id, x, y); ipc_pages_finish_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::IpcPagesFinish { channel_index } => { ipc_pages_finish_step_lr(old_u, new_u, cpu_id, channel_index, x, y); ipc_pages_finish_step_iso(old_u, new_u, cpu_id, channel_index, x, y); },
             StepLabel::KillContainerEnter { child_index } => {
                 kill_container_enter_step_lr(old_u, new_u, cpu_id, child_index, x, y); kill_container_enter_step_iso(old_u, new_u, cpu_id, child_index, x, y);
             },

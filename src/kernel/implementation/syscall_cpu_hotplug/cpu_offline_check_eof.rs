@@ -118,6 +118,7 @@ pub(super) proof fn cpu_went_off_eof(pre: KernelK, post: KernelK, cpu_id: CpuId,
                 let prev = old_cpu.current_thread.unwrap();
                 &&& pre.thr_mp.dom().contains(prev)
                 &&& pre.thr_mp.spec_index(prev).view().state == (ThreadState::RUNNING { cpu_id })
+                &&& pre.thr_mp.spec_index(prev).view().syscall_progress.view() is None
                 &&& pre.thr_mp.spec_index(prev).view().owning_proc == old_cpu.current_process.unwrap()
                 &&& !queue_before.view().contains(prev)
                 &&& !queue_before.map().dom().contains(pre.thr_mp.spec_index(prev).view().scheduler_linkedlist_node.addr())
@@ -145,7 +146,7 @@ pub(super) proof fn cpu_went_off_eof(pre: KernelK, post: KernelK, cpu_id: CpuId,
         assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); };
         assert(thread_perms_wf(post.thr_mp)) by {
             reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
-            reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
+            reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
         };
         assert(scheduler_perms_wf(post.sched_mp)) by { reveal(scheduler_perms_wf); };
         assert(cpu_set_perms_wf(post.cpu_set_mp)) by { reveal(cpu_set_perms_wf); };

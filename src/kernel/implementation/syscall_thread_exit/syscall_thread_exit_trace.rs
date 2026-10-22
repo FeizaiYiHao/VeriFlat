@@ -220,7 +220,7 @@ pub(super) proof fn thread_exit_release_step_from_u(pre: KernelU, post: KernelU,
 { reveal(thread_exit_release_step); }
 
 /// A state holding the cpu, `container_ptr`, `process_ptr`, and the running `thread_ptr` that has released every
-/// descriptor and has no caller and no IPC partner gives the finish step precondition.
+/// descriptor and has no caller gives the finish step precondition.
 pub(super) proof fn thread_exit_finish_step_pre_from_k(
     krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
 )
@@ -236,8 +236,6 @@ pub(super) proof fn thread_exit_finish_step_pre_from_k(
         krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container == container_ptr,
         krnl.prc_mp.dom().contains(process_ptr),
         krnl.thr_mp.dom().contains(thread_ptr),
-        thread_perms_wf(krnl.thr_mp),
-        krnl.thr_mp.spec_index(thread_ptr).view_ghost().ipc_partner is None,
         {
             let process = krnl.prc_mp.spec_index(process_ptr).view();
             let thread = krnl.thr_mp.spec_index(thread_ptr).view();
@@ -262,8 +260,8 @@ pub(super) proof fn thread_exit_finish_step_pre_from_k(
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].owning_container == container_ptr,
 {
     kernel_write_held_context_projection(krnl, lctx, cpu_id, process_ptr, thread_ptr, None);
-    kernel_cpu_thread_projection_at(krnl, cpu_id, process_ptr, thread_ptr, None); kernel_process_projection_at(krnl, process_ptr); kernel_u_domains_projection(krnl);
-    reveal(thread_exit_finish_step_pre); reveal(thread_perms_wf); reveal(thread_peer_implies_ipc_partner); broadcast use kernel_thread_syscall_progress_projection_at;
+    kernel_cpu_thread_projection_at(krnl, cpu_id, process_ptr, thread_ptr, None); kernel_process_projection_at(krnl, process_ptr);
+    reveal(thread_exit_finish_step_pre);
 }
 
 /// Removing the exiting thread while releasing its cpu, container, and process is the finish step on `pre`/`post`.

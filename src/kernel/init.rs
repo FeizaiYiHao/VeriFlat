@@ -770,7 +770,6 @@ pub open spec fn boot_kernel_state(
     &&& krnl.thr_mp.spec_index(layout.root_thread).view().free_quota_pending_clean()
     &&& krnl.thr_mp.spec_index(layout.root_thread).view().syscall_progress.view() is None
     &&& !krnl.thr_mp.spec_index(layout.root_thread).view_ghost().exited
-    &&& krnl.thr_mp.spec_index(layout.root_thread).view_ghost().ipc_partner is None
     &&& krnl.thr_mp.spec_index(layout.root_thread).view().temp_alloc_clean()
     &&& krnl.thr_mp.spec_index(layout.root_thread).view().quota_4k == 0
     &&& krnl.thr_mp.spec_index(layout.root_thread).view().quota_2m == 0
@@ -910,8 +909,7 @@ proof fn boot_subsystems_inv_eof(
         assert(thread_temp_alloc_empty_unless_wlocked(krnl.thr_mp)) by { reveal(thread_temp_alloc_empty_unless_wlocked); };
         assert(thread_syscall_progress_only_when_wlocked(krnl.thr_mp)) by { reveal(thread_syscall_progress_only_when_wlocked); };
         assert(thread_exited_only_when_wlocked(krnl.thr_mp)) by { reveal(thread_exited_only_when_wlocked); };
-        assert(thread_ipc_partner_only_when_wlocked(krnl.thr_mp)) by { reveal(thread_ipc_partner_only_when_wlocked); };
-        assert(thread_peer_implies_ipc_partner(krnl.thr_mp)) by { reveal(thread_peer_implies_ipc_partner); };
+        assert(thread_ipc_transit_wf(krnl.thr_mp)) by { reveal(thread_ipc_transit_wf); };
     };
     assert(scheduler_perms_wf(krnl.sched_mp)) by { reveal(scheduler_perms_wf); };
     assert(cpu_set_perms_wf(krnl.cpu_set_mp)) by { reveal(cpu_set_perms_wf); };
