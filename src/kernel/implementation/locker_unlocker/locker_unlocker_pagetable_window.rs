@@ -6,8 +6,9 @@ use crate::*;
 verus! {
 impl KernelK {
     /// Lock 2M window `(l4i, l3i, l2i)` of page table `root`, whose big lock this thread holds in either mode through
-    /// `big`; a write-held table's ghost slot follows the new window half, every other window keeps its view, and under
-    /// a read-held table the window's leaves are present and it lists no stale CPU.
+    /// `big`, and every window it already holds belongs to a lower table or precedes this one in `root`; a write-held
+    /// table's ghost slot follows the new window half, every other window keeps its view, and under a read-held table the
+    /// window's leaves are present and it lists no stale CPU.
     pub fn lock_pagetable_window(&mut self, root: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index, Tracked(big): Tracked<&LockPerm>,
         Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
         requires
@@ -27,7 +28,7 @@ impl KernelK {
             old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
             forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
             forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(self).pg_arr.lock_id_by_index(held_page).major < PAGE_TABLE_WINDOW_LOCK_MAJOR,
-            typed_lock_map_2d_ids_lt(old(lctx).pagetable_window_lock_map(), window_lock_id(root, l4i, l3i, l2i)),
+            forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))] old(lctx).pagetable_window_lock_map().dom().contains((p, w)) ==> p < root || (p == root && !spec_l4_index_path_le((l4i, l3i, l2i, 0usize), spec_va2index(w.va))),
             old(lctx).pagetable_lock_map().dom().contains(root),
             big.thread_id() == old(lctx).thread_id(),
             big.state() is WriteLock ==> typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), root, TypedLockMode::Write),
@@ -81,6 +82,8 @@ impl KernelK {
             pagetable_lower_wf_at(old(self).pt_mp, old(self).pt_lower.view(), root);
             assert(spec_v2l4index(w.va) == l4i && spec_v2l3index(w.va) == l3i && spec_v2l2index(w.va) == l2i) by { broadcast use spec_va_2m_valid_index_roundtrip; spec_index2va_injective(); };
             assert(old(lctx).lock_id_acyclic(window_lock_id(root, l4i, l3i, l2i))) by {
+                pagetable_window_typed_lock_map_ids_lt_from_order(old(self).pt_mp, old(self).pt_lower.view(), old(lctx).pagetable_window_lock_map(), old(lctx).pagetable_lock_map(), old(lctx).thread_id(),
+                    root, l4i, l3i, l2i);
                 iommu_table_perms_wf_map(old(self).it_mp);
                 reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned);
                 reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
@@ -88,11 +91,6 @@ impl KernelK {
             assert(!pre_c.window_locked_by_thread(l4i, l3i, l2i, old(lctx).thread_id())) by {
                 pagetable_window_typed_lock_map_aligned_locked_at(old(self).pt_mp, old(self).pt_lower.view(), old(lctx).pagetable_window_lock_map(), old(lctx).pagetable_lock_map(), old(lctx).thread_id(),
                     root, l4i, l3i, l2i);
-                if old(lctx).pagetable_window_lock_map().dom().contains((root, w)) {
-                    pagetable_window_typed_lock_map_aligned_at(old(self).pt_mp, old(self).pt_lower.view(), old(lctx).pagetable_window_lock_map(), old(lctx).pagetable_lock_map(), old(lctx).thread_id(),
-                        root, w);
-                    assert(!window_lock_id(root, l4i, l3i, l2i).spec_gt(window_lock_id(root, l4i, l3i, l2i))) by { reveal_with_fuel(lock_minor_lt, 5); };
-                }
             };
         }
         let higher = self.pt_mp.borrow_typed(root, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(big));
