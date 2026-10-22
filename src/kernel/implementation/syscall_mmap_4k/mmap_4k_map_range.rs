@@ -54,7 +54,7 @@ pub(super) fn mmap_4k_map_leaf_range(
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).scheduler_lock_map().dom().is_empty(),
         old(lctx).cpu_set_lock_map().dom().is_empty(),
-        held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
+        held_locks_order_below(old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         range.wf(),
         range.len > 0,
         pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() <= spec_v2l4index(range.start),
@@ -123,7 +123,7 @@ pub(super) fn mmap_4k_map_leaf_range(
             typed_lock_maps_unchanged(old(lctx), lctx),
             lctx.cpu_id() == old(lctx).cpu_id(),
             lctx.thread_id() == old(lctx).thread_id(),
-            held_locks_order_below(krnl, lctx, ALLOCATOR_CACHE_4K_MAJOR),
+            held_locks_order_below(lctx, ALLOCATOR_CACHE_4K_MAJOR),
             steps.snapshot_k() == *krnl,
             index_valid(NUM_CPUS, cpu_id),
             typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
@@ -349,6 +349,7 @@ pub(super) fn mmap_4k_map_leaves_and_finish(
         mmap_4k_syscall_success_mapped(final(krnl), cpu_id, va, range),
 {
     let ghost leaf_phase = if enter_phase is Read { Mmap4kPhase::Read } else { Mmap4kPhase::Filled };
+    proof { assert(held_locks_order_below(&*lctx, ALLOCATOR_CACHE_4K_MAJOR)) by { krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); krnl.thr_mp.typed_lock_map_aligned_lock_id_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr); }; }
     mmap_4k_map_leaf_range(krnl, va_range, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, Ghost(leaf_phase), Tracked(&mut *lctx), Tracked(&mut *steps),
         Tracked(&thread_lock_perm), Tracked(&pagetable_lock_perm));
     let ghost range_steps = steps.view();

@@ -355,6 +355,7 @@ fn ipc_pages_check_source_owners(
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl);
         assert(lctx.thread_lock_map().dom() =~= set![source_thread, target_thread]);
         assert(lctx.pagetable_lock_map().dom() =~= set![source_pagetable, target_pagetable]);
+        assert(typed_lock_map_majors_lt(lctx.cpu_lock_map(), CPU_LOCK_MAJOR_OFF)) by { krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); };
     }
     let owners = share_mapping_4k_source_owner_precheck(
         krnl, source_range, source_thread, target_thread, target_process, target_container, source_pagetable, target_pagetable, cpu_id, Tracked(&mut *lctx),

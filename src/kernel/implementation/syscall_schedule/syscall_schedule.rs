@@ -231,6 +231,7 @@ fn schedule_switch_to_queue_head(
     let tracked cpu_lock_perm = cpu_lock_perm.get();
     proof { kernel_scheduler_shards_projection_at(old(krnl).sched_mp.spec_index(scheduler_ptr), cpu_id); }
     let (next_process, next_pagetable, cr3, pcid, depth) = schedule_switch_read_target(&*krnl, Tracked(&*lctx), cpu_id, scheduler_ptr, next_thread, Tracked(&scheduler_lock_perm), Tracked(&next_lock_perm));
+    proof { old(krnl).cpu_arr.typed_lock_map_aligned_lock_id_at(old(lctx).cpu_lock_map(), old(lctx).thread_id(), cpu_id); }
     let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx));
     let ghost before_switch = *krnl;
     let syscall_return = schedule_switch_commit(krnl, Tracked(&mut *lctx), cpu_id, pt_regs, scheduler_ptr, next_thread, current_thread, next_process, next_pagetable, cr3, pcid, depth,

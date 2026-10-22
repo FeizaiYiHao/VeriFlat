@@ -85,7 +85,7 @@ impl KernelK {
             old(self).cpu_set_mp.dom().contains(cpu_set_ptr),
             typed_lock_map_contains_mode(old(lctx).cpu_set_lock_map(), cpu_set_ptr, TypedLockMode::Write),
             old(self).cpu_set_mp.spec_index(cpu_set_ptr).view().owned_cpus.closed_view().contains(cpu_id),
-            forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+            typed_lock_map_majors_lt(old(lctx).cpu_lock_map(), CPU_LOCK_MAJOR_OFF),
             old(lctx).kernel_view_locking_state() is Acquire,
             !old(lctx).cpu_lock_map().dom().contains(cpu_id),
             typed_lock_maps_aligned(old(self), old(lctx)),

@@ -21,8 +21,8 @@ pub(super) fn share_one_mapping_4k_copy_leaf(
         old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         old(lctx).scheduler_lock_map().dom().is_empty(),
         old(lctx).cpu_set_lock_map().dom().is_empty(),
-        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
-        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.lock_id_by_index(held_page).major < PAGE_TABLE_WINDOW_LOCK_MAJOR,
+        typed_lock_map_majors_lt(old(lctx).cpu_lock_map(), CPU_LOCK_MAJOR_OFF),
+        typed_lock_map_majors_lt(old(lctx).page_lock_map(), PAGE_TABLE_WINDOW_LOCK_MAJOR),
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
         old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
@@ -108,7 +108,6 @@ pub(super) fn share_one_mapping_4k_copy_leaf(
         assert({
             &&& index_valid(NUM_PAGES, page_index)
             &&& krnl.pg_arr.spec_index(page_index).view().view().state is Mapped4k
-            &&& !lctx.page_lock_map().dom().contains(page_index)
             &&& krnl.pg_arr.lock_id_by_index(page_index).major == MAPPED_PAGE_LOCK_MAJOR
         }) by { page_ptr_valid_imply_page_index_valid(); mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, source_pagetable, source_va); };
         assert(KERNEL_MEM_END_L4INDEX <= target_indices.0 && spec_index2va(target_indices) == target_va) by { spec_va_4k_index_roundtrip_at(target_va, target_indices.0, target_indices.1, target_indices.2, target_indices.3); };

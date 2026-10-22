@@ -99,6 +99,7 @@ pub(super) fn thread_exit_reclaim_return_quota_size(
     let ghost before = steps.view();
     let ghost size_k = *krnl;
     let ghost size_lctx = *lctx;
+    proof { assert(typed_lock_map_majors_lt(lctx.cpu_lock_map(), CPU_LOCK_MAJOR_OFF)) by { krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); }; }
     thread_exit_return_quota(krnl, Tracked(&mut *lctx), container_ptr, process_ptr, thread_ptr, size, Tracked(process_lock_perm), Tracked(thread_lock_perm));
     proof {
         let returned_k = *krnl;

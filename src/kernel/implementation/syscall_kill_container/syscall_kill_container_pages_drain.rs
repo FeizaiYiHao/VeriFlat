@@ -116,7 +116,7 @@ fn kill_container_pages_drain_4k_cache(
                 ==> krnl.allc_2m_mp.spec_index(a2).cpu_caches.spec_index(i).view().view() == old(krnl).allc_2m_mp.spec_index(a2).cpu_caches.spec_index(i).view().view(),
         decreases n - moved,
     {
-        proof { allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, a4); }
+        proof { allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, a4); krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); }
         let tracked cache_perm = caches_4k.tracked_borrow(c);
         let tracked pool_perm = pools_4k.tracked_borrow(a4);
         let cache = krnl.allc_4k_mp.borrow_cache_typed(a4, c, Ghost(lctx.allocator_cache_4k_lock_map()), Tracked(&*lctx), Tracked(cache_perm));
@@ -248,7 +248,7 @@ fn kill_container_pages_drain_2m_cache(
                 ==> krnl.allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i).view().view() == old(krnl).allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i).view().view(),
         decreases n - moved,
     {
-        proof { allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, a2); }
+        proof { allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, a2); krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); }
         let tracked cache_perm = caches_2m.tracked_borrow(c);
         let tracked pool_perm = pools_2m.tracked_borrow(a2);
         let cache = krnl.allc_2m_mp.borrow_cache_typed(a2, c, Ghost(lctx.allocator_cache_2m_lock_map()), Tracked(&*lctx), Tracked(cache_perm));

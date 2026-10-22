@@ -331,7 +331,13 @@ fn ipc_pages_fill_target(
     let range_len = target_range.len;
     let start_indices = va2index(target_range.start);
     let end_indices = va2index(target_range.index(range_len - 1));
-    proof { held_kernel_objects_unchanged_reflexive(krnl, lctx); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable); }
+    proof {
+        held_kernel_objects_unchanged_reflexive(krnl, lctx); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable);
+        assert(held_locks_order_below(lctx, ALLOCATOR_CACHE_4K_MAJOR)) by {
+            krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id);
+            krnl.thr_mp.typed_lock_map_aligned_lock_id_at(lctx.thread_lock_map(), lctx.thread_id(), current_thread_ptr); krnl.thr_mp.typed_lock_map_aligned_lock_id_at(lctx.thread_lock_map(), lctx.thread_id(), peer_thread_ptr);
+        };
+    }
     let mut i: usize = 0;
     while i < range_len
         invariant
@@ -393,7 +399,7 @@ fn ipc_pages_fill_target(
             old(krnl).ctn_mp.spec_index(target_container).view_rodata().view().allocator_ptr_4k == target_allocator,
             krnl.cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
             krnl.cpu_published[cpu_id as int].view() == old(krnl).cpu_published[cpu_id as int].view(),
-            held_locks_order_below(krnl, lctx, ALLOCATOR_CACHE_4K_MAJOR),
+            held_locks_order_below(lctx, ALLOCATOR_CACHE_4K_MAJOR),
             krnl.ctn_mp.dom().contains(target_container),
             krnl.ctn_mp.spec_index(target_container).view_rodata() == old(krnl).ctn_mp.spec_index(target_container).view_rodata(),
             krnl.allc_4k_mp.dom().contains(target_allocator),
@@ -1563,6 +1569,10 @@ pub(super) fn ipc_pages_share_locked(
             &&& share_4k_objects_k(*krnl, cpu_id).target == target_process && share_4k_objects_k(*krnl, cpu_id).target_container == target_container
             &&& share_4k_objects_k(*krnl, cpu_id).transfer_source is None
         }) by { reveal(share_4k_objects_k); };
+        assert(held_locks_order_below(lctx, PAGE_TABLE_WINDOW_LOCK_MAJOR)) by {
+            old(krnl).cpu_arr.typed_lock_map_aligned_lock_id_at(old(lctx).cpu_lock_map(), old(lctx).thread_id(), cpu_id);
+            old(krnl).thr_mp.typed_lock_map_aligned_lock_id_at(old(lctx).thread_lock_map(), old(lctx).thread_id(), current_thread_ptr); old(krnl).thr_mp.typed_lock_map_aligned_lock_id_at(old(lctx).thread_lock_map(), old(lctx).thread_id(), peer_thread_ptr);
+        };
     }
     share_mapping_4k_build_and_share(
         krnl, source_range, target_range, target_allocator, source_thread, target_thread, current_thread_ptr, target_process, target_container, cpu_id, source_pagetable,

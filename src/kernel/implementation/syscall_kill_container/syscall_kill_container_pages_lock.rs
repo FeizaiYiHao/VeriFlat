@@ -103,6 +103,7 @@ pub(crate) fn kill_container_pages_lock(
             },
         decreases NUM_CPUS - c,
     {
+        proof { krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); krnl.thr_mp.typed_lock_map_aligned_lock_id_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr); }
         let Tracked(perm) = krnl.wlock_allocator_cache_4k(a4, c, Tracked(&mut *lctx));
         proof {
             caches_4k.tracked_insert(c, perm);
@@ -168,6 +169,7 @@ pub(crate) fn kill_container_pages_lock(
             },
         decreases NUM_CPUS - c,
     {
+        proof { krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); krnl.thr_mp.typed_lock_map_aligned_lock_id_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr); }
         let Tracked(perm) = krnl.wlock_allocator_cache_2m(a2, c, Tracked(&mut *lctx));
         proof {
             caches_2m.tracked_insert(c, perm);

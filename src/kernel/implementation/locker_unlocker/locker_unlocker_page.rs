@@ -19,9 +19,9 @@ impl KernelK {
                         &&& typed_lock_map_contains_mode(old(lctx).container_lock_map(), flag_container, TypedLockMode::Write)
                         &&& old(self).ctn_mp.spec_index(flag_container).being_killed()
                     }
-                &&& forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off)
+                &&& typed_lock_map_majors_lt(old(lctx).cpu_lock_map(), CPU_LOCK_MAJOR_OFF)
                 &&& forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page)
-                    ==> old(self).pg_arr.lock_id_by_index(held_page).major < major || (old(self).pg_arr.lock_id_by_index(held_page).major == major && held_page < page_index)
+                    ==> old(lctx).page_lock_map().index(held_page).lock_id.major < major || (old(lctx).page_lock_map().index(held_page).lock_id.major == major && held_page < page_index)
                 &&& major < FREE_PAGE_LOCK_MAJOR ==> {
                     ||| {
                         &&& old(lctx).scheduler_lock_map().dom().is_empty()
@@ -79,7 +79,9 @@ impl KernelK {
                 reveal(LocalContext::lock_id_acyclic); reveal(pagetable_window_typed_lock_map_aligned); reveal(UnLockedMap::typed_flag_lock_map_aligned); reveal(iommu_root_table_typed_lock_map_aligned); reveal(UnLockedMap::typed_shard_lock_map_aligned);
                 reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
             };
-            assert(!lctx.page_lock_map().dom().contains(page_index));
+            assert(!lctx.page_lock_map().dom().contains(page_index)) by {
+                if lctx.page_lock_map().dom().contains(page_index) { self.pg_arr.typed_lock_map_aligned_lock_id_at(lctx.page_lock_map(), lctx.thread_id(), page_index); }
+            };
             assert(wlock_requires(self.pg_arr.spec_index(page_index).view(), &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
         }
         let ret = self.pg_arr.wlock(page_index, Tracked(&mut *lctx), Ghost(KernelObjId::Page(page_index)));

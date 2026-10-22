@@ -375,7 +375,6 @@ pub(super) fn share_new_container_range(
 {
     proof {
         assert(krnl.allc_4k_mp.dom().contains(child_allocator_4k_ptr)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, child_container_ptr); };
-        assert(lctx.page_lock_map().dom().contains(page_ptr2page_index(thread_page_ptr)));
         assert(krnl.prc_mp.spec_index(parent_process_ptr).view().pagetable == source_pagetable_ptr && krnl.prc_mp.spec_index(child_process_ptr).view().pagetable == child_pagetable_ptr) by {
             process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, child_process_ptr);
         };
@@ -391,6 +390,9 @@ pub(super) fn share_new_container_range(
             &&& share_4k_objects_k(*krnl, caller_cpu_id).target == child_process_ptr && share_4k_objects_k(*krnl, caller_cpu_id).target_container == child_container_ptr
             &&& share_4k_objects_k(*krnl, caller_cpu_id).transfer_source == Some(parent_container_ptr)
         }) by { reveal(share_4k_objects_k); };
+        assert(typed_lock_map_majors_lt(lctx.cpu_lock_map(), CPU_LOCK_MAJOR_OFF)) by { krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), caller_cpu_id); };
+        assert(typed_lock_map_majors_lt(lctx.thread_lock_map(), THREAD_SCHEDULED_LOCK_MAJOR)) by { krnl.thr_mp.typed_lock_map_aligned_lock_id_at(lctx.thread_lock_map(), lctx.thread_id(), current_thread_ptr); };
+        assert(typed_lock_map_majors_lt(lctx.page_lock_map(), PAGE_TABLE_WINDOW_LOCK_MAJOR)) by { krnl.pg_arr.typed_lock_map_aligned_lock_id_at(lctx.page_lock_map(), lctx.thread_id(), page_ptr2page_index(thread_page_ptr)); };
     }
     let ghost origin = Share4kOrigin::NewContainer(NewContainerProgress { child_container: Some(child_container_ptr), ..record });
     let Tracked(child_window_perms) = build_new_container_child_structure(

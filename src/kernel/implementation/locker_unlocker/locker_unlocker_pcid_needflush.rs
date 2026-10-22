@@ -13,7 +13,7 @@ impl KernelK {
             index_valid(NUM_CPUS, old(lctx).cpu_id()),
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).pcid_needflush_lock_map().dom().is_empty(),
-            forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+            typed_lock_map_majors_lt(old(lctx).cpu_lock_map(), CPU_LOCK_MAJOR_OFF),
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
             final(self).inv(),

@@ -342,15 +342,15 @@ verus! {
 
     // ---- Held-lock / krnl-state alignment ----
 
-    /// Every lock this context holds orders below a locker whose held pages must stay under
-    /// `page_bound`: no dirty-PCID records, no Off cpus, no scheduled threads, and no
-    /// allocator quota, cache, or pool locks.
-    pub open spec fn held_locks_order_below(k: &KernelK, lctx: &LocalContext, page_bound: LockMajorId) -> bool {
+    /// Every lock this context holds orders below a locker whose held pages must stay under `page_bound`: no dirty-PCID
+    /// records or offline flags, held CPUs below the Off major, held threads below the scheduled major, and no allocator
+    /// quota, cache, or pool locks.
+    pub open spec fn held_locks_order_below(lctx: &LocalContext, page_bound: LockMajorId) -> bool {
         &&& lctx.pcid_needflush_lock_map().dom().is_empty()
         &&& lctx.cpu_offline_flag_lock_map().dom().is_empty()
-        &&& forall|held_cpu_id: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(held_cpu_id)] lctx.cpu_lock_map().dom().contains(held_cpu_id) ==> !(k.cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off)
-        &&& forall|held_page: PageIndex| #![trigger lctx.page_lock_map().dom().contains(held_page)] lctx.page_lock_map().dom().contains(held_page) ==> k.pg_arr.lock_id_by_index(held_page).major < page_bound
-        &&& forall|held_thread: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(held_thread)] lctx.thread_lock_map().dom().contains(held_thread) ==> !(k.thr_mp.spec_index(held_thread).view().state is SCHEDULED)
+        &&& typed_lock_map_majors_lt(lctx.cpu_lock_map(), CPU_LOCK_MAJOR_OFF)
+        &&& typed_lock_map_majors_lt(lctx.page_lock_map(), page_bound)
+        &&& typed_lock_map_majors_lt(lctx.thread_lock_map(), THREAD_SCHEDULED_LOCK_MAJOR)
         &&& lctx.holds_no_allocator_locks(PageSize::SZ4k)
         &&& lctx.holds_no_allocator_locks(PageSize::SZ2m)
         &&& lctx.holds_no_allocator_locks(PageSize::SZ1g)

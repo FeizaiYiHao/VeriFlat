@@ -52,7 +52,7 @@ pub(super) fn enter_new_thread_commit(
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
         old(lctx).thread_lock_map().dom() =~= set![current_thread_ptr],
-        held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
+        held_locks_order_below(old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
     ensures
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
@@ -70,7 +70,7 @@ pub(super) fn enter_new_thread_commit(
         final(lctx).thread_id() == old(lctx).thread_id(),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        held_locks_order_below(final(krnl), final(lctx), ALLOCATOR_CACHE_4K_MAJOR),
+        held_locks_order_below(final(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
         final(krnl).cpu_published[cpu_id as int].view() == old(krnl).cpu_published[cpu_id as int].view(),
         final(krnl).ctn_mp.dom().contains(container_ptr),

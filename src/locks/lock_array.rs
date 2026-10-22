@@ -84,6 +84,13 @@ verus! {
                 })
         }
 
+        pub proof fn typed_lock_map_aligned_lock_id_at(&self, held_locks: Map<usize, TypedHeldLock>, thread_id: LockThreadId, index: usize)
+            requires
+                self.typed_lock_map_aligned(held_locks, thread_id),
+                held_locks.dom().contains(index),
+            ensures held_locks.index(index).lock_id == self.spec_index(index).lock_id(),
+        { reveal(LockedArray::typed_lock_map_aligned); }
+
         /// Bridge between `spec_index(i).value` and `view()[i]`.
         pub proof fn lemma_view_index(&self)
             ensures

@@ -118,7 +118,7 @@ verus! {
         let tracked cpu_lock_perm = cpu_lock_perm.get();
         let tracked current_thread_lock_perm = current_thread_lock_perm.get();
         let tracked endpoint_lock_perm = endpoint_lock_perm.get();
-
+        proof { assert(typed_lock_map_majors_lt(lctx.cpu_lock_map(), CPU_LOCK_MAJOR_OFF)) by { krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); }; }
         let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(cpu_id, KERNEL_DEFAULT_PCID, Tracked(&mut *lctx));
         let ghost locked_k = *krnl;
         let ghost old_current_thread_lock_id = krnl.thr_mp.lock_id_by_key(current_thread_ptr);

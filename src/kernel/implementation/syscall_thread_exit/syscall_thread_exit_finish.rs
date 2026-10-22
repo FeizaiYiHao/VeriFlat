@@ -107,6 +107,11 @@ pub(super) fn thread_exit_finish(
     let (owner, allocator_ptr, pcid_allocator_ptr, Tracked(page_lock_perm), Tracked(cache_lock_perm), Tracked(pcid_allocator_lock_perm), full) =
         thread_exit_finish_lock_page_and_cache(krnl, Tracked(&mut *lctx), cpu_id, container_ptr, process_ptr, thread_ptr, last);
     if full {
+        proof {
+            assert(typed_lock_map_majors_lt(lctx.cpu_lock_map(), CPU_LOCK_MAJOR_OFF) && typed_lock_map_majors_lt(lctx.thread_lock_map(), THREAD_SCHEDULED_LOCK_MAJOR)) by {
+                old(krnl).cpu_arr.typed_lock_map_aligned_lock_id_at(old(lctx).cpu_lock_map(), old(lctx).thread_id(), cpu_id); old(krnl).thr_mp.typed_lock_map_aligned_lock_id_at(old(lctx).thread_lock_map(), old(lctx).thread_id(), thread_ptr);
+            };
+        }
         let Tracked(pool_lock_perm) = krnl.wlock_allocator_global_pool_4k(allocator_ptr, Tracked(&mut *lctx));
         proof {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };

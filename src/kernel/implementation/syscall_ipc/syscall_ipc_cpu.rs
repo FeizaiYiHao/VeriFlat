@@ -387,7 +387,7 @@ verus! {
             target_cpu_set_lock_perm.state() is WriteLock,
             target_cpu_set_lock_perm.thread_id() == old(lctx).thread_id(),
             target_cpu_set_lock_perm.lock_id() == old(krnl).cpu_set_mp.spec_index(target_cpu_set).locking_thread()->Write_lock_id,
-            forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+            typed_lock_map_majors_lt(old(lctx).cpu_lock_map(), CPU_LOCK_MAJOR_OFF),
             transfer ==> !old(lctx).cpu_lock_map().dom().contains(transfer_cpu_id),
             transfer ==> old(krnl).cpu_set_mp.spec_index(source_cpu_set).view().owned_cpus.closed_view().contains(transfer_cpu_id),
             transfer ==> !old(krnl).cpu_set_mp.spec_index(target_cpu_set).view().owned_cpus.view().contains(transfer_cpu_id),
@@ -677,6 +677,7 @@ verus! {
                 container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, target_container, transfer_cpu_id);
             };
         }
+        proof { assert(typed_lock_map_majors_lt(lctx.cpu_lock_map(), CPU_LOCK_MAJOR_OFF)) by { old(krnl).cpu_arr.typed_lock_map_aligned_lock_id_at(old(lctx).cpu_lock_map(), old(lctx).thread_id(), cpu_id); }; }
         let transfer_cpu_lock_perm = ipc_transfer_closed_cpu(
             krnl, Tracked(&mut *lctx), matches!(result, RetValueType::Success), transfer_cpu_id, source_cpu_set, target_cpu_set, target_container, target_container_depth,
             Tracked(&source_cpu_set_lock_perm), Tracked(&target_cpu_set_lock_perm),

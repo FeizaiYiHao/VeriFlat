@@ -142,7 +142,7 @@ pub(crate) fn kill_container_pages_move_4k(
             krnl.allc_2m_mp.spec_index(a2).global_pool.view() == old(krnl).allc_2m_mp.spec_index(a2).global_pool.view(),
         decreases n - moved,
     {
-        proof { allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, a4); }
+        proof { allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, a4); krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); }
         let tracked pool_perm = pools_4k.tracked_borrow(a4);
         let tracked owner_pool_perm = pools_4k.tracked_borrow(o4);
         let tracked quota_perm = quotas_4k.tracked_borrow(a4);
@@ -300,7 +300,7 @@ pub(crate) fn kill_container_pages_move_2m(
             krnl.allc_4k_mp.spec_index(a4).global_pool.view() == old(krnl).allc_4k_mp.spec_index(a4).global_pool.view(),
         decreases n - moved,
     {
-        proof { allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, a2); }
+        proof { allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, a2); krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); }
         let tracked pool_perm = pools_2m.tracked_borrow(a2);
         let tracked owner_pool_perm = pools_2m.tracked_borrow(o2);
         let tracked quota_perm = quotas_2m.tracked_borrow(a2);

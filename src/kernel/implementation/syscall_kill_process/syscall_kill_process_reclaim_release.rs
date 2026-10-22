@@ -155,6 +155,7 @@ pub(crate) fn kill_reclaim_clear_leaves(
             pagetable_perms_wf_map(krnl.pt_mp);
             pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
             assert(spec_va_4k_valid(va) && spec_va2index(va) == next) by { spec_va_4k_index_roundtrip_at(va, next.0, next.1, next.2, next.3); };
+            krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id);
         }
         let resolved = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_perm)).resolve_mapping_4k_l1(Tracked(krnl.pt_lower.borrow().tracked_borrow(pagetable)), next.0, next.1, next.2, next.3);
         if resolved.2.is_some() && resolved.2.unwrap().present {
@@ -329,6 +330,7 @@ pub(crate) fn kill_reclaim_flush(
         let ghost iter_k = *krnl;
         let ghost iter_lctx = *lctx;
         let ghost iter_before = steps.view();
+        proof { krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); }
         let flushed = kill_reclaim_flush_cpu_tlb(krnl, Tracked(&mut *lctx), c, cpu_id, pagetable, cr3, pcid, Tracked(cpu_perm));
         proof {
             let tlb_k = *krnl;
@@ -372,7 +374,7 @@ pub(crate) fn kill_reclaim_flush_cpu_tlb(
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
-        forall|held: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held)] old(lctx).cpu_lock_map().dom().contains(held) ==> !(old(krnl).cpu_arr.spec_index(held).view().view().view().state is Off),
+        typed_lock_map_majors_lt(old(lctx).cpu_lock_map(), CPU_LOCK_MAJOR_OFF),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         cpu_perm.state() is WriteLock,
         cpu_perm.thread_id() == old(lctx).thread_id(),
@@ -616,6 +618,7 @@ pub(crate) fn kill_reclaim_unmap_leaves(
         let va = index2va(next);
         proof {
             assert(spec_va_4k_valid(va) && spec_va2index(va) == next) by { spec_va_4k_index_roundtrip_at(va, next.0, next.1, next.2, next.3); };
+            krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); krnl.thr_mp.typed_lock_map_aligned_lock_id_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr);
         }
         if same {
             reclaim_unmapped_4k_page(krnl, pagetable, va, thread_ptr, cpu_id, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(pagetable_perm), Tracked(thread_perm));
@@ -635,6 +638,7 @@ pub(crate) fn kill_reclaim_unmap_leaves(
         let ghost refund_before = steps.view();
         proof {
             kill_step_pre_from_k(&refund_k, &refund_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Reclaim { flushed: true }, scope); kill_refund_pre_from_k(&refund_k, target, entry_thread.owning_container);
+            krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id);
         }
         refund_unmap_4k_quota(krnl, thread_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_perm));
         proof {
@@ -792,6 +796,7 @@ pub(crate) fn kill_reclaim_iommu_leaves(
         let ghost leaf_k = *krnl;
         let ghost leaf_lctx = *lctx;
         let ghost leaf_before = steps.view();
+        proof { krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); krnl.thr_mp.typed_lock_map_aligned_lock_id_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr); }
         clear_iommu_4k_mapping_present(krnl, iommu_table, next, Tracked(&mut *lctx), Tracked(iommu_perm));
         proof {
             let leaf_post = *krnl;
@@ -827,6 +832,7 @@ pub(crate) fn kill_reclaim_iommu_leaves(
         let ghost refund_before = steps.view();
         proof {
             kill_step_pre_from_k(&refund_k, &refund_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Reclaim { flushed: true }, scope); kill_refund_pre_from_k(&refund_k, target, entry_thread.owning_container);
+            krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id);
         }
         refund_unmap_4k_quota(krnl, thread_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_perm));
         proof {
@@ -1018,6 +1024,7 @@ pub(crate) fn kill_reclaim_return_quota_size(
     let ghost entry_lctx = *lctx;
     let ghost entry_steps = steps.view();
     let tracked target_perm = chain_perms.tracked_borrow(target);
+    proof { krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); }
     kill_reclaim_return_quota_under_lock(krnl, Tracked(&mut *lctx), target, Tracked(target_perm), size);
     let ghost returned_k = *krnl;
     krnl.set_thread_syscall_progress(thread_ptr, Ghost(kill_scope_progress(scope, target, KillStage::Quota { returned: size })), Tracked(&*lctx), Tracked(thread_perm));
@@ -1045,7 +1052,7 @@ pub(crate) fn kill_reclaim_return_quota_under_lock(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
-        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+        typed_lock_map_majors_lt(old(lctx).cpu_lock_map(), CPU_LOCK_MAJOR_OFF),
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
         old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
@@ -1107,7 +1114,7 @@ pub(crate) fn kill_reclaim_return_quota_4k_under_lock(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
-        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+        typed_lock_map_majors_lt(old(lctx).cpu_lock_map(), CPU_LOCK_MAJOR_OFF),
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
         old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
@@ -1182,7 +1189,7 @@ pub(crate) fn kill_reclaim_return_quota_2m_under_lock(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
-        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+        typed_lock_map_majors_lt(old(lctx).cpu_lock_map(), CPU_LOCK_MAJOR_OFF),
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
         old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
@@ -1257,7 +1264,7 @@ pub(crate) fn kill_reclaim_return_quota_1g_under_lock(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
-        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+        typed_lock_map_majors_lt(old(lctx).cpu_lock_map(), CPU_LOCK_MAJOR_OFF),
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
         old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),

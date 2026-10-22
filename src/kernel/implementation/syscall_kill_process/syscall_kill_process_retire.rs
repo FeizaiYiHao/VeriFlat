@@ -107,7 +107,7 @@ pub(crate) fn kill_retire_hold_tables(
         final(steps).snapshot_k() == *final(krnl),
         final(steps).view() == old(steps).view(),
         kill_retire_held_state(*final(krnl), *final(lctx), process_ptr, thread_ptr, target, ret.1.view(), ret.2.view(), ret.3.view()),
-        held_locks_order_below(final(krnl), final(lctx), PAGE_TABLE_LOCK_MAJOR),
+        held_locks_order_below(final(lctx), PAGE_TABLE_LOCK_MAJOR),
         final(lctx).thread_lock_map().dom() =~= set![thread_ptr],
         final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
         kill_chain_state(*final(krnl), *final(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
@@ -148,6 +148,7 @@ pub(crate) fn kill_retire_hold_tables(
         process_pages_wf_process_entry_at(krnl.pg_arr, krnl.prc_mp, target);
         pagetable_pages_wf_root_entry_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable);
         if let Some(it) = iommu_table { iommu_table_pages_wf_root_entry_at(krnl.it_mp, krnl.pg_arr, it); }
+        krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); krnl.thr_mp.typed_lock_map_aligned_lock_id_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr);
     }
     let mut held: ArrayVec<PageIndex, 5> = ArrayVec::new();
     held.push(page_ptr2page_index(target));
@@ -196,7 +197,7 @@ pub(crate) fn kill_retire_process(
         0 <= start <= old(steps).view().len(),
         kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
         kill_retire_held_state(*old(krnl), *old(lctx), process_ptr, thread_ptr, target, page_perms, pt_perm, it_perm),
-        held_locks_order_below(old(krnl), old(lctx), PAGETABLE_PAGE_MAJOR),
+        held_locks_order_below(old(lctx), PAGETABLE_PAGE_MAJOR),
         old(lctx).thread_lock_map().dom() =~= set![thread_ptr],
         old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
         kill_chain_state(*old(krnl), *old(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *old(chain_perms)),

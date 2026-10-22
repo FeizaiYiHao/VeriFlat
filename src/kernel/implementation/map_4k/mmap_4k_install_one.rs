@@ -107,8 +107,8 @@ verus! {
             page_table_key_2m_valid::<PT_TYPE>(spec_index2va((indices.0, indices.1, indices.2, 0))),
             old(lctx).scheduler_lock_map().dom().is_empty(),
             old(lctx).cpu_set_lock_map().dom().is_empty(),
-            forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.lock_id_by_index(held_page).major < PAGE_TABLE_WINDOW_LOCK_MAJOR,
-            held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
+            typed_lock_map_majors_lt(old(lctx).page_lock_map(), PAGE_TABLE_WINDOW_LOCK_MAJOR),
+            held_locks_order_below(old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         ensures
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
             old(steps).snapshot_k() == *old(krnl) && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(progress_thread)
@@ -132,7 +132,7 @@ verus! {
                     ==> final(krnl).thr_mp.spec_index(peer).view().state is IPC_TRANSIT && final(krnl).thr_mp.spec_index(peer).view().state->IPC_TRANSIT_partner == progress_thread
                 &&& progress_thread == quota_thread_ptr || final(krnl).thr_mp.spec_index(quota_thread_ptr).view().syscall_progress.view() is None
             },
-            held_locks_order_below(final(krnl), final(lctx), ALLOCATOR_CACHE_4K_MAJOR),
+            held_locks_order_below(final(lctx), ALLOCATOR_CACHE_4K_MAJOR),
             final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
@@ -272,6 +272,7 @@ verus! {
                 },
             forall|w: WindowVa, v: VAddr|
                 #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)), pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(v)]
+                #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)), pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(v)]
                 !write_held && old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)) && spec_v2l4index(v) == spec_v2l4index(w.va) && spec_v2l3index(v) == spec_v2l3index(w.va)
                     && spec_v2l2index(v) == spec_v2l2index(w.va) ==> {
                     &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(v) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(v)
@@ -439,9 +440,9 @@ verus! {
             old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
             old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
             old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
-            forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+            typed_lock_map_majors_lt(old(lctx).cpu_lock_map(), CPU_LOCK_MAJOR_OFF),
             forall|held_page: PageIndex| #![trigger entry_lctx.page_lock_map().dom().contains(held_page)] entry_lctx.page_lock_map().dom().contains(held_page)
-                ==> index_valid(NUM_PAGES, held_page) && old(krnl).pg_arr.lock_id_by_index(held_page).major < PAGE_TABLE_WINDOW_LOCK_MAJOR,
+                ==> index_valid(NUM_PAGES, held_page) && entry_lctx.page_lock_map().index(held_page).lock_id.major < PAGE_TABLE_WINDOW_LOCK_MAJOR,
             !old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().being_killed(),
             old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: quota_thread_ptr }),
             old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == (match transfer_source { Some(source) => source, None => container_ptr }),

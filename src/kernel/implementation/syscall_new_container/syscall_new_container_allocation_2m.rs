@@ -25,7 +25,7 @@ pub(super) fn allocate_new_container_2m_pages(
         current_thread_lock_perm.state() is WriteLock,
         current_thread_lock_perm.thread_id() == old(lctx).thread_id(),
         current_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
-        held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
+        held_locks_order_below(old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         allocated_4k_page_lock_perms_wf(page_4k_lock_perms, old(krnl), old(lctx), current_thread_ptr, parent_container_ptr),
     ensures
@@ -43,7 +43,7 @@ pub(super) fn allocate_new_container_2m_pages(
         final(lctx).kernel_view_locking_state() is Acquire,
         final(lctx).thread_id() == old(lctx).thread_id(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        forall|held_page: PageIndex| #![trigger final(lctx).page_lock_map().dom().contains(held_page)] final(lctx).page_lock_map().dom().contains(held_page) ==> final(krnl).pg_arr.lock_id_by_index(held_page).major < ALLOCATOR_CACHE_4K_MAJOR,
+        typed_lock_map_majors_lt(final(lctx).page_lock_map(), ALLOCATOR_CACHE_4K_MAJOR),
         allocated_4k_page_lock_perms_wf(page_4k_lock_perms, final(krnl), final(lctx), current_thread_ptr, parent_container_ptr),
         ret.0 != ret.1,
         page_ptr_valid(ret.0),

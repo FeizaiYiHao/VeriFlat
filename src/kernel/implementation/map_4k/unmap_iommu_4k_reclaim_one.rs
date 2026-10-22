@@ -16,7 +16,7 @@ pub fn reclaim_unmapped_iommu_4k_page(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).page_lock_map().dom().is_empty(),
-        held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
+        held_locks_order_below(old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         old(lctx).scheduler_lock_map().dom().is_empty(),
         old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         old(lctx).cpu_set_lock_map().dom().is_empty(),

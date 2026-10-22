@@ -113,6 +113,25 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
             self.spec_index(key).wlocked_by_thread(thread_id),
     { reveal(LockedMap::typed_lock_map_aligned); }
 
+    pub proof fn typed_lock_map_aligned_lock_id_at(&self, held_locks: Map<usize, TypedHeldLock>, thread_id: LockThreadId, key: usize)
+        where T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
+        requires
+            self.typed_lock_map_aligned(held_locks, thread_id),
+            held_locks.dom().contains(key),
+        ensures
+            held_locks.index(key).lock_id == (LockId { container: self.spec_index(key).container_depth(), process: self.spec_index(key).process_depth(),
+                major: if self.spec_index(key).being_killed() { KILLED_LOCK_MAJOR } else { self.spec_index(key).view().current_lock_major() }, minor: seq![key] }),
+    { reveal(LockedMap::typed_lock_map_aligned); }
+
+    pub proof fn typed_lock_map_aligned_majors_lt(&self, held_locks: Map<usize, TypedHeldLock>, thread_id: LockThreadId, major: LockMajorId)
+        where T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
+        requires
+            self.typed_lock_map_aligned(held_locks, thread_id),
+            forall|key: usize| #![trigger held_locks.dom().contains(key)] held_locks.dom().contains(key)
+                ==> (if self.spec_index(key).being_killed() { KILLED_LOCK_MAJOR } else { self.spec_index(key).view().current_lock_major() }) < major,
+        ensures typed_lock_map_majors_lt(held_locks, major),
+    { reveal(LockedMap::typed_lock_map_aligned); }
+
     pub proof fn typed_lock_map_aligned_read_at(&self, held_locks: Map<usize, TypedHeldLock>, thread_id: LockThreadId, key: usize)
         where T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
         requires

@@ -688,6 +688,7 @@ fn kill_container_move_cpu_lock(
         ret.1.view().lock_id() == final(krnl).cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_i).view().locking_thread()->Write_lock_id,
 {
     if closed {
+        proof { krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), lctx.cpu_id()); }
         let Tracked(flag_perm) = krnl.wlock_cpu_offline_flag(flags_ptr, cpu_i, Tracked(&mut *lctx));
         let Tracked(set_perm) = krnl.wlock_cpu_set(owner_set, Tracked(&mut *lctx));
         let Tracked(cpu_perm) = krnl.wlock_off_cpu(cpu_i, set_ptr, Tracked(&mut *lctx));
