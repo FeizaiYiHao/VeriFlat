@@ -264,7 +264,6 @@ fn ipc_pages_fill_target(
         source_pagetable_lock_perm.thread_id() == final(lctx).thread_id(),
         final(krnl).pt_mp.spec_index(source_pagetable).read_lock_perm_match(&source_pagetable_lock_perm),
         ret.0@.thread_id() == final(lctx).thread_id(),
-        !(ret.0@.state() is WriteLock),
         ret.0@.state() is ReadLock,
         final(krnl).pt_mp.spec_index(target_pagetable).read_lock_perm_match(&ret.0@),
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), source_pagetable).kernel_l4_end() <= spec_va2index(source_range.start).0,
@@ -473,7 +472,7 @@ fn ipc_pages_fill_target(
             },
             forall|w: WindowVa| #![trigger window_perms.dom().contains(w)]
                 window_perms.dom().contains(w) ==> lctx.pagetable_window_lock_map().dom().contains((target_pagetable, w)),
-            forall|j: int| #![trigger target_range.view().spec_index(j)] 0 <= j < i ==> {
+            forall|j: int| #![trigger window_of(target_range.view().spec_index(j))] 0 <= j < i ==> {
                 let va = target_range.view().spec_index(j);
                 &&& pei_valid(spec_v2l4index(va)) && pei_valid(spec_v2l3index(va)) && pei_valid(spec_v2l2index(va))
                 &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).kernel_l4_end() <= spec_v2l4index(va)
@@ -1169,7 +1168,7 @@ fn ipc_pages_prepare_target(
                 &&& !pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).mapping_2m().dom().contains(spec_index2va((indices.0, indices.1, indices.2, 0)))
                 &&& !pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).mapping_4k().dom().contains(target_range.view().spec_index(j))
             },
-        forall|j: int| #![trigger target_range.view().spec_index(j)] 0 <= j < target_range.len ==> {
+        forall|j: int| #![trigger final(lctx).pagetable_window_lock_map().dom().contains((target_pagetable, window_of(target_range.view().spec_index(j))))] 0 <= j < target_range.len ==> {
                 let va = target_range.view().spec_index(j);
                 &&& final(lctx).pagetable_window_lock_map().dom().contains((target_pagetable, window_of(va)))
                 &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).spec_resolve_mapping_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some
@@ -1230,14 +1229,6 @@ fn ipc_pages_prepare_target(
     } else {
         (Tracked(target_pagetable_lock_perm), Tracked(target_windows))
     };
-    proof {
-        thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); thread_perms_wf_at(krnl.thr_mp, peer_thread_ptr);
-        process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, source_thread); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, target_thread);
-        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, source_process); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target_process);
-        container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, target_thread); container_perms_wf_at(krnl.ctn_mp, target_container);
-        process_pagetable_match_pagetable_at(krnl.prc_mp, krnl.pt_mp, target_pagetable);
-        container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, target_container);
-    }
     (target_allocator, Tracked(read_perm), Tracked(read_windows))
 }
 

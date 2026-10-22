@@ -206,7 +206,7 @@ proof fn kill_container_move_free_page_2m_eof_free_pages(
     };
 }
 
-proof fn kill_container_move_free_page_2m_eof_page_owner(
+proof fn kill_container_move_free_page_2m_eof_container_page_owner(
     pre: KernelK, post: KernelK, src: RwLockContainerPtr, dst: RwLockContainerPtr, src_allocator: RwLockPageAllocatorPtr, dst_allocator: RwLockPageAllocatorPtr,
     page_ptr: PagePtr, node: usize,
 )
@@ -222,21 +222,53 @@ proof fn kill_container_move_free_page_2m_eof_page_owner(
         forall|i: PageIndex| #![trigger page_2m_tail_indices(page_ptr2page_index(page_ptr)).contains(i)]
             page_2m_tail_indices(page_ptr2page_index(page_ptr)).contains(i) ==> pre.pg_arr.spec_index(i).view().view().state is Merged2m,
         kill_container_move_free_page_2m_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, page_ptr, node),
-    ensures
-        container_page_owner_wf(post.ctn_mp, post.pg_arr),
-        hugepage_2m_wf(post.pg_arr),
-        hugepage_1g_wf(post.pg_arr),
+    ensures container_page_owner_wf(post.ctn_mp, post.pg_arr),
 {
     reveal(kill_container_move_free_page_2m_eof_transition_framing);
-    let head = page_ptr2page_index(page_ptr);
     broadcast use page_2m_ptr_prefix_member_bounds, kill_container_move_free_page_2m_eof_region_member;
     page_ptr_roundtrip(); page_index_roundtrip(); page_ptr_valid_imply_page_index_valid(); page_index_valid_imply_page_ptr_valid();
     assert(container_page_owner_forward_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_page_owner_wf); reveal(hugepage_2m_wf); };
     assert(container_page_owner_backward_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_page_owner_wf); };
     assert(container_page_owner_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_page_owner_wf); };
-    assert(hugepage_2m_wf(post.pg_arr)) by { reveal(hugepage_2m_wf); };
-    assert(hugepage_1g_wf(post.pg_arr)) by { hugepage_1g_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); };
 }
+
+proof fn kill_container_move_free_page_2m_eof_hugepage_2m(
+    pre: KernelK, post: KernelK, src: RwLockContainerPtr, dst: RwLockContainerPtr, src_allocator: RwLockPageAllocatorPtr, dst_allocator: RwLockPageAllocatorPtr,
+    page_ptr: PagePtr, node: usize,
+)
+    requires
+        pre.inv(),
+        pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state is Free2m,
+        kill_container_move_free_page_2m_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, page_ptr, node),
+    ensures hugepage_2m_wf(post.pg_arr),
+{ reveal(kill_container_move_free_page_2m_eof_transition_framing); reveal(hugepage_2m_wf); }
+
+proof fn kill_container_move_free_page_2m_eof_hugepage_1g(
+    pre: KernelK, post: KernelK, src: RwLockContainerPtr, dst: RwLockContainerPtr, src_allocator: RwLockPageAllocatorPtr, dst_allocator: RwLockPageAllocatorPtr,
+    page_ptr: PagePtr, node: usize,
+)
+    requires
+        pre.inv(),
+        pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state is Free2m,
+        forall|i: PageIndex| #![trigger page_2m_tail_indices(page_ptr2page_index(page_ptr)).contains(i)]
+            page_2m_tail_indices(page_ptr2page_index(page_ptr)).contains(i) ==> pre.pg_arr.spec_index(i).view().view().state is Merged2m,
+        kill_container_move_free_page_2m_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, page_ptr, node),
+    ensures hugepage_1g_wf(post.pg_arr),
+{ reveal(kill_container_move_free_page_2m_eof_transition_framing); hugepage_1g_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); }
+
+proof fn kill_container_move_free_page_2m_eof_page_object_owner(
+    pre: KernelK, post: KernelK, src: RwLockContainerPtr, dst: RwLockContainerPtr, src_allocator: RwLockPageAllocatorPtr, dst_allocator: RwLockPageAllocatorPtr,
+    page_ptr: PagePtr, node: usize,
+)
+    requires
+        pre.inv(),
+        pre.ctn_mp.dom().contains(dst),
+        pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state is Free2m,
+        forall|i: PageIndex| #![trigger page_2m_tail_indices(page_ptr2page_index(page_ptr)).contains(i)]
+            page_2m_tail_indices(page_ptr2page_index(page_ptr)).contains(i) ==> pre.pg_arr.spec_index(i).view().view().state is Merged2m,
+        kill_container_move_free_page_2m_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, page_ptr, node),
+    ensures page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp),
+{ reveal(kill_container_move_free_page_2m_eof_transition_framing); reveal(page_array_wf); reveal(page_object_owner_wf); reveal(container_page_owner_wf); }
 
 /// Closes every invariant after `kill_container_move_free_page_2m`.
 pub(super) proof fn kill_container_move_free_page_2m_eof(
@@ -283,7 +315,9 @@ pub(super) proof fn kill_container_move_free_page_2m_eof(
     assert(container_perms_wf(post.ctn_mp)) by { reveal(container_perms_wf); };
     assert(post.subsystems_inv()) by { reveal(allocator_perms_wf); reveal(KernelK::default_pagetable_wf); };
     kill_container_move_free_page_2m_eof_free_pages(pre, post, src, dst, src_allocator, dst_allocator, page_ptr, node);
-    kill_container_move_free_page_2m_eof_page_owner(pre, post, src, dst, src_allocator, dst_allocator, page_ptr, node);
+    kill_container_move_free_page_2m_eof_container_page_owner(pre, post, src, dst, src_allocator, dst_allocator, page_ptr, node);
+    kill_container_move_free_page_2m_eof_hugepage_2m(pre, post, src, dst, src_allocator, dst_allocator, page_ptr, node);
+    kill_container_move_free_page_2m_eof_hugepage_1g(pre, post, src, dst, src_allocator, dst_allocator, page_ptr, node);
     assert(post.memory_management_inv()) by {
         assert(allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
             allocator_4k_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.allc_4k_mp, post.allc_4k_mp);
@@ -291,7 +325,7 @@ pub(super) proof fn kill_container_move_free_page_2m_eof(
             allocator_1g_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.allc_1g_mp, post.allc_1g_mp);
         };
         assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
-        assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(page_array_wf); reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
+        kill_container_move_free_page_2m_eof_page_object_owner(pre, post, src, dst, src_allocator, dst_allocator, page_ptr, node);
         assert(page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
             reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_perms_wf); reveal(pagetable_lower_wf);
         };
