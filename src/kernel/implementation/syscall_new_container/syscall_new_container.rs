@@ -3,7 +3,7 @@ use crate::*;
 use super::syscall_new_container_commit::commit_new_container;
 use super::syscall_new_container_spec::*;
 use super::syscall_new_container_trace::*;
-use super::syscall_new_container_lock_owners::new_container_lock_process_and_thread;
+use super::syscall_new_container_lock_owners::{new_container_lock_process_and_thread, new_container_lock_source_windows};
 
 verus! {
 /// Exec state handed from the lock-and-check prefix of `syscall_new_container` to its commit.
@@ -630,17 +630,9 @@ fn new_container_lock_entry(
         krnl.pt_mp.typed_lock_map_aligned_locked_at(lctx.pagetable_lock_map(), lctx.thread_id(), source_pagetable_ptr);
     }
     let Tracked(source_pagetable_lock_perm) = krnl.rlock_pagetable(source_pagetable_ptr, Tracked(&mut *lctx));
-    let source_start_indices = va2index(va);
     proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, source_pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable_ptr); }
-    let source_pt = krnl.pt_mp.borrow_typed(source_pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&source_pagetable_lock_perm));
-    let l4_ok = source_pt.kernel_l4_end <= source_start_indices.0;
-    let tracked mut source_window_perms: Map<WindowVa, LockPerm> = Map::tracked_empty();
-    let mut source_ready = false;
-    if l4_ok {
-        let Tracked(window_perms) = krnl.lock_pagetable_range_existing_windows(source_pagetable_ptr, &source_range, Tracked(&source_pagetable_lock_perm), Tracked(&mut *lctx));
-        source_ready = share_mapping_4k_source_precheck(krnl, &source_range, source_pagetable_ptr, Tracked(&*lctx), Tracked(&source_pagetable_lock_perm));
-        proof { source_window_perms = window_perms; }
-    }
+    let (l4_ok, source_ready, source_window_perms) = new_container_lock_source_windows(krnl, Tracked(&mut *lctx), source_pagetable_ptr, &source_range, Tracked(&source_pagetable_lock_perm));
+    let Tracked(source_window_perms) = source_window_perms;
     proof {
         assert(krnl.cpu_set_mp.dom().contains(parent_cpu_set)) by { container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, parent_container_ptr); };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };

@@ -254,21 +254,8 @@ fn new_process_lock_entry(
     let Tracked(endpoint_lock_perm_opt) = endpoint_lock_perm_opt;
     let Tracked(source_pagetable_lock_perm) = source_pagetable_lock_perm;
 
-    let source_start_indices = va2index(va);
-    proof { assert(krnl.pt_mp.perms_wf()) by { pagetable_perms_wf_map(krnl.pt_mp); }; }
-    let source_pt = krnl.pt_mp.borrow_typed(source_pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&source_pagetable_lock_perm));
-    let l4_ok = source_pt.kernel_l4_end <= source_start_indices.0;
-    let tracked mut source_window_perms: Map<WindowVa, LockPerm> = Map::tracked_empty();
-    let mut source_ready = false;
-    if l4_ok {
-        let Tracked(window_perms) = krnl.lock_pagetable_range_existing_windows(source_pagetable_ptr, &source_range, Tracked(&source_pagetable_lock_perm), Tracked(&mut *lctx));
-        source_ready = share_mapping_4k_source_precheck(krnl, &source_range, source_pagetable_ptr, Tracked(&*lctx), Tracked(&source_pagetable_lock_perm));
-        if source_ready {
-            proof { source_window_perms = window_perms; }
-        } else {
-            krnl.unlock_pagetable_range_existing_windows(source_pagetable_ptr, &source_range, Tracked(&source_pagetable_lock_perm), Tracked(&mut *lctx), Tracked(window_perms));
-        }
-    }
+    let (source_ready, source_window_perms) = new_process_lock_source_windows(krnl, Tracked(&mut *lctx), source_pagetable_ptr, &source_range, Tracked(&source_pagetable_lock_perm));
+    let Tracked(source_window_perms) = source_window_perms;
     if !source_ready {
         proof {
             pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable_ptr);

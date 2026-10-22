@@ -318,6 +318,35 @@ pub(super) proof fn eof_subsystems_inv(
     assert(pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()));
     assert(iommu_table_perms_wf(post.it_mp)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); };
     assert(page_array_wf(post.pg_arr)) by { reveal(page_array_wf); };
+    eof_process_perms_wf(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid);
+    assert(container_perms_wf(post.ctn_mp)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
+    eof_thread_perms_wf(pre, post, staging_thread_ptr);
+    assert(pcid_allocator_perms_wf(post.pcid_allc_mp)) by { reveal(pcid_allocator_perms_wf); };
+    assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
+}
+
+/// The new process joins its parent's child list; every other process keeps its tree fields.
+proof fn eof_process_perms_wf(
+    pre: KernelK, post: KernelK, process_page_ptr: PagePtr, pagetable_page_ptr: PagePtr, l4_page_ptr: PagePtr,
+    iommu_table_page_ptr: PagePtr, iommu_l4_page_ptr: PagePtr, parent_ptr: RwLockProcessPtr, staging_thread_ptr: RwLockThreadPtr,
+    container_ptr: RwLockContainerPtr, pcid_allocator_ptr: RwLockPcidAllocatorPtr, pcid: Pcid,
+)
+    requires
+        pre.inv(),
+        !pre.prc_mp.dom().contains(process_page_ptr),
+        pre.prc_mp.dom().contains(parent_ptr),
+        pre.prc_mp.spec_index(parent_ptr).view_rodata().view().owning_container == container_ptr,
+        pre.ctn_mp.dom().contains(container_ptr),
+        create_process_with_iommu_from_staged_pages_eof_transition_framing(pre, post, process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid),
+        post.prc_mp.perms_wf(),
+        post.prc_mp.spec_index(process_page_ptr).inv(),
+        post.prc_mp.spec_index(parent_ptr).inv(),
+    ensures
+        process_tree_fields_wf(post.prc_mp),
+        process_perms_wf(post.prc_mp),
+{
+    hide(Seq::contains);
+    reveal(create_process_with_iommu_from_staged_pages_eof_transition_framing);
     assert(process_tree_fields_wf(post.prc_mp)) by {
         reveal(Seq::contains);
         assert(process_tree_fields_wf(pre.prc_mp)) by { reveal(process_perms_wf); };
@@ -327,13 +356,29 @@ pub(super) proof fn eof_subsystems_inv(
         process_perms_wf_at(pre.prc_mp, parent_ptr); seq_push_lemma::<RwLockProcessPtr>(); seq_push_unique_lemma::<RwLockProcessPtr>();
     };
     assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };
-    assert(container_perms_wf(post.ctn_mp)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
-    assert(thread_perms_wf(post.thr_mp)) by {
-        reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
-        reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_ipc_transit_wf);
-    };
-    assert(pcid_allocator_perms_wf(post.pcid_allc_mp)) by { reveal(pcid_allocator_perms_wf); };
-    assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
+}
+
+/// The staging thread only loses its staged 4K pages and their quota; every other thread is unchanged.
+proof fn eof_thread_perms_wf(pre: KernelK, post: KernelK, staging_thread_ptr: RwLockThreadPtr)
+    requires
+        thread_perms_wf(pre.thr_mp),
+        post.thr_mp.perms_wf(),
+        post.thr_mp.spec_index(staging_thread_ptr).inv(),
+        post.thr_mp.unchanged_except(&pre.thr_mp, staging_thread_ptr),
+        post.thr_mp.spec_index(staging_thread_ptr).view() == (Thread {
+            quota_4k: post.thr_mp.spec_index(staging_thread_ptr).view().quota_4k,
+            temp_alloc_cache_4k: post.thr_mp.spec_index(staging_thread_ptr).view().temp_alloc_cache_4k, ..pre.thr_mp.spec_index(staging_thread_ptr).view()
+        }),
+        post.thr_mp.spec_index(staging_thread_ptr).view().temp_alloc_cache_4k.view().is_empty(),
+        post.thr_mp.spec_index(staging_thread_ptr).locking_thread() == pre.thr_mp.spec_index(staging_thread_ptr).locking_thread(),
+        post.thr_mp.spec_index(staging_thread_ptr).being_killed() == pre.thr_mp.spec_index(staging_thread_ptr).being_killed(),
+        post.thr_mp.spec_index(staging_thread_ptr).killer_info() == pre.thr_mp.spec_index(staging_thread_ptr).killer_info(),
+        post.thr_mp.spec_index(staging_thread_ptr).view_ghost() == pre.thr_mp.spec_index(staging_thread_ptr).view_ghost(),
+    ensures
+        thread_perms_wf(post.thr_mp),
+{
+    reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
+    reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_ipc_transit_wf);
 }
 
 pub(super) proof fn eof_page_table_relations(

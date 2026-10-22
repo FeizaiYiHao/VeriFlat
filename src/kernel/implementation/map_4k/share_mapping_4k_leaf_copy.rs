@@ -80,6 +80,8 @@ pub(super) fn share_one_mapping_4k_copy_leaf(
                 ==> pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).spec_resolve_mapping_l2(l4i, l3i, l2i)
                     == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).spec_resolve_mapping_l2(l4i, l3i, l2i),
         held_pages_unchanged(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx)),
+        forall|w: WindowVa| #![trigger pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).window_view(w)]
+            pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).window_leaves_present(w) ==> pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).window_leaves_present(w),
 {
     let source_indices = va2index(source_va);
     let target_indices = va2index(target_va);
