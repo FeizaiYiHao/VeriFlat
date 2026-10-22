@@ -39,6 +39,9 @@ pub const PAGE_ENTRY_USER_MASK: u64 = 0x1u64 << PAGE_ENTRY_USER_SHIFT;
 pub const PAGE_ENTRY_PS_MASK: u64 = 0x1u64 << PAGE_ENTRY_PS_SHIFT;
 pub const PAGE_ENTRY_EXECUTE_MASK: u64 = 0x1u64 << PAGE_ENTRY_EXECUTE_SHIFT;
 pub const PAGE_ENTRY_KERNEL_PRESENT_MASK: u64 = 0x1u64 << PAGE_ENTRY_KERNEL_PRESENT_SHIFT;
+// Preset on present entries so hardware never performs the Accessed/Dirty read-modify-write on a page-table word the kernel's PointsTo claims.
+pub const PAGE_ENTRY_ACCESSED_MASK: u64 = 0x1u64 << 5;
+pub const PAGE_ENTRY_DIRTY_MASK: u64 = 0x1u64 << 6;
 pub const MAX_CONTAINER_TREE_DEPTH: usize = 1024;
 
 pub const PT_TYPE: PTType = true;

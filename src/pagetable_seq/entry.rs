@@ -160,7 +160,7 @@ pub fn page_entry2usize(page_entry: &PageEntry) -> (ret: usize)
     let execute_disable = page_entry.perm.execute_disable;
     let user = page_entry.perm.user;
     let kernel_present = page_entry.perm.kernel_present;
-    let ret = addr | if present { PAGE_ENTRY_PRESENT_MASK as usize } else { 0 } | if ps { PAGE_ENTRY_PS_MASK as usize } else { 0 } | if write { PAGE_ENTRY_WRITE_MASK as usize } else { 0 }
+    let ret = addr | if present { (PAGE_ENTRY_PRESENT_MASK | PAGE_ENTRY_ACCESSED_MASK | PAGE_ENTRY_DIRTY_MASK) as usize } else { 0 } | if ps { PAGE_ENTRY_PS_MASK as usize } else { 0 } | if write { PAGE_ENTRY_WRITE_MASK as usize } else { 0 }
         | if execute_disable { PAGE_ENTRY_EXECUTE_MASK as usize } else { 0 } | if user { PAGE_ENTRY_USER_MASK as usize } else { 0 } | if kernel_present { PAGE_ENTRY_KERNEL_PRESENT_MASK as usize } else { 0 };
     assert({
         &&& ret & MEM_MASK as usize == addr
@@ -173,7 +173,7 @@ pub fn page_entry2usize(page_entry: &PageEntry) -> (ret: usize)
     }) by (bit_vector)
         requires
             addr & (!MEM_MASK) as usize == 0,
-            ret == addr | if present { PAGE_ENTRY_PRESENT_MASK as usize } else { 0 } | if ps { PAGE_ENTRY_PS_MASK as usize } else { 0 } | if write { PAGE_ENTRY_WRITE_MASK as usize } else { 0 }
+            ret == addr | if present { (PAGE_ENTRY_PRESENT_MASK | PAGE_ENTRY_ACCESSED_MASK | PAGE_ENTRY_DIRTY_MASK) as usize } else { 0 } | if ps { PAGE_ENTRY_PS_MASK as usize } else { 0 } | if write { PAGE_ENTRY_WRITE_MASK as usize } else { 0 }
                 | if execute_disable { PAGE_ENTRY_EXECUTE_MASK as usize } else { 0 } | if user { PAGE_ENTRY_USER_MASK as usize } else { 0 } | if kernel_present { PAGE_ENTRY_KERNEL_PRESENT_MASK as usize } else { 0 },
     ;
     ret

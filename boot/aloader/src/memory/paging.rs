@@ -33,6 +33,9 @@ const PHYSICAL_MASK: u64 = (1u64 << MAXPHYADDR) - 1u64;
 /// Bitmask to get the physical page address.
 const PHYSICAL_PAGE_MASK: u64 = PAGE_MASK & PHYSICAL_MASK;
 
+/// Accessed (bit 5) and Dirty (bit 6), preset on present entries so hardware never performs the read-modify-write on a page-table word the kernel's PointsTo claims.
+const ACCESSED_DIRTY: u64 = (1 << 5) | (1 << 6);
+
 pub struct AddressSpace {
     pml4: *mut PageTable,
 }
@@ -190,7 +193,7 @@ impl Entry {
     }
 
     fn with_present(mut self, present: bool) -> Self {
-        self.0 = (self.0 & !(0b1)) | (if present { 1 } else { 0 });
+        self.0 = (self.0 & !(0b1 | ACCESSED_DIRTY)) | (if present { 1 | ACCESSED_DIRTY } else { 0 });
         self
     }
 
