@@ -842,6 +842,69 @@ pub(crate) fn kill_reclaim_iommu_leaves(
     proof { iommu_table_perms_wf_at(krnl.it_mp, iommu_table); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target); }
 }
 
+/// Return the emptied target's quota to its container, unlock its tables, and make it a zombie.
+pub(crate) fn kill_reclaim_return_quota_and_zombify(
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
+    thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>, Tracked(chain_perms): Tracked<&Map<RwLockProcessPtr, LockPerm>>,
+    Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>, Tracked(thread_perm): Tracked<&LockPerm>, pagetable: RwLockPageTableRoot,
+    iommu_table: Option<RwLockPageTableRoot>, Tracked(pagetable_perm): Tracked<LockPerm>, Tracked(iommu_perm): Tracked<Option<LockPerm>>, Ghost(kernel_l4_end): Ghost<usize>,
+    Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>,
+)
+    requires
+        old(krnl).inv(),
+        typed_lock_maps_aligned(old(krnl), old(lctx)),
+        old(lctx).kernel_view_locking_state() is Acquire,
+        old(steps).snapshot_k() == *old(krnl),
+        0 <= start <= old(steps).view().len(),
+        kill_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id, ctx),
+        kill_reclaim_state(*old(krnl), *old(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, KillStage::Reclaim { flushed: true }, *cpu_perm, *process_perm, *thread_perm, *chain_perms, pagetable,
+            iommu_table, pagetable_perm, iommu_perm),
+        old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
+        target == chain[chain.len() - 1],
+        old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end == kernel_l4_end,
+        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).leaves_present(),
+        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
+            pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && KERNEL_MEM_END_L4INDEX <= l4i && kernel_l4_end <= l4i ==> !pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
+        iommu_table is Some ==> old(krnl).it_mp.spec_index(iommu_table->Some_0).view().leaves_present(),
+        iommu_table is Some ==> forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger old(krnl).it_mp.spec_index(iommu_table->Some_0).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
+            pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) ==> !old(krnl).it_mp.spec_index(iommu_table->Some_0).view().mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
+    ensures
+        final(krnl).inv(),
+        typed_lock_maps_aligned(final(krnl), final(lctx)),
+        final(lctx).kernel_view_locking_state() is Acquire,
+        final(steps).snapshot_k() == *final(krnl),
+        old(steps).view().len() <= final(steps).view().len(),
+        forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+        kill_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id, ctx),
+        kill_walk_state(*final(krnl), *final(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, None, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
+        final(krnl).prc_mp.spec_index(target).view().zombie,
+        final(krnl).prc_mp.spec_index(target).view().children.view().len() == 0,
+        final(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
+        final(krnl).prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
+        final(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set == old(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set,
+        forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
+            &&& final(krnl).ctn_mp.dom().contains(c)
+            &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
+            &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
+            &&& final(krnl).ctn_mp.spec_index(c).view_rodata() == old(krnl).ctn_mp.spec_index(c).view_rodata()
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(c).view_ghost().uppertree_seq
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set == old(krnl).ctn_mp.spec_index(c).view_ghost().subtree_set
+            &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
+            &&& final(krnl).ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
+        },
+        final(lctx).container_lock_map() == old(lctx).container_lock_map(),
+        final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
+{
+    kill_reclaim_return_quota(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, Ghost(chain), Tracked(chain_perms), Tracked(cpu_perm),
+        Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Tracked(&pagetable_perm), Tracked(&iommu_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
+    kill_reclaim_unlock_table(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, Ghost(chain), Tracked(chain_perms), Tracked(cpu_perm),
+        Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Tracked(pagetable_perm), Tracked(iommu_perm), Ghost(kernel_l4_end), Ghost(start), Ghost(pre),
+        Ghost(scope), Ghost(ctx));
+    kill_reclaim_zombify(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, Ghost(chain), Tracked(chain_perms), Tracked(cpu_perm),
+        Tracked(process_perm), Tracked(thread_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
+}
+
 /// Return the target's quota of every size to its container, one size per step.
 pub(crate) fn kill_reclaim_return_quota(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
@@ -954,98 +1017,14 @@ pub(crate) fn kill_reclaim_return_quota_size(
     let ghost entry_k = *krnl;
     let ghost entry_lctx = *lctx;
     let ghost entry_steps = steps.view();
-    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
-    let container_ptr = krnl.prc_mp.borrow_rodata(target).borrow().owning_container;
-    proof {
-        container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target);
-        container_process_quota_sums_bounded(&*krnl, container_ptr, target);
-        container_perms_wf_at(krnl.ctn_mp, container_ptr);
-    }
-    match size {
-        PageSize::SZ4k => {
-            let allocator_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_4k;
-            proof { assert(krnl.allc_4k_mp.dom().contains(allocator_ptr) && krnl.allc_4k_mp.spec_index(allocator_ptr).wf()) by {
-                container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr);
-            }; }
-            let Tracked(quota_perm) = krnl.wlock_allocator_quota_4k(allocator_ptr, Tracked(&mut *lctx));
-            let ghost locked = *krnl;
-            let process_quota = {
-                let tracked target_perm = chain_perms.tracked_borrow(target);
-                let process = krnl.prc_mp.borrow_mut_typed(target, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(target_perm));
-                let quota = process.quota_4k;
-                process.quota_4k = 0;
-                quota
-            };
-            {
-                let quota = krnl.allc_4k_mp.borrow_mut_quota_typed(allocator_ptr, Ghost(lctx.allocator_quota_4k_lock_map()), Ghost(lctx.allocator_cache_4k_lock_map()),
-                    Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), Tracked(&quota_perm));
-                quota.value = quota.value + process_quota;
-            }
-            proof {
-                assert(kill_quota_eof_transition_framing(locked, *krnl, target, allocator_ptr, size)) by { reveal(kill_quota_eof_transition_framing); };
-                kill_quota_eof(locked, *krnl, target, allocator_ptr, size);
-                assert(krnl.allc_4k_mp.spec_index(allocator_ptr).wf() && krnl.allc_4k_mp.spec_index(allocator_ptr).quota.inv()) by { allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr); };
-            }
-            krnl.wunlock_allocator_quota_4k(allocator_ptr, Tracked(&mut *lctx), Tracked(quota_perm));
-        }
-        PageSize::SZ2m => {
-            let allocator_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_2m;
-            proof { assert(krnl.allc_2m_mp.dom().contains(allocator_ptr) && krnl.allc_2m_mp.spec_index(allocator_ptr).wf()) by {
-                container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); allocator_perms_wf_at(krnl.allc_2m_mp, allocator_ptr);
-            }; }
-            let Tracked(quota_perm) = krnl.wlock_allocator_quota_2m(allocator_ptr, Tracked(&mut *lctx));
-            let ghost locked = *krnl;
-            let process_quota = {
-                let tracked target_perm = chain_perms.tracked_borrow(target);
-                let process = krnl.prc_mp.borrow_mut_typed(target, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(target_perm));
-                let quota = process.quota_2m;
-                process.quota_2m = 0;
-                quota
-            };
-            {
-                let quota = krnl.allc_2m_mp.borrow_mut_quota_typed(allocator_ptr, Ghost(lctx.allocator_quota_2m_lock_map()), Ghost(lctx.allocator_cache_2m_lock_map()),
-                    Ghost(lctx.allocator_global_pool_2m_lock_map()), Tracked(&*lctx), Tracked(&quota_perm));
-                quota.value = quota.value + process_quota;
-            }
-            proof {
-                assert(kill_quota_eof_transition_framing(locked, *krnl, target, allocator_ptr, size)) by { reveal(kill_quota_eof_transition_framing); };
-                kill_quota_eof(locked, *krnl, target, allocator_ptr, size);
-                assert(krnl.allc_2m_mp.spec_index(allocator_ptr).wf() && krnl.allc_2m_mp.spec_index(allocator_ptr).quota.inv()) by { allocator_perms_wf_at(krnl.allc_2m_mp, allocator_ptr); };
-            }
-            krnl.wunlock_allocator_quota_2m(allocator_ptr, Tracked(&mut *lctx), Tracked(quota_perm));
-        }
-        PageSize::SZ1g => {
-            let allocator_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_1g;
-            proof { assert(krnl.allc_1g_mp.dom().contains(allocator_ptr) && krnl.allc_1g_mp.spec_index(allocator_ptr).wf()) by {
-                container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); allocator_perms_wf_at(krnl.allc_1g_mp, allocator_ptr);
-            }; }
-            let Tracked(quota_perm) = krnl.wlock_allocator_quota_1g(allocator_ptr, Tracked(&mut *lctx));
-            let ghost locked = *krnl;
-            let process_quota = {
-                let tracked target_perm = chain_perms.tracked_borrow(target);
-                let process = krnl.prc_mp.borrow_mut_typed(target, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(target_perm));
-                let quota = process.quota_1g;
-                process.quota_1g = 0;
-                quota
-            };
-            {
-                let quota = krnl.allc_1g_mp.borrow_mut_quota_typed(allocator_ptr, Ghost(lctx.allocator_quota_1g_lock_map()), Ghost(lctx.allocator_cache_1g_lock_map()),
-                    Ghost(lctx.allocator_global_pool_1g_lock_map()), Tracked(&*lctx), Tracked(&quota_perm));
-                quota.value = quota.value + process_quota;
-            }
-            proof {
-                assert(kill_quota_eof_transition_framing(locked, *krnl, target, allocator_ptr, size)) by { reveal(kill_quota_eof_transition_framing); };
-                kill_quota_eof(locked, *krnl, target, allocator_ptr, size);
-                assert(krnl.allc_1g_mp.spec_index(allocator_ptr).wf() && krnl.allc_1g_mp.spec_index(allocator_ptr).quota.inv()) by { allocator_perms_wf_at(krnl.allc_1g_mp, allocator_ptr); };
-            }
-            krnl.wunlock_allocator_quota_1g(allocator_ptr, Tracked(&mut *lctx), Tracked(quota_perm));
-        }
-    }
+    let tracked target_perm = chain_perms.tracked_borrow(target);
+    kill_reclaim_return_quota_under_lock(krnl, Tracked(&mut *lctx), target, Tracked(target_perm), size);
     let ghost returned_k = *krnl;
     krnl.set_thread_syscall_progress(thread_ptr, Ghost(kill_scope_progress(scope, target, KillStage::Quota { returned: size })), Tracked(&*lctx), Tracked(thread_perm));
     proof {
         let pre_u = kernel_k_to_kernel_u(entry_k);
         let post_u = kernel_k_to_kernel_u(*krnl);
+        container_process_wf_process_at(entry_k.ctn_mp, entry_k.prc_mp, target);
         kernel_process_quota_returned_implies_u_step(&entry_k, &returned_k, target, size);
         kernel_thread_syscall_progress_changed_implies_u_step(&returned_k, &*krnl, thread_ptr);
         kill_step_pre_from_k(&entry_k, &entry_lctx, cpu_id, process_ptr, thread_ptr, target, kill_process_quota_stage_before(size), scope);
@@ -1054,6 +1033,294 @@ pub(crate) fn kill_reclaim_return_quota_size(
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         kill_trace_push(&*steps, entry_steps, start, pre, pre_u, post_u, cpu_id, ctx);
     }
+}
+
+/// Under the `size` quota lock of the `size` allocator of the target's container, move the target's whole `size` quota to
+/// that allocator.
+pub(crate) fn kill_reclaim_return_quota_under_lock(
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, target: RwLockProcessPtr, Tracked(target_perm): Tracked<&LockPerm>, size: PageSize,
+)
+    requires
+        old(krnl).inv(),
+        typed_lock_maps_aligned(old(krnl), old(lctx)),
+        old(lctx).kernel_view_locking_state() is Acquire,
+        old(lctx).pcid_needflush_lock_map().dom().is_empty(),
+        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+        old(lctx).page_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
+        old(krnl).prc_mp.dom().contains(target),
+        typed_lock_map_contains_mode(old(lctx).process_lock_map(), target, TypedLockMode::Write),
+        target_perm.state() is WriteLock,
+        target_perm.thread_id() == old(lctx).thread_id(),
+        target_perm.lock_id() == old(krnl).prc_mp.spec_index(target).locking_thread()->Write_lock_id,
+    ensures
+        final(krnl).inv(),
+        typed_lock_maps_aligned(final(krnl), final(lctx)),
+        typed_lock_maps_unchanged(old(lctx), final(lctx)),
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() is Release,
+        *final(krnl) == (KernelK { prc_mp: final(krnl).prc_mp, allc_4k_mp: final(krnl).allc_4k_mp, allc_2m_mp: final(krnl).allc_2m_mp, allc_1g_mp: final(krnl).allc_1g_mp, ..*old(krnl) }),
+        final(krnl).prc_mp.unchanged_except(&old(krnl).prc_mp, target),
+        final(krnl).prc_mp.spec_index(target).view() == match size {
+            PageSize::SZ4k => Process { quota_4k: 0, ..old(krnl).prc_mp.spec_index(target).view() },
+            PageSize::SZ2m => Process { quota_2m: 0, ..old(krnl).prc_mp.spec_index(target).view() },
+            PageSize::SZ1g => Process { quota_1g: 0, ..old(krnl).prc_mp.spec_index(target).view() },
+        },
+        final(krnl).prc_mp.spec_index(target).view_rodata() == old(krnl).prc_mp.spec_index(target).view_rodata(),
+        final(krnl).prc_mp.spec_index(target).view_ghost() == old(krnl).prc_mp.spec_index(target).view_ghost(),
+        final(krnl).prc_mp.spec_index(target).locking_thread() == old(krnl).prc_mp.spec_index(target).locking_thread(),
+        final(krnl).prc_mp.spec_index(target).being_killed() == old(krnl).prc_mp.spec_index(target).being_killed(),
+        final(krnl).prc_mp.spec_index(target).killer_info() == old(krnl).prc_mp.spec_index(target).killer_info(),
+        ({
+            let container = old(krnl).ctn_mp.spec_index(old(krnl).prc_mp.spec_index(target).view_rodata().view().owning_container).view_rodata().view();
+            let process = old(krnl).prc_mp.spec_index(target).view();
+            &&& forall|a: RwLockPageAllocatorPtr| #![trigger final(krnl).allc_4k_mp.spec_index(a)]
+                old(krnl).allc_4k_mp.dom().contains(a) && a != container.allocator_ptr_4k ==> final(krnl).allc_4k_mp.spec_index(a).quota.view().view() == old(krnl).allc_4k_mp.spec_index(a).quota.view().view()
+            &&& forall|a: RwLockPageAllocatorPtr| #![trigger final(krnl).allc_2m_mp.spec_index(a)]
+                old(krnl).allc_2m_mp.dom().contains(a) && a != container.allocator_ptr_2m ==> final(krnl).allc_2m_mp.spec_index(a).quota.view().view() == old(krnl).allc_2m_mp.spec_index(a).quota.view().view()
+            &&& forall|a: RwLockPageAllocatorPtr| #![trigger final(krnl).allc_1g_mp.spec_index(a)]
+                old(krnl).allc_1g_mp.dom().contains(a) && a != container.allocator_ptr_1g ==> final(krnl).allc_1g_mp.spec_index(a).quota.view().view() == old(krnl).allc_1g_mp.spec_index(a).quota.view().view()
+            &&& final(krnl).allc_4k_mp.spec_index(container.allocator_ptr_4k).quota.view().view() as int
+                == old(krnl).allc_4k_mp.spec_index(container.allocator_ptr_4k).quota.view().view() as int + if size is SZ4k { process.quota_4k as int } else { 0 }
+            &&& final(krnl).allc_2m_mp.spec_index(container.allocator_ptr_2m).quota.view().view() as int
+                == old(krnl).allc_2m_mp.spec_index(container.allocator_ptr_2m).quota.view().view() as int + if size is SZ2m { process.quota_2m as int } else { 0 }
+            &&& final(krnl).allc_1g_mp.spec_index(container.allocator_ptr_1g).quota.view().view() as int
+                == old(krnl).allc_1g_mp.spec_index(container.allocator_ptr_1g).quota.view().view() as int + if size is SZ1g { process.quota_1g as int } else { 0 }
+        }),
+{
+    match size {
+        PageSize::SZ4k => kill_reclaim_return_quota_4k_under_lock(krnl, Tracked(&mut *lctx), target, Tracked(target_perm)),
+        PageSize::SZ2m => kill_reclaim_return_quota_2m_under_lock(krnl, Tracked(&mut *lctx), target, Tracked(target_perm)),
+        PageSize::SZ1g => kill_reclaim_return_quota_1g_under_lock(krnl, Tracked(&mut *lctx), target, Tracked(target_perm)),
+    }
+}
+
+/// Under the quota lock of the 4K allocator of the target's container, move the target's whole 4K quota to that allocator.
+pub(crate) fn kill_reclaim_return_quota_4k_under_lock(
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, target: RwLockProcessPtr, Tracked(target_perm): Tracked<&LockPerm>,
+)
+    requires
+        old(krnl).inv(),
+        typed_lock_maps_aligned(old(krnl), old(lctx)),
+        old(lctx).kernel_view_locking_state() is Acquire,
+        old(lctx).pcid_needflush_lock_map().dom().is_empty(),
+        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+        old(lctx).page_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
+        old(krnl).prc_mp.dom().contains(target),
+        typed_lock_map_contains_mode(old(lctx).process_lock_map(), target, TypedLockMode::Write),
+        target_perm.state() is WriteLock,
+        target_perm.thread_id() == old(lctx).thread_id(),
+        target_perm.lock_id() == old(krnl).prc_mp.spec_index(target).locking_thread()->Write_lock_id,
+    ensures
+        final(krnl).inv(),
+        typed_lock_maps_aligned(final(krnl), final(lctx)),
+        typed_lock_maps_unchanged(old(lctx), final(lctx)),
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() is Release,
+        *final(krnl) == (KernelK { prc_mp: final(krnl).prc_mp, allc_4k_mp: final(krnl).allc_4k_mp, ..*old(krnl) }),
+        final(krnl).prc_mp.unchanged_except(&old(krnl).prc_mp, target),
+        final(krnl).prc_mp.spec_index(target).view() == (Process { quota_4k: 0, ..old(krnl).prc_mp.spec_index(target).view() }),
+        final(krnl).prc_mp.spec_index(target).view_rodata() == old(krnl).prc_mp.spec_index(target).view_rodata(),
+        final(krnl).prc_mp.spec_index(target).view_ghost() == old(krnl).prc_mp.spec_index(target).view_ghost(),
+        final(krnl).prc_mp.spec_index(target).locking_thread() == old(krnl).prc_mp.spec_index(target).locking_thread(),
+        final(krnl).prc_mp.spec_index(target).being_killed() == old(krnl).prc_mp.spec_index(target).being_killed(),
+        final(krnl).prc_mp.spec_index(target).killer_info() == old(krnl).prc_mp.spec_index(target).killer_info(),
+        ({
+            let allocator_ptr = old(krnl).ctn_mp.spec_index(old(krnl).prc_mp.spec_index(target).view_rodata().view().owning_container).view_rodata().view().allocator_ptr_4k;
+            &&& forall|a: RwLockPageAllocatorPtr| #![trigger final(krnl).allc_4k_mp.spec_index(a)]
+                old(krnl).allc_4k_mp.dom().contains(a) && a != allocator_ptr ==> final(krnl).allc_4k_mp.spec_index(a).quota.view().view() == old(krnl).allc_4k_mp.spec_index(a).quota.view().view()
+            &&& final(krnl).allc_4k_mp.spec_index(allocator_ptr).quota.view().view() as int
+                == old(krnl).allc_4k_mp.spec_index(allocator_ptr).quota.view().view() as int + old(krnl).prc_mp.spec_index(target).view().quota_4k as int
+        }),
+{
+    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
+    let container_ptr = krnl.prc_mp.borrow_rodata(target).borrow().owning_container;
+    proof {
+        container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target);
+        container_process_quota_sums_bounded(&*krnl, container_ptr, target);
+        container_perms_wf_at(krnl.ctn_mp, container_ptr);
+    }
+    let allocator_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_4k;
+    proof { assert(krnl.allc_4k_mp.dom().contains(allocator_ptr) && krnl.allc_4k_mp.spec_index(allocator_ptr).wf()) by {
+        container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr);
+    }; }
+    let Tracked(quota_perm) = krnl.wlock_allocator_quota_4k(allocator_ptr, Tracked(&mut *lctx));
+    let ghost locked = *krnl;
+    let process_quota = {
+        let process = krnl.prc_mp.borrow_mut_typed(target, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(target_perm));
+        let quota = process.quota_4k;
+        process.quota_4k = 0;
+        quota
+    };
+    {
+        let quota = krnl.allc_4k_mp.borrow_mut_quota_typed(allocator_ptr, Ghost(lctx.allocator_quota_4k_lock_map()), Ghost(lctx.allocator_cache_4k_lock_map()),
+            Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), Tracked(&quota_perm));
+        quota.value = quota.value + process_quota;
+    }
+    proof {
+        assert(kill_quota_eof_transition_framing(locked, *krnl, target, allocator_ptr, PageSize::SZ4k)) by { reveal(kill_quota_eof_transition_framing); };
+        kill_quota_eof(locked, *krnl, target, allocator_ptr, PageSize::SZ4k);
+        assert(krnl.allc_4k_mp.spec_index(allocator_ptr).wf() && krnl.allc_4k_mp.spec_index(allocator_ptr).quota.inv()) by { allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr); };
+    }
+    krnl.wunlock_allocator_quota_4k(allocator_ptr, Tracked(&mut *lctx), Tracked(quota_perm));
+    proof { assert(lctx.allocator_quota_4k_lock_map() =~= old(lctx).allocator_quota_4k_lock_map()); }
+}
+
+/// Under the quota lock of the 2M allocator of the target's container, move the target's whole 2M quota to that allocator.
+pub(crate) fn kill_reclaim_return_quota_2m_under_lock(
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, target: RwLockProcessPtr, Tracked(target_perm): Tracked<&LockPerm>,
+)
+    requires
+        old(krnl).inv(),
+        typed_lock_maps_aligned(old(krnl), old(lctx)),
+        old(lctx).kernel_view_locking_state() is Acquire,
+        old(lctx).pcid_needflush_lock_map().dom().is_empty(),
+        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+        old(lctx).page_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
+        old(krnl).prc_mp.dom().contains(target),
+        typed_lock_map_contains_mode(old(lctx).process_lock_map(), target, TypedLockMode::Write),
+        target_perm.state() is WriteLock,
+        target_perm.thread_id() == old(lctx).thread_id(),
+        target_perm.lock_id() == old(krnl).prc_mp.spec_index(target).locking_thread()->Write_lock_id,
+    ensures
+        final(krnl).inv(),
+        typed_lock_maps_aligned(final(krnl), final(lctx)),
+        typed_lock_maps_unchanged(old(lctx), final(lctx)),
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() is Release,
+        *final(krnl) == (KernelK { prc_mp: final(krnl).prc_mp, allc_2m_mp: final(krnl).allc_2m_mp, ..*old(krnl) }),
+        final(krnl).prc_mp.unchanged_except(&old(krnl).prc_mp, target),
+        final(krnl).prc_mp.spec_index(target).view() == (Process { quota_2m: 0, ..old(krnl).prc_mp.spec_index(target).view() }),
+        final(krnl).prc_mp.spec_index(target).view_rodata() == old(krnl).prc_mp.spec_index(target).view_rodata(),
+        final(krnl).prc_mp.spec_index(target).view_ghost() == old(krnl).prc_mp.spec_index(target).view_ghost(),
+        final(krnl).prc_mp.spec_index(target).locking_thread() == old(krnl).prc_mp.spec_index(target).locking_thread(),
+        final(krnl).prc_mp.spec_index(target).being_killed() == old(krnl).prc_mp.spec_index(target).being_killed(),
+        final(krnl).prc_mp.spec_index(target).killer_info() == old(krnl).prc_mp.spec_index(target).killer_info(),
+        ({
+            let allocator_ptr = old(krnl).ctn_mp.spec_index(old(krnl).prc_mp.spec_index(target).view_rodata().view().owning_container).view_rodata().view().allocator_ptr_2m;
+            &&& forall|a: RwLockPageAllocatorPtr| #![trigger final(krnl).allc_2m_mp.spec_index(a)]
+                old(krnl).allc_2m_mp.dom().contains(a) && a != allocator_ptr ==> final(krnl).allc_2m_mp.spec_index(a).quota.view().view() == old(krnl).allc_2m_mp.spec_index(a).quota.view().view()
+            &&& final(krnl).allc_2m_mp.spec_index(allocator_ptr).quota.view().view() as int
+                == old(krnl).allc_2m_mp.spec_index(allocator_ptr).quota.view().view() as int + old(krnl).prc_mp.spec_index(target).view().quota_2m as int
+        }),
+{
+    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
+    let container_ptr = krnl.prc_mp.borrow_rodata(target).borrow().owning_container;
+    proof {
+        container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target);
+        container_process_quota_sums_bounded(&*krnl, container_ptr, target);
+        container_perms_wf_at(krnl.ctn_mp, container_ptr);
+    }
+    let allocator_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_2m;
+    proof { assert(krnl.allc_2m_mp.dom().contains(allocator_ptr) && krnl.allc_2m_mp.spec_index(allocator_ptr).wf()) by {
+        container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); allocator_perms_wf_at(krnl.allc_2m_mp, allocator_ptr);
+    }; }
+    let Tracked(quota_perm) = krnl.wlock_allocator_quota_2m(allocator_ptr, Tracked(&mut *lctx));
+    let ghost locked = *krnl;
+    let process_quota = {
+        let process = krnl.prc_mp.borrow_mut_typed(target, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(target_perm));
+        let quota = process.quota_2m;
+        process.quota_2m = 0;
+        quota
+    };
+    {
+        let quota = krnl.allc_2m_mp.borrow_mut_quota_typed(allocator_ptr, Ghost(lctx.allocator_quota_2m_lock_map()), Ghost(lctx.allocator_cache_2m_lock_map()),
+            Ghost(lctx.allocator_global_pool_2m_lock_map()), Tracked(&*lctx), Tracked(&quota_perm));
+        quota.value = quota.value + process_quota;
+    }
+    proof {
+        assert(kill_quota_eof_transition_framing(locked, *krnl, target, allocator_ptr, PageSize::SZ2m)) by { reveal(kill_quota_eof_transition_framing); };
+        kill_quota_eof(locked, *krnl, target, allocator_ptr, PageSize::SZ2m);
+        assert(krnl.allc_2m_mp.spec_index(allocator_ptr).wf() && krnl.allc_2m_mp.spec_index(allocator_ptr).quota.inv()) by { allocator_perms_wf_at(krnl.allc_2m_mp, allocator_ptr); };
+    }
+    krnl.wunlock_allocator_quota_2m(allocator_ptr, Tracked(&mut *lctx), Tracked(quota_perm));
+    proof { assert(lctx.allocator_quota_2m_lock_map() =~= old(lctx).allocator_quota_2m_lock_map()); }
+}
+
+/// Under the quota lock of the 1G allocator of the target's container, move the target's whole 1G quota to that allocator.
+pub(crate) fn kill_reclaim_return_quota_1g_under_lock(
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, target: RwLockProcessPtr, Tracked(target_perm): Tracked<&LockPerm>,
+)
+    requires
+        old(krnl).inv(),
+        typed_lock_maps_aligned(old(krnl), old(lctx)),
+        old(lctx).kernel_view_locking_state() is Acquire,
+        old(lctx).pcid_needflush_lock_map().dom().is_empty(),
+        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+        old(lctx).page_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
+        old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
+        old(krnl).prc_mp.dom().contains(target),
+        typed_lock_map_contains_mode(old(lctx).process_lock_map(), target, TypedLockMode::Write),
+        target_perm.state() is WriteLock,
+        target_perm.thread_id() == old(lctx).thread_id(),
+        target_perm.lock_id() == old(krnl).prc_mp.spec_index(target).locking_thread()->Write_lock_id,
+    ensures
+        final(krnl).inv(),
+        typed_lock_maps_aligned(final(krnl), final(lctx)),
+        typed_lock_maps_unchanged(old(lctx), final(lctx)),
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() is Release,
+        *final(krnl) == (KernelK { prc_mp: final(krnl).prc_mp, allc_1g_mp: final(krnl).allc_1g_mp, ..*old(krnl) }),
+        final(krnl).prc_mp.unchanged_except(&old(krnl).prc_mp, target),
+        final(krnl).prc_mp.spec_index(target).view() == (Process { quota_1g: 0, ..old(krnl).prc_mp.spec_index(target).view() }),
+        final(krnl).prc_mp.spec_index(target).view_rodata() == old(krnl).prc_mp.spec_index(target).view_rodata(),
+        final(krnl).prc_mp.spec_index(target).view_ghost() == old(krnl).prc_mp.spec_index(target).view_ghost(),
+        final(krnl).prc_mp.spec_index(target).locking_thread() == old(krnl).prc_mp.spec_index(target).locking_thread(),
+        final(krnl).prc_mp.spec_index(target).being_killed() == old(krnl).prc_mp.spec_index(target).being_killed(),
+        final(krnl).prc_mp.spec_index(target).killer_info() == old(krnl).prc_mp.spec_index(target).killer_info(),
+        ({
+            let allocator_ptr = old(krnl).ctn_mp.spec_index(old(krnl).prc_mp.spec_index(target).view_rodata().view().owning_container).view_rodata().view().allocator_ptr_1g;
+            &&& forall|a: RwLockPageAllocatorPtr| #![trigger final(krnl).allc_1g_mp.spec_index(a)]
+                old(krnl).allc_1g_mp.dom().contains(a) && a != allocator_ptr ==> final(krnl).allc_1g_mp.spec_index(a).quota.view().view() == old(krnl).allc_1g_mp.spec_index(a).quota.view().view()
+            &&& final(krnl).allc_1g_mp.spec_index(allocator_ptr).quota.view().view() as int
+                == old(krnl).allc_1g_mp.spec_index(allocator_ptr).quota.view().view() as int + old(krnl).prc_mp.spec_index(target).view().quota_1g as int
+        }),
+{
+    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
+    let container_ptr = krnl.prc_mp.borrow_rodata(target).borrow().owning_container;
+    proof {
+        container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target);
+        container_process_quota_sums_bounded(&*krnl, container_ptr, target);
+        container_perms_wf_at(krnl.ctn_mp, container_ptr);
+    }
+    let allocator_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().allocator_ptr_1g;
+    proof { assert(krnl.allc_1g_mp.dom().contains(allocator_ptr) && krnl.allc_1g_mp.spec_index(allocator_ptr).wf()) by {
+        container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); allocator_perms_wf_at(krnl.allc_1g_mp, allocator_ptr);
+    }; }
+    let Tracked(quota_perm) = krnl.wlock_allocator_quota_1g(allocator_ptr, Tracked(&mut *lctx));
+    let ghost locked = *krnl;
+    let process_quota = {
+        let process = krnl.prc_mp.borrow_mut_typed(target, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(target_perm));
+        let quota = process.quota_1g;
+        process.quota_1g = 0;
+        quota
+    };
+    {
+        let quota = krnl.allc_1g_mp.borrow_mut_quota_typed(allocator_ptr, Ghost(lctx.allocator_quota_1g_lock_map()), Ghost(lctx.allocator_cache_1g_lock_map()),
+            Ghost(lctx.allocator_global_pool_1g_lock_map()), Tracked(&*lctx), Tracked(&quota_perm));
+        quota.value = quota.value + process_quota;
+    }
+    proof {
+        assert(kill_quota_eof_transition_framing(locked, *krnl, target, allocator_ptr, PageSize::SZ1g)) by { reveal(kill_quota_eof_transition_framing); };
+        kill_quota_eof(locked, *krnl, target, allocator_ptr, PageSize::SZ1g);
+        assert(krnl.allc_1g_mp.spec_index(allocator_ptr).wf() && krnl.allc_1g_mp.spec_index(allocator_ptr).quota.inv()) by { allocator_perms_wf_at(krnl.allc_1g_mp, allocator_ptr); };
+    }
+    krnl.wunlock_allocator_quota_1g(allocator_ptr, Tracked(&mut *lctx), Tracked(quota_perm));
+    proof { assert(lctx.allocator_quota_1g_lock_map() =~= old(lctx).allocator_quota_1g_lock_map()); }
 }
 
 /// Unlock the target's emptied page table and IOMMU table.
