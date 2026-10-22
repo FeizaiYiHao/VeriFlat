@@ -325,7 +325,6 @@ proof fn eof_pop_4k_staged_pages(pre: KernelK, post: KernelK, allocator: RwLockP
     requires
         thread_staged_pages_wf(pre.thr_mp, pre.pg_arr),
         pop_stage_4k_page_eof_transition_framing(pre, post, allocator, thread, container, page, node, source),
-        forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t).view().temp_alloc_cache_4k] post.thr_mp.dom().contains(t) && t != thread ==> post.thr_mp.spec_index(t).view().temp_alloc_cache_4k == pre.thr_mp.spec_index(t).view().temp_alloc_cache_4k,
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view();
             let old_thread = pre.thr_mp.spec_index(thread);

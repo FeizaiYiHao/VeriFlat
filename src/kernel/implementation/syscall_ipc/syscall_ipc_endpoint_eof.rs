@@ -12,7 +12,6 @@ proof fn ipc_copy_endpoint_reference_eof_thread_endpoint_ref_counter(
     requires
         thread_endpoint_ref_counter_wf(pre.thr_mp, pre.ep_mp),
         ipc_copy_endpoint_reference_eof_transition_framing(pre, post, receiver_thread_ptr, target_endpoint_index, payload_endpoint_ptr),
-        forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t).view().endpoint_descriptors] post.thr_mp.dom().contains(t) && t != receiver_thread_ptr ==> post.thr_mp.spec_index(t).view().endpoint_descriptors == pre.thr_mp.spec_index(t).view().endpoint_descriptors,
         edp_idx_valid(target_endpoint_index),
         pre.thr_mp.dom().contains(receiver_thread_ptr),
         pre.thr_mp.spec_index(receiver_thread_ptr).view().endpoint_descriptors.spec_index(target_endpoint_index) is None,

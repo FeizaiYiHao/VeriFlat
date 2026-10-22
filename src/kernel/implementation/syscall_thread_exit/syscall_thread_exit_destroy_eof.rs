@@ -79,7 +79,6 @@ proof fn thread_exit_destroy_eof_staged_pages(
     requires
         pre.inv(),
         thread_exit_destroy_eof_transition_framing(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr),
-        forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t).view().temp_alloc_cache_2m] post.thr_mp.dom().contains(t) ==> post.thr_mp.spec_index(t).view().temp_alloc_cache_2m == pre.thr_mp.spec_index(t).view().temp_alloc_cache_2m,
         page_ptr_valid(thread_ptr),
         pre.thr_mp.dom().contains(thread_ptr),
         pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),

@@ -7,6 +7,7 @@ verus! {
     pub open spec fn thread_endpoint_ref_counter_wf(thread_map: ThreadLockedMap, endpoint_map: EndpointLockedMap) -> bool {
         &&& forall|t_ptr:RwLockThreadPtr, edp_index:EndpointIdx|
             #![trigger thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int)]
+            #![trigger thread_map.dom().contains(t_ptr), edp_idx_valid(edp_index)]
             thread_map.dom().contains(t_ptr) && edp_idx_valid(edp_index) && thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int) is Some
                 ==> endpoint_map.dom().contains(thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int).unwrap())
                 && endpoint_map.spec_index(thread_map.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int).unwrap()).view().owning_threads.view().contains((t_ptr, edp_index))

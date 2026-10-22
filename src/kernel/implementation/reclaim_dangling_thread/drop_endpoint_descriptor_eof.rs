@@ -37,7 +37,6 @@ proof fn drop_endpoint_descriptor_eof_thread_endpoint_ref_counter(pre: KernelK, 
     requires
         pre.inv(),
         drop_endpoint_descriptor_eof_transition_framing(pre, post, thread_ptr, endpoint_ptr, index),
-        forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t).view().endpoint_descriptors] post.thr_mp.dom().contains(t) && t != thread_ptr ==> post.thr_mp.spec_index(t).view().endpoint_descriptors == pre.thr_mp.spec_index(t).view().endpoint_descriptors,
         index < MAX_NUM_ENDPOINT_DESCRIPTORS,
         pre.thr_mp.dom().contains(thread_ptr),
         pre.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors.view()[index as int] == Some(endpoint_ptr),

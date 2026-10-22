@@ -18,9 +18,10 @@ pub open spec fn thread_staged_pages_4k_wf(thread_map: ThreadLockedMap, page_arr
             &&& thread_map.dom().contains(thread_ptr)
             &&& thread_map.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().contains(page_index2page_ptr(page_index))
         }
-    &&& forall|p_ptr:RwLockThreadPtr, page_ptr:PagePtr| #![trigger thread_map.spec_index(p_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr)]
-        thread_map.dom().contains(p_ptr) && thread_map.spec_index(p_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr)
-            ==> page_ptr_valid(page_ptr) && page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state == PageState::Owned4k{thread_ptr: p_ptr}
+    &&& forall|p_ptr:RwLockThreadPtr| #![trigger thread_map.dom().contains(p_ptr)]
+        thread_map.dom().contains(p_ptr) ==> forall|page_ptr:PagePtr| #![trigger thread_map.spec_index(p_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr)]
+            thread_map.spec_index(p_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr)
+                ==> page_ptr_valid(page_ptr) && page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state == PageState::Owned4k{thread_ptr: p_ptr}
 }
 
 /// A page staged in thread `thread_ptr`'s 4k temp cache is a valid page owned by that thread.
@@ -46,10 +47,10 @@ pub open spec fn thread_staged_pages_2m_forward_wf(thread_map: ThreadLockedMap, 
 }
 
 pub open spec fn thread_staged_pages_2m_backward_wf(thread_map: ThreadLockedMap, page_array: PageLockedArray) -> bool {
-    forall|p_ptr:RwLockThreadPtr, page_ptr:PagePtr|
-        #![trigger thread_map.spec_index(p_ptr).view().temp_alloc_cache_2m.view().contains(page_ptr)]
-        thread_map.dom().contains(p_ptr) && thread_map.spec_index(p_ptr).view().temp_alloc_cache_2m.view().contains(page_ptr)
-            ==> page_ptr_valid(page_ptr) && page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state == PageState::Owned2m{thread_ptr: p_ptr}
+    forall|p_ptr:RwLockThreadPtr| #![trigger thread_map.dom().contains(p_ptr)]
+        thread_map.dom().contains(p_ptr) ==> forall|page_ptr:PagePtr| #![trigger thread_map.spec_index(p_ptr).view().temp_alloc_cache_2m.view().contains(page_ptr)]
+            thread_map.spec_index(p_ptr).view().temp_alloc_cache_2m.view().contains(page_ptr)
+                ==> page_ptr_valid(page_ptr) && page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state == PageState::Owned2m{thread_ptr: p_ptr}
 }
 
 #[verifier::opaque]
@@ -79,9 +80,10 @@ pub open spec fn thread_staged_pages_1g_wf(thread_map: ThreadLockedMap, page_arr
             &&& thread_map.dom().contains(thread_ptr)
             &&& thread_map.spec_index(thread_ptr).view().temp_alloc_cache_1g.view().contains(page_index2page_ptr(page_index))
         }
-    &&& forall|p_ptr:RwLockThreadPtr, page_ptr:PagePtr| #![trigger thread_map.spec_index(p_ptr).view().temp_alloc_cache_1g.view().contains(page_ptr)]
-        thread_map.dom().contains(p_ptr) && thread_map.spec_index(p_ptr).view().temp_alloc_cache_1g.view().contains(page_ptr)
-            ==> page_ptr_valid(page_ptr) && page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state == PageState::Owned1g{thread_ptr: p_ptr}
+    &&& forall|p_ptr:RwLockThreadPtr| #![trigger thread_map.dom().contains(p_ptr)]
+        thread_map.dom().contains(p_ptr) ==> forall|page_ptr:PagePtr| #![trigger thread_map.spec_index(p_ptr).view().temp_alloc_cache_1g.view().contains(page_ptr)]
+            thread_map.spec_index(p_ptr).view().temp_alloc_cache_1g.view().contains(page_ptr)
+                ==> page_ptr_valid(page_ptr) && page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state == PageState::Owned1g{thread_ptr: p_ptr}
 }
 
 // ---------- Combined ----------
