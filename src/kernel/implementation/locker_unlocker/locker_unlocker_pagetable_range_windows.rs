@@ -106,6 +106,7 @@ impl KernelK {
                 spec_index2va_le_implies_4k_indices_lex_le(spec_va2index(range.start), spec_va2index(last_va));
             };
             pagetable_lower_wf_at(old(self).pt_mp, old(self).pt_lower.view(), root);
+            reveal(pagetable_window_typed_lock_map_aligned);
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
         }
         let tracked mut perms = Map::<WindowVa, LockPerm>::tracked_empty();
@@ -184,6 +185,9 @@ impl KernelK {
                 forall|p: RwLockPageTableRoot, w: WindowVa|
                     #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))]
                     old(lctx).pagetable_window_lock_map().dom().contains((p, w)) ==> lctx.pagetable_window_lock_map().index((p, w)) == old(lctx).pagetable_window_lock_map().index((p, w)),
+                forall|p: RwLockPageTableRoot, w: WindowVa|
+                    #![trigger lctx.pagetable_window_lock_map().dom().contains((p, w))]
+                    lctx.pagetable_window_lock_map().dom().contains((p, w)) ==> lctx.pagetable_window_lock_map().index((p, w)) == (TypedHeldLock { lock_id: window_lock_id_at(p, w), mode: TypedLockMode::Write }),
                 forall|w: WindowVa|
                     #![trigger perms.dom().contains(w)]
                     perms.dom().contains(w) ==> {
@@ -208,7 +212,7 @@ impl KernelK {
                 spec_va_4k_index_roundtrip_at(window_va.va, l4i, l3i, l2i, 0);
                 assert(va_range_2m_windows(*range).contains(window_va));
                 assert(typed_lock_map_2d_ids_lt(lctx.pagetable_window_lock_map(), window_lock_id(root, l4i, l3i, l2i))) by {
-                    reveal(pagetable_window_typed_lock_map_aligned); reveal_with_fuel(lock_minor_lt, 5);
+                    reveal_with_fuel(lock_minor_lt, 4);
                 };
             }
             let Tracked(perm) = self.lock_pagetable_window(root, l4i, l3i, l2i, Tracked(big), Tracked(&mut *lctx));
@@ -422,7 +426,7 @@ impl KernelK {
             self.unlock_pagetable_window(root, l4i, l3i, l2i, Tracked(big), Tracked(&mut *lctx), Tracked(perm));
             proof {
                 broadcast use spec_va_2m_valid_index_roundtrip;
-                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
+                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             }
             if l2i < 511 {
                 l2i = l2i + 1;
@@ -546,6 +550,7 @@ impl KernelK {
                 spec_index2va_le_implies_4k_indices_lex_le(spec_va2index(range.start), spec_va2index(last_va));
             };
             pagetable_lower_wf_at(old(self).pt_mp, old(self).pt_lower.view(), root);
+            reveal(pagetable_window_typed_lock_map_aligned);
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
         }
         let tracked mut perms = Map::<WindowVa, LockPerm>::tracked_empty();
@@ -623,12 +628,19 @@ impl KernelK {
                 forall|p: RwLockPageTableRoot, w: WindowVa|
                     #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))]
                     old(lctx).pagetable_window_lock_map().dom().contains((p, w)) ==> lctx.pagetable_window_lock_map().index((p, w)) == old(lctx).pagetable_window_lock_map().index((p, w)),
+                forall|p: RwLockPageTableRoot, w: WindowVa|
+                    #![trigger lctx.pagetable_window_lock_map().dom().contains((p, w))]
+                    lctx.pagetable_window_lock_map().dom().contains((p, w)) ==> lctx.pagetable_window_lock_map().index((p, w)) == (TypedHeldLock { lock_id: window_lock_id_at(p, w), mode: TypedLockMode::Write }),
                 forall|w: WindowVa|
                     #![trigger perms.dom().contains(w)]
                     perms.dom().contains(w) ==> {
                         &&& va_range_2m_windows(*range).contains(w)
                         &&& pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some
                         &&& !spec_l4_index_path_le((l4i, l3i, l2i, 0usize), spec_va2index(w.va))
+                    },
+                forall|w: WindowVa|
+                    #![trigger perms.index(w)]
+                    perms.dom().contains(w) ==> {
                         &&& perms.index(w).state() is WriteLock
                         &&& perms.index(w).thread_id() == old(lctx).thread_id()
                         &&& typed_lock_map_contains_mode(lctx.pagetable_window_lock_map(), (root, w), TypedLockMode::Write)
@@ -653,13 +665,13 @@ impl KernelK {
             if l2_exists {
                 proof {
                     assert(typed_lock_map_2d_ids_lt(lctx.pagetable_window_lock_map(), window_lock_id(root, l4i, l3i, l2i))) by {
-                        reveal(pagetable_window_typed_lock_map_aligned); reveal_with_fuel(lock_minor_lt, 5);
+                        reveal_with_fuel(lock_minor_lt, 4);
                     };
                 }
                 let Tracked(perm) = self.lock_pagetable_window(root, l4i, l3i, l2i, Tracked(big), Tracked(&mut *lctx));
                 proof {
                     perms.tracked_insert(window_va, perm);
-                    assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
+                    assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
                 }
             }
             proof { broadcast use spec_va_2m_valid_index_roundtrip; }
@@ -867,6 +879,7 @@ impl KernelK {
                     #![trigger va_range_2m_windows(*range).contains(w)]
                     va_range_2m_windows(*range).contains(w) && pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some && spec_l4_index_path_le((l4i, l3i, l2i, 0usize), spec_va2index(w.va)) ==> {
                         &&& remaining.dom().contains(w)
+                        &&& typed_lock_map_contains_mode(lctx.pagetable_window_lock_map(), (root, w), TypedLockMode::Write)
                         &&& remaining.index(w) == perms.index(w)
                         &&& pagetable_c(self.pt_mp, self.pt_lower.view(), root).window_view(w) == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).window_view(w)
                     },
