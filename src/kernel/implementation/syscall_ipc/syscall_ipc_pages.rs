@@ -261,6 +261,7 @@ fn ipc_map_pages_and_release_tables(
         old(krnl).thr_mp.spec_index(peer_thread_ptr).view().temp_alloc_clean(),
         old(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
         !old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
+        old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().ipc_partner is None,
         old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.view().spec_index(0) == peer_thread_ptr,
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
@@ -397,7 +398,9 @@ fn ipc_map_pages_and_release_tables(
         endpoint_perms_wf_at(old(krnl).ep_mp, endpoint_ptr); old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.lemma_len_view();
         ipc_pages_enter_step_pre_from_k(&pre_k, cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, peer_thread_ptr, channel_index, waiting_state, range,
             if waiting_state is SENDING { *target_range } else { *source_range });
+        krnl.set_thread_ipc_partner(peer_thread_ptr, Some(current_thread_ptr), &*lctx);
     }
+    let ghost partnered_k = *krnl;
     krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(Some(SyscallProgress::IpcPages {
         source_range: *source_range, target_range: *target_range, peer: peer_thread_ptr, tables: IpcPagesTables::Unlocked, released: None,
     })), Tracked(&*lctx), Tracked(current_thread_lock_perm));
@@ -410,7 +413,8 @@ fn ipc_map_pages_and_release_tables(
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged);
             reveal(kernel_thread_nonlock_fields_unchanged);
             kernel_cpu_and_two_threads_lock_modes_changed_implies_u_step(&steps.snapshot_k(), old(krnl), old(lctx), cpu_id, current_thread_ptr, peer_thread_ptr, endpoint_ptr, None);
-            kernel_thread_syscall_progress_changed_implies_u_step(old(krnl), &*krnl, current_thread_ptr);
+            kernel_thread_ghost_changed_implies_u_eq(old(krnl), &partnered_k, peer_thread_ptr);
+            kernel_thread_syscall_progress_changed_implies_u_step(&partnered_k, &*krnl, current_thread_ptr);
             ipc_pages_enter_step_from_u(kernel_k_to_kernel_u(steps.snapshot_k()), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*krnl), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, peer_thread_ptr,
                 channel_index, waiting_state, *source_range, *target_range);
         };
@@ -533,6 +537,7 @@ pub(super) fn ipc_rendezvous_pages(
         old(krnl).thr_mp.spec_index(peer_thread_ptr).view().temp_alloc_clean(),
         old(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
         !old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
+        old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().ipc_partner is None,
         old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.len() != 0,
         old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.view().spec_index(0) == peer_thread_ptr,
         old(lctx).page_lock_map().dom().is_empty(),
@@ -631,7 +636,7 @@ pub(super) fn ipc_rendezvous_pages(
             ipc_rendezvous_result_from_k(&steps.snapshot_k(), cpu_id, channel_index, waiting_state, payload, current_thread_ptr, endpoint_ptr, peer_thread_ptr, RetValueType::ErrorIpcSameProcess);
         }
         let ret = ipc_schedule_waiting_peer_and_finish(
-            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, Ghost(Some((channel_index, waiting_state, payload))), peer_thread_ptr,
+            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, Ghost(Some((channel_index, waiting_state, payload))), false, peer_thread_ptr,
             RetValueType::ErrorIpcSameProcess, Tracked(cpu_lock_perm),
             Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm),
         );
@@ -647,7 +652,7 @@ pub(super) fn ipc_rendezvous_pages(
         let ghost finish_before = steps.view();
         let ghost finish_pre_u = kernel_k_to_kernel_u(*krnl);
         let ret = ipc_schedule_waiting_peer_and_finish(
-            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, Ghost(None), peer_thread_ptr,
+            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, Ghost(None), true, peer_thread_ptr,
             result, Tracked(cpu_lock_perm), Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm),
             Tracked(peer_thread_lock_perm),
         );

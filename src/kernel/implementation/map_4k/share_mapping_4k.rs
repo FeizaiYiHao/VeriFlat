@@ -384,6 +384,7 @@ fn share_one_mapping_4k(
 {
     share_one_mapping_4k_copy_leaf(krnl, target_thread, target_process, target_container, source_pagetable, target_pagetable, target_write_held, source_va, target_va, Tracked(&mut *lctx),
         Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm));
+    proof { thread_peer_implies_ipc_partner_at(krnl.thr_mp, progress_thread); }
     krnl.set_thread_syscall_progress(progress_thread, Ghost(share_4k_progress_after_leaf(krnl.thr_mp.spec_index(progress_thread).view().syscall_progress.view())), Tracked(&*lctx),
         Tracked(if progress_thread == source_thread { source_thread_lock_perm } else { target_thread_lock_perm }));
     proof {

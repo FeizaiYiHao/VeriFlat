@@ -13,6 +13,7 @@ proof fn reclaim_dangling_thread_eof_subsystems_inv(
         index_valid(NUM_CPUS, cpu_id),
         page_ptr_valid(dangling_ptr),
         pre.thr_mp.dom().contains(dangling_ptr),
+        pre.thr_mp.spec_index(dangling_ptr).view().state is KILLED,
         pre.allc_4k_mp.dom().contains(allocator_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(dangling_ptr)).view().view().free_list_node_storage.addr() == cache_node_addr,
         !pre.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(cache_node_addr),
@@ -25,7 +26,8 @@ proof fn reclaim_dangling_thread_eof_subsystems_inv(
 {
     reveal(reclaim_dangling_thread_eof_transition_framing);
     assert(thread_perms_wf(post.thr_mp)) by {
-        reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
+        reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+        reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
     };
     assert(allocator_perms_wf(post.allc_4k_mp)) by { reveal(allocator_perms_wf); };
     reveal(KernelK::default_pagetable_wf);

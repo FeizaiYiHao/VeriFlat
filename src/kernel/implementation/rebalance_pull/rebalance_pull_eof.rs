@@ -92,7 +92,10 @@ pub(super) proof fn rebalance_pull_eof(pre: KernelK, post: KernelK, cpu_id: CpuI
     let queues = scheduler_shards_of(pre.sched_mp.spec_index(scheduler_ptr));
     assert(scheduler_shards_of(post.sched_mp.spec_index(scheduler_ptr)) =~= queues.update(victim as int, queues[victim as int].skip(1)).update(cpu_id as int, queues[cpu_id as int].push(thread_ptr))) by { reveal(scheduler_shards_of); };
     assert(post.subsystems_inv()) by {
-        assert(thread_perms_wf(post.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); };
+        assert(thread_perms_wf(post.thr_mp)) by {
+            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+            reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
+        };
         reveal(KernelK::default_pagetable_wf);
     };
     assert(post.memory_management_inv()) by {

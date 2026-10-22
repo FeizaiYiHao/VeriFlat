@@ -54,22 +54,12 @@ pub open spec fn endpoint_iso(u: KernelU, a: RwLockContainerPtr, b: RwLockContai
         }
 }
 
-/// The peer of the IPC rendezvous that `progress` records in flight.
-pub open spec fn progress_peer(progress: Option<SyscallProgress>) -> Option<RwLockThreadPtr> {
-    match progress {
-        Some(SyscallProgress::IpcPages { peer, .. }) => Some(peer),
-        Some(SyscallProgress::IpcEndpoint { peer, .. }) => Some(peer),
-        Some(SyscallProgress::Share4k { origin: Share4kOrigin::IpcPages { peer }, .. }) => Some(peer),
-        _ => None,
-    }
-}
-
 /// Every IPC rendezvous a thread of `x` has in flight is with a live peer outside `y`, and the channel that
 /// peer waits on is a live endpoint that `y` neither owns nor holds.
 pub open spec fn inflight_iso(u: KernelU, x: RwLockContainerPtr, y: RwLockContainerPtr) -> bool {
     forall|t: RwLockThreadPtr| #![trigger u.thread_map[t].syscall_progress]
-        u.thread_map.dom().contains(t) && in_domain(u, x, u.thread_map[t].owning_container) && progress_peer(u.thread_map[t].syscall_progress) is Some ==> {
-            let peer = progress_peer(u.thread_map[t].syscall_progress)->Some_0;
+        u.thread_map.dom().contains(t) && in_domain(u, x, u.thread_map[t].owning_container) && progress_peer_of(u.thread_map[t].syscall_progress) is Some ==> {
+            let peer = progress_peer_of(u.thread_map[t].syscall_progress)->Some_0;
             let channel = u.thread_map[peer].blocking_endpoint_ptr->Some_0;
             &&& u.thread_map.dom().contains(peer)
             &&& !in_domain(u, y, u.thread_map[peer].owning_container)

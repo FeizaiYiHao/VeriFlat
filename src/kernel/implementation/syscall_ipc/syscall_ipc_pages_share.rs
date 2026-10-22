@@ -1192,6 +1192,7 @@ fn ipc_pages_prepare_target(
     proof {
         ipc_pages_check_step_pre_from_k(&*krnl, &*lctx, cpu_id, current_thread_ptr, peer_thread_ptr, endpoint_ptr, source_thread, target_thread, source_process, target_process,
             source_pagetable, target_pagetable, tables);
+        thread_peer_implies_ipc_partner_at(krnl.thr_mp, current_thread_ptr);
     }
     krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(Some(SyscallProgress::Share4k { source_range: *source_range, target_range: *target_range, shared: 0, origin: Share4kOrigin::IpcPages { peer: peer_thread_ptr } })), Tracked(&*lctx),
         Tracked(current_thread_lock_perm));
@@ -1812,6 +1813,7 @@ pub(super) fn ipc_pages_release_tables_and_record(
     } else {
         krnl.runlock_pagetable(target_pagetable, Tracked(&mut *lctx), Tracked(target_pagetable_lock_perm));
     }
+    proof { thread_peer_implies_ipc_partner_at(krnl.thr_mp, current_thread_ptr); }
     krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(Some(SyscallProgress::IpcPages { source_range: *source_range, target_range: *target_range, peer: peer_thread_ptr, tables: IpcPagesTables::Unlocked, released: Some(result) })),
         Tracked(&*lctx), Tracked(current_thread_lock_perm));
     proof {

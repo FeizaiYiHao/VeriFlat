@@ -106,7 +106,7 @@ proof fn eof_pop_2m_subsystems_inv(pre: KernelK, post: KernelK, allocator: RwLoc
     assert(post.subsystems_inv()) by {
         reveal(KernelK::default_pagetable_wf); reveal(allocator_perms_wf);
         reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); reveal(page_array_wf); reveal(Page::mappings_va_valid); reveal(thread_perms_wf);
-        reveal(thread_free_quota_pending_empty_unless_wlocked);
+        reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
     };
 }
 

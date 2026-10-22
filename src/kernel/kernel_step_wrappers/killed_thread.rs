@@ -241,7 +241,9 @@ pub proof fn kernel_cpu_and_thread_unlocked_implies_u_step(before: &KernelK, aft
 /// Reclaiming a killed dangling thread projects to `kernel_u_dangling_thread_reclaimed` and changes or removes no thread
 /// outside its container.
 pub proof fn kernel_dangling_thread_reclaimed_implies_u_step(before: &KernelK, after: &KernelK, dangling_ptr: RwLockThreadPtr)
-    requires kernel_dangling_thread_reclaimed_fields(before, after, dangling_ptr),
+    requires
+        kernel_dangling_thread_reclaimed_fields(before, after, dangling_ptr),
+        thread_perms_wf(before.thr_mp),
     ensures
         kernel_u_dangling_thread_reclaimed(kernel_k_to_kernel_u(*before), kernel_k_to_kernel_u(*after)),
         ({
@@ -281,8 +283,17 @@ pub proof fn kernel_dangling_thread_reclaimed_implies_u_step(before: &KernelK, a
         if before.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(before, e); kernel_endpoint_projection_at(after, e); }
     });
     assert(post.iommu_root_table == pre.iommu_root_table && post.cpu_tlb == pre.cpu_tlb && post.iommu_tlb == pre.iommu_tlb && post.kernel_l4_end == pre.kernel_l4_end) by { reveal(kernel_k_to_kernel_u); };
-    reveal(kernel_u_dangling_thread_reclaimed);
+    assert(kernel_u_dangling_thread_reclaimed(pre, post)) by {
+        reveal(kernel_u_dangling_thread_reclaimed); thread_ipc_partner_only_when_wlocked_at(before.thr_mp, dangling_ptr);
+        reveal(thread_perms_wf); reveal(thread_peer_implies_ipc_partner); broadcast use kernel_thread_syscall_progress_projection_at;
+    };
 }
+
+/// The syscall progress of thread `ptr` in the user projection, without unfolding the rest of its entry.
+pub broadcast proof fn kernel_thread_syscall_progress_projection_at(krnl: &KernelK, ptr: RwLockThreadPtr)
+    requires krnl.thr_mp.dom().contains(ptr),
+    ensures (#[trigger] kernel_k_to_kernel_u(*krnl).thread_map[ptr]).syscall_progress == krnl.thr_mp.spec_index(ptr).view().syscall_progress.view(),
+{ kernel_thread_projection_at(krnl, ptr); }
 
 /// The lock mode, kill mark, and owning container of process `ptr` in the user projection, without unfolding the rest
 /// of its entry.

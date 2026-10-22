@@ -268,6 +268,7 @@ pub(super) proof fn ipc_cpu_rendezvous_eof(
         pre.ctn_mp.spec_index(target_container).view_rodata().view().cpu_set == target_cpu_set,
         pre.ctn_mp.spec_index(pre.thr_mp.spec_index(peer_thread_ptr).view().owning_container).view_rodata().view().scheduler == peer_scheduler_ptr,
         pre.thr_mp.spec_index(peer_thread_ptr).view().state.is_endpoint_waiting(),
+        pre.thr_mp.spec_index(peer_thread_ptr).view_ghost().ipc_partner is None,
         pre.thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
         pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().len() > 0,
         pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().spec_index(0) == peer_thread_ptr,
@@ -339,6 +340,7 @@ pub(super) proof fn ipc_cpu_rendezvous_eof(
         }) by {
             reveal(thread_perms_wf); reveal(endpoint_perms_wf); reveal(scheduler_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked);
             reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
+            reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
         };
         reveal(cpu_set_perms_wf); reveal(cpu_array_wf); reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf);
     };

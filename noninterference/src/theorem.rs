@@ -137,8 +137,7 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
         StepLabel::KillProcessDescriptorDropped => kill_process_step_pre(old_u, cpu_id) && kill_process_reclaim_in_target(old_u, new_u, cpu_id) && kernel_u_killed_descriptor_dropped(old_u, new_u),
         StepLabel::KillProcessCallerWoken => kill_process_step_pre(old_u, cpu_id) && kill_process_reclaim_in_target(old_u, new_u, cpu_id) && kernel_u_killed_caller_woken(old_u, new_u, cpu_id),
         StepLabel::KillProcessCallerTakenOver => kill_process_step_pre(old_u, cpu_id) && kill_process_reclaim_in_target(old_u, new_u, cpu_id) && kernel_u_killed_caller_taken_over(old_u, new_u),
-        StepLabel::KillProcessDanglingReclaimed => kill_process_step_pre(old_u, cpu_id) && kill_process_reclaim_in_target(old_u, new_u, cpu_id)
-            && kill_process_reclaimed_thread_not_peer(old_u, new_u) && kernel_u_dangling_thread_reclaimed(old_u, new_u),
+        StepLabel::KillProcessDanglingReclaimed => kill_process_step_pre(old_u, cpu_id) && kill_process_reclaim_in_target(old_u, new_u, cpu_id) && kernel_u_dangling_thread_reclaimed(old_u, new_u),
         StepLabel::KillProcessEndpointReleased => kill_process_step_pre(old_u, cpu_id) && kill_process_reclaim_in_target(old_u, new_u, cpu_id) && kernel_u_killed_endpoint_released(old_u, new_u),
         StepLabel::KillProcessReassignFunctions => kill_process_step_pre(old_u, cpu_id) && kill_process_reassign_functions_step(old_u, new_u, cpu_id),
         StepLabel::KillProcessLockTable => kill_process_step_pre(old_u, cpu_id) && kill_process_lock_table_step(old_u, new_u, cpu_id),
@@ -157,8 +156,7 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
         StepLabel::ThreadExitDescriptorDropped => thread_exit_drop_step_pre(old_u, cpu_id) && thread_exit_reclaim_in_container(old_u, new_u, cpu_id) && kernel_u_killed_descriptor_dropped(old_u, new_u),
         StepLabel::ThreadExitCallerWoken => thread_exit_drop_step_pre(old_u, cpu_id) && thread_exit_reclaim_in_container(old_u, new_u, cpu_id) && kernel_u_killed_caller_woken(old_u, new_u, cpu_id),
         StepLabel::ThreadExitCallerTakenOver => thread_exit_drop_step_pre(old_u, cpu_id) && thread_exit_reclaim_in_container(old_u, new_u, cpu_id) && kernel_u_killed_caller_taken_over(old_u, new_u),
-        StepLabel::ThreadExitDanglingReclaimed => thread_exit_drop_step_pre(old_u, cpu_id) && thread_exit_reclaim_in_container(old_u, new_u, cpu_id)
-            && thread_exit_reclaimed_thread_not_peer(old_u, new_u) && kernel_u_dangling_thread_reclaimed(old_u, new_u),
+        StepLabel::ThreadExitDanglingReclaimed => thread_exit_drop_step_pre(old_u, cpu_id) && thread_exit_reclaim_in_container(old_u, new_u, cpu_id) && kernel_u_dangling_thread_reclaimed(old_u, new_u),
         StepLabel::ThreadExitEndpointReleased => thread_exit_drop_step_pre(old_u, cpu_id) && thread_exit_reclaim_in_container(old_u, new_u, cpu_id) && kernel_u_killed_endpoint_released(old_u, new_u),
         StepLabel::ThreadExitDrop => thread_exit_drop_step_pre(old_u, cpu_id) && thread_exit_drop_step(old_u, new_u, cpu_id),
         StepLabel::ThreadExitRelease => thread_exit_drop_step_pre(old_u, cpu_id) && thread_exit_release_step(old_u, new_u, cpu_id),
@@ -172,7 +170,7 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
             && kernel_u_container_quota_4k_increased(old_u, new_u, old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container),
         StepLabel::ThreadExitQuota => thread_exit_quota_step_pre(old_u, cpu_id) && thread_exit_quota_step(old_u, new_u, cpu_id),
         StepLabel::ThreadExitUnlockTable => thread_exit_unlock_table_step_pre(old_u, cpu_id) && thread_exit_unlock_table_step(old_u, new_u, cpu_id),
-        StepLabel::ThreadExitFinish => thread_exit_finish_step_pre(old_u, cpu_id) && thread_exit_exiting_thread_not_peer(old_u, cpu_id) && thread_exit_finish_step(old_u, new_u, cpu_id),
+        StepLabel::ThreadExitFinish => thread_exit_finish_step_pre(old_u, cpu_id) && thread_exit_finish_step(old_u, new_u, cpu_id),
     }
 }
 
@@ -214,8 +212,8 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
                 &&& forall|j: int| #![trigger u.endpoint_map[payload].queue[j]]
                     0 <= j < u.endpoint_map[payload].queue.len() ==> !in_domain(u, y, u.thread_map[u.endpoint_map[payload].queue[j]].owning_container)
                 &&& forall|t: RwLockThreadPtr| #![trigger u.thread_map[t].syscall_progress]
-                    u.thread_map.dom().contains(t) && in_domain(u, y, u.thread_map[t].owning_container) && progress_peer(u.thread_map[t].syscall_progress) is Some
-                    ==> u.thread_map[progress_peer(u.thread_map[t].syscall_progress)->Some_0].blocking_endpoint_ptr != Some(payload)
+                    u.thread_map.dom().contains(t) && in_domain(u, y, u.thread_map[t].owning_container) && progress_peer_of(u.thread_map[t].syscall_progress) is Some
+                    ==> u.thread_map[progress_peer_of(u.thread_map[t].syscall_progress)->Some_0].blocking_endpoint_ptr != Some(payload)
             }
             &&& labels[i] is Share4kLeaf && !in_domain(u, x, u.process_map[source].owning_container) ==> forall|q: RwLockProcessPtr, v: VAddr|
                 #![trigger u.process_map[q].pagetable->Some_0.mapping_4k[v]]

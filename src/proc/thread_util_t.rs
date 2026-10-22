@@ -349,6 +349,7 @@ pub fn retype_boot_root_thread(thread_map: &mut ThreadLockedMap, thread_ptr: RwL
         final(thread_map).spec_index(thread_ptr).inv(),
         !final(thread_map).spec_index(thread_ptr).being_killed(),
         !final(thread_map).spec_index(thread_ptr).view_ghost().exited,
+        final(thread_map).spec_index(thread_ptr).view_ghost().ipc_partner is None,
         final(thread_map).spec_index(thread_ptr).locking_thread() is None,
         ret.0 == final(thread_map).spec_index(thread_ptr).view().scheduler_linkedlist_node.addr(),
         ret.1.view().is_init(),
@@ -360,7 +361,7 @@ pub fn retype_boot_root_thread(thread_map: &mut ThreadLockedMap, thread_ptr: RwL
         ret.3.view().value().view() == thread_ptr,
 {
     let tracked mut lctx = LocalContext::new_bootstrap(0, thread_ptr);
-    let Tracked(lock_perm) = thread_map.retype_4k_and_insert(thread_ptr, thread_value, (), Ghost(ThreadGhost { chain_end: None, exited: false }), Tracked(page_perm), Tracked(&mut lctx), Ghost(KernelObjId::Thread(thread_ptr)));
+    let Tracked(lock_perm) = thread_map.retype_4k_and_insert(thread_ptr, thread_value, (), Ghost(ThreadGhost { chain_end: None, exited: false, ipc_partner: None }), Tracked(page_perm), Tracked(&mut lctx), Ghost(KernelObjId::Thread(thread_ptr)));
     let ghost fresh_lock_id = thread_map.lock_id_by_key(thread_ptr);
     proof { lctx.enter_kernel_view_release(); assert(thread_map.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }
     let thread = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&lctx), Tracked(&lock_perm));

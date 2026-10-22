@@ -104,6 +104,16 @@ pub ghost enum SyscallProgress {
     KillContainer { container: RwLockContainerPtr, stage: ContainerKillStage },
 }
 
+/// The peer of the IPC rendezvous that `progress` records in flight.
+pub open spec fn progress_peer_of(progress: Option<SyscallProgress>) -> Option<RwLockThreadPtr> {
+    match progress {
+        Some(SyscallProgress::IpcPages { peer, .. }) => Some(peer),
+        Some(SyscallProgress::IpcEndpoint { peer, .. }) => Some(peer),
+        Some(SyscallProgress::Share4k { origin: Share4kOrigin::IpcPages { peer }, .. }) => Some(peer),
+        _ => None,
+    }
+}
+
 pub struct Thread {
     pub state: ThreadState,
     /// The upstream caller currently served by this thread, if any.
@@ -169,6 +179,9 @@ pub ghost struct ThreadGhost {
     pub chain_end: Option<RwLockThreadPtr>,
     /// Set once by the exit of its process's last thread, after the process's tables were released; never cleared.
     pub exited: bool,
+    /// The thread whose IPC rendezvous names this thread as its peer: set while that rendezvous is in flight, cleared by
+    /// its finish.
+    pub ipc_partner: Option<RwLockThreadPtr>,
 }
 
 pub type ThreadRwLock = RwLock<Thread, (), ThreadGhost, THREAD_HAS_KILL_STATE>;

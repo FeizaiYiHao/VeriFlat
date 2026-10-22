@@ -101,7 +101,10 @@ proof fn eof_pop_4k_subsystems(pre: KernelK, post: KernelK, allocator: RwLockPag
     reveal(pop_stage_4k_page_eof_transition_framing);
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(page_array_wf(post.pg_arr)) by { reveal(page_array_wf); reveal(Page::mappings_va_valid); };
-    assert(thread_perms_wf(post.thr_mp)) by { reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); reveal(thread_free_quota_pending_empty_unless_wlocked); };
+    assert(thread_perms_wf(post.thr_mp)) by {
+        reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
+        reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
+    };
     assert(allocator_perms_wf(post.allc_4k_mp)) by { reveal(allocator_perms_wf); };
 }
 
@@ -322,6 +325,7 @@ proof fn eof_pop_4k_staged_pages(pre: KernelK, post: KernelK, allocator: RwLockP
     requires
         thread_staged_pages_wf(pre.thr_mp, pre.pg_arr),
         pop_stage_4k_page_eof_transition_framing(pre, post, allocator, thread, container, page, node, source),
+        forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t).view().temp_alloc_cache_4k] post.thr_mp.dom().contains(t) && t != thread ==> post.thr_mp.spec_index(t).view().temp_alloc_cache_4k == pre.thr_mp.spec_index(t).view().temp_alloc_cache_4k,
         ({
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page)).view().view();
             let old_thread = pre.thr_mp.spec_index(thread);

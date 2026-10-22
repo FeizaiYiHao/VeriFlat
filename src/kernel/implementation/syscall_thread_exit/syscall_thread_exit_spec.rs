@@ -406,8 +406,8 @@ pub open spec fn thread_exit_middle_step(step: KernelStep, cpu_id: CpuId) -> boo
     ||| thread_exit_unlock_table_step_pre(old_u, cpu_id) && thread_exit_unlock_table_step(old_u, new_u, cpu_id)
 }
 
-/// Finishing runs while the running thread records an exit with every descriptor released and no caller, and holds the
-/// cpu, its container, its process, and itself. A thread with siblings finishes right after its descriptors; a
+/// Finishing runs while the running thread records an exit with every descriptor released and no caller, is the peer of
+/// no thread's IPC rendezvous, and holds the cpu, its container, its process, and itself. A thread with siblings finishes right after its descriptors; a
 /// process's last thread finishes after reclaiming, when neither it nor its process keeps any quota.
 #[verifier::opaque]
 pub open spec fn thread_exit_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
@@ -429,6 +429,7 @@ pub open spec fn thread_exit_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -> b
     &&& thread.syscall_progress is Some
     &&& thread.caller is None
     &&& forall|j: int| #![trigger thread.endpoint_descriptors[j]] 0 <= j < MAX_NUM_ENDPOINT_DESCRIPTORS ==> thread.endpoint_descriptors[j] is None
+    &&& forall|t: RwLockThreadPtr| #![trigger old_u.thread_map.spec_index(t)] old_u.thread_map.dom().contains(t) ==> progress_peer_of(old_u.thread_map.spec_index(t).syscall_progress) != Some(cpu.current_thread->Some_0)
     &&& if process.owned_threads.len() == 1 {
         &&& thread.syscall_progress->Some_0 == SyscallProgress::ThreadExitZombie
         &&& process.quota_4k == 0

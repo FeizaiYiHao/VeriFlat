@@ -296,7 +296,8 @@ pub(crate) proof fn kill_leave_process_eof(
     assert(post.subsystems_inv()) by {
         assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };
         assert(thread_perms_wf(post.thr_mp)) by {
-            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
+            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+            reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
         };
         reveal(KernelK::default_pagetable_wf);
     };
@@ -373,7 +374,8 @@ pub(crate) proof fn kill_dequeue_scheduled_eof(pre: KernelK, post: KernelK, vict
     lemma_seq_remove_value_membership::<RwLockThreadPtr>();
     assert(post.subsystems_inv()) by {
         assert(thread_perms_wf(post.thr_mp)) by {
-            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
+            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+            reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
         };
         reveal(KernelK::default_pagetable_wf);
     };
@@ -409,6 +411,7 @@ pub(crate) proof fn kill_dequeue_endpoint_eof(pre: KernelK, post: KernelK, victi
         pre.thr_mp.dom().contains(victim_ptr),
         pre.ep_mp.dom().contains(endpoint_ptr),
         pre.thr_mp.spec_index(victim_ptr).locking_thread() is Write,
+        pre.thr_mp.spec_index(victim_ptr).being_killed(),
         pre.thr_mp.spec_index(victim_ptr).view().state.is_endpoint_waiting(),
         pre.thr_mp.spec_index(victim_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
         post.thr_mp.perms_wf(),
@@ -424,7 +427,8 @@ pub(crate) proof fn kill_dequeue_endpoint_eof(pre: KernelK, post: KernelK, victi
     lemma_seq_remove_value_membership::<RwLockThreadPtr>();
     assert(post.subsystems_inv()) by {
         assert(thread_perms_wf(post.thr_mp)) by {
-            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
+            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+            reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
         };
         assert(endpoint_perms_wf(post.ep_mp)) by { reveal(endpoint_perms_wf); };
         reveal(KernelK::default_pagetable_wf);
@@ -495,7 +499,8 @@ pub(crate) proof fn kill_evict_eof(pre: KernelK, post: KernelK, victim_ptr: RwLo
         assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
         assert(cpu_published_wf(post.cpu_published, post.cpu_arr, post.pcid_needflush)) by { reveal(cpu_published_wf); reveal(KernelK::default_pagetable_wf); reveal(PageTable::table_pages_wf); };
         assert(thread_perms_wf(post.thr_mp)) by {
-            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
+            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+            reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
         };
         reveal(KernelK::default_pagetable_wf);
     };

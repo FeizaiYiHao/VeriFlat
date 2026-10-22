@@ -191,8 +191,8 @@ pub proof fn ipc_endpoint_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
             &&& forall|j: int| #![trigger old_u.endpoint_map[payload].queue[j]]
                 0 <= j < old_u.endpoint_map[payload].queue.len() ==> !in_domain(old_u, b, old_u.thread_map[old_u.endpoint_map[payload].queue[j]].owning_container)
             &&& forall|t: RwLockThreadPtr| #![trigger old_u.thread_map[t].syscall_progress]
-                old_u.thread_map.dom().contains(t) && in_domain(old_u, b, old_u.thread_map[t].owning_container) && progress_peer(old_u.thread_map[t].syscall_progress) is Some
-                ==> old_u.thread_map[progress_peer(old_u.thread_map[t].syscall_progress)->Some_0].blocking_endpoint_ptr != Some(payload)
+                old_u.thread_map.dom().contains(t) && in_domain(old_u, b, old_u.thread_map[t].owning_container) && progress_peer_of(old_u.thread_map[t].syscall_progress) is Some
+                ==> old_u.thread_map[progress_peer_of(old_u.thread_map[t].syscall_progress)->Some_0].blocking_endpoint_ptr != Some(payload)
         },
     ensures
         domains_disjoint(new_u, a, b),

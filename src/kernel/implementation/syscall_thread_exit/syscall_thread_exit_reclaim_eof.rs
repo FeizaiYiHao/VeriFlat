@@ -44,7 +44,7 @@ pub(super) proof fn thread_exit_mark_exited_eof(pre: KernelK, post: KernelK, thr
 {
     assert(thread_perms_wf(post.thr_mp)) by {
         reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
-        reveal(thread_exited_only_when_wlocked);
+        reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
     };
     assert(thread_invariant_fields_unchanged(pre.thr_mp, post.thr_mp)) by { thread_lock_op_preserves_invariant_fields(pre.thr_mp, post.thr_mp, thread_ptr); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };

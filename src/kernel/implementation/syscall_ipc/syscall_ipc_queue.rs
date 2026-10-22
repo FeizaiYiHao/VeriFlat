@@ -133,6 +133,7 @@ pub(super) fn ipc_schedule_endpoint_waiter(
         thread_lock_perm.view().thread_id() == lctx.thread_id(),
         thread_lock_perm.view().lock_id() == old(thread_map).spec_index(thread_ptr).locking_thread()->Write_lock_id,
         old(thread_map).spec_index(thread_ptr).view().state.is_endpoint_waiting(),
+        old(thread_map).spec_index(thread_ptr).view_ghost().ipc_partner is None,
         endpoint_node_perm.view().is_init(),
         endpoint_node_perm.view().addr() == old(thread_map).spec_index(thread_ptr).view().endpoint_linkedlist_node.addr(),
         endpoint_node_perm.view().value().view() == thread_ptr,
@@ -242,6 +243,7 @@ pub(super) fn ipc_schedule_endpoint_transit(
         thread_lock_perm.view().thread_id() == lctx.thread_id(),
         thread_lock_perm.view().lock_id() == old(thread_map).spec_index(thread_ptr).locking_thread()->Write_lock_id,
         old(thread_map).spec_index(thread_ptr).view().state is IPC_ENDPOINT_TRANSIT,
+        old(thread_map).spec_index(thread_ptr).view_ghost().ipc_partner is None,
     ensures
         final(thread_map).spec_index(thread_ptr).view().trap_frame == old(thread_map).spec_index(thread_ptr).view().trap_frame,
         thread_perms_wf(*final(thread_map)),

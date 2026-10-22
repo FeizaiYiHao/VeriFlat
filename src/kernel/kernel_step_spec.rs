@@ -2930,8 +2930,9 @@ pub open spec fn kernel_dangling_thread_reclaimed_fields(pre: &KernelK, post: &K
     &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)] post.thr_mp.dom().contains(t) ==> post.thr_mp.spec_index(t) == pre.thr_mp.spec_index(t)
 }
 
-/// One killed dangling thread, write-locked and linked to no thread, leaves the thread map and its container's thread
-/// set, and the container owning its page regains one 4K quota; the kernel chooses the dangling thread (R1).
+/// One killed dangling thread, write-locked, linked to no thread, and the peer of no thread's IPC rendezvous, leaves the
+/// thread map and its container's thread set, and the container owning its page regains one 4K quota; the kernel chooses
+/// the dangling thread (R1).
 #[verifier::opaque]
 pub open spec fn kernel_u_dangling_thread_reclaimed(old_u: KernelU, new_u: KernelU) -> bool {
     let removed = old_u.thread_map.dom().difference(new_u.thread_map.dom());
@@ -2944,6 +2945,7 @@ pub open spec fn kernel_u_dangling_thread_reclaimed(old_u: KernelU, new_u: Kerne
             &&& dangling.lock_state is WriteLocked
             &&& dangling.caller is None
             &&& dangling.callee is None
+            &&& forall|t: RwLockThreadPtr| #![trigger old_u.thread_map.spec_index(t)] old_u.thread_map.dom().contains(t) ==> progress_peer_of(old_u.thread_map.spec_index(t).syscall_progress) != Some(dangling_ptr)
             &&& new_u == (KernelU {
                 container_map: Map::new(old_u.container_map.dom(), |c: RwLockContainerPtr| {
                     let container = old_u.container_map[c];

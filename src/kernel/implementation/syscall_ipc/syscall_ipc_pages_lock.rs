@@ -1288,6 +1288,7 @@ pub(super) fn ipc_pages_lock_tables(
     let ghost tables = if fill { IpcPagesTables::Fill } else { IpcPagesTables::Read };
     let ghost lock_pre_k = steps.snapshot_k();
     let ghost attempted_k = *krnl;
+    proof { thread_peer_implies_ipc_partner_at(krnl.thr_mp, current_thread_ptr); }
     krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(Some(SyscallProgress::IpcPages { source_range: *source_range, target_range: *target_range, peer: peer_thread_ptr, tables: tables, released: None })),
         Tracked(&*lctx), Tracked(current_thread_lock_perm));
     proof {

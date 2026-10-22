@@ -211,6 +211,7 @@ pub(super) fn ipc_begin_endpoint_transfer(
         old(krnl).thr_mp.spec_index(peer_thread_ptr).view().temp_alloc_clean(),
         old(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
         !old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
+        old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().ipc_partner is None,
         old(krnl).thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(channel_endpoint_ptr),
         peer_thread_lock_perm.view().state() is WriteLock,
         peer_thread_lock_perm.view().thread_id() == old(lctx).thread_id(),
@@ -336,6 +337,7 @@ pub(super) fn ipc_begin_endpoint_transfer(
     }
 
     krnl.wunlock_endpoint(channel_endpoint_ptr, Tracked(&mut *lctx), Tracked(channel_endpoint_lock_perm));
+    proof { krnl.set_thread_ipc_partner(peer_thread_ptr, Some(current_thread_ptr), &*lctx); }
     krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(Some(SyscallProgress::IpcEndpoint { peer: peer_thread_ptr, caller_sends: waiting_state is SENDING, payload_index })),
         Tracked(&*lctx), current_thread_lock_perm);
     proof {
@@ -564,13 +566,16 @@ pub(super) fn ipc_finish_endpoint_transit(
         typed_lock_maps_aligned(final(krnl), final(lctx)),
 {
     hide(Set::is_empty);
-    let ghost old_peer_thread_lock_id = krnl.thr_mp.lock_id_by_key(peer_thread_ptr);
     let tracked cpu_lock_perm = cpu_lock_perm.get();
     let tracked current_thread_lock_perm = current_thread_lock_perm.get();
     let tracked payload_endpoint_lock_perm = payload_endpoint_lock_perm.get();
     let tracked peer_thread_lock_perm = peer_thread_lock_perm.get();
     let tracked peer_scheduler_lock_perm = peer_scheduler_lock_perm.get();
 
+    krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(None), Tracked(&*lctx), Tracked(&current_thread_lock_perm));
+    proof { thread_peer_implies_ipc_partner_at(old(krnl).thr_mp, current_thread_ptr); krnl.set_thread_ipc_partner(peer_thread_ptr, None, &*lctx); }
+    let ghost cleared = *krnl;
+    let ghost old_peer_thread_lock_id = krnl.thr_mp.lock_id_by_key(peer_thread_ptr);
     assert(krnl.sched_mp.spec_index(peer_scheduler_ptr).shard(wake_cpu).queue.length != usize::MAX) by { scheduler_queue_len_bounded(&*krnl, peer_scheduler_ptr, wake_cpu); };
     let (scheduler_node_addr, scheduler_node_perm) = ipc_schedule_endpoint_transit(&mut krnl.thr_mp, Tracked(&*lctx), peer_thread_ptr, wake_cpu, current_thread_ptr, result, Tracked(&peer_thread_lock_perm));
     scheduler_map_enqueue_scheduled_thread(&mut krnl.sched_mp, peer_scheduler_ptr, wake_cpu, peer_thread_ptr, scheduler_node_addr, scheduler_node_perm, Tracked(&*lctx), Tracked(&peer_scheduler_lock_perm));
@@ -578,13 +583,13 @@ pub(super) fn ipc_finish_endpoint_transit(
     proof {
         lctx.enter_kernel_view_release();
         lctx.update_lock_id(KernelObjId::Thread(peer_thread_ptr), old_peer_thread_lock_id, krnl.thr_mp.lock_id_by_key(peer_thread_ptr));
-        assert(ipc_finish_endpoint_transit_eof_transition_framing(*old(krnl), *krnl, current_thread_ptr, peer_thread_ptr, peer_scheduler_ptr, wake_cpu, result)) by { reveal(ipc_finish_endpoint_transit_eof_transition_framing); };
-        ipc_finish_endpoint_transit_eof(*old(krnl), *krnl, current_thread_ptr, peer_thread_ptr, peer_scheduler_ptr, wake_cpu, result);
+        assert(ipc_finish_endpoint_transit_eof_transition_framing(cleared, *krnl, current_thread_ptr, peer_thread_ptr, peer_scheduler_ptr, wake_cpu, result)) by { reveal(ipc_finish_endpoint_transit_eof_transition_framing); };
+        ipc_finish_endpoint_transit_eof(cleared, *krnl, current_thread_ptr, peer_thread_ptr, peer_scheduler_ptr, wake_cpu, result);
     }
 
     ipc_finish_endpoint_transit_release_and_end_step(
         krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, payload_endpoint_ptr, peer_thread_ptr, peer_scheduler_ptr, wake_cpu, result,
-        Ghost(*old(krnl)), Ghost(receiver_thread_ptr), Ghost(target_endpoint_index), Ghost(source_endpoint_index), Tracked(cpu_lock_perm), Tracked(current_thread_lock_perm),
+        Ghost(*old(krnl)), Ghost(cleared), Ghost(receiver_thread_ptr), Ghost(target_endpoint_index), Ghost(source_endpoint_index), Tracked(cpu_lock_perm), Tracked(current_thread_lock_perm),
         Tracked(payload_endpoint_lock_perm), Tracked(peer_thread_lock_perm), Tracked(peer_scheduler_lock_perm),
     );
     result
@@ -696,6 +701,7 @@ fn ipc_endpoint_check_slots(
         old(krnl).thr_mp.spec_index(peer_thread_ptr).view().temp_alloc_clean(),
         old(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
         !old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
+        old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().ipc_partner is None,
         old(krnl).thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(channel_endpoint_ptr),
         peer_thread_lock_perm.view().state() is WriteLock,
         peer_thread_lock_perm.view().thread_id() == old(lctx).thread_id(),
@@ -789,7 +795,7 @@ fn ipc_endpoint_check_slots(
             ipc_rendezvous_result_from_k(&steps.snapshot_k(), cpu_id, channel_index, waiting_state, payload, current_thread_ptr, channel_endpoint_ptr, peer_thread_ptr, error);
         }
         let ret = ipc_schedule_waiting_peer_and_finish(
-            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, channel_endpoint_ptr, Ghost(Some((channel_index, waiting_state, payload))),
+            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, channel_endpoint_ptr, Ghost(Some((channel_index, waiting_state, payload))), false,
             peer_thread_ptr, error, Tracked(cpu_lock_perm), Tracked(current_thread_lock_perm), Tracked(channel_endpoint_lock_perm), Tracked(peer_thread_lock_perm),
         );
         proof { ipc_rendezvous_trace_error_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, channel_index, waiting_state, payload, ret); }
@@ -900,6 +906,7 @@ pub(super) fn ipc_rendezvous_endpoint(
         old(krnl).thr_mp.spec_index(peer_thread_ptr).view().temp_alloc_clean(),
         old(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
         !old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
+        old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().ipc_partner is None,
         old(krnl).thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(channel_endpoint_ptr),
         peer_thread_lock_perm.view().state() is WriteLock,
         peer_thread_lock_perm.view().thread_id() == old(lctx).thread_id(),

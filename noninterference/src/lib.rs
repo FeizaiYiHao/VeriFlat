@@ -17,11 +17,6 @@
 //! rendezvous, endpoint transfer, and pages check results. With `trace_ni_at`, steps of A between two
 //! states leave B's results unchanged.
 //!
-//! The process kill dangling-thread reclaim step, which a container kill also runs inside its marked containers, assumes
-//! the clause `kill_process_reclaimed_thread_not_peer` of `ni_kill_process`, and the thread exit dangling-thread reclaim
-//! and finish steps assume the clauses `thread_exit_reclaimed_thread_not_peer` and `thread_exit_exiting_thread_not_peer`
-//! of `ni_thread_exit`, pending a decision of the kernel model.
-//!
 //! Object pointers and page addresses returned on success come from the shared global
 //! allocator and are guaranteed only to be fresh, so which pointer or page a domain receives can
 //! depend on allocations by other domains. This allocator channel is outside the proof.

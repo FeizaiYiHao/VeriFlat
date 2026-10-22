@@ -871,6 +871,7 @@ verus! {
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
             !old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
+            old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().ipc_partner is None,
             (old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue_state is SEND) != waiting_is_send,
             match payload {
                 IPCPayLoad::Empty => true,
@@ -1038,7 +1039,7 @@ verus! {
         proof { ipc_rendezvous_result_from_k(&steps.snapshot_k(), cpu_id, endpoint_index, waiting_state, payload, current_thread_ptr, endpoint_ptr, peer_thread_ptr, rendezvous_result); }
 
         let step_result = ipc_schedule_waiting_peer_and_finish(
-            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, Ghost(Some((endpoint_index, waiting_state, payload))),
+            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, Ghost(Some((endpoint_index, waiting_state, payload))), false,
             peer_thread_ptr, rendezvous_result, Tracked(cpu_lock_perm), Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm),
             Tracked(peer_thread_lock_perm),
         );

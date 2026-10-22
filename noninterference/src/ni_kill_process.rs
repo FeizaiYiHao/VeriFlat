@@ -11,14 +11,6 @@ pub open spec fn kill_process_reclaim_in_target(old_u: KernelU, new_u: KernelU, 
         ==> old_u.thread_map[t].owning_container == old_u.process_map[kill_target(old_u, cpu_id)].owning_container
 }
 
-// Pending assumption, to be decided by the kernel model: no process kill step states it yet.
-/// Reclaiming a killed dangling thread removes no thread's rendezvous peer.
-pub open spec fn kill_process_reclaimed_thread_not_peer(old_u: KernelU, new_u: KernelU) -> bool {
-    forall|t: RwLockThreadPtr| #![trigger old_u.thread_map[t].syscall_progress]
-        old_u.thread_map.dom().contains(t) && progress_peer(old_u.thread_map[t].syscall_progress) is Some && old_u.thread_map.dom().contains(progress_peer(old_u.thread_map[t].syscall_progress)->Some_0)
-        ==> new_u.thread_map.dom().contains(progress_peer(old_u.thread_map[t].syscall_progress)->Some_0)
-}
-
 /// Entering a process kill on a cpu of `a` locks the cpu and its running process and thread, and marks a child of that
 /// process, which shares its container, so it leaves the view of `b` unchanged.
 pub proof fn kill_process_enter_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, child_index: usize, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -482,7 +474,6 @@ pub proof fn kill_process_dangling_reclaimed_step_lr(old_u: KernelU, new_u: Kern
         steps_in_domain(old_u, cpu_id, a),
         kill_process_step_pre(old_u, cpu_id),
         kill_process_reclaim_in_target(old_u, new_u, cpu_id),
-        kill_process_reclaimed_thread_not_peer(old_u, new_u),
         kernel_u_dangling_thread_reclaimed(old_u, new_u),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 {
@@ -511,7 +502,6 @@ pub proof fn kill_process_dangling_reclaimed_step_iso(old_u: KernelU, new_u: Ker
         steps_in_domain(old_u, cpu_id, a),
         kill_process_step_pre(old_u, cpu_id),
         kill_process_reclaim_in_target(old_u, new_u, cpu_id),
-        kill_process_reclaimed_thread_not_peer(old_u, new_u),
         kernel_u_dangling_thread_reclaimed(old_u, new_u),
     ensures isolated(new_u, a, b),
 {

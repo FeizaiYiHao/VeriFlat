@@ -119,6 +119,7 @@ verus! {
         let tracked current_thread_lock_perm = current_thread_lock_perm.get();
         let tracked endpoint_lock_perm = endpoint_lock_perm.get();
 
+        proof { thread_ipc_partner_only_when_wlocked_at(krnl.thr_mp, current_thread_ptr); }
         let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(cpu_id, KERNEL_DEFAULT_PCID, Tracked(&mut *lctx));
         let ghost locked_k = *krnl;
         let ghost old_current_thread_lock_id = krnl.thr_mp.lock_id_by_key(current_thread_ptr);
@@ -160,12 +161,13 @@ verus! {
     }
 
     /// Releases the caller, the scheduled peer, the peer's scheduler shard, the endpoint, and the cpu after the
-    /// transition `pre` → `*old(krnl)` summarized by `ipc_schedule_waiting_peer_eof_transition_framing`, and records the kernel step.
+    /// transition `cleared` → `*old(krnl)` summarized by `ipc_schedule_waiting_peer_eof_transition_framing`, where `cleared` is `pre`
+    /// with a finished page transfer's caller progress and peer partner cleared, and records the kernel step from `pre`.
     fn ipc_release_scheduled_peer_and_end_step(
         krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
         process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
         Ghost(u_step): Ghost<Option<(EndpointIdx, ThreadState, IPCPayLoad)>>, peer_thread_ptr: RwLockThreadPtr, result: RetValueType,
-        peer_scheduler_ptr: RwLockSchedulerPtr, wake_cpu: CpuId, Ghost(pre): Ghost<KernelK>, Ghost(pre_lctx): Ghost<LocalContext>,
+        peer_scheduler_ptr: RwLockSchedulerPtr, wake_cpu: CpuId, Ghost(pre): Ghost<KernelK>, Ghost(cleared): Ghost<KernelK>, Ghost(pre_lctx): Ghost<LocalContext>,
         Tracked(cpu_lock_perm): Tracked<LockPerm>, Tracked(current_thread_lock_perm): Tracked<LockPerm>, Tracked(endpoint_lock_perm): Tracked<LockPerm>,
         Tracked(peer_thread_lock_perm): Tracked<LockPerm>, Tracked(peer_scheduler_lock_perm): Tracked<LockPerm>,
     )
@@ -233,8 +235,7 @@ verus! {
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().temp_alloc_clean(),
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
             !old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
-            u_step is Some ==> old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is None,
-            u_step is None ==> old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() matches Some(SyscallProgress::IpcPages { .. }),
+            old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is None,
             !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
             old(krnl).thr_mp.dom().contains(peer_thread_ptr),
             typed_lock_map_contains_mode(old(lctx).thread_lock_map(), peer_thread_ptr, TypedLockMode::Write),
@@ -269,7 +270,21 @@ verus! {
             old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
             old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
             old(lctx).pcid_needflush_lock_map().dom().is_empty(),
-            ipc_schedule_waiting_peer_eof_transition_framing(pre, *old(krnl), current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, result, old(lctx).thread_id()),
+            ipc_schedule_waiting_peer_eof_transition_framing(cleared, *old(krnl), current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, result, old(lctx).thread_id()),
+            u_step is Some ==> cleared == pre,
+            u_step is None ==> {
+                let current_before = pre.thr_mp.spec_index(current_thread_ptr);
+                let current_after = cleared.thr_mp.spec_index(current_thread_ptr);
+                let peer_before = pre.thr_mp.spec_index(peer_thread_ptr);
+                let peer_after = cleared.thr_mp.spec_index(peer_thread_ptr);
+                &&& cleared == (KernelK { thr_mp: cleared.thr_mp, ..pre })
+                &&& cleared.thr_mp.dom() == pre.thr_mp.dom()
+                &&& forall|t: RwLockThreadPtr| #![trigger cleared.thr_mp.spec_index(t)]
+                    pre.thr_mp.dom().contains(t) && t != current_thread_ptr && t != peer_thread_ptr ==> cleared.thr_mp.spec_index(t) == pre.thr_mp.spec_index(t)
+                &&& current_after.view() == (Thread { syscall_progress: current_after.view().syscall_progress, ..current_before.view() })
+                &&& current_after.locking_thread() == current_before.locking_thread() && current_after.being_killed() == current_before.being_killed()
+                &&& peer_after.view() == peer_before.view() && peer_after.locking_thread() == peer_before.locking_thread() && peer_after.being_killed() == peer_before.being_killed()
+            },
             pre.thr_mp.dom().contains(current_thread_ptr),
             pre.thr_mp.dom().contains(peer_thread_ptr),
             pre.ep_mp.dom().contains(endpoint_ptr),
@@ -331,7 +346,6 @@ verus! {
             typed_lock_maps_aligned(final(krnl), final(lctx)),
     {
         krnl.wunlock_thread(peer_thread_ptr, Tracked(&mut *lctx), Tracked(peer_thread_lock_perm));
-        krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(None), Tracked(&*lctx), Tracked(&current_thread_lock_perm));
         krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
         krnl.wunlock_scheduler_shard(peer_scheduler_ptr, wake_cpu, Tracked(&mut *lctx), Tracked(peer_scheduler_lock_perm));
         krnl.wunlock_endpoint(endpoint_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
@@ -383,12 +397,13 @@ verus! {
     pub(super) fn ipc_schedule_waiting_peer_and_finish(
         krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
         process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
-        Ghost(u_step): Ghost<Option<(EndpointIdx, ThreadState, IPCPayLoad)>>, peer_thread_ptr: RwLockThreadPtr, result: RetValueType,
+        Ghost(u_step): Ghost<Option<(EndpointIdx, ThreadState, IPCPayLoad)>>, pages_finish: bool, peer_thread_ptr: RwLockThreadPtr, result: RetValueType,
         cpu_lock_perm: Tracked<LockPerm>, current_thread_lock_perm: Tracked<LockPerm>,
         endpoint_lock_perm: Tracked<LockPerm>, peer_thread_lock_perm: Tracked<LockPerm>,
     ) -> (ret: RetValueType)
         requires
             old(krnl).inv(),
+            pages_finish == (u_step is None),
             u_step is Some ==> forall|p: RwLockContainerPtr| #![trigger old(krnl).ctn_mp.spec_index(p)] #![trigger old(steps).snapshot_k().ctn_mp.spec_index(p)]
                 old(steps).snapshot_k().ctn_mp.dom().contains(p) && old(krnl).ctn_mp.dom().contains(p) ==> if old(lctx).container_lock_map().dom().contains(p) {
                     old(steps).snapshot_k().ctn_mp.spec_index(p).locking_thread() is None
@@ -475,6 +490,7 @@ verus! {
             old(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
             !old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
             old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.len() != 0,
+            u_step is Some ==> old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().ipc_partner is None,
             old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.view().spec_index(0) == peer_thread_ptr,
             u_step matches Some((endpoint_index, waiting_state, payload)) ==> {
                 &&& result == ipc_rendezvous_result(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, endpoint_index, waiting_state, payload)
@@ -549,6 +565,9 @@ verus! {
         let tracked endpoint_lock_perm = endpoint_lock_perm.get();
         let tracked peer_thread_lock_perm = peer_thread_lock_perm.get();
 
+        if pages_finish { krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(None), Tracked(&*lctx), Tracked(&current_thread_lock_perm)); }
+        proof { if pages_finish { thread_peer_implies_ipc_partner_at(old(krnl).thr_mp, current_thread_ptr); krnl.set_thread_ipc_partner(peer_thread_ptr, None, &*lctx); } }
+        let ghost cleared = *krnl;
         proof { thread_perms_wf_at(krnl.thr_mp, peer_thread_ptr); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, current_thread_ptr); }
         let peer_thread_ref = krnl.thr_mp.borrow_typed(peer_thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&peer_thread_lock_perm));
         let peer_container_ptr = peer_thread_ref.owning_container;
@@ -564,7 +583,7 @@ verus! {
         );
         proof {
             if let Some((endpoint_index, waiting_state, _)) = u_step {
-                ipc_schedule_waiting_peer_eof_rendezvous_fields(steps.snapshot_k(), *old(krnl), *krnl, cpu_id, process_ptr, current_thread_ptr, peer_thread_ptr, endpoint_ptr, endpoint_index, waiting_state,
+                ipc_schedule_waiting_peer_eof_rendezvous_fields(steps.snapshot_k(), cleared, *krnl, cpu_id, process_ptr, current_thread_ptr, peer_thread_ptr, endpoint_ptr, endpoint_index, waiting_state,
                     peer_scheduler_ptr, wake_cpu, result, lctx.thread_id());
             }
         }
@@ -575,7 +594,7 @@ verus! {
         }
         ipc_release_scheduled_peer_and_end_step(
             krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, Ghost(u_step), peer_thread_ptr, result,
-            peer_scheduler_ptr, wake_cpu, Ghost(*old(krnl)), Ghost(*old(lctx)), Tracked(cpu_lock_perm), Tracked(current_thread_lock_perm),
+            peer_scheduler_ptr, wake_cpu, Ghost(*old(krnl)), Ghost(cleared), Ghost(*old(lctx)), Tracked(cpu_lock_perm), Tracked(current_thread_lock_perm),
             Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm), Tracked(peer_scheduler_lock_perm),
         );
         result

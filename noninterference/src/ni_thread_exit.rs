@@ -12,21 +12,6 @@ pub open spec fn thread_exit_reclaim_in_container(old_u: KernelU, new_u: KernelU
         ==> old_u.thread_map[t].owning_container == old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container
 }
 
-// Pending assumption, to be decided by the kernel model: no thread exit step states it yet.
-/// Reclaiming a killed dangling thread removes no thread's rendezvous peer.
-pub open spec fn thread_exit_reclaimed_thread_not_peer(old_u: KernelU, new_u: KernelU) -> bool {
-    forall|t: RwLockThreadPtr| #![trigger old_u.thread_map[t].syscall_progress]
-        old_u.thread_map.dom().contains(t) && progress_peer(old_u.thread_map[t].syscall_progress) is Some && old_u.thread_map.dom().contains(progress_peer(old_u.thread_map[t].syscall_progress)->Some_0)
-        ==> new_u.thread_map.dom().contains(progress_peer(old_u.thread_map[t].syscall_progress)->Some_0)
-}
-
-// Pending assumption, to be decided by the kernel model: `thread_exit_finish_step_pre` does not state it yet.
-/// The exiting thread is no thread's rendezvous peer.
-pub open spec fn thread_exit_exiting_thread_not_peer(u: KernelU, cpu_id: CpuId) -> bool {
-    forall|t: RwLockThreadPtr| #![trigger u.thread_map[t].syscall_progress]
-        u.thread_map.dom().contains(t) ==> progress_peer(u.thread_map[t].syscall_progress) != u.cpu_array[cpu_id as int].current_thread
-}
-
 /// Entering an exit on a cpu of `a` locks the cpu, its container, the running process and thread, and wakes or takes
 /// over the caller the thread serves, which shares its container, so it leaves the view of `b` unchanged.
 pub proof fn thread_exit_enter_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -180,7 +165,6 @@ pub proof fn thread_exit_dangling_reclaimed_step_iso(old_u: KernelU, new_u: Kern
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         thread_exit_drop_step_pre(old_u, cpu_id),
-        thread_exit_reclaimed_thread_not_peer(old_u, new_u),
         kernel_u_dangling_thread_reclaimed(old_u, new_u),
     ensures isolated(new_u, a, b),
 {
@@ -485,7 +469,6 @@ pub proof fn thread_exit_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id:
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         thread_exit_finish_step_pre(old_u, cpu_id),
-        thread_exit_exiting_thread_not_peer(old_u, cpu_id),
         thread_exit_finish_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 { reveal(thread_exit_finish_step_pre); reveal(thread_exit_finish_step); reveal(kernel_u_thread_exit_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }

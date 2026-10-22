@@ -83,7 +83,8 @@ pub(super) proof fn map_owned_4k_page_eof(pre: KernelK, post: KernelK, page_ptr:
         assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
         assert(page_array_wf(post.pg_arr)) by { reveal(page_array_wf); reveal(Page::mappings_va_valid); };
         assert(thread_perms_wf(post.thr_mp)) by {
-            reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); reveal(thread_free_quota_pending_empty_unless_wlocked);
+            reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
+            reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
         };
     };
     assert(post.memory_management_inv()) by {

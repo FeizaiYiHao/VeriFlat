@@ -1,5 +1,5 @@
 #[cfg(verus_keep_ghost)]
-use super::locker_unlocker_thread_eof::{wlock_thread_eof, mark_thread_kill_eof, wunlock_thread_eof, set_thread_syscall_progress_eof};
+use super::locker_unlocker_thread_eof::{wlock_thread_eof, mark_thread_kill_eof, wunlock_thread_eof, set_thread_syscall_progress_eof, set_thread_ipc_partner_eof};
 use vstd::prelude::*;
 use crate::*;
 
@@ -193,6 +193,7 @@ impl KernelK {
                 &&& final(self).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean()
                 &&& final(self).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None
                 &&& !final(self).thr_mp.spec_index(thread_ptr).view_ghost().exited
+                &&& final(self).thr_mp.spec_index(thread_ptr).view_ghost().ipc_partner is None
                 &&& typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Thread(thread_ptr), TypedHeldLock { lock_id: final(self).thr_mp.lock_id_by_key(thread_ptr), mode: TypedLockMode::Write })
             },
     {
@@ -281,6 +282,7 @@ impl KernelK {
             typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
             !old(self).thr_mp.spec_index(thread_ptr).being_killed(),
             !old(self).thr_mp.spec_index(thread_ptr).view().state.is_reply_waiting(),
+            old(self).thr_mp.spec_index(thread_ptr).view_ghost().ipc_partner is None,
             old(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
@@ -344,6 +346,7 @@ impl KernelK {
             old(self).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
             old(self).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() is None,
             !old(self).thr_mp.spec_index(thread_ptr).view_ghost().exited,
+            old(self).thr_mp.spec_index(thread_ptr).view().state is SENDING || old(self).thr_mp.spec_index(thread_ptr).view().state is RECEIVING ==> old(self).thr_mp.spec_index(thread_ptr).view_ghost().ipc_partner is None,
             typed_lock_maps_aligned(old(self), old(lctx)),
             // No dangling thread taken over for reclamation is held: its chain end could be released here.
             forall|t: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(t)]
@@ -399,6 +402,8 @@ impl KernelK {
             lock_perm.view().thread_id() == lctx.thread_id(),
             lock_perm.view().lock_id() == old(self).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
             typed_lock_maps_aligned(old(self), lctx),
+            progress_peer_of(progress.view()) is Some ==> old(self).thr_mp.dom().contains(progress_peer_of(progress.view())->Some_0)
+                && old(self).thr_mp.spec_index(progress_peer_of(progress.view())->Some_0).view_ghost().ipc_partner == Some(thread_ptr),
         ensures
             final(self).inv(),
             typed_lock_maps_aligned(final(self), lctx),
@@ -419,6 +424,33 @@ impl KernelK {
             assert(typed_lock_maps_aligned(self, lctx) && self.thr_mp.lock_id_by_key(thread_ptr) == old(self).thr_mp.lock_id_by_key(thread_ptr)) by { lock_id_fields_eq_imply_eq(); };
             set_thread_syscall_progress_eof(*old(self), *self, *lctx, thread_ptr, progress);
         }
+    }
+
+    /// Record or clear the IPC partner of a thread this thread write-holds: the thread whose in-flight rendezvous names it as
+    /// its peer. A partner is recorded only while the thread waits unmarked in a rendezvous, and the old partner is replaced
+    /// only once its progress no longer names the thread.
+    pub proof fn set_thread_ipc_partner(tracked &mut self, thread_ptr: RwLockThreadPtr, partner: Option<RwLockThreadPtr>, lctx: &LocalContext)
+        requires
+            old(self).inv(),
+            old(self).thr_mp.dom().contains(thread_ptr),
+            typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
+            typed_lock_maps_aligned(old(self), lctx),
+            partner is Some ==> !old(self).thr_mp.spec_index(thread_ptr).being_killed(),
+            partner is Some ==> old(self).thr_mp.spec_index(thread_ptr).view().state is SENDING || old(self).thr_mp.spec_index(thread_ptr).view().state is RECEIVING
+                || old(self).thr_mp.spec_index(thread_ptr).view().state is IPC_ENDPOINT_TRANSIT,
+            old(self).thr_mp.spec_index(thread_ptr).view_ghost().ipc_partner matches Some(p) ==> progress_peer_of(old(self).thr_mp.spec_index(p).view().syscall_progress.view()) != Some(thread_ptr),
+        ensures
+            final(self).inv(),
+            typed_lock_maps_aligned(final(self), lctx),
+            *final(self) == (KernelK { thr_mp: final(self).thr_mp, ..*old(self) }),
+            final(self).thr_mp.unchanged_except(&old(self).thr_mp, thread_ptr),
+            update_ghost_ensures(old(self).thr_mp.spec_index(thread_ptr), final(self).thr_mp.spec_index(thread_ptr), ThreadGhost { ipc_partner: partner, ..old(self).thr_mp.spec_index(thread_ptr).view_ghost() }),
+            final(self).thr_mp.lock_id_by_key(thread_ptr) == old(self).thr_mp.lock_id_by_key(thread_ptr),
+    {
+        self.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr); thread_perms_wf_map(self.thr_mp);
+        self.thr_mp.update_ghost(thread_ptr, ThreadGhost { ipc_partner: partner, ..self.thr_mp.spec_index(thread_ptr).view_ghost() });
+        assert(typed_lock_maps_aligned(self, lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
+        set_thread_ipc_partner_eof(*old(self), *self, thread_ptr, partner);
     }
 }
 } // verus!

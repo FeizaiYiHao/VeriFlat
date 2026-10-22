@@ -64,10 +64,33 @@ proof fn thread_exit_destroy_eof_subsystems_inv(
     assert(container_perms_wf(post.ctn_mp)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
     assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };
     assert(thread_perms_wf(post.thr_mp)) by {
-        reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
+        reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+        reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
     };
     assert(allocator_perms_wf(post.allc_4k_mp)) by { reveal(allocator_perms_wf); };
     reveal(KernelK::default_pagetable_wf);
+}
+
+proof fn thread_exit_destroy_eof_staged_pages(
+    pre: KernelK, post: KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
+    owner: RwLockContainerPtr, allocator_ptr: RwLockPageAllocatorPtr, proc_node_addr: usize, cache_node_addr: usize,
+)
+    requires
+        pre.inv(),
+        thread_exit_destroy_eof_transition_framing(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr),
+        forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t).view().temp_alloc_cache_2m] post.thr_mp.dom().contains(t) ==> post.thr_mp.spec_index(t).view().temp_alloc_cache_2m == pre.thr_mp.spec_index(t).view().temp_alloc_cache_2m,
+        page_ptr_valid(thread_ptr),
+        pre.thr_mp.dom().contains(thread_ptr),
+        pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
+        pre.pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread }),
+    ensures thread_staged_pages_wf(post.thr_mp, post.pg_arr),
+{
+    reveal(thread_exit_destroy_eof_transition_framing);
+    let thread = pre.thr_mp.spec_index(thread_ptr).view();
+    page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip();
+    assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by { vstd::set_lib::lemma_set_empty_equivalency_len(thread.temp_alloc_cache_4k.view()); reveal(thread_staged_pages_4k_wf); };
+    assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by { vstd::set_lib::lemma_set_empty_equivalency_len(thread.temp_alloc_cache_2m.view()); reveal(thread_staged_pages_2m_wf); };
+    assert(thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr)) by { vstd::set_lib::lemma_set_empty_equivalency_len(thread.temp_alloc_cache_1g.view()); reveal(thread_staged_pages_1g_wf); };
 }
 
 proof fn thread_exit_destroy_eof_page_relations(
@@ -127,7 +150,6 @@ proof fn thread_exit_destroy_eof_page_relations(
         scheduler_pages_wf(post.sched_mp, post.pg_arr),
         cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr),
         pcid_allocator_pages_wf(post.pg_arr, post.pcid_allc_mp),
-        thread_staged_pages_wf(post.thr_mp, post.pg_arr),
         endpoint_pages_wf(post.ep_mp, post.pg_arr),
         process_pagetable_match(post.prc_mp, post.pt_mp),
         process_iommu_table_match(post.prc_mp, post.it_mp),
@@ -169,9 +191,6 @@ proof fn thread_exit_destroy_eof_page_relations(
     assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { scheduler_pages_wf_preserved_for_page_state_eq(pre.sched_mp, post.sched_mp, pre.pg_arr, post.pg_arr); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
     assert(pcid_allocator_pages_wf(post.pg_arr, post.pcid_allc_mp)) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.pcid_allc_mp, post.pcid_allc_mp); };
-    assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by { vstd::set_lib::lemma_set_empty_equivalency_len(thread.temp_alloc_cache_4k.view()); reveal(thread_staged_pages_4k_wf); };
-    assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by { vstd::set_lib::lemma_set_empty_equivalency_len(thread.temp_alloc_cache_2m.view()); reveal(thread_staged_pages_2m_wf); };
-    assert(thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr)) by { vstd::set_lib::lemma_set_empty_equivalency_len(thread.temp_alloc_cache_1g.view()); reveal(thread_staged_pages_1g_wf); };
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
     assert(process_pagetable_match(post.prc_mp, post.pt_mp)) by { process_pagetable_match_preserved_for_process_fields_eq(pre.prc_mp, post.prc_mp, post.pt_mp); };
     assert(process_iommu_table_match(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_match); };
@@ -491,6 +510,7 @@ pub(super) proof fn thread_exit_destroy_eof(
     thread_exit_destroy_eof_cpu_relations(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr);
     thread_exit_destroy_eof_iommu_relations(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr);
     reveal(thread_exit_destroy_eof_transition_framing);
+    thread_exit_destroy_eof_staged_pages(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
         reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match);
         reveal(container_cpu_wf);

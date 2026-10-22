@@ -44,7 +44,10 @@ pub fn thread_map_consume_staged_4k(thread_map: &mut ThreadLockedMap, thread_ptr
     let thread = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(thread_lock_perm));
     thread.consume_staged_4k(page_ptr);
     proof {
-        assert(thread_perms_wf(*thread_map)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); };
+        assert(thread_perms_wf(*thread_map)) by {
+            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+            reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
+        };
         assert(thread_map.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
         assert(lctx.thread_lock_map().index(thread_ptr).lock_id == thread_map.lock_id_by_key(thread_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
@@ -90,7 +93,10 @@ pub fn thread_map_add_free_quota_pending_4k(thread_map: &mut ThreadLockedMap, th
     let thread = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(thread_lock_perm));
     thread.add_free_quota_pending_4k(depth, counter);
     proof {
-        assert(thread_perms_wf(*thread_map)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); };
+        assert(thread_perms_wf(*thread_map)) by {
+            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+            reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
+        };
         assert(thread_map.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()) && thread_map.lock_id_by_key(thread_ptr) == old(thread_map).lock_id_by_key(thread_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
 }
@@ -134,7 +140,10 @@ pub fn thread_map_clear_free_quota_pending_4k(thread_map: &mut ThreadLockedMap, 
     let thread = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(thread_lock_perm));
     thread.clear_free_quota_pending_4k(depth, counter);
     proof {
-        assert(thread_perms_wf(*thread_map)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); };
+        assert(thread_perms_wf(*thread_map)) by {
+            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+            reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
+        };
         assert(thread_map.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()) && thread_map.lock_id_by_key(thread_ptr) == old(thread_map).lock_id_by_key(thread_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
 }
@@ -931,6 +940,7 @@ pub fn process_subsystem_create_scheduled_thread(
         old(thread_map).spec_index(staging_thread_ptr).view().quota_4k >= 1,
         thread_value.inv(),
         thread_value.state is RUNNING,
+        thread_value.syscall_progress.view() is None,
         thread_value.scheduler_linkedlist_node.is_init(),
         thread_value.proc_linkedlist_node.is_init(),
         thread_value.owning_container == container_ptr,
@@ -1048,7 +1058,7 @@ pub fn process_subsystem_create_scheduled_thread(
         assert(!lctx.thread_lock_map().dom().contains(page_ptr)
             && lctx.typed_lock_entry(KernelObjId::Thread(page_ptr)) is None) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
-    let Tracked(thread_lock_perm) = thread_map.retype_4k_and_insert(page_ptr, thread_value, (), Ghost(ThreadGhost { chain_end: None, exited: false }), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::Thread(page_ptr)));
+    let Tracked(thread_lock_perm) = thread_map.retype_4k_and_insert(page_ptr, thread_value, (), Ghost(ThreadGhost { chain_end: None, exited: false, ipc_partner: None }), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::Thread(page_ptr)));
     let ghost fresh_lock_id = thread_map.lock_id_by_key(page_ptr);
     proof { assert(thread_map.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }
     let thread = thread_map.borrow_mut_typed(page_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&thread_lock_perm));
@@ -1057,7 +1067,10 @@ pub fn process_subsystem_create_scheduled_thread(
         lctx.enter_kernel_view_release();
         lctx.update_lock_id(KernelObjId::Thread(page_ptr), fresh_lock_id, thread_map.lock_id_by_key(page_ptr));
         assert(lctx.thread_lock_map() =~= old(lctx).thread_lock_map().insert(page_ptr, TypedHeldLock { lock_id: thread_map.lock_id_by_key(page_ptr), mode: TypedLockMode::Write }));
-        assert(thread_perms_wf(*thread_map)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); };
+        assert(thread_perms_wf(*thread_map)) by {
+            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+            reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
+        };
         assert(thread_map.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
     process_map_add_owned_thread(process_map, process_ptr, page_ptr, process_node_addr, process_node_perm, Tracked(&*lctx), Tracked(process_lock_perm));
@@ -1119,7 +1132,10 @@ pub fn thread_map_consume_new_container_staging(
     thread.quota_4k = thread.quota_4k - 8 - funding_page_count;
     thread.quota_2m = thread.quota_2m - 2;
     proof {
-        assert(thread_perms_wf(*threads)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); };
+        assert(thread_perms_wf(*threads)) by {
+            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+            reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
+        };
         assert(threads.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
         assert(thread_quota_4k_fields_unchanged(*old(threads), *threads)) by { vstd::set::lemma_set_insert_len(consumed_4k_pages, thread_page); };
     }
@@ -1560,7 +1576,10 @@ pub fn thread_map_set_endpoint_descriptor(
     let thread = thread_map.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(lctx), Tracked(thread_lock_perm));
     thread.endpoint_descriptors.set(endpoint_index, endpoint_ptr);
     proof {
-        assert(thread_perms_wf(*thread_map)) by { reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); };
+        assert(thread_perms_wf(*thread_map)) by {
+            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+            reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_partner_only_when_wlocked); reveal(thread_peer_implies_ipc_partner);
+        };
         assert(thread_map.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
         assert(lctx.thread_lock_map().index(thread_ptr).lock_id == thread_map.lock_id_by_key(thread_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };
     }

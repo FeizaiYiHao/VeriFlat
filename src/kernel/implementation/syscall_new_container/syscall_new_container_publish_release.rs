@@ -91,6 +91,7 @@ pub(super) fn release_new_container_publish_staging(
         current_thread_lock_perm.state() is WriteLock,
         current_thread_lock_perm.thread_id() == old(lctx).thread_id(),
         current_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
+        progress_peer_of(progress) is None,
         old(krnl).ctn_mp.dom().contains(container_page),
         typed_lock_map_contains_mode(old(lctx).container_lock_map(), container_page, TypedLockMode::Write),
         child_container_lock_perm.state() is WriteLock,
