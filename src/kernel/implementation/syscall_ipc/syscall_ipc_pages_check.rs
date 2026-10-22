@@ -664,8 +664,6 @@ pub(super) fn ipc_pages_check_tables(
         process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, source_process); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target_process);
         container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, source_thread); container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, target_thread);
         assert(krnl.thr_mp.perms_wf() && krnl.thr_mp.spec_index(target_thread).inv()) by { thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, target_thread); };
-        va_range_2m_windows_contains_window_of_first_n_pages(*source_range, source_range.len as int);
-        va_range_2m_windows_contains_window_of_first_n_pages(*target_range, target_range.len as int);
     }
     let result = if !source_user {
         RetValueType::Error
@@ -698,6 +696,7 @@ pub(super) fn ipc_pages_check_tables(
         if !target_clear { RetValueType::ErrorVaInUse } else if !owners_compatible { RetValueType::ErrorIpcPageOwnerMismatch } else { RetValueType::Success }
     };
     proof {
+        if result is Success { va_range_2m_windows_contains_window_of_first_n_pages(*source_range, source_range.len as int); }
         if !fill { krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), target_pagetable); }
         ipc_pages_check_result_from_k(&*krnl, cpu_id, current_thread_ptr, peer_thread_ptr, source_thread, target_thread, source_process, target_process, source_pagetable,
             target_pagetable, target_container, *source_range, *target_range, if fill { IpcPagesTables::Fill } else { IpcPagesTables::Read }, result, found);

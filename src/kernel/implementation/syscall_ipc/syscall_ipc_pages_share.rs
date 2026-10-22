@@ -7,16 +7,17 @@ use super::syscall_ipc_pages_fill::ipc_pages_fill_target_page;
 
 verus! {
 /// Builds the missing L4, L3 and L2 directories of every target page of a pages rendezvous under the write-held target page table,
-/// one `Share4kDirectory` step per new directory, and returns the target window locks: the existing ones and those minted with each new L2.
+/// one `Share4kDirectory` step per new directory, then downgrades the target page table to read and returns the read lock and the target
+/// window locks: the existing ones and those minted with each new L2.
 fn ipc_pages_fill_target(
     krnl: &mut KernelK, source_range: &VaRange4K, target_range: &VaRange4K, source_thread: RwLockThreadPtr, target_thread: RwLockThreadPtr,
     cpu_id: CpuId, process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, peer_thread_ptr: RwLockThreadPtr,
     source_process: RwLockProcessPtr, source_container: RwLockContainerPtr, source_pagetable: RwLockPageTableRoot, target_process: RwLockProcessPtr,
     target_container: RwLockContainerPtr, target_pagetable: RwLockPageTableRoot, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
     Tracked(current_thread_lock_perm): Tracked<&LockPerm>, Tracked(peer_thread_lock_perm): Tracked<&LockPerm>,
-    target_allocator: RwLockPageAllocatorPtr, Tracked(source_pagetable_lock_perm): Tracked<&LockPerm>, Tracked(target_pagetable_lock_perm): Tracked<&LockPerm>,
+    target_allocator: RwLockPageAllocatorPtr, Tracked(source_pagetable_lock_perm): Tracked<&LockPerm>, Tracked(target_pagetable_lock_perm): Tracked<LockPerm>,
     Ghost(source_windows): Ghost<Map<WindowVa, LockPerm>>, Tracked(target_windows): Tracked<Map<WindowVa, LockPerm>>,
-) -> (ret: Tracked<Map<WindowVa, LockPerm>>)
+) -> (ret: (Tracked<LockPerm>, Tracked<Map<WindowVa, LockPerm>>))
     requires
         old(krnl).inv(),
         old(steps).snapshot_k() == *old(krnl),
@@ -180,7 +181,7 @@ fn ipc_pages_fill_target(
         final(lctx).allocator_4k_lock_maps() == old(lctx).allocator_4k_lock_maps(),
         final(lctx).allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
         final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
-        old(steps).view().len() <= final(steps).view().len() <= old(steps).view().len() + 3 * target_range.len,
+        old(steps).view().len() <= final(steps).view().len() <= old(steps).view().len() + 3 * target_range.len + 1,
         old(steps).nonlock_view().len() <= final(steps).nonlock_view().len() <= old(steps).nonlock_view().len() + 3 * target_range.len,
         forall|j: int| #![trigger final(steps).view()[j]] 0 <= j < old(steps).view().len() ==> final(steps).view()[j] == old(steps).view()[j],
         forall|j: int| #![trigger final(steps).view()[j]] old(steps).view().len() <= j < final(steps).view().len()
@@ -258,23 +259,22 @@ fn ipc_pages_fill_target(
         source_range.len > 0,
         final(lctx).pagetable_lock_map().dom() =~= set![source_pagetable, target_pagetable],
         typed_lock_map_contains_mode(final(lctx).pagetable_lock_map(), source_pagetable, TypedLockMode::Read),
-        typed_lock_map_contains_mode(final(lctx).pagetable_lock_map(), target_pagetable, TypedLockMode::Write),
+        typed_lock_map_contains_mode(final(lctx).pagetable_lock_map(), target_pagetable, TypedLockMode::Read),
         source_pagetable_lock_perm.state() is ReadLock,
         source_pagetable_lock_perm.thread_id() == final(lctx).thread_id(),
         final(krnl).pt_mp.spec_index(source_pagetable).read_lock_perm_match(&source_pagetable_lock_perm),
-        target_pagetable_lock_perm.thread_id() == final(lctx).thread_id(),
-        target_pagetable_lock_perm.state() is WriteLock,
-        target_pagetable_lock_perm.lock_id() == final(krnl).pt_mp.spec_index(target_pagetable).locking_thread()->Write_lock_id,
-        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).leaves_present(),
-        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
+        ret.0@.thread_id() == final(lctx).thread_id(),
+        !(ret.0@.state() is WriteLock),
+        ret.0@.state() is ReadLock,
+        final(krnl).pt_mp.spec_index(target_pagetable).read_lock_perm_match(&ret.0@),
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), source_pagetable).kernel_l4_end() <= spec_va2index(source_range.start).0,
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).kernel_l4_end() <= spec_va2index(target_range.start).0,
         forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger final(lctx).pagetable_window_lock_map().dom().contains((p, w))]
-            final(lctx).pagetable_window_lock_map().dom().contains((p, w)) == (p == source_pagetable && source_windows.dom().contains(w) || p == target_pagetable && ret@.dom().contains(w)),
+            final(lctx).pagetable_window_lock_map().dom().contains((p, w)) == (p == source_pagetable && source_windows.dom().contains(w) || p == target_pagetable && ret.1@.dom().contains(w)),
         forall|w: WindowVa| #![trigger va_range_2m_windows(*source_range).contains(w)]
             va_range_2m_windows(*source_range).contains(w) && pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), source_pagetable).higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some ==> source_windows.dom().contains(w),
         forall|w: WindowVa| #![trigger va_range_2m_windows(*target_range).contains(w)]
-            va_range_2m_windows(*target_range).contains(w) && pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some ==> ret@.dom().contains(w),
+            va_range_2m_windows(*target_range).contains(w) && pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some ==> ret.1@.dom().contains(w),
         forall|w: WindowVa| #![trigger source_windows.dom().contains(w)] source_windows.dom().contains(w) ==> {
                 &&& va_range_2m_windows(*source_range).contains(w)
                 &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), source_pagetable).higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some
@@ -287,14 +287,17 @@ fn ipc_pages_fill_target(
                 &&& !pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), source_pagetable).lower.window_stale_cpus.dom().contains((
                     pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), source_pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
             },
-        forall|w: WindowVa| #![trigger ret@.dom().contains(w)] ret@.dom().contains(w) ==> {
+        forall|w: WindowVa| #![trigger ret.1@.dom().contains(w)] ret.1@.dom().contains(w) ==> {
                 &&& va_range_2m_windows(*target_range).contains(w)
                 &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some
                 &&& typed_lock_map_contains_mode(final(lctx).pagetable_window_lock_map(), (target_pagetable, w), TypedLockMode::Write)
-                &&& ret@.index(w).state() is WriteLock
-                &&& ret@.index(w).thread_id() == final(lctx).thread_id()
+                &&& ret.1@.index(w).state() is WriteLock
+                &&& ret.1@.index(w).thread_id() == final(lctx).thread_id()
                 &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.l2_lock_of(pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)))
-                    .lock_perm_match(spec_v2l2index(w.va), &ret@.index(w))
+                    .lock_perm_match(spec_v2l2index(w.va), &ret.1@.index(w))
+                &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).window_leaves_present(w)
+                &&& !pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.window_stale_cpus.dom().contains((
+                    pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
             },
         forall|j: int| #![trigger source_range.view().spec_index(j)] 0 <= j < source_range.len ==> {
                 &&& final(lctx).pagetable_window_lock_map().dom().contains((source_pagetable, window_of(source_range.view().spec_index(j))))
@@ -482,7 +485,7 @@ fn ipc_pages_fill_target(
         ipc_pages_fill_target_page(
             krnl, target_range, i, start_indices, end_indices, target_allocator, target_thread, target_process, target_container, cpu_id, target_pagetable,
             Ghost(current_thread_ptr), Ghost(old(steps).view().len() as int), Tracked(&mut *lctx), Tracked(&mut *steps),
-            Tracked(if target_thread == current_thread_ptr { current_thread_lock_perm } else { peer_thread_lock_perm }), Tracked(target_pagetable_lock_perm), Tracked(&mut window_perms),
+            Tracked(if target_thread == current_thread_ptr { current_thread_lock_perm } else { peer_thread_lock_perm }), Tracked(&target_pagetable_lock_perm), Tracked(&mut window_perms),
         );
         i = i + 1;
     }
@@ -494,7 +497,13 @@ fn ipc_pages_fill_target(
         container_thread_wf_uppertree_at(old(krnl).ctn_mp, old(krnl).thr_mp, target_thread); container_thread_wf_uppertree_at(krnl.ctn_mp, krnl.thr_mp, target_thread);
         container_uppertree_seq_in_dom(krnl.rt_ctn, krnl.ctn_mp, target_container);
     }
-    Tracked(window_perms)
+    let Tracked(read_perm) = ipc_pages_downgrade_target(
+        krnl, source_range, target_range, source_thread, target_thread, cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, peer_thread_ptr, source_process,
+        source_container, source_pagetable, target_process, target_container, target_pagetable, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(current_thread_lock_perm),
+        Tracked(peer_thread_lock_perm), Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm), Ghost(source_windows), Ghost(window_perms),
+        Ghost(old(steps).view().len() as int),
+    );
+    (Tracked(read_perm), Tracked(window_perms))
 }
 
 /// Downgrades the filled target page table of a pages rendezvous from write to read and records the downgrade step; the held
@@ -1180,7 +1189,6 @@ fn ipc_pages_prepare_target(
 {
     let ghost tables = if fill { IpcPagesTables::Fill } else { IpcPagesTables::Read };
     let ghost check_pre_k = *krnl;
-    let ghost check_before = steps.view();
     proof {
         ipc_pages_check_step_pre_from_k(&*krnl, &*lctx, cpu_id, current_thread_ptr, peer_thread_ptr, endpoint_ptr, channel_index, source_thread, target_thread, source_process, target_process,
             source_pagetable, target_pagetable, tables);
@@ -1214,18 +1222,11 @@ fn ipc_pages_prepare_target(
         }) by { reveal(share_4k_objects_k); };
     }
     let (Tracked(read_perm), Tracked(read_windows)) = if fill {
-        let Tracked(filled_windows) = ipc_pages_fill_target(
+        ipc_pages_fill_target(
             krnl, source_range, target_range, source_thread, target_thread, cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, peer_thread_ptr, source_process,
             source_container, source_pagetable, target_process, target_container, target_pagetable, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(current_thread_lock_perm),
-            Tracked(peer_thread_lock_perm), target_allocator, Tracked(source_pagetable_lock_perm), Tracked(&target_pagetable_lock_perm), Ghost(source_windows), Tracked(target_windows),
-        );
-        let Tracked(downgraded_perm) = ipc_pages_downgrade_target(
-            krnl, source_range, target_range, source_thread, target_thread, cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, peer_thread_ptr, source_process,
-            source_container, source_pagetable, target_process, target_container, target_pagetable, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(current_thread_lock_perm),
-            Tracked(peer_thread_lock_perm), Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm), Ghost(source_windows), Ghost(filled_windows),
-            Ghost((check_before.len() + 1) as int),
-        );
-        (Tracked(downgraded_perm), Tracked(filled_windows))
+            Tracked(peer_thread_lock_perm), target_allocator, Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm), Ghost(source_windows), Tracked(target_windows),
+        )
     } else {
         (Tracked(target_pagetable_lock_perm), Tracked(target_windows))
     };
@@ -1781,6 +1782,8 @@ pub(super) fn ipc_pages_release_tables_and_record(
 {
     let ghost range = if waiting_state is SENDING { *source_range } else { *target_range };
     let ghost tables = if fill { IpcPagesTables::Fill } else { IpcPagesTables::Read };
+    let ghost unlock_pre_k = *krnl;
+    let ghost unlock_before = steps.view();
     let passed = match result { RetValueType::Success => true, _ => false };
     proof {
         container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, target_thread);
@@ -1793,39 +1796,24 @@ pub(super) fn ipc_pages_release_tables_and_record(
                 target_process, source_pagetable, target_pagetable, tables);
         }
     }
-    if source_user && target_user {
-        ipc_pages_unlock_pair_windows(krnl, source_range, target_range, source_pagetable, target_pagetable, Tracked(&mut *lctx), Tracked(&source_pagetable_lock_perm),
-            Tracked(&target_pagetable_lock_perm), Tracked(source_windows), Tracked(target_windows));
-    }
-    krnl.runlock_pagetable(source_pagetable, Tracked(&mut *lctx), Tracked(source_pagetable_lock_perm));
-    if fill && !passed {
-        krnl.wunlock_pagetable(target_pagetable, Tracked(&mut *lctx), Tracked(target_pagetable_lock_perm));
-    } else {
-        krnl.runlock_pagetable(target_pagetable, Tracked(&mut *lctx), Tracked(target_pagetable_lock_perm));
-    }
-    krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(Some(SyscallProgress::IpcPages { source_range: *source_range, target_range: *target_range, peer: peer_thread_ptr, tables: IpcPagesTables::Unlocked, released: Some(result) })),
-        Tracked(&*lctx), Tracked(current_thread_lock_perm));
+    let Ghost(unlocked_k) = ipc_pages_release_tables_and_progress(
+        krnl, source_range, target_range, source_pagetable, target_pagetable, cpu_id, current_thread_ptr, peer_thread_ptr, endpoint_ptr, result, source_user && target_user,
+        fill && !passed, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(current_thread_lock_perm), Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm),
+        Tracked(source_windows), Tracked(target_windows),
+    );
     proof {
-        let ghost unlock_before = steps.view();
-        let ghost unlock_pre_k = steps.snapshot_k();
-        let ghost unlocked_k = *krnl;
-        assert(krnl.pt_lower.view() =~= unlock_pre_k.pt_lower.view().insert(source_pagetable, krnl.pt_lower.view().spec_index(source_pagetable))
-            .insert(target_pagetable, krnl.pt_lower.view().spec_index(target_pagetable)));
-        kernel_pagetable_pair_lock_modes_and_progress_changed_implies_u_step(&unlock_pre_k, &*krnl, source_process, target_process, source_pagetable, target_pagetable,
+        kernel_pagetable_pair_lock_modes_and_progress_changed_implies_u_step(&unlock_pre_k, &unlocked_k, source_process, target_process, source_pagetable, target_pagetable,
             current_thread_ptr);
         if passed {
-            ipc_pages_unlock_tables_step_from_u(kernel_k_to_kernel_u(unlock_pre_k), kernel_k_to_kernel_u(*krnl), cpu_id, current_thread_ptr, *source_range, *target_range, peer_thread_ptr,
-                source_process, target_process, krnl.pt_mp.spec_index(source_pagetable).lock_state_u(), krnl.pt_mp.spec_index(target_pagetable).lock_state_u());
-        } else {
-            ipc_pages_failed_check_step_from_u(kernel_k_to_kernel_u(unlock_pre_k), kernel_k_to_kernel_u(*krnl), cpu_id, current_thread_ptr, *source_range, *target_range, peer_thread_ptr,
-                tables, result, source_process, target_process, krnl.pt_mp.spec_index(source_pagetable).lock_state_u(), krnl.pt_mp.spec_index(target_pagetable).lock_state_u());
-        }
-        krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, current_thread_ptr);
-        if passed {
+            ipc_pages_unlock_tables_step_from_u(kernel_k_to_kernel_u(unlock_pre_k), kernel_k_to_kernel_u(unlocked_k), cpu_id, current_thread_ptr, *source_range, *target_range,
+                peer_thread_ptr, source_process, target_process, unlocked_k.pt_mp.spec_index(source_pagetable).lock_state_u(), unlocked_k.pt_mp.spec_index(target_pagetable).lock_state_u());
             ipc_pages_trace_unlock_step(&*steps, unlock_before, start, pre, kernel_k_to_kernel_u(unlock_pre_k), kernel_k_to_kernel_u(unlocked_k), cpu_id, channel_index, waiting_state, range);
         } else {
-            ipc_pages_trace_failed_check_step(&*steps, unlock_before, start, pre, kernel_k_to_kernel_u(unlock_pre_k), kernel_k_to_kernel_u(unlocked_k), cpu_id, channel_index, waiting_state,
-                range, tables, result);
+            ipc_pages_failed_check_step_from_u(kernel_k_to_kernel_u(unlock_pre_k), kernel_k_to_kernel_u(unlocked_k), cpu_id, current_thread_ptr, *source_range, *target_range,
+                peer_thread_ptr, tables, result, source_process, target_process, unlocked_k.pt_mp.spec_index(source_pagetable).lock_state_u(),
+                unlocked_k.pt_mp.spec_index(target_pagetable).lock_state_u());
+            ipc_pages_trace_failed_check_step(&*steps, unlock_before, start, pre, kernel_k_to_kernel_u(unlock_pre_k), kernel_k_to_kernel_u(unlocked_k), cpu_id, channel_index,
+                waiting_state, range, tables, result);
         }
         process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
     }
