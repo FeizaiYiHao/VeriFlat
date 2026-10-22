@@ -196,7 +196,7 @@ fn ipc_pages_check_source_owners(
                     pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
             },
         !(source_user && target_user) ==> old(lctx).pagetable_window_lock_map().dom().is_empty(),
-        !fill && source_user && target_user ==> forall|j: int| #![trigger target_range.view().spec_index(j)] 0 <= j < target_range.len ==> {
+        !fill && source_user && target_user ==> forall|j: int| #![trigger window_of(target_range.view().spec_index(j))] 0 <= j < target_range.len ==> {
                 let va = target_range.view().spec_index(j);
                 &&& old(lctx).pagetable_window_lock_map().dom().contains((target_pagetable, window_of(va)))
                 &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).spec_resolve_mapping_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some
@@ -320,7 +320,7 @@ fn ipc_pages_check_source_owners(
                     pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
             },
         !(source_user && target_user) ==> final(lctx).pagetable_window_lock_map().dom().is_empty(),
-        !fill && source_user && target_user ==> forall|j: int| #![trigger target_range.view().spec_index(j)] 0 <= j < target_range.len ==> {
+        !fill && source_user && target_user ==> forall|j: int| #![trigger window_of(target_range.view().spec_index(j))] 0 <= j < target_range.len ==> {
                 let va = target_range.view().spec_index(j);
                 &&& final(lctx).pagetable_window_lock_map().dom().contains((target_pagetable, window_of(va)))
                 &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).spec_resolve_mapping_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some
@@ -508,7 +508,7 @@ pub(super) fn ipc_pages_check_tables(
                     pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
             },
         !(source_user && target_user) ==> old(lctx).pagetable_window_lock_map().dom().is_empty(),
-        !fill && source_user && target_user ==> forall|j: int| #![trigger target_range.view().spec_index(j)] 0 <= j < target_range.len ==> {
+        !fill && source_user && target_user ==> forall|j: int| #![trigger window_of(target_range.view().spec_index(j))] 0 <= j < target_range.len ==> {
                 let va = target_range.view().spec_index(j);
                 &&& old(lctx).pagetable_window_lock_map().dom().contains((target_pagetable, window_of(va)))
                 &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).spec_resolve_mapping_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some
@@ -627,7 +627,7 @@ pub(super) fn ipc_pages_check_tables(
                     pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
             },
         !(source_user && target_user) ==> final(lctx).pagetable_window_lock_map().dom().is_empty(),
-        !fill && source_user && target_user ==> forall|j: int| #![trigger target_range.view().spec_index(j)] 0 <= j < target_range.len ==> {
+        !fill && source_user && target_user ==> forall|j: int| #![trigger window_of(target_range.view().spec_index(j))] 0 <= j < target_range.len ==> {
                 let va = target_range.view().spec_index(j);
                 &&& final(lctx).pagetable_window_lock_map().dom().contains((target_pagetable, window_of(va)))
                 &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).spec_resolve_mapping_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some
@@ -657,6 +657,7 @@ pub(super) fn ipc_pages_check_tables(
                 &&& !pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).mapping_4k().dom().contains(target_range.view().spec_index(j))
             },
 {
+    hide(Seq::no_duplicates);
     let ghost mut found: Option<(L4Index, L3Index, L2Index, L1Index)> = None;
     proof {
         thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); thread_perms_wf_at(krnl.thr_mp, peer_thread_ptr);

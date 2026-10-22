@@ -987,7 +987,7 @@ fn ipc_pages_lock_tables_attempt(
                     pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
             },
         !(ret.1 && ret.2) ==> final(lctx).pagetable_window_lock_map().dom().is_empty(),
-        !ret.0 && ret.1 && ret.2 ==> forall|j: int| #![trigger target_range.view().spec_index(j)] 0 <= j < target_range.len ==> {
+        !ret.0 && ret.1 && ret.2 ==> forall|j: int| #![trigger window_of(target_range.view().spec_index(j))] 0 <= j < target_range.len ==> {
                 let va = target_range.view().spec_index(j);
                 &&& final(lctx).pagetable_window_lock_map().dom().contains((target_pagetable, window_of(va)))
                 &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).spec_resolve_mapping_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some
@@ -1259,7 +1259,7 @@ pub(super) fn ipc_pages_lock_tables(
                     pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
             },
         !(ret.1 && ret.2) ==> final(lctx).pagetable_window_lock_map().dom().is_empty(),
-        !ret.0 && ret.1 && ret.2 ==> forall|j: int| #![trigger target_range.view().spec_index(j)] 0 <= j < target_range.len ==> {
+        !ret.0 && ret.1 && ret.2 ==> forall|j: int| #![trigger window_of(target_range.view().spec_index(j))] 0 <= j < target_range.len ==> {
                 let va = target_range.view().spec_index(j);
                 &&& final(lctx).pagetable_window_lock_map().dom().contains((target_pagetable, window_of(va)))
                 &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).spec_resolve_mapping_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some
