@@ -20,6 +20,8 @@ captured by the repository instructions or obvious from one implementation.
   contracts, `KernelSteps`, staged allocation, and unlock cleanliness.
 - [IOMMU model](project_iommu_identity_and_static_root_table.md) — BDF-derived
   identity, the static VT-d root table, ownership, and IOTLB state.
+- [NUMA plan](project_numa_plan.md) — single-kernel NUMA design: node tags,
+  per-node arrays/pools, per-node RwLock reader counts, lazy page-table replicas.
 
 ## Deliberately omitted
 
