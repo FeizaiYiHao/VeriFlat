@@ -318,7 +318,6 @@ fn thread_exit_reclaim_lock_table(
     let ghost lock_k = *krnl;
     let ghost lock_lctx = *lctx;
     let ghost lock_before = steps.view();
-    proof { assert(typed_lock_map_majors_lt(lctx.cpu_lock_map(), CPU_LOCK_MAJOR_OFF)) by { krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); }; }
     let Tracked(pagetable_lock_perm) = krnl.wlock_pagetable(pagetable, Tracked(&mut *lctx));
     let ghost table_lctx = *lctx;
     proof { assert(lctx.held_lock_majors_lt(IOMMU_ROOT_TABLE_LOCK_MAJOR)) by { reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); }; }
@@ -753,7 +752,6 @@ fn thread_exit_reclaim_clear_leaves(
         }
         let resolved = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_lock_perm)).resolve_mapping_4k_l1(Tracked(krnl.pt_lower.borrow().tracked_borrow(pagetable)), next.0, next.1, next.2, next.3);
         if resolved.2.is_some() && resolved.2.unwrap().present {
-            proof { assert(typed_lock_map_majors_lt(lctx.cpu_lock_map(), CPU_LOCK_MAJOR_OFF)) by { krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); }; }
             thread_exit_reclaim_clear_leaf(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), Ghost(cpu_id), Ghost(container_ptr), Ghost(process_ptr), Ghost(thread_ptr), pagetable, va,
                 Ghost(iommu_table), Tracked(pagetable_lock_perm), Ghost(start), Ghost(pre));
         } else {

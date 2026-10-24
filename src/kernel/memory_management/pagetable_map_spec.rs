@@ -158,18 +158,6 @@ verus! {
                 && pagetable_c(pt_mp, pt_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id) ==> window_lock_map.dom().contains((pagetable_ptr, WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) })),
     { reveal(pagetable_window_typed_lock_map_aligned); }
 
-    /// A held window map ordered below window `(l4i, l3i, l2i)` of `root`, by table and then by index path, has every lock id
-    /// below that window's id.
-    pub proof fn pagetable_window_typed_lock_map_ids_lt_from_order(
-        pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, window_lock_map: Map<(RwLockPageTableRoot, WindowVa), TypedHeldLock>,
-        pagetable_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>, thread_id: LockThreadId, root: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index,
-    )
-        requires
-            pagetable_window_typed_lock_map_aligned(pt_mp, pt_lower, window_lock_map, pagetable_lock_map, thread_id),
-            forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger window_lock_map.dom().contains((p, w))] window_lock_map.dom().contains((p, w)) ==> p < root || (p == root && !spec_l4_index_path_le((l4i, l3i, l2i, 0usize), spec_va2index(w.va))),
-        ensures typed_lock_map_2d_ids_lt(window_lock_map, window_lock_id(root, l4i, l3i, l2i)),
-    { reveal(pagetable_window_typed_lock_map_aligned); reveal_with_fuel(lock_minor_lt, 4); }
-
     pub proof fn pagetable_perms_wf_map(pagetable_perms: PageTableLockedMap)
         requires pagetable_perms_wf(pagetable_perms)
         ensures pagetable_perms.perms_wf()

@@ -90,7 +90,7 @@ verus! {
                 old(lctx).pagetable_window_lock_map().dom().is_empty(),
                 old(lctx).iommu_table_lock_map().dom().is_empty(),
                 old(lctx).iommu_root_table_lock_map().dom().is_empty(),
-                held_locks_order_below(old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
+                held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
                 typed_lock_maps_aligned(old(krnl), old(lctx)),
             ensures
                 final(steps).view().len() == old(steps).view().len() + 2,

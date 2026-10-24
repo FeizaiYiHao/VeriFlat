@@ -101,13 +101,13 @@ pub(crate) fn wlock_kill_retire_pages<const N: usize>(
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
         old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
-        typed_lock_map_majors_lt(old(lctx).cpu_lock_map(), CPU_LOCK_MAJOR_OFF),
+        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
         forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread) ==> {
             let state = old(krnl).thr_mp.spec_index(held_thread).view().state;
             !(state.is_endpoint_waiting() || state.is_reply_waiting() || state is IPC_TRANSIT)
         },
         forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page)
-            ==> index_valid(NUM_PAGES, held_page) && old(lctx).page_lock_map().index(held_page).lock_id.major < major,
+            ==> index_valid(NUM_PAGES, held_page) && old(krnl).pg_arr.lock_id_by_index(held_page).major < major,
         perms.dom() == old(lctx).page_lock_map().dom(),
         forall|p: PageIndex| #![trigger perms.dom().contains(p)] perms.dom().contains(p) ==> {
             &&& typed_lock_map_contains_mode(old(lctx).page_lock_map(), p, TypedLockMode::Write)
@@ -165,8 +165,7 @@ pub(crate) fn wlock_kill_retire_pages<const N: usize>(
             &&& ret.view().spec_index(p).state() is WriteLock
             &&& ret.view().spec_index(p).thread_id() == final(lctx).thread_id()
             &&& ret.view().spec_index(p).lock_id() == final(krnl).pg_arr.spec_index(p).view().locking_thread()->Write_lock_id
-            &&& final(lctx).page_lock_map().index(p).lock_id.major <= major
-            &&& !old(lctx).page_lock_map().dom().contains(p) ==> final(krnl).pg_arr.lock_id_by_index(p).major == major
+            &&& final(krnl).pg_arr.lock_id_by_index(p).major <= major
         },
 {
     let tracked mut perms = perms;
@@ -188,6 +187,7 @@ pub(crate) fn wlock_kill_retire_pages<const N: usize>(
             },
             forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> {
                 &&& index_valid(NUM_PAGES, p)
+                &&& old(krnl).pg_arr.lock_id_by_index(p).major < major
                 &&& lctx.page_lock_map().dom().contains(p)
                 &&& lctx.page_lock_map()[p] == old(lctx).page_lock_map()[p]
                 &&& krnl.pg_arr.spec_index(p) == old(krnl).pg_arr.spec_index(p)
@@ -210,7 +210,7 @@ pub(crate) fn wlock_kill_retire_pages<const N: usize>(
             lctx.holds_no_allocator_locks(PageSize::SZ4k),
             lctx.holds_no_allocator_locks(PageSize::SZ2m),
             lctx.holds_no_allocator_locks(PageSize::SZ1g),
-            typed_lock_map_majors_lt(lctx.cpu_lock_map(), CPU_LOCK_MAJOR_OFF),
+            forall|held_cpu_id: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(held_cpu_id)] lctx.cpu_lock_map().dom().contains(held_cpu_id) ==> !(krnl.cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
             forall|held_thread: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(held_thread)] lctx.thread_lock_map().dom().contains(held_thread) ==> {
                 let state = krnl.thr_mp.spec_index(held_thread).view().state;
                 !(state.is_endpoint_waiting() || state.is_reply_waiting() || state is IPC_TRANSIT)
@@ -242,9 +242,8 @@ pub(crate) fn wlock_kill_retire_pages<const N: usize>(
             forall|i: PageIndex| #![trigger krnl.pg_arr.spec_index(i)] #![trigger old(krnl).pg_arr.spec_index(i)]
                 index_valid(NUM_PAGES, i) && !sorted.view().subrange(0, k as int).to_set().contains(i) ==> krnl.pg_arr.spec_index(i) == old(krnl).pg_arr.spec_index(i),
             forall|held_page: PageIndex| #![trigger lctx.page_lock_map().dom().contains(held_page)] lctx.page_lock_map().dom().contains(held_page) ==> {
-                let held_major = lctx.page_lock_map().index(held_page).lock_id.major;
-                &&& held_major < major || held_major == major && (k < sorted.view().len() ==> held_page < sorted.view()[k as int])
-                &&& !old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.lock_id_by_index(held_page).major == major
+                let held_major = krnl.pg_arr.lock_id_by_index(held_page).major;
+                held_major < major || held_major == major && (k < sorted.view().len() ==> held_page < sorted.view()[k as int])
             },
             forall|p: PageIndex| #![trigger perms.dom().contains(p)] perms.dom().contains(p) ==> {
                 &&& typed_lock_map_contains_mode(lctx.page_lock_map(), p, TypedLockMode::Write)

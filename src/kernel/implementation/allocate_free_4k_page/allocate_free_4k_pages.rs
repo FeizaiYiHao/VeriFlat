@@ -46,7 +46,7 @@ pub fn allocate_free_4k_pages<const N: usize>(
         thread_effective_quota_4k(old(krnl).thr_mp.spec_index(thread_ptr)) >= N,
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        held_locks_order_below(old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
+        held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
     ensures
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         final(steps).view() == if N == 0 { old(steps).view() }
@@ -82,7 +82,7 @@ pub fn allocate_free_4k_pages<const N: usize>(
         typed_lock_map_contains_mode(final(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).page_lock_map().dom() == old(lctx).page_lock_map().dom().union(page_ptrs_to_indices(ret.0.view())),
-        typed_lock_map_majors_lt(final(lctx).page_lock_map(), ALLOCATOR_CACHE_4K_MAJOR),
+        forall|held_page: PageIndex| #![trigger final(lctx).page_lock_map().dom().contains(held_page)] final(lctx).page_lock_map().dom().contains(held_page) ==> final(krnl).pg_arr.lock_id_by_index(held_page).major < ALLOCATOR_CACHE_4K_MAJOR,
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
         final(lctx).cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
@@ -200,7 +200,7 @@ pub fn allocate_free_4k_pages<const N: usize>(
             lctx.allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
             lctx.kernel_view_locking_state() is Acquire,
             typed_lock_maps_aligned(krnl, &*lctx),
-            held_locks_order_below(lctx, ALLOCATOR_CACHE_4K_MAJOR),
+            held_locks_order_below(krnl, lctx, ALLOCATOR_CACHE_4K_MAJOR),
             held_threads_unchanged_except(old(krnl).thr_mp, krnl.thr_mp, old(lctx), set![thread_ptr]),
             i > 0 ==> steps.snapshot_k() == *krnl,
             steps.nonlock_view() == old(steps).nonlock_view(),

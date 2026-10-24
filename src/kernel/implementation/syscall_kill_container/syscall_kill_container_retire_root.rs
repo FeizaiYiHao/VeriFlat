@@ -133,7 +133,7 @@ pub(crate) fn kill_container_retire_root_process(
         ctx is Container,
         scope is Container,
         kill_retire_held_state(*old(krnl), *old(lctx), process_ptr, thread_ptr, target, page_perms, pt_perm, it_perm),
-        held_locks_order_below(old(lctx), PAGETABLE_PAGE_MAJOR),
+        held_locks_order_below(old(krnl), old(lctx), PAGETABLE_PAGE_MAJOR),
         old(lctx).thread_lock_map().dom() =~= set![thread_ptr],
         old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
         kill_chain_state(*old(krnl), *old(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *old(chain_perms)),

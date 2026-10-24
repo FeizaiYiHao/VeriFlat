@@ -88,8 +88,6 @@ pub fn release_endpoint_last_reference(
     proof {
         page_ptr_valid_imply_page_index_valid();
         endpoint_pages_wf_page_at(krnl.ep_mp, krnl.pg_arr, endpoint_ptr);
-        krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id);
-        krnl.thr_mp.typed_lock_map_aligned_majors_lt(lctx.thread_lock_map(), lctx.thread_id(), THREAD_SCHEDULED_LOCK_MAJOR);
     }
     let page_index = page_ptr2page_index(endpoint_ptr);
     let Tracked(page_lock_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));

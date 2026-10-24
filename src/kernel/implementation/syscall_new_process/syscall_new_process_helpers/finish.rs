@@ -41,7 +41,7 @@ pub(in super::super) fn create_initial_thread_and_finish_new_process(
         kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
         old(lctx).page_lock_map().dom().is_empty(),
-        held_locks_order_below(old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
+        held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
         old(lctx).container_lock_map().dom().is_empty(),
         old(lctx).process_lock_map().dom() =~= set![child_ptr],

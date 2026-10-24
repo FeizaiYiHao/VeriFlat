@@ -502,7 +502,7 @@ pub(crate) fn kill_reclaim_lock_table(
     let ghost before = *krnl;
     let ghost before_lctx = *lctx;
     let ghost before_steps = steps.view();
-    proof { process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target); krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); }
+    proof { process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target); }
     let Tracked(pagetable_perm) = krnl.wlock_pagetable(pagetable, Tracked(&mut *lctx));
     let iommu_perm = match iommu_table {
         Some(it) => {

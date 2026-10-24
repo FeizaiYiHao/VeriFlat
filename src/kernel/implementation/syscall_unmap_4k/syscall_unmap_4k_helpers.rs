@@ -345,9 +345,6 @@ pub(super) fn unmap_4k_unmap_and_finish(
         };
     }
     let ghost entered = steps.view();
-    assert(held_locks_order_below(lctx, ALLOCATOR_CACHE_4K_MAJOR)) by {
-        krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); krnl.thr_mp.typed_lock_map_aligned_lock_id_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr);
-    };
     unmap_4k_range(krnl, va_range, pagetable, thread_ptr, cpu_id, cr3, pcid, Ghost(checked_table), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&cpu_perm), Tracked(&thread_perm), Tracked(&pagetable_perm));
     let ghost range_steps = steps.view();
     let ghost exit_start = *krnl;

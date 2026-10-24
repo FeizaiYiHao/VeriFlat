@@ -152,7 +152,7 @@ fn new_process_lock_entry(
             &&& final(lctx).holds_no_allocator_locks(PageSize::SZ4k)
             &&& final(lctx).holds_no_allocator_locks(PageSize::SZ2m)
             &&& final(lctx).holds_no_allocator_locks(PageSize::SZ1g)
-            &&& typed_lock_map_majors_lt(final(lctx).cpu_lock_map(), CPU_LOCK_MAJOR_OFF)
+            &&& forall|held_cpu_id: CpuId| #![trigger final(lctx).cpu_lock_map().dom().contains(held_cpu_id)] final(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(final(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off)
             &&& final(lctx).cpu_lock_map().dom() =~= set![cpu_id]
             &&& final(lctx).container_lock_map().dom().is_empty()
             &&& final(lctx).process_lock_map().dom() =~= set![x.parent_ptr]
@@ -219,7 +219,6 @@ fn new_process_lock_entry(
     let Tracked(parent_lock_perm) = parent_lock_perm;
     let Tracked(current_thread_lock_perm) = current_thread_lock_perm;
     let Tracked(pcid_allocator_lock_perm) = pcid_allocator_lock_perm;
-    proof { assert(typed_lock_map_majors_lt(lctx.cpu_lock_map(), CPU_LOCK_MAJOR_OFF)) by { krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); }; }
     let base_quota: usize = if with_iommu { 6usize } else { 4usize };
     let pcid_allocator = krnl.pcid_allc_mp.borrow_typed(pcid_allocator_ptr, Ghost(lctx.pcid_allocator_lock_map()), Tracked(&*lctx), Tracked(&pcid_allocator_lock_perm));
     let free_pcid = pcid_allocator.find_lowest_free_nonzero();

@@ -88,7 +88,7 @@ pub(super) fn thread_exit_finish_lock_page_and_cache(
         ret.3.view().state() is WriteLock,
         ret.3.view().thread_id() == old(lctx).thread_id(),
         ret.3.view().lock_id() == final(krnl).pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().locking_thread()->Write_lock_id,
-        typed_lock_map_majors_lt(final(lctx).page_lock_map(), ALLOCATOR_CACHE_4K_MAJOR),
+        final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(thread_ptr)).major < ALLOCATOR_CACHE_4K_MAJOR,
         final(krnl).pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().owning_container == ret.0,
         final(krnl).ctn_mp.dom().contains(ret.0),
         final(krnl).ctn_mp.spec_index(ret.0).view_rodata().view().allocator_ptr_4k == ret.1,
@@ -108,12 +108,7 @@ pub(super) fn thread_exit_finish_lock_page_and_cache(
             &&& ret.5.view()->Some_0.lock_id() == final(krnl).pcid_allc_mp.spec_index(ret.2).locking_thread()->Write_lock_id
         },
 {
-    proof {
-        container_perms_wf_at(krnl.ctn_mp, container_ptr);
-        assert(typed_lock_map_majors_lt(lctx.cpu_lock_map(), CPU_LOCK_MAJOR_OFF) && typed_lock_map_majors_lt(lctx.thread_lock_map(), THREAD_SCHEDULED_LOCK_MAJOR)) by {
-            krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); krnl.thr_mp.typed_lock_map_aligned_lock_id_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr);
-        };
-    }
+    proof { container_perms_wf_at(krnl.ctn_mp, container_ptr); }
     let pcid_allocator_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().pcid_allocator;
     let tracked mut pcid_allocator_lock_perm: Option<LockPerm> = None;
     if last {
@@ -224,7 +219,7 @@ pub(super) fn thread_exit_finish_destroy_and_record(
         page_lock_perm.state() is WriteLock,
         page_lock_perm.thread_id() == old(lctx).thread_id(),
         page_lock_perm.lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().locking_thread()->Write_lock_id,
-        typed_lock_map_majors_lt(old(lctx).page_lock_map(), QUOTA_4K_MAJOR),
+        old(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(thread_ptr)).major < QUOTA_4K_MAJOR,
         typed_lock_map_contains_mode(old(lctx).allocator_cache_4k_lock_map(), (allocator_ptr, cpu_id), TypedLockMode::Write),
         cache_lock_perm.state() is WriteLock,
         cache_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -285,7 +280,6 @@ pub(super) fn thread_exit_finish_destroy_and_record(
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         thread_exit_syscall_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, kernel_k_to_kernel_u(*final(krnl)), cpu_id, true),
 {
-    proof { assert(typed_lock_map_majors_lt(lctx.cpu_lock_map(), CPU_LOCK_MAJOR_OFF)) by { krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); }; }
     let Tracked(quota_lock_perm) = krnl.wlock_allocator_quota_4k(allocator_ptr, Tracked(&mut *lctx));
     let Tracked(needflush_lock_perm) = krnl.wlock_pcid_needflush(cpu_id, KERNEL_DEFAULT_PCID, Tracked(&mut *lctx));
     let ghost finish_k = steps.snapshot_k();

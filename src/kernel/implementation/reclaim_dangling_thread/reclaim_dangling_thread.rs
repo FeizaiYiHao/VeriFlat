@@ -72,8 +72,6 @@ pub fn reclaim_dangling_thread(
 {
     proof {
         held_kernel_objects_unchanged_reflexive(&*krnl, &*lctx);
-        krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), lctx.cpu_id());
-        krnl.thr_mp.typed_lock_map_aligned_majors_lt(lctx.thread_lock_map(), lctx.thread_id(), THREAD_SCHEDULED_LOCK_MAJOR);
         thread_perms_wf_at(krnl.thr_mp, dangling_ptr); page_ptr_valid_imply_page_index_valid();
         assert(page_ptr_valid(dangling_ptr) && krnl.pg_arr.spec_index(page_ptr2page_index(dangling_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsThread })) by { thread_pages_wf_at(krnl.thr_mp, krnl.pg_arr, dangling_ptr); };
     }

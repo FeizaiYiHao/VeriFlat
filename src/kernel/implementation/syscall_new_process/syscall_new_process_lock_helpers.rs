@@ -115,6 +115,7 @@ pub(super) fn new_process_lock_cpu_owner(
             &&& typed_lock_map_contains_mode(final(lctx).pcid_allocator_lock_map(), x.pcid_allocator_ptr, TypedLockMode::Write)
             &&& x.pcid_allocator_lock_perm.view().state() is WriteLock && x.pcid_allocator_lock_perm.view().thread_id() == final(lctx).thread_id()
             &&& x.pcid_allocator_lock_perm.view().lock_id() == final(krnl).pcid_allc_mp.spec_index(x.pcid_allocator_ptr).locking_thread()->Write_lock_id
+            &&& forall|held_cpu_id: CpuId| #![trigger final(lctx).cpu_lock_map().dom().contains(held_cpu_id)] final(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(final(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off)
             &&& final(lctx).cpu_lock_map().dom() =~= set![cpu_id]
             &&& final(lctx).process_lock_map().dom() =~= set![x.parent_ptr]
             &&& final(lctx).thread_lock_map().dom() =~= set![x.current_thread_ptr]
@@ -480,7 +481,6 @@ pub(super) fn new_process_lock_endpoint_and_source(
         final(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         final(lctx).holds_no_allocator_locks(PageSize::SZ1g),
 {
-    proof { assert(typed_lock_map_majors_lt(lctx.cpu_lock_map(), CPU_LOCK_MAJOR_OFF)) by { krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); }; }
     let tracked mut endpoint_lock_perm_opt: Option<LockPerm> = None;
     if endpoint.is_some() {
         let Tracked(endpoint_lock_perm) = krnl.wlock_endpoint(endpoint.unwrap(), Tracked(&mut *lctx));
@@ -520,7 +520,7 @@ pub(super) fn new_process_lock_source_windows(
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
         old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
-        typed_lock_map_majors_lt(old(lctx).cpu_lock_map(), CPU_LOCK_MAJOR_OFF),
+        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), root, TypedLockMode::Read),
         big.state() is ReadLock && big.thread_id() == old(lctx).thread_id(),
         old(krnl).pt_mp.spec_index(root).is_init(),

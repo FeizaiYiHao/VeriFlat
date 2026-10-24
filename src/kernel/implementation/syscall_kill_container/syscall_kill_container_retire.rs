@@ -108,7 +108,6 @@ pub(crate) fn kill_container_retire(
         container_kill_retire_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr);
         kill_container_retire_eof_object_pages(*krnl, container_ptr, parent_ptr, owner_ptr);
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr);
-        krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id);
     }
     let tracked mut flag_perms: Map<CpuId, LockPerm> = Map::tracked_empty();
     let Tracked(pcid_perm) = kill_container_retire_lock_flags_pcid(krnl, Tracked(&mut *lctx), thread_ptr, container_ptr, Tracked(&mut flag_perms));

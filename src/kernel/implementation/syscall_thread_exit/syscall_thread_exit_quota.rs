@@ -16,7 +16,8 @@ pub(super) fn thread_exit_return_quota(
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         old(lctx).page_lock_map().dom().is_empty(),
-        typed_lock_map_majors_lt(old(lctx).cpu_lock_map(), CPU_LOCK_MAJOR_OFF),
+        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)]
+            old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
         old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
         old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
         old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),

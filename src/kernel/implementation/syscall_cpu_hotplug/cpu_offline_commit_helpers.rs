@@ -418,7 +418,6 @@ pub(super) fn cpu_offline_commit_go_off(
     let tracked flag_lock_perm = flag_lock_perm.get();
     let tracked cpu_set_lock_perm = cpu_set_lock_perm.get();
     let tracked scheduler_lock_perm = scheduler_lock_perm.get();
-    proof { assert(typed_lock_map_majors_lt(lctx.cpu_lock_map(), CPU_LOCK_MAJOR_OFF)) by { krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); }; }
     let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(cpu_id, KERNEL_DEFAULT_PCID, Tracked(&mut *lctx));
     let ghost before = *krnl;
     let default_cr3 = krnl.dflt_pt.borrow().cr3;

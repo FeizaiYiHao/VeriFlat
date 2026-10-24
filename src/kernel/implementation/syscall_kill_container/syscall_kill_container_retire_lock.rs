@@ -293,7 +293,6 @@ pub(crate) fn kill_container_retire_lock_object_pages(
             &&& typed_lock_map_contains_mode(final(lctx).page_lock_map(), p, TypedLockMode::Write)
             &&& ret.view()[p].state() is WriteLock && ret.view()[p].thread_id() == final(lctx).thread_id()
             &&& ret.view()[p].lock_id() == final(krnl).pg_arr.spec_index(p).view().locking_thread()->Write_lock_id
-            &&& final(lctx).page_lock_map().index(p).lock_id.major <= ALLOCATED_PAGE_MAJOR
             &&& final(krnl).pg_arr.lock_id_by_index(p).major <= ALLOCATED_PAGE_MAJOR
         },
 {
@@ -329,7 +328,6 @@ pub(crate) fn kill_container_retire_lock_object_pages(
         kill_container_retire_pages_4k(ro).lemma_push_to_set_commute(heads[0]); kill_container_retire_pages_4k(ro).push(heads[0]).lemma_push_to_set_commute(heads[1]);
         assert(pages.view().no_duplicates());
         assert(lctx.page_lock_map().dom() =~= Map::<PageIndex, LockPerm>::empty().dom());
-        krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), lctx.cpu_id());
     }
     let sorted = kill_retire_sort_pages(&pages);
     let ret = wlock_kill_retire_pages(krnl, &sorted, Ghost(ALLOCATED_PAGE_MAJOR), Tracked(&mut *lctx), Tracked(Map::<PageIndex, LockPerm>::tracked_empty()));
@@ -534,7 +532,6 @@ pub(crate) fn kill_container_retire_lock_caches(
         old(lctx).iommu_root_table_lock_map().dom().is_empty(),
         old(krnl).ctn_mp.dom().contains(container_ptr),
         forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.lock_id_by_index(p).major <= ALLOCATED_PAGE_MAJOR,
-        typed_lock_map_majors_lt(old(lctx).page_lock_map(), ALLOCATOR_CACHE_4K_MAJOR),
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
         old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
@@ -657,7 +654,6 @@ pub(crate) fn kill_container_retire_lock_caches(
             old(lctx).iommu_root_table_lock_map().dom().is_empty(),
             old(krnl).ctn_mp.dom().contains(container_ptr),
             forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.lock_id_by_index(p).major <= ALLOCATED_PAGE_MAJOR,
-            typed_lock_map_majors_lt(old(lctx).page_lock_map(), ALLOCATOR_CACHE_4K_MAJOR),
             old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
             old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
             old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
@@ -715,7 +711,6 @@ pub(crate) fn kill_container_retire_lock_caches(
             },
         decreases NUM_CPUS - c,
     {
-        proof { krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), lctx.cpu_id()); krnl.thr_mp.typed_lock_map_aligned_lock_id_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr); }
         let Tracked(perm) = krnl.wlock_allocator_cache_4k(a4, c, Tracked(&mut *lctx));
         proof {
             caches_4k.tracked_insert(c, perm);
@@ -747,7 +742,6 @@ pub(crate) fn kill_container_retire_lock_caches(
             old(lctx).iommu_root_table_lock_map().dom().is_empty(),
             old(krnl).ctn_mp.dom().contains(container_ptr),
             forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.lock_id_by_index(p).major <= ALLOCATED_PAGE_MAJOR,
-            typed_lock_map_majors_lt(old(lctx).page_lock_map(), ALLOCATOR_CACHE_4K_MAJOR),
             old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
             old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
             old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
@@ -820,7 +814,6 @@ pub(crate) fn kill_container_retire_lock_caches(
             },
         decreases NUM_CPUS - c,
     {
-        proof { krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), lctx.cpu_id()); krnl.thr_mp.typed_lock_map_aligned_lock_id_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr); }
         let Tracked(perm) = krnl.wlock_allocator_cache_2m(a2, c, Tracked(&mut *lctx));
         proof {
             caches_2m.tracked_insert(c, perm);
@@ -1103,13 +1096,13 @@ pub(crate) fn kill_container_retire_lock_tails(krnl: &mut KernelK, Tracked(lctx)
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
-        typed_lock_map_majors_lt(old(lctx).cpu_lock_map(), CPU_LOCK_MAJOR_OFF),
+        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
         old(krnl).ctn_mp.dom().contains(container_ptr),
         typed_lock_map_contains_mode(old(lctx).container_lock_map(), container_ptr, TypedLockMode::Write),
         old(krnl).ctn_mp.spec_index(container_ptr).being_killed(),
         forall|x: (RwLockCpuOfflineFlagsPtr, CpuId)| #![trigger old(lctx).cpu_offline_flag_lock_map().dom().contains(x)]
             old(lctx).cpu_offline_flag_lock_map().dom().contains(x) ==> x.0 == cpu_offline_flags_ptr(container_ptr),
-        typed_lock_map_majors_lt(old(lctx).page_lock_map(), MERGED_PAGE_LOCK_MAJOR),
+        forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.lock_id_by_index(p).major <= ALLOCATED_PAGE_MAJOR,
         ({
             let ro = old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view();
             let pages_4k = kill_container_retire_pages_4k(ro);

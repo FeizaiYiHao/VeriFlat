@@ -35,7 +35,7 @@ pub(super) fn allocate_new_container_pages(
         current_thread_lock_perm.thread_id() == old(lctx).thread_id(),
         current_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
         old(lctx).page_lock_map().dom().is_empty(),
-        held_locks_order_below(old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
+        held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
     ensures
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
@@ -55,7 +55,7 @@ pub(super) fn allocate_new_container_pages(
         final(lctx).holds_no_allocator_locks(PageSize::SZ4k),
         final(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         final(lctx).holds_no_allocator_locks(PageSize::SZ1g),
-        typed_lock_map_majors_lt(final(lctx).page_lock_map(), ALLOCATOR_CACHE_4K_MAJOR),
+        forall|held_page: PageIndex| #![trigger final(lctx).page_lock_map().dom().contains(held_page)] final(lctx).page_lock_map().dom().contains(held_page) ==> final(krnl).pg_arr.lock_id_by_index(held_page).major < ALLOCATOR_CACHE_4K_MAJOR,
         ret.0.wf(),
         ret.0.len() == 9,
         ret.0.view().no_duplicates(),

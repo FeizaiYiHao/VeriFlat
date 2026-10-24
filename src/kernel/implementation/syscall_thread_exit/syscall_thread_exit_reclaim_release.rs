@@ -175,7 +175,6 @@ pub(super) fn thread_exit_reclaim_flush(
     let ghost flush_before = steps.view();
     let ghost entry_flush_k = *krnl;
     let ghost entry_flush_lctx = *lctx;
-    proof { assert(typed_lock_map_majors_lt(lctx.cpu_lock_map(), CPU_LOCK_MAJOR_OFF)) by { krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); }; }
     flush_pagetable_tlbs(krnl, pagetable, cr3, pcid, cpu_id, thread_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(cpu_lock_perm));
     proof {
         assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
@@ -522,9 +521,6 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
         let va = index2va(next);
         proof {
             assert(spec_va_4k_valid(va) && spec_va2index(va) == next) by { spec_va_4k_index_roundtrip_at(va, next.0, next.1, next.2, next.3); };
-            assert(held_locks_order_below(lctx, ALLOCATOR_CACHE_4K_MAJOR)) by {
-                krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); krnl.thr_mp.typed_lock_map_aligned_lock_id_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr);
-            };
         }
         reclaim_unmapped_4k_page(krnl, pagetable, va, thread_ptr, cpu_id, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&pagetable_lock_perm), Tracked(thread_lock_perm));
         cursor = (next.0, next.1, next.2, next.3 + 1);
@@ -537,8 +533,8 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
     let ghost reclaimed_k = *krnl;
     proof {
         assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).leaves_present()) by { broadcast use spec_va_4k_valid_index_roundtrip; };
-        assert(entry_lctx.container_lock_map().dom().contains(container_ptr) && entry_lctx.process_lock_map().dom().contains(process_ptr) && lctx.pagetable_lock_map().dom().contains(pagetable));
-        assert(typed_lock_map_majors_lt(lctx.cpu_lock_map(), CPU_LOCK_MAJOR_OFF)) by { krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); };
+        assert(entry_lctx.container_lock_map().dom().contains(container_ptr) && entry_lctx.process_lock_map().dom().contains(process_ptr) && entry_lctx.cpu_lock_map().dom().contains(cpu_id)
+            && lctx.pagetable_lock_map().dom().contains(pagetable));
     }
     let ghost refund_before = steps.view();
     refund_unmap_4k_quota(krnl, thread_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
@@ -900,9 +896,6 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
                 thread_exit_iommu_leaf_step_from_u(kernel_k_to_kernel_u(leaf_k), kernel_k_to_kernel_u(leaf_post), cpu_id, process_ptr, thread_ptr, iova);
                 thread_exit_trace_push(&*steps, leaf_before, start, pre, kernel_k_to_kernel_u(leaf_k), kernel_k_to_kernel_u(leaf_post), cpu_id);
             };
-            assert(held_locks_order_below(lctx, ALLOCATOR_CACHE_4K_MAJOR)) by {
-                krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); krnl.thr_mp.typed_lock_map_aligned_lock_id_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr);
-            };
         }
         reclaim_unmapped_iommu_4k_page(krnl, iommu_table, next, thread_ptr, cpu_id, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(iommu_table_lock_perm),
             Tracked(thread_lock_perm));
@@ -925,7 +918,6 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
     let ghost reclaimed_it = krnl.it_mp.spec_index(iommu_table);
     let ghost reclaimed_k = *krnl;
     let ghost refund_before = steps.view();
-    proof { assert(typed_lock_map_majors_lt(lctx.cpu_lock_map(), CPU_LOCK_MAJOR_OFF)) by { krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); }; }
     refund_unmap_4k_quota(krnl, thread_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
     proof {
         assert(krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view() =~= entry_k.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view()) by { thread_perms_wf_at(krnl.thr_mp, thread_ptr); thread_perms_wf_at(old(krnl).thr_mp, thread_ptr); };

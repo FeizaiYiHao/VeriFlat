@@ -114,7 +114,7 @@ pub(super) fn commit_new_container(
         old(lctx).pagetable_lock_map().dom() =~= set![source_pagetable_ptr],
         old(lctx).iommu_table_lock_map().dom().is_empty(),
         old(lctx).iommu_root_table_lock_map().dom().is_empty(),
-        held_locks_order_below(old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
+        held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), caller_cpu_id, TypedLockMode::Write),
         !old(krnl).cpu_arr.spec_index(caller_cpu_id).view().being_killed(),
@@ -297,7 +297,7 @@ fn commit_new_container_publish(
         forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))] old(lctx).pagetable_window_lock_map().dom().contains((p, w)) ==> p == source_pagetable_ptr,
         old(lctx).iommu_table_lock_map().dom().is_empty(),
         old(lctx).iommu_root_table_lock_map().dom().is_empty(),
-        held_locks_order_below(old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
+        held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), caller_cpu_id, TypedLockMode::Write),
         !old(krnl).cpu_arr.spec_index(caller_cpu_id).view().being_killed(),
@@ -543,7 +543,7 @@ fn commit_new_container_publish_staged(
         parent_cpu_set_lock_perm.view().thread_id() == old(lctx).thread_id(),
         parent_cpu_set_lock_perm.view().lock_id() == old(krnl).cpu_set_mp.spec_index(parent_cpu_set).locking_thread()->Write_lock_id,
         old(lctx).page_lock_map().dom() == page_ptrs_to_indices(pages_4k.view()).union(seq![page_ptr2page_index(container_page), page_ptr2page_index(pcid_allocator_page)].to_set()).union(page_ptrs_to_indices(funding_pages)),
-        typed_lock_map_majors_lt(old(lctx).page_lock_map(), ALLOCATOR_CACHE_4K_MAJOR),
+        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.lock_id_by_index(held_page).major < ALLOCATOR_CACHE_4K_MAJOR,
         old(lctx).cpu_lock_map().dom() =~= set![caller_cpu_id],
         old(lctx).container_lock_map().dom() =~= set![parent_container_ptr],
         old(lctx).process_lock_map().dom() =~= set![parent_process_ptr],
@@ -857,7 +857,6 @@ fn commit_new_container_publish_staged(
             cpu_set_perms_wf_at(krnl.cpu_set_mp, parent_cpu_set); container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, parent_container_ptr, transfer_cpu_id);
         };
         new_container_publish_step_pre_from_k(&*krnl, &*lctx, caller_cpu_id, parent_process_ptr, current_thread_ptr, parent_container_ptr, record);
-        assert(typed_lock_map_majors_lt(lctx.cpu_lock_map(), CPU_LOCK_MAJOR_OFF)) by { krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), caller_cpu_id); };
     }
     let ghost publish_before = steps.view();
     let ghost publish_k = *krnl;

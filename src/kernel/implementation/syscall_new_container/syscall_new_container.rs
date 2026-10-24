@@ -76,7 +76,7 @@ fn new_container_release_entry_locks(
         old(lctx).pcid_allocator_lock_map().dom().is_empty(),
         old(lctx).iommu_table_lock_map().dom().is_empty(),
         old(lctx).iommu_root_table_lock_map().dom().is_empty(),
-        held_locks_order_below(old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
+        held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
         old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
@@ -527,7 +527,7 @@ fn new_container_lock_entry(
             &&& final(lctx).pagetable_lock_map().dom() =~= set![e.source_pagetable_ptr]
             &&& final(lctx).iommu_table_lock_map().dom().is_empty()
             &&& final(lctx).iommu_root_table_lock_map().dom().is_empty()
-            &&& held_locks_order_below(final(lctx), ALLOCATOR_CACHE_4K_MAJOR)
+            &&& held_locks_order_below(final(krnl), final(lctx), ALLOCATOR_CACHE_4K_MAJOR)
             &&& typed_lock_maps_aligned(final(krnl), final(lctx))
             &&& typed_lock_map_contains_mode(final(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write)
             &&& !final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed()
@@ -628,8 +628,6 @@ fn new_container_lock_entry(
     proof {
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, source_pagetable_ptr);
         krnl.pt_mp.typed_lock_map_aligned_locked_at(lctx.pagetable_lock_map(), lctx.thread_id(), source_pagetable_ptr);
-        assert(typed_lock_map_majors_lt(lctx.cpu_lock_map(), CPU_LOCK_MAJOR_OFF)) by { krnl.cpu_arr.typed_lock_map_aligned_lock_id_at(lctx.cpu_lock_map(), lctx.thread_id(), cpu_id); };
-        assert(typed_lock_map_majors_lt(lctx.thread_lock_map(), THREAD_SCHEDULED_LOCK_MAJOR)) by { krnl.thr_mp.typed_lock_map_aligned_lock_id_at(lctx.thread_lock_map(), lctx.thread_id(), current_thread_ptr); };
     }
     let Tracked(source_pagetable_lock_perm) = krnl.rlock_pagetable(source_pagetable_ptr, Tracked(&mut *lctx));
     proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, source_pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable_ptr); }
