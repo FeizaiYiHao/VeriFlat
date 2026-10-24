@@ -55,8 +55,9 @@ metadata:
   table detach every attached function `P` owns (emptying its IOTLB domain)
   and lock `IT(P)`; clear every user 4K leaf (present bit only), flush `P`'s
   PCID once on every cpu, unmap the cleared leaves and refund their pages,
-  then clear, unmap, and refund every IOMMU 4K leaf (no IOTLB flush: no
-  function translates through a write-locked IOMMU table), return all
+  then hide every IOMMU 4K leaf, flush the whole IOTLB once
+  (`ThreadExitIommuFlush`; `IT(P)`'s write lock is the dirty marker), and
+  remove and refund the hidden leaves, return all
   4K/2M/1G quota of the thread and process to the container
   (`ThreadExitReclaim`/`ThreadExitQuota`), unlock `IT(P)` and `PT(P)`
   (`ThreadExitZombie`). Finish of the last thread locks the container's PCID

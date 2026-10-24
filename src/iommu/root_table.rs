@@ -245,6 +245,7 @@ impl IommuRootTable {
                 &&& !context.present() ==> context.lower == 0 && context.upper == 0
                 &&& context.present() ==> {
                     &&& context.lower == (context.address() | 1)
+                    // TT = 00 blocks ATS translation requests, so no device-TLB is ever populated; the model has no device-TLB state for that reason.
                     &&& context.translation_type() == 0
                     &&& context.address_width() == VTD_CONTEXT_AW_4_LEVEL
                     &&& context.domain_id() == slot

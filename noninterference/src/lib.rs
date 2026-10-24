@@ -37,6 +37,8 @@ pub mod ni_new_thread;
 pub mod ni_new_endpoint;
 pub mod ni_mmap_4k;
 pub mod ni_unmap_4k;
+pub mod ni_iommu_map_4k;
+pub mod ni_iommu_unmap_4k;
 pub mod ni_ipc;
 pub mod ni_new_process;
 pub mod ni_new_container;

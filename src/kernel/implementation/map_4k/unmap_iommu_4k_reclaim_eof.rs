@@ -284,8 +284,10 @@ pub(super) proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof(
         post.thr_mp.spec_index(thread_ptr).inv(),
         post.allc_4k_mp.perms_wf(),
         post.allc_4k_mp.spec_index(allocator_ptr).wf(),
+        iommu_table_tlb_entries_present(pre.iommu_tlb, pre.irt.view(), pre.it_mp, iommu_table),
     ensures
         post.inv(),
+        iommu_table_tlb_entries_present(post.iommu_tlb, post.irt.view(), post.it_mp, iommu_table),
         post == (KernelK { it_mp: post.it_mp, pg_arr: post.pg_arr, thr_mp: post.thr_mp, allc_4k_mp: post.allc_4k_mp, ..pre }),
         post.it_mp.unchanged_except(&pre.it_mp, iommu_table),
         post.it_mp.spec_index(iommu_table).locking_thread() == pre.it_mp.spec_index(iommu_table).locking_thread(),
@@ -334,8 +336,7 @@ pub(super) proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof(
     reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_memory_management_inv(pre, post, iommu_table, indices, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr);
     reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_process_management_inv(pre, post, iommu_table, indices, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr);
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
-    assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); reveal(iommu_table_lock_wf); };
-    assert(iommu_table_lock_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_table_lock_wf); };
+    assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
     assert(post.it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k =~= pre.it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k);
     assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post)) by {
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); kernel_pagetable_nonlock_fields_unchanged_for_equal(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view()); reveal(kernel_iommu_table_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);

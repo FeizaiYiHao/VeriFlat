@@ -274,6 +274,14 @@ pub open spec fn thread_exit_iommu_leaf_step(old_u: KernelU, new_u: KernelU, cpu
     })
 }
 
+/// Flushing the IOTLB empties every domain and changes nothing else.
+#[verifier::opaque]
+pub open spec fn thread_exit_iommu_flush_step(old_u: KernelU, new_u: KernelU) -> bool {
+    &&& new_u.iommu_tlb.dom() == old_u.iommu_tlb.dom()
+    &&& forall|did: VtdDomainId| #![trigger new_u.iommu_tlb[did]] vtd_domain_id_valid(did) ==> new_u.iommu_tlb[did].is_empty()
+    &&& new_u == (KernelU { iommu_tlb: new_u.iommu_tlb, ..old_u })
+}
+
 /// No IOVA has a 4K mapping in `iommu_table`.
 pub open spec fn thread_exit_iommu_4k_unmapped(iommu_table: PageTableU) -> bool {
     forall|iova: VAddr| #![trigger iommu_table.mapping_4k.dom().contains(iova)] !iommu_table.mapping_4k.dom().contains(iova)
@@ -386,8 +394,8 @@ pub open spec fn thread_exit_unlock_table_step(old_u: KernelU, new_u: KernelU, c
 /// A step between entering and finishing: reclaiming the dangling thread of a killed caller and the killed callers it takes over,
 /// changing or removing only threads of the exiting thread's container, releasing a descriptor, releasing an endpoint with
 /// its last descriptor, or, for a process's last thread, locking the process's tables, clearing one user 4K leaf, flushing
-/// one cpu's TLB for the process's PCID, recording the flush, clearing one IOMMU 4K leaf, refunding 4K quota to the
-/// thread's container chain, returning one size of quota, or unlocking the tables.
+/// one cpu's TLB for the process's PCID, recording the flush, clearing one IOMMU 4K leaf, flushing the IOTLB, refunding 4K
+/// quota to the thread's container chain, returning one size of quota, or unlocking the tables.
 pub open spec fn thread_exit_middle_step(step: KernelStep, cpu_id: CpuId) -> bool {
     let old_u = step.old_u;
     let new_u = step.new_u;
@@ -401,6 +409,7 @@ pub open spec fn thread_exit_middle_step(step: KernelStep, cpu_id: CpuId) -> boo
     ||| thread_exit_flush_step_pre(old_u, cpu_id) && kernel_u_cpu_tlb_cleared(old_u, new_u, old_u.process_map.spec_index(thread.owning_proc).pcid)
     ||| thread_exit_flush_step_pre(old_u, cpu_id) && thread_exit_flushed_step(old_u, new_u, cpu_id)
     ||| thread_exit_reclaim_step_pre(old_u, cpu_id, true) && thread_exit_iommu_leaf_step(old_u, new_u, cpu_id)
+    ||| thread_exit_reclaim_step_pre(old_u, cpu_id, true) && thread_exit_iommu_flush_step(old_u, new_u)
     ||| thread_exit_reclaim_step_pre(old_u, cpu_id, true) && kernel_u_container_quota_4k_increased(old_u, new_u, thread.owning_container)
     ||| thread_exit_quota_step_pre(old_u, cpu_id) && thread_exit_quota_step(old_u, new_u, cpu_id)
     ||| thread_exit_unlock_table_step_pre(old_u, cpu_id) && thread_exit_unlock_table_step(old_u, new_u, cpu_id)

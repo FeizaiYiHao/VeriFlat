@@ -447,7 +447,8 @@ occupied descriptor (IpcEndpointTargetInUse), NoQuota.
 
 ## 6. mmap_4k — enter, directory/leaf steps, exit
 
-Status: conforms (workspace run #27748).
+Status: conforms (workspace run #27748; leaf-step IOMMU clause workspace run
+#34522, monolith run #34523).
 
 - Arguments: `va`, `range`; `R = mmap_4k_syscall_va_range(va, range)`.
 - U locks retained from enter to exit: `cpu`, `T`, `PT(P)`. Non-U: the
@@ -475,8 +476,9 @@ Status: conforms (workspace run #27748).
 - Pre: `mmap_4k_locked`, `prog is Mmap4k`, `mapped < R.len`,
   `thr.quota_4k >= 1`, and `R[mapped]` is unmapped in `PT(P)`.
 - Effect: one 4K quota is consumed; `R[mapped]` maps to a present, writable,
-  executable entry owned by `C`; `mapped` increases and `directory` resets
-  to `None`.
+  executable entry owned by `C` whose page is in no process's
+  `mapping_4k` of either its pagetable or its IOMMU table; `mapped` increases
+  and `directory` resets to `None`.
 
 **Exit** (`mmap_4k_exit_step_pre`, `mmap_4k_exit_step`)
 
@@ -545,6 +547,143 @@ Trace: `range + 3 <= len <= range + NUM_CPUS + MAX_CONTAINER_TREE_DEPTH + 4`.
 Stutters: argument errors, CpuIdle (cpu not Running or killed), ContainerKilled, ContainerZombie, ProcessKilled,
 ThreadKilled, and an unmapped or kernel-range VA.
 
+## 7a. iommu_map_4k — enter, directory/leaf steps, exit
+
+Status: implemented (crate `veriflat_syscall_iommu_map_4k`;
+`syscall_iommu_map_4k.rs`, `iommu_map_4k_range.rs`,
+`iommu_map_4k_directory_step.rs`, spec `syscall_iommu_map_4k_spec.rs`);
+verified, package run #34486, workspace run #34522, monolith run #34523. Boot
+`NR_IOMMU_MAP_4K = 45`. Noninterference labels `IommuMap4kEnter`,
+`IommuMap4kDirectory`, `IommuMap4kLeaf`, `IommuMap4kExit`
+(`ni_iommu_map_4k.rs`, run #34521). `domain_4k_only`
+(`noninterference/src/isolation.rs`) rules out 2M/1G entries in both tables
+but allows 4K IOMMU entries, and `memory_iso` separates the two domains'
+pages across every pair of page-table and IOMMU-table 4K entries.
+
+Maps the pages mapped at `va_range` in `PT(P)` into `IT(P)` at `iova_range`,
+as share_4k (§8) maps a page a second time.
+
+- Arguments: `va`, `iova`, `range`; `VR = iommu_map_4k_syscall_range(va, range)`,
+  `IR = iommu_map_4k_syscall_range(iova, range)`. Both are `VaRange4K`; `iova`
+  needs `spec_va_4k_valid` (4K-aligned, L4 index at least
+  `KERNEL_MEM_END_L4INDEX`), and only `VR` is checked against `UserVa`.
+- U locks retained from enter to exit: `cpu`, `P`, `T` (write), `PT(P)`
+  (read), `IT(P)` (write). `C` is not locked. Non-U: the existing 2M windows
+  of `VR` (10007) for the whole call, the allocator of `C` and the new pages,
+  and each mapped page's lock.
+- Lock order: `cpu`, `P`, `T`, `PT(P)` (read), `IT(P)`, the windows of `VR`.
+- Progress: `IommuMap4k { va_range: VR, iova_range: IR, mapped, directory }`.
+- `iommu_map_4k_locked(u, cpu_id)`: `W` for `cpu`, `T`, `P`, and `IT(P)`;
+  `PT(P)` read-locked.
+
+**Enter** (`iommu_map_4k_enter_step_pre`, `iommu_map_4k_enter_step`)
+
+- Pre: `Caller`, `prog is None`, `!thr.killed`, `!P.killed`, `C` present;
+  `Unlocked` for `cpu`, `T`, `P`, and `IT(P)`; `PT(P)` not write-locked;
+  `VR.wf()`, `IR.wf()`, `VR.len > 0`, `IR.len == VR.len`, `UserVa(u, VR)`;
+  every VA of `VR` is in `PT(P).mapping_4k`, and no IOVA of `IR` is in
+  `IT(P).mapping_4k`.
+- Effect: write-locks `cpu`, `T`, `P`, and `IT(P)`, read-locks `PT(P)`;
+  `prog = IommuMap4k { VR, IR, 0, None }`.
+
+**Directory** (`iommu_map_4k_directory_step_pre`, `iommu_map_4k_directory_step`)
+
+- Pre: `iommu_map_4k_locked`, `prog is IommuMap4k`, `mapped < IR.len`,
+  `thr.quota_4k >= 1`.
+- Effect: one 4K quota of `T` funds an IOMMU directory page; `directory`
+  moves to a deeper level; `VR`, `IR`, and `mapped` are unchanged.
+
+**Leaf** (`iommu_map_4k_leaf_step_pre`, `iommu_map_4k_leaf_step`)
+
+- Pre: `iommu_map_4k_locked`, `prog is IommuMap4k`, `mapped < IR.len`,
+  `VR[mapped]` mapped in `PT(P)`, `IR[mapped]` unmapped in `IT(P)`.
+- Effect: `IT(P).mapping_4k[IR[mapped]] = PT(P).mapping_4k[VR[mapped]]`;
+  `mapped + 1`, `directory = None`; no quota is consumed. In K the page
+  gains `(IT(P), IR[mapped])` in `iommu_mappings` and `ref_count + 1`. The
+  IOTLB is unchanged: `CAP.CM = 0` caches no non-present entry, so no
+  invalidation is needed.
+
+**Exit** (`iommu_map_4k_exit_step_pre`, `iommu_map_4k_exit_step`)
+
+- Pre: `iommu_map_4k_locked`, `prog is IommuMap4k`, `mapped == IR.len`,
+  `directory is None`.
+- Effect: unlocks `cpu`, `T`, `P`, and `IT(P)`; drops `T`'s read lock on
+  `PT(P)` (it ends Unlocked or ReadLocked); clears `prog`.
+
+Trace (`iommu_map_4k_syscall_trace`): `range + 2 <= len <= 4 * range + 2`;
+enter, then directory or leaf steps, then exit.
+
+Stutters (in this order, `iommu_map_4k_syscall_result`): argument errors
+(Error), CpuIdle (cpu not Running or killed), ProcessKilled, ThreadKilled,
+PciNoIommuTable, NoQuota (`thr.quota_4k < 3 * range`: one 4K quota per IOMMU
+directory level that may be missing), a kernel-range VA (Error),
+IommuVaNotMapped, IommuIovaAlreadyMapped.
+
+## 7b. iommu_unmap_4k — enter, leaf/flush/refund steps, exit
+
+Status: implemented (crate `veriflat_syscall_iommu_unmap_4k`;
+`syscall_iommu_unmap_4k.rs`, `_check.rs`, `_lock.rs`); verified, package run
+#34434, workspace run #34522, monolith run #34523. Boot
+`NR_IOMMU_UNMAP_4K = 46`. Noninterference labels `IommuUnmap4kEnter`,
+`IommuUnmap4kLeaf`, `IommuUnmap4kFlush`, `IommuUnmap4kRefund`,
+`IommuUnmap4kExit` (`ni_iommu_unmap_4k.rs`, run #34521).
+
+- Arguments: `iova`, `range`; `IR = iommu_unmap_4k_iova_range(iova, range)`.
+- U locks retained from enter to exit: `cpu`, `C`, `P`, `T`, `IT(P)`.
+  Non-U: per removed page the page, cache, and pool locks as in §17 reclaim,
+  and the allocator quota of `C` and its ancestors. The IOTLB flush takes no
+  kernel lock.
+- Lock order: `cpu`, `C`, `P`, `T`, `IT(P)`.
+- Progress: `IommuUnmap4k { iova_range: IR, unmapped, flushed }`.
+- `iommu_unmap_4k_locked(u, cpu_id)`: `W` for `cpu`, `T`, `P`, and `C`;
+  `iommu_unmap_4k_table_locked` adds `W(IT(P))`.
+
+**Enter** (`iommu_unmap_4k_enter_step_pre`, `iommu_unmap_4k_enter_step`)
+
+- Pre: `Caller`, `prog is None`; `!killed` for `T`, `P`, and `C`; `!C.zombie`;
+  `P.iommu_table is Some`; `Unlocked` for `cpu`, `C`, `P`, `T`, and `IT(P)`;
+  `IR.wf()`, `IR.len > 0`, `UserVa(u, IR)`; every IOVA of `IR` is in
+  `IT(P).mapping_4k`.
+- Effect: write-locks the five objects; `prog = IommuUnmap4k { IR, 0, false }`.
+
+**Leaf** (`iommu_unmap_4k_leaf_step_pre`, `iommu_unmap_4k_leaf_step`)
+
+- Pre: `iommu_unmap_4k_table_locked`, `prog is IommuUnmap4k`,
+  `unmapped < IR.len`, `!flushed`, `IR[unmapped]` mapped in `IT(P)`.
+- Effect: removes `IR[unmapped]` from `IT(P).mapping_4k`; `unmapped + 1`. In
+  K the leaf is only marked not present; `W(IT(P))` marks its attached
+  domains dirty (§15).
+
+**Flush** (`iommu_unmap_4k_flush_step_pre`, `iommu_unmap_4k_flush_step`)
+
+- Pre: `iommu_unmap_4k_table_locked`, `prog is IommuUnmap4k`,
+  `unmapped == IR.len`, `!flushed`.
+- Effect: every `iommu_tlb` domain becomes empty and `flushed = true`;
+  nothing else changes. K calls `flush_iommu_tlb_for_table`, then removes
+  each hidden leaf and returns its page to its owner's 4K allocator cache in
+  atomic sections that change no U state and stutter.
+
+**Refund** (`iommu_unmap_4k_refund_step_pre`)
+
+- Pre: `iommu_unmap_4k_locked`, `prog is IommuUnmap4k`, `unmapped == IR.len`,
+  `flushed`.
+- Effect: one container in `C` or `C.uppertree_seq` gains 4K quota
+  (`kernel_u_container_quota_4k_increased`), as in §7.
+
+**Exit** (`iommu_unmap_4k_exit_step_pre`, `iommu_unmap_4k_exit_step`)
+
+- Pre: `iommu_unmap_4k_table_locked`, `prog is IommuUnmap4k`,
+  `unmapped == IR.len`, `flushed`.
+- Effect: unlocks the five objects; clears `prog`.
+
+Trace (`iommu_unmap_4k_syscall_trace`):
+`range + 3 <= len <= range + MAX_CONTAINER_TREE_DEPTH + 4`.
+
+Stutters (in this order, `iommu_unmap_4k_syscall_result`): argument errors
+(Error), CpuIdle (cpu not Running or killed), ContainerKilled,
+ContainerZombie, ProcessKilled, ThreadKilled, PciNoIommuTable, and a
+kernel-range or unmapped IOVA (IommuIovaNotMapped).
+
 ## 8. share_4k — directory and leaf sub-steps
 
 Status: conforms (map_4k run #27743). Used by new_process, new_container,
@@ -582,6 +721,11 @@ and IPC pages. Both steps take only `cpu_id` and derive their objects through
   `target_range[shared]` unmapped in `PT(D)`.
 - Effect: copies the source entry to `target_range[shared]` in `PT(D)`;
   `shared + 1`.
+
+Noninterference: when the source process lies outside the observed domain
+`x`, the `Share4kLeaf` hypothesis of the theorem (`noninterference/src/theorem.rs`)
+requires that no process of the other domain maps the shared page in either
+its pagetable or its IOMMU table 4K entries (run #34521).
 
 ## 9. new_process, new_process_with_endpoint, new_process_with_iommu_and_endpoint
 
@@ -1041,6 +1185,8 @@ specifications.
 | `syscall_new_endpoint` | §5a |
 | `syscall_mmap_4k` | §6 |
 | `syscall_unmap_4k` | §7 |
+| `syscall_iommu_map_4k` | §7a |
+| `syscall_iommu_unmap_4k` | §7b |
 | `syscall_new_process`, `syscall_new_process_with_endpoint`, `syscall_new_process_with_iommu_and_endpoint` | §9 |
 | `syscall_new_container`, `syscall_new_container_with_endpoint` | §10 |
 | `syscall_send_empty`, `syscall_receive_empty`, `syscall_send_empty_no_block`, `syscall_receive_empty_no_block`, `syscall_send_cpu`, `syscall_receive_cpu` | §11 |
@@ -1067,6 +1213,8 @@ These changes were approved on 2026-09-29 and are all applied.
 | `IpcEndpoint` | applied | `{ peer, caller_sends, payload_index }` | finish |
 | `IpcPages` | applied | `{ source_range, target_range, peer, locked: bool, released: Option<RetValueType> }` (`locked` approved 2026-09-30) | lock tables, check, unlock tables, finish |
 | `ThreadExit` | applied | `{ next: EndpointIdx }` (added 2026-10-12 with thread_exit) | thread_exit drop steps, finish (§17) |
+| `IommuMap4k` | applied | `{ va_range, iova_range, mapped, directory: Mmap4kDirectory }` (added with iommu_map_4k) | iommu_map_4k directory, leaf, exit steps (§7a) |
+| `IommuUnmap4k` | applied | `{ iova_range, unmapped, flushed: bool }` (added with iommu_unmap_4k) | iommu_unmap_4k leaf, flush, refund, exit steps (§7b) |
 
 `ContainerU.cpu_set_lock` (approved 2026-09-30) projects the container's
 CPU-set lock mode; new_container (§10) and IPC Cpu (§11) state it.
@@ -1134,8 +1282,8 @@ locks the whole root table with the new family
 its IOMMU table while it holds the root table, §17)
 (`KernelObjId::IommuRootTable(table_base)`,
 `LocalContext.iommu_root_table_lock_map`); the lock is taken and released
-inside one step and is not U-visible. It also serializes the IOTLB and each
-process's reverse set: `ProcessGhost.owned_pci_functions` (lock-free ghost;
+inside one step and is not U-visible. It also serializes each process's
+reverse set: `ProcessGhost.owned_pci_functions` (lock-free ghost;
 the exec `pci_function_ref_counter` is gone) is aligned with the root table's
 owners by `process_pci_function_ownership_wf` (its zombie clause was dropped
 on 2026-10-12: a zombie keeps its PCI functions until kill or reap, §16 item
@@ -1145,6 +1293,25 @@ root-table operations: `set_owner`, `attach`, `detach`, `is_attached`.
 Trusted primitive: `IommuTLB::invalidate_domain` (external_body; empties one
 VT-d domain under the root table lock). New results: `ErrorIpcPciOwnerMismatch`,
 `ErrorPciOwnerMismatch`, `ErrorPciNoIommuTable`, `ErrorPciAlreadyAttached`.
+
+IOTLB dirty marker (applied; `iommu_table_lock_wf` is deleted): the IOMMU
+table's write lock is the dirty marker. `iommu_tlb_wf_spec` keeps every
+attached BDF's domain a subset of its owner's IOMMU table, and of its present
+leaves when that table is not write-locked
+(`single_tlb_subset_of_present_pagetable`). A write holder may hide leaves of
+an attached table; `iommu_table_tlb_entries_present(iommu_tlb, root_table,
+it_mp, it)` is the per-table flushed fact, and `kernel_step_boundary_raw` and
+the step-boundary wrappers keep it for write-held IOMMU tables (TCB: a write
+holder's hidden leaves are never re-cached, `CAP.CM = 0`). Approved trusted
+primitive: `IommuTLB::flush_all_iotlb` (external_body; empties every domain,
+keeps the context cache, takes no kernel lock; the boot hook
+`veriflat_iommu_flush_all_iotlb` shares a platform spinlock with
+`veriflat_iommu_invalidate_domain`), wrapped by the K helper
+`flush_iommu_tlb_for_table`. `wlock_iommu_table` no longer needs the process
+lock or detached functions, `wunlock_process` no longer needs the IOMMU table
+released, and `syscall_pci_attach_dma` does not reason about the table lock.
+New results: `ErrorIommuVaNotMapped`, `ErrorIommuIovaAlreadyMapped`,
+`ErrorIommuIovaNotMapped`.
 
 ## 16. Decisions
 
@@ -1167,8 +1334,10 @@ VT-d domain under the root table lock). New results: `ErrorIpcPciOwnerMismatch`,
    Off or unowned cpus may hold threads; they drain only through
    `rebalance_pull`.
 6. PCI devices (2026-10-08): the root table is one lock that also guards the
-   IOTLB and the per-process PCI sets; it never crosses a step boundary, so it
-   is not U-visible. An IPC Pci transfer needs both sides to name the same
+   per-process PCI sets; it never crosses a step boundary, so it is not
+   U-visible. The IOTLB is guarded by no kernel lock: a write-locked IOMMU
+   table marks its attached domains dirty, and its holder flushes the IOTLB
+   before unlocking (§15). An IPC Pci transfer needs both sides to name the same
    B/D/F, is not restricted to one container (the endpoint is the
    authority), and always detaches the function and empties its IOTLB domain.
    `syscall_pci_attach_dma` attaches a function to its owner's IOMMU table;
@@ -1204,8 +1373,8 @@ VT-d domain under the root table lock). New results: `ErrorIpcPciOwnerMismatch`,
     the process's quota of every size to their container, and releases the
     process's PCID to its container's PCID allocator. It also detaches every
     attached function the process owns, emptying each one's IOTLB domain, and
-    unmaps every 4K mapping of the process's IOMMU table; one IOTLB emptying
-    per detached function is the only IOMMU flush. The zombie keeps its page
+    unmaps every 4K mapping of the process's IOMMU table: it hides every leaf,
+    flushes the whole IOTLB once, then removes the leaves. The zombie keeps its page
     table and IOMMU table structures and owns its PCI functions for kill or
     reap; it holds no quota and no PCID, so its PCID and CR3 never enter a
     cpu's dirty map again. A zombie root process makes its container a zombie.
@@ -1331,14 +1500,19 @@ Verified: thread_exit focused run #29094, workspace run #29101, monolith run
   each cleared entry and returns its page to its owner's 4K allocator cache
   in atomic sections that change no U state and stutter, accumulating the
   refund in the thread's pending quota. The IOMMU leaf steps follow the CPU
-  refunds and are followed by their own refunds.
+  refunds, then one IOMMU flush step, then their own refunds.
 - IOMMU leaf (`thread_exit_iommu_leaf_step`): pre `unmap_4k_locked`,
   `prog == ThreadExitReclaim { flushed: true }`, and `IT(P)` write-locked;
   effect: exactly one 4K mapping (the kernel chooses the IOVA) leaves `IT(P)`.
-  No IOTLB flush follows: the lock-table step detached every function that
-  translates through `IT(P)` and emptied its domain, and a write-locked IOMMU
-  table has no attached function (`iommu_table_lock_wf`). In K the leaf is
-  marked not present, then removed and its page refunded as for a CPU leaf.
+  In K the leaf is only marked not present; `IT(P)`'s write lock marks its
+  attached domains dirty (§15).
+- IOMMU flush (`thread_exit_iommu_flush_step`, NI label
+  `ThreadExitIommuFlush`): pre as for an IOMMU leaf;
+  effect: every `iommu_tlb` domain becomes empty and nothing else changes. K
+  runs it once, after every IOMMU leaf is hidden
+  (`flush_iommu_tlb_for_table`), then removes each hidden leaf and returns
+  its page in atomic sections that change no U state and stutter, as for a
+  CPU leaf.
 - Quota (`thread_exit_quota_step_pre`, `thread_exit_quota_step`): pre
   `unmap_4k_locked` and `prog` is `ThreadExitReclaim { flushed: true }`,
   `ThreadExitQuota { returned: 4K }`, or `ThreadExitQuota { returned: 2M }`;
@@ -1555,13 +1729,15 @@ children and no threads)
     to drain a full cache) in atomic sections that change no U state and
     stutter, accumulating the refund in `T`'s pending quota; each refund
     step takes one allocator quota lock (20002). The IOMMU leaf steps follow
-    the CPU refunds and are followed by their own refunds.
+    the CPU refunds, then one IOMMU flush step, then their own refunds.
   - IOMMU leaf (`kill_process_iommu_leaf_step`): `Reclaim { flushed: true }`;
-    one 4K mapping (the kernel chooses the IOVA) leaves `IT(L)`. No IOTLB
-    flush follows: the reassign step detached and moved every function `L`
-    owned and emptied its domain, and a write-locked IOMMU table has no
-    attached function. In K the leaf is marked not present, then removed and
-    its page refunded as for a CPU leaf.
+    one 4K mapping (the kernel chooses the IOVA) leaves `IT(L)`. In K the
+    leaf is only marked not present.
+  - IOMMU flush (`kill_process_iommu_flush_step`, NI label
+    `KillProcessIommuFlush`): `Reclaim { flushed: true }`;
+    every `iommu_tlb` domain becomes empty and nothing else changes. K runs
+    it once, after every IOMMU leaf is hidden, then removes the hidden leaves
+    and refunds their pages as for a CPU leaf.
   - Quota (`kill_process_quota_step`): the next size `S` (4K, then 2M, then
     1G) moves the whole `L.quota_S` to `C`, zeroes it, and sets
     `prog = Quota { returned: S }`. Non-U: `C`'s allocator quota of size `S`
@@ -1884,8 +2060,9 @@ MarkRoot, RetireRoot, Cpus, MoveCpu, Pages, MovePage, RetireStage, Retire,
 Finish) have `StepLabel`s in `noninterference/src/theorem.rs` and are proved
 in `noninterference/src/ni_kill_container.rs` (run #33949, 145 verified, 0
 errors). Not covered: the §18 process kill steps (`kill_process_middle_step`)
-that the Process stage reuses, and kill_process and thread_exit themselves,
-which have no noninterference theorem yet.
+that the Process stage reuses. kill_process and thread_exit have their own
+`StepLabel`s, including `KillProcessIommuFlush` and `ThreadExitIommuFlush`,
+proved in `ni_kill_process.rs` and `ni_thread_exit.rs` (run #34469).
 
 Differences:
 

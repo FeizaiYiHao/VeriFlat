@@ -23,7 +23,7 @@ pub open spec fn thread_exit_tables_emptied_eof_transition_framing(pre: KernelK,
 }
 
 /// Detaching function `(bus, device, function)` of the exiting process: its root-table slot drops its IOMMU root and
-/// its IOTLB domain is invalidated. Owners, the table base, the root-table lock, and every other object stay.
+/// its IOTLB domain is invalidated and its cached context entry dropped. Owners, the table base, the root-table lock, and every other object stay.
 #[verifier::opaque]
 pub open spec fn thread_exit_detach_process_functions_eof_transition_framing(pre: KernelK, post: KernelK, bus: usize, device: usize, function: usize) -> bool {
     &&& post == (KernelK { irt: post.irt, iommu_tlb: post.iommu_tlb, ..pre })
@@ -35,5 +35,6 @@ pub open spec fn thread_exit_detach_process_functions_eof_transition_framing(pre
     &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_iommu_root(b, d, f)] pci_bdf_valid(b, d, f)
         ==> post.irt.view().spec_index_iommu_root(b, d, f) == if (b, d, f) == (bus, device, function) { None } else { pre.irt.view().spec_index_iommu_root(b, d, f) }
     &&& post.iommu_tlb.view() == pre.iommu_tlb.view().insert(pci_bdf_did(bus, device, function), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
+    &&& post.iommu_tlb.context_cache() == pre.iommu_tlb.context_cache().remove(pci_bdf_did(bus, device, function))
 }
 } // verus!

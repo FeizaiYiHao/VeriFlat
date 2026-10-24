@@ -555,6 +555,35 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         ensures pei_valid(self.kernel_l4_end), self.kernel_entries.view().len() == self.kernel_l4_end as nat
     { reveal(PageTable::kernel_entries_wf); }
 
+    pub proof fn wf_mapping_2m_at(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+        requires
+            self.wf_mapping_2m(),
+            self.kernel_l4_end <= l4i && pei_valid(l4i),
+            pei_valid(l3i),
+            pei_valid(l2i),
+        ensures
+            self.mapping_2m.view().dom().contains(spec_index2va((l4i, l3i, l2i, 0))) == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is Some,
+            self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is Some
+                ==> self.mapping_2m.view().spec_index(spec_index2va((l4i, l3i, l2i, 0))).addr == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.addr
+                && self.mapping_2m.view().spec_index(spec_index2va((l4i, l3i, l2i, 0))).write == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.write
+                && self.mapping_2m.view().spec_index(spec_index2va((l4i, l3i, l2i, 0))).execute_disable == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.execute_disable
+                && self.mapping_2m.view().spec_index(spec_index2va((l4i, l3i, l2i, 0))).present == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.present,
+    { reveal(PageTable::wf_mapping_2m); }
+
+    pub proof fn wf_mapping_1g_at(&self, l4i: L4Index, l3i: L3Index)
+        requires
+            self.wf_mapping_1g(),
+            self.kernel_l4_end <= l4i && pei_valid(l4i),
+            pei_valid(l3i),
+        ensures
+            self.mapping_1g.view().dom().contains(spec_index2va((l4i, l3i, 0, 0))) == self.spec_resolve_mapping_1g_l3(l4i, l3i) is Some,
+            self.spec_resolve_mapping_1g_l3(l4i, l3i) is Some
+                ==> self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).addr == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.addr
+                && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).write == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.write
+                && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).execute_disable == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.execute_disable
+                && self.mapping_1g.view().spec_index(spec_index2va((l4i, l3i, 0, 0))).present == self.spec_resolve_mapping_1g_l3(l4i, l3i)->0.perm.present,
+    { reveal(PageTable::wf_mapping_1g); }
+
     pub open spec fn wf(&self) -> bool {
         &&& self.va_addr_valid()
         &&& self.wf_l4()

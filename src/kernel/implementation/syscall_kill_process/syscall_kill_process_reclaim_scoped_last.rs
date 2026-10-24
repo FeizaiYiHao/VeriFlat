@@ -240,8 +240,10 @@ pub(crate) fn kill_reclaim_last_iommu_4k_mapping_scoped(
         page_perm.state() is WriteLock,
         page_perm.thread_id() == old(lctx).thread_id(),
         page_perm.lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread()->Write_lock_id,
+        iommu_table_tlb_entries_present(old(krnl).iommu_tlb, old(krnl).irt.view(), old(krnl).it_mp, iommu_table),
     ensures
         final(krnl).inv(),
+        iommu_table_tlb_entries_present(final(krnl).iommu_tlb, final(krnl).irt.view(), final(krnl).it_mp, iommu_table),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         typed_lock_maps_unchanged(&entry_lctx, final(lctx)),
         final(lctx).cpu_id() == entry_lctx.cpu_id(),

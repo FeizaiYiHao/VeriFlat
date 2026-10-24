@@ -131,7 +131,6 @@ pub open spec fn create_process_with_iommu_from_staged_pages_eof_transition_fram
     &&& post.it_mp.spec_index(iommu_table_page_ptr).view().is_empty()
     &&& post.it_mp.spec_index(iommu_table_page_ptr).view().page_closure() == set![iommu_l4_page_ptr]
     &&& post.it_mp.spec_index(iommu_table_page_ptr).locking_thread() is Write
-    &&& post.prc_mp.spec_index(process_page_ptr).locking_thread()->Write_thread_id == post.it_mp.spec_index(iommu_table_page_ptr).locking_thread()->Write_thread_id
     &&& post.prc_mp.dom() == pre.prc_mp.dom().insert(process_page_ptr)
     &&& forall|p_ptr: RwLockProcessPtr|
         #![trigger post.prc_mp.dom().contains(p_ptr)]
@@ -312,7 +311,23 @@ pub(super) proof fn eof_subsystems_inv(
     };
     assert(pagetable_perms_wf(post.pt_mp)) by { reveal(pagetable_perms_wf); };
     assert(pagetable_lower_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_lower_wf); };
-    assert(pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_window_holders_hold_pagetable); reveal(PageTableC::wf_window_locks); };
+    assert(pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view())) by {
+        reveal(pagetable_window_holders_hold_pagetable);
+        assert forall|pt: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index, tid: LockThreadId|
+            #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), pt).window_locked_by_thread(l4i, l3i, l2i, tid)]
+            post.pt_mp.dom().contains(pt) && pagetable_c(post.pt_mp, post.pt_lower.view(), pt).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
+                && pagetable_c(post.pt_mp, post.pt_lower.view(), pt).window_locked_by_thread(l4i, l3i, l2i, tid) implies post.pt_mp.spec_index(pt).locked_by_thread(tid) by {
+            if pt == pagetable_page_ptr {
+                let c = pagetable_c(post.pt_mp, post.pt_lower.view(), pt);
+                assert(c.higher.l4_table.view().spec_index(c.cr3()).value().spec_index(l4i).is_empty());
+                assert(!c.window_exists(l4i, l3i));
+            } else {
+                assert(pre.pt_mp.dom().contains(pt) && post.pt_mp.spec_index(pt) == pre.pt_mp.spec_index(pt));
+                assert(pagetable_c(post.pt_mp, post.pt_lower.view(), pt) == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pt));
+                pagetable_window_holders_hold_pagetable_at(pre.pt_mp, pre.pt_lower.view(), pt, l4i, l3i, l2i, tid);
+            }
+        };
+    };
     assert(pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_hidden_leaves_only_when_locked); };
     assert(pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_window_stale_cpus_only_when_locked); };
     assert(pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()));
@@ -1159,7 +1174,6 @@ pub(super) proof fn eof_inv(
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
     assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
     assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
-    assert(iommu_table_lock_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_table_lock_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
         reveal(cpu_dirty_map_contains_container_processes); reveal(container_cpu_wf); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match);
     };

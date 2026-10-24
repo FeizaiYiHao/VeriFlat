@@ -31,7 +31,6 @@ pub(super) proof fn wlock_process_eof(pre: KernelK, post: KernelK, process_ptr: 
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { lemma_iommu_root_table_process_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
     assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { lemma_process_pci_function_ownership_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
     assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { lemma_iommu_tlb_wf_spec_preserved_for_process_invariant_fields_except_quota_forall(); };
-    assert(iommu_table_lock_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_table_lock_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
 }
 
@@ -100,12 +99,11 @@ pub(super) proof fn mark_kill_process_eof(pre: KernelK, post: KernelK, pre_lctx:
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { lemma_iommu_root_table_process_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
     assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { lemma_process_pci_function_ownership_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
     assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { lemma_iommu_tlb_wf_spec_preserved_for_process_invariant_fields_except_quota_forall(); };
-    assert(iommu_table_lock_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_table_lock_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
 }
 
 /// Closes `inv()` after `wunlock_process`: the target entry is released; no marked process held by this thread names
-/// it as killer or parent, and its IOMMU table is not held.
+/// it as killer or parent.
 pub(super) proof fn wunlock_process_eof(pre: KernelK, post: KernelK, pre_lctx: LocalContext, process_ptr: RwLockProcessPtr)
     requires
         pre.inv(),
@@ -116,7 +114,6 @@ pub(super) proof fn wunlock_process_eof(pre: KernelK, post: KernelK, pre_lctx: L
         forall|c: RwLockContainerPtr| #![trigger pre_lctx.container_lock_map().dom().contains(c)] pre_lctx.container_lock_map().dom().contains(c) && pre.ctn_mp.spec_index(c).killer_info() is Some
             ==> pre.ctn_mp.spec_index(c).killer_info()->Some_0.process != process_ptr,
         pre.prc_mp.spec_index(process_ptr).view().state.view() is Running || pre.prc_mp.spec_index(process_ptr).view().state.view() is Zombie,
-        pre.prc_mp.spec_index(process_ptr).view().iommu_table is Some ==> !pre_lctx.iommu_table_lock_map().dom().contains(pre.prc_mp.spec_index(process_ptr).view().iommu_table->Some_0),
         typed_lock_map_contains_mode(pre_lctx.process_lock_map(), process_ptr, TypedLockMode::Write),
         typed_lock_maps_aligned(&pre, &pre_lctx),
         post == (KernelK { prc_mp: post.prc_mp, ..pre }),
@@ -141,17 +138,6 @@ pub(super) proof fn wunlock_process_eof(pre: KernelK, post: KernelK, pre_lctx: L
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { lemma_iommu_root_table_process_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
     assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { lemma_process_pci_function_ownership_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
     assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { lemma_iommu_tlb_wf_spec_preserved_for_process_invariant_fields_except_quota_forall(); };
-    assert(iommu_table_lock_wf(post.irt.view(), post.prc_mp, post.it_mp)) by {
-        reveal(iommu_table_lock_wf); reveal(process_iommu_table_match);
-        pre.prc_mp.typed_lock_map_aligned_write_at(pre_lctx.process_lock_map(), pre_lctx.thread_id(), process_ptr);
-        if pre.prc_mp.spec_index(process_ptr).view().iommu_table is Some {
-            let iommu_table = pre.prc_mp.spec_index(process_ptr).view().iommu_table->Some_0;
-            if pre.it_mp.spec_index(iommu_table).locking_thread() is Write {
-                assert(pre.it_mp.spec_index(iommu_table).locked_by_thread(pre_lctx.thread_id()));
-                assert(pre_lctx.iommu_table_lock_map().dom().contains(iommu_table)) by { reveal(LockedMap::typed_lock_map_aligned); };
-            }
-        }
-    };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { lemma_cpu_dirty_map_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
 }
 } // verus!

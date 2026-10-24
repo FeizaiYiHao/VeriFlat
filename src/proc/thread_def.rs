@@ -71,6 +71,10 @@ pub ghost enum ContainerKillStage {
 pub ghost enum SyscallProgress {
     Mmap4k { range: VaRange4K, mapped: usize, directory: Mmap4kDirectory, phase: Mmap4kPhase },
     Unmap4k { range: VaRange4K, unmapped: usize, flushed: bool },
+    /// IOMMU mapping of the caller's pages at `va_range` into its IOMMU table at `iova_range`; the first `mapped` pages are done.
+    IommuMap4k { va_range: VaRange4K, iova_range: VaRange4K, mapped: usize, directory: Mmap4kDirectory },
+    /// IOMMU unmapping of `iova_range`; the first `unmapped` pages are done, and `flushed` records the IOTLB flush.
+    IommuUnmap4k { iova_range: VaRange4K, unmapped: usize, flushed: bool },
     /// Process creation before its range is shared into the child.
     NewProcess(NewProcessProgress),
     /// Container creation before its range is shared into the child container's root process.

@@ -33,7 +33,7 @@ pub proof fn thread_exit_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: 
         thread_exit_enter_step_pre(old_u, cpu_id),
         thread_exit_enter_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(thread_exit_enter_step_pre); reveal(thread_exit_enter_step); }
+{ reveal(thread_exit_enter_step_pre); assert(memory_iso(new_u, a, b)) by { reveal(thread_exit_enter_step); }; reveal(thread_exit_enter_step); }
 
 /// A killed thread of the exiting thread's container, in `a`, dropping a descriptor changes only that thread and an endpoint
 /// that `b` neither owns nor holds, so it leaves the view of `b` unchanged.
@@ -384,6 +384,29 @@ pub proof fn thread_exit_iommu_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu
     ensures isolated(new_u, a, b),
 { reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_iommu_leaf_step); reveal(kernel_u_cpu_ownership_wf); }
 
+/// An IOTLB flush on a cpu of `a` empties every IOTLB domain and changes nothing else; no domain view contains the
+/// IOTLB, so the flush is a stutter step for every domain.
+pub proof fn thread_exit_iommu_flush_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+    requires
+        kernel_u_ownership_wf(old_u),
+        isolated(old_u, a, b),
+        steps_in_domain(old_u, cpu_id, a),
+        thread_exit_reclaim_step_pre(old_u, cpu_id, true),
+        thread_exit_iommu_flush_step(old_u, new_u),
+    ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
+{ reveal(thread_exit_iommu_flush_step); }
+
+/// The step of `thread_exit_iommu_flush_step_lr` preserves isolation, which does not read the IOTLB.
+pub proof fn thread_exit_iommu_flush_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+    requires
+        kernel_u_ownership_wf(old_u),
+        isolated(old_u, a, b),
+        steps_in_domain(old_u, cpu_id, a),
+        thread_exit_reclaim_step_pre(old_u, cpu_id, true),
+        thread_exit_iommu_flush_step(old_u, new_u),
+    ensures isolated(new_u, a, b),
+{ reveal(thread_exit_iommu_flush_step); }
+
 /// Refunding 4K quota on a cpu of `a` raises the quota of the exiting thread's container, which lies in `a`, or of an
 /// ancestor of `a`, neither of which lies in `b`.
 pub proof fn thread_exit_refund_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
@@ -428,7 +451,20 @@ pub proof fn thread_exit_quota_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: 
         thread_exit_quota_step_pre(old_u, cpu_id),
         thread_exit_quota_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(thread_exit_quota_step_pre); reveal(thread_exit_quota_step); }
+{
+    reveal(thread_exit_quota_step_pre);
+    let process = old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_proc;
+    assert({
+        &&& new_u.container_map[a].subtree_set == old_u.container_map[a].subtree_set
+        &&& new_u.container_map[b].subtree_set == old_u.container_map[b].subtree_set
+        &&& new_u.process_map[process].owning_container == old_u.process_map[process].owning_container
+        &&& new_u.process_map[process].pagetable == old_u.process_map[process].pagetable
+        &&& new_u.process_map[process].iommu_table == old_u.process_map[process].iommu_table
+    }) by { reveal(thread_exit_quota_step); };
+    assert(domain_4k_only(new_u, a) && domain_4k_only(new_u, b)) by { reveal(thread_exit_quota_step); };
+    assert(memory_iso(new_u, a, b)) by { reveal(thread_exit_quota_step); };
+    reveal(thread_exit_quota_step);
+}
 
 /// Unlocking the reclaimed tables on a cpu of `a` changes only the exiting thread and its process, both of `a`.
 pub proof fn thread_exit_unlock_table_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)

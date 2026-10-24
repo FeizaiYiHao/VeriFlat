@@ -8,7 +8,8 @@
 //! interrupt: nothing in VeriFlat takes device interrupts. The model relies on hardware
 //! properties that `init` checks:
 //!
-//! - CAP.CM = 0: not-present entries are never cached, so `pci_attach_dma` needs no invalidation.
+//! - CAP.CM = 0: not-present entries are never cached, so `pci_attach_dma` needs no invalidation;
+//!   the model encodes this by caching only roots.
 //! - CAP.ND >= 6: 16-bit domain IDs, because the model's domain ID is the B/D/F.
 //! - CAP.SAGAW bit 2: 4-level second-level tables, the address width the model writes.
 //! - ECAP.C = 1: table walks snoop CPU caches, so the hardware reads what the model stores. An
@@ -17,7 +18,7 @@
 //!   may read, including the zeroing of IOMMU table pages.
 
 use core::ptr;
-use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
 use astd::boot::MAX_IOMMU_UNITS;
 
@@ -26,6 +27,9 @@ use crate::boot;
 /// Register bases of the remapping units, valid up to `UNIT_COUNT`; 0 while translation is off.
 static UNITS: [AtomicU64; MAX_IOMMU_UNITS] = [const { AtomicU64::new(0) }; MAX_IOMMU_UNITS];
 static UNIT_COUNT: AtomicUsize = AtomicUsize::new(0);
+/// Serializes the invalidation registers: domain invalidations run under the verified root-table
+/// lock, but a global IOTLB flush needs no kernel lock, so the two may race on a unit.
+static INVALIDATION_LOCK: AtomicBool = AtomicBool::new(false);
 
 /// The interrupt remapping table every unit uses: 256 entries, all not present, never written.
 #[repr(C, align(4096))]
@@ -182,16 +186,40 @@ fn units() -> impl Iterator<Item = u64> {
     UNITS[..count].iter().map(|unit| unit.load(Ordering::Acquire))
 }
 
-/// Empties one domain's IOTLB on every unit. The verified kernel calls it, under the root-table
-/// lock, right after it clears that domain's context entry, so the context cache (not in the
-/// model) is dropped first.
+fn acquire_invalidation_lock() {
+    while INVALIDATION_LOCK.compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed).is_err() {
+        core::hint::spin_loop();
+    }
+}
+
+fn release_invalidation_lock() {
+    INVALIDATION_LOCK.store(false, Ordering::Release);
+}
+
+/// Drops one domain's context-cache entries, then empties its IOTLB, on every unit. The verified
+/// kernel calls it, under the root-table lock, right after it clears that domain's context entry;
+/// the model's `IommuTLB::invalidate_domain` states both effects.
 #[unsafe(no_mangle)]
 pub extern "C" fn veriflat_iommu_invalidate_domain(did: usize) {
     let did = did as u64 & 0xffff;
+    acquire_invalidation_lock();
     for base in units() {
         invalidate_context_cache(base, CCMD_DOMAIN | did);
         invalidate_iotlb(base, IOTLB_DOMAIN | (did << 32));
     }
+    release_invalidation_lock();
+}
+
+/// Empties the whole IOTLB on every unit and waits; the context cache is untouched. The verified
+/// kernel calls it without a kernel lock (the model's `IommuTLB::flush_all_iotlb`), so it takes
+/// the invalidation lock itself.
+#[unsafe(no_mangle)]
+pub extern "C" fn veriflat_iommu_flush_all_iotlb() {
+    acquire_invalidation_lock();
+    for base in units() {
+        invalidate_iotlb(base, IOTLB_GLOBAL);
+    }
+    release_invalidation_lock();
 }
 
 /// `edu` registers and its DMA buffer window.

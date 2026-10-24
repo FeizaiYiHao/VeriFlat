@@ -79,6 +79,8 @@ pub const NR_REPLY_AND_RECEIVE_USIZE: usize = 41;
 pub const NR_THREAD_EXIT: usize = 42;
 pub const NR_KILL_PROCESS: usize = 43;
 pub const NR_KILL_CONTAINER: usize = 44;
+pub const NR_IOMMU_MAP_4K: usize = 45;
+pub const NR_IOMMU_UNMAP_4K: usize = 46;
 
 /// Trap-layer error codes, returned in `rax`.
 pub const ERR_INVALID_SYSCALL: isize = -1;
@@ -88,7 +90,7 @@ pub const ERR_INVALID_ARGUMENT: isize = -2;
 pub const MODEL_ERROR_BASE: isize = 100;
 
 /// `RetValueType` variants in declaration order; the kernel's `error_index` mirrors it.
-const RET_VALUE_NAMES: [&str; 46] = [
+const RET_VALUE_NAMES: [&str; 49] = [
     "SuccessUsize", "SuccessSeqUsize", "SuccessPairUsize", "SuccessThreeUsize", "Success", "ErrorNoQuota",
     "ErrorVaInUse", "CpuIdle", "Error", "Else", "NoQuota", "VaInUse", "ErrorContainerKilled",
     "ErrorContainerQuotaInsufficient", "ErrorProcessKilled", "ErrorThreadKilled", "ErrorNoPcid",
@@ -99,7 +101,8 @@ const RET_VALUE_NAMES: [&str; 46] = [
     "ErrorIpcSourceUnmapped", "ErrorIpcPageOwnerMismatch", "ErrorIpcEndpointSourceInvalid",
     "ErrorIpcEndpointTargetInUse", "ErrorIpcEndpointOwnerMismatch", "ErrorCallAcrossContainers",
     "ErrorReplyOutOfPhase", "ErrorProcessQuotaOverflow", "ErrorThreadQuotaOverflow", "ErrorContainerZombie",
-    "ErrorIpcCalleeExited", "ErrorIpcCallerKilled", "ErrorInvalidChild",
+    "ErrorIpcCalleeExited", "ErrorIpcCallerKilled", "ErrorInvalidChild", "ErrorIommuIovaAlreadyMapped",
+    "ErrorIommuIovaNotMapped", "ErrorIommuVaNotMapped",
 ];
 
 /// Names the result in `rax`.
@@ -267,6 +270,16 @@ pub unsafe fn sys_mmap_4k(va: usize, range: usize) -> isize {
 
 pub unsafe fn sys_unmap_4k(va: usize, range: usize) -> isize {
     syscall2(NR_UNMAP_4K, va, range).rax
+}
+
+/// Maps the caller's `range` 4 KiB pages at `va` into its IOMMU table at `iova`.
+pub unsafe fn sys_iommu_map_4k(va: usize, iova: usize, range: usize) -> isize {
+    syscall3(NR_IOMMU_MAP_4K, va, iova, range).rax
+}
+
+/// Removes the caller's `range` 4 KiB IOMMU mappings at `iova`.
+pub unsafe fn sys_iommu_unmap_4k(iova: usize, range: usize) -> isize {
+    syscall2(NR_IOMMU_UNMAP_4K, iova, range).rax
 }
 
 pub unsafe fn sys_new_process(va: usize, range: usize, ip: usize, sp: usize) -> isize {

@@ -19,6 +19,10 @@ pub mod syscall_new_container;
 #[cfg(not(feature = "split-crates"))]
 pub mod syscall_mmap_4k;
 #[cfg(not(feature = "split-crates"))]
+pub mod syscall_iommu_map_4k;
+#[cfg(not(feature = "split-crates"))]
+pub mod syscall_iommu_unmap_4k;
+#[cfg(not(feature = "split-crates"))]
 pub mod syscall_unmap_4k;
 #[cfg(not(feature = "split-crates"))]
 pub mod syscall_ipc;

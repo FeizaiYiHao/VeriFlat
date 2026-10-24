@@ -1,10 +1,12 @@
 use vstd::prelude::*;
 use crate::*;
 use crate::{ni_alloc_quota::*, ni_cpu_hotplug::*, ni_ipc::*, ni_mmap_4k::*, ni_new_container::*, ni_new_endpoint::*, ni_new_process::*, ni_new_thread::*, ni_pci::*,
-    ni_rebalance::*, ni_schedule::*, ni_share_4k::*, ni_unmap_4k::*, ni_kill_container::*, ni_kill_process::*, ni_thread_exit::*};
+    ni_rebalance::*, ni_schedule::*, ni_share_4k::*, ni_unmap_4k::*, ni_iommu_map_4k::*, ni_iommu_unmap_4k::*, ni_kill_container::*, ni_kill_process::*, ni_thread_exit::*};
 use veriflat_map_4k::*;
 use veriflat_syscall_alloc_quota::syscall_alloc_quota::syscall_alloc_quota_spec::*;
 use veriflat_syscall_cpu_hotplug::syscall_cpu_hotplug::{cpu_offline_check_spec::*, syscall_cpu_hotplug_spec::*};
+use veriflat_syscall_iommu_map_4k::syscall_iommu_map_4k::syscall_iommu_map_4k_spec::*;
+use veriflat_syscall_iommu_unmap_4k::syscall_iommu_unmap_4k::syscall_iommu_unmap_4k_spec::*;
 use veriflat_syscall_kill_process::{syscall_kill_container::syscall_kill_container_spec::*, syscall_kill_process::syscall_kill_process_spec::*};
 use veriflat_syscall_ipc::syscall_ipc::{syscall_ipc_call_spec::*, syscall_ipc_spec::*};
 use veriflat_syscall_mmap_4k::syscall_mmap_4k::syscall_mmap_4k_spec::*;
@@ -21,6 +23,8 @@ verus! {
 pub ghost enum StepLabel {
     Mmap4kEnter { range: VaRange4K, phase: Mmap4kPhase }, Mmap4kDirectory, Mmap4kDowngrade, Mmap4kLeaf, Mmap4kExit,
     Unmap4kEnter { range: VaRange4K }, Unmap4kLeaf { va: VAddr }, Unmap4kTlbCleared { pcid: Pcid }, Unmap4kFlushed, Unmap4kRefund, Unmap4kExit,
+    IommuMap4kEnter { va_range: VaRange4K, iova_range: VaRange4K }, IommuMap4kDirectory, IommuMap4kLeaf, IommuMap4kExit,
+    IommuUnmap4kEnter { iova_range: VaRange4K }, IommuUnmap4kLeaf, IommuUnmap4kFlush, IommuUnmap4kRefund, IommuUnmap4kExit,
     AllocQuota4k { alloc_amount: usize }, AllocThreadQuota4k { alloc_amount: usize },
     AllocQuota2m { alloc_amount: usize }, AllocThreadQuota2m { alloc_amount: usize },
     Schedule { entry_regs: Registers, flushed_pcid: Option<Pcid> }, RebalancePull,
@@ -44,11 +48,11 @@ pub ghost enum StepLabel {
     KillProcessEnter { child_index: usize }, KillProcessMarkChild, KillProcessDangling, KillProcessMarkThread, KillProcessDequeueScheduled,
     KillProcessDequeueEndpoint, KillProcessEvict, KillProcessUnlink, KillProcessDescriptorDropped, KillProcessCallerWoken, KillProcessCallerTakenOver,
     KillProcessDanglingReclaimed, KillProcessEndpointReleased, KillProcessReassignFunctions, KillProcessLockTable, KillProcessLeaf, KillProcessTlbCleared,
-    KillProcessFlushed, KillProcessIommuLeaf, KillProcessRefund, KillProcessQuota, KillProcessUnlockTable, KillProcessZombify, KillProcessZombieRetire,
-    KillProcessRetire, KillProcessFinish,
+    KillProcessFlushed, KillProcessIommuLeaf, KillProcessIommuFlush, KillProcessRefund, KillProcessQuota, KillProcessUnlockTable, KillProcessZombify,
+    KillProcessZombieRetire, KillProcessRetire, KillProcessFinish,
     ThreadExitEnter, ThreadExitDescriptorDropped, ThreadExitCallerWoken, ThreadExitCallerTakenOver, ThreadExitDanglingReclaimed, ThreadExitEndpointReleased,
-    ThreadExitDrop, ThreadExitRelease, ThreadExitLockTable, ThreadExitLeaf, ThreadExitTlbCleared, ThreadExitFlushed, ThreadExitIommuLeaf, ThreadExitRefund,
-    ThreadExitQuota, ThreadExitUnlockTable, ThreadExitFinish,
+    ThreadExitDrop, ThreadExitRelease, ThreadExitLockTable, ThreadExitLeaf, ThreadExitTlbCleared, ThreadExitFlushed, ThreadExitIommuLeaf, ThreadExitIommuFlush,
+    ThreadExitRefund, ThreadExitQuota, ThreadExitUnlockTable, ThreadExitFinish,
 }
 
 /// `new_u` follows `old_u` by the step `label` on cpu `cpu_id`.
@@ -66,6 +70,18 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
         StepLabel::Unmap4kRefund => unmap_4k_refund_step_pre(old_u, cpu_id)
             && kernel_u_container_quota_4k_increased(old_u, new_u, old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container),
         StepLabel::Unmap4kExit => unmap_4k_exit_step_pre(old_u, cpu_id) && unmap_4k_exit_step(old_u, new_u, cpu_id),
+        StepLabel::IommuMap4kEnter { va_range, iova_range } =>
+            iommu_map_4k_enter_step_pre(old_u, cpu_id, va_range, iova_range) && iommu_map_4k_enter_step(old_u, new_u, cpu_id, va_range, iova_range),
+        StepLabel::IommuMap4kDirectory => iommu_map_4k_directory_step_pre(old_u, cpu_id) && iommu_map_4k_directory_step(old_u, new_u, cpu_id),
+        StepLabel::IommuMap4kLeaf => iommu_map_4k_leaf_step_pre(old_u, cpu_id) && iommu_map_4k_leaf_step(old_u, new_u, cpu_id),
+        StepLabel::IommuMap4kExit => iommu_map_4k_exit_step_pre(old_u, cpu_id) && iommu_map_4k_exit_step(old_u, new_u, cpu_id),
+        StepLabel::IommuUnmap4kEnter { iova_range } =>
+            iommu_unmap_4k_enter_step_pre(old_u, cpu_id, iova_range) && iommu_unmap_4k_enter_step(old_u, new_u, cpu_id, iova_range),
+        StepLabel::IommuUnmap4kLeaf => iommu_unmap_4k_leaf_step_pre(old_u, cpu_id) && iommu_unmap_4k_leaf_step(old_u, new_u, cpu_id),
+        StepLabel::IommuUnmap4kFlush => iommu_unmap_4k_flush_step_pre(old_u, cpu_id) && iommu_unmap_4k_flush_step(old_u, new_u, cpu_id),
+        StepLabel::IommuUnmap4kRefund => iommu_unmap_4k_refund_step_pre(old_u, cpu_id)
+            && kernel_u_container_quota_4k_increased(old_u, new_u, old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container),
+        StepLabel::IommuUnmap4kExit => iommu_unmap_4k_exit_step_pre(old_u, cpu_id) && iommu_unmap_4k_exit_step(old_u, new_u, cpu_id),
         StepLabel::AllocQuota4k { alloc_amount } => alloc_quota_4k_step_pre(old_u, cpu_id, alloc_amount) && alloc_quota_4k_step(old_u, new_u, cpu_id, alloc_amount),
         StepLabel::AllocThreadQuota4k { alloc_amount } => alloc_thread_quota_4k_step_pre(old_u, cpu_id, alloc_amount) && alloc_thread_quota_4k_step(old_u, new_u, cpu_id, alloc_amount),
         StepLabel::AllocQuota2m { alloc_amount } => alloc_quota_2m_step_pre(old_u, cpu_id, alloc_amount) && alloc_quota_2m_step(old_u, new_u, cpu_id, alloc_amount),
@@ -147,6 +163,7 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
         StepLabel::KillProcessTlbCleared => kill_process_step_pre(old_u, cpu_id) && kill_process_flush_step_pre(old_u, cpu_id) && kernel_u_cpu_tlb_cleared(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].pcid),
         StepLabel::KillProcessFlushed => kill_process_step_pre(old_u, cpu_id) && kill_process_flush_step_pre(old_u, cpu_id) && kill_process_flushed_step(old_u, new_u, cpu_id),
         StepLabel::KillProcessIommuLeaf => kill_process_step_pre(old_u, cpu_id) && kill_process_iommu_leaf_step(old_u, new_u, cpu_id),
+        StepLabel::KillProcessIommuFlush => kill_process_step_pre(old_u, cpu_id) && kill_process_reclaim_step_pre(old_u, cpu_id, KillStage::Reclaim { flushed: true }) && kill_process_iommu_flush_step(old_u, new_u),
         StepLabel::KillProcessRefund => kill_process_step_pre(old_u, cpu_id) && kernel_u_container_quota_4k_increased(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].owning_container),
         StepLabel::KillProcessQuota => kill_process_step_pre(old_u, cpu_id) && kill_process_quota_step(old_u, new_u, cpu_id),
         StepLabel::KillProcessUnlockTable => kill_process_step_pre(old_u, cpu_id) && kill_process_unlock_table_step(old_u, new_u, cpu_id),
@@ -168,6 +185,7 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
             && kernel_u_cpu_tlb_cleared(old_u, new_u, old_u.process_map[old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_proc].pcid),
         StepLabel::ThreadExitFlushed => thread_exit_flush_step_pre(old_u, cpu_id) && thread_exit_flushed_step(old_u, new_u, cpu_id),
         StepLabel::ThreadExitIommuLeaf => thread_exit_reclaim_step_pre(old_u, cpu_id, true) && thread_exit_iommu_leaf_step(old_u, new_u, cpu_id),
+        StepLabel::ThreadExitIommuFlush => thread_exit_reclaim_step_pre(old_u, cpu_id, true) && thread_exit_iommu_flush_step(old_u, new_u),
         StepLabel::ThreadExitRefund => thread_exit_reclaim_step_pre(old_u, cpu_id, true)
             && kernel_u_container_quota_4k_increased(old_u, new_u, old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_container),
         StepLabel::ThreadExitQuota => thread_exit_quota_step_pre(old_u, cpu_id) && thread_exit_quota_step(old_u, new_u, cpu_id),
@@ -185,7 +203,7 @@ pub proof fn isolated_symmetric(u: KernelU, a: RwLockContainerPtr, b: RwLockCont
 /// Unwinding over a trace. `us[i + 1]` follows `us[i]`, both user projections of well-formed kernels, by the
 /// step `labels[i]` of cpu `cpus[i]` of domain `steppers[i]`, which is `a` or `b`. When a step receives an
 /// endpoint or shares a page from a peer outside its domain, that peer is honest: the other domain neither
-/// holds nor waits on the endpoint, and the other domain maps no copy of the page. Then `us[n]` is isolated,
+/// holds nor waits on the endpoint, and the other domain maps no copy of the page in a page table or IOMMU table. Then `us[n]` is isolated,
 /// and steps of `a` from `us[m]` to `us[n]` leave the view of `b` unchanged.
 pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<CpuId>, steppers: Seq<RwLockContainerPtr>, a: RwLockContainerPtr, b: RwLockContainerPtr, m: int, n: int)
     requires
@@ -213,10 +231,15 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
                 &&& forall|j: int| #![trigger u.endpoint_map[payload].queue[j]]
                     0 <= j < u.endpoint_map[payload].queue.len() ==> !in_domain(u, y, u.thread_map[u.endpoint_map[payload].queue[j]].owning_container)
             }
-            &&& labels[i] is Share4kLeaf && !in_domain(u, x, u.process_map[source].owning_container) ==> forall|q: RwLockProcessPtr, v: VAddr|
-                #![trigger u.process_map[q].pagetable->Some_0.mapping_4k[v]]
-                u.process_map.dom().contains(q) && in_domain(u, y, u.process_map[q].owning_container) && u.process_map[q].pagetable is Some && u.process_map[q].pagetable->Some_0.mapping_4k.dom().contains(v)
-                    ==> u.process_map[q].pagetable->Some_0.mapping_4k[v].addr != u.process_map[source].pagetable->Some_0.mapping_4k[progress->Share4k_source_range.view()[progress->Share4k_shared as int]].addr
+            &&& labels[i] is Share4kLeaf && !in_domain(u, x, u.process_map[source].owning_container) ==> {
+                let shared = u.process_map[source].pagetable->Some_0.mapping_4k[progress->Share4k_source_range.view()[progress->Share4k_shared as int]].addr;
+                &&& forall|q: RwLockProcessPtr, v: VAddr| #![trigger u.process_map[q].pagetable->Some_0.mapping_4k[v]]
+                    u.process_map.dom().contains(q) && in_domain(u, y, u.process_map[q].owning_container) && u.process_map[q].pagetable is Some && u.process_map[q].pagetable->Some_0.mapping_4k.dom().contains(v)
+                        ==> u.process_map[q].pagetable->Some_0.mapping_4k[v].addr != shared
+                &&& forall|q: RwLockProcessPtr, v: VAddr| #![trigger u.process_map[q].iommu_table->Some_0.mapping_4k[v]]
+                    u.process_map.dom().contains(q) && in_domain(u, y, u.process_map[q].owning_container) && u.process_map[q].iommu_table is Some && u.process_map[q].iommu_table->Some_0.mapping_4k.dom().contains(v)
+                        ==> u.process_map[q].iommu_table->Some_0.mapping_4k[v].addr != shared
+            }
         },
     ensures
         isolated(us[n], a, b),
@@ -247,6 +270,19 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
             StepLabel::Unmap4kFlushed => { unmap_4k_flushed_step_lr(old_u, new_u, cpu_id, x, y); unmap_4k_flushed_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::Unmap4kRefund => { unmap_4k_refund_step_lr(old_u, new_u, cpu_id, x, y); unmap_4k_refund_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::Unmap4kExit => { unmap_4k_exit_step_lr(old_u, new_u, cpu_id, x, y); unmap_4k_exit_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::IommuMap4kEnter { va_range, iova_range } => {
+                iommu_map_4k_enter_step_lr(old_u, new_u, cpu_id, va_range, iova_range, x, y); iommu_map_4k_enter_step_iso(old_u, new_u, cpu_id, va_range, iova_range, x, y);
+            },
+            StepLabel::IommuMap4kDirectory => { iommu_map_4k_directory_step_lr(old_u, new_u, cpu_id, x, y); iommu_map_4k_directory_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::IommuMap4kLeaf => { iommu_map_4k_leaf_step_lr(old_u, new_u, cpu_id, x, y); iommu_map_4k_leaf_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::IommuMap4kExit => { iommu_map_4k_exit_step_lr(old_u, new_u, cpu_id, x, y); iommu_map_4k_exit_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::IommuUnmap4kEnter { iova_range } => {
+                iommu_unmap_4k_enter_step_lr(old_u, new_u, cpu_id, iova_range, x, y); iommu_unmap_4k_enter_step_iso(old_u, new_u, cpu_id, iova_range, x, y);
+            },
+            StepLabel::IommuUnmap4kLeaf => { iommu_unmap_4k_leaf_step_lr(old_u, new_u, cpu_id, x, y); iommu_unmap_4k_leaf_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::IommuUnmap4kFlush => { iommu_unmap_4k_flush_step_lr(old_u, new_u, cpu_id, x, y); iommu_unmap_4k_flush_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::IommuUnmap4kRefund => { iommu_unmap_4k_refund_step_lr(old_u, new_u, cpu_id, x, y); iommu_unmap_4k_refund_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::IommuUnmap4kExit => { iommu_unmap_4k_exit_step_lr(old_u, new_u, cpu_id, x, y); iommu_unmap_4k_exit_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::AllocQuota4k { alloc_amount } => { alloc_quota_4k_step_lr(old_u, new_u, cpu_id, alloc_amount, x, y); alloc_quota_4k_step_iso(old_u, new_u, cpu_id, alloc_amount, x, y); },
             StepLabel::AllocThreadQuota4k { alloc_amount } => { alloc_thread_quota_4k_step_lr(old_u, new_u, cpu_id, alloc_amount, x, y); alloc_thread_quota_4k_step_iso(old_u, new_u, cpu_id, alloc_amount, x, y); },
             StepLabel::AllocQuota2m { alloc_amount } => { alloc_quota_2m_step_lr(old_u, new_u, cpu_id, alloc_amount, x, y); alloc_quota_2m_step_iso(old_u, new_u, cpu_id, alloc_amount, x, y); },
@@ -346,6 +382,7 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
             StepLabel::KillProcessTlbCleared => { kill_process_tlb_cleared_step_lr(old_u, new_u, cpu_id, x, y); kill_process_tlb_cleared_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::KillProcessFlushed => { kill_process_flushed_step_lr(old_u, new_u, cpu_id, x, y); kill_process_flushed_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::KillProcessIommuLeaf => { kill_process_iommu_leaf_step_lr(old_u, new_u, cpu_id, x, y); kill_process_iommu_leaf_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::KillProcessIommuFlush => { kill_process_iommu_flush_step_lr(old_u, new_u, cpu_id, x, y); kill_process_iommu_flush_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::KillProcessRefund => { kill_process_refund_step_lr(old_u, new_u, cpu_id, x, y); kill_process_refund_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::KillProcessQuota => { kill_process_quota_step_lr(old_u, new_u, cpu_id, x, y); kill_process_quota_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::KillProcessUnlockTable => { kill_process_unlock_table_step_lr(old_u, new_u, cpu_id, x, y); kill_process_unlock_table_step_iso(old_u, new_u, cpu_id, x, y); },
@@ -366,6 +403,7 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
             StepLabel::ThreadExitTlbCleared => { thread_exit_tlb_cleared_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_tlb_cleared_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::ThreadExitFlushed => { thread_exit_flushed_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_flushed_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::ThreadExitIommuLeaf => { thread_exit_iommu_leaf_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_iommu_leaf_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::ThreadExitIommuFlush => { thread_exit_iommu_flush_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_iommu_flush_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::ThreadExitRefund => { thread_exit_refund_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_refund_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::ThreadExitQuota => { thread_exit_quota_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_quota_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::ThreadExitUnlockTable => { thread_exit_unlock_table_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_unlock_table_step_iso(old_u, new_u, cpu_id, x, y); },

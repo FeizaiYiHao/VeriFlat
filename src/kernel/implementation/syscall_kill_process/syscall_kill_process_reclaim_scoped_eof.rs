@@ -367,8 +367,10 @@ pub(crate) proof fn kill_reclaim_unmapped_iommu_4k_page_scoped_eof(
         post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().inv(),
         post.allc_4k_mp.perms_wf(),
         post.allc_4k_mp.spec_index(allocator_ptr).wf(),
+        iommu_table_tlb_entries_present(pre.iommu_tlb, pre.irt.view(), pre.it_mp, iommu_table),
     ensures
         post.inv(),
+        iommu_table_tlb_entries_present(post.iommu_tlb, post.irt.view(), post.it_mp, iommu_table),
         kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post),
         kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp),
 {
@@ -377,8 +379,7 @@ pub(crate) proof fn kill_reclaim_unmapped_iommu_4k_page_scoped_eof(
     kill_reclaim_unmapped_iommu_4k_page_scoped_eof_page_relations(pre, post, iommu_table, indices, page_ptr, owner, allocator_ptr, cpu_id, node_addr);
     kill_reclaim_unmapped_iommu_4k_page_scoped_eof_allocator_quota_wf(pre, post, iommu_table, indices, page_ptr, allocator_ptr, cpu_id, node_addr);
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
-    assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); reveal(iommu_table_lock_wf); };
-    assert(iommu_table_lock_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_table_lock_wf); };
+    assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
     assert(post.it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k =~= pre.it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k);
     assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post)) by {
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
@@ -599,8 +600,7 @@ pub(crate) proof fn kill_retire_table_page_scoped_eof(
     kill_retire_table_page_scoped_eof_allocator_quota_wf(pre, post, iommu, table, page_ptr, allocator_ptr, cpu_id, node_addr);
     reveal(kill_retire_table_page_scoped_eof_transition_framing);
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
-    assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_table_lock_wf); };
-    assert(iommu_table_lock_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_table_lock_wf); };
+    assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
     assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
     assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post)) by {

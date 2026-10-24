@@ -125,12 +125,7 @@ pub fn syscall_pci_attach_dma(
             process_iommu_table_match_process_at(old(krnl).prc_mp, old(krnl).it_mp, process_ptr); iommu_table_perms_wf_at(old(krnl).it_mp, old(krnl).prc_mp.spec_index(process_ptr).view().iommu_table->Some_0);
             old(krnl).it_mp.spec_index(old(krnl).prc_mp.spec_index(process_ptr).view().iommu_table->Some_0).view().table_pages_wf_cr3_at();
         };
-        let iommu_table = krnl.prc_mp.spec_index(process_ptr).view().iommu_table->Some_0;
         krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), process_ptr);
-        assert(!(krnl.it_mp.spec_index(iommu_table).locking_thread() is Write)) by {
-            reveal(iommu_table_lock_wf); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, process_ptr);
-            krnl.it_mp.typed_lock_map_aligned_locked_at(lctx.iommu_table_lock_map(), lctx.thread_id(), iommu_table);
-        };
     }
     let ghost before_attach = *krnl;
     iommu_root_table_attach(&mut krnl.irt, bus, device, function, root, Tracked(&*lctx), Tracked(&irt_lock_perm));

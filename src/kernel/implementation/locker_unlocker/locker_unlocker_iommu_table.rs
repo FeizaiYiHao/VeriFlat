@@ -5,8 +5,8 @@ use crate::*;
 
 verus! {
 impl KernelK {
-    /// Write-locks one IOMMU table while its process is write-held and none of that process's functions is attached, so
-    /// no device can observe the leaves exit hides before it releases the table.
+    /// Write-locks one IOMMU table. The write lock is the IOTLB dirty marker: while it is held the table may hide leaves
+    /// that attached domains still cache, and the holder releases it only with every leaf present.
     pub fn wlock_iommu_table(&mut self, iommu_table_ptr: RwLockPageTableRoot, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).inv(),
@@ -22,10 +22,6 @@ impl KernelK {
             forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
             forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(self).pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
             forall|held_iommu_table: RwLockPageTableRoot| #![trigger old(lctx).iommu_table_lock_map().dom().contains(held_iommu_table)] old(lctx).iommu_table_lock_map().dom().contains(held_iommu_table) ==> held_iommu_table < iommu_table_ptr,
-            typed_lock_map_contains_mode(old(lctx).process_lock_map(), old(self).it_mp.spec_index(iommu_table_ptr).view().proc_ptr, TypedLockMode::Write),
-            forall|bus: usize, device: usize, function: usize| #![trigger old(self).irt.view().spec_index_iommu_root(bus, device, function)]
-                pci_bdf_valid(bus, device, function) && old(self).irt.view().spec_index_owner(bus, device, function) == old(self).it_mp.spec_index(iommu_table_ptr).view().proc_ptr
-                    ==> old(self).irt.view().spec_index_iommu_root(bus, device, function) is None,
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
             final(self).it_mp.spec_index(iommu_table_ptr).view().leaves_present(),

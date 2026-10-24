@@ -144,7 +144,6 @@ verus! {
             &&& iommu_root_table_process_wf(self.irt.view(), self.prc_mp, self.it_mp)
             &&& process_pci_function_ownership_wf(self.irt.view(), self.prc_mp)
             &&& iommu_tlb_wf_spec(self.iommu_tlb, self.irt.view(), self.prc_mp, self.it_mp)
-            &&& iommu_table_lock_wf(self.irt.view(), self.prc_mp, self.it_mp)
             // TLB spec
             &&& cpu_dirty_map_wf(self.ctn_mp, self.cpu_set_mp, self.prc_mp, self.cpu_arr, self.cpu_tlb, self.pt_mp, self.pcid_needflush)
             &&& tlb_wf_spec(self.cpu_tlb, self.pt_mp, self.pt_lower.view(), self.cpu_arr, self.pcid_needflush)
@@ -330,6 +329,10 @@ verus! {
                 held_allocator_objects_unchanged(old(self).allc_4k_mp, final(self).allc_4k_mp, old(lctx), PageSize::SZ4k),
                 held_allocator_objects_unchanged(old(self).allc_2m_mp, final(self).allc_2m_mp, old(lctx), PageSize::SZ2m),
                 held_allocator_objects_unchanged(old(self).allc_1g_mp, final(self).allc_1g_mp, old(lctx), PageSize::SZ1g),
+                // A write holder's hidden leaves are never re-cached (`CAP.CM = 0`); the attached domains of its table may only gain present translations.
+                forall|it: RwLockPageTableRoot| #![trigger old(lctx).iommu_table_lock_map().dom().contains(it)]
+                    typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), it, TypedLockMode::Write) && iommu_table_tlb_entries_present(old(self).iommu_tlb, old(self).irt.view(), old(self).it_mp, it)
+                        ==> iommu_table_tlb_entries_present(final(self).iommu_tlb, final(self).irt.view(), final(self).it_mp, it),
                 // Deliberately omitted from the old boundary contract:
                 // - root-container equality across interleaving;
                 // The default page table is read-only and is framed directly.

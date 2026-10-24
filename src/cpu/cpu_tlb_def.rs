@@ -4,6 +4,7 @@ use crate::*;
 use super::cpu_cr3_pcid::CpuCr3Pcid;
 
 verus! {
+/// Paging-structure caches are folded in: every modeled invalidation is PCID- or domain-wide and also clears them; shared by the CPU TLBs and the IOTLB.
 pub ghost struct SingleTLB {
     pub tlb_4k: Map<VAddr, TLBEntry>,
     pub tlb_2m: Map<VAddr, TLBEntry>,

@@ -42,11 +42,13 @@ pub fn reclaim_unmapped_iommu_4k_page(
         iommu_table_perm.view().state() is WriteLock,
         iommu_table_perm.view().thread_id() == old(lctx).thread_id(),
         iommu_table_perm.view().lock_id() == old(krnl).it_mp.spec_index(iommu_table).locking_thread()->Write_lock_id,
+        iommu_table_tlb_entries_present(old(krnl).iommu_tlb, old(krnl).irt.view(), old(krnl).it_mp, iommu_table),
     ensures
         final(steps).view() == old(steps).view(),
         final(steps).snapshot_k() == *final(krnl),
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
         final(krnl).inv(),
+        iommu_table_tlb_entries_present(final(krnl).iommu_tlb, final(krnl).irt.view(), final(krnl).it_mp, iommu_table),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
         final(lctx).cpu_id() == old(lctx).cpu_id(),

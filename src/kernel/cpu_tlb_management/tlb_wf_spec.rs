@@ -28,6 +28,14 @@ verus! {
             cpu_tlb.tlb_1g().dom().contains(va) ==> pagetable.mapping_1g().dom().contains(va) && spec_tlb_entry_equal_to_map_entry(cpu_tlb.tlb_1g().spec_index(va), pagetable.mapping_1g().spec_index(va))
     }
 
+    /// Every cached translation names a present leaf of the sequential table.
+    pub open spec fn single_tlb_subset_of_present_pagetable<const TABLE_TYPE: PTType>(tlb: SingleTLB, pagetable: PageTable<TABLE_TYPE>) -> bool {
+        &&& single_tlb_subset_of_pagetable(tlb, pagetable)
+        &&& forall|va: VAddr| #![trigger tlb.tlb_4k().spec_index(va)] #![trigger pagetable.mapping_4k().spec_index(va)] tlb.tlb_4k().dom().contains(va) ==> pagetable.mapping_4k().spec_index(va).present
+        &&& forall|va: VAddr| #![trigger tlb.tlb_2m().spec_index(va)] #![trigger pagetable.mapping_2m().spec_index(va)] tlb.tlb_2m().dom().contains(va) ==> pagetable.mapping_2m().spec_index(va).present
+        &&& forall|va: VAddr| #![trigger tlb.tlb_1g().spec_index(va)] #![trigger pagetable.mapping_1g().spec_index(va)] tlb.tlb_1g().dom().contains(va) ==> pagetable.mapping_1g().spec_index(va).present
+    }
+
     /// CPU-TLB form of `single_tlb_subset_of_pagetable` over a concurrent page table.
     pub open spec fn single_tlb_subset_of_pagetable_c(cpu_tlb: SingleTLB, pagetable: PageTableC<PT_TYPE>) -> bool {
         &&& forall|va: VAddr|

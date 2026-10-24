@@ -775,6 +775,32 @@ pub(crate) proof fn kill_iommu_leaf_step_from_u(pre: KernelU, post: KernelU, cpu
     assert(mapping.remove(iova) =~= mapping.restrict(kept));
 }
 
+/// Flushing the IOTLB on `pre` to `post` is a flush step on the projections, which change exactly when the IOTLB view
+/// does.
+pub(crate) proof fn kill_process_iommu_flush_step_from_k(pre: &KernelK, post: &KernelK)
+    requires
+        *post == (KernelK { iommu_tlb: post.iommu_tlb, ..*pre }),
+        post.iommu_tlb.view().dom() == pre.iommu_tlb.view().dom(),
+        forall|did: VtdDomainId| #![trigger post.iommu_tlb.view()[did]] vtd_domain_id_valid(did) ==> post.iommu_tlb.spec_index(did).is_empty(),
+    ensures
+        kill_process_iommu_flush_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post)),
+        pre.iommu_tlb.view() != post.iommu_tlb.view() ==> kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post) && kernel_k_to_nonlock_kernel_u(*pre) != kernel_k_to_nonlock_kernel_u(*post),
+{
+    reveal(kill_process_iommu_flush_step);
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); kernel_u_nonlock_domains_projection(pre); kernel_u_nonlock_domains_projection(post);
+    kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post);
+    kernel_process_maps_unchanged_implies_u_process_map(pre, post); kernel_thread_map_unchanged_implies_u_thread_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
+}
+
+/// Flushing the IOTLB while the target's tables are reclaimed after the PCID flush is a middle step.
+pub(crate) proof fn kill_iommu_flush_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId)
+    requires
+        kill_process_step_pre(pre, cpu_id),
+        kill_process_reclaim_step_pre(pre, cpu_id, KillStage::Reclaim { flushed: true }),
+        kill_process_iommu_flush_step(pre, post),
+    ensures kill_process_middle_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
+{}
+
 /// Returning the target's whole `size` quota to its container and recording the return is a middle step.
 pub(crate) proof fn kill_quota_step_from_u(pre: KernelU, returned: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, size: PageSize, scope: KillScope)
     requires

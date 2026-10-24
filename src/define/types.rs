@@ -254,6 +254,13 @@ pub enum RetValueType {
     ErrorIpcCallerKilled,
     /// The running process has no child at the requested position.
     ErrorInvalidChild,
+    // ---- iommu map failure modes ----
+    /// An IOVA page of the requested range already has an IOMMU mapping.
+    ErrorIommuIovaAlreadyMapped,
+    /// An IOVA page of the requested range has no IOMMU mapping.
+    ErrorIommuIovaNotMapped,
+    /// A source VA page of the requested range is not mapped in the caller's page table.
+    ErrorIommuVaNotMapped,
 }
 pub type PTType = bool;
 

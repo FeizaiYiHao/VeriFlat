@@ -86,6 +86,10 @@ pub open spec fn kill_reassign_eof_transition_framing(pre: KernelK, post: Kernel
     &&& post.iommu_tlb.view().dom() == pre.iommu_tlb.view().dom()
     &&& forall|b: usize, d: usize, f: usize| #![trigger post.iommu_tlb.view()[pci_bdf_did(b, d, f)]] pci_bdf_valid(b, d, f)
         ==> post.iommu_tlb.view()[pci_bdf_did(b, d, f)] == if pre.irt.view().spec_index_owner(b, d, f) == target { empty_tlb } else { pre.iommu_tlb.view()[pci_bdf_did(b, d, f)] }
+    &&& forall|b: usize, d: usize, f: usize| #![trigger post.iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f))] pci_bdf_valid(b, d, f) ==> {
+        &&& post.iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f)) == (pre.iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f)) && pre.irt.view().spec_index_owner(b, d, f) != target)
+        &&& post.iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f)) ==> post.iommu_tlb.context_cache()[pci_bdf_did(b, d, f)] == pre.iommu_tlb.context_cache()[pci_bdf_did(b, d, f)]
+    }
     &&& post.prc_mp.dom() == pre.prc_mp.dom()
     &&& forall|p: RwLockProcessPtr| #![trigger pre.prc_mp.spec_index(p)] #![trigger post.prc_mp.spec_index(p)] pre.prc_mp.dom().contains(p) ==> {
         let before = pre.prc_mp.spec_index(p);

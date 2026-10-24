@@ -11,6 +11,7 @@ use veriflat_map_4k::map_4k::unmap_4k_present::clear_4k_mapping_present;
 use veriflat_map_4k::map_4k::unmap_4k_reclaim_one::reclaim_unmapped_4k_page;
 use veriflat_map_4k::map_4k::unmap_iommu_4k_present::clear_iommu_4k_mapping_present;
 use veriflat_map_4k::map_4k::unmap_iommu_4k_reclaim_one::reclaim_unmapped_iommu_4k_page;
+use veriflat_map_4k::map_4k::flush_iommu_tlb::flush_iommu_tlb_for_table;
 use veriflat_map_4k::map_4k::unmap_4k_spec::unmap_4k_locked;
 
 pub mod syscall_thread_exit;

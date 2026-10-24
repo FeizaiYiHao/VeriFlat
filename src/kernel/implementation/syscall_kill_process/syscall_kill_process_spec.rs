@@ -410,6 +410,14 @@ pub open spec fn kill_process_iommu_leaf_step(old_u: KernelU, new_u: KernelU, cp
     })
 }
 
+/// Flushing the IOTLB empties every domain and changes nothing else.
+#[verifier::opaque]
+pub open spec fn kill_process_iommu_flush_step(old_u: KernelU, new_u: KernelU) -> bool {
+    &&& new_u.iommu_tlb.dom() == old_u.iommu_tlb.dom()
+    &&& forall|did: VtdDomainId| #![trigger new_u.iommu_tlb[did]] vtd_domain_id_valid(did) ==> new_u.iommu_tlb[did].is_empty()
+    &&& new_u == (KernelU { iommu_tlb: new_u.iommu_tlb, ..old_u })
+}
+
 /// The stage before the target returns its `size` quota.
 pub open spec fn kill_process_quota_stage_before(size: PageSize) -> KillStage {
     match size {
@@ -528,7 +536,7 @@ pub open spec fn kill_process_retire_step(old_u: KernelU, new_u: KernelU, cpu_id
 /// A step between entering and finishing: descending into a child, turning a thread waiting for a reply into a dangling thread,
 /// marking, dequeuing, evicting, or unlinking a thread, reclaiming killed threads of the target's container, and, for an empty target,
 /// reassigning its PCI functions, locking its tables, clearing one 4K leaf, flushing one cpu's TLB for its PCID,
-/// recording the flush, clearing one IOMMU 4K leaf, returning quota of freed pages to the target's container chain,
+/// recording the flush, clearing one IOMMU 4K leaf, flushing the IOTLB, returning quota of freed pages to the target's container chain,
 /// returning one size of its quota, unlocking its tables, making it a zombie, or retiring it.
 pub open spec fn kill_process_middle_step(step: KernelStep, cpu_id: CpuId) -> bool {
     let old_u = step.old_u;
@@ -550,6 +558,7 @@ pub open spec fn kill_process_middle_step(step: KernelStep, cpu_id: CpuId) -> bo
         ||| kill_process_flush_step_pre(old_u, cpu_id) && kernel_u_cpu_tlb_cleared(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].pcid)
         ||| kill_process_flush_step_pre(old_u, cpu_id) && kill_process_flushed_step(old_u, new_u, cpu_id)
         ||| kill_process_iommu_leaf_step(old_u, new_u, cpu_id)
+        ||| kill_process_reclaim_step_pre(old_u, cpu_id, KillStage::Reclaim { flushed: true }) && kill_process_iommu_flush_step(old_u, new_u)
         ||| kernel_u_container_quota_4k_increased(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].owning_container)
         ||| kill_process_quota_step(old_u, new_u, cpu_id)
         ||| kill_process_unlock_table_step(old_u, new_u, cpu_id)

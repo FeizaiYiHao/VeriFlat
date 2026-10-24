@@ -492,6 +492,23 @@ pub(super) proof fn thread_exit_iommu_leaf_step_from_u(pre: KernelU, post: Kerne
     assert(mapping.remove(iova) =~= mapping.restrict(kept));
 }
 
+/// Flushing the IOTLB on `pre` to `post` is an IOMMU flush step on the projections, which change exactly when the IOTLB
+/// view does.
+pub(super) proof fn thread_exit_iommu_flush_step_from_k(pre: &KernelK, post: &KernelK)
+    requires
+        *post == (KernelK { iommu_tlb: post.iommu_tlb, ..*pre }),
+        post.iommu_tlb.view().dom() == pre.iommu_tlb.view().dom(),
+        forall|did: VtdDomainId| #![trigger post.iommu_tlb.view()[did]] vtd_domain_id_valid(did) ==> post.iommu_tlb.spec_index(did).is_empty(),
+    ensures
+        thread_exit_iommu_flush_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post)),
+        pre.iommu_tlb.view() != post.iommu_tlb.view() ==> kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post) && kernel_k_to_nonlock_kernel_u(*pre) != kernel_k_to_nonlock_kernel_u(*post),
+{
+    reveal(thread_exit_iommu_flush_step);
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); kernel_u_nonlock_domains_projection(pre); kernel_u_nonlock_domains_projection(post);
+    kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post);
+    kernel_process_maps_unchanged_implies_u_process_map(pre, post); kernel_thread_map_unchanged_implies_u_thread_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
+}
+
 /// A state holding the cpu, `container_ptr`, `process_ptr` with its page table `pagetable` of PCID `pcid`, and the
 /// running `thread_ptr` that records unflushed reclaim progress, where no user 4K leaf of the page table is left, gives
 /// the flush step precondition.

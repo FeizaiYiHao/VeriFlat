@@ -415,4 +415,32 @@ pub fn add_4k_mapping(page: &mut Page, pagetable_ptr: RwLockPageTableRoot, va: V
     page.ref_count = page.ref_count + 1;
     proof { reveal(Page::mappings_va_valid); assert(page.iommu_mappings() == old(page).iommu_mappings()); }
 }
+
+/// Add one IOMMU reverse mapping to an already-published 4K page.
+pub fn add_4k_iommu_mapping(page: &mut Page, iommu_table_ptr: RwLockPageTableRoot, iova: VAddr)
+    requires
+        old(page).inv(),
+        old(page).state is Mapped4k,
+        crate::iova_4k_valid(iova),
+        !old(page).iommu_mappings().contains((iommu_table_ptr, iova)),
+        old(page).ref_count < usize::MAX,
+    ensures
+        final(page).inv(),
+        final(page).iommu_mappings() == old(page).iommu_mappings().insert((iommu_table_ptr, iova)),
+        final(page).mappings == old(page).mappings,
+        final(page).ref_count == old(page).ref_count + 1,
+        final(page).addr == old(page).addr,
+        final(page).state == old(page).state,
+        final(page).is_io_page == old(page).is_io_page,
+        final(page).owning_container == old(page).owning_container,
+        final(page).free_list_node_storage == old(page).free_list_node_storage,
+        final(page).free_list == old(page).free_list,
+        final(page).perm_4k.view() == old(page).perm_4k.view(),
+        final(page).perm_2m.view() == old(page).perm_2m.view(),
+        final(page).perm_1g.view() == old(page).perm_1g.view(),
+{
+    page.iommu_mappings = Ghost(page.iommu_mappings().insert((iommu_table_ptr, iova)));
+    page.ref_count = page.ref_count + 1;
+    proof { reveal(Page::mappings_va_valid); assert(page.mappings() == old(page).mappings()); }
+}
 }

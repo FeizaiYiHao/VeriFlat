@@ -38,6 +38,7 @@ pub open spec fn ipc_pci_rendezvous_eof_transition_framing(
             }
         &&& post.iommu_tlb.view() == pre.iommu_tlb.view().insert(pci_bdf_did(bdf.0, bdf.1, bdf.2), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
     }
+    &&& post.iommu_tlb.context_cache() == if transferred { pre.iommu_tlb.context_cache().remove(pci_bdf_did(bdf.0, bdf.1, bdf.2)) } else { pre.iommu_tlb.context_cache() }
     &&& post.prc_mp.dom() == pre.prc_mp.dom()
     &&& forall|key: RwLockProcessPtr| #![trigger pre.prc_mp.spec_index(key)] #![trigger post.prc_mp.spec_index(key)] pre.prc_mp.dom().contains(key) ==> {
         let before = pre.prc_mp.spec_index(key);

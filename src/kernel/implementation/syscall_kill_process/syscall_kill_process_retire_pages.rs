@@ -670,6 +670,9 @@ pub(crate) fn kill_retire_lock_cache(
         held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
         held_pagetables_unchanged(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx)),
         held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
+        forall|it: RwLockPageTableRoot| #![trigger old(lctx).iommu_table_lock_map().dom().contains(it)]
+            typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), it, TypedLockMode::Write) && iommu_table_tlb_entries_present(old(krnl).iommu_tlb, old(krnl).irt.view(), old(krnl).it_mp, it)
+                ==> iommu_table_tlb_entries_present(final(krnl).iommu_tlb, final(krnl).irt.view(), final(krnl).it_mp, it),
         held_pages_unchanged(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx)),
 {
     proof { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_index); }

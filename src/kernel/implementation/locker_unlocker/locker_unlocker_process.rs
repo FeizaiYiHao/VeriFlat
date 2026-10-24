@@ -233,7 +233,6 @@ impl KernelK {
             forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) && old(self).ctn_mp.spec_index(c).killer_info() is Some
                 ==> old(self).ctn_mp.spec_index(c).killer_info()->Some_0.process != process_ptr,
             old(self).prc_mp.spec_index(process_ptr).view().state.view() is Running || old(self).prc_mp.spec_index(process_ptr).view().state.view() is Zombie,
-            old(self).prc_mp.spec_index(process_ptr).view().iommu_table is Some ==> !old(lctx).iommu_table_lock_map().dom().contains(old(self).prc_mp.spec_index(process_ptr).view().iommu_table->Some_0),
             typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),

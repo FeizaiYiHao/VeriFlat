@@ -108,6 +108,8 @@ dependencies = [
  "veriflat_map_4k",
  "veriflat_syscall_alloc_quota",
  "veriflat_syscall_cpu_hotplug",
+ "veriflat_syscall_iommu_map_4k",
+ "veriflat_syscall_iommu_unmap_4k",
  "veriflat_syscall_ipc",
  "veriflat_syscall_kill_process",
  "veriflat_syscall_mmap_4k",
@@ -135,6 +137,26 @@ name = "veriflat_syscall_cpu_hotplug"
 version = "0.1.0"
 dependencies = [
  "veriflat_kernel_core",
+ "vstd",
+]
+
+[[package]]
+name = "veriflat_syscall_iommu_map_4k"
+version = "0.1.0"
+dependencies = [
+ "veriflat_alloc_page",
+ "veriflat_kernel_core",
+ "veriflat_map_4k",
+ "vstd",
+]
+
+[[package]]
+name = "veriflat_syscall_iommu_unmap_4k"
+version = "0.1.0"
+dependencies = [
+ "veriflat_alloc_page",
+ "veriflat_kernel_core",
+ "veriflat_map_4k",
  "vstd",
 ]
 

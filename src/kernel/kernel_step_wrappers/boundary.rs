@@ -1042,6 +1042,9 @@ impl KernelK {
             held_pagetables_unchanged(old(self).pt_mp, final(self).pt_mp, old(lctx)),
             held_pagetable_windows_unchanged(old(self).pt_mp, old(self).pt_lower.view(), final(self).pt_mp, final(self).pt_lower.view(), old(lctx)),
             held_iommu_tables_unchanged(old(self).it_mp, final(self).it_mp, old(lctx)),
+            forall|it: RwLockPageTableRoot| #![trigger old(lctx).iommu_table_lock_map().dom().contains(it)]
+                typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), it, TypedLockMode::Write) && iommu_table_tlb_entries_present(old(self).iommu_tlb, old(self).irt.view(), old(self).it_mp, it)
+                    ==> iommu_table_tlb_entries_present(final(self).iommu_tlb, final(self).irt.view(), final(self).it_mp, it),
             held_pages_unchanged(old(self).pg_arr, final(self).pg_arr, old(lctx)),
             held_cpus_unchanged(old(self).cpu_arr, final(self).cpu_arr, old(lctx)),
             held_allocator_objects_unchanged(old(self).allc_4k_mp, final(self).allc_4k_mp, old(lctx), PageSize::SZ4k),
@@ -1164,6 +1167,9 @@ impl KernelK {
                 ==> pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), p) == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), p),
             held_pagetable_windows_unchanged(old(self).pt_mp, old(self).pt_lower.view(), final(self).pt_mp, final(self).pt_lower.view(), old(lctx)),
             held_iommu_tables_unchanged(old(self).it_mp, final(self).it_mp, old(lctx)),
+            forall|it: RwLockPageTableRoot| #![trigger old(lctx).iommu_table_lock_map().dom().contains(it)]
+                typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), it, TypedLockMode::Write) && iommu_table_tlb_entries_present(old(self).iommu_tlb, old(self).irt.view(), old(self).it_mp, it)
+                    ==> iommu_table_tlb_entries_present(final(self).iommu_tlb, final(self).irt.view(), final(self).it_mp, it),
             held_pages_unchanged(old(self).pg_arr, final(self).pg_arr, old(lctx)),
             held_cpus_unchanged(old(self).cpu_arr, final(self).cpu_arr, old(lctx)),
     {
@@ -1247,6 +1253,9 @@ impl KernelK {
                 ==> pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), p) == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), p),
             held_pagetable_windows_unchanged(old(self).pt_mp, old(self).pt_lower.view(), final(self).pt_mp, final(self).pt_lower.view(), old(lctx)),
             held_iommu_tables_unchanged(old(self).it_mp, final(self).it_mp, old(lctx)),
+            forall|it: RwLockPageTableRoot| #![trigger old(lctx).iommu_table_lock_map().dom().contains(it)]
+                typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), it, TypedLockMode::Write) && iommu_table_tlb_entries_present(old(self).iommu_tlb, old(self).irt.view(), old(self).it_mp, it)
+                    ==> iommu_table_tlb_entries_present(final(self).iommu_tlb, final(self).irt.view(), final(self).it_mp, it),
             held_pages_unchanged(old(self).pg_arr, final(self).pg_arr, old(lctx)),
             held_cpus_unchanged(old(self).cpu_arr, final(self).cpu_arr, old(lctx)),
     {
@@ -1364,6 +1373,9 @@ impl KernelK {
             held_cpu_sets_unchanged(old(self).cpu_set_mp, final(self).cpu_set_mp, old(lctx)),
             held_pagetables_unchanged(old(self).pt_mp, final(self).pt_mp, old(lctx)),
             held_iommu_tables_unchanged(old(self).it_mp, final(self).it_mp, old(lctx)),
+            forall|it: RwLockPageTableRoot| #![trigger old(lctx).iommu_table_lock_map().dom().contains(it)]
+                typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), it, TypedLockMode::Write) && iommu_table_tlb_entries_present(old(self).iommu_tlb, old(self).irt.view(), old(self).it_mp, it)
+                    ==> iommu_table_tlb_entries_present(final(self).iommu_tlb, final(self).irt.view(), final(self).it_mp, it),
             held_pages_unchanged(old(self).pg_arr, final(self).pg_arr, old(lctx)),
     {
         use_type_invariant(&*steps);
@@ -1464,6 +1476,9 @@ impl KernelK {
             held_pagetables_unchanged(old(self).pt_mp, final(self).pt_mp, old(lctx)),
             held_pagetable_windows_unchanged(old(self).pt_mp, old(self).pt_lower.view(), final(self).pt_mp, final(self).pt_lower.view(), old(lctx)),
             held_iommu_tables_unchanged(old(self).it_mp, final(self).it_mp, old(lctx)),
+            forall|it: RwLockPageTableRoot| #![trigger old(lctx).iommu_table_lock_map().dom().contains(it)]
+                typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), it, TypedLockMode::Write) && iommu_table_tlb_entries_present(old(self).iommu_tlb, old(self).irt.view(), old(self).it_mp, it)
+                    ==> iommu_table_tlb_entries_present(final(self).iommu_tlb, final(self).irt.view(), final(self).it_mp, it),
             held_pages_unchanged(old(self).pg_arr, final(self).pg_arr, old(lctx)),
             held_cpus_unchanged(old(self).cpu_arr, final(self).cpu_arr, old(lctx)),
             held_allocator_objects_unchanged(old(self).allc_4k_mp, final(self).allc_4k_mp, old(lctx), PageSize::SZ4k),
@@ -1566,6 +1581,9 @@ impl KernelK {
             held_pagetables_unchanged(old(self).pt_mp, final(self).pt_mp, old(lctx)),
             held_pagetable_windows_unchanged(old(self).pt_mp, old(self).pt_lower.view(), final(self).pt_mp, final(self).pt_lower.view(), old(lctx)),
             held_iommu_tables_unchanged(old(self).it_mp, final(self).it_mp, old(lctx)),
+            forall|it: RwLockPageTableRoot| #![trigger old(lctx).iommu_table_lock_map().dom().contains(it)]
+                typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), it, TypedLockMode::Write) && iommu_table_tlb_entries_present(old(self).iommu_tlb, old(self).irt.view(), old(self).it_mp, it)
+                    ==> iommu_table_tlb_entries_present(final(self).iommu_tlb, final(self).irt.view(), final(self).it_mp, it),
             held_pages_unchanged(old(self).pg_arr, final(self).pg_arr, old(lctx)),
             held_cpus_unchanged(old(self).cpu_arr, final(self).cpu_arr, old(lctx)),
             held_allocator_objects_unchanged(old(self).allc_4k_mp, final(self).allc_4k_mp, old(lctx), PageSize::SZ4k),
@@ -1672,6 +1690,9 @@ impl KernelK {
             held_pagetables_unchanged(old(self).pt_mp, final(self).pt_mp, old(lctx)),
             held_pagetable_windows_unchanged(old(self).pt_mp, old(self).pt_lower.view(), final(self).pt_mp, final(self).pt_lower.view(), old(lctx)),
             held_iommu_tables_unchanged(old(self).it_mp, final(self).it_mp, old(lctx)),
+            forall|it: RwLockPageTableRoot| #![trigger old(lctx).iommu_table_lock_map().dom().contains(it)]
+                typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), it, TypedLockMode::Write) && iommu_table_tlb_entries_present(old(self).iommu_tlb, old(self).irt.view(), old(self).it_mp, it)
+                    ==> iommu_table_tlb_entries_present(final(self).iommu_tlb, final(self).irt.view(), final(self).it_mp, it),
             held_pages_unchanged(old(self).pg_arr, final(self).pg_arr, old(lctx)),
             held_cpus_unchanged(old(self).cpu_arr, final(self).cpu_arr, old(lctx)),
             held_allocator_objects_unchanged(old(self).allc_4k_mp, final(self).allc_4k_mp, old(lctx), PageSize::SZ4k),
@@ -1789,6 +1810,9 @@ impl KernelK {
             held_pagetables_unchanged(old(self).pt_mp, final(self).pt_mp, old(lctx)),
             held_pagetable_windows_unchanged(old(self).pt_mp, old(self).pt_lower.view(), final(self).pt_mp, final(self).pt_lower.view(), old(lctx)),
             held_iommu_tables_unchanged(old(self).it_mp, final(self).it_mp, old(lctx)),
+            forall|it: RwLockPageTableRoot| #![trigger old(lctx).iommu_table_lock_map().dom().contains(it)]
+                typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), it, TypedLockMode::Write) && iommu_table_tlb_entries_present(old(self).iommu_tlb, old(self).irt.view(), old(self).it_mp, it)
+                    ==> iommu_table_tlb_entries_present(final(self).iommu_tlb, final(self).irt.view(), final(self).it_mp, it),
             held_pages_unchanged(old(self).pg_arr, final(self).pg_arr, old(lctx)),
             held_cpus_unchanged(old(self).cpu_arr, final(self).cpu_arr, old(lctx)),
             held_allocator_objects_unchanged(old(self).allc_4k_mp, final(self).allc_4k_mp, old(lctx), PageSize::SZ4k),
@@ -1930,6 +1954,9 @@ impl KernelK {
             held_pagetables_unchanged(old(self).pt_mp, final(self).pt_mp, old(lctx)),
             held_pagetable_windows_unchanged(old(self).pt_mp, old(self).pt_lower.view(), final(self).pt_mp, final(self).pt_lower.view(), old(lctx)),
             held_iommu_tables_unchanged(old(self).it_mp, final(self).it_mp, old(lctx)),
+            forall|it: RwLockPageTableRoot| #![trigger old(lctx).iommu_table_lock_map().dom().contains(it)]
+                typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), it, TypedLockMode::Write) && iommu_table_tlb_entries_present(old(self).iommu_tlb, old(self).irt.view(), old(self).it_mp, it)
+                    ==> iommu_table_tlb_entries_present(final(self).iommu_tlb, final(self).irt.view(), final(self).it_mp, it),
             held_pages_unchanged(old(self).pg_arr, final(self).pg_arr, old(lctx)),
             held_cpus_unchanged(old(self).cpu_arr, final(self).cpu_arr, old(lctx)),
             held_allocator_objects_unchanged(old(self).allc_4k_mp, final(self).allc_4k_mp, old(lctx), PageSize::SZ4k),
@@ -2087,6 +2114,9 @@ impl KernelK {
             held_pagetables_unchanged(old(self).pt_mp, final(self).pt_mp, old(lctx)),
             held_pagetable_windows_unchanged(old(self).pt_mp, old(self).pt_lower.view(), final(self).pt_mp, final(self).pt_lower.view(), old(lctx)),
             held_iommu_tables_unchanged(old(self).it_mp, final(self).it_mp, old(lctx)),
+            forall|it: RwLockPageTableRoot| #![trigger old(lctx).iommu_table_lock_map().dom().contains(it)]
+                typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), it, TypedLockMode::Write) && iommu_table_tlb_entries_present(old(self).iommu_tlb, old(self).irt.view(), old(self).it_mp, it)
+                    ==> iommu_table_tlb_entries_present(final(self).iommu_tlb, final(self).irt.view(), final(self).it_mp, it),
             held_pages_unchanged(old(self).pg_arr, final(self).pg_arr, old(lctx)),
             held_cpus_unchanged(old(self).cpu_arr, final(self).cpu_arr, old(lctx)),
             held_allocator_objects_unchanged(old(self).allc_4k_mp, final(self).allc_4k_mp, old(lctx), PageSize::SZ4k),

@@ -51,24 +51,4 @@ pub proof fn page_iommu_table_wf_preserved_for_page_iommu_fields_eq(container_ma
     ensures
         page_iommu_table_wf(container_map, process_map, iommu_table_map, new_page_array),
 { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); }
-
-pub proof fn iommu_table_lock_wf_preserved_for_root_and_process_fields_eq(old_root_table: IommuRootTable, new_root_table: IommuRootTable, old_process_map: ProcessLockedMap, new_process_map: ProcessLockedMap, iommu_table_map: IommuTableLockedMap)
-    requires
-        iommu_table_lock_wf(old_root_table, old_process_map, iommu_table_map),
-        forall|bus: usize, device: usize, function: usize|
-            #![trigger new_root_table.spec_index_iommu_root(bus, device, function)]
-            pci_bdf_valid(bus, device, function) && new_root_table.spec_index_iommu_root(bus, device, function) is Some ==> {
-                &&& old_root_table.spec_index_iommu_root(bus, device, function) is Some
-                &&& new_root_table.spec_index_owner(bus, device, function) == old_root_table.spec_index_owner(bus, device, function)
-            },
-        forall|proc_ptr: RwLockProcessPtr|
-            #![trigger new_process_map.spec_index(proc_ptr)]
-            old_process_map.dom().contains(proc_ptr) ==> {
-                &&& new_process_map.dom().contains(proc_ptr)
-                &&& new_process_map.spec_index(proc_ptr).view().iommu_table == old_process_map.spec_index(proc_ptr).view().iommu_table
-                &&& new_process_map.spec_index(proc_ptr).locking_thread() == old_process_map.spec_index(proc_ptr).locking_thread()
-            },
-    ensures
-        iommu_table_lock_wf(new_root_table, new_process_map, iommu_table_map),
-{ reveal(iommu_table_lock_wf); }
 }

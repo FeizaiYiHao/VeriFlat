@@ -6,6 +6,25 @@ Process Depth: None
 Major Id: Page table major id
 Minor Id: addr
 
+## IOMMU root table
+Container Depth: NotApp
+Process Depth: NotApp
+Major Id: IOMMU root table major id (10005)
+Minor Id: table base
+
+## IOMMU table
+Container Depth: None
+Process Depth: None
+Major Id: IOMMU table major id (10006)
+Minor Id: addr
+Its write lock is also the IOTLB dirty marker: while it is held, attached domains may cache hidden leaves; the holder flushes the IOTLB before unlocking.
+
+## Page-table 2M window
+Container Depth: None
+Process Depth: None
+Major Id: Page-table window major id (10007)
+Minor Id: (root, L4 index, L3 index, L2 index)
+
 ## Physical pages 
 Container Depth: None
 Process Depth: None

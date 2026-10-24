@@ -644,13 +644,11 @@ pub(crate) proof fn kill_container_retire_root_eof_iommu(
         iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
         process_pci_function_ownership_wf(post.irt.view(), post.prc_mp),
         iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
-        iommu_table_lock_wf(post.irt.view(), post.prc_mp, post.it_mp),
 {
     reveal(kill_container_retire_root_eof_transition_framing);
     assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); reveal(process_pci_function_ownership_wf); process_iommu_table_match_process_at(pre.prc_mp, pre.it_mp, target); };
     assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
-    assert(iommu_table_lock_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_table_lock_wf); reveal(process_iommu_table_match); };
 }
 
 /// A CPU/PCID association that the TLB and dirty-map invariants constrain belongs to neither the retired target nor its

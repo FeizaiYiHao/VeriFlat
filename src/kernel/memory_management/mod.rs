@@ -1,6 +1,5 @@
 pub mod pagetable_map_spec;
 pub mod iommu_table_map_spec;
-pub mod iommu_table_lock_spec;
 pub mod page_iommu_table_spec;
 pub mod page_array_spec;
 pub mod pages_container_spec;
@@ -36,7 +35,6 @@ pub use container_allocator_process_thread_spec::*;
 pub use page_mapping_spec::*;
 pub use pagetable_map_spec::*;
 pub use iommu_table_map_spec::*;
-pub use iommu_table_lock_spec::*;
 pub use page_iommu_table_spec::*;
 
 pub use page_array_spec::*;

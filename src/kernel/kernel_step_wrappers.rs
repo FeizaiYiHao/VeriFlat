@@ -244,6 +244,121 @@ impl KernelSteps {
             final(self).snapshot_k() == *krnl,
             kernel_endpoint_nonlock_fields_unchanged(final(self).snapshot_k().ep_mp, krnl.ep_mp),
     {
+        self.end_kernel_step_restored_locks_with_iommu_table(krnl, lctx, cpu, container, process, thread, endpoint, table, allocator, None);
+    }
+
+    /// `end_kernel_step_restored_locks` with one IOMMU table whose lock/unlock cycle restored its payload and lock mode.
+    pub proof fn end_kernel_step_restored_locks_with_iommu_table(
+        tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu: CpuId,
+        container: Option<RwLockContainerPtr>, process: Option<RwLockProcessPtr>, thread: Option<RwLockThreadPtr>,
+        endpoint: Option<RwLockEndpointPtr>, table: Option<RwLockPageTableRoot>, allocator: Option<RwLockPcidAllocatorPtr>,
+        iommu_table: Option<RwLockPageTableRoot>,
+    )
+        requires
+            krnl.inv(),
+            lctx.kernel_view_locking_state() is Release,
+            krnl.irt.view().owners() == old(self).snapshot_k().irt.view().owners(),
+            krnl.irt.view().iommu_roots() == old(self).snapshot_k().irt.view().iommu_roots(),
+            krnl.cpu_tlb.view() == old(self).snapshot_k().cpu_tlb.view(),
+            krnl.iommu_tlb.view() == old(self).snapshot_k().iommu_tlb.view(),
+            krnl.dflt_pt == old(self).snapshot_k().dflt_pt,
+            krnl.cpu_arr.unchanged_except(&old(self).snapshot_k().cpu_arr, cpu),
+            krnl.cpu_arr.spec_index(cpu).value.killer_info() == old(self).snapshot_k().cpu_arr.spec_index(cpu).value.killer_info(),
+            (krnl.cpu_arr.spec_index(cpu).value.locking_thread() is Write) == (old(self).snapshot_k().cpu_arr.spec_index(cpu).value.locking_thread() is Write),
+            (krnl.cpu_arr.spec_index(cpu).value.locking_thread() is Read) == (old(self).snapshot_k().cpu_arr.spec_index(cpu).value.locking_thread() is Read),
+            match iommu_table {
+                Some(p) => {
+                    &&& krnl.it_mp.unchanged_except(&old(self).snapshot_k().it_mp, p)
+                    &&& krnl.it_mp.spec_index(p).view() == old(self).snapshot_k().it_mp.spec_index(p).view()
+                    &&& (krnl.it_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().it_mp.spec_index(p).locking_thread() is Write)
+                    &&& (krnl.it_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().it_mp.spec_index(p).locking_thread() is Read)
+                },
+                None => krnl.it_mp == old(self).snapshot_k().it_mp,
+            },
+            krnl.cpu_set_mp == old(self).snapshot_k().cpu_set_mp,
+            krnl.sched_mp == old(self).snapshot_k().sched_mp,
+            krnl.allc_4k_mp == old(self).snapshot_k().allc_4k_mp,
+            krnl.allc_2m_mp == old(self).snapshot_k().allc_2m_mp,
+            krnl.allc_1g_mp == old(self).snapshot_k().allc_1g_mp,
+            krnl.cpu_offline_mp == old(self).snapshot_k().cpu_offline_mp,
+            match allocator {
+                Some(p) => {
+                    &&& krnl.pcid_allc_mp.unchanged_except(&old(self).snapshot_k().pcid_allc_mp, p)
+                    &&& krnl.pcid_allc_mp.spec_index(p).view() == old(self).snapshot_k().pcid_allc_mp.spec_index(p).view()
+                },
+                None => krnl.pcid_allc_mp == old(self).snapshot_k().pcid_allc_mp,
+            },
+            match container {
+                Some(p) => {
+                    &&& krnl.ctn_mp.unchanged_except(&old(self).snapshot_k().ctn_mp, p)
+                    &&& krnl.ctn_mp.spec_index(p).view() == old(self).snapshot_k().ctn_mp.spec_index(p).view()
+                    &&& krnl.ctn_mp.spec_index(p).view_rodata() == old(self).snapshot_k().ctn_mp.spec_index(p).view_rodata()
+                    &&& krnl.ctn_mp.spec_index(p).view_ghost() == old(self).snapshot_k().ctn_mp.spec_index(p).view_ghost()
+                    &&& krnl.ctn_mp.spec_index(p).being_killed() == old(self).snapshot_k().ctn_mp.spec_index(p).being_killed()
+                    &&& (krnl.ctn_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().ctn_mp.spec_index(p).locking_thread() is Write)
+                    &&& (krnl.ctn_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().ctn_mp.spec_index(p).locking_thread() is Read)
+                },
+                None => krnl.ctn_mp == old(self).snapshot_k().ctn_mp,
+            },
+            match process {
+                Some(p) => {
+                    &&& krnl.prc_mp.unchanged_except(&old(self).snapshot_k().prc_mp, p)
+                    &&& krnl.prc_mp.spec_index(p).view() == old(self).snapshot_k().prc_mp.spec_index(p).view()
+                    &&& krnl.prc_mp.spec_index(p).view_rodata() == old(self).snapshot_k().prc_mp.spec_index(p).view_rodata()
+                    &&& krnl.prc_mp.spec_index(p).view_ghost() == old(self).snapshot_k().prc_mp.spec_index(p).view_ghost()
+                    &&& krnl.prc_mp.spec_index(p).being_killed() == old(self).snapshot_k().prc_mp.spec_index(p).being_killed()
+                    &&& (krnl.prc_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().prc_mp.spec_index(p).locking_thread() is Write)
+                    &&& (krnl.prc_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().prc_mp.spec_index(p).locking_thread() is Read)
+                },
+                None => krnl.prc_mp == old(self).snapshot_k().prc_mp,
+            },
+            match thread {
+                Some(p) => {
+                    &&& krnl.thr_mp.unchanged_except(&old(self).snapshot_k().thr_mp, p)
+                    &&& krnl.thr_mp.spec_index(p).view() == old(self).snapshot_k().thr_mp.spec_index(p).view()
+                    &&& krnl.thr_mp.spec_index(p).being_killed() == old(self).snapshot_k().thr_mp.spec_index(p).being_killed()
+                    &&& (krnl.thr_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().thr_mp.spec_index(p).locking_thread() is Write)
+                    &&& (krnl.thr_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().thr_mp.spec_index(p).locking_thread() is Read)
+                },
+                None => krnl.thr_mp == old(self).snapshot_k().thr_mp,
+            },
+            match endpoint {
+                Some(p) => {
+                    &&& krnl.ep_mp.unchanged_except(&old(self).snapshot_k().ep_mp, p)
+                    &&& krnl.ep_mp.spec_index(p).view() == old(self).snapshot_k().ep_mp.spec_index(p).view()
+                    &&& krnl.ep_mp.spec_index(p).being_killed() == old(self).snapshot_k().ep_mp.spec_index(p).being_killed()
+                    &&& (krnl.ep_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().ep_mp.spec_index(p).locking_thread() is Write)
+                    &&& (krnl.ep_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().ep_mp.spec_index(p).locking_thread() is Read)
+                },
+                None => krnl.ep_mp == old(self).snapshot_k().ep_mp,
+            },
+            match table {
+                Some(p) => {
+                    &&& krnl.pt_mp.unchanged_except(&old(self).snapshot_k().pt_mp, p)
+                    &&& krnl.pt_mp.spec_index(p).view() == old(self).snapshot_k().pt_mp.spec_index(p).view()
+                    &&& (krnl.pt_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().pt_mp.spec_index(p).locking_thread() is Write)
+                    &&& (krnl.pt_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().pt_mp.spec_index(p).locking_thread() is Read)
+                    &&& forall|q: RwLockPageTableRoot| #![trigger krnl.pt_lower.view().spec_index(q)] q != p ==> krnl.pt_lower.view().spec_index(q) == old(self).snapshot_k().pt_lower.view().spec_index(q)
+                    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_4k() == pagetable_c(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_4k()
+                    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_2m() == pagetable_c(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_2m()
+                    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_1g() == pagetable_c(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_1g()
+                },
+                None => {
+                    &&& krnl.pt_mp == old(self).snapshot_k().pt_mp
+                    &&& krnl.pt_lower == old(self).snapshot_k().pt_lower
+                },
+            },
+        ensures
+            kernel_k_to_nonlock_kernel_u(*krnl) == old(self).nonlock_snapshot_u(),
+            old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
+            final(self).view() == old(self).view(),
+            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
+            final(self).nonlock_view() == old(self).nonlock_view(),
+            final(self).snapshot_u() == old(self).snapshot_u(),
+            final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
+            final(self).snapshot_k() == *krnl,
+            kernel_endpoint_nonlock_fields_unchanged(final(self).snapshot_k().ep_mp, krnl.ep_mp),
+    {
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&self.snapshot_k(), krnl)) by {
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
             reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);

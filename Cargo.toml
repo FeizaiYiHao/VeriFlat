@@ -11,6 +11,8 @@ members = [
     "crates/veriflat_syscall_new_process",
     "crates/veriflat_syscall_new_container",
     "crates/veriflat_syscall_mmap_4k",
+    "crates/veriflat_syscall_iommu_map_4k",
+    "crates/veriflat_syscall_iommu_unmap_4k",
     "crates/veriflat_syscall_unmap_4k",
     "crates/veriflat_syscall_ipc",
     "crates/veriflat_syscall_schedule",

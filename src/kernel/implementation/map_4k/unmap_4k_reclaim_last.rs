@@ -299,6 +299,7 @@ pub fn reclaim_last_iommu_4k_mapping(
         page_perm.view().state() is WriteLock,
         page_perm.view().thread_id() == old(lctx).thread_id(),
         page_perm.view().lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread()->Write_lock_id,
+        iommu_table_tlb_entries_present(old(krnl).iommu_tlb, old(krnl).irt.view(), old(krnl).it_mp, iommu_table),
     ensures
         final(steps).view() == old(steps).view(),
         final(steps).nonlock_view() == old(steps).nonlock_view(),
@@ -312,6 +313,7 @@ pub fn reclaim_last_iommu_4k_mapping(
         kernel_container_nonlock_fields_and_quotas_unchanged(&final(steps).snapshot_k(), final(krnl)),
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
         final(krnl).inv(),
+        iommu_table_tlb_entries_present(final(krnl).iommu_tlb, final(krnl).irt.view(), final(krnl).it_mp, iommu_table),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Page(page_ptr2page_index(page_ptr)), TypedHeldLock { lock_id: final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), mode: TypedLockMode::Write }),
         final(lctx).cpu_id() == old(lctx).cpu_id(),

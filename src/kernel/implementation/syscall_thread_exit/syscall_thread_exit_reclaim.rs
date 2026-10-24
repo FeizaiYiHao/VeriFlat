@@ -379,6 +379,11 @@ fn thread_exit_detach_process_functions(krnl: &mut KernelK, process_ptr: RwLockP
             ==> final(krnl).iommu_tlb.view()[pci_bdf_did(b, d, f)] == if old(krnl).irt.view().spec_index_owner(b, d, f) == process_ptr && old(krnl).irt.view().spec_index_iommu_root(b, d, f) is Some {
                 SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }
             } else { old(krnl).iommu_tlb.view()[pci_bdf_did(b, d, f)] },
+        forall|b: usize, d: usize, f: usize| #![trigger final(krnl).iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f))] pci_bdf_valid(b, d, f)
+            ==> final(krnl).iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f)) == (old(krnl).iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f))
+                && !(old(krnl).irt.view().spec_index_owner(b, d, f) == process_ptr && old(krnl).irt.view().spec_index_iommu_root(b, d, f) is Some)),
+        forall|did: VtdDomainId| #![trigger final(krnl).iommu_tlb.context_cache().dom().contains(did)] final(krnl).iommu_tlb.context_cache().dom().contains(did)
+            ==> old(krnl).iommu_tlb.context_cache().dom().contains(did) && final(krnl).iommu_tlb.context_cache()[did] == old(krnl).iommu_tlb.context_cache()[did],
 {
     let mut bus: usize = 0;
     let mut device: usize = 0;
@@ -410,6 +415,12 @@ fn thread_exit_detach_process_functions(krnl: &mut KernelK, process_ptr: RwLockP
                     && old(krnl).irt.view().spec_index_owner(b, d, f) == process_ptr && old(krnl).irt.view().spec_index_iommu_root(b, d, f) is Some {
                     SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }
                 } else { old(krnl).iommu_tlb.view()[pci_bdf_did(b, d, f)] },
+            forall|b: usize, d: usize, f: usize| #![trigger krnl.iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f))] pci_bdf_valid(b, d, f)
+                ==> krnl.iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f)) == (old(krnl).iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f))
+                    && !((b < bus || (b == bus && (d < device || (d == device && f < function)))) && old(krnl).irt.view().spec_index_owner(b, d, f) == process_ptr
+                    && old(krnl).irt.view().spec_index_iommu_root(b, d, f) is Some)),
+            forall|did: VtdDomainId| #![trigger krnl.iommu_tlb.context_cache().dom().contains(did)] krnl.iommu_tlb.context_cache().dom().contains(did)
+                ==> old(krnl).iommu_tlb.context_cache().dom().contains(did) && krnl.iommu_tlb.context_cache()[did] == old(krnl).iommu_tlb.context_cache()[did],
         decreases PCI_BUS_COUNT - bus, PCI_DEVICE_COUNT - device, PCI_FUNCTION_COUNT - function,
     {
         let owner = krnl.irt.borrow(Tracked(irt_lock_perm)).owner(bus, device, function);

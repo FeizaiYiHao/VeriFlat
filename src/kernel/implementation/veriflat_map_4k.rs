@@ -19,6 +19,9 @@ pub use map_4k::share_mapping_4k::{
 };
 #[cfg(verus_keep_ghost)]
 pub use map_4k::share_mapping_4k::{share_mapping_4k_range_owner_compatible_own_container, share_mapping_4k_source_range_present_from_wf};
+pub use map_4k::map_iommu_4k_directory::install_staged_4k_iommu_table_page;
+pub use map_4k::map_iommu_4k::map_shared_page_into_iommu_4k;
+pub use map_4k::map_iommu_4k_spec::*;
 
 verus! {
 global size_of usize == 8;

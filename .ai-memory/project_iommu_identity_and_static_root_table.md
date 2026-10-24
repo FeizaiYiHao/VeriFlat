@@ -45,23 +45,40 @@ metadata:
   bytes total.
 - The object must remain pinned after its embedded addresses are initialized;
   never construct or return it as a large stack value.
-- Boot code still needs to establish that hardware `CAP.ND` supports the full
-  active BDF-derived DID range.
+- `boot/kernel/src/iommu.rs::init_unit` checks `CAP.ND >= 6` (16-bit DIDs),
+  `CAP.CM = 0`, 4-level SAGAW, `ECAP.C` (or hypervisor), and `ECAP.IR`, and
+  panics otherwise.
 
 ## IOTLB
 
-- The current model has one global `IommuTLB` for one VT-d remapping unit. Its
-  domain map is keyed by the BDF-derived DID; each domain reuses the CPU
-  `SingleTLB` (4K/2M/1G maps keyed by IOVA).
-- `iommu_tlb_wf_spec` only constrains cached translations: a BDF with no present
-  root has an empty domain IOTLB even though ownership remains assigned, and a
-  present root's domain IOTLB is a `single_tlb_subset_of_pagetable` of the owner's
-  IOMMU table. Owner/table/root agreement lives in `iommu_root_table_process_wf`.
-- The root-table lock also guards the IOTLB. The trusted primitive
-  `IommuTLB::invalidate_domain` empties one domain; there is no IOTLB dirty
-  bitmap.
-- Context-cache state, ATS/device-TLB state, and DMA reverse-mapping/refcount
-  rules remain future work unless live code now says otherwise.
+- `IommuTLB` holds one logical IOTLB and one logical context cache for all
+  remapping units (they share the one root table). Both are `KernelK`-level,
+  outside the root-table lock. The IOTLB domain map is keyed by the BDF-derived
+  DID; each domain reuses the CPU `SingleTLB` (4K/2M/1G maps keyed by IOVA).
+  `context_cache: Map<VtdDomainId, PageTableRoot>` is partial: a key means a
+  unit may cache that DID's context entry, the value is its root.
+- `iommu_tlb_wf_spec` only constrains cached state: a BDF with no present root
+  has an empty domain IOTLB even though ownership remains assigned; a present
+  root's domain IOTLB is a `single_tlb_subset_of_pagetable` of the owner's
+  IOMMU table, and a `single_tlb_subset_of_present_pagetable` when that table
+  is not write-locked; a cached context entry equals the current present root.
+  Owner/table/root agreement lives in `iommu_root_table_process_wf`.
+- The IOMMU table's write lock is the IOTLB dirty marker (`iommu_table_lock_wf`
+  is deleted). A write holder may hide leaves of an attached table;
+  `iommu_table_tlb_entries_present(iommu_tlb, root_table, it_mp, it)` is the
+  per-table flushed fact, and `kernel_step_boundary_raw` and the step-boundary
+  wrappers keep it for write-held IOMMU tables (TCB: hidden leaves are never
+  re-cached, `CAP.CM = 0`).
+- The trusted primitive `IommuTLB::invalidate_domain`, called under the
+  root-table lock, drops the DID's context-cache key and empties its IOTLB
+  domain together; the two detach helpers ensure the same.
+  `IommuTLB::flush_all_iotlb` empties every domain, keeps the context cache,
+  and takes no kernel lock (boot hook `veriflat_iommu_flush_all_iotlb` shares
+  a platform spinlock with `veriflat_iommu_invalidate_domain`); the K helper
+  `flush_iommu_tlb_for_table` wraps it and establishes the flushed fact.
+- `CAP.CM = 0`, so only present roots and leaves are cached; attach and IOMMU
+  map need no invalidation. Device-TLB is excluded by TT = 0
+  (`IommuRootTable::wf`); paging-structure caches are folded into `SingleTLB`.
 
 ## Shared page-table machinery
 
@@ -71,21 +88,23 @@ metadata:
   `Allocated4k{PageTable{pagetable_root, table_type}}`, so `pagetable_pages_wf`,
   `pagetables_inv`, `kernel_pagetable_nonlock_fields_unchanged`, and
   `pagetable_map_user_view` are generic over the table type.
-- IOMMU tables are still only created empty and there is no IOMMU map path.
-  The only IOMMU unmap path is thread exit's reclaim, under
-  `wlock_iommu_table`: `clear_iommu_4k_mapping_present` hides a leaf, and
-  `reclaim_unmapped_iommu_4k_page` removes it and frees its page.
-  `iommu_table_perms_wf` allows hidden leaves only while the table is
-  write-locked, and `iommu_table_lock_wf` keeps a write-locked IOMMU table free
-  of attached functions, so its leaves need no IOTLB flush.
+- IOMMU tables are created empty. `syscall_iommu_map_4k` maps pages already
+  mapped in the caller's CPU page table into its IOMMU table (spec final, exec
+  in progress). Unmap paths hide leaves with `clear_iommu_4k_mapping_present`
+  under `wlock_iommu_table`, flush once with `flush_iommu_tlb_for_table`, then
+  remove them with `reclaim_unmapped_iommu_4k_page`: `syscall_iommu_unmap_4k`,
+  and the thread-exit and kill-process reclaim. `iommu_table_perms_wf` allows
+  hidden leaves only while the table is write-locked.
 - Pages count IOMMU references in `Page.iommu_mappings`; `ref_count` is
   `mappings.len() + iommu_mappings.len()`, and `page_iommu_table_wf` ties the
-  set to the IOMMU tables' 4K leaves.
+  set to the IOMMU tables' leaves.
 
 Primary code: `src/iommu/root_table.rs`, `src/iommu/iotlb.rs`,
 `src/kernel/memory_management/pages_pagetable_spec.rs`,
 `src/kernel/process_management/process_pci_function_spec.rs`,
 `src/kernel/iommu_tlb_management/iotlb_wf_spec.rs`,
 `src/kernel/iommu_tlb_management/iommu_subsystem_mutation.rs`,
-`src/kernel/implementation/syscall_pci/`, and
-`src/kernel/implementation/map_4k/unmap_iommu_4k_*.rs`.
+`src/kernel/implementation/syscall_pci/`,
+`src/kernel/implementation/syscall_iommu_map_4k/`,
+`src/kernel/implementation/syscall_iommu_unmap_4k/`, and
+`src/kernel/implementation/map_4k/{map_iommu_4k,unmap_iommu_4k,flush_iommu_tlb}*.rs`.

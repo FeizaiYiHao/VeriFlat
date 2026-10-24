@@ -615,6 +615,7 @@ pub open spec fn boot_kernel_state(
     &&& forall|cpu_id: CpuId, pcid: Pcid| #![trigger krnl.cpu_tlb.spec_index((cpu_id, pcid))] index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) ==> krnl.cpu_tlb.spec_index((cpu_id, pcid)).is_empty()
     &&& krnl.iommu_tlb.inv()
     &&& forall|did: VtdDomainId| #![trigger krnl.iommu_tlb.spec_index(did)] vtd_domain_id_valid(did) ==> krnl.iommu_tlb.spec_index(did).is_empty()
+    &&& krnl.iommu_tlb.context_cache() == Map::<VtdDomainId, PageTableRoot>::empty()
     &&& krnl.irt.inv()
     &&& krnl.irt.locking_thread() is None
     &&& !krnl.irt.locked()
@@ -1387,7 +1388,6 @@ proof fn boot_kernel_inv_eof(
     assert(iommu_root_table_process_wf(krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { reveal(iommu_root_table_process_wf); };
     assert(process_pci_function_ownership_wf(krnl.irt.view(), krnl.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
     assert(iommu_tlb_wf_spec(krnl.iommu_tlb, krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { reveal(iommu_tlb_wf_spec); };
-    assert(iommu_table_lock_wf(krnl.irt.view(), krnl.prc_mp, krnl.it_mp)) by { reveal(iommu_table_lock_wf); };
     assert(cpu_dirty_map_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, krnl.cpu_arr, krnl.cpu_tlb, krnl.pt_mp, krnl.pcid_needflush)) by {
         reveal(cpu_dirty_map_contains_container_processes);
         reveal(cpu_dirty_map_proc_pcid_match);

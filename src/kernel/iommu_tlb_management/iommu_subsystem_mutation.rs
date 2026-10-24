@@ -2,7 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// Detaches one B/D/F under the held root-table lock, hands its slot to `owner`, and flushes its IOTLB domain.
+/// Detaches one B/D/F under the held root-table lock, hands its slot to `owner`, drops its cached context entry, and flushes its IOTLB domain.
 pub fn iommu_root_table_reassign_detached(
     irt: &mut IommuRootTableLock, iommu_tlb: &mut IommuTLB, bus: usize, device: usize, function: usize, owner: RwLockProcessPtr,
     Tracked(lctx): Tracked<&LocalContext>, Tracked(irt_lock_perm): Tracked<&LockPerm>,
@@ -29,6 +29,7 @@ pub fn iommu_root_table_reassign_detached(
         },
         final(iommu_tlb).inv(),
         final(iommu_tlb).view() == old(iommu_tlb).view().insert(pci_bdf_did(bus, device, function), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
+        final(iommu_tlb).context_cache() == old(iommu_tlb).context_cache().remove(pci_bdf_did(bus, device, function)),
 {
     assert(irt.wlocked_by(lctx)) by { reveal(iommu_root_table_typed_lock_map_aligned); };
     let table = irt.borrow_mut(Tracked(lctx), Tracked(irt_lock_perm));
@@ -39,7 +40,7 @@ pub fn iommu_root_table_reassign_detached(
     proof { assert(iommu_root_table_typed_lock_map_aligned(*irt, lctx.iommu_root_table_lock_map(), lctx.thread_id())) by { reveal(iommu_root_table_typed_lock_map_aligned); }; }
 }
 
-/// Detaches one B/D/F under the held root-table lock and flushes its IOTLB domain; its owner is untouched.
+/// Detaches one B/D/F under the held root-table lock, drops its cached context entry, and flushes its IOTLB domain; its owner is untouched.
 pub fn iommu_root_table_detach(
     irt: &mut IommuRootTableLock, iommu_tlb: &mut IommuTLB, bus: usize, device: usize, function: usize, Tracked(lctx): Tracked<&LocalContext>,
     Tracked(irt_lock_perm): Tracked<&LockPerm>,
@@ -65,6 +66,7 @@ pub fn iommu_root_table_detach(
             ==> final(irt).view().spec_index_iommu_root(b, d, f) == if (b, d, f) == (bus, device, function) { None } else { old(irt).view().spec_index_iommu_root(b, d, f) },
         final(iommu_tlb).inv(),
         final(iommu_tlb).view() == old(iommu_tlb).view().insert(pci_bdf_did(bus, device, function), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
+        final(iommu_tlb).context_cache() == old(iommu_tlb).context_cache().remove(pci_bdf_did(bus, device, function)),
 {
     assert(irt.wlocked_by(lctx)) by { reveal(iommu_root_table_typed_lock_map_aligned); };
     let table = irt.borrow_mut(Tracked(lctx), Tracked(irt_lock_perm));
@@ -75,6 +77,7 @@ pub fn iommu_root_table_detach(
 }
 
 /// Points one B/D/F's context entry at `root` under the held root-table lock; owners are untouched.
+/// Needs no invalidation: a not-present entry is never cached (`CAP.CM = 0`).
 pub fn iommu_root_table_attach(
     irt: &mut IommuRootTableLock, bus: usize, device: usize, function: usize, root: PageTableRoot, Tracked(lctx): Tracked<&LocalContext>,
     Tracked(irt_lock_perm): Tracked<&LockPerm>,

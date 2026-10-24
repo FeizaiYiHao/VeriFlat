@@ -515,9 +515,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         }
         None
     }
-}
 
-impl PageTable<PT_TYPE> {
     /// Check whether every address in a 4K range has a user-present leaf.
     ///
     /// This scans only the page table and does not mutate any page-table state.
@@ -607,9 +605,7 @@ impl PageTable<PT_TYPE> {
         }
         true
     }
-}
 
-impl PageTable<PT_TYPE> {
     /// Every 4K slot in the range is available for a new leaf. Missing
     /// directory levels are allowed; existing 1G, 2M, and 4K leaves are not.
     pub open spec fn spec_mapping_4k_va_range_buildable(&self, range: &VaRange4K) -> bool {

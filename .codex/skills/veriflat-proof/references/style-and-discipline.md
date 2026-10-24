@@ -151,7 +151,8 @@
   the exact inverse for thread exit, process reclaim, or endpoint release;
   new variants or callers require explicit authorization. The other approved
   trusted primitives are the hardware TLB invalidations
-  `CpuTLB::flush_all_local_pcids` and `IommuTLB::invalidate_domain`.
+  `CpuTLB::flush_all_local_pcids`, `IommuTLB::invalidate_domain`, and
+  `IommuTLB::flush_all_iotlb`.
   Authorized temporary diagnostics must be removed immediately.
 - Treat existing `external_body` contracts, mathematical axioms, and permission
   construction with `Tracked::assume_new()` as trust boundaries. Do not replace

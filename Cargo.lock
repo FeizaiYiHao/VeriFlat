@@ -124,6 +124,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "veriflat_syscall_iommu_map_4k"
+version = "0.1.0"
+dependencies = [
+ "veriflat_alloc_page",
+ "veriflat_kernel_core",
+ "veriflat_map_4k",
+ "vstd",
+]
+
+[[package]]
+name = "veriflat_syscall_iommu_unmap_4k"
+version = "0.1.0"
+dependencies = [
+ "veriflat_alloc_page",
+ "veriflat_kernel_core",
+ "veriflat_map_4k",
+ "vstd",
+]
+
+[[package]]
 name = "veriflat_syscall_ipc"
 version = "0.1.0"
 dependencies = [

@@ -201,6 +201,10 @@ pub(crate) fn kill_reassign_scan(krnl: &mut KernelK, Tracked(lctx): Tracked<&Loc
         forall|b: usize, d: usize, f: usize| #![trigger final(krnl).iommu_tlb.view()[pci_bdf_did(b, d, f)]] pci_bdf_valid(b, d, f) ==> final(krnl).iommu_tlb.view()[pci_bdf_did(b, d, f)]
             == if old(krnl).irt.view().spec_index_owner(b, d, f) == target { SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() } }
             else { old(krnl).iommu_tlb.view()[pci_bdf_did(b, d, f)] },
+        forall|b: usize, d: usize, f: usize| #![trigger final(krnl).iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f))] pci_bdf_valid(b, d, f) ==> {
+            &&& final(krnl).iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f)) == (old(krnl).iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f)) && old(krnl).irt.view().spec_index_owner(b, d, f) != target)
+            &&& final(krnl).iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f)) ==> final(krnl).iommu_tlb.context_cache()[pci_bdf_did(b, d, f)] == old(krnl).iommu_tlb.context_cache()[pci_bdf_did(b, d, f)]
+        },
         !ret.0 ==> final(krnl).irt == old(krnl).irt && final(krnl).iommu_tlb == old(krnl).iommu_tlb,
         !ret.0 ==> forall|b: usize, d: usize, f: usize| #![trigger old(krnl).irt.view().spec_index_owner(b, d, f)] pci_bdf_valid(b, d, f) ==> old(krnl).irt.view().spec_index_owner(b, d, f) != target,
         ret.0 ==> pci_bdf_valid(ret.1.view().0, ret.1.view().1, ret.1.view().2) && old(krnl).irt.view().spec_index_owner(ret.1.view().0, ret.1.view().1, ret.1.view().2) == target,
@@ -239,6 +243,11 @@ pub(crate) fn kill_reassign_scan(krnl: &mut KernelK, Tracked(lctx): Tracked<&Loc
                 == if (b < bus || (b == bus && (d < device || (d == device && f < function)))) && old(krnl).irt.view().spec_index_owner(b, d, f) == target {
                     SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }
                 } else { old(krnl).iommu_tlb.view()[pci_bdf_did(b, d, f)] },
+            forall|b: usize, d: usize, f: usize| #![trigger krnl.iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f))] pci_bdf_valid(b, d, f) ==> {
+                let moves = (b < bus || (b == bus && (d < device || (d == device && f < function)))) && old(krnl).irt.view().spec_index_owner(b, d, f) == target;
+                &&& krnl.iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f)) == (old(krnl).iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f)) && !moves)
+                &&& krnl.iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f)) ==> krnl.iommu_tlb.context_cache()[pci_bdf_did(b, d, f)] == old(krnl).iommu_tlb.context_cache()[pci_bdf_did(b, d, f)]
+            },
             !moved ==> krnl.irt == old(krnl).irt && krnl.iommu_tlb == old(krnl).iommu_tlb,
             !moved ==> forall|b: usize, d: usize, f: usize| #![trigger old(krnl).irt.view().spec_index_owner(b, d, f)]
                 pci_bdf_valid(b, d, f) && (b < bus || (b == bus && (d < device || (d == device && f < function)))) ==> old(krnl).irt.view().spec_index_owner(b, d, f) != target,

@@ -95,6 +95,53 @@ pub fn page_array_add_4k_mapping(page_array: &mut PageLockedArray, page_index: P
     }
 }
 
+/// IOMMU mirror of `page_array_add_4k_mapping`: record `(iommu_table_ptr, iova)` in the page's `iommu_mappings`.
+pub fn page_array_add_4k_iommu_mapping(page_array: &mut PageLockedArray, page_index: PageIndex, iommu_table_ptr: RwLockPageTableRoot, iova: VAddr, Tracked(lctx): Tracked<&LocalContext>, Tracked(page_lock_perm): Tracked<&LockPerm>)
+    requires
+        page_array_wf(*old(page_array)),
+        hugepage_2m_wf(*old(page_array)),
+        hugepage_1g_wf(*old(page_array)),
+        index_valid(NUM_PAGES, page_index),
+        old(page_array).typed_lock_map_aligned(lctx.page_lock_map(), lctx.thread_id()),
+        typed_lock_map_contains_mode(lctx.page_lock_map(), page_index, TypedLockMode::Write),
+        page_lock_perm.state() is WriteLock,
+        page_lock_perm.thread_id() == lctx.thread_id(),
+        page_lock_perm.lock_id() == old(page_array).spec_index(page_index).view().locking_thread()->Write_lock_id,
+        old(page_array).spec_index(page_index).view().view().state is Mapped4k,
+        iova_4k_valid(iova),
+        !old(page_array).spec_index(page_index).view().view().iommu_mappings().contains((iommu_table_ptr, iova)),
+        old(page_array).spec_index(page_index).view().view().ref_count < usize::MAX,
+    ensures
+        page_array_wf(*final(page_array)),
+        hugepage_2m_wf(*final(page_array)),
+        hugepage_1g_wf(*final(page_array)),
+        final(page_array).entries_unchanged_except(old(page_array), page_index),
+        final(page_array).typed_lock_map_aligned(lctx.page_lock_map(), lctx.thread_id()),
+        final(page_array).spec_index(page_index).view().locking_thread() == old(page_array).spec_index(page_index).view().locking_thread(),
+        final(page_array).spec_index(page_index).view().being_killed() == old(page_array).spec_index(page_index).view().being_killed(),
+        final(page_array).spec_index(page_index).view().view().iommu_mappings() == old(page_array).spec_index(page_index).view().view().iommu_mappings().insert((iommu_table_ptr, iova)),
+        final(page_array).spec_index(page_index).view().view().mappings() == old(page_array).spec_index(page_index).view().view().mappings(),
+        final(page_array).spec_index(page_index).view().view().ref_count == old(page_array).spec_index(page_index).view().view().ref_count + 1,
+        final(page_array).spec_index(page_index).view().view().addr == old(page_array).spec_index(page_index).view().view().addr,
+        final(page_array).spec_index(page_index).view().view().state == old(page_array).spec_index(page_index).view().view().state,
+        final(page_array).spec_index(page_index).view().view().is_io_page == old(page_array).spec_index(page_index).view().view().is_io_page,
+        final(page_array).spec_index(page_index).view().view().owning_container == old(page_array).spec_index(page_index).view().view().owning_container,
+        final(page_array).spec_index(page_index).view().view().free_list_node_storage == old(page_array).spec_index(page_index).view().view().free_list_node_storage,
+        final(page_array).spec_index(page_index).view().view().free_list == old(page_array).spec_index(page_index).view().view().free_list,
+        final(page_array).spec_index(page_index).view().view().perm_4k.view() == old(page_array).spec_index(page_index).view().view().perm_4k.view(),
+        final(page_array).spec_index(page_index).view().view().perm_2m.view() == old(page_array).spec_index(page_index).view().view().perm_2m.view(),
+        final(page_array).spec_index(page_index).view().view().perm_1g.view() == old(page_array).spec_index(page_index).view().view().perm_1g.view(),
+{
+    assert(page_array.inv() && page_array.spec_index(page_index).view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, page_index); };
+    let page = page_array.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
+    add_4k_iommu_mapping(page, iommu_table_ptr, iova);
+    proof {
+        assert(page_array_wf(*page_array)) by { reveal(page_array_wf); };
+        assert(hugepage_2m_wf(*page_array)) by { hugepage_2m_wf_preserved_for_page_state_eq(*old(page_array), *page_array); };
+        assert(hugepage_1g_wf(*page_array)) by { hugepage_1g_wf_preserved_for_page_state_eq(*old(page_array), *page_array); };
+    }
+}
+
 /// Install the present 4K leaf `target_entry` in the 2M window of `indices` of page table `pagetable_ptr`: this thread holds
 /// the table's big read lock and that window lock; only the window half `pt_lower[pagetable_ptr]` changes.
 pub fn pagetable_map_insert_4k(
@@ -1149,6 +1196,247 @@ pub fn iommu_table_map_unmap_4k_kernel(iommu_table_map: &mut IommuTableLockedMap
     assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).inv()) by { iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
     let iommu_table = iommu_table_map.borrow_mut_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm));
     iommu_table.unmap_4k_page_kernel(indices.0, indices.1, indices.2, indices.3, target_l1_ptr, Tracked(&mut *lctx));
+    proof { assert(iommu_table_perms_wf(*iommu_table_map)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }; }
+}
+
+/// IOMMU mirror of `pagetable_map_insert_4k_wlocked`: install the present 4K leaf `target_entry` at `indices` of the write-held
+/// IOMMU table `iommu_table_ptr`, whose L1 page `target_l1_ptr` is already linked.
+pub fn iommu_table_map_insert_4k(
+    iommu_table_map: &mut IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index, L1Index), target_l1_ptr: PageMapPtr, target_entry: &MapEntry,
+    Tracked(lctx): Tracked<&mut LocalContext>, Tracked(iommu_table_lock_perm): Tracked<&LockPerm>,
+)
+    requires
+        iommu_table_perms_wf(*old(iommu_table_map)),
+        old(iommu_table_map).dom().contains(iommu_table_ptr),
+        old(iommu_table_map).typed_lock_map_aligned(old(lctx).iommu_table_lock_map(), old(lctx).thread_id()),
+        typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), iommu_table_ptr, TypedLockMode::Write),
+        iommu_table_lock_perm.state() is WriteLock,
+        iommu_table_lock_perm.thread_id() == old(lctx).thread_id(),
+        iommu_table_lock_perm.lock_id() == old(iommu_table_map).spec_index(iommu_table_ptr).locking_thread()->Write_lock_id,
+        old(lctx).kernel_view_locking_state() is Acquire,
+        old(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_l4_end <= indices.0 && pei_valid(indices.0),
+        pei_valid(indices.1),
+        pei_valid(indices.2),
+        pei_valid(indices.3),
+        page_table_key_4k_valid::<IOMMU_TYPE>(spec_index2va(indices)),
+        old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some,
+        old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == target_l1_ptr,
+        old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_4k_l1(indices.0, indices.1, indices.2, indices.3) is None
+            || !old(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_4k().dom().contains(spec_index2va(indices)),
+        page_ptr_valid(target_entry.addr),
+        target_entry.present,
+    ensures
+        iommu_table_perms_wf(*final(iommu_table_map)),
+        final(iommu_table_map).perms_wf(),
+        final(iommu_table_map).unchanged_except(old(iommu_table_map), iommu_table_ptr),
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() is Release,
+        typed_lock_maps_unchanged(old(lctx), final(lctx)),
+        final(iommu_table_map).typed_lock_map_aligned(final(lctx).iommu_table_lock_map(), final(lctx).thread_id()),
+        final(iommu_table_map).lock_id_by_key(iommu_table_ptr) == old(iommu_table_map).lock_id_by_key(iommu_table_ptr),
+        final(iommu_table_map).spec_index(iommu_table_ptr).locking_thread() == old(iommu_table_map).spec_index(iommu_table_ptr).locking_thread(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).being_killed() == old(iommu_table_map).spec_index(iommu_table_ptr).being_killed(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).wlocked_by(final(lctx)),
+        final(iommu_table_map).spec_index(iommu_table_ptr).inv(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_l4_end == old(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_l4_end,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().page_closure() == old(iommu_table_map).spec_index(iommu_table_ptr).view().page_closure(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_4k() == old(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_4k().insert(spec_index2va(indices), *target_entry),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_2m() == old(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_2m(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_1g() == old(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_1g(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_entries == old(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_entries,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().cr3 == old(iommu_table_map).spec_index(iommu_table_ptr).view().cr3,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().pcid == old(iommu_table_map).spec_index(iommu_table_ptr).view().pcid,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr == old(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr,
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
+            #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(l4i, l3i, l2i)]
+            old(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
+                ==> final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(l4i, l3i, l2i) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(l4i, l3i, l2i),
+{
+    assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).inv()) by { iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
+    let iommu_table = iommu_table_map.borrow_mut_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm));
+    iommu_table.map_4k_page(indices.0, indices.1, indices.2, indices.3, target_l1_ptr, target_entry, Tracked(&mut *lctx));
+    proof { assert(iommu_table_perms_wf(*iommu_table_map)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }; }
+}
+
+/// IOMMU mirror of `pagetable_map_create_entry_l4`: link the empty L3 page `page_map_ptr` at L4 index `indices.0` of the write-held
+/// IOMMU table `iommu_table_ptr`; every mapping stays.
+pub fn iommu_table_map_create_entry_l4(
+    iommu_table_map: &mut IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot, indices: (L4Index, L3Index), page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<PageMap>>,
+    Tracked(lctx): Tracked<&mut LocalContext>, Tracked(iommu_table_lock_perm): Tracked<&LockPerm>,
+)
+    requires
+        iommu_table_perms_wf(*old(iommu_table_map)),
+        old(iommu_table_map).dom().contains(iommu_table_ptr),
+        old(iommu_table_map).typed_lock_map_aligned(old(lctx).iommu_table_lock_map(), old(lctx).thread_id()),
+        typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), iommu_table_ptr, TypedLockMode::Write),
+        iommu_table_lock_perm.state() is WriteLock,
+        iommu_table_lock_perm.thread_id() == old(lctx).thread_id(),
+        iommu_table_lock_perm.lock_id() == old(iommu_table_map).spec_index(iommu_table_ptr).locking_thread()->Write_lock_id,
+        old(lctx).kernel_view_locking_state() is Acquire,
+        old(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_l4_end <= indices.0 && pei_valid(indices.0),
+        pei_valid(indices.1),
+        old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(indices.0) is None,
+        page_ptr_valid(page_map_ptr),
+        !old(iommu_table_map).spec_index(iommu_table_ptr).view().page_closure().contains(page_map_ptr),
+        page_map_perm.addr() == page_map_ptr,
+        page_map_perm.is_init(),
+        page_map_perm.value().wf(),
+        forall|i: usize| #![trigger page_map_perm.value().spec_index(i)] pei_valid(i) ==> page_map_perm.value().spec_index(i).is_empty(),
+    ensures
+        iommu_table_perms_wf(*final(iommu_table_map)),
+        final(iommu_table_map).perms_wf(),
+        final(iommu_table_map).unchanged_except(old(iommu_table_map), iommu_table_ptr),
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() is Release,
+        typed_lock_maps_unchanged(old(lctx), final(lctx)),
+        final(iommu_table_map).typed_lock_map_aligned(final(lctx).iommu_table_lock_map(), final(lctx).thread_id()),
+        final(iommu_table_map).lock_id_by_key(iommu_table_ptr) == old(iommu_table_map).lock_id_by_key(iommu_table_ptr),
+        final(iommu_table_map).spec_index(iommu_table_ptr).locking_thread() == old(iommu_table_map).spec_index(iommu_table_ptr).locking_thread(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).being_killed() == old(iommu_table_map).spec_index(iommu_table_ptr).being_killed(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).inv(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_l4_end == old(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_l4_end,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().page_closure() == old(iommu_table_map).spec_index(iommu_table_ptr).view().page_closure().insert(page_map_ptr),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_4k() == old(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_4k(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_2m() == old(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_2m(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_1g() == old(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_1g(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_entries == old(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_entries,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().cr3 == old(iommu_table_map).spec_index(iommu_table_ptr).view().cr3,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().pcid == old(iommu_table_map).spec_index(iommu_table_ptr).view().pcid,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr == old(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(indices.0) is Some,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(indices.0)->0.addr == page_map_ptr,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(indices.0, indices.1) is None,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_1g_l3(indices.0, indices.1) is None,
+{
+    assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).inv()) by { iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
+    let iommu_table = iommu_table_map.borrow_mut_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm));
+    iommu_table.create_entry_l4(indices.0, indices.1, page_map_ptr, Tracked(page_map_perm), Tracked(&mut *lctx));
+    proof { assert(iommu_table_perms_wf(*iommu_table_map)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }; }
+}
+
+/// IOMMU mirror of `pagetable_map_create_entry_l3`: link the empty L2 page `page_map_ptr` at `indices` below the L3 page
+/// `target_l3_ptr` of the write-held IOMMU table `iommu_table_ptr`; every mapping stays.
+pub fn iommu_table_map_create_entry_l3(
+    iommu_table_map: &mut IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index), target_l3_ptr: PageMapPtr, page_map_ptr: PageMapPtr,
+    Tracked(page_map_perm): Tracked<PointsTo<PageMap>>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(iommu_table_lock_perm): Tracked<&LockPerm>,
+)
+    requires
+        iommu_table_perms_wf(*old(iommu_table_map)),
+        old(iommu_table_map).dom().contains(iommu_table_ptr),
+        old(iommu_table_map).typed_lock_map_aligned(old(lctx).iommu_table_lock_map(), old(lctx).thread_id()),
+        typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), iommu_table_ptr, TypedLockMode::Write),
+        iommu_table_lock_perm.state() is WriteLock,
+        iommu_table_lock_perm.thread_id() == old(lctx).thread_id(),
+        iommu_table_lock_perm.lock_id() == old(iommu_table_map).spec_index(iommu_table_ptr).locking_thread()->Write_lock_id,
+        old(lctx).kernel_view_locking_state() is Acquire,
+        old(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_l4_end <= indices.0 && pei_valid(indices.0),
+        pei_valid(indices.1),
+        pei_valid(indices.2),
+        old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(indices.0) is Some,
+        old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(indices.0)->0.addr == target_l3_ptr,
+        old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(indices.0, indices.1) is None,
+        old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_1g_l3(indices.0, indices.1) is None,
+        page_ptr_valid(page_map_ptr),
+        !old(iommu_table_map).spec_index(iommu_table_ptr).view().page_closure().contains(page_map_ptr),
+        page_map_perm.addr() == page_map_ptr,
+        page_map_perm.is_init(),
+        page_map_perm.value().wf(),
+        forall|i: usize| #![trigger page_map_perm.value().spec_index(i)] pei_valid(i) ==> page_map_perm.value().spec_index(i).is_empty(),
+    ensures
+        iommu_table_perms_wf(*final(iommu_table_map)),
+        final(iommu_table_map).perms_wf(),
+        final(iommu_table_map).unchanged_except(old(iommu_table_map), iommu_table_ptr),
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() is Release,
+        typed_lock_maps_unchanged(old(lctx), final(lctx)),
+        final(iommu_table_map).typed_lock_map_aligned(final(lctx).iommu_table_lock_map(), final(lctx).thread_id()),
+        final(iommu_table_map).lock_id_by_key(iommu_table_ptr) == old(iommu_table_map).lock_id_by_key(iommu_table_ptr),
+        final(iommu_table_map).spec_index(iommu_table_ptr).locking_thread() == old(iommu_table_map).spec_index(iommu_table_ptr).locking_thread(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).being_killed() == old(iommu_table_map).spec_index(iommu_table_ptr).being_killed(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).inv(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_l4_end == old(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_l4_end,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().page_closure() == old(iommu_table_map).spec_index(iommu_table_ptr).view().page_closure().insert(page_map_ptr),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_4k() == old(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_4k(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_2m() == old(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_2m(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_1g() == old(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_1g(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_entries == old(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_entries,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().cr3 == old(iommu_table_map).spec_index(iommu_table_ptr).view().cr3,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().pcid == old(iommu_table_map).spec_index(iommu_table_ptr).view().pcid,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr == old(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(indices.0) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(indices.0),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(indices.0, indices.1) is Some,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(indices.0, indices.1)->0.addr == page_map_ptr,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is None,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_2m_l2(indices.0, indices.1, indices.2) is None,
+{
+    assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).inv()) by { iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
+    let iommu_table = iommu_table_map.borrow_mut_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm));
+    iommu_table.create_entry_l3(indices.0, indices.1, indices.2, target_l3_ptr, page_map_ptr, Tracked(page_map_perm), Tracked(&mut *lctx));
+    proof { assert(iommu_table_perms_wf(*iommu_table_map)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }; }
+}
+
+/// IOMMU mirror of `pagetable_map_create_entry_l2_wlocked`: link the empty L1 page `page_map_ptr` at `indices` below the L2 page
+/// `target_l2_ptr` of the write-held IOMMU table `iommu_table_ptr`; every mapping stays.
+pub fn iommu_table_map_create_entry_l2(
+    iommu_table_map: &mut IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index), target_l2_ptr: PageMapPtr, page_map_ptr: PageMapPtr,
+    Tracked(page_map_perm): Tracked<PointsTo<PageMap>>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(iommu_table_lock_perm): Tracked<&LockPerm>,
+)
+    requires
+        iommu_table_perms_wf(*old(iommu_table_map)),
+        old(iommu_table_map).dom().contains(iommu_table_ptr),
+        old(iommu_table_map).typed_lock_map_aligned(old(lctx).iommu_table_lock_map(), old(lctx).thread_id()),
+        typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), iommu_table_ptr, TypedLockMode::Write),
+        iommu_table_lock_perm.state() is WriteLock,
+        iommu_table_lock_perm.thread_id() == old(lctx).thread_id(),
+        iommu_table_lock_perm.lock_id() == old(iommu_table_map).spec_index(iommu_table_ptr).locking_thread()->Write_lock_id,
+        old(lctx).kernel_view_locking_state() is Acquire,
+        old(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_l4_end <= indices.0 && pei_valid(indices.0),
+        pei_valid(indices.1),
+        pei_valid(indices.2),
+        old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(indices.0, indices.1) is Some,
+        old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(indices.0, indices.1)->0.addr == target_l2_ptr,
+        old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is None,
+        old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_2m_l2(indices.0, indices.1, indices.2) is None,
+        page_ptr_valid(page_map_ptr),
+        !old(iommu_table_map).spec_index(iommu_table_ptr).view().page_closure().contains(page_map_ptr),
+        page_map_perm.addr() == page_map_ptr,
+        page_map_perm.is_init(),
+        page_map_perm.value().wf(),
+        forall|i: usize| #![trigger page_map_perm.value().spec_index(i)] pei_valid(i) ==> page_map_perm.value().spec_index(i).is_empty(),
+    ensures
+        iommu_table_perms_wf(*final(iommu_table_map)),
+        final(iommu_table_map).perms_wf(),
+        final(iommu_table_map).unchanged_except(old(iommu_table_map), iommu_table_ptr),
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() is Release,
+        typed_lock_maps_unchanged(old(lctx), final(lctx)),
+        final(iommu_table_map).typed_lock_map_aligned(final(lctx).iommu_table_lock_map(), final(lctx).thread_id()),
+        final(iommu_table_map).lock_id_by_key(iommu_table_ptr) == old(iommu_table_map).lock_id_by_key(iommu_table_ptr),
+        final(iommu_table_map).spec_index(iommu_table_ptr).locking_thread() == old(iommu_table_map).spec_index(iommu_table_ptr).locking_thread(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).being_killed() == old(iommu_table_map).spec_index(iommu_table_ptr).being_killed(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).inv(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_l4_end == old(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_l4_end,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().page_closure() == old(iommu_table_map).spec_index(iommu_table_ptr).view().page_closure().insert(page_map_ptr),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_4k() == old(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_4k(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_2m() == old(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_2m(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_1g() == old(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_1g(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_entries == old(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_entries,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().cr3 == old(iommu_table_map).spec_index(iommu_table_ptr).view().cr3,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().pcid == old(iommu_table_map).spec_index(iommu_table_ptr).view().pcid,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr == old(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(indices.0) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(indices.0),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(indices.0, indices.1) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(indices.0, indices.1),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == page_map_ptr,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_2m_l2(indices.0, indices.1, indices.2) is None,
+{
+    assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).inv()) by { iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
+    let iommu_table = iommu_table_map.borrow_mut_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm));
+    iommu_table.create_entry_l2(indices.0, indices.1, indices.2, target_l2_ptr, page_map_ptr, Tracked(page_map_perm), Tracked(&mut *lctx));
     proof { assert(iommu_table_perms_wf(*iommu_table_map)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }; }
 }
 

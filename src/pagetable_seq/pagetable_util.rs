@@ -3,7 +3,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl PageTable<PT_TYPE> {
+impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
     pub open spec fn spec_4k_entry_usable(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L2Index) -> bool
         recommends
             self.wf(),
