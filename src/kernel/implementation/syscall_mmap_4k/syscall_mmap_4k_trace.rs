@@ -178,11 +178,14 @@ pub(super) proof fn mmap_4k_downgrade_step_from_u(pre: KernelU, post: KernelU, c
         mmap_4k_downgrade_step(pre, post, cpu_id),
 { reveal(mmap_4k_downgrade_step_pre); reveal(mmap_4k_downgrade_step); }
 
-/// Publishing the next recorded page under the mmap locks is the leaf step on `pre`/`post`.
-pub(super) proof fn mmap_4k_leaf_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, va: VAddr)
+/// Publishing the next recorded page under the mmap locks is the leaf step from `krnl`'s projection to `post`. The published
+/// page is `Owned4k` in `krnl`, so no IOMMU table of `krnl` maps it.
+pub(super) proof fn mmap_4k_leaf_step_from_u(krnl: &KernelK, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, va: VAddr)
     requires
+        krnl.inv(),
         index_valid(NUM_CPUS, cpu_id),
         {
+            let pre = kernel_k_to_kernel_u(*krnl);
             let thread = pre.thread_map.spec_index(thread_ptr);
             let process = pre.process_map.spec_index(process_ptr);
             let progress = thread.syscall_progress->Some_0;
@@ -209,6 +212,7 @@ pub(super) proof fn mmap_4k_leaf_step_from_u(pre: KernelU, post: KernelU, cpu_id
             &&& forall|p: RwLockProcessPtr, v: VAddr| #![trigger pre.process_map[p].pagetable->Some_0.mapping_4k[v]]
                 pre.process_map.dom().contains(p) && pre.process_map[p].pagetable is Some && pre.process_map[p].pagetable->Some_0.mapping_4k.dom().contains(v)
                 ==> pre.process_map[p].pagetable->Some_0.mapping_4k[v].addr != entry.addr
+            &&& krnl.pg_arr.spec_index(page_ptr2page_index(entry.addr)).view().view().state is Owned4k
             &&& post == (KernelU {
                 thread_map: pre.thread_map.insert(thread_ptr, ThreadU { quota_4k: (thread.quota_4k - 1) as usize, syscall_progress: mmap_4k_progress_after_leaf(thread.syscall_progress), ..thread }),
                 process_map: pre.process_map.insert(process_ptr, ProcessU { pagetable: Some(PageTableU { mapping_4k: process.pagetable->Some_0.mapping_4k.insert(va, entry), ..process.pagetable->Some_0 }), ..process }),
@@ -216,9 +220,16 @@ pub(super) proof fn mmap_4k_leaf_step_from_u(pre: KernelU, post: KernelU, cpu_id
             })
         },
     ensures
-        mmap_4k_leaf_step_pre(pre, cpu_id),
-        mmap_4k_leaf_step(pre, post, cpu_id),
-{ reveal(mmap_4k_leaf_step_pre); reveal(mmap_4k_leaf_step); }
+        mmap_4k_leaf_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
+        mmap_4k_leaf_step(kernel_k_to_kernel_u(*krnl), post, cpu_id),
+{
+    let pre = kernel_k_to_kernel_u(*krnl);
+    let addr = post.process_map.spec_index(process_ptr).pagetable->Some_0.mapping_4k.spec_index(va).addr;
+    assert(forall|p: RwLockProcessPtr, v: VAddr| #![trigger pre.process_map[p].iommu_table->Some_0.mapping_4k[v]]
+        pre.process_map.dom().contains(p) && pre.process_map[p].iommu_table is Some && pre.process_map[p].iommu_table->Some_0.mapping_4k.dom().contains(v)
+        ==> pre.process_map[p].iommu_table->Some_0.mapping_4k[v].addr != addr) by { reveal(kernel_k_to_kernel_u); reveal(process_iommu_table_match); reveal(page_iommu_table_wf); };
+    reveal(mmap_4k_leaf_step_pre); reveal(mmap_4k_leaf_step);
+}
 
 /// Clearing the progress and releasing the mmap locks after the whole range is mapped, leaving the pagetable in `table_lock`, is
 /// the exit step on `pre`/`post`.

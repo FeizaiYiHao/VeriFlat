@@ -179,7 +179,7 @@ pub(super) fn map_one_mmap_4k_page(
         held_pagetable_window_mapping_4k_unchanged_at(leaf_k.pt_mp, leaf_k.pt_lower.view(), krnl.pt_mp, krnl.pt_lower.view(), &leaf_lctx, pagetable_ptr, window, va);
         assert(mmap_4k_leaf_step_pre(steps.view().last().old_u, cpu_id) && mmap_4k_leaf_step(steps.view().last().old_u, steps.view().last().new_u, cpu_id)) by {
             kernel_thread_quota_4k_progress_and_4k_mapping_added_pagetable_rlocked_implies_u_step(&section_start, &leaf_k, &leaf_lctx, cpu_id, thread_ptr, process_ptr, pagetable_ptr, va);
-            mmap_4k_leaf_step_from_u(kernel_k_to_kernel_u(section_start), kernel_k_to_kernel_u(leaf_k), cpu_id, process_ptr, thread_ptr, va);
+            mmap_4k_leaf_step_from_u(&section_start, kernel_k_to_kernel_u(leaf_k), cpu_id, process_ptr, thread_ptr, va);
         };
         mmap_4k_range_steps_from_leaf(&*steps, leaf_steps, entry_steps.len() as int, cpu_id);
         process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, process_ptr);

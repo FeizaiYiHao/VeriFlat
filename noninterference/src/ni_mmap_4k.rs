@@ -24,7 +24,7 @@ pub proof fn mmap_4k_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuI
         mmap_4k_enter_step_pre(old_u, cpu_id, range, phase),
         mmap_4k_enter_step(old_u, new_u, cpu_id, range, phase),
     ensures isolated(new_u, a, b),
-{ reveal(mmap_4k_enter_step_pre); reveal(mmap_4k_enter_step); }
+{ reveal(mmap_4k_enter_step_pre); assert(memory_iso(new_u, a, b)) by { reveal(mmap_4k_enter_step); }; reveal(mmap_4k_enter_step); }
 
 /// An mmap directory step on a cpu of `a` changes only its running thread.
 pub proof fn mmap_4k_directory_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)

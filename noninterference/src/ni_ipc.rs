@@ -250,7 +250,27 @@ pub proof fn ipc_pages_lock_tables_step_iso(old_u: KernelU, new_u: KernelU, cpu_
         ipc_pages_lock_tables_step_pre(old_u, cpu_id, endpoint_index, tables),
         ipc_pages_lock_tables_step(old_u, new_u, cpu_id, tables),
     ensures isolated(new_u, a, b),
-{ reveal(ipc_pages_lock_tables_step_pre); reveal(ipc_pages_lock_tables_step); reveal(kernel_u_thread_ownership_wf); }
+{
+    reveal(ipc_pages_lock_tables_step_pre); reveal(kernel_u_thread_ownership_wf);
+    let source = old_u.thread_map[ipc_pages_sender(old_u, cpu_id)].owning_proc;
+    let target = old_u.thread_map[ipc_pages_receiver(old_u, cpu_id)].owning_proc;
+    assert({
+        &&& new_u.process_map.dom() =~= old_u.process_map.dom()
+        &&& new_u.process_map[source].owning_container == old_u.process_map[source].owning_container
+        &&& new_u.process_map[source].pagetable is Some && new_u.process_map[source].pagetable->Some_0.mapping_4k == old_u.process_map[source].pagetable->Some_0.mapping_4k
+        &&& new_u.process_map[source].pagetable->Some_0.mapping_2m == old_u.process_map[source].pagetable->Some_0.mapping_2m
+        &&& new_u.process_map[source].pagetable->Some_0.mapping_1g == old_u.process_map[source].pagetable->Some_0.mapping_1g
+        &&& new_u.process_map[source].iommu_table == old_u.process_map[source].iommu_table
+        &&& new_u.process_map[target].owning_container == old_u.process_map[target].owning_container
+        &&& new_u.process_map[target].pagetable is Some && new_u.process_map[target].pagetable->Some_0.mapping_4k == old_u.process_map[target].pagetable->Some_0.mapping_4k
+        &&& new_u.process_map[target].pagetable->Some_0.mapping_2m == old_u.process_map[target].pagetable->Some_0.mapping_2m
+        &&& new_u.process_map[target].pagetable->Some_0.mapping_1g == old_u.process_map[target].pagetable->Some_0.mapping_1g
+        &&& new_u.process_map[target].iommu_table == old_u.process_map[target].iommu_table
+    }) by { reveal(ipc_pages_lock_tables_step); };
+    assert(domain_4k_only(new_u, a) && domain_4k_only(new_u, b)) by { reveal(ipc_pages_lock_tables_step); };
+    assert(memory_iso(new_u, a, b)) by { reveal(ipc_pages_lock_tables_step); };
+    reveal(ipc_pages_lock_tables_step);
+}
 
 /// Checking a pages rendezvous on a cpu of `a` records its result and may unlock tables of `a` and of its
 /// peer outside `b`.
@@ -273,7 +293,27 @@ pub proof fn ipc_pages_check_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cp
         ipc_pages_check_step_pre(old_u, cpu_id, endpoint_index),
         ipc_pages_check_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(ipc_pages_check_step_pre); reveal(ipc_pages_check_step); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(ipc_pages_check_step_pre); reveal(kernel_u_cpu_ownership_wf);
+    let source = old_u.thread_map[ipc_pages_sender(old_u, cpu_id)].owning_proc;
+    let target = old_u.thread_map[ipc_pages_receiver(old_u, cpu_id)].owning_proc;
+    assert({
+        &&& new_u.process_map.dom() =~= old_u.process_map.dom()
+        &&& new_u.process_map[source].owning_container == old_u.process_map[source].owning_container
+        &&& new_u.process_map[source].pagetable is Some && new_u.process_map[source].pagetable->Some_0.mapping_4k == old_u.process_map[source].pagetable->Some_0.mapping_4k
+        &&& new_u.process_map[source].pagetable->Some_0.mapping_2m == old_u.process_map[source].pagetable->Some_0.mapping_2m
+        &&& new_u.process_map[source].pagetable->Some_0.mapping_1g == old_u.process_map[source].pagetable->Some_0.mapping_1g
+        &&& new_u.process_map[source].iommu_table == old_u.process_map[source].iommu_table
+        &&& new_u.process_map[target].owning_container == old_u.process_map[target].owning_container
+        &&& new_u.process_map[target].pagetable is Some && new_u.process_map[target].pagetable->Some_0.mapping_4k == old_u.process_map[target].pagetable->Some_0.mapping_4k
+        &&& new_u.process_map[target].pagetable->Some_0.mapping_2m == old_u.process_map[target].pagetable->Some_0.mapping_2m
+        &&& new_u.process_map[target].pagetable->Some_0.mapping_1g == old_u.process_map[target].pagetable->Some_0.mapping_1g
+        &&& new_u.process_map[target].iommu_table == old_u.process_map[target].iommu_table
+    }) by { reveal(ipc_pages_check_step); };
+    assert(domain_4k_only(new_u, a) && domain_4k_only(new_u, b)) by { reveal(ipc_pages_check_step); };
+    assert(memory_iso(new_u, a, b)) by { reveal(ipc_pages_check_step); };
+    reveal(ipc_pages_check_step);
+}
 
 /// Downgrading the receiver's page table of a pages rendezvous on a cpu of `a` read-locks a table of `a` or of
 /// its peer outside `b`.

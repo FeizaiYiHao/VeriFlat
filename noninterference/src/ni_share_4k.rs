@@ -39,7 +39,7 @@ pub proof fn share_4k_leaf_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
 
 /// The step of `share_4k_leaf_step_lr` preserves isolation. `progress` is the running thread's share and
 /// `source` the process whose entry it copies. A source process outside `a` is the pages peer's, and the
-/// page it shares is one no process of `b` maps.
+/// page it shares is one no process of `b` maps in its page table or IOMMU table.
 pub proof fn share_4k_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, progress: SyscallProgress, source: RwLockProcessPtr, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
@@ -49,10 +49,15 @@ pub proof fn share_4k_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuI
         share_4k_leaf_step(old_u, new_u, cpu_id),
         progress == old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].syscall_progress->Some_0,
         source == old_u.thread_map[share_4k_objects(old_u, cpu_id).source_thread].owning_proc,
-        !in_domain(old_u, a, old_u.process_map[source].owning_container) ==> forall|q: RwLockProcessPtr, v: VAddr|
-            #![trigger old_u.process_map[q].pagetable->Some_0.mapping_4k[v]]
-            old_u.process_map.dom().contains(q) && in_domain(old_u, b, old_u.process_map[q].owning_container) && old_u.process_map[q].pagetable is Some && old_u.process_map[q].pagetable->Some_0.mapping_4k.dom().contains(v)
-                ==> old_u.process_map[q].pagetable->Some_0.mapping_4k[v].addr != old_u.process_map[source].pagetable->Some_0.mapping_4k[progress->Share4k_source_range.view()[progress->Share4k_shared as int]].addr,
+        !in_domain(old_u, a, old_u.process_map[source].owning_container) ==> {
+            let shared = old_u.process_map[source].pagetable->Some_0.mapping_4k[progress->Share4k_source_range.view()[progress->Share4k_shared as int]].addr;
+            &&& forall|q: RwLockProcessPtr, v: VAddr| #![trigger old_u.process_map[q].pagetable->Some_0.mapping_4k[v]]
+                old_u.process_map.dom().contains(q) && in_domain(old_u, b, old_u.process_map[q].owning_container) && old_u.process_map[q].pagetable is Some && old_u.process_map[q].pagetable->Some_0.mapping_4k.dom().contains(v)
+                    ==> old_u.process_map[q].pagetable->Some_0.mapping_4k[v].addr != shared
+            &&& forall|q: RwLockProcessPtr, v: VAddr| #![trigger old_u.process_map[q].iommu_table->Some_0.mapping_4k[v]]
+                old_u.process_map.dom().contains(q) && in_domain(old_u, b, old_u.process_map[q].owning_container) && old_u.process_map[q].iommu_table is Some && old_u.process_map[q].iommu_table->Some_0.mapping_4k.dom().contains(v)
+                    ==> old_u.process_map[q].iommu_table->Some_0.mapping_4k[v].addr != shared
+        },
     ensures isolated(new_u, a, b),
 { reveal(share_4k_leaf_step_pre); reveal(share_4k_leaf_step); reveal(share_4k_leaf_pre_at); reveal(share_4k_leaf_at); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_container_tree_wf); }
 } // verus!
