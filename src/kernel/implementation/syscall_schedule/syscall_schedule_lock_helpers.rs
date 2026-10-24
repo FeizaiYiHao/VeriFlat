@@ -312,7 +312,7 @@ pub(super) fn schedule_lock_current_and_shard(
         }
         process_lock_perm = res;
         let thread_ptr = current_thread.unwrap();
-        let res = krnl.wlock_thread_unless_killed(thread_ptr, Tracked(&mut *lctx));
+        let res = krnl.wlock_current_running_thread_unless_killed(thread_ptr, Tracked(&mut *lctx));
         if res.is_none() {
             krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), process_lock_perm.unwrap());
             krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
@@ -456,7 +456,7 @@ pub(super) fn schedule_lock_queue_head(
         container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp, scheduler_ptr, cpu_id, next_thread);
     };
     assert(krnl.prc_mp.dom().contains(krnl.thr_mp.spec_index(next_thread).view().owning_proc)) by { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, next_thread); };
-    let res = krnl.wlock_thread_unless_killed(next_thread, Tracked(&mut *lctx));
+    let res = krnl.wlock_scheduled_thread_unless_killed(next_thread, Tracked(&mut *lctx));
     if res.is_none() { return None; }
     Some((next_thread, res.unwrap()))
 }

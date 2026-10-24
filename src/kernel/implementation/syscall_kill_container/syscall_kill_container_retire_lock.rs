@@ -293,7 +293,7 @@ pub(crate) fn kill_container_retire_lock_object_pages(
             &&& typed_lock_map_contains_mode(final(lctx).page_lock_map(), p, TypedLockMode::Write)
             &&& ret.view()[p].state() is WriteLock && ret.view()[p].thread_id() == final(lctx).thread_id()
             &&& ret.view()[p].lock_id() == final(krnl).pg_arr.spec_index(p).view().locking_thread()->Write_lock_id
-            &&& final(krnl).pg_arr.lock_id_by_index(p).major <= ALLOCATED_PAGE_MAJOR
+            &&& final(krnl).pg_arr.spec_index(p).view().view().orders_below_allocator_locks()
         },
 {
     let ghost ro = krnl.ctn_mp.spec_index(container_ptr).view_rodata().view();
@@ -359,7 +359,7 @@ pub(crate) fn kill_container_retire_lock_shards(
         old(lctx).iommu_table_lock_map().dom().is_empty(),
         old(lctx).iommu_root_table_lock_map().dom().is_empty(),
         old(krnl).ctn_mp.dom().contains(container_ptr),
-        forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.lock_id_by_index(p).major <= ALLOCATED_PAGE_MAJOR,
+        forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.spec_index(p).view().view().orders_below_allocator_locks(),
         old(lctx).scheduler_lock_map().dom().is_empty(),
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
         old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
@@ -439,7 +439,7 @@ pub(crate) fn kill_container_retire_lock_shards(
             old(lctx).iommu_table_lock_map().dom().is_empty(),
             old(lctx).iommu_root_table_lock_map().dom().is_empty(),
             old(krnl).ctn_mp.dom().contains(container_ptr),
-            forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.lock_id_by_index(p).major <= ALLOCATED_PAGE_MAJOR,
+            forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.spec_index(p).view().view().orders_below_allocator_locks(),
             old(lctx).scheduler_lock_map().dom().is_empty(),
             old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
             old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
@@ -483,7 +483,6 @@ pub(crate) fn kill_container_retire_lock_shards(
             lctx.holds_no_allocator_locks(PageSize::SZ4k),
             lctx.holds_no_allocator_locks(PageSize::SZ2m),
             lctx.holds_no_allocator_locks(PageSize::SZ1g),
-            forall|p: PageIndex| #![trigger lctx.page_lock_map().dom().contains(p)] lctx.page_lock_map().dom().contains(p) ==> krnl.pg_arr.lock_id_by_index(p).major <= ALLOCATED_PAGE_MAJOR,
             forall|x: (RwLockSchedulerPtr, CpuId)| #![trigger lctx.scheduler_lock_map().dom().contains(x)] lctx.scheduler_lock_map().dom().contains(x) ==> x.0 == sched && x.1 < c,
             forall|i: CpuId| #![trigger shard_perms.dom().contains(i)] #![trigger shard_perms[i]] #![trigger lctx.scheduler_lock_map().dom().contains((sched, i))] i < c ==> {
                 &&& shard_perms.dom().contains(i)
@@ -531,7 +530,7 @@ pub(crate) fn kill_container_retire_lock_caches(
         old(lctx).iommu_table_lock_map().dom().is_empty(),
         old(lctx).iommu_root_table_lock_map().dom().is_empty(),
         old(krnl).ctn_mp.dom().contains(container_ptr),
-        forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.lock_id_by_index(p).major <= ALLOCATED_PAGE_MAJOR,
+        forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.spec_index(p).view().view().orders_below_allocator_locks(),
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
         old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
@@ -653,7 +652,7 @@ pub(crate) fn kill_container_retire_lock_caches(
             old(lctx).iommu_table_lock_map().dom().is_empty(),
             old(lctx).iommu_root_table_lock_map().dom().is_empty(),
             old(krnl).ctn_mp.dom().contains(container_ptr),
-            forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.lock_id_by_index(p).major <= ALLOCATED_PAGE_MAJOR,
+            forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.spec_index(p).view().view().orders_below_allocator_locks(),
             old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
             old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
             old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
@@ -672,7 +671,6 @@ pub(crate) fn kill_container_retire_lock_caches(
             old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_2m == a2,
             old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_1g == a1,
             old(krnl).allc_4k_mp.dom().contains(a4) && old(krnl).allc_2m_mp.dom().contains(a2) && old(krnl).allc_1g_mp.dom().contains(a1),
-            forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.lock_id_by_index(p).major <= ALLOCATED_PAGE_MAJOR,
             krnl.allc_4k_mp.dom() == old(krnl).allc_4k_mp.dom(),
             forall|i: CpuId| #![trigger krnl.allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i)] index_valid(NUM_CPUS, i)
                 ==> krnl.allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i).view().view() == old(krnl).allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i).view().view(),
@@ -741,7 +739,7 @@ pub(crate) fn kill_container_retire_lock_caches(
             old(lctx).iommu_table_lock_map().dom().is_empty(),
             old(lctx).iommu_root_table_lock_map().dom().is_empty(),
             old(krnl).ctn_mp.dom().contains(container_ptr),
-            forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.lock_id_by_index(p).major <= ALLOCATED_PAGE_MAJOR,
+            forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.spec_index(p).view().view().orders_below_allocator_locks(),
             old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
             old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
             old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
@@ -760,7 +758,6 @@ pub(crate) fn kill_container_retire_lock_caches(
             old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_2m == a2,
             old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_1g == a1,
             old(krnl).allc_4k_mp.dom().contains(a4) && old(krnl).allc_2m_mp.dom().contains(a2) && old(krnl).allc_1g_mp.dom().contains(a1),
-            forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.lock_id_by_index(p).major <= ALLOCATED_PAGE_MAJOR,
             krnl.allc_4k_mp.dom() == old(krnl).allc_4k_mp.dom(),
             forall|i: CpuId| #![trigger krnl.allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i)] index_valid(NUM_CPUS, i)
                 ==> krnl.allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i).view().view() == old(krnl).allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i).view().view(),
@@ -844,7 +841,7 @@ pub(crate) fn kill_container_retire_lock_caches(
             old(lctx).iommu_table_lock_map().dom().is_empty(),
             old(lctx).iommu_root_table_lock_map().dom().is_empty(),
             old(krnl).ctn_mp.dom().contains(container_ptr),
-            forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.lock_id_by_index(p).major <= ALLOCATED_PAGE_MAJOR,
+            forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.spec_index(p).view().view().orders_below_allocator_locks(),
             old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
             old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
             old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
@@ -863,7 +860,6 @@ pub(crate) fn kill_container_retire_lock_caches(
             old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_2m == a2,
             old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_1g == a1,
             old(krnl).allc_4k_mp.dom().contains(a4) && old(krnl).allc_2m_mp.dom().contains(a2) && old(krnl).allc_1g_mp.dom().contains(a1),
-            forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.lock_id_by_index(p).major <= ALLOCATED_PAGE_MAJOR,
             krnl.allc_4k_mp.dom() == old(krnl).allc_4k_mp.dom(),
             forall|i: CpuId| #![trigger krnl.allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i)] index_valid(NUM_CPUS, i)
                 ==> krnl.allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i).view().view() == old(krnl).allc_4k_mp.spec_index(a4).cpu_caches.spec_index(i).view().view(),
@@ -972,7 +968,7 @@ pub(crate) fn kill_container_retire_lock_pools_quotas(
         old(krnl).ctn_mp.dom().contains(container_ptr),
         old(krnl).ctn_mp.dom().contains(owner_ptr),
         container_ptr != owner_ptr,
-        forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.lock_id_by_index(p).major <= ALLOCATED_PAGE_MAJOR,
+        forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.spec_index(p).view().view().orders_below_allocator_locks(),
         old(lctx).allocator_quota_4k_lock_map().dom().is_empty() && old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
         old(lctx).allocator_quota_2m_lock_map().dom().is_empty() && old(lctx).allocator_global_pool_2m_lock_map().dom().is_empty(),
         old(lctx).allocator_quota_1g_lock_map().dom().is_empty() && old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
@@ -1102,7 +1098,7 @@ pub(crate) fn kill_container_retire_lock_tails(krnl: &mut KernelK, Tracked(lctx)
         old(krnl).ctn_mp.spec_index(container_ptr).being_killed(),
         forall|x: (RwLockCpuOfflineFlagsPtr, CpuId)| #![trigger old(lctx).cpu_offline_flag_lock_map().dom().contains(x)]
             old(lctx).cpu_offline_flag_lock_map().dom().contains(x) ==> x.0 == cpu_offline_flags_ptr(container_ptr),
-        forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.lock_id_by_index(p).major <= ALLOCATED_PAGE_MAJOR,
+        forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> old(krnl).pg_arr.spec_index(p).view().view().orders_below_allocator_locks(),
         ({
             let ro = old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view();
             let pages_4k = kill_container_retire_pages_4k(ro);

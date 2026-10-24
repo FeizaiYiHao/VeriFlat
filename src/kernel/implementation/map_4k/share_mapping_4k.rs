@@ -176,7 +176,7 @@ fn share_one_mapping_4k(
         old(lctx).scheduler_lock_map().dom().is_empty(),
         old(lctx).cpu_set_lock_map().dom().is_empty(),
         forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
-        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.lock_id_by_index(held_page).major < PAGE_TABLE_WINDOW_LOCK_MAJOR,
+        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
         source_pagetable != target_pagetable,
         old(krnl).thr_mp.dom().contains(source_thread),
         old(krnl).thr_mp.dom().contains(target_thread),
@@ -605,12 +605,12 @@ pub fn share_mapping_4k_source_owner_precheck(
             krnl.inv(),
             lctx.kernel_view_locking_state() is Acquire,
             typed_lock_maps_aligned(krnl, &*lctx),
-            lctx.pcid_needflush_lock_map().dom().is_empty(),
-            lctx.cpu_offline_flag_lock_map().dom().is_empty(),
-            lctx.scheduler_lock_map().dom().is_empty(),
-            lctx.cpu_set_lock_map().dom().is_empty(),
-            forall|held_cpu_id: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(held_cpu_id)] lctx.cpu_lock_map().dom().contains(held_cpu_id) ==> !(krnl.cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
-            forall|held_page: PageIndex| #![trigger lctx.page_lock_map().dom().contains(held_page)] lctx.page_lock_map().dom().contains(held_page) ==> krnl.pg_arr.lock_id_by_index(held_page).major < MAPPED_PAGE_LOCK_MAJOR,
+            old(lctx).pcid_needflush_lock_map().dom().is_empty(),
+            old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
+            old(lctx).scheduler_lock_map().dom().is_empty(),
+            old(lctx).cpu_set_lock_map().dom().is_empty(),
+            forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(krnl.cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+            forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> krnl.pg_arr.lock_id_by_index(held_page).major < MAPPED_PAGE_LOCK_MAJOR,
             source_pagetable != target_pagetable,
             krnl.thr_mp.dom().contains(source_thread),
             krnl.thr_mp.dom().contains(target_thread),
@@ -695,29 +695,33 @@ pub fn share_mapping_4k_source_owner_precheck(
                 ==> pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable),
             krnl.thr_mp.spec_index(target_thread).view() == old(krnl).thr_mp.spec_index(target_thread).view(),
             krnl.thr_mp.spec_index(source_thread).view() == old(krnl).thr_mp.spec_index(source_thread).view(),
-            lctx.holds_no_allocator_locks(PageSize::SZ4k),
-            lctx.holds_no_allocator_locks(PageSize::SZ2m),
-            lctx.holds_no_allocator_locks(PageSize::SZ1g),
+            old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
+            old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
+            old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
         decreases source_range.len - i,
     {
         let ghost krnl_i = *krnl;
         proof {
             let va = source_range.view().spec_index(i as int);
-            spec_va_4k_index_roundtrip_at(va, spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
-            spec_va_4k_index_roundtrip_at(window_of(va).va, spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), 0);
-            assert(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().dom().contains(va));
-            held_pagetable_window_mapping_4k_unchanged_at(old(krnl).pt_mp, old(krnl).pt_lower.view(), krnl.pt_mp, krnl.pt_lower.view(), old(lctx), source_pagetable, window_of(va), va);
+            assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(va)
+                && pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().spec_index(va)) by {
+                spec_va_4k_index_roundtrip_at(va, spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
+                spec_va_4k_index_roundtrip_at(window_of(va).va, spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), 0);
+                assert(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().dom().contains(va));
+                held_pagetable_window_mapping_4k_unchanged_at(old(krnl).pt_mp, old(krnl).pt_lower.view(), krnl.pt_mp, krnl.pt_lower.view(), old(lctx), source_pagetable, window_of(va), va);
+            };
         }
         let page_compatible = share_mapping_4k_source_owner_check_at(krnl, source_range, i, target_thread, target_process, target_container, source_pagetable, target_pagetable, Tracked(&mut *lctx), Tracked(&mut *steps),
             Tracked(source_pagetable_lock_perm));
         proof {
             let va = source_range.view().spec_index(i as int);
-            let page_index = page_ptr2page_index(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr);
-            page_ptr_valid_imply_page_index_valid();
-            mapped_4k_page_pagetable_wf_pagetable_at(old(krnl).pt_mp, old(krnl).pt_lower.view(), old(krnl).pg_arr, source_pagetable, va);
-            mapped_4k_page_pagetable_wf_pagetable_at(krnl_i.pt_mp, krnl_i.pt_lower.view(), krnl_i.pg_arr, source_pagetable, va);
-            container_page_owner_backward_at(old(krnl).ctn_mp, old(krnl).pg_arr, page_index); container_page_owner_backward_at(krnl_i.ctn_mp, krnl_i.pg_arr, page_index);
-            assert(page_compatible == share_mapping_4k_leaf_owner_compatible(old(krnl), source_pagetable, target_container, va));
+            assert(page_compatible == share_mapping_4k_leaf_owner_compatible(old(krnl), source_pagetable, target_container, va)) by {
+                let page_index = page_ptr2page_index(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr);
+                page_ptr_valid_imply_page_index_valid();
+                mapped_4k_page_pagetable_wf_pagetable_at(old(krnl).pt_mp, old(krnl).pt_lower.view(), old(krnl).pg_arr, source_pagetable, va);
+                mapped_4k_page_pagetable_wf_pagetable_at(krnl_i.pt_mp, krnl_i.pt_lower.view(), krnl_i.pg_arr, source_pagetable, va);
+                container_page_owner_backward_at(old(krnl).ctn_mp, old(krnl).pg_arr, page_index); container_page_owner_backward_at(krnl_i.ctn_mp, krnl_i.pg_arr, page_index);
+            };
         }
         all_compatible = all_compatible && page_compatible;
         i = i + 1;

@@ -354,7 +354,6 @@ fn ipc_pages_check_source_owners(
         va_range_2m_windows_contains_window_of_first_n_pages(*target_range, target_range.len as int);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl);
         assert(lctx.thread_lock_map().dom() =~= set![source_thread, target_thread]);
-        assert(lctx.pagetable_lock_map().dom() =~= set![source_pagetable, target_pagetable]);
     }
     let owners = share_mapping_4k_source_owner_precheck(
         krnl, source_range, source_thread, target_thread, target_process, target_container, source_pagetable, target_pagetable, cpu_id, Tracked(&mut *lctx),

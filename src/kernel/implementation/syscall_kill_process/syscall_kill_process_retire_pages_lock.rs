@@ -106,8 +106,13 @@ pub(crate) fn wlock_kill_retire_pages<const N: usize>(
             let state = old(krnl).thr_mp.spec_index(held_thread).view().state;
             !(state.is_endpoint_waiting() || state.is_reply_waiting() || state is IPC_TRANSIT)
         },
-        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page)
-            ==> index_valid(NUM_PAGES, held_page) && old(krnl).pg_arr.lock_id_by_index(held_page).major < major,
+        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> {
+            let page = old(krnl).pg_arr.spec_index(held_page).view().view();
+            &&& index_valid(NUM_PAGES, held_page)
+            &&& old(krnl).pg_arr.lock_id_by_index(held_page).major < major
+            &&& page.orders_below_allocator_locks()
+            &&& major < PAGETABLE_PAGE_MAJOR ==> page.orders_below_table_locks()
+        },
         perms.dom() == old(lctx).page_lock_map().dom(),
         forall|p: PageIndex| #![trigger perms.dom().contains(p)] perms.dom().contains(p) ==> {
             &&& typed_lock_map_contains_mode(old(lctx).page_lock_map(), p, TypedLockMode::Write)
@@ -118,8 +123,11 @@ pub(crate) fn wlock_kill_retire_pages<const N: usize>(
         sorted.wf(),
         forall|i: int, j: int| #![trigger sorted.view()[i], sorted.view()[j]] 0 <= i < j < sorted.view().len() ==> sorted.view()[i] < sorted.view()[j],
         forall|k: int| #![trigger sorted.view()[k]] 0 <= k < sorted.view().len() ==> {
+            let page = old(krnl).pg_arr.spec_index(sorted.view()[k]).view().view();
             &&& index_valid(NUM_PAGES, sorted.view()[k])
             &&& old(krnl).pg_arr.lock_id_by_index(sorted.view()[k]).major == major
+            &&& page.orders_below_allocator_locks()
+            &&& major < PAGETABLE_PAGE_MAJOR ==> page.orders_below_table_locks()
         },
     ensures
         final(krnl).inv(),
@@ -161,11 +169,13 @@ pub(crate) fn wlock_kill_retire_pages<const N: usize>(
         final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
         ret.view().dom() == final(lctx).page_lock_map().dom(),
         forall|p: PageIndex| #![trigger ret.view().dom().contains(p)] ret.view().dom().contains(p) ==> {
+            let page = final(krnl).pg_arr.spec_index(p).view().view();
             &&& typed_lock_map_contains_mode(final(lctx).page_lock_map(), p, TypedLockMode::Write)
             &&& ret.view().spec_index(p).state() is WriteLock
             &&& ret.view().spec_index(p).thread_id() == final(lctx).thread_id()
             &&& ret.view().spec_index(p).lock_id() == final(krnl).pg_arr.spec_index(p).view().locking_thread()->Write_lock_id
-            &&& final(krnl).pg_arr.lock_id_by_index(p).major <= major
+            &&& page.orders_below_allocator_locks()
+            &&& major < PAGETABLE_PAGE_MAJOR ==> page.orders_below_table_locks()
         },
 {
     let tracked mut perms = perms;
@@ -182,8 +192,11 @@ pub(crate) fn wlock_kill_retire_pages<const N: usize>(
             0 <= k <= sorted.view().len(),
             forall|i: int, j: int| #![trigger sorted.view()[i], sorted.view()[j]] 0 <= i < j < sorted.view().len() ==> sorted.view()[i] < sorted.view()[j],
             forall|j: int| #![trigger sorted.view()[j]] 0 <= j < sorted.view().len() ==> {
+                let page = old(krnl).pg_arr.spec_index(sorted.view()[j]).view().view();
                 &&& index_valid(NUM_PAGES, sorted.view()[j])
                 &&& old(krnl).pg_arr.lock_id_by_index(sorted.view()[j]).major == major
+                &&& page.orders_below_allocator_locks()
+                &&& major < PAGETABLE_PAGE_MAJOR ==> page.orders_below_table_locks()
             },
             forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> {
                 &&& index_valid(NUM_PAGES, p)
@@ -243,7 +256,10 @@ pub(crate) fn wlock_kill_retire_pages<const N: usize>(
                 index_valid(NUM_PAGES, i) && !sorted.view().subrange(0, k as int).to_set().contains(i) ==> krnl.pg_arr.spec_index(i) == old(krnl).pg_arr.spec_index(i),
             forall|held_page: PageIndex| #![trigger lctx.page_lock_map().dom().contains(held_page)] lctx.page_lock_map().dom().contains(held_page) ==> {
                 let held_major = krnl.pg_arr.lock_id_by_index(held_page).major;
-                held_major < major || held_major == major && (k < sorted.view().len() ==> held_page < sorted.view()[k as int])
+                let page = krnl.pg_arr.spec_index(held_page).view().view();
+                &&& held_major < major || held_major == major && (k < sorted.view().len() ==> held_page < sorted.view()[k as int])
+                &&& page.orders_below_allocator_locks()
+                &&& major < PAGETABLE_PAGE_MAJOR ==> page.orders_below_table_locks()
             },
             forall|p: PageIndex| #![trigger perms.dom().contains(p)] perms.dom().contains(p) ==> {
                 &&& typed_lock_map_contains_mode(lctx.page_lock_map(), p, TypedLockMode::Write)

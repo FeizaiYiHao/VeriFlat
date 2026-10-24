@@ -43,7 +43,7 @@ pub(super) fn allocate_new_container_2m_pages(
         final(lctx).kernel_view_locking_state() is Acquire,
         final(lctx).thread_id() == old(lctx).thread_id(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        forall|held_page: PageIndex| #![trigger final(lctx).page_lock_map().dom().contains(held_page)] final(lctx).page_lock_map().dom().contains(held_page) ==> final(krnl).pg_arr.lock_id_by_index(held_page).major < ALLOCATOR_CACHE_4K_MAJOR,
+        forall|held_page: PageIndex| #![trigger final(lctx).page_lock_map().dom().contains(held_page)] final(lctx).page_lock_map().dom().contains(held_page) ==> final(krnl).pg_arr.spec_index(held_page).view().view().orders_below_allocator_locks(),
         allocated_4k_page_lock_perms_wf(page_4k_lock_perms, final(krnl), final(lctx), current_thread_ptr, parent_container_ptr),
         ret.0 != ret.1,
         page_ptr_valid(ret.0),

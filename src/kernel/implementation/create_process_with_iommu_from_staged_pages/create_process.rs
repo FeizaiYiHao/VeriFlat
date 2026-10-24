@@ -206,11 +206,6 @@ pub fn create_process_with_iommu_from_staged_pages(
         final(krnl).prc_mp.lock_id_by_key(process_page_ptr).major == PROCESS_LOCK_MAJOR,
         final(krnl).pt_mp.lock_id_by_key(pagetable_page_ptr).major == PAGE_TABLE_LOCK_MAJOR,
         final(krnl).it_mp.lock_id_by_key(iommu_table_page_ptr).major == IOMMU_TABLE_LOCK_MAJOR,
-        final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(l4_page_ptr)).major < MAPPED_PAGE_LOCK_MAJOR,
-        final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(pagetable_page_ptr)).major < MAPPED_PAGE_LOCK_MAJOR,
-        final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(process_page_ptr)).major < MAPPED_PAGE_LOCK_MAJOR,
-        final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(iommu_l4_page_ptr)).major < MAPPED_PAGE_LOCK_MAJOR,
-        final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(iommu_table_page_ptr)).major < MAPPED_PAGE_LOCK_MAJOR,
 {
     let process_page_index = page_ptr2page_index(process_page_ptr);
     let pagetable_page_index = page_ptr2page_index(pagetable_page_ptr);

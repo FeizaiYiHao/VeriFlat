@@ -106,7 +106,7 @@ pub fn syscall_new_endpoint(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loca
         return RetValueType::ErrorProcessKilled;
     }
     let Tracked(process_lock_perm) = process_res.unwrap();
-    let thread_res = krnl.wlock_thread_unless_killed(thread_ptr, Tracked(&mut *lctx));
+    let thread_res = krnl.wlock_current_running_thread_unless_killed(thread_ptr, Tracked(&mut *lctx));
     if thread_res.is_none() {
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
         krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));

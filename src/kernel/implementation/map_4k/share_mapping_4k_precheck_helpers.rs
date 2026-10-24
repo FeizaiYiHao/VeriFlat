@@ -65,8 +65,6 @@ pub(super) fn share_mapping_4k_source_owner_check_at(
         final(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
-        forall|held_cpu_id: CpuId| #![trigger final(lctx).cpu_lock_map().dom().contains(held_cpu_id)] final(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(final(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
-        forall|held_page: PageIndex| #![trigger final(lctx).page_lock_map().dom().contains(held_page)] final(lctx).page_lock_map().dom().contains(held_page) ==> final(krnl).pg_arr.lock_id_by_index(held_page).major < MAPPED_PAGE_LOCK_MAJOR,
         mmap_4k_quota_thread_container_compatible(final(krnl), final(lctx), target_thread, target_container),
         final(krnl).prc_mp.dom().contains(target_process),
         final(krnl).prc_mp.spec_index(target_process).view_rodata().view().owning_container == target_container,

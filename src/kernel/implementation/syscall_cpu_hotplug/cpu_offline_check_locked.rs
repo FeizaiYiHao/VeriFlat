@@ -28,7 +28,6 @@ pub(super) fn cpu_offline_check_locked(
         kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
-        old(lctx).held_lock_majors_lt(CPU_OFFLINE_FLAG_LOCK_MAJOR),
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).container_lock_map().dom().is_empty(),
         old(lctx).process_lock_map().dom().is_empty(),
@@ -124,7 +123,7 @@ pub(super) fn cpu_offline_check_locked(
     if requested {
         if let Some(process_ptr) = current_process {
             process_lock_perm = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
-            if process_lock_perm.is_some() { thread_lock_perm = krnl.wlock_thread_unless_killed(current_thread.unwrap(), Tracked(&mut *lctx)); }
+            if process_lock_perm.is_some() { thread_lock_perm = krnl.wlock_current_running_thread_unless_killed(current_thread.unwrap(), Tracked(&mut *lctx)); }
             locked = thread_lock_perm.is_some();
         }
     }

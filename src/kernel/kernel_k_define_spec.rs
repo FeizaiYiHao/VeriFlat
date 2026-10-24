@@ -349,7 +349,10 @@ verus! {
         &&& lctx.pcid_needflush_lock_map().dom().is_empty()
         &&& lctx.cpu_offline_flag_lock_map().dom().is_empty()
         &&& forall|held_cpu_id: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(held_cpu_id)] lctx.cpu_lock_map().dom().contains(held_cpu_id) ==> !(k.cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off)
-        &&& forall|held_page: PageIndex| #![trigger lctx.page_lock_map().dom().contains(held_page)] lctx.page_lock_map().dom().contains(held_page) ==> k.pg_arr.lock_id_by_index(held_page).major < page_bound
+        &&& forall|held_page: PageIndex| #![trigger lctx.page_lock_map().dom().contains(held_page)] lctx.page_lock_map().dom().contains(held_page) ==> {
+            let page = k.pg_arr.spec_index(held_page).view().view();
+            if page_bound <= PAGETABLE_PAGE_MAJOR { page.orders_below_table_locks() } else { page.orders_below_allocator_locks() }
+        }
         &&& forall|held_thread: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(held_thread)] lctx.thread_lock_map().dom().contains(held_thread) ==> !(k.thr_mp.spec_index(held_thread).view().state is SCHEDULED)
         &&& lctx.holds_no_allocator_locks(PageSize::SZ4k)
         &&& lctx.holds_no_allocator_locks(PageSize::SZ2m)

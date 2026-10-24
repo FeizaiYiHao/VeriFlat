@@ -156,7 +156,7 @@ pub(super) fn unmap_4k_lock_running_thread(krnl: &mut KernelK, Tracked(lctx): Tr
         return Err(RetValueType::ErrorProcessKilled);
     }
     let Tracked(process_perm) = process_res.unwrap();
-    let thread_res = krnl.wlock_thread_unless_killed(thread_ptr, Tracked(&mut *lctx));
+    let thread_res = krnl.wlock_current_running_thread_unless_killed(thread_ptr, Tracked(&mut *lctx));
     if thread_res.is_none() {
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_perm));
         krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_perm));
@@ -327,7 +327,6 @@ pub(super) fn unmap_4k_unmap_and_finish(
             },
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_1g() == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable).mapping_1g(),
 {
-    proof { unmap_4k_result_from_k(&old(steps).snapshot_k(), cpu_id, va, range, RetValueType::Success); }
     let ghost checked_table = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
     proof {
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
@@ -339,6 +338,7 @@ pub(super) fn unmap_4k_unmap_and_finish(
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         assert(unmap_4k_trace_after_enter(steps.view(), cpu_id, *va_range)) by {
+            unmap_4k_result_from_k(&old(steps).snapshot_k(), cpu_id, va, range, RetValueType::Success);
             kernel_thread_context_wlocked_pagetable_rlocked_and_progress_changed_implies_u_step(&old(steps).snapshot_k(), &entered_k, &entry_lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable);
             unmap_4k_enter_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(entered_k), cpu_id, container_ptr, process_ptr, thread_ptr, *va_range);
             unmap_4k_trace_enter_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(entered_k), cpu_id, *va_range);
@@ -367,6 +367,7 @@ pub(super) fn unmap_4k_unmap_and_finish(
             unmap_4k_exit_step_from_u(kernel_k_to_kernel_u(exit_start), kernel_k_to_kernel_u(exit_k), cpu_id, container_ptr, process_ptr, thread_ptr, exit_k.pt_mp.spec_index(pagetable).lock_state_u());
             unmap_4k_trace_exit_step(&*steps, range_steps, kernel_k_to_kernel_u(exit_start), kernel_k_to_kernel_u(exit_k), cpu_id, va, range);
         };
+        unmap_4k_result_from_k(&old(steps).snapshot_k(), cpu_id, va, range, RetValueType::Success);
     }
 }
 } // verus!

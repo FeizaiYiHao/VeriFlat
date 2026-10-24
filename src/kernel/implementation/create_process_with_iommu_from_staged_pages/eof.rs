@@ -598,7 +598,7 @@ pub(super) proof fn eof_memory_relations_allocators(
         container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
         container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr),
 {
-    reveal(create_process_with_iommu_from_staged_pages_eof_transition_framing);
+    hide(Seq::contains); reveal(create_process_with_iommu_from_staged_pages_eof_transition_framing);
     assert(allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
         allocator_4k_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.allc_4k_mp, post.allc_4k_mp);
         allocator_2m_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.allc_2m_mp, post.allc_2m_mp);
@@ -674,7 +674,7 @@ pub(super) proof fn eof_memory_relations_object_pages(
         thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr),
         endpoint_pages_wf(post.ep_mp, post.pg_arr),
 {
-    reveal(create_process_with_iommu_from_staged_pages_eof_transition_framing);
+    hide(Seq::contains); reveal(create_process_with_iommu_from_staged_pages_eof_transition_framing);
     assert(container_page_owner_wf(post.ctn_mp, post.pg_arr)) by { container_page_owner_wf_preserved_for_owned_pages_and_owning_container_eq(pre.ctn_mp, post.ctn_mp, pre.pg_arr, post.pg_arr); };
     assert(hugepage_2m_wf(post.pg_arr)) by { hugepage_2m_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); };
     assert(hugepage_1g_wf(post.pg_arr)) by { hugepage_1g_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); };

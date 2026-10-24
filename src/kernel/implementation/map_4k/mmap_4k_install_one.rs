@@ -107,7 +107,7 @@ verus! {
             page_table_key_2m_valid::<PT_TYPE>(spec_index2va((indices.0, indices.1, indices.2, 0))),
             old(lctx).scheduler_lock_map().dom().is_empty(),
             old(lctx).cpu_set_lock_map().dom().is_empty(),
-            forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.lock_id_by_index(held_page).major < PAGE_TABLE_WINDOW_LOCK_MAJOR,
+            forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
             held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         ensures
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
@@ -272,6 +272,7 @@ verus! {
                 },
             forall|w: WindowVa, v: VAddr|
                 #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)), pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(v)]
+                #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)), pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(v)]
                 !write_held && old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)) && spec_v2l4index(v) == spec_v2l4index(w.va) && spec_v2l3index(v) == spec_v2l3index(w.va)
                     && spec_v2l2index(v) == spec_v2l2index(w.va) ==> {
                     &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(v) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(v)
@@ -440,8 +441,6 @@ verus! {
             old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
             old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
             forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
-            forall|held_page: PageIndex| #![trigger entry_lctx.page_lock_map().dom().contains(held_page)] entry_lctx.page_lock_map().dom().contains(held_page)
-                ==> index_valid(NUM_PAGES, held_page) && old(krnl).pg_arr.lock_id_by_index(held_page).major < PAGE_TABLE_WINDOW_LOCK_MAJOR,
             !old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().being_killed(),
             old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: quota_thread_ptr }),
             old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == (match transfer_source { Some(source) => source, None => container_ptr }),

@@ -209,7 +209,6 @@ pub fn release_killed_thread_caller(
         held_kernel_objects_unchanged_reflexive(&*krnl, &*lctx);
         thread_perms_wf_map(krnl.thr_mp);
         thread_perms_wf_at(krnl.thr_mp, thread_ptr);
-        thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id);
         krnl.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr);
     }
     let caller = krnl.thr_mp.borrow_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(thread_lock_perm)).caller;
@@ -231,7 +230,7 @@ pub fn release_killed_thread_caller(
         container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, caller_ptr);
     }
     let ghost section_pre = *krnl;
-    let Tracked(caller_lock_perm) = krnl.wlock_thread_unless_killed(caller_ptr, Tracked(&mut *lctx)).unwrap();
+    let Tracked(caller_lock_perm) = krnl.wlock_killed_chain_caller(caller_ptr, Tracked(&mut *lctx)).unwrap();
     proof { thread_perms_wf_at(krnl.thr_mp, caller_ptr); }
     let caller_dangling = match krnl.thr_mp.borrow_typed(caller_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&caller_lock_perm)).state {
         ThreadState::DANGLING => true,

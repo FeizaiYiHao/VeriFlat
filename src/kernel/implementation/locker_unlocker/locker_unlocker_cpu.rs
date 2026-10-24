@@ -13,7 +13,7 @@ impl KernelK {
             old(self).cpu_arr.spec_index(cpu_id).view().view().view().state is Off ==> cpu_id == old(lctx).cpu_id(),
             old(lctx).kernel_view_locking_state() is Acquire,
             !old(lctx).cpu_lock_map().dom().contains(cpu_id),
-            old(lctx).no_locks_held() || old(lctx).lock_id_acyclic(old(self).cpu_arr.lock_id_by_index(cpu_id)) || {
+            old(lctx).no_locks_held() || {
                 let cpu = old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view();
                 let target = old(self).cpu_arr.spec_index(cpu_id).view().view().view();
                 &&& killer_held_context(*old(self), *old(lctx), cpu.current_process->Some_0, cpu.current_thread->Some_0, old(lctx).container_lock_map().dom())

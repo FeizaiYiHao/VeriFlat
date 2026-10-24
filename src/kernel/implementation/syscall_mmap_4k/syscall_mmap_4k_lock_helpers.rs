@@ -154,7 +154,7 @@ pub(super) fn mmap_4k_lock_current_thread(
     let thread_ptr = cpu.current_thread().unwrap();
     let container_ptr = cpu.owning_container();
 
-    let thread_res = krnl.wlock_thread_unless_killed(thread_ptr, Tracked(&mut *lctx));
+    let thread_res = krnl.wlock_current_running_thread_unless_killed(thread_ptr, Tracked(&mut *lctx));
     if thread_res.is_none() {
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {

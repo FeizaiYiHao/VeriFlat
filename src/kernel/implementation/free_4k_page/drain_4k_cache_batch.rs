@@ -29,7 +29,7 @@ pub fn drain_4k_cache_batch(krnl: &mut KernelK, allocator: RwLockPageAllocatorPt
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
         forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
-        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.lock_id_by_index(held_page).major < FREE_PAGE_LOCK_MAJOR,
+        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.spec_index(held_page).view().view().orders_below_allocator_locks(),
     ensures
         final(steps).view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*old(krnl))),
         old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
@@ -81,7 +81,7 @@ pub fn drain_4k_cache_batch(krnl: &mut KernelK, allocator: RwLockPageAllocatorPt
             lctx.pcid_needflush_lock_map().dom().is_empty(),
             lctx.cpu_offline_flag_lock_map().dom().is_empty(),
             forall|held_cpu_id: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(held_cpu_id)] lctx.cpu_lock_map().dom().contains(held_cpu_id) ==> !(krnl.cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
-            forall|held_page: PageIndex| #![trigger lctx.page_lock_map().dom().contains(held_page)] lctx.page_lock_map().dom().contains(held_page) ==> krnl.pg_arr.lock_id_by_index(held_page).major < FREE_PAGE_LOCK_MAJOR,
+            forall|held_page: PageIndex| #![trigger lctx.page_lock_map().dom().contains(held_page)] lctx.page_lock_map().dom().contains(held_page) ==> krnl.pg_arr.spec_index(held_page).view().view().orders_below_allocator_locks(),
             lctx.cpu_id() == old(lctx).cpu_id(),
             lctx.thread_id() == old(lctx).thread_id(),
             lctx.kernel_view_locking_state() is Acquire,

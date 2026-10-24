@@ -1207,7 +1207,6 @@ fn ipc_pages_prepare_target(
         container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, target_thread); container_perms_wf_at(krnl.ctn_mp, target_container);
         process_pagetable_match_pagetable_at(krnl.prc_mp, krnl.pt_mp, target_pagetable);
         va_range_2m_windows_contains_window_of_first_n_pages(*source_range, source_range.len as int);
-        va_range_2m_windows_contains_window_of_first_n_pages(*target_range, target_range.len as int);
         assert(share_mapping_4k_range_owner_compatible(&*krnl, source_pagetable, target_container, source_range)) by {
             container_thread_wf_uppertree_at(check_pre_k.ctn_mp, check_pre_k.thr_mp, target_thread); container_thread_wf_uppertree_at(krnl.ctn_mp, krnl.thr_mp, target_thread);
             container_uppertree_seq_in_dom(krnl.rt_ctn, krnl.ctn_mp, target_container);
@@ -1229,6 +1228,7 @@ fn ipc_pages_prepare_target(
             Tracked(peer_thread_lock_perm), target_allocator, Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm), Ghost(source_windows), Tracked(target_windows),
         )
     } else {
+        proof { va_range_2m_windows_contains_window_of_first_n_pages(*target_range, target_range.len as int); }
         (Tracked(target_pagetable_lock_perm), Tracked(target_windows))
     };
     (target_allocator, Tracked(read_perm), Tracked(read_windows))

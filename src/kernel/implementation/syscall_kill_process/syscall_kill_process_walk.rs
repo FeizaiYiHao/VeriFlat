@@ -193,7 +193,7 @@ pub(crate) fn kill_mark_child(
             process_children_parent_wf_at(root, tree, krnl.prc_mp, target, child_ptr); process_root_wf_at(root, tree, krnl.prc_mp, child_ptr);
             container_process_wf_container_at(krnl.ctn_mp, krnl.prc_mp, target_ro.owning_container, child_ptr); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, child_ptr);
         };
-        assert(!krnl.prc_mp.spec_index(child_ptr).wlocked_by_thread(lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
+        assert(!krnl.prc_mp.spec_index(child_ptr).wlocked_by_thread(lctx.thread_id())) by { krnl.prc_mp.typed_lock_map_aligned_locked_at(lctx.process_lock_map(), lctx.thread_id(), child_ptr); };
         if scope is Subtree {
             assert(krnl.prc_mp.spec_index(process_ptr).view_ghost().subtree_set.view().contains(child_ptr)) by {
                 let uppers = krnl.prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view();
@@ -289,14 +289,13 @@ pub(crate) fn kill_first_thread(
             &&& victim.process_depth == target_ro.depth
             &&& !victim.proc_linkedlist_node.is_init()
         }) by { process_thread_wf_process_at(krnl.prc_mp, krnl.thr_mp, target, victim_ptr); };
-        thread_perms_wf_at(krnl.thr_mp, victim_ptr);
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr);
         assert(!krnl.thr_mp.spec_index(victim_ptr).being_killed()) by {
-            assert(!krnl.thr_mp.spec_index(victim_ptr).wlocked_by_thread(lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
+            assert(!krnl.thr_mp.spec_index(victim_ptr).wlocked_by_thread(lctx.thread_id())) by { krnl.thr_mp.typed_lock_map_aligned_locked_at(lctx.thread_lock_map(), lctx.thread_id(), victim_ptr); };
             krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), target); process_thread_wf_killed_thread_at(krnl.prc_mp, krnl.thr_mp, victim_ptr);
         };
     }
-    let Tracked(victim_perm) = krnl.wlock_thread_unless_killed(victim_ptr, Tracked(&mut *lctx)).unwrap();
+    let Tracked(victim_perm) = krnl.wlock_kill_victim_thread(victim_ptr, Tracked(&mut *lctx)).unwrap();
     proof {
         thread_perms_wf_at(krnl.thr_mp, victim_ptr); thread_caller_callee_wf_at(krnl.thr_mp, victim_ptr);
         assert(!(before.thr_mp.spec_index(victim_ptr).view().state is IPC_TRANSIT || before.thr_mp.spec_index(victim_ptr).view().state is KILLED)) by {

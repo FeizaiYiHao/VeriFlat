@@ -78,8 +78,7 @@ pub(crate) fn kill_leave_process(
     }
     proof {
         assert(kill_leave_process_eof_transition_framing(pre, *krnl, process_ptr, victim_ptr, callers)) by { reveal(kill_leave_process_eof_transition_framing); };
-        reveal(LockedMap::typed_lock_map_aligned);
-        kill_leave_process_eof(pre, *krnl, process_ptr, victim_ptr, callers, lctx.thread_id());
+        assert(krnl.inv()) by { reveal(LockedMap::typed_lock_map_aligned); kill_leave_process_eof(pre, *krnl, process_ptr, victim_ptr, callers, lctx.thread_id()); };
     }
     Ghost(callers)
 }
@@ -324,7 +323,9 @@ pub(crate) fn kill_evict_running_victim(krnl: &mut KernelK, Tracked(lctx): Track
     };
     proof {
         let cpu = krnl.cpu_arr.spec_index(remote).view();
-        assert(cpu.being_killed() ==> cpu.wlocked_by_thread(lctx.thread_id())) by { thread_cpu_wf_killed_cpu_at(krnl.thr_mp, krnl.cpu_arr, remote); reveal(LockedMap::typed_lock_map_aligned); };
+        assert(cpu.being_killed() ==> cpu.wlocked_by_thread(lctx.thread_id())) by {
+            thread_cpu_wf_killed_cpu_at(krnl.thr_mp, krnl.cpu_arr, remote); krnl.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), victim_ptr);
+        };
         assert(!cpu.being_killed()) by { reveal(LockedArray::typed_lock_map_aligned); };
     }
     let Tracked(cpu_lock_perm) = krnl.wlock_cpu(remote, Tracked(&mut *lctx)).unwrap();

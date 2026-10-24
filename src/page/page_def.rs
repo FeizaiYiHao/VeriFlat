@@ -128,6 +128,18 @@ impl Page {
             _ => false,
         }
     }
+    /// Lock order below the page-table family (page-table, IOMMU-table, window locks): not free/mapped/merged, not a page-table page.
+    pub open spec fn orders_below_table_locks(&self) -> bool {
+        &&& !self.is_free()
+        &&& !self.is_mapped()
+        &&& !self.is_merged()
+        &&& !(self.state is Allocated4k && self.state->Allocated4k_state is PageTable)
+    }
+    /// Lock order below cpu-set, scheduler and allocator locks: not free, not merged.
+    pub open spec fn orders_below_allocator_locks(&self) -> bool {
+        &&& !self.is_free()
+        &&& !self.is_merged()
+    }
     pub open spec fn free_page_lock_major() -> LockMajorId { FREE_PAGE_LOCK_MAJOR }
     pub open spec fn mapped_page_lock_major() -> LockMajorId { MAPPED_PAGE_LOCK_MAJOR }
     pub open spec fn merged_page_lock_major() -> LockMajorId { MERGED_PAGE_LOCK_MAJOR }

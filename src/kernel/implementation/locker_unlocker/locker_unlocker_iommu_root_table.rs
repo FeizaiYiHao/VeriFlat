@@ -9,8 +9,18 @@ impl KernelK {
         requires
             old(self).inv(),
             old(lctx).kernel_view_locking_state() is Acquire,
+            old(lctx).scheduler_lock_map().dom().is_empty(),
+            old(lctx).cpu_set_lock_map().dom().is_empty(),
+            old(lctx).iommu_table_lock_map().dom().is_empty(),
             old(lctx).iommu_root_table_lock_map().dom().is_empty(),
-            old(lctx).held_lock_majors_lt(IOMMU_ROOT_TABLE_LOCK_MAJOR),
+            old(lctx).pagetable_window_lock_map().dom().is_empty(),
+            old(lctx).pcid_needflush_lock_map().dom().is_empty(),
+            old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
+            old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
+            old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
+            forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+            forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(self).pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
+            forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread) ==> !(old(self).thr_mp.spec_index(held_thread).view().state is SCHEDULED),
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -26,7 +36,10 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::IommuRootTable(old(self).irt.view().table_base()), TypedHeldLock { lock_id: old(self).irt.lock_id(), mode: TypedLockMode::Write }),
     {
         proof {
-            assert(old(lctx).lock_id_acyclic(old(self).irt.lock_id())) by { reveal(LocalContext::lock_id_acyclic); reveal(pagetable_window_typed_lock_map_aligned); };
+            assert(old(lctx).lock_id_acyclic(old(self).irt.lock_id())) by {
+                reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned);
+                reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
+            };
             assert(wlock_requires(old(self).irt, old(lctx))) by { reveal(iommu_root_table_typed_lock_map_aligned); };
         }
         let ret = self.irt.wlock(Tracked(&mut *lctx), Ghost(self.irt.lock_id()), Ghost(KernelObjId::IommuRootTable(self.irt.view().table_base())));

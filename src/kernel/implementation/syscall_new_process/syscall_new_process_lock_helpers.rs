@@ -208,7 +208,7 @@ pub(super) fn new_process_lock_cpu_owner(
         return Err(RetValueType::ErrorProcessKilled);
     }
     let Tracked(parent_lock_perm) = process_res.unwrap();
-    let thread_res = krnl.wlock_thread_unless_killed(current_thread_ptr, Tracked(&mut *lctx));
+    let thread_res = krnl.wlock_current_running_thread_unless_killed(current_thread_ptr, Tracked(&mut *lctx));
     if thread_res.is_none() {
         krnl.wunlock_process(parent_ptr, Tracked(&mut *lctx), Tracked(parent_lock_perm));
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));

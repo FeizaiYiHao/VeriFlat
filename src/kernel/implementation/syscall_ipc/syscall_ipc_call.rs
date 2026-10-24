@@ -209,9 +209,7 @@ verus! {
         proof {
             lctx.update_lock_id(KernelObjId::Thread(callee_ptr), before_switch.thr_mp.lock_id_by_key(callee_ptr), krnl.thr_mp.lock_id_by_key(callee_ptr));
             assert(ipc_call_handoff_eof_transition_framing(before_switch, *krnl, cpu_id, caller_ptr, endpoint_ptr, endpoint_index, callee_ptr, *old(pt_regs))) by { reveal(ipc_call_handoff_eof_transition_framing); };
-            old(krnl).thr_mp.typed_lock_map_aligned_write_at(old(lctx).thread_lock_map(), old(lctx).thread_id(), callee_ptr);
-            reveal(LockedMap::typed_lock_map_aligned);
-            ipc_call_handoff_eof(before_switch, *krnl, cpu_id, caller_ptr, endpoint_ptr, endpoint_index, callee_ptr, *old(pt_regs));
+            assert(krnl.inv()) by { reveal(LockedMap::typed_lock_map_aligned); ipc_call_handoff_eof(before_switch, *krnl, cpu_id, caller_ptr, endpoint_ptr, endpoint_index, callee_ptr, *old(pt_regs)); };
         }
         krnl.wunlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx), Tracked(needflush_perm));
         krnl.wunlock_thread(callee_ptr, Tracked(&mut *lctx), Tracked(callee_lock_perm));
@@ -403,9 +401,7 @@ verus! {
         proof {
             lctx.update_lock_id(KernelObjId::Thread(callee_ptr), old(krnl).thr_mp.lock_id_by_key(callee_ptr), krnl.thr_mp.lock_id_by_key(callee_ptr));
             assert(ipc_accept_call_eof_transition_framing(*old(krnl), *krnl, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr)) by { reveal(ipc_accept_call_eof_transition_framing); };
-            old(krnl).thr_mp.typed_lock_map_aligned_write_at(old(lctx).thread_lock_map(), old(lctx).thread_id(), callee_ptr);
-            reveal(LockedMap::typed_lock_map_aligned);
-            ipc_accept_call_eof(*old(krnl), *krnl, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr);
+            assert(krnl.inv()) by { reveal(LockedMap::typed_lock_map_aligned); ipc_accept_call_eof(*old(krnl), *krnl, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr); };
         }
         krnl.wunlock_thread(caller_ptr, Tracked(&mut *lctx), Tracked(caller_lock_perm));
         krnl.wunlock_thread(callee_ptr, Tracked(&mut *lctx), Tracked(callee_lock_perm));
@@ -779,7 +775,6 @@ verus! {
                 &&& krnl.thr_mp.spec_index(peer_thread_ptr).view().state.is_endpoint_waiting()
                 &&& krnl.thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr)
                 &&& peer_thread_ptr != current_thread_ptr
-                &&& !typed_lock_map_contains_mode(lctx.thread_lock_map(), peer_thread_ptr, TypedLockMode::Write)
             }) by { endpoint_queue_member_thread_facts(krnl, endpoint_ptr, peer_thread_ptr); };
             thread_perms_wf_at(krnl.thr_mp, current_thread_ptr);
             assert({
@@ -796,7 +791,7 @@ verus! {
                 reveal(kernel_thread_nonlock_fields_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged);
             };
         }
-        let peer_thread_res = krnl.wlock_thread_unless_killed(peer_thread_ptr, Tracked(&mut *lctx));
+        let peer_thread_res = krnl.wlock_endpoint_waiting_peer_unless_killed(peer_thread_ptr, Tracked(&mut *lctx));
         if peer_thread_res.is_none() {
             krnl.wunlock_endpoint(endpoint_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
             proof {
@@ -1561,7 +1556,7 @@ verus! {
                 &&& old(steps).snapshot_k().thr_mp.spec_index(caller_ptr).being_killed() == krnl.thr_mp.spec_index(caller_ptr).being_killed()
             }) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged); };
         }
-        let caller_res = krnl.wlock_thread_unless_killed(caller_ptr, Tracked(&mut *lctx));
+        let caller_res = krnl.wlock_reply_waiting_caller_unless_killed(caller_ptr, Tracked(&mut *lctx));
         if caller_res.is_none() {
             krnl.wunlock_endpoint(endpoint_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
             proof {

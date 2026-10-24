@@ -132,7 +132,6 @@ pub(crate) fn kill_reassign_functions(
     let ghost before = *krnl;
     let ghost before_lctx = *lctx;
     let ghost before_steps = steps.view();
-    proof { assert(lctx.held_lock_majors_lt(IOMMU_ROOT_TABLE_LOCK_MAJOR)) by { reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); }; }
     let Tracked(irt_perm) = krnl.wlock_iommu_root_table(Tracked(&mut *lctx));
     let ghost locked = *krnl;
     let (moved, Ghost(witness)) = kill_reassign_scan(krnl, Tracked(&*lctx), target, process_ptr, Tracked(&irt_perm));

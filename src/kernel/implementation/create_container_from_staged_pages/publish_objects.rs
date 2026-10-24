@@ -989,9 +989,9 @@ pub(super) fn publish_new_container_process_and_pagetable(
     let Tracked(child_process_lock_perm) =
         krnl.retype_page_to_process_and_insert(child_process_ptr, process_value, process_rodata, process_ghost, Tracked(process_perm), Tracked(&mut *lctx),);
     proof {
-        assert(!old(lctx).process_lock_map().dom().contains(child_process_ptr,)) by { reveal(LockedMap::typed_lock_map_aligned); };
-        assert(held_processes_unchanged(old(krnl).prc_mp, krnl.prc_mp, old(lctx),)) by { reveal(LockedMap::typed_lock_map_aligned); };
-        assert(!old(lctx).pagetable_lock_map().dom().contains(child_pagetable_ptr,)) by { reveal(LockedMap::typed_lock_map_aligned); };
+        assert(!old(lctx).process_lock_map().dom().contains(child_process_ptr,)) by { old(krnl).prc_mp.typed_lock_map_aligned_held_in_dom(old(lctx).process_lock_map(), old(lctx).thread_id()); };
+        assert(held_processes_unchanged(old(krnl).prc_mp, krnl.prc_mp, old(lctx),)) by { old(krnl).prc_mp.typed_lock_map_aligned_held_in_dom(old(lctx).process_lock_map(), old(lctx).thread_id()); };
+        assert(!old(lctx).pagetable_lock_map().dom().contains(child_pagetable_ptr,)) by { old(krnl).pt_mp.typed_lock_map_aligned_held_in_dom(old(lctx).pagetable_lock_map(), old(lctx).thread_id()); };
         assert(held_pagetables_unchanged(old(krnl).pt_mp, krnl.pt_mp, old(lctx),)) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
     (Tracked(child_process_lock_perm), Tracked(child_pagetable_lock_perm), Ghost(process_page_locks))

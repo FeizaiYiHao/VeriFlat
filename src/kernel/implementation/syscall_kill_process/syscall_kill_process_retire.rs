@@ -537,17 +537,6 @@ pub(crate) fn kill_retire_commit(
             pg_arr: final(krnl).pg_arr, allc_4k_mp: final(krnl).allc_4k_mp, ..*old(krnl) }),
         final(krnl).prc_mp.dom() == old(krnl).prc_mp.dom().remove(target),
         final(krnl).allc_4k_mp.dom().contains(allocator_ptr),
-        forall|p: RwLockProcessPtr| #![trigger final(krnl).prc_mp.spec_index(p)] final(krnl).prc_mp.dom().contains(p) ==> {
-            let old_p = old(krnl).prc_mp.spec_index(p);
-            let new_p = final(krnl).prc_mp.spec_index(p);
-            &&& p != parent_ptr ==> new_p.view() == old_p.view()
-            &&& new_p.view().state == old_p.view().state
-            &&& old(krnl).prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(p) ==> new_p.view_ghost().subtree_set.view() == old_p.view_ghost().subtree_set.view().remove(target)
-            &&& new_p.view_rodata() == old_p.view_rodata()
-            &&& new_p.locking_thread() == old_p.locking_thread()
-            &&& new_p.being_killed() == old_p.being_killed()
-            &&& new_p.killer_info() == old_p.killer_info()
-        },
         base.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(parent_ptr),
         forall|p: RwLockProcessPtr| #![trigger final(krnl).prc_mp.spec_index(p)] final(krnl).prc_mp.dom().contains(p) ==> {
             let old_p = base.prc_mp.spec_index(p);
@@ -556,6 +545,10 @@ pub(crate) fn kill_retire_commit(
             &&& new_p.view_ghost() == if base.prc_mp.spec_index(target).view_ghost().uppertree_seq.view().contains(p) {
                 ProcessGhost { subtree_set: Ghost(old_p.view_ghost().subtree_set.view().remove(target)), ..old_p.view_ghost() }
             } else { old_p.view_ghost() }
+            &&& new_p.view_rodata() == old_p.view_rodata()
+            &&& new_p.locking_thread() == old_p.locking_thread()
+            &&& new_p.being_killed() == old_p.being_killed()
+            &&& new_p.killer_info() == old_p.killer_info()
         },
         final(krnl).prc_mp.spec_index(parent_ptr).view().children.view() == base.prc_mp.spec_index(parent_ptr).view().children.view().remove_value(target),
         final(krnl).ctn_mp.dom() == base.ctn_mp.dom(),
@@ -605,8 +598,7 @@ pub(crate) fn kill_retire_commit(
     let ghost mid = *krnl;
     proof {
         assert(kill_retire_eof_transition_framing(entry, mid, cpu_id, target, parent_ptr, container_ptr, allocator_ptr)) by { reveal(kill_retire_eof_transition_framing); };
-        reveal(LockedMap::typed_lock_map_aligned);
-        kill_retire_eof(entry, mid, *old(lctx), cpu_id, target, parent_ptr, container_ptr, allocator_ptr);
+        assert(mid.inv()) by { reveal(LockedMap::typed_lock_map_aligned); kill_retire_eof(entry, mid, *old(lctx), cpu_id, target, parent_ptr, container_ptr, allocator_ptr); };
     }
     krnl.wunlock_allocator_quota_4k(allocator_ptr, Tracked(&mut *lctx), Tracked(quota_lock_perm));
     krnl.wunlock_allocator_cache_4k(allocator_ptr, cpu_id, Tracked(&mut *lctx), Tracked(cache_lock_perm));

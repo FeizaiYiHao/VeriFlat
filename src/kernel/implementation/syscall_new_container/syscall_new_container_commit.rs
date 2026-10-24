@@ -543,7 +543,7 @@ fn commit_new_container_publish_staged(
         parent_cpu_set_lock_perm.view().thread_id() == old(lctx).thread_id(),
         parent_cpu_set_lock_perm.view().lock_id() == old(krnl).cpu_set_mp.spec_index(parent_cpu_set).locking_thread()->Write_lock_id,
         old(lctx).page_lock_map().dom() == page_ptrs_to_indices(pages_4k.view()).union(seq![page_ptr2page_index(container_page), page_ptr2page_index(pcid_allocator_page)].to_set()).union(page_ptrs_to_indices(funding_pages)),
-        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.lock_id_by_index(held_page).major < ALLOCATOR_CACHE_4K_MAJOR,
+        forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.spec_index(held_page).view().view().orders_below_allocator_locks(),
         old(lctx).cpu_lock_map().dom() =~= set![caller_cpu_id],
         old(lctx).container_lock_map().dom() =~= set![parent_container_ptr],
         old(lctx).process_lock_map().dom() =~= set![parent_process_ptr],

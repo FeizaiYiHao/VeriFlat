@@ -300,7 +300,6 @@ verus! {
     {
         proof { thread_perms_wf_map(krnl.thr_mp); }
         let ghost bdf: PciBdf = (bus as usize, dev as usize, fun as usize);
-        proof { assert(lctx.held_lock_majors_lt(IOMMU_ROOT_TABLE_LOCK_MAJOR)) by { reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); }; }
         let Tracked(irt_lock_perm) = krnl.wlock_iommu_root_table(Tracked(&mut *lctx));
         let owner = krnl.irt.borrow(Tracked(&irt_lock_perm)).owner(bus as usize, dev as usize, fun as usize);
         let transferred = owner == sender_proc;

@@ -320,7 +320,6 @@ fn thread_exit_reclaim_lock_table(
     let ghost lock_before = steps.view();
     let Tracked(pagetable_lock_perm) = krnl.wlock_pagetable(pagetable, Tracked(&mut *lctx));
     let ghost table_lctx = *lctx;
-    proof { assert(lctx.held_lock_majors_lt(IOMMU_ROOT_TABLE_LOCK_MAJOR)) by { reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned); }; }
     let Tracked(irt_lock_perm) = krnl.wlock_iommu_root_table(Tracked(&mut *lctx));
     thread_exit_detach_process_functions(krnl, process_ptr, Tracked(&*lctx), Tracked(&irt_lock_perm));
     let iommu_table_lock_perm = match iommu_table {

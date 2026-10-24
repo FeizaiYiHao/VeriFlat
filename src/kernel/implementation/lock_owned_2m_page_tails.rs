@@ -358,9 +358,9 @@ pub fn wlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(lc
                     &&& perms.spec_index(index).thread_id() == lctx.thread_id()
                     &&& perms.spec_index(index).lock_id() == krnl.pg_arr.spec_index(index).view().locking_thread()->Write_lock_id
                 },
-            lctx.pcid_needflush_lock_map().dom().is_empty(),
-            lctx.cpu_offline_flag_lock_map().dom().is_empty(),
-            forall|held_cpu_id: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(held_cpu_id)] lctx.cpu_lock_map().dom().contains(held_cpu_id) ==> !(krnl.cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+            old(lctx).pcid_needflush_lock_map().dom().is_empty(),
+            old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
+            forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
             forall|held_page: PageIndex| #![trigger lctx.page_lock_map().dom().contains(held_page)] lctx.page_lock_map().dom().contains(held_page)
                 ==> krnl.pg_arr.lock_id_by_index(held_page).major < MERGED_PAGE_LOCK_MAJOR || (krnl.pg_arr.lock_id_by_index(held_page).major == MERGED_PAGE_LOCK_MAJOR && held_page < head + 1 + count),
         decreases 511 - count,

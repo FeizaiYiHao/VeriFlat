@@ -205,7 +205,7 @@ pub(crate) fn kill_container_mark_root(
         assert(root_ptr != process_ptr);
         assert(!krnl.prc_mp.spec_index(root_ptr).being_killed()) by {
             process_kill_mark_wf_at(krnl.ctn_mp, krnl.prc_mp, root_ptr); krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), process_ptr);
-            reveal(LockedMap::typed_lock_map_aligned);
+            krnl.prc_mp.typed_lock_map_aligned_locked_at(lctx.process_lock_map(), lctx.thread_id(), root_ptr);
         };
     }
     let Tracked(root_perm) = krnl.try_wlock_process_and_mark_kill(root_ptr, process_ptr, thread_ptr, killer_info, Tracked(&mut *lctx)).unwrap();

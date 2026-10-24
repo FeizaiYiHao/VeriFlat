@@ -129,9 +129,7 @@ pub fn syscall_pci_attach_dma(
         krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), process_ptr);
         assert(!(krnl.it_mp.spec_index(iommu_table).locking_thread() is Write)) by {
             reveal(iommu_table_lock_wf); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, process_ptr);
-            if krnl.it_mp.spec_index(iommu_table).locking_thread() is Write {
-                assert(lctx.iommu_table_lock_map().dom().contains(iommu_table)) by { reveal(LockedMap::typed_lock_map_aligned); };
-            }
+            krnl.it_mp.typed_lock_map_aligned_locked_at(lctx.iommu_table_lock_map(), lctx.thread_id(), iommu_table);
         };
     }
     let ghost before_attach = *krnl;

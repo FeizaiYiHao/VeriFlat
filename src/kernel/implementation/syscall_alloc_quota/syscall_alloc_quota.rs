@@ -251,7 +251,7 @@ verus! {
                 thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr);
                 process_perms_wf_at(krnl.prc_mp, process_ptr);
             };
-            let thread_res = krnl.wlock_thread_unless_killed(thread_ptr, Tracked(lctx));
+            let thread_res = krnl.wlock_current_running_thread_unless_killed(thread_ptr, Tracked(lctx));
             if thread_res.is_none() {
                 krnl.wunlock_process(process_ptr, Tracked(lctx), Tracked(process_lock_perm));
                 krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
@@ -555,7 +555,7 @@ verus! {
                 thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr);
                 process_perms_wf_at(krnl.prc_mp, process_ptr);
             };
-            let thread_res = krnl.wlock_thread_unless_killed(thread_ptr, Tracked(lctx));
+            let thread_res = krnl.wlock_current_running_thread_unless_killed(thread_ptr, Tracked(lctx));
             if thread_res.is_none() {
                 krnl.wunlock_process(process_ptr, Tracked(lctx), Tracked(process_lock_perm));
                 krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));

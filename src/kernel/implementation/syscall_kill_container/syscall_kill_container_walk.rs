@@ -194,7 +194,7 @@ pub(crate) fn kill_container_mark_child(
         assert(!lctx.container_lock_map().dom().contains(child_ptr));
         assert(!krnl.ctn_mp.spec_index(child_ptr).being_killed()) by {
             container_kill_mark_wf_at(krnl.ctn_mp, krnl.prc_mp, child_ptr); krnl.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), target);
-            reveal(LockedMap::typed_lock_map_aligned);
+            krnl.ctn_mp.typed_lock_map_aligned_locked_at(lctx.container_lock_map(), lctx.thread_id(), child_ptr);
         };
     }
     let Tracked(child_perm) = krnl.try_wlock_container_and_mark_kill(child_ptr, killer_info, Tracked(&mut *lctx)).unwrap();
@@ -284,9 +284,10 @@ pub(crate) fn kill_container_retire_target(
     }
     proof {
         vstd::set::lemma_set_remove_len(entry_k.ctn_mp.spec_index(owner_ptr).view_ghost().subtree_set.view(), target);
-        process_perms_wf_map(krnl.prc_mp); krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), process_ptr);
-        krnl.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr);
-        reveal(LockedMap::typed_lock_map_aligned);
+        assert(kill_container_walk_state(*krnl, *lctx, cpu_id, process_ptr, thread_ptr, owner_ptr, killer_info, chain.drop_last(), *cpu_perm, *process_perm, *thread_perm, *owner_perm,
+            *chain_perms)) by {
+            process_perms_wf_map(krnl.prc_mp); reveal(LockedMap::typed_lock_map_aligned);
+        };
     }
     parent
 }

@@ -521,7 +521,7 @@ pub fn rebalance_pull(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalConte
     proof { scheduler_perms_wf_map(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, scheduler_ptr); kernel_scheduler_shards_projection_at(krnl.sched_mp.spec_index(scheduler_ptr), victim); krnl.sched_mp.spec_index(scheduler_ptr).shard(victim).queue.lemma_len_view(); }
     let (_, thread_ptr) = krnl.sched_mp.borrow_shard_typed(scheduler_ptr, victim, Ghost(lctx.scheduler_lock_map()), Tracked(&*lctx), Tracked(shard_perms.tracked_borrow(victim))).queue.peek_head();
     proof { container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp, scheduler_ptr, victim, thread_ptr); }
-    let res = krnl.wlock_thread_unless_killed(thread_ptr, Tracked(&mut *lctx));
+    let res = krnl.wlock_scheduled_thread_unless_killed(thread_ptr, Tracked(&mut *lctx));
     if res.is_none() {
         proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
         proof { assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; }; }

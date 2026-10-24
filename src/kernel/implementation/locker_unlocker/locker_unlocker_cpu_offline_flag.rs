@@ -14,7 +14,7 @@ impl KernelK {
             index_valid(NUM_CPUS, cpu_id),
             old(lctx).kernel_view_locking_state() is Acquire,
             typed_lock_maps_aligned(old(self), old(lctx)),
-            // An ordinary caller holds only cpus and containers no deeper than the table. A killer of a deeper table
+            // An ordinary caller holds only non-Off cpus and containers no deeper than the table. A killer of a deeper table
             // holds its own cpu, Idle cpus no deeper than the table, its process, thread, and container, objects it
             // marked, and flags below this one.
             ({
@@ -23,7 +23,7 @@ impl KernelK {
                 let cpu = old(self).cpu_arr.spec_index(cpu_i).view().view().view();
                 ||| {
                     &&& old(lctx).cpu_offline_flag_lock_map().dom().is_empty()
-                    &&& old(lctx).held_lock_majors_lt(CPU_OFFLINE_FLAG_LOCK_MAJOR)
+                    &&& forall|i: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(i)] old(lctx).cpu_lock_map().dom().contains(i) ==> !(old(self).cpu_arr.spec_index(i).view().view().view().state is Off)
                     &&& old(lctx).process_lock_map().dom().is_empty() && old(lctx).thread_lock_map().dom().is_empty() && old(lctx).cpu_set_lock_map().dom().is_empty()
                     &&& old(lctx).page_lock_map().dom().is_empty() && old(lctx).pcid_needflush_lock_map().dom().is_empty() && old(lctx).endpoint_lock_map().dom().is_empty()
                     &&& old(lctx).scheduler_lock_map().dom().is_empty() && old(lctx).pcid_allocator_lock_map().dom().is_empty() && old(lctx).pagetable_lock_map().dom().is_empty()

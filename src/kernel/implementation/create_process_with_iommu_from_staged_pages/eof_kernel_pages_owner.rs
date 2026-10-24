@@ -82,7 +82,7 @@ pub(super) proof fn eof_process_kernel_pages_owner_pagetable_root(
                 page.state == (PageState::Allocated4k { state: Allocated4KPageState::AsPageTableRoot { table_type: PT_TYPE } }) ==> page.owning_container == post.prc_mp.spec_index(post.pt_mp.spec_index(ptr).view().proc_ptr).view_rodata().view().owning_container
             },
 {
-    reveal(create_process_with_iommu_from_staged_pages_eof_transition_framing);
+    hide(Seq::contains); reveal(create_process_with_iommu_from_staged_pages_eof_transition_framing);
     page_ptr_valid_imply_page_index_valid(); page_ptr2page_index_injective();
     reveal(process_kernel_pages_owner_wf); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(iommu_table_pages_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match);
 }
@@ -208,7 +208,7 @@ pub(super) proof fn eof_process_kernel_pages_owner_iommu_node(
                 page.state is Allocated4k && state is PageTable && state->PageTable_table_type == IOMMU_TYPE ==> page.owning_container == post.prc_mp.spec_index(post.it_mp.spec_index(state->PageTable_pagetable_root).view().proc_ptr).view_rodata().view().owning_container
             },
 {
-    reveal(create_process_with_iommu_from_staged_pages_eof_transition_framing);
+    hide(Seq::contains); reveal(create_process_with_iommu_from_staged_pages_eof_transition_framing);
     page_ptr_valid_imply_page_index_valid(); page_ptr2page_index_injective();
     reveal(process_kernel_pages_owner_wf); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(iommu_table_pages_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match);
 }

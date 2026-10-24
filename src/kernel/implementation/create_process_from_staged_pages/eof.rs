@@ -574,7 +574,7 @@ pub(super) proof fn eof_process_kernel_pages_owner_wf(
     ensures
         process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp),
 {
-    reveal(create_process_from_staged_pages_eof_transition_framing);
+    hide(Seq::contains); reveal(create_process_from_staged_pages_eof_transition_framing);
     page_ptr_valid_imply_page_index_valid(); page_ptr2page_index_injective();
     reveal(process_kernel_pages_owner_wf); reveal(process_pages_wf); reveal(pagetable_pages_wf); reveal(iommu_table_pages_wf); reveal(process_pagetable_match); reveal(process_iommu_table_match);
 }

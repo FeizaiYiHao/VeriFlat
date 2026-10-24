@@ -200,7 +200,7 @@ pub(super) fn new_container_lock_process_and_thread(
         return Err(RetValueType::ErrorProcessKilled);
     }
     let Tracked(process_lock_perm) = process_res.unwrap();
-    let thread_res = krnl.wlock_thread_unless_killed(current_thread_ptr, Tracked(&mut *lctx));
+    let thread_res = krnl.wlock_current_running_thread_unless_killed(current_thread_ptr, Tracked(&mut *lctx));
     if thread_res.is_none() {
         krnl.wunlock_process(parent_process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
         krnl.wunlock_container(parent_container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));

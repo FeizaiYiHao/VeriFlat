@@ -171,7 +171,7 @@ pub(super) fn thread_exit_lock_running_thread(krnl: &mut KernelK, Tracked(lctx):
         return Err(RetValueType::ErrorProcessKilled);
     }
     let Tracked(process_lock_perm) = process_res.unwrap();
-    let thread_res = krnl.wlock_thread_unless_killed(thread_ptr, Tracked(&mut *lctx));
+    let thread_res = krnl.wlock_current_running_thread_unless_killed(thread_ptr, Tracked(&mut *lctx));
     if thread_res.is_none() {
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
         krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
@@ -342,7 +342,7 @@ pub(super) fn thread_exit_enter_with_caller(
     let mut dangling: Option<RwLockThreadPtr> = None;
     let tracked mut dangling_lock_perm: Option<LockPerm> = None;
     if let Some(caller_ptr) = caller {
-        let caller_res = krnl.wlock_thread_unless_killed(caller_ptr, Tracked(&mut *lctx));
+        let caller_res = krnl.wlock_reply_waiting_caller_unless_killed(caller_ptr, Tracked(&mut *lctx));
         if caller_res.is_none() {
             proof { thread_exit_syscall_result_from_k(&pre, cpu_id, RetValueType::ErrorIpcPeerKilled); }
             return None;

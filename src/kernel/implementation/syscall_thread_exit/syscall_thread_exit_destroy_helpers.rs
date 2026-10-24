@@ -261,9 +261,10 @@ pub(super) fn thread_exit_destroy_remove_thread(
     }
     proof {
         assert(thread_exit_destroy_eof_transition_framing(*old(krnl), *krnl, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr)) by { reveal(thread_exit_destroy_eof_transition_framing); };
-        old(krnl).thr_mp.typed_lock_map_aligned_write_at(old(lctx).thread_lock_map(), old(lctx).thread_id(), thread_ptr);
-        reveal(LockedMap::typed_lock_map_aligned);
-        thread_exit_destroy_eof(*old(krnl), *krnl, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr);
+        assert(krnl.inv()) by {
+            reveal(LockedMap::typed_lock_map_aligned);
+            thread_exit_destroy_eof(*old(krnl), *krnl, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr);
+        };
     }
     zombie
 }

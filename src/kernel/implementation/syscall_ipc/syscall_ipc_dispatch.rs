@@ -535,7 +535,6 @@ verus! {
 
         proof {
             assert(krnl.thr_mp.dom().contains(current_thread_ptr)) by { thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); };
-            process_perms_wf_at(krnl.prc_mp, process_ptr);
             assert({
                 &&& krnl.thr_mp.dom().contains(current_thread_ptr)
                 &&& krnl.thr_mp.spec_index(current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id })
@@ -551,7 +550,7 @@ verus! {
                 process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr);
             };
         }
-        let current_thread_res = krnl.wlock_thread_unless_killed(current_thread_ptr, Tracked(&mut *lctx));
+        let current_thread_res = krnl.wlock_current_running_thread_unless_killed(current_thread_ptr, Tracked(&mut *lctx));
 
         if current_thread_res.is_none() {
             proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
@@ -1239,7 +1238,6 @@ verus! {
                 &&& krnl.thr_mp.spec_index(peer_thread_ptr).view().state.is_endpoint_waiting()
                 &&& krnl.thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr)
                 &&& peer_thread_ptr != current_thread_ptr
-                &&& !typed_lock_map_contains_mode(lctx.thread_lock_map(), peer_thread_ptr, TypedLockMode::Write)
             }) by { endpoint_queue_member_thread_facts(krnl, endpoint_ptr, peer_thread_ptr); };
         }
         proof {
@@ -1248,7 +1246,7 @@ verus! {
                 &&& steps.snapshot_k().thr_mp.spec_index(peer_thread_ptr).being_killed() == krnl.thr_mp.spec_index(peer_thread_ptr).being_killed()
             }) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged); };
         }
-        let peer_thread_res = krnl.wlock_thread_unless_killed(peer_thread_ptr, Tracked(&mut *lctx));
+        let peer_thread_res = krnl.wlock_endpoint_waiting_peer_unless_killed(peer_thread_ptr, Tracked(&mut *lctx));
 
         if peer_thread_res.is_none() {
             krnl.wunlock_endpoint(endpoint_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));

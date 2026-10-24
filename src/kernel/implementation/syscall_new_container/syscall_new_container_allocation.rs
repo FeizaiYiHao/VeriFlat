@@ -55,7 +55,7 @@ pub(super) fn allocate_new_container_pages(
         final(lctx).holds_no_allocator_locks(PageSize::SZ4k),
         final(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         final(lctx).holds_no_allocator_locks(PageSize::SZ1g),
-        forall|held_page: PageIndex| #![trigger final(lctx).page_lock_map().dom().contains(held_page)] final(lctx).page_lock_map().dom().contains(held_page) ==> final(krnl).pg_arr.lock_id_by_index(held_page).major < ALLOCATOR_CACHE_4K_MAJOR,
+        forall|held_page: PageIndex| #![trigger final(lctx).page_lock_map().dom().contains(held_page)] final(lctx).page_lock_map().dom().contains(held_page) ==> final(krnl).pg_arr.spec_index(held_page).view().view().orders_below_allocator_locks(),
         ret.0.wf(),
         ret.0.len() == 9,
         ret.0.view().no_duplicates(),

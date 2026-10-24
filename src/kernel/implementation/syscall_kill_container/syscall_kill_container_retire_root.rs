@@ -425,8 +425,9 @@ pub(crate) fn kill_container_retire_root_commit(
     let ghost mid = *krnl;
     proof {
         assert(kill_container_retire_root_eof_transition_framing(entry, mid, cpu_id, target, container_ptr, allocator_ptr)) by { reveal(kill_container_retire_root_eof_transition_framing); };
-        reveal(LockedMap::typed_lock_map_aligned);
-        kill_container_retire_root_eof(entry, mid, *old(lctx), cpu_id, target, container_ptr, allocator_ptr);
+        assert(mid.inv() && mid.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().is_empty()) by {
+            reveal(LockedMap::typed_lock_map_aligned); kill_container_retire_root_eof(entry, mid, *old(lctx), cpu_id, target, container_ptr, allocator_ptr);
+        };
     }
     krnl.wunlock_allocator_quota_4k(allocator_ptr, Tracked(&mut *lctx), Tracked(quota_lock_perm));
     krnl.wunlock_allocator_cache_4k(allocator_ptr, cpu_id, Tracked(&mut *lctx), Tracked(cache_lock_perm));

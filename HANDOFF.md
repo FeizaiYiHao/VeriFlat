@@ -1,41 +1,57 @@
-# Handoff — 锁序 lctx 化（2026-10-22）
+# Handoff — 锁序 K-state 化（2026-10-24）
 
 ## 现状
-- `main` = `ff62781`：第一批已集成、全绿、已推送。
-  - `held_locks_order_below(lctx, page_bound)`（`src/kernel/kernel_k_define_spec.rs`）不再带 `KernelK`，
-    三条锁序子句改成 `typed_lock_map_majors_lt(lctx.{cpu,page,thread}_lock_map(), 界)`，
-    界分别是 `CPU_LOCK_MAJOR_OFF` / `page_bound` / `THREAD_SCHEDULED_LOCK_MAJOR`。
-  - 已批准并加入的引理（只在这三处 reveal 对齐谓词）：
-    `LockedArray::typed_lock_map_aligned_lock_id_at`（`src/locks/lock_array.rs`），
-    `LockedMap::typed_lock_map_aligned_lock_id_at`、`LockedMap::typed_lock_map_aligned_majors_lt`（`src/locks/locked_map.rs`）。
-  - 窗口锁 `lock_pagetable_window` requires 改为坐标级，id 级事实由
-    `pagetable_window_typed_lock_map_ids_lt_from_order`（`pagetable_map_spec.rs`）在原语内证明（c5449cc）。
-  - 单体 #34396：3094 verified / 0 errors，总 rlimit 1094.90M（前一版 1102.81M），wall 69 s，无函数 SMT > 10 s。
-    NI #34397 通过，boot `cargo +1.98.1 check -p kernel / -p aloader`（在 `boot/` 下）通过。
-- 分支 `lock-order-batch2-wip`：第二批的**未验证**起步（7 个 locker 文件的契约改写，+32/−33 行）。
+- `main` = a061d7a 的 `src` + 两个提交：
+  - `d5d041f`：回退 lctx 两提交（ff62781、c5449cc），`src` 回到 a061d7a 原样。
+  - 本提交：K-state 锁序清理（下述内容）。
 
-## 还没做（第二批）
-剩余 K 形式锁序子句约 52 条、12 个文件
-（grep：`lock_map().dom().contains(x) ==> … lock_id_by_index( | state is Off | state is SCHEDULED`）：
-1. 7 个不在 `held_locks_order_below` 链上的 locker（`locker_unlocker/`）：
-   allocator_cache_1g、allocator_global_pool_1g、allocator_global_pool_ordered、cpu_set、iommu_table、quota_ordered、scheduler。
-   WIP 分支里契约已机械改写，函数体和所有调用方还没修、没验证。
-2. kill 的 3 个文件：`syscall_kill_container_lock_pairs.rs`、`syscall_kill_container_retire_lock.rs`
-   （shards/cache_1g/pools_quotas 几条）、`syscall_kill_process_retire_pages_lock.rs`。
-3. 保留 K 形式（语义上要"线程非 SCHEDULED"，不是锁序）：`kill_dequeue_scheduled_victim`、`wake_waiting_reply_caller`。
-4. 用户已预先批准：`LockedArray::typed_lock_map_aligned_majors_lt(&self, held_locks, thread_id, major)`，
-   requires 对齐谓词 + `forall|index| #![trigger held_locks.dom().contains(index)] … ==> self.spec_index(index).lock_id().major < major`，
-   ensures `typed_lock_map_majors_lt(held_locks, major)`，函数体 `reveal(LockedArray::typed_lock_map_aligned)`。
-   只在确有调用方需要（持有的页/CPU 集合是量化集合）时才加，放在 LockedArray 点引理之后。
-5. 遗留小项：`thread_exit_reclaim_lock_table` 里 exec 内还有一处 reveal 对齐谓词
-   （用于 `held_lock_majors_lt(IOMMU_ROOT_TABLE_LOCK_MAJOR)`），可用 cpu/ctn/prc/thr 四个点引理替换。
+## 方向
+- locker 公共 `requires` 只写 K 状态（对象状态、哪些锁图持有/为空）；锁序（`lock_id_acyclic`、存储 id 的 major）在 locker 内部推出，不向调用者索取。
+- lctx 方向已放弃：实测 lctx 优化后 rlimit 1,084.6M vs K-state 1,098.7M（K-state +1.3%），wall 在噪声内；
+  但 lctx 需要调用方 98 处点引理过桥、20 个 locker 契约带存储 id 界。
 
-## 怎么继续
-- 做法同第一批：先冻结 locker 契约（WIP 分支），再按 crate 分组并行修调用方；
-  起点函数在已知 key 上调点引理（`krnl.cpu_arr/thr_mp/pg_arr.typed_lock_map_aligned_lock_id_at(lctx.<family>_lock_map(), lctx.thread_id(), key)`），
-  量化集合用整表引理；不在 exec 里 reveal 对齐谓词，不用 assert forall / exists / choose / assume / spinoff，不提 rlimit，不加别的引理。
-- 聚焦验证：`systemd-run --user --scope -p MemoryMax=30G ./verify-workspace.sh --package <pkg> -- --verify-only-module <mod>`；
-  重活（全仓 `./verify-workspace.sh`、单体 `./verify.sh`、NI 在 `noninterference/`）机器上同时最多两个。
-- 评估标准：单体总 rlimit 对比 1094.90M（#34396），无函数 > 10 s；留不留由用户决定后再推送。
-- 第一批各包相对旧 K 形式：new_process −20%、new_container −10.8%、kill 组明显下降；thread_exit +7.8%、hotplug +4%、ipc +1.7%。
-- 已知修过的运气点：`map_one_mmap_4k_page` 靠 `install_one_mmap_4k_directory_page` 那条 held-window ensures 的旧状态侧 trigger 才稳定。
+## 内容
+- 页锁序：`Page::orders_below_table_locks` / `orders_below_allocator_locks` 用于全部 29 个页序 locker 及 `held_locks_order_below`。
+- iommu_root_table / cpu_offline_flag / cpu / endpoint locker 只要 K 状态，去掉 ledger/acyclic requires。
+- 线程 locker = 私有 core + 六个情形 wrapper，调用点：
+  - current_running：系统调用入口锁自己线程；
+  - scheduled：schedule next / rebalance pull；
+  - endpoint_waiting_peer：ipc rendezvous peer；
+  - reply_waiting_caller：ipc reply 与 thread_exit 的 caller；
+  - kill_victim：kill walk；
+  - killed_chain_caller：reclaim chain。
+- 删 9 条死数值页 major ensures（create_process 8 条 + allocate_free_4k_pages 1 条）。
+- 去掉 3 处 exec 内 `held_lock_majors_lt` 对齐 reveal；EOF 内 reveal 收进 assert 作用域。
+- `install_one_mmap_4k_directory_page` 加 pre-side window trigger，修 `map_one_mmap_4k_page` 的单体不稳定。
+
+## 验证
+- 与本提交源树相同的树：
+  - #34265 workspace：增量，8 个改动 crate 重检 862 verified / 0 errors，其余命中缓存。
+  - #34266 单体（`--num-threads 32 --time-expanded`）：3096 verified / 0 errors；rlimit-run 1,098,681,137，
+    smt-run 527,756 ms，total 64,397 ms；>3 s 6 个，>5 s 1 个（`share_mapping_4k_build_and_share` 5.4 s），>10 s 0。
+  - #34267 NI：1 + 233 verified / 0 errors。
+- 本提交源树 gate：
+  - #34333 单体（`--num-threads 32 --time`）：3096 verified / 0 errors；rlimit-run 1,098,681,137（与 #34266 一致）；
+    smt-run 584,938 ms，total 71,090 ms（期间机器上另有一个重验证任务并发）。
+  - #34334 NI：1 + 233 verified / 0 errors。
+
+| 树 | rlimit-run | smt-run ms | total ms |
+|---|---|---|---|
+| 本提交 #34266 | 1,098,681,137 | 527,756 | 64,397 |
+| 上一轮 #34239 | 1,102,443,188 | 531,152 | 63,767 |
+| 数值 K #34202 | 1,096,600,523 | 522,260 | 62,971 |
+| a061d7a | 1,102,989,363 | – | – |
+| lctx 优化后（已弃）#34312 | 1,084,608,136 | 519,505 | 63,751 |
+
+## 环境
+- `verus` 子模块：本克隆从旁边本地 clone 检出，`verus/source/target-verus` 软链到该 clone。
+- 用 `ulimit -v 31457280` 代替 `systemd-run`。
+- `--verify-function` 每次只给一个。
+- boot check 缺 nasm。
+
+## 剩余项
+- 保留的数值事实及原因：wlock_page 页对页顺序；2M tail merged 顺序；FREE/MAPPED 类别事实；share_mapping `< MAPPED` ×3 喂 wlock_page。
+- `wlock_scheduler_shard` 的 `|| being_killed()` 保留。
+- 需批准的系统性成本：lock-map 空集子句引发的 `lemma_set_is_empty_len0` + `axiom_set_ext_equal`；
+  `kill_chain_state` 的 `chain[i],chain[j]` trigger；publish_objects 的 get-frame ensures。
+- 桶结构导致的 wall 未测。
