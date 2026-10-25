@@ -935,6 +935,7 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
             typed_lock_maps_inserted(&table_lctx, lctx, KernelObjId::IommuTable(iommu_table), it_entry),
             pt_entry.mode == TypedLockMode::Write,
             it_entry.mode == TypedLockMode::Write,
+            typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write),
             entry_k.prc_mp.spec_index(process_ptr).view().iommu_table == Some(iommu_table),
             locked_it.view().leaves_present(),
             locked_it.view().kernel_l4_end == 0,
@@ -1079,18 +1080,10 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
     {
         let found_next = found.unwrap();
         let next = (found_next.0, found_next.1, found_next.2, found_next.3);
-        let ghost leaf_k = *krnl;
-        let ghost leaf_lctx = *lctx;
         reclaim_unmapped_iommu_4k_page(krnl, iommu_table, next, thread_ptr, cpu_id, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(iommu_table_lock_perm),
             Tracked(thread_lock_perm));
         cursor = (next.0, next.1, next.2, next.3 + 1);
-        proof {
-            assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable) == pagetable_c(leaf_k.pt_mp, leaf_k.pt_lower.view(), pagetable)) by {
-                leaf_k.pt_mp.typed_lock_map_aligned_write_at(leaf_lctx.pagetable_lock_map(), leaf_lctx.thread_id(), pagetable);
-                pagetable_lower_backup_wf_at(leaf_k.pt_mp, leaf_k.pt_lower.view(), pagetable); pagetable_lower_backup_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
-            };
-            iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table);
-        }
+        proof { iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table); }
         found = krnl.it_mp.borrow_typed(iommu_table, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm)).next_mapped_4k_from(cursor);
     }
     proof {

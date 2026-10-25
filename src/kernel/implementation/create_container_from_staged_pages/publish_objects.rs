@@ -373,7 +373,6 @@ pub(super) fn set_new_container_owned_2m_page_tail_pair(
                 ==> final(pages).spec_index(index).view().view().owning_container == reference_krnl.pg_arr.spec_index(index).view().view().owning_container,
         forall|index: PageIndex|
             #![trigger final(pages).spec_index(index)]
-            #![trigger reference_krnl.pg_arr.spec_index(index)]
             index_valid(NUM_PAGES, index) && !page_2m_tail_indices(page_ptr2page_index(container_page)).contains(index) && !page_2m_tail_indices(page_ptr2page_index(pcid_allocator_page)).contains(index)
                 ==> final(pages).spec_index(index) == reference_krnl.pg_arr.spec_index(index),
         forall|page_ptr: PagePtr|
@@ -651,7 +650,6 @@ pub(super) fn prepare_new_container_backing_pages(
             index_valid(NUM_PAGES, index) ==> final(pages).spec_index(index).view().view().iommu_mappings() == reference_krnl.pg_arr.spec_index(index).view().view().iommu_mappings(),
         forall|index: PageIndex|
             #![trigger final(pages).spec_index(index)]
-            #![trigger reference_krnl.pg_arr.spec_index(index)]
             index_valid(NUM_PAGES, index) && !funding_indices.contains(index) && !page_2m_tail_indices(page_ptr2page_index(container_page)).contains(index)
                 && !page_2m_tail_indices(page_ptr2page_index(pcid_allocator_page)).contains(index) && index != page_ptr2page_index(container_page) && index != page_ptr2page_index(pcid_allocator_page)
                 ==> final(pages).spec_index(index) == reference_krnl.pg_arr.spec_index(index),
@@ -859,7 +857,6 @@ pub(super) fn publish_new_container_process_and_pagetable(
         final(lctx).page_lock_map() == old(lctx).page_lock_map(),
         forall|index: PageIndex|
             #![trigger final(krnl).pg_arr.spec_index(index)]
-            #![trigger old(krnl).pg_arr.spec_index(index)]
             index_valid(NUM_PAGES, index) && index != page_ptr2page_index(child_process_ptr) && index != page_ptr2page_index(child_pagetable_ptr) && index != page_ptr2page_index(l4_page) ==> final(krnl).pg_arr.spec_index(index) == old(krnl).pg_arr.spec_index(index),
         forall|index: PageIndex|
             #![trigger final(krnl).pg_arr.spec_index(index).view().view().mappings()]
@@ -1732,7 +1729,7 @@ pub(super) fn link_new_container_into_tree(
     proof {
         let ghost original_children = base_containers.spec_index(parent_container_ptr).view().children.view();
         assert(original_children.no_duplicates()) by { container_perms_wf_at(base_containers, parent_container_ptr); };
-        assert(original_children.len() <= NUM_PAGES * 4096) by { reveal(container_children_parent_wf); reveal(container_pages_wf); seq_unique_bounded_usize_len(original_children, (NUM_PAGES * 4096) as usize); };
+        assert(original_children.len() <= NUM_PAGES * 4096) by { container_children_len_bounded_at(root_container, base_pages, base_containers, parent_container_ptr); };
         assert(containers.spec_index(parent_container_ptr).view().children.length == original_children.len()) by { containers.spec_index(parent_container_ptr).view().children.lemma_len_view(); };
         assert(!original_children.contains(child_container_ptr)) by {
             if original_children.contains(child_container_ptr) { assert(base_containers.dom().contains(child_container_ptr)) by { container_children_parent_wf_at(root_container, base_containers, parent_container_ptr, child_container_ptr); }; }

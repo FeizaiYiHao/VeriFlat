@@ -37,6 +37,8 @@ pub open spec fn iommu_tlb_wf_spec(iommu_tlb: IommuTLB, root_table: IommuRootTab
 }
 
 /// Every IOTLB domain attached to IOMMU table `it` caches only present leaves of `it`: the write holder's flush establishes it and the step boundary keeps it.
+/// Opaque: callers forward it unchanged; only the flush producer and the EOF closures that relate it to `iommu_tlb_wf_spec` reveal it.
+#[verifier::opaque]
 pub open spec fn iommu_table_tlb_entries_present(iommu_tlb: IommuTLB, root_table: IommuRootTable, iommu_table_map: IommuTableLockedMap, it: RwLockPageTableRoot) -> bool {
     forall|bus: usize, device: usize, function: usize|
         #![trigger root_table.spec_index_iommu_root(bus, device, function)]

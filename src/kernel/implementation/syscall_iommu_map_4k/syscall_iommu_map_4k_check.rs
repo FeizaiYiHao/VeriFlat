@@ -366,18 +366,11 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
         } else {
             proof { iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table_ptr); iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, iommu_table_ptr); }
             let it = krnl.it_mp.borrow_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(&iommu_table_lock_perm));
-            let end_iova = iova_range.index(range - 1);
-            if !it.mapping_4k_va_range_empty(iova, end_iova) {
+            if !it.mapping_4k_va_range_absent(&iova_range) {
                 proof { iommu_map_4k_result_from_k(&*old(krnl), cpu_id, va, iova, range, RetValueType::ErrorIommuIovaAlreadyMapped); }
                 RetValueType::ErrorIommuIovaAlreadyMapped
             } else {
-                proof {
-                    assert forall|j: int| #![trigger iova_range.view()[j]] 0 <= j < range implies !krnl.it_mp.spec_index(iommu_table_ptr).view().mapping_4k().dom().contains(iova_range.view()[j]) by {
-                        assert(iova_range.view()[j] == spec_va_add_range(iova, j as usize) && spec_va_4k_valid(iova_range.view()[j]));
-                        broadcast use PageTable::mapping_4k_index_range_empty_implies_va_empty_at, spec_va_4k_valid_index_roundtrip;
-                    };
-                    iommu_map_4k_result_from_k(&*old(krnl), cpu_id, va, iova, range, RetValueType::Success);
-                }
+                proof { iommu_map_4k_result_from_k(&*old(krnl), cpu_id, va, iova, range, RetValueType::Success); }
                 RetValueType::Success
             }
         }

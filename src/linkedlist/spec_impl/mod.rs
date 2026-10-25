@@ -117,6 +117,15 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
         assert(ia == ib) by { reveal(LinkedList::value_list_unique); };
     }
 
+    /// Point instance of `wf_map` at `addr`: map membership agrees with `dom()` and the mapped value is the node's value.
+    pub proof fn wf_map_at(&self, addr: usize)
+        requires
+            self.wf_map(),
+        ensures
+            self.map().dom().contains(addr) == self.dom().contains(addr),
+            self.map().dom().contains(addr) ==> self.map().spec_index(addr) == self.perms.view().spec_index(addr).value().view(),
+    { reveal(LinkedList::wf_map); }
+
     #[verifier::opaque]
     pub open spec fn wf_perms(&self) -> bool {
         &&& forall|addr: usize|

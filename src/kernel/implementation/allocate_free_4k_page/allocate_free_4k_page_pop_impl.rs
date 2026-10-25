@@ -141,7 +141,12 @@ verus! {
             let mut page = krnl.pg_arr.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_lock_perm));
             assert(page.owning_container == container_ptr && node_addr == page.free_list_node_storage.addr()) by {
                 container_allocator_free_4k_page_wf_at(old(krnl).allc_4k_mp, old(krnl).pg_arr, page_index);
-                container_allocator_wf_at(old(krnl).ctn_mp, old(krnl).allc_4k_mp, old(krnl).allc_2m_mp, old(krnl).allc_1g_mp, container_ptr); reveal(LinkedList::wf_map);
+                container_allocator_wf_at(old(krnl).ctn_mp, old(krnl).allc_4k_mp, old(krnl).allc_2m_mp, old(krnl).allc_1g_mp, container_ptr);
+                if let Some(cpu_id) = source {
+                    old(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.spec_index(cpu_id).view().view().linked_list.lemma_value_addr_unique(node_addr, page.free_list_node_storage.addr());
+                } else {
+                    old(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.view().linked_list.lemma_value_addr_unique(node_addr, page.free_list_node_storage.addr());
+                }
             };
             page.state = PageState::Owned4k { thread_ptr };
             page.free_list_node_storage.put(Tracked(node_perm));

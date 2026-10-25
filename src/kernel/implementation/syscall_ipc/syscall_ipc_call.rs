@@ -198,7 +198,10 @@ verus! {
                 &&& before_switch.ep_mp.spec_index(endpoint_ptr).view().queue.map().dom().contains(callee_node_addr)
                 &&& before_switch.ep_mp.spec_index(endpoint_ptr).view().queue.map().spec_index(callee_node_addr) == callee_ptr
                 &&& endpoint_node_perm.addr() == callee_node_addr
-            }) by { thread_endpoint_queue_wf_thread_at(before_switch.thr_mp, before_switch.ep_mp, callee_ptr); endpoint_perms_wf_at(before_switch.ep_mp, endpoint_ptr); reveal(LinkedList::wf_map); };
+            }) by {
+                thread_endpoint_queue_wf_thread_at(before_switch.thr_mp, before_switch.ep_mp, callee_ptr); endpoint_perms_wf_at(before_switch.ep_mp, endpoint_ptr);
+                before_switch.ep_mp.spec_index(endpoint_ptr).view().queue.lemma_value_addr_unique(endpoint_node_perm.addr(), before_switch.thr_mp.spec_index(callee_ptr).view().endpoint_linkedlist_node.addr());
+            };
         }
         let caller = krnl.thr_mp.borrow_mut_typed(caller_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&caller_lock_perm));
         caller.running_caller_to_waiting_reply(callee_ptr, caller_ptr, &*pt_regs);
@@ -390,7 +393,10 @@ verus! {
                 &&& old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.map().dom().contains(caller_node_addr)
                 &&& old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.map().spec_index(caller_node_addr) == caller_ptr
                 &&& endpoint_node_perm.addr() == caller_node_addr
-            }) by { thread_endpoint_queue_wf_thread_at(old(krnl).thr_mp, old(krnl).ep_mp, caller_ptr); endpoint_perms_wf_at(old(krnl).ep_mp, endpoint_ptr); reveal(LinkedList::wf_map); };
+            }) by {
+                thread_endpoint_queue_wf_thread_at(old(krnl).thr_mp, old(krnl).ep_mp, caller_ptr); endpoint_perms_wf_at(old(krnl).ep_mp, endpoint_ptr);
+                old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.lemma_value_addr_unique(endpoint_node_perm.addr(), old(krnl).thr_mp.spec_index(caller_ptr).view().endpoint_linkedlist_node.addr());
+            };
         }
         let caller = krnl.thr_mp.borrow_mut_typed(caller_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&caller_lock_perm));
         caller.endpoint_caller_to_waiting_reply(caller_ptr, callee_ptr, Tracked(endpoint_node_perm));

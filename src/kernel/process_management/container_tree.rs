@@ -107,6 +107,16 @@ verus! {
             },
     { reveal(container_children_parent_wf); }
 
+    /// Container `c_ptr`'s duplicate-free child list holds only 2M-aligned container pointers, so its length is below the pointer bound.
+    pub proof fn container_children_len_bounded_at(root_container: RwLockContainerPtr, page_array: PageLockedArray, container_perms: ContainerLockedMap, c_ptr: RwLockContainerPtr)
+        requires
+            container_perms_wf(container_perms),
+            container_children_parent_wf(root_container, container_perms),
+            container_pages_wf(page_array, container_perms),
+            container_perms.dom().contains(c_ptr),
+        ensures container_perms.spec_index(c_ptr).view().children.view().len() <= NUM_PAGES * 4096,
+    { container_perms_wf_at(container_perms, c_ptr); reveal(container_children_parent_wf); reveal(container_pages_wf); seq_unique_bounded_usize_len(container_perms.spec_index(c_ptr).view().children.view(), (NUM_PAGES * 4096) as usize); }
+
     /// A non-root container `c_ptr` whose parent is in the map sits in its parent's child list at its own list node.
     pub proof fn containers_linkedlist_wf_at(root_container: RwLockContainerPtr, container_perms: ContainerLockedMap, c_ptr: RwLockContainerPtr)
         requires

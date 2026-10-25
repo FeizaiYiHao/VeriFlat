@@ -58,18 +58,11 @@ pub fn map_shared_page_into_iommu_4k(
         *final(krnl) == (KernelK { it_mp: final(krnl).it_mp, pg_arr: final(krnl).pg_arr, ..*old(krnl) }),
         final(krnl).it_mp.unchanged_except(&old(krnl).it_mp, iommu_table_ptr),
         final(krnl).it_mp.spec_index(iommu_table_ptr).locking_thread() == old(krnl).it_mp.spec_index(iommu_table_ptr).locking_thread(),
-        final(krnl).it_mp.spec_index(iommu_table_ptr).being_killed() == old(krnl).it_mp.spec_index(iommu_table_ptr).being_killed(),
         final(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_4k()
             == old(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_4k().insert(iova, pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().spec_index(va)),
         final(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_2m() == old(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_2m(),
         final(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_1g() == old(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_1g(),
-        final(krnl).it_mp.spec_index(iommu_table_ptr).view().page_closure() == old(krnl).it_mp.spec_index(iommu_table_ptr).view().page_closure(),
         final(krnl).it_mp.spec_index(iommu_table_ptr).view().proc_ptr == old(krnl).it_mp.spec_index(iommu_table_ptr).view().proc_ptr,
-        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
-            #![trigger final(krnl).it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(l4i, l3i, l2i)]
-            pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
-                ==> final(krnl).it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(l4i, l3i, l2i) == old(krnl).it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(l4i, l3i, l2i),
-        held_pages_unchanged(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx)),
 {
     let source_indices = va2index(va);
     let indices = va2index(iova);

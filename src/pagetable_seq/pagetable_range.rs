@@ -606,6 +606,46 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         true
     }
 
+    /// Check whether no address in a 4K range has an abstract 4K mapping.
+    ///
+    /// This scans only the page table and does not mutate any page-table state.
+    pub fn mapping_4k_va_range_absent(&self, range: &VaRange4K) -> (ret: bool)
+        requires
+            self.wf(),
+            range.wf(),
+            self.kernel_l4_end <= spec_va2index(range.start).0,
+        ensures
+            ret == forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len ==> !self.mapping_4k().dom().contains(range.view().spec_index(j)),
+    {
+        let range_start = range.start;
+        let range_len = range.len;
+        let mut i: usize = 0;
+        while i < range_len
+            invariant
+                self.wf(),
+                range.wf(),
+                range_start == range.start,
+                range_len == range.len,
+                self.kernel_l4_end <= spec_va2index(range.start).0,
+                0 <= i <= range_len,
+                forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < i ==> !self.mapping_4k().dom().contains(range.view().spec_index(j)),
+            decreases range_len - i,
+        {
+            let va = va_add_range(range_start, i);
+            proof { assert(va_4k_valid(va)) by { range.va_range_lemma(); }; }
+            let (l4i, l3i, l2i, l1i) = va2index(va);
+            proof { assert(self.kernel_l4_end <= l4i) by { assert(spec_va_4k_valid(range_start) && spec_va_4k_valid(va) && range_start <= va) by { range.va_range_lemma(); }; spec_v2l4index_monotonic(range_start, va); }; }
+            let resolved = self.resolve_mapping_4k_l1(l4i, l3i, l2i, l1i);
+            if resolved.2.is_some() {
+                proof { assert(self.mapping_4k().dom().contains(range.view().spec_index(i as int))) by { range.va_range_lemma(); reveal(PageTable::wf_mapping_4k); spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i); }; }
+                return false;
+            }
+            proof { assert(!self.mapping_4k().dom().contains(range.view().spec_index(i as int))) by { range.va_range_lemma(); reveal(PageTable::wf_mapping_4k); spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i); }; }
+            i = i + 1;
+        }
+        true
+    }
+
     /// Every 4K slot in the range is available for a new leaf. Missing
     /// directory levels are allowed; existing 1G, 2M, and 4K leaves are not.
     pub open spec fn spec_mapping_4k_va_range_buildable(&self, range: &VaRange4K) -> bool {

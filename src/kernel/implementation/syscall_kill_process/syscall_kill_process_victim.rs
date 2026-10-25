@@ -50,7 +50,9 @@ pub(crate) fn kill_leave_process(
         }) by { process_thread_wf_process_at(krnl.prc_mp, krnl.thr_mp, process_ptr, victim_ptr); };
         thread_perms_wf_map(krnl.thr_mp);
         thread_perms_wf_at(krnl.thr_mp, victim_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, victim_ptr);
-        assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.dom().contains(krnl.thr_mp.spec_index(victim_ptr).view().proc_linkedlist_node.addr())) by { reveal(LinkedList::wf_map); };
+        assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.dom().contains(krnl.thr_mp.spec_index(victim_ptr).view().proc_linkedlist_node.addr())) by {
+            krnl.prc_mp.spec_index(process_ptr).view().owned_threads.wf_map_at(krnl.thr_mp.spec_index(victim_ptr).view().proc_linkedlist_node.addr());
+        };
         container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, victim_ptr); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr);
         container_process_thread_quota_sums_bounded(&*krnl, krnl.thr_mp.spec_index(victim_ptr).view().owning_container, process_ptr, victim_ptr);
     }
@@ -153,7 +155,7 @@ pub(crate) fn kill_dequeue_scheduled_victim(krnl: &mut KernelK, Tracked(lctx): T
         thread_perms_wf_at(krnl.thr_mp, victim_ptr);
         assert(krnl.sched_mp.spec_index(scheduler_ptr).shard(shard).queue.map().dom().contains(node_addr) && krnl.sched_mp.spec_index(scheduler_ptr).shard(shard).queue.map().spec_index(node_addr) == victim_ptr)
             by { container_thread_scheduler_wf_thread_at(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp, victim_ptr); };
-        assert(krnl.sched_mp.spec_index(scheduler_ptr).shard(shard).queue.dom().contains(node_addr)) by { scheduler_perms_wf_at(krnl.sched_mp, scheduler_ptr); reveal(LinkedList::wf_map); };
+        assert(krnl.sched_mp.spec_index(scheduler_ptr).shard(shard).queue.dom().contains(node_addr)) by { scheduler_perms_wf_at(krnl.sched_mp, scheduler_ptr); krnl.sched_mp.spec_index(scheduler_ptr).shard(shard).queue.wf_map_at(node_addr); };
     }
     let node_perm = scheduler_map_remove_scheduled_thread(&mut krnl.sched_mp, scheduler_ptr, shard, node_addr, Tracked(&*lctx), Tracked(&shard_lock_perm));
     {
@@ -227,7 +229,7 @@ pub(crate) fn kill_dequeue_endpoint_victim(krnl: &mut KernelK, Tracked(lctx): Tr
     let ghost pre = *krnl;
     proof {
         thread_perms_wf_at(krnl.thr_mp, victim_ptr); thread_endpoint_queue_wf_thread_at(krnl.thr_mp, krnl.ep_mp, victim_ptr); endpoint_perms_wf_map(krnl.ep_mp); endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr);
-        assert(krnl.ep_mp.spec_index(endpoint_ptr).view().queue.dom().contains(node_addr)) by { reveal(LinkedList::wf_map); };
+        assert(krnl.ep_mp.spec_index(endpoint_ptr).view().queue.dom().contains(node_addr)) by { krnl.ep_mp.spec_index(endpoint_ptr).view().queue.wf_map_at(node_addr); };
     }
     let node_perm = {
         let endpoint = krnl.ep_mp.borrow_mut_typed(endpoint_ptr, Ghost(lctx.endpoint_lock_map()), Tracked(&*lctx), Tracked(&endpoint_lock_perm));

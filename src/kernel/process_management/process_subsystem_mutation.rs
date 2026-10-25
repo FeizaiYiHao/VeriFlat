@@ -687,7 +687,9 @@ pub fn process_map_unlink_child(
 {
     assert(process_map.perms_wf() && process_map.spec_index(child_ptr).is_init()) by { process_perms_wf_map(*process_map); process_perms_wf_at(*process_map, child_ptr); };
     let node_addr = process_map.borrow_typed(child_ptr, Ghost(lctx.process_lock_map()), Tracked(lctx), Tracked(child_lock_perm)).parent_linkedlist_node.addr();
-    assert(process_map.spec_index(parent_ptr).is_init() && process_map.spec_index(parent_ptr).inv() && process_map.spec_index(parent_ptr).view().children.dom().contains(node_addr)) by { process_perms_wf_at(*process_map, parent_ptr); reveal(LinkedList::wf_map); };
+    assert(process_map.spec_index(parent_ptr).is_init() && process_map.spec_index(parent_ptr).inv() && process_map.spec_index(parent_ptr).view().children.dom().contains(node_addr)) by {
+        process_perms_wf_at(*process_map, parent_ptr); process_map.spec_index(parent_ptr).view().children.wf_map_at(node_addr);
+    };
     let parent = process_map.borrow_mut_typed(parent_ptr, Ghost(lctx.process_lock_map()), Tracked(lctx), Tracked(parent_lock_perm));
     let node_perm = parent.remove_child(node_addr);
     proof {
@@ -1434,7 +1436,7 @@ pub fn container_map_unlink_child(
         container_perms_wf_map(*container_map); container_perms_wf_at(*container_map, child_ptr); container_perms_wf_at(*container_map, parent_ptr);
     };
     let node_addr = container_map.borrow_typed(child_ptr, Ghost(lctx.container_lock_map()), Tracked(lctx), Tracked(child_lock_perm)).parent_linkedlist_node.addr();
-    assert(container_map.spec_index(parent_ptr).view().children.dom().contains(node_addr)) by { reveal(LinkedList::wf_map); };
+    assert(container_map.spec_index(parent_ptr).view().children.dom().contains(node_addr)) by { container_map.spec_index(parent_ptr).view().children.wf_map_at(node_addr); };
     let parent = container_map.borrow_mut_typed(parent_ptr, Ghost(lctx.container_lock_map()), Tracked(lctx), Tracked(parent_lock_perm));
     let (_, node_perm) = parent.children.remove(node_addr);
     proof {

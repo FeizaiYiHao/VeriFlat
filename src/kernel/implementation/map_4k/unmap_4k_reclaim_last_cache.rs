@@ -48,6 +48,8 @@ pub fn reclaim_last_lock_4k_cache_with_room(krnl: &mut KernelK, allocator_ptr: R
         held_pages_unchanged(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx)),
         held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
         held_pagetable_windows_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), final(krnl).pt_mp, final(krnl).pt_lower.view(), old(lctx)),
+        forall|p: RwLockPageTableRoot| #![trigger old(lctx).pagetable_lock_map().dom().contains(p)] typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), p, TypedLockMode::Write)
+            ==> pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), p) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), p),
         forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] #![trigger final(krnl).pg_arr.spec_index(p)] old(lctx).page_lock_map().dom().contains(p)
             ==> final(krnl).ctn_mp.spec_index(old(krnl).pg_arr.spec_index(p).view().view().owning_container).view_rodata() == old(krnl).ctn_mp.spec_index(old(krnl).pg_arr.spec_index(p).view().view().owning_container).view_rodata(),
 {

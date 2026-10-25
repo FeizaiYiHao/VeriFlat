@@ -9,7 +9,6 @@ pub(super) proof fn iommu_map_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va
     requires
         krnl.inv(),
         index_valid(NUM_CPUS, cpu_id),
-        ret is ErrorIommuIovaAlreadyMapped ==> iommu_map_4k_syscall_range(iova, range).wf(),
         ({
             let cpu = krnl.cpu_arr.spec_index(cpu_id).value;
             let thread_ptr = cpu.view().view().current_thread->Some_0;
@@ -41,7 +40,7 @@ pub(super) proof fn iommu_map_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va
             &&& tabled && (ret is ErrorIommuVaNotMapped || ret is ErrorIommuIovaAlreadyMapped || ret is Success) ==> spec_v2l4index(va) >= table.kernel_l4_end()
             &&& tabled && ret is ErrorIommuVaNotMapped ==> !mapped
             &&& tabled && (ret is ErrorIommuIovaAlreadyMapped || ret is Success) ==> mapped
-            &&& tabled && ret is ErrorIommuIovaAlreadyMapped ==> !it.spec_mapping_4k_range_empty(spec_va2index(iova), spec_va2index(iova_range.view()[range - 1]))
+            &&& tabled && ret is ErrorIommuIovaAlreadyMapped ==> !free
             &&& tabled && ret is Success ==> free
             &&& ret is Error || ret is CpuIdle || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorPciNoIommuTable || ret is ErrorNoQuota || ret is ErrorIommuVaNotMapped
                 || ret is ErrorIommuIovaAlreadyMapped || ret is Success
@@ -65,39 +64,6 @@ pub(super) proof fn iommu_map_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va
             assert(user_va_range(u, iommu_map_4k_syscall_range(va, range)) == (spec_v2l4index(va) >= table.kernel_l4_end()));
             if !(ret is ErrorPciNoIommuTable) && !(ret is ErrorNoQuota) {
                 kernel_iommu_table_mappings_projection_at(krnl, thread.owning_proc);
-            }
-            if ret is ErrorIommuIovaAlreadyMapped {
-                let it = krnl.it_mp.spec_index(process.iommu_table->Some_0).view();
-                let iova_range = iommu_map_4k_syscall_range(iova, range);
-                let end_iova = iova_range.view()[range - 1];
-                let (a4, a3, a2, a1) = spec_va2index(iova);
-                let (e4, e3, e2, e1) = spec_va2index(end_iova);
-                iova_range.va_range_lemma();
-                assert(end_iova == spec_va_add_range(iova, (range - 1) as usize) && spec_va_4k_valid(end_iova));
-                spec_va_4k_valid_index_roundtrip(iova); spec_va_4k_valid_index_roundtrip(end_iova);
-                assert(iova % 4096 == 0) by (bit_vector) requires spec_va_4k_valid(iova);
-                if forall|j: int| #![trigger iova_range.view()[j]] 0 <= j < range ==> !it.mapping_4k().dom().contains(iova_range.view()[j]) {
-                    assert forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger it.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
-                        pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && spec_l4_index_path_le((a4, a3, a2, a1), (l4i, l3i, l2i, l1i))
-                            && spec_l4_index_path_le((l4i, l3i, l2i, l1i), (e4, e3, e2, e1)) implies !it.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i))) by {
-                        let v = spec_index2va((l4i, l3i, l2i, l1i));
-                        assert(a4 < l4i || (a4 == l4i && (a3 < l3i || (a3 == l3i && (a2 < l2i || (a2 == l2i && a1 <= l1i))))));
-                        assert(l4i < e4 || (l4i == e4 && (l3i < e3 || (l3i == e3 && (l2i < e2 || (l2i == e2 && l1i <= e1))))));
-                        assert(spec_index2va((a4, a3, a2, a1)) <= spec_index2va((l4i, l3i, l2i, l1i))) by (bit_vector)
-                            requires a4 < 512 && a3 < 512 && a2 < 512 && a1 < 512 && l4i < 512 && l3i < 512 && l2i < 512 && l1i < 512,
-                                a4 < l4i || (a4 == l4i && (a3 < l3i || (a3 == l3i && (a2 < l2i || (a2 == l2i && a1 <= l1i)))));
-                        assert(spec_index2va((l4i, l3i, l2i, l1i)) <= spec_index2va((e4, e3, e2, e1))) by (bit_vector)
-                            requires e4 < 512 && e3 < 512 && e2 < 512 && e1 < 512 && l4i < 512 && l3i < 512 && l2i < 512 && l1i < 512,
-                                l4i < e4 || (l4i == e4 && (l3i < e3 || (l3i == e3 && (l2i < e2 || (l2i == e2 && l1i <= e1)))));
-                        assert(spec_index2va((l4i, l3i, l2i, l1i)) % 4096 == 0) by (bit_vector) requires l4i < 512 && l3i < 512 && l2i < 512 && l1i < 512;
-                        assert(iova <= v <= end_iova && v % 4096 == 0);
-                        let k = (v / 4096 - iova / 4096) as usize;
-                        assert(v == (v / 4096) * 4096 && iova == (iova / 4096) * 4096) by (nonlinear_arith) requires v % 4096 == 0, iova % 4096 == 0;
-                        assert(0 <= k < range && v == iova + k * 4096);
-                        assert(iova_range.view()[k as int] == spec_va_add_range(iova, k));
-                    };
-                    assert(it.spec_mapping_4k_range_empty((a4, a3, a2, a1), (e4, e3, e2, e1)));
-                }
             }
         }
     }

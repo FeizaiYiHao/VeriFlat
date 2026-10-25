@@ -16,5 +16,6 @@ pub(super) proof fn flush_iommu_tlb_for_table_eof(pre: KernelK, post: KernelK, i
 {
     reveal(iommu_tlb_wf_spec);
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
+    assert(iommu_table_tlb_entries_present(post.iommu_tlb, post.irt.view(), post.it_mp, iommu_table)) by { reveal(iommu_table_tlb_entries_present); };
 }
 }

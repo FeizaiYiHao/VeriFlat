@@ -559,3 +559,19 @@ Cargo 默认并发，Verus 32 线程，`VERUS_PIPELINE_SMT=1`。vstd 和普通�
 - 风格：`iommu_map_4k_unlock_rejected` 中两个外延见证裸 assert（沿用 `mmap_4k_read_enter` 写法）；thread_exit 两个 `pagetable_lock_map().dom().contains(pagetable)` trigger assert 与既有 IOMMU 表锁 trigger assert 有意保留；`scheduler_map_enqueue_scheduled_thread` 中既有的 `reveal(scheduler_perms_wf)` 现兼证 `perms_wf()` 与 `inv()`。
 
 验证：NI #34617 257 / 0；workspace #34618 17 个结果 3169 / 0，无 warning；单体 #34619 3169 / 0。`git diff --check` 通过。
+
+### 后续（已批准项 a/b/c/e/f/g）
+
+括号内为分 crate 聚焦运行的 rlimit（前 → 后），单体值取自 #34650。
+
+- a：`pagetable_seq/pagetable_range.rs` 新 exec 原语 `PageTable::mapping_4k_va_range_absent`（逐 va 扫描，ensures 直接给出 `iova_range` 上的 forall），`iommu_map_4k_lock_and_check` 改用它；删 `iommu_map_4k_lock_and_check` 中的 `assert forall` 与 `iommu_map_4k_result_from_k` 中的索引路径 `assert forall` + bit_vector 桥接。`lock_and_check` 4.15M → 2.33M（单体 11.44M → 2.23M，上下文敏感基本消失），`result_from_k` 0.68M → 0.18M。
+- b：删 `map_shared_page_into_iommu_4k` 的四条死 ensures（`being_killed`、`page_closure`、`spec_resolve_mapping_l2` forall、`held_pages_unchanged`）；map crate 17.08M → 14.69M。
+- c：`iommu_table_tlb_entries_present` 加 `#[verifier::opaque]`，只在 `flush_iommu_tlb_for_table_eof`、`remove_iommu_4k_mapping_without_free_eof`、`reclaim_last_iommu_4k_mapping_to_cpu_cache_eof`、`kill_reclaim_unmapped_iommu_4k_page_scoped_eof` 中 reveal。
+- e：`create_container_from_staged_pages/publish_objects.rs` 三条 `pg_arr` frame ensures 去掉 pre 状态 trigger，只用 post 触发（用户授权的例外）；`publish_staged_container_root_mutation` 8.09M → 7.33M（第 6 轮回退消失；单体 8.90M → 8.38M）。
+- f：写持 `pagetable_c` 边界形相等 ensures 加到 `drain_4k_cache_batch`（及其循环不变式）、`reclaim_last_lock_4k_cache_with_room`、`kill_retire_lock_cache`、`reclaim_last_iommu_4k_mapping`、`reclaim_unmapped_iommu_4k_page`、`kill_reclaim_unmapped_iommu_4k_page_scoped`、`kill_reclaim_last_iommu_4k_mapping_scoped`；删 `kill_reclaim_iommu_remove_leaves` 与 `thread_exit_reclaim_iommu_leaves` remove 循环中的 `pagetable_c` 块（refund 之后的两块保留：`refund_unmap_4k_quota` 缺该子句）。单体 `kill_reclaim_iommu_remove_leaves` 1.64M → 1.59M，`thread_exit_reclaim_iommu_leaves` 4.14M → 4.27M（单样本，未隔离）。
+- g1：新 `*_wf_at` 点引理 `container_children_len_bounded_at`（`process_management/container_tree.rs`），替换 `link_new_container_into_tree` 中的 exec reveal。
+- g2：新 `*_wf_at` 型点引理 `LinkedList::wf_map_at`（`src/linkedlist/spec_impl/mod.rs`）；15 处 exec `reveal(LinkedList::wf_map)` 改为 `wf_map_at` 或 `lemma_value_addr_unique`（IPC cpu/endpoint/call/pci_helpers/transition_helpers/pages、4k/2m `pop_impl`、`kill_process_victim` ×3、`thread_exit_destroy_helpers`、`process_subsystem_mutation` ×2）。
+
+新增：exec 原语 `PageTable::mapping_4k_va_range_absent`；点引理 `container_children_len_bounded_at`、`LinkedList::wf_map_at`。无新 framing spec、invariant、assume、spinoff 或 rlimit 属性。
+
+验证：NI #34648 257 / 0；workspace #34649 17 个结果 3168 / 0，无 warning；单体 #34650 3168 / 0（`--num-threads 32 --time --time-expanded --output-json`，无并行任务），wall 66.3 s（#34619 66.8 s，#34525 68.8 s），SMT 544.9 s（547.7 s，561.0 s），rlimit-run 1,135,582,304（1,148,387,464 −1.1%；1,161,493,270 −2.2%）。计数 −1：新增 3 个函数，删除的 4 个 `by (bit_vector)` 查询应计为另外的验证项，未逐项确认。无 >5 s 函数。单样本，未做交替 A/B。`git diff --check` 通过。
