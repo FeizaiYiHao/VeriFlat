@@ -287,8 +287,8 @@ pub(crate) fn kill_reclaim_unmapped_4k_page_scoped(
 /// `iommu_table`, and return the page through the write-held cache shard `cpu_id` of the 4K allocator `allocator_ptr` of its owner
 /// `owner`, crediting that allocator's write-held quota by one.
 pub(crate) fn kill_reclaim_last_iommu_4k_mapping_scoped_to_cache(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, iommu_table: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index, L1Index), page_ptr: PagePtr, owner: RwLockContainerPtr,
-    allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, Tracked(iommu_perm): Tracked<&LockPerm>, Tracked(page_perm): Tracked<&LockPerm>,
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, iommu_table: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index, L1Index), page_ptr: PagePtr, l1_ptr: PageMapPtr,
+    owner: RwLockContainerPtr, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, Tracked(iommu_perm): Tracked<&LockPerm>, Tracked(page_perm): Tracked<&LockPerm>,
     Tracked(cache_perm): Tracked<&LockPerm>, Tracked(quota_perm): Tracked<&LockPerm>,
 )
     requires
@@ -303,6 +303,8 @@ pub(crate) fn kill_reclaim_last_iommu_4k_mapping_scoped_to_cache(
         old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(spec_index2va(indices)),
         !old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(spec_index2va(indices)).present,
         old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(spec_index2va(indices)).addr == page_ptr,
+        old(krnl).it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some,
+        old(krnl).it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == l1_ptr,
         typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), iommu_table, TypedLockMode::Write),
         iommu_perm.state() is WriteLock,
         iommu_perm.thread_id() == old(lctx).thread_id(),
@@ -359,16 +361,7 @@ pub(crate) fn kill_reclaim_last_iommu_4k_mapping_scoped_to_cache(
     proof { lemma_container_allocator_4k_quota_bounded(krnl, owner); }
     let page_index = page_ptr2page_index(page_ptr);
     let iova = index2va(indices);
-    proof { iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table); iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, iommu_table); }
-    let l1_ptr;
-    {
-        let it = krnl.it_mp.borrow_typed(iommu_table, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_perm));
-        assert(it.spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some) by { reveal(PageTable::wf_mapping_4k); };
-        let l4 = it.get_entry_l4(indices.0).unwrap();
-        let l3 = it.get_entry_l3(indices.0, indices.1, &l4).unwrap();
-        let l2 = it.get_entry_l2(indices.0, indices.1, indices.2, &l3).unwrap();
-        l1_ptr = l2.addr;
-    }
+    proof { iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, iommu_table); }
     assert(krnl.pg_arr.spec_index(page_index).view().view().addr == page_ptr && index_valid(NUM_PAGES, page_index) && krnl.pg_arr.spec_index(page_index).view().is_init()
         && krnl.pg_arr.spec_index(page_index).view().view().state is Mapped4k && krnl.pg_arr.spec_index(page_index).view().view().iommu_mappings().contains((iommu_table, iova))) by {
         page_ptr_valid_imply_page_index_valid(); page_array_wf_at(krnl.pg_arr, page_index); page_iommu_table_wf_table_at(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr, iommu_table, iova); page_ptr_roundtrip();
@@ -501,7 +494,7 @@ pub(crate) fn kill_reclaim_unmapped_iommu_4k_page_scoped(
     };
     let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(page_index);
     if ref_count > 1 || is_io_page {
-        remove_iommu_4k_mapping_without_free(krnl, iommu_table, indices, page_ptr, Tracked(&mut *lctx), Tracked(iommu_perm), Tracked(&page_perm));
+        remove_iommu_4k_mapping_without_free(krnl, iommu_table, indices, page_ptr, l2.addr, Tracked(&mut *lctx), Tracked(iommu_perm), Tracked(&page_perm));
         krnl.wunlock_page(page_index, Tracked(&mut *lctx), Tracked(page_perm));
         proof {
             assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
@@ -516,7 +509,7 @@ pub(crate) fn kill_reclaim_unmapped_iommu_4k_page_scoped(
         }
     } else {
         kill_reclaim_last_iommu_4k_mapping_scoped(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, iommu_table, indices, page_ptr,
-            owner, Tracked(iommu_perm), Tracked(page_perm), Ghost(stage), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx), Ghost(entry_lctx));
+            l2.addr, owner, Tracked(iommu_perm), Tracked(page_perm), Ghost(stage), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx), Ghost(entry_lctx));
     }
 }
 }

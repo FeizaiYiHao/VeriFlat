@@ -484,3 +484,78 @@ Cargo 默认并发，Verus 32 线程，`VERUS_PIPELINE_SMT=1`。vstd 和普通�
 阶段累计值不能相加当作 wall，VIR 包含在 verification 内。new-process 的整包 rlimit 约增加 24.8%，说明去掉共享 helper 会增加求解工作；wall 的变化较小，不代表证明成本下降。保留该改动的理由是减少中间契约和调用者历史依赖，而非速度优势。
 
 [完整样本和阶段数据](/tmp/veriflat-round5/comparison.json) · [本轮独立 diff](/tmp/veriflat-round5/changes.patch) · [精确变更统计](/tmp/veriflat-round5/change-stats.json) · [风格审计](/tmp/veriflat-round5/style-audit.json)。最终源码与冻结样本一致，`git diff --check` 通过。
+
+## Round 6: IOMMU 调用链与绕弯证明清理（2026-10-25）
+
+基线是 8bfefdc 上的单体 #34525（3155 / 0，wall 68.8 s，SMT 561.0 s，rlimit-run 1,161,493,270）；NI #34521 257 / 0；workspace #34522 3155 / 0。本轮改动全部未提交。括号内为分 crate 聚焦运行的 SMT / rlimit（前 → 后）。
+
+### 各区改动
+
+- IOMMU map：`iommu_map_4k_ensure_l1` 改为 `get_entry_l4/l3/l2` 存在性探查加三段直接安装（2.55 s/5.98M → 1.08 s/2.90M）；`install_directory` 转发下一级 None；`install_staged_4k_iommu_table_page` 自行推出 1g/2m 事实，删两条 requires。`iommu_map_4k_lock_and_check` 拆出两个 exec 解锁 helper、按分支调用 `result_from_k`（4.06 s/12.84M → 1.75 s/4.15M）。trace 模块改用通用 wrapper（1.15 → 0.59 s）；`map_iommu_4k_eof.rs`、`_directory_eof.rs` 的 S 收窄。crate 11.5 s/29.5M → 7.3 s/17.1M。
+- step wrapper：新文件 `kernel_step_wrappers/iommu_table_steps.rs`，5 个通用 K→U wrapper；`kernel_4k_mapping_copied_implies_u_step` 泛化为 Read‖Write，`share_4k_leaf_step_from_k` 改用它。
+- IOMMU unmap：exec 拆为 `iommu_unmap_4k_hide_range` / `iommu_unmap_4k_reclaim_range`（新文件 `syscall_iommu_unmap_4k_range.rs`，默认 loop isolation）；enter step 移入 `lock_and_check`；循环不变式精简（`syscall_iommu_unmap_4k` 3.22 s/6.03M → 0.91 s/1.78M）；trace 模块 1.17 → 0.55 s；`unmap_iommu_4k_mapped_page_ptr` 返回 `(page_ptr, l1_ptr)` 并沿调用链传递；EOF 改取原语已保证的 `*_perms_wf(post)` / `page_array_wf(post)`，不再重新 reveal。包 5.8 → 3.7 s。
+- kill / thread_exit IOMMU 回收：`spec_index2va_injective` 种子改为逐 va 子句加 bit_vector 点事实；hide 循环子句精简；删冗余 `pagetable_c` 块（thread_exit 只留一处 trigger assert）；flush 的 `_from_k` 改用 flush wrapper。`kill_reclaim_iommu_leaves` 3.44 s/6.69M → 3.17 s/6.25M，`thread_exit_reclaim_iommu_leaves` 2.19 s/4.48M → 2.12 s/4.36M。
+- create_container：`eof_page_object_owner_at` 的 broadcast 改为按 moved pages 分情况（0.85 s/6.43M → 0.70 s/2.53M）；publish 被调方改要求 opaque `*_perms_wf`；`publish_staged_container_root_mutation` 2.79 s/7.32M → 2.73 s/8.09M（rlimit +10%，原因未隔离；目录模块合计净 −3.1M）。
+- share_mapping_4k / IPC：三个窗口 forall 移入 EOL S，删 8 个裸 assert（`build_and_share` 4.33 s/8.74M → 3.91 s/7.56M）；`share_one_mapping_4k` 中 `process_pagetable_match` 的 exec reveal 改为点引理；IPC 精简裸点引理块（`ipc_pages_check_tables` 1.77 s/3.33M → 1.51 s/2.82M）；`scheduler_map_enqueue_scheduled_thread` 增加 ensures，删 4 对冗余 post 引理调用（`ipc_rendezvous_cpu_cross_container` 2.03 s/3.71M → 2.09 s/3.86M，+4%）。
+- `flush_iommu_tlb_for_table`：删两条未用 requires。
+
+### 引理与契约
+
+| 变化 | 名称 | 类别 |
+| --- | --- | --- |
+| 新增 | `kernel_iommu_tlb_flushed_implies_u_step`、`kernel_iommu_table_4k_mapping_added_implies_u_step`、`kernel_cpu_process_thread_pagetable_iommu_table_lock_states_and_progress_changed_implies_u_step`、`kernel_cpu_container_process_thread_iommu_table_lock_states_and_progress_changed_implies_u_step`、`kernel_thread_quota_4k_progress_and_iommu_table_structure_changed_implies_u_step` | step-wrapper 层通用 K→U（免批准） |
+| 新增 | `ipc_pages_passed_check_step_from_k`（`syscall_ipc_trace.rs`） | 操作本地 K→U 桥接（免批准） |
+| 新增 exec | `iommu_map_4k_unlock_rejected`、`iommu_map_4k_unlock_thread_rejected`、`iommu_unmap_4k_hide_range`、`iommu_unmap_4k_reclaim_range` | exec helper，非引理 |
+| 泛化 | `kernel_4k_mapping_copied_implies_u_step`（Read‖Write） | step-wrapper 层通用 K→U |
+| 删除 | `iommu_unmap_4k_enter_step_from_u`、`iommu_unmap_4k_exit_step_from_u`、`iommu_unmap_4k_refund_step_from_u` | 死的操作本地桥接 |
+
+契约变化：`unmap_iommu_4k_mapped_page_ptr` 返回 `(page_ptr, l1_ptr)`，`remove_iommu_4k_mapping_without_free`、`reclaim_last_iommu_4k_mapping`、`remove_last_iommu_4k_mapping_to_allocator` 与 kill scoped 变体随之传参；`install_staged_4k_iommu_table_page`、`flush_iommu_tlb_for_table` 各删两条 requires；`scheduler_map_enqueue_scheduled_thread` 增 ensures `final.perms_wf()`、`spec_index(ptr).inv()`（加法）；publish 被调方 requires 改为 opaque `*_perms_wf`。无新 framing spec、invariant、assume、spinoff 或 rlimit 属性。
+
+### 尝试后回退
+
+| 尝试 | 结果 |
+| --- | --- |
+| thread_exit 循环 `loop_isolation(false)` | 慢 1.8× |
+| share 循环 `loop_isolation(false)` | 失败 |
+| remove 中的 assert 移入 EOF | 更慢 |
+| publish 中合并 S | 无收益 |
+| 从 publish S 去掉 post-wf | `eof_hugepage_2m_tail_forward` 0.44 s → 4 s |
+
+### 单体对照（#34525 → #34619）
+
+#34619：`--num-threads 32 --time --time-expanded --output-json`，无并行任务，3169 verified / 0 errors（+14：新增 13、删除 3 个函数，余数未逐项归因）。wall 68.8 → 66.8 s（−2.9%），SMT 561.0 → 547.7 s（−2.4%），rlimit-run 1,161,493,270 → 1,148,387,464（−1.1%）。kill 拆分前的 #34599 为 3166 / 0，66.7 s，SMT 551.9 s，rlimit-run 1,152,392,740。各一个样本，未做交替 A/B。标 † 的行取自同一源码的单体模块聚焦运行 #34620/#34621（rlimit 与 #34599 逐位相同）。
+
+| 函数 | #34525 | #34619 |
+| --- | ---: | ---: |
+| `kill_reclaim_iommu_leaves`（包装） | 4.9 s / 8.0M | 0.29 s / 0.45M |
+| `kill_reclaim_iommu_hide_leaves` / `_flush` / `_remove_leaves`（新） | — | 0.70 s / 1.48M、0.81 s / 1.19M、0.98 s / 1.64M |
+| `share_mapping_4k_build_and_share` | 4.8 s / 7.9M | 4.88 s / 7.65M |
+| `syscall_iommu_unmap_4k` | 4.5 s / 8.1M | 1.08 s / 1.76M |
+| `iommu_unmap_4k_lock_and_check` | — | 1.38 s / 2.25M |
+| `iommu_unmap_4k_hide_range` / `_reclaim_range`（新）† | — | 0.24 s / 0.59M、0.10 s / 0.31M |
+| `iommu_map_4k_lock_and_check` | 3.0 s / 6.8M | 3.19 s / 11.44M |
+| `iommu_map_4k_unlock_rejected` / `_thread_rejected`（新）† | — | 0.26 s / 0.68M、0.12 s / 0.31M |
+| `iommu_map_4k_ensure_l1` | 2.7 s / 5.2M | 1.29 s / 2.94M |
+| `iommu_map_4k_map_one_page`† | 0.71 s / 1.42M | 0.51 s / 1.25M |
+| `syscall_iommu_map_4k` | 1.12 s / 1.89M | 1.19 s / 1.89M |
+| `thread_exit_reclaim_iommu_leaves` | 2.4 s / 4.0M | 2.38 s / 4.14M |
+| `ipc_pages_prepare_target` | — | 3.29 s / 4.79M |
+| `publish_staged_container_root_mutation` | — | 3.62 s / 8.90M |
+| `eof_page_object_owner_at` | — | 1.00 s / 3.38M |
+| `ipc_pages_check_tables` | — | 1.86 s / 2.66M |
+| `ipc_rendezvous_cpu_cross_container` | — | 2.49 s / 3.88M |
+| `install_one_mmap_4k_directory_page` | — | 3.76 s / 4.89M |
+| `create_process_with_iommu_from_staged_pages` | — | 3.30 s / 5.32M |
+
+“—”表示 #34525 未保留该函数数据。#34619 中无 >5 s 函数（最大 `share_mapping_4k_build_and_share` 4.88 s）。
+
+- kill 拆分：`kill_reclaim_iommu_leaves` 改为薄包装，依次调用私有 exec `kill_reclaim_iommu_hide_leaves`、`kill_reclaim_iommu_flush`、`kill_reclaim_iommu_remove_leaves`；单体合计 8.61M / 5.94 s → 4.77M，最大 0.98 s（#34599 → #34619）。
+- `iommu_map_4k_lock_and_check` 上下文敏感：单体 11.44M / 分 crate 4.15M；H+F′ 变体（helper 移到 `_lock.rs`，删 `rlock_pagetable` 后的 `pagetable_perms_wf_map`）为单体 3.89M / 分 crate 15.55M（#34613/#34614），方向相反，未改，待用户选择。整模块的单体聚焦运行（`--verify-only-module`）逐位复现完整单体的 rlimit，`--verify-function` 运行则不复现。
+
+### 遗留
+
+- 需批准：`pagetable_seq` 上新原语 `mapping_4k_va_range_absent`；删 `map_shared_page_into_iommu_4k` 的死 ensures；`iommu_table_tlb_entries_present` 加 `#[verifier::opaque]`；kill / thread_exit 共用 exec helper `reclaim_hidden_iommu_4k_leaves`；`publish_objects.rs` 中 `pg_arr` frame ensures 改为只用 post 触发；`link_new_container_into_tree` 与 `LinkedList::wf_map` 的 exec reveal 需新引理；`drain_4k_cache_batch` / `reclaim_last_lock_4k_cache_with_room` / `kill_retire_lock_cache` 增边界形 `pagetable_c` ensures，以删余下 remove 循环块。
+- 残余回退：`publish_staged_container_root_mutation` rlimit +10%，`ipc_rendezvous_cpu_cross_container` +4%；单体中 `iommu_map_4k_lock_and_check` rlimit +68%（见上，待用户选择）。
+- 风格：`iommu_map_4k_unlock_rejected` 中两个外延见证裸 assert（沿用 `mmap_4k_read_enter` 写法）；thread_exit 两个 `pagetable_lock_map().dom().contains(pagetable)` trigger assert 与既有 IOMMU 表锁 trigger assert 有意保留；`scheduler_map_enqueue_scheduled_thread` 中既有的 `reveal(scheduler_perms_wf)` 现兼证 `perms_wf()` 与 `inv()`。
+
+验证：NI #34617 257 / 0；workspace #34618 17 个结果 3169 / 0，无 warning；单体 #34619 3169 / 0。`git diff --check` 通过。

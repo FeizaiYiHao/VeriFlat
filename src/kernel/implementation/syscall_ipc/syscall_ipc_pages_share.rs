@@ -1196,12 +1196,10 @@ fn ipc_pages_prepare_target(
         Tracked(current_thread_lock_perm));
     proof {
         assert(ipc_pages_check_step(kernel_k_to_kernel_u(check_pre_k), kernel_k_to_kernel_u(*krnl), cpu_id)) by {
-            kernel_thread_syscall_progress_changed_implies_u_step(&check_pre_k, &*krnl, current_thread_ptr);
-            ipc_pages_passed_check_step_from_u(kernel_k_to_kernel_u(check_pre_k), kernel_k_to_kernel_u(*krnl), cpu_id, current_thread_ptr, *source_range, *target_range, peer_thread_ptr, tables);
+            ipc_pages_passed_check_step_from_k(&check_pre_k, &*krnl, cpu_id, current_thread_ptr, *source_range, *target_range, peer_thread_ptr, tables);
         };
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, current_thread_ptr);
-        thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); thread_perms_wf_at(krnl.thr_mp, peer_thread_ptr);
         process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, source_thread); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, target_thread);
         process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, source_process); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target_process);
         container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, target_thread); container_perms_wf_at(krnl.ctn_mp, target_container);
@@ -1552,7 +1550,6 @@ pub(super) fn ipc_pages_share_locked(
         Tracked(peer_thread_lock_perm), fill, Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm), Ghost(source_windows), Tracked(target_windows), Ghost(channel_index),
     );
     proof {
-        thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); thread_perms_wf_at(krnl.thr_mp, peer_thread_ptr);
         process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, source_thread); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, target_thread);
         process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, source_process); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target_process);
         container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, target_thread); container_perms_wf_at(krnl.ctn_mp, target_container);
@@ -1574,9 +1571,7 @@ pub(super) fn ipc_pages_share_locked(
         ipc_pages_trace_share_steps(&*steps, check_before, start, pre, cpu_id, channel_index, waiting_state, range, tables);
         krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), source_pagetable);
         krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), target_pagetable);
-        thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); thread_perms_wf_at(krnl.thr_mp, peer_thread_ptr);
         process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, source_thread); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, target_thread);
-        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, source_process); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target_process);
     }
     (Tracked(read_perm), Tracked(read_windows))
 }

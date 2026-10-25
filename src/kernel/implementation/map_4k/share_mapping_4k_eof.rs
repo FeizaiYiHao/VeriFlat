@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::share_mapping_4k::{share_mapping_4k_leaf_owner_compatible, share_mapping_4k_target_map_with_shared_prefix};
+use super::share_mapping_4k::{share_mapping_4k_leaf_owner_compatible, share_mapping_4k_target_map_with_shared_prefix, share_mapping_4k_target_range_empty_from};
 #[cfg(verus_keep_ghost)]
 use super::share_mapping_4k_spec::share_4k_range_step;
 
@@ -151,8 +151,8 @@ pub(super) proof fn share_one_mapping_4k_eof(
 
 /// Loop state of `share_mapping_4k_build_and_share` after its first `i` leaves: the trace grew by `i` share range steps, the last one
 /// recorded the final source window and funding-thread state; held kernel objects and every held window's lock state are unchanged; the
-/// source and funding threads changed only their syscall progress; the source table keeps its held windows; a write-held target holds the
-/// entry mapping with the first `i` source leaves shared.
+/// source and funding threads changed only their syscall progress; the source table keeps its held windows; every held target window holds the
+/// entry mapping with the first `i` source leaves shared and keeps its L2 resolution; a write-held target holds that whole mapping.
 #[verifier::opaque]
 pub(super) open spec fn share_mapping_4k_build_and_share_eol_loop_framing(
     pre: KernelK, post: KernelK, pre_lctx: &LocalContext, pre_steps: &KernelSteps, post_steps: &KernelSteps, i: nat, source_range: &VaRange4K, target_range: &VaRange4K,
@@ -164,6 +164,7 @@ pub(super) open spec fn share_mapping_4k_build_and_share_eol_loop_framing(
     let old_target = pagetable_c(pre.pt_mp, pre.pt_lower.view(), target_pagetable);
     let new_target = pagetable_c(post.pt_mp, post.pt_lower.view(), target_pagetable);
     let source_process = pre.pt_mp.spec_index(source_pagetable).view().proc_ptr;
+    let expected = share_mapping_4k_target_map_with_shared_prefix(old_source.mapping_4k(), old_target.mapping_4k(), source_range, target_range, i);
     &&& forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, pre_steps.view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, post_steps.view())
     &&& post_steps.view().len() == pre_steps.view().len() + i
     &&& forall|j: int| #![trigger post_steps.view()[j]] 0 <= j < pre_steps.view().len() ==> post_steps.view()[j] == pre_steps.view()[j]
@@ -233,13 +234,31 @@ pub(super) open spec fn share_mapping_4k_build_and_share_eol_loop_framing(
             &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).window_view(w).stale_cpus == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).window_view(w).stale_cpus
             &&& pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).window_leaves_present(w) ==> pagetable_c(post.pt_mp, post.pt_lower.view(), p).window_leaves_present(w)
         }
+    &&& forall|w: WindowVa, v: VAddr|
+        #![trigger pre_lctx.pagetable_window_lock_map().dom().contains((source_pagetable, w)), pagetable_c(post.pt_mp, post.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(v)]
+        pre_lctx.pagetable_window_lock_map().dom().contains((source_pagetable, w)) && spec_v2l4index(v) == spec_v2l4index(w.va) && spec_v2l3index(v) == spec_v2l3index(w.va) && spec_v2l2index(v) == spec_v2l2index(w.va) ==> {
+            &&& new_source.mapping_4k().dom().contains(v) == old_source.mapping_4k().dom().contains(v)
+            &&& old_source.mapping_4k().dom().contains(v) ==> new_source.mapping_4k().spec_index(v) == old_source.mapping_4k().spec_index(v)
+        }
+    &&& forall|w: WindowVa, v: VAddr|
+        #![trigger pre_lctx.pagetable_window_lock_map().dom().contains((target_pagetable, w)), pagetable_c(post.pt_mp, post.pt_lower.view(), target_pagetable).mapping_4k().dom().contains(v)]
+        pre_lctx.pagetable_window_lock_map().dom().contains((target_pagetable, w)) && spec_v2l4index(v) == spec_v2l4index(w.va) && spec_v2l3index(v) == spec_v2l3index(w.va) && spec_v2l2index(v) == spec_v2l2index(w.va) ==> {
+            &&& new_target.mapping_4k().dom().contains(v) == expected.dom().contains(v)
+            &&& new_target.mapping_4k().dom().contains(v) ==> new_target.mapping_4k().spec_index(v) == expected.spec_index(v)
+        }
+    &&& forall|w: WindowVa| #![trigger pre_lctx.pagetable_window_lock_map().dom().contains((target_pagetable, w))]
+        pre_lctx.pagetable_window_lock_map().dom().contains((target_pagetable, w)) && pre.pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= spec_v2l4index(w.va)
+            && pei_valid(spec_v2l4index(w.va)) && pei_valid(spec_v2l3index(w.va)) && pei_valid(spec_v2l2index(w.va))
+            ==> new_target.spec_resolve_mapping_l2(spec_v2l4index(w.va), spec_v2l3index(w.va), spec_v2l2index(w.va)) == old_target.spec_resolve_mapping_l2(spec_v2l4index(w.va), spec_v2l3index(w.va), spec_v2l2index(w.va))
+    &&& share_mapping_4k_target_range_empty_from(expected, target_range, i as int)
+    &&& i < source_range.len ==> !expected.dom().contains(target_range.view().spec_index(i as int))
     &&& target_write_held ==> {
         &&& new_target.mapping_2m() == old_target.mapping_2m()
         &&& new_target.mapping_1g() == old_target.mapping_1g()
         &&& old_target.leaves_present() ==> new_target.leaves_present()
         &&& new_target.lower.l2_lock == old_target.lower.l2_lock
         &&& new_target.lower.window_stale_cpus == old_target.lower.window_stale_cpus
-        &&& new_target.mapping_4k() == share_mapping_4k_target_map_with_shared_prefix(old_source.mapping_4k(), old_target.mapping_4k(), source_range, target_range, i)
+        &&& new_target.mapping_4k() == expected
         &&& new_target.user_view(LockStateU::Unlocked).mapping_4k
             == share_mapping_4k_target_map_with_shared_prefix(old_source.user_view(LockStateU::Unlocked).mapping_4k, old_target.user_view(LockStateU::Unlocked).mapping_4k, source_range, target_range, i)
     }

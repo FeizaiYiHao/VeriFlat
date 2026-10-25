@@ -785,12 +785,7 @@ pub(crate) proof fn kill_process_iommu_flush_step_from_k(pre: &KernelK, post: &K
     ensures
         kill_process_iommu_flush_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post)),
         pre.iommu_tlb.view() != post.iommu_tlb.view() ==> kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post) && kernel_k_to_nonlock_kernel_u(*pre) != kernel_k_to_nonlock_kernel_u(*post),
-{
-    reveal(kill_process_iommu_flush_step);
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); kernel_u_nonlock_domains_projection(pre); kernel_u_nonlock_domains_projection(post);
-    kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post);
-    kernel_process_maps_unchanged_implies_u_process_map(pre, post); kernel_thread_map_unchanged_implies_u_thread_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
-}
+{ reveal(kill_process_iommu_flush_step); kernel_iommu_tlb_flushed_implies_u_step(pre, post); }
 
 /// Flushing the IOTLB while the target's tables are reclaimed after the PCID flush is a middle step.
 pub(crate) proof fn kill_iommu_flush_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId)

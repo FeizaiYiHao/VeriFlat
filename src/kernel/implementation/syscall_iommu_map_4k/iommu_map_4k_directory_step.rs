@@ -102,8 +102,14 @@ pub(super) fn iommu_map_4k_install_directory(
         final(krnl).prc_mp.dom().contains(process_ptr),
         final(krnl).prc_mp.spec_index(process_ptr) == old(krnl).prc_mp.spec_index(process_ptr),
         match level {
-            MissingPageTableLevel::L4 => final(krnl).it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(indices.0) is Some,
-            MissingPageTableLevel::L3 => final(krnl).it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(indices.0, indices.1) is Some,
+            MissingPageTableLevel::L4 => {
+                &&& final(krnl).it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(indices.0) is Some
+                &&& final(krnl).it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(indices.0, indices.1) is None
+            },
+            MissingPageTableLevel::L3 => {
+                &&& final(krnl).it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(indices.0, indices.1) is Some
+                &&& final(krnl).it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is None
+            },
             MissingPageTableLevel::L2 => final(krnl).it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some,
         },
 {
@@ -115,14 +121,7 @@ pub(super) fn iommu_map_4k_install_directory(
     let ghost section_start = *krnl;
     let ghost section_lctx = *lctx;
     let ghost before_steps = steps.view();
-    proof {
-        let it = krnl.it_mp.spec_index(iommu_table_ptr).view();
-        process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, process_ptr);
-        assert(it.spec_resolve_mapping_1g_l3(indices.0, indices.1) is None && it.spec_resolve_mapping_2m_l2(indices.0, indices.1, indices.2) is None) by {
-            iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table_ptr); iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, iommu_table_ptr);
-            pagetable_no_huge_leaf_wf_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp, iommu_table_ptr); it.wf_mapping_1g_at(indices.0, indices.1); it.wf_mapping_2m_at(indices.0, indices.1, indices.2);
-        };
-    }
+    proof { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, process_ptr); }
     install_staged_4k_iommu_table_page(krnl, level, page_ptr, thread_ptr, process_ptr, container_ptr, iommu_table_ptr, indices, Tracked(&mut *lctx), Tracked(&page_lock_perm),
         Tracked(thread_lock_perm), Tracked(iommu_table_lock_perm));
     krnl.wunlock_page(page_index, Tracked(&mut *lctx), Tracked(page_lock_perm));
@@ -248,32 +247,28 @@ pub(super) fn iommu_map_4k_ensure_l1(
     let iova = iova_range.index(i);
     let indices = va2index(iova);
     proof {
-        krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), process_ptr); krnl.it_mp.typed_lock_map_aligned_write_at(lctx.iommu_table_lock_map(), lctx.thread_id(), iommu_table_ptr);
-        krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr);
+        krnl.it_mp.typed_lock_map_aligned_write_at(lctx.iommu_table_lock_map(), lctx.thread_id(), iommu_table_ptr);
         iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table_ptr); iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, iommu_table_ptr);
     }
-    let code = krnl.it_mp.borrow_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm)).resolve_mapping_4k_l2(indices.0, indices.1, indices.2).1;
-    if let PageTableErrorCode::L4EntryNotExist = code {
+    let (l4_present, l3_present, l2_present) = {
+        let it = krnl.it_mp.borrow_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm));
+        match it.get_entry_l4(indices.0) {
+            None => (false, false, false),
+            Some(l4) => match it.get_entry_l3(indices.0, indices.1, &l4) {
+                None => (true, false, false),
+                Some(l3) => (true, true, it.get_entry_l2(indices.0, indices.1, indices.2, &l3).is_some()),
+            },
+        }
+    };
+    if !l4_present {
         iommu_map_4k_install_directory(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), MissingPageTableLevel::L4, cpu_id, Ghost(*va_range), Ghost(*iova_range), thread_ptr, process_ptr,
             container_ptr, pagetable_ptr, iommu_table_ptr, (indices.0, indices.1, indices.2), Tracked(thread_lock_perm), Tracked(iommu_table_lock_perm));
     }
-    proof {
-        let it = krnl.it_mp.spec_index(iommu_table_ptr).view();
-        iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table_ptr); iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, iommu_table_ptr);
-        pagetable_no_huge_leaf_wf_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp, iommu_table_ptr); it.wf_mapping_1g_at(indices.0, indices.1);
-    }
-    let code = krnl.it_mp.borrow_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm)).resolve_mapping_4k_l2(indices.0, indices.1, indices.2).1;
-    if let PageTableErrorCode::L3EntryNotExist = code {
+    if !l3_present {
         iommu_map_4k_install_directory(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), MissingPageTableLevel::L3, cpu_id, Ghost(*va_range), Ghost(*iova_range), thread_ptr, process_ptr,
             container_ptr, pagetable_ptr, iommu_table_ptr, (indices.0, indices.1, indices.2), Tracked(thread_lock_perm), Tracked(iommu_table_lock_perm));
     }
-    proof {
-        let it = krnl.it_mp.spec_index(iommu_table_ptr).view();
-        iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table_ptr); iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, iommu_table_ptr);
-        pagetable_no_huge_leaf_wf_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.it_mp, iommu_table_ptr); it.wf_mapping_1g_at(indices.0, indices.1); it.wf_mapping_2m_at(indices.0, indices.1, indices.2);
-    }
-    let code = krnl.it_mp.borrow_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm)).resolve_mapping_4k_l2(indices.0, indices.1, indices.2).1;
-    if let PageTableErrorCode::L2EntryNotExist = code {
+    if !l2_present {
         iommu_map_4k_install_directory(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), MissingPageTableLevel::L2, cpu_id, Ghost(*va_range), Ghost(*iova_range), thread_ptr, process_ptr,
             container_ptr, pagetable_ptr, iommu_table_ptr, (indices.0, indices.1, indices.2), Tracked(thread_lock_perm), Tracked(iommu_table_lock_perm));
     }

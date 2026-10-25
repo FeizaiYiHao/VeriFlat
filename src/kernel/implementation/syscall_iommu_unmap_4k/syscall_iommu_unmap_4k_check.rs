@@ -44,8 +44,12 @@ pub(super) fn iommu_unmap_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): T
             let iommu_table_perm = ret->Ok_0.2.view();
             let iova_range = iommu_unmap_4k_iova_range(iova, range);
             let table = final(krnl).it_mp.spec_index(iommu_table);
+            let thread = final(krnl).thr_mp.spec_index(e.thread_ptr);
             &&& RetValueType::Success == iommu_unmap_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, iova, range)
-            &&& *final(steps) == *old(steps)
+            &&& final(steps).snapshot_k() == *final(krnl)
+            &&& final(steps).view().len() == 1
+            &&& final(steps).view()[0].old_u == kernel_k_to_kernel_u(*old(krnl))
+            &&& iommu_unmap_4k_partial_trace(final(steps).view(), cpu_id, iova_range)
             &&& final(lctx).kernel_view_locking_state() is Acquire
             &&& final(lctx).cpu_lock_map().dom() =~= set![cpu_id]
             &&& final(lctx).container_lock_map().dom() =~= set![e.container_ptr]
@@ -73,7 +77,7 @@ pub(super) fn iommu_unmap_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): T
             &&& final(krnl).prc_mp.spec_index(e.process_ptr).view().iommu_table == Some(iommu_table)
             &&& final(krnl).it_mp.dom().contains(iommu_table)
             &&& table.view().leaves_present()
-            &&& table.view() == old(krnl).it_mp.spec_index(iommu_table).view()
+            &&& final(krnl).ctn_mp.dom().contains(e.container_ptr) && final(krnl).prc_mp.dom().contains(e.process_ptr) && final(krnl).thr_mp.dom().contains(e.thread_ptr)
             &&& iommu_table_perm.state() is WriteLock
             &&& iommu_table_perm.thread_id() == final(lctx).thread_id()
             &&& iommu_table_perm.lock_id() == table.locking_thread()->Write_lock_id
@@ -81,30 +85,26 @@ pub(super) fn iommu_unmap_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): T
                 ==> table.view().mapping_4k().dom().contains(iova_range.view()[j]) && table.view().mapping_4k()[iova_range.view()[j]].present
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(e.process_ptr)
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(e.thread_ptr)
-            &&& final(krnl).thr_mp.spec_index(e.thread_ptr).view().owning_proc == e.process_ptr
-            &&& final(krnl).thr_mp.spec_index(e.thread_ptr).view().owning_container == e.container_ptr
-            &&& final(krnl).thr_mp.spec_index(e.thread_ptr).view().syscall_progress.view() is None
-            &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, ctn_mp: final(krnl).ctn_mp, prc_mp: final(krnl).prc_mp, thr_mp: final(krnl).thr_mp, it_mp: final(krnl).it_mp, ..*old(krnl) })
-            &&& final(krnl).cpu_arr.unchanged_except(&old(krnl).cpu_arr, cpu_id)
-            &&& final(krnl).ctn_mp.unchanged_except(&old(krnl).ctn_mp, e.container_ptr)
-            &&& final(krnl).prc_mp.unchanged_except(&old(krnl).prc_mp, e.process_ptr)
-            &&& final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, e.thread_ptr)
-            &&& final(krnl).it_mp.unchanged_except(&old(krnl).it_mp, iommu_table)
+            &&& thread.view().owning_proc == e.process_ptr
+            &&& thread.view().owning_container == e.container_ptr
+            &&& thread.view().syscall_progress.view() == Some(SyscallProgress::IommuUnmap4k { iova_range, unmapped: 0, flushed: false })
             &&& wlock_ensures(old(krnl).cpu_arr.spec_index(cpu_id).view(), final(krnl).cpu_arr.spec_index(cpu_id).view(), old(krnl).cpu_arr.lock_id_by_index(cpu_id), final(lctx), e.cpu_lock_perm.view())
             &&& wlock_ensures(old(krnl).ctn_mp.spec_index(e.container_ptr), final(krnl).ctn_mp.spec_index(e.container_ptr), old(krnl).ctn_mp.lock_id_by_key(e.container_ptr), final(lctx), e.container_lock_perm.view())
             &&& wlock_ensures(old(krnl).prc_mp.spec_index(e.process_ptr), final(krnl).prc_mp.spec_index(e.process_ptr), old(krnl).prc_mp.lock_id_by_key(e.process_ptr), final(lctx), e.process_lock_perm.view())
-            &&& wlock_ensures(old(krnl).thr_mp.spec_index(e.thread_ptr), final(krnl).thr_mp.spec_index(e.thread_ptr), old(krnl).thr_mp.lock_id_by_key(e.thread_ptr), final(lctx), e.thread_lock_perm.view())
             &&& wlock_ensures(old(krnl).it_mp.spec_index(iommu_table), table, old(krnl).it_mp.lock_id_by_key(iommu_table), final(lctx), iommu_table_perm)
+            &&& thread.locking_thread() == (RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: e.thread_lock_perm.view().lock_id() })
+            &&& e.thread_lock_perm.view().state() is WriteLock
+            &&& e.thread_lock_perm.view().thread_id() == final(lctx).thread_id()
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running
-            &&& final(krnl).thr_mp.spec_index(e.thread_ptr).view().state == (ThreadState::RUNNING { cpu_id })
-            &&& final(krnl).thr_mp.spec_index(e.thread_ptr).view().free_quota_pending_clean()
-            &&& final(krnl).thr_mp.spec_index(e.thread_ptr).view().temp_alloc_clean()
-            &&& !final(krnl).thr_mp.spec_index(e.thread_ptr).view_ghost().exited
+            &&& thread.view().state == (ThreadState::RUNNING { cpu_id })
+            &&& thread.view().free_quota_pending_clean()
+            &&& thread.view().temp_alloc_clean()
+            &&& !thread.view_ghost().exited
             &&& !final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed()
             &&& !final(krnl).ctn_mp.spec_index(e.container_ptr).being_killed() && !final(krnl).ctn_mp.spec_index(e.container_ptr).view().zombie
             &&& !final(krnl).ctn_mp.spec_index(e.container_ptr).view_ghost().owned_processes.view().is_empty()
             &&& !final(krnl).prc_mp.spec_index(e.process_ptr).being_killed() && final(krnl).prc_mp.spec_index(e.process_ptr).view().state.view() is Running
-            &&& !final(krnl).thr_mp.spec_index(e.thread_ptr).being_killed()
+            &&& !thread.being_killed()
             &&& final(krnl).cpu_published[cpu_id as int].view() == (final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid)
             &&& !final(krnl).prc_mp.spec_index(e.process_ptr).view().zombie
         }),
@@ -166,6 +166,16 @@ pub(super) fn iommu_unmap_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): T
         return Err(RetValueType::ErrorIommuIovaNotMapped);
     }
     proof { iommu_unmap_4k_result_from_k(&*old(krnl), cpu_id, iova, range, RetValueType::Success); }
+    krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::IommuUnmap4k { iova_range: iommu_unmap_4k_iova_range(iova, range), unmapped: 0, flushed: false })), Tracked(&*lctx),
+        Tracked(&thread_perm));
+    proof {
+        let entered_k = *krnl;
+        let before = steps.view();
+        enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
+        krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
+        iommu_unmap_4k_enter_step_from_k(&*old(krnl), &entered_k, cpu_id, container_ptr, process_ptr, thread_ptr, iommu_table, iova, range);
+        iommu_unmap_4k_trace_enter_step(before, steps.view(), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(entered_k), cpu_id, iommu_unmap_4k_iova_range(iova, range));
+    }
     Ok((IommuUnmap4kLocked {
         container_ptr, process_ptr, thread_ptr, cpu_lock_perm: Tracked(cpu_perm), container_lock_perm: Tracked(container_perm), process_lock_perm: Tracked(process_perm),
         thread_lock_perm: Tracked(thread_perm),

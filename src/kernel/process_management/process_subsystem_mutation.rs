@@ -222,6 +222,8 @@ pub fn scheduler_map_enqueue_scheduled_thread(
         old(scheduler_map).spec_index(scheduler_ptr).shard(cpu_id).queue.length != usize::MAX,
     ensures
         scheduler_perms_wf(*final(scheduler_map)),
+        final(scheduler_map).perms_wf(),
+        final(scheduler_map).spec_index(scheduler_ptr).inv(),
         final(scheduler_map).unchanged_except(old(scheduler_map), scheduler_ptr),
         final(scheduler_map).typed_shard_lock_map_aligned(lctx.scheduler_lock_map(), lctx.thread_id()),
         final(scheduler_map).spec_index(scheduler_ptr).owning_container == old(scheduler_map).spec_index(scheduler_ptr).owning_container,
@@ -241,7 +243,7 @@ pub fn scheduler_map_enqueue_scheduled_thread(
     let shard = scheduler_map.borrow_mut_shard_typed(scheduler_ptr, cpu_id, Ghost(lctx.scheduler_lock_map()), Tracked(lctx), Tracked(shard_lock_perm));
     shard.queue.push_tail(node_addr, node_perm);
     proof {
-        assert(scheduler_perms_wf(*scheduler_map)) by { reveal(scheduler_perms_wf); };
+        assert(scheduler_perms_wf(*scheduler_map) && scheduler_map.perms_wf() && scheduler_map.spec_index(scheduler_ptr).inv()) by { reveal(scheduler_perms_wf); };
         assert(scheduler_shards_of(scheduler_map.spec_index(scheduler_ptr))
             == scheduler_shards_of(old(scheduler_map).spec_index(scheduler_ptr)).update(cpu_id as int, scheduler_shards_of(old(scheduler_map).spec_index(scheduler_ptr))[cpu_id as int].push(thread_ptr))) by {
             reveal(scheduler_shards_of);

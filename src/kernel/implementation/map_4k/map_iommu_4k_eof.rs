@@ -20,10 +20,7 @@ pub(super) open spec fn map_shared_page_into_iommu_4k_eof_transition_framing(
     &&& new_it.view().mapping_2m() == old_it.view().mapping_2m()
     &&& new_it.view().mapping_1g() == old_it.view().mapping_1g()
     &&& new_it.view().page_closure() == old_it.view().page_closure()
-    &&& new_it.view().kernel_entries == old_it.view().kernel_entries
-    &&& new_it.view().kernel_l4_end == old_it.view().kernel_l4_end
     &&& new_it.view().cr3 == old_it.view().cr3
-    &&& new_it.view().pcid == old_it.view().pcid
     &&& new_it.view().proc_ptr == old_it.view().proc_ptr
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, page_index)
     &&& new_page.locking_thread() == old_page.locking_thread()
@@ -35,11 +32,6 @@ pub(super) open spec fn map_shared_page_into_iommu_4k_eof_transition_framing(
     &&& new_page.view().state == old_page.view().state
     &&& new_page.view().is_io_page == old_page.view().is_io_page
     &&& new_page.view().owning_container == old_page.view().owning_container
-    &&& new_page.view().free_list_node_storage == old_page.view().free_list_node_storage
-    &&& new_page.view().free_list == old_page.view().free_list
-    &&& new_page.view().perm_4k.view() == old_page.view().perm_4k.view()
-    &&& new_page.view().perm_2m.view() == old_page.view().perm_2m.view()
-    &&& new_page.view().perm_1g.view() == old_page.view().perm_1g.view()
 }
 
 /// A `(it_ptr, iova)` record on the mapped page `p_i` names a 4K leaf of IOMMU table `it_ptr`.

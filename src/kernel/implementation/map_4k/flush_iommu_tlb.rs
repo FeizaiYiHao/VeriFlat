@@ -11,8 +11,6 @@ pub fn flush_iommu_tlb_for_table(krnl: &mut KernelK, iommu_table: RwLockPageTabl
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), lctx),
         lctx.kernel_view_locking_state() is Release,
-        old(krnl).it_mp.dom().contains(iommu_table),
-        typed_lock_map_contains_mode(lctx.iommu_table_lock_map(), iommu_table, TypedLockMode::Write),
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), lctx),

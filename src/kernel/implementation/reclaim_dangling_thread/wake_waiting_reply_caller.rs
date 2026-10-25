@@ -102,7 +102,6 @@ pub fn wake_waiting_reply_caller(
     proof {
         lctx.enter_kernel_view_release();
         lctx.update_lock_id(KernelObjId::Thread(caller_ptr), old_caller_lock_id, krnl.thr_mp.lock_id_by_key(caller_ptr));
-        scheduler_perms_wf_at(krnl.sched_mp, scheduler_ptr);
         assert(wake_waiting_reply_caller_eof_transition_framing(pre, *krnl, thread_ptr, caller_ptr, scheduler_ptr, cpu_id)) by { reveal(wake_waiting_reply_caller_eof_transition_framing); };
         wake_waiting_reply_caller_eof(pre, *krnl, thread_ptr, caller_ptr, scheduler_ptr, cpu_id);
     }

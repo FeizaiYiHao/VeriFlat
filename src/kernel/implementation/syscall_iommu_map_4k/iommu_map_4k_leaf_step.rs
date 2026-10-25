@@ -126,7 +126,6 @@ pub(super) fn iommu_map_4k_map_one_page(
     let ghost leaf_lctx = *lctx;
     let ghost leaf_steps = steps.view();
     proof {
-        spec_va_4k_index_roundtrip_at(iova, spec_va2index(iova).0, spec_va2index(iova).1, spec_va2index(iova).2, spec_va2index(iova).3);
         spec_va_4k_index_roundtrip_at(va, spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
         spec_va_4k_index_roundtrip_at(window_of(va).va, spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), 0);
         held_pagetable_window_mapping_4k_unchanged_at(k0.pt_mp, k0.pt_lower.view(), krnl.pt_mp, krnl.pt_lower.view(), &lctx0, pagetable_ptr, window_of(va), va);
@@ -135,12 +134,13 @@ pub(super) fn iommu_map_4k_map_one_page(
         process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, process_ptr); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, process_ptr);
     }
     map_shared_page_into_iommu_4k(krnl, process_ptr, thread_ptr, pagetable_ptr, iommu_table_ptr, va, iova, Tracked(&mut *lctx), Tracked(pagetable_lock_perm), Tracked(iommu_table_lock_perm));
+    let ghost mapped_k = *krnl;
     krnl.set_thread_syscall_progress(thread_ptr, Ghost(iommu_map_4k_progress_after_leaf(krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view())), Tracked(&*lctx),
         Tracked(thread_lock_perm));
     proof {
         let leaf_k = *krnl;
         process_thread_wf_at(leaf_start.prc_mp, leaf_start.thr_mp, thread_ptr);
-        iommu_map_4k_leaf_step_from_k(&leaf_start, &leaf_k, &leaf_lctx, cpu_id, process_ptr, thread_ptr, pagetable_ptr, iommu_table_ptr);
+        iommu_map_4k_leaf_step_from_k(&leaf_start, &mapped_k, &leaf_k, &leaf_lctx, cpu_id, process_ptr, thread_ptr, pagetable_ptr, iommu_table_ptr);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         iommu_map_4k_trace_push_range_step(steps.view(), leaf_steps, kernel_k_to_kernel_u(leaf_start), kernel_k_to_kernel_u(leaf_k), cpu_id, *va_range, *iova_range);
     }

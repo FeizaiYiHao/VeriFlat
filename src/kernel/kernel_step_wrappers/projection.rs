@@ -1623,8 +1623,8 @@ pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_step(pre: &Ker
     assert_sets_equal!(b.container_map[target].owned_pages, a.container_map[target].owned_pages.union(a.container_map[source].owned_pages.difference(b.container_map[source].owned_pages)));
 }
 
-/// Copying one present source entry into an absent target address and replacing `progress_thread`'s
-/// progress changes only the target pagetable's 4K mapping and that thread's progress.
+/// Copying one present source entry into an absent target address, with both tables held in either mode, and replacing
+/// `progress_thread`'s progress changes only the target pagetable's 4K mapping and that thread's progress.
 pub proof fn kernel_4k_mapping_copied_implies_u_step(
     pre: &KernelK, post: &KernelK, lctx: &LocalContext, source: RwLockProcessPtr, target: RwLockProcessPtr,
     source_table: RwLockPageTableRoot, target_table: RwLockPageTableRoot, source_va: VAddr, target_va: VAddr, progress_thread: RwLockThreadPtr,
@@ -1639,8 +1639,8 @@ pub proof fn kernel_4k_mapping_copied_implies_u_step(
         !pre.prc_mp.spec_index(target).view().zombie,
         pre.prc_mp.spec_index(source).view().pagetable == source_table,
         pre.prc_mp.spec_index(target).view().pagetable == target_table,
-        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), source_table, TypedLockMode::Write),
-        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), target_table, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), source_table, TypedLockMode::Read) || typed_lock_map_contains_mode(lctx.pagetable_lock_map(), source_table, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), target_table, TypedLockMode::Read) || typed_lock_map_contains_mode(lctx.pagetable_lock_map(), target_table, TypedLockMode::Write),
         pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_table).mapping_4k().dom().contains(source_va),
         pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_table).mapping_4k()[source_va].present,
         !pagetable_c(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_4k().dom().contains(target_va) || !pagetable_c(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_4k()[target_va].present,
@@ -1662,8 +1662,8 @@ pub proof fn kernel_4k_mapping_copied_implies_u_step(
             let b = kernel_k_to_kernel_u(*post);
             &&& a.process_map.dom().contains(source) && a.process_map.dom().contains(target)
             &&& a.process_map[source].pagetable is Some && a.process_map[target].pagetable is Some
-            &&& a.process_map[source].pagetable->Some_0.lock_state is WriteLocked
-            &&& a.process_map[target].pagetable->Some_0.lock_state is WriteLocked
+            &&& (a.process_map[source].pagetable->Some_0.lock_state is ReadLocked || a.process_map[source].pagetable->Some_0.lock_state is WriteLocked)
+            &&& (a.process_map[target].pagetable->Some_0.lock_state is ReadLocked || a.process_map[target].pagetable->Some_0.lock_state is WriteLocked)
             &&& a.process_map[source].pagetable->Some_0.mapping_4k.dom().contains(source_va)
             &&& !a.process_map[target].pagetable->Some_0.mapping_4k.dom().contains(target_va)
             &&& a.thread_map.dom().contains(progress_thread)
@@ -1680,8 +1680,10 @@ pub proof fn kernel_4k_mapping_copied_implies_u_step(
             })
         }),
 {
-    pre.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), source_table);
-    pre.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), target_table);
+    if typed_lock_map_contains_mode(lctx.pagetable_lock_map(), source_table, TypedLockMode::Write) { pre.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), source_table); }
+    else { pre.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), source_table); }
+    if typed_lock_map_contains_mode(lctx.pagetable_lock_map(), target_table, TypedLockMode::Write) { pre.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), target_table); }
+    else { pre.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), target_table); }
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);

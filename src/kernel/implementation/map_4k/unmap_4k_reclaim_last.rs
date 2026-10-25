@@ -255,7 +255,7 @@ pub fn reclaim_last_4k_mapping(
 /// Frees the page behind the last mapping, a hidden 4K leaf of a write-locked IOMMU table: drains a full CPU cache of the owner's allocator under its own step boundary, then moves
 /// the page into that cache and credits the thread's pending free quota at the owner's depth. The page lock stays held.
 pub fn reclaim_last_iommu_4k_mapping(
-    krnl: &mut KernelK, iommu_table: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index, L1Index), page_ptr: PagePtr, owner: RwLockContainerPtr, thread_ptr: RwLockThreadPtr, cpu_id: CpuId,
+    krnl: &mut KernelK, iommu_table: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index, L1Index), page_ptr: PagePtr, l1_ptr: PageMapPtr, owner: RwLockContainerPtr, thread_ptr: RwLockThreadPtr, cpu_id: CpuId,
     indirect: &mut [usize; MAX_CONTAINER_TREE_DEPTH], direct: &mut usize, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, iommu_table_perm: Tracked<&LockPerm>,
     page_perm: Tracked<&LockPerm>, thread_perm: Tracked<&LockPerm>,
 )
@@ -287,6 +287,8 @@ pub fn reclaim_last_iommu_4k_mapping(
         old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(spec_index2va(indices)),
         !old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(spec_index2va(indices)).present,
         old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(spec_index2va(indices)).addr == page_ptr,
+        old(krnl).it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some,
+        old(krnl).it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == l1_ptr,
         typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), iommu_table, TypedLockMode::Write),
         iommu_table_perm.view().state() is WriteLock,
         iommu_table_perm.view().thread_id() == old(lctx).thread_id(),
@@ -355,7 +357,8 @@ pub fn reclaim_last_iommu_4k_mapping(
     assert(krnl.ctn_mp.dom().contains(owner) && krnl.ctn_mp.spec_index(owner).view_rodata().view().depth == depth
         && krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr) by { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_index); };
     let mut counter = if depth == thread_depth { *direct } else { indirect[depth] };
-    remove_last_iommu_4k_mapping_to_allocator(krnl, iommu_table, indices, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, &mut counter, Tracked(&mut *lctx), iommu_table_perm, page_perm, thread_perm, Tracked(&cache_perm));
+    remove_last_iommu_4k_mapping_to_allocator(krnl, iommu_table, indices, page_ptr, l1_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, &mut counter, Tracked(&mut *lctx),
+        iommu_table_perm, page_perm, thread_perm, Tracked(&cache_perm));
     if depth == thread_depth { *direct = counter; } else { indirect[depth] = counter; }
     krnl.wunlock_allocator_cache_4k(allocator_ptr, cpu_id, Tracked(&mut *lctx), Tracked(cache_perm));
     proof {

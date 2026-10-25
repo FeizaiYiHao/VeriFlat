@@ -31,10 +31,12 @@ pub(super) proof fn clear_iommu_4k_mapping_present_eof(pre: KernelK, post: Kerne
         pre.it_mp.spec_index(iommu_table).locking_thread() is Write,
         post.it_mp.perms_wf(),
         post.it_mp.spec_index(iommu_table).inv(),
+        // Produced by `iommu_table_map_clear_4k_present`.
+        iommu_table_perms_wf(post.it_mp),
     ensures post.inv(),
 {
     reveal(clear_iommu_4k_mapping_present_eof_transition_framing);
-    assert(post.subsystems_inv()) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); reveal(KernelK::default_pagetable_wf); };
+    assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     assert(post.memory_management_inv()) by {
         assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); };
         assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); };

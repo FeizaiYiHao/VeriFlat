@@ -388,15 +388,17 @@ fn share_one_mapping_4k(
         Tracked(if progress_thread == source_thread { source_thread_lock_perm } else { target_thread_lock_perm }));
     proof {
         assert(!old(krnl).prc_mp.spec_index(target_process).view().zombie) by { process_thread_wf_at(old(krnl).prc_mp, old(krnl).thr_mp, target_thread); };
-        assert(kernel_process_4k_mapping_changed(&steps.snapshot_k(), &*krnl, target_process, target_pagetable, target_va)) by { reveal(kernel_process_4k_mapping_changed); reveal(process_pagetable_match); };
+        assert(!krnl.prc_mp.spec_index(target_process).view().zombie
+            && krnl.prc_mp.spec_index(target_process).view().pagetable == target_pagetable) by { process_pagetable_match_pagetable_at(krnl.prc_mp, krnl.pt_mp, target_pagetable); };
+        assert(kernel_process_4k_mapping_changed(&steps.snapshot_k(), &*krnl, target_process, target_pagetable, target_va)) by {
+            reveal(kernel_process_4k_mapping_changed); process_pagetable_match_pagetable_at(old(krnl).prc_mp, old(krnl).pt_mp, target_pagetable);
+        };
         let ghost source_process = old(krnl).pt_mp.spec_index(source_pagetable).view().proc_ptr;
         assert({
             &&& krnl.prc_mp.dom().contains(source_process)
             &&& !krnl.prc_mp.spec_index(source_process).view().zombie
             &&& krnl.prc_mp.spec_index(source_process).view().pagetable == source_pagetable
         }) by { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, source_thread); };
-        assert(!krnl.prc_mp.spec_index(target_process).view().zombie
-            && krnl.prc_mp.spec_index(target_process).view().pagetable == target_pagetable) by { process_pagetable_match_pagetable_at(krnl.prc_mp, krnl.pt_mp, target_pagetable); };
         let ghost leaf_k = *krnl;
         krnl.kernel_step_boundary_process_4k_mapping_changed_windowed(&mut *lctx, &mut *steps, target_process, target_pagetable, target_va, source_process, source_pagetable, target_thread,
             source_thread);
@@ -1175,13 +1177,6 @@ pub fn share_mapping_4k_build_and_share(
             lctx.cpu_id() == old(lctx).cpu_id(),
             old(krnl).inv(),
             typed_lock_maps_unchanged(old(lctx), lctx),
-            forall|w: WindowVa, v: VAddr|
-                #![trigger old(lctx).pagetable_window_lock_map().dom().contains((source_pagetable, w)), pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(v)]
-                old(lctx).pagetable_window_lock_map().dom().contains((source_pagetable, w)) && spec_v2l4index(v) == spec_v2l4index(w.va) && spec_v2l3index(v) == spec_v2l3index(w.va) && spec_v2l2index(v) == spec_v2l2index(w.va) ==> {
-                    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(v) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().dom().contains(v)
-                    &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().dom().contains(v)
-                        ==> pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).mapping_4k().spec_index(v) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().spec_index(v)
-                },
             krnl.pt_mp.spec_index(source_pagetable).view() == old(krnl).pt_mp.spec_index(source_pagetable).view(),
             krnl.pt_mp.spec_index(target_pagetable).view() == old(krnl).pt_mp.spec_index(target_pagetable).view(),
             progress_thread == source_thread || progress_thread == quota_thread,
@@ -1208,24 +1203,6 @@ pub fn share_mapping_4k_build_and_share(
             old(krnl).thr_mp.dom().contains(quota_thread),
             krnl.pt_mp.spec_index(target_pagetable).view().kernel_l4_end == old(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end,
             krnl.pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= spec_v2l4index(target_range.start),
-            forall|w: WindowVa, v: VAddr|
-                #![trigger old(lctx).pagetable_window_lock_map().dom().contains((target_pagetable, w)), pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).mapping_4k().dom().contains(v)]
-                old(lctx).pagetable_window_lock_map().dom().contains((target_pagetable, w)) && spec_v2l4index(v) == spec_v2l4index(w.va) && spec_v2l3index(v) == spec_v2l3index(w.va) && spec_v2l2index(v) == spec_v2l2index(w.va) ==> {
-                    let expected = share_mapping_4k_target_map_with_shared_prefix(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k(), pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).mapping_4k(),
-                        source_range, target_range, i as nat);
-                    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).mapping_4k().dom().contains(v) == expected.dom().contains(v)
-                    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).mapping_4k().dom().contains(v) ==> pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).mapping_4k().spec_index(v) == expected.spec_index(v)
-                },
-            forall|w: WindowVa|
-                #![trigger old(lctx).pagetable_window_lock_map().dom().contains((target_pagetable, w))]
-                old(lctx).pagetable_window_lock_map().dom().contains((target_pagetable, w)) && old(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end <= spec_v2l4index(w.va)
-                    && pei_valid(spec_v2l4index(w.va)) && pei_valid(spec_v2l3index(w.va)) && pei_valid(spec_v2l2index(w.va))
-                    ==> pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).spec_resolve_mapping_l2(spec_v2l4index(w.va), spec_v2l3index(w.va), spec_v2l2index(w.va))
-                        == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).spec_resolve_mapping_l2(spec_v2l4index(w.va), spec_v2l3index(w.va), spec_v2l2index(w.va)),
-            share_mapping_4k_target_range_empty_from(share_mapping_4k_target_map_with_shared_prefix(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k(), pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).mapping_4k(),
-                source_range, target_range, i as nat), target_range, i as int),
-            i < source_range.len ==> !share_mapping_4k_target_map_with_shared_prefix(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k(), pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).mapping_4k(),
-                source_range, target_range, i as nat).dom().contains(target_range.view().spec_index(i as int)),
         decreases source_range.len - i,
     {
         let source_va = source_range.index(i);
@@ -1237,14 +1214,12 @@ pub fn share_mapping_4k_build_and_share(
             spec_va_4k_index_roundtrip_at(window_of(source_va).va, spec_v2l4index(source_va), spec_v2l3index(source_va), spec_v2l2index(source_va), 0);
             spec_va_4k_index_roundtrip_at(target_va, spec_v2l4index(target_va), spec_v2l3index(target_va), spec_v2l2index(target_va), spec_v2l1index(target_va));
             spec_va_4k_index_roundtrip_at(window_of(target_va).va, spec_v2l4index(target_va), spec_v2l3index(target_va), spec_v2l2index(target_va), 0);
-            assert(old(lctx).pagetable_window_lock_map().dom().contains((source_pagetable, window_of(source_va))));
-            assert(old(lctx).pagetable_window_lock_map().dom().contains((target_pagetable, window_of(target_va))));
-            assert(spec_v2l4index(window_of(source_va).va) == spec_v2l4index(source_va) && spec_v2l3index(window_of(source_va).va) == spec_v2l3index(source_va) && spec_v2l2index(window_of(source_va).va) == spec_v2l2index(source_va));
-            assert(spec_v2l4index(window_of(target_va).va) == spec_v2l4index(target_va) && spec_v2l3index(window_of(target_va).va) == spec_v2l3index(target_va) && spec_v2l2index(window_of(target_va).va) == spec_v2l2index(target_va));
-            assert(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().dom().contains(source_va));
-            assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(source_va));
-            assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_va) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_va));
-            assert(!pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).mapping_4k().dom().contains(target_va));
+            assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(source_va)
+                && pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_va) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_va))
+                by { reveal(share_mapping_4k_build_and_share_eol_loop_framing); };
+            assert(!pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).mapping_4k().dom().contains(target_va)) by { reveal(share_mapping_4k_build_and_share_eol_loop_framing); };
+            assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).spec_resolve_mapping_l2(spec_v2l4index(target_va), spec_v2l3index(target_va), spec_v2l2index(target_va)) is Some)
+                by { reveal(share_mapping_4k_build_and_share_eol_loop_framing); };
             assert(share_mapping_4k_leaf_ready(krnl, source_pagetable, target_pagetable, target_container, source_va, target_va)) by {
                 page_ptr_valid_imply_page_index_valid(); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable); mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, source_pagetable, source_va);
                 container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, source_page);
@@ -1259,22 +1234,22 @@ pub fn share_mapping_4k_build_and_share(
             Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm),
         );
         proof {
-            prove_share_mapping_4k_iteration_target_partition(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k(), pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).mapping_4k(), source_range, target_range, i,
-                old(lctx).pagetable_window_lock_map().dom(), target_pagetable, pagetable_c(krnl_i.pt_mp, krnl_i.pt_lower.view(), target_pagetable).mapping_4k(),
-                pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).mapping_4k(), pagetable_c(krnl_i.pt_mp, krnl_i.pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_va));
-            if target_write_held {
-                assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).user_view(LockStateU::Unlocked).mapping_4k == share_mapping_4k_target_map_with_shared_prefix(
-                    pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).user_view(LockStateU::Unlocked).mapping_4k,
-                    pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).user_view(LockStateU::Unlocked).mapping_4k, source_range, target_range, (i + 1) as nat,
-                )) by {
-                    assert(pagetable_c(krnl_i.pt_mp, krnl_i.pt_lower.view(), source_pagetable).user_view(LockStateU::Unlocked).mapping_4k.spec_index(source_va)
-                        == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).user_view(LockStateU::Unlocked).mapping_4k.spec_index(source_va));
-                    reveal(share_mapping_4k_build_and_share_eol_loop_framing); reveal(share_mapping_4k_target_map_with_shared_prefix);
-                };
-            }
             assert(share_mapping_4k_build_and_share_eol_loop_framing(*old(krnl), *krnl, old(lctx), old(steps), steps, (i + 1) as nat, source_range, target_range, source_thread, quota_thread,
                 progress_thread, target_process, target_container, cpu_id, source_pagetable, target_pagetable, source_pagetable_lock_perm.state() is WriteLock, target_write_held)) by {
                 reveal(share_mapping_4k_build_and_share_eol_loop_framing); share_4k_range_steps_from_leaf(&*steps, leaf_before, old(steps).view().len() as int, cpu_id);
+                prove_share_mapping_4k_iteration_target_partition(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k(),
+                    pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).mapping_4k(), source_range, target_range, i, old(lctx).pagetable_window_lock_map().dom(), target_pagetable,
+                    pagetable_c(krnl_i.pt_mp, krnl_i.pt_lower.view(), target_pagetable).mapping_4k(), pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).mapping_4k(),
+                    pagetable_c(krnl_i.pt_mp, krnl_i.pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_va));
+                if target_write_held {
+                    assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).user_view(LockStateU::Unlocked).mapping_4k == share_mapping_4k_target_map_with_shared_prefix(
+                        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).user_view(LockStateU::Unlocked).mapping_4k,
+                        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).user_view(LockStateU::Unlocked).mapping_4k, source_range, target_range, (i + 1) as nat)) by {
+                        assert(pagetable_c(krnl_i.pt_mp, krnl_i.pt_lower.view(), source_pagetable).user_view(LockStateU::Unlocked).mapping_4k.spec_index(source_va)
+                            == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).user_view(LockStateU::Unlocked).mapping_4k.spec_index(source_va));
+                        reveal(share_mapping_4k_target_map_with_shared_prefix);
+                    };
+                }
             };
         }
         i = i + 1;

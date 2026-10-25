@@ -752,9 +752,33 @@ pub(super) broadcast proof fn eof_page_object_owner_at(
             }
         }),
 {
-    reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
-    broadcast use eof_unmodified_object_page_state_eq;
-    page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_index_roundtrip();
-    page_object_owner_wf_at(pre.pg_arr, pre.ctn_mp, pre.thr_mp, page_index); container_page_owner_backward_at(pre.ctn_mp, pre.pg_arr, page_index); page_array_wf_at(post.pg_arr, page_index);
+    reveal(publish_staged_container_root_eof_transition_framing);
+    let page_ptr = page_index2page_ptr(page_index);
+    let moved_pages = new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).union(funding_pages.to_set());
+    if moved_pages.contains(page_ptr) {
+        page_index_valid_imply_page_ptr_valid(); page_index_roundtrip(); page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip(); page_array_wf_at(post.pg_arr, page_index);
+        if funding_pages.to_set().contains(page_ptr) { } else {
+            let container_head = page_ptr2page_index(container_page);
+            let pcid_allocator_head = page_ptr2page_index(pcid_allocator_page);
+            reveal(new_container_moved_pages);
+            if page_2m_all_ptrs(container_head).contains(page_ptr) {
+                page_ptr_2m_valid_imply_page_index_2m_valid(container_page);
+                page_2m_ptr_prefix_member_bounds(container_head, 512, page_ptr);
+                if page_index != container_head { }
+            } else if page_2m_all_ptrs(pcid_allocator_head).contains(page_ptr) {
+                page_ptr_2m_valid_imply_page_index_2m_valid(pcid_allocator_page);
+                page_2m_ptr_prefix_member_bounds(pcid_allocator_head, 512, page_ptr);
+                if page_index != pcid_allocator_head { }
+            } else { reveal(new_container_bootstrap_4k_pages); }
+        }
+    } else {
+        eof_page_fields_eq_outside_moved_pages(
+            pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k, page_index,
+        );
+        page_object_owner_wf_at(pre.pg_arr, pre.ctn_mp, pre.thr_mp, page_index); container_page_owner_backward_at(pre.ctn_mp, pre.pg_arr, page_index);
+        reveal(publish_staged_container_root_eof_preconditions);
+    }
 }
 }

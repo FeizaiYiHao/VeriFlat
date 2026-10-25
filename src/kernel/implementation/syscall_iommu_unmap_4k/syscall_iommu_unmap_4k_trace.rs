@@ -1,5 +1,4 @@
 use vstd::prelude::*;
-use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_seqs_equal};
 use crate::*;
 use super::syscall_iommu_unmap_4k_spec::*;
 
@@ -46,58 +45,6 @@ pub(super) proof fn iommu_unmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, 
         if ret is Success || ret is ErrorIommuIovaNotMapped { kernel_iommu_table_mappings_projection_at(krnl, thread.owning_proc); }
     }
 }
-
-/// Write-locking the caller's context and IOMMU table and recording the first iova is the enter step on `pre`/`post`.
-pub(super) proof fn iommu_unmap_4k_enter_step_from_u(
-    pre: KernelU, post: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, iova_range: VaRange4K,
-)
-    requires
-        index_valid(NUM_CPUS, cpu_id),
-        {
-            let cpu = pre.cpu_array[cpu_id as int];
-            let thread = pre.thread_map.spec_index(thread_ptr);
-            let process = pre.process_map.spec_index(process_ptr);
-            let container = pre.container_map.spec_index(container_ptr);
-            &&& cpu.lock_state is Unlocked
-            &&& cpu.state is Running
-            &&& cpu.current_thread == Some(thread_ptr)
-            &&& pre.thread_map.dom().contains(thread_ptr)
-            &&& thread.lock_state is Unlocked
-            &&& thread.syscall_progress is None
-            &&& !thread.killed
-            &&& thread.owning_proc == process_ptr
-            &&& thread.owning_container == container_ptr
-            &&& pre.process_map.dom().contains(process_ptr)
-            &&& process.lock_state is Unlocked
-            &&& !process.killed
-            &&& process.iommu_table is Some
-            &&& process.iommu_table->Some_0.lock_state is Unlocked
-            &&& pre.container_map.dom().contains(container_ptr)
-            &&& container.lock_state is Unlocked
-            &&& !container.killed
-            &&& !container.zombie
-            &&& iova_range.wf()
-            &&& iova_range.len > 0
-            &&& user_va_range(pre, iova_range)
-            &&& forall|i: int| #![trigger process.iommu_table->Some_0.mapping_4k.dom().contains(iova_range.view()[i])] 0 <= i < iova_range.len
-                ==> process.iommu_table->Some_0.mapping_4k.dom().contains(iova_range.view()[i])
-        },
-        post == (KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre.cpu_array[cpu_id as int] }),
-            container_map: pre.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::WriteLocked, ..pre.container_map.spec_index(container_ptr) }),
-            process_map: pre.process_map.insert(process_ptr, ProcessU {
-                lock_state: LockStateU::WriteLocked, iommu_table: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..pre.process_map.spec_index(process_ptr).iommu_table->Some_0 }),
-                ..pre.process_map.spec_index(process_ptr)
-            }),
-            thread_map: pre.thread_map.insert(thread_ptr, ThreadU {
-                lock_state: LockStateU::WriteLocked, syscall_progress: Some(SyscallProgress::IommuUnmap4k { iova_range, unmapped: 0, flushed: false }), ..pre.thread_map.spec_index(thread_ptr)
-            }),
-            ..pre
-        }),
-    ensures
-        iommu_unmap_4k_enter_step_pre(pre, cpu_id, iova_range),
-        iommu_unmap_4k_enter_step(pre, post, cpu_id, iova_range),
-{ reveal(iommu_unmap_4k_enter_step_pre); reveal(iommu_unmap_4k_enter_step); }
 
 /// Hiding the next iova of the recorded range and advancing the progress is a leaf step on `pre`/`post`.
 pub(super) proof fn iommu_unmap_4k_leaf_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, iova: VAddr)
@@ -158,53 +105,6 @@ pub(super) proof fn iommu_unmap_4k_flush_step_from_u(pre: KernelU, post: KernelU
     ensures
         iommu_unmap_4k_range_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
 { reveal(iommu_unmap_4k_flush_step_pre); reveal(iommu_unmap_4k_flush_step); reveal(iommu_unmap_4k_range_step); }
-
-/// A 4K quota refund to the thread's container chain after the recorded flush is a range step.
-pub(super) proof fn iommu_unmap_4k_refund_step_from_u(step: KernelStep, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, iova_range: VaRange4K)
-    requires
-        {
-            let thread = step.old_u.thread_map.spec_index(thread_ptr);
-            &&& iommu_unmap_4k_locked(step.old_u, cpu_id)
-            &&& step.old_u.cpu_array[cpu_id as int].current_thread == Some(thread_ptr)
-            &&& thread.syscall_progress == Some(SyscallProgress::IommuUnmap4k { iova_range, unmapped: iova_range.len, flushed: true })
-            &&& kernel_u_container_quota_4k_increased(step.old_u, step.new_u, thread.owning_container)
-        },
-    ensures
-        iommu_unmap_4k_range_step(step, cpu_id),
-{ reveal(iommu_unmap_4k_refund_step_pre); reveal(iommu_unmap_4k_range_step); }
-
-/// Clearing the progress and releasing every IOMMU-unmap lock after the recorded flush is the exit step on `pre`/`post`.
-pub(super) proof fn iommu_unmap_4k_exit_step_from_u(
-    pre: KernelU, post: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
-)
-    requires
-        {
-            let thread = pre.thread_map.spec_index(thread_ptr);
-            let process = pre.process_map.spec_index(process_ptr);
-            let progress = thread.syscall_progress->Some_0;
-            &&& iommu_unmap_4k_table_locked(pre, cpu_id)
-            &&& pre.cpu_array[cpu_id as int].current_thread == Some(thread_ptr)
-            &&& thread.owning_proc == process_ptr
-            &&& thread.owning_container == container_ptr
-            &&& thread.syscall_progress is Some
-            &&& progress is IommuUnmap4k
-            &&& progress->IommuUnmap4k_unmapped == progress->IommuUnmap4k_iova_range.len
-            &&& progress->IommuUnmap4k_flushed
-        },
-        post == (KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre.cpu_array[cpu_id as int] }),
-            container_map: pre.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, ..pre.container_map.spec_index(container_ptr) }),
-            process_map: pre.process_map.insert(process_ptr, ProcessU {
-                lock_state: LockStateU::Unlocked, iommu_table: Some(PageTableU { lock_state: LockStateU::Unlocked, ..pre.process_map.spec_index(process_ptr).iommu_table->Some_0 }),
-                ..pre.process_map.spec_index(process_ptr)
-            }),
-            thread_map: pre.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..pre.thread_map.spec_index(thread_ptr) }),
-            ..pre
-        }),
-    ensures
-        iommu_unmap_4k_exit_step_pre(pre, cpu_id),
-        iommu_unmap_4k_exit_step(pre, post, cpu_id),
-{ reveal(iommu_unmap_4k_exit_step_pre); reveal(iommu_unmap_4k_exit_step); }
 
 /// The enter step pushed onto an empty trace is the partial trace after entering.
 pub(super) proof fn iommu_unmap_4k_trace_enter_step(before: Seq<KernelStep>, trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, iova_range: VaRange4K)
@@ -297,32 +197,9 @@ pub(super) proof fn iommu_unmap_4k_enter_step_from_k(
         iommu_unmap_4k_enter_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, iommu_unmap_4k_iova_range(iova, range)),
 {
     reveal(iommu_unmap_4k_enter_step_pre); reveal(iommu_unmap_4k_enter_step);
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
-    let pre_u = kernel_k_to_kernel_u(*pre);
-    let post_u = kernel_k_to_kernel_u(*post);
-    let process = pre_u.process_map.spec_index(process_ptr);
+    kernel_cpu_container_process_thread_iommu_table_lock_states_and_progress_changed_implies_u_step(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, iommu_table_ptr);
     kernel_cpu_projection_at(pre, cpu_id); kernel_cpu_thread_projection_at(pre, cpu_id, process_ptr, thread_ptr, None);
-    kernel_thread_projection_at(pre, thread_ptr); kernel_thread_projection_at(post, thread_ptr);
-    kernel_process_projection_at(pre, process_ptr); kernel_process_projection_at(post, process_ptr);
-    kernel_container_projection_at(pre, container_ptr); kernel_container_projection_at(post, container_ptr);
-    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre_u.cpu_array[cpu_id as int] }), i => {
-        if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); }
-    });
-    assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::WriteLocked, ..pre_u.container_map.spec_index(container_ptr) }), c => {
-        if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); } if post.ctn_mp.dom().contains(c) { kernel_container_projection_at(post, c); }
-    });
-    assert_maps_equal!(post_u.process_map, pre_u.process_map.insert(process_ptr, ProcessU {
-        lock_state: LockStateU::WriteLocked, iommu_table: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..process.iommu_table->Some_0 }), ..process
-    }), p => {
-        if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }
-        reveal(process_iommu_table_match);
-    });
-    assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thread_ptr, ThreadU {
-        lock_state: LockStateU::WriteLocked, syscall_progress: post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view(), ..pre_u.thread_map.spec_index(thread_ptr)
-    }), t => { if pre.thr_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thr_mp.dom().contains(t) { kernel_thread_projection_at(post, t); } });
-    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => {
-        if pre.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(pre, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(post, e); }
-    });
+    kernel_thread_projection_at(pre, thread_ptr); kernel_process_projection_at(pre, process_ptr); kernel_container_projection_at(pre, container_ptr);
 }
 
 /// Advancing the progress past iova `iova` and then clearing its present leaf in the write-held IOMMU table under the
@@ -370,26 +247,13 @@ pub(super) proof fn iommu_unmap_4k_leaf_step_from_k(
 {
     let iova = iova_range.view()[unmapped as int];
     assert(pre.it_mp.dom().contains(iommu_table_ptr) && pre.it_mp.spec_index(iommu_table_ptr).view().proc_ptr == process_ptr) by { reveal(process_iommu_table_match); };
+    kernel_thread_syscall_progress_changed_implies_u_step(pre, mid, thread_ptr);
     kernel_iommu_table_4k_present_cleared_implies_u_step(mid, post, iommu_table_ptr, iova);
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(mid);
-    let pre_u = kernel_k_to_kernel_u(*pre);
-    let mid_u = kernel_k_to_kernel_u(*mid);
+    kernel_u_domains_projection(pre);
     kernel_cpu_projection_at(pre, cpu_id); kernel_container_projection_at(pre, container_ptr);
     kernel_thread_projection_at(pre, thread_ptr); kernel_thread_projection_at(mid, thread_ptr);
     kernel_process_projection_at(pre, process_ptr); kernel_iommu_table_mappings_projection_at(pre, process_ptr);
-    assert_maps_equal!(mid_u.thread_map, pre_u.thread_map.insert(thread_ptr, ThreadU { syscall_progress: mid.thr_mp.spec_index(thread_ptr).view().syscall_progress.view(), ..pre_u.thread_map[thread_ptr] }),
-        t => { if pre.thr_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if mid.thr_mp.dom().contains(t) { kernel_thread_projection_at(mid, t); } });
-    assert_seqs_equal!(mid_u.cpu_array == pre_u.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(mid, i as usize); } });
-    assert_maps_equal!(mid_u.container_map, pre_u.container_map, c => {
-        if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); } if mid.ctn_mp.dom().contains(c) { kernel_container_projection_at(mid, c); }
-    });
-    assert_maps_equal!(mid_u.process_map, pre_u.process_map, p => {
-        if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if mid.prc_mp.dom().contains(p) { kernel_process_projection_at(mid, p); }
-    });
-    assert_maps_equal!(mid_u.endpoint_map, pre_u.endpoint_map, e => {
-        if pre.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(pre, e); } if mid.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(mid, e); }
-    });
-    iommu_unmap_4k_leaf_step_from_u(pre_u, kernel_k_to_kernel_u(*post), cpu_id, process_ptr, thread_ptr, iova);
+    iommu_unmap_4k_leaf_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, process_ptr, thread_ptr, iova);
 }
 
 /// Flushing every IOTLB domain and then recording the flush after the last hidden iova under the IOMMU-unmap locks is the
@@ -428,25 +292,10 @@ pub(super) proof fn iommu_unmap_4k_flush_step_from_k(
         iommu_unmap_4k_range_step(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*post) }, cpu_id),
 {
     assert(pre.it_mp.dom().contains(iommu_table_ptr)) by { reveal(process_iommu_table_match); };
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
-    let pre_u = kernel_k_to_kernel_u(*pre);
-    let post_u = kernel_k_to_kernel_u(*post);
-    kernel_cpu_projection_at(pre, cpu_id); kernel_container_projection_at(pre, container_ptr);
-    kernel_thread_projection_at(pre, thread_ptr); kernel_thread_projection_at(post, thread_ptr);
+    kernel_iommu_tlb_flushed_implies_u_step(pre, mid); kernel_thread_syscall_progress_changed_implies_u_step(mid, post, thread_ptr);
+    kernel_cpu_projection_at(pre, cpu_id); kernel_container_projection_at(pre, container_ptr); kernel_thread_projection_at(pre, thread_ptr);
     kernel_process_projection_at(pre, process_ptr); kernel_iommu_table_mappings_projection_at(pre, process_ptr);
-    assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thread_ptr, ThreadU { syscall_progress: post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view(), ..pre_u.thread_map[thread_ptr] }),
-        t => { if pre.thr_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thr_mp.dom().contains(t) { kernel_thread_projection_at(post, t); } });
-    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); } });
-    assert_maps_equal!(post_u.container_map, pre_u.container_map, c => {
-        if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); } if post.ctn_mp.dom().contains(c) { kernel_container_projection_at(post, c); }
-    });
-    assert_maps_equal!(post_u.process_map, pre_u.process_map, p => {
-        if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }
-    });
-    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => {
-        if pre.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(pre, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(post, e); }
-    });
-    iommu_unmap_4k_flush_step_from_u(pre_u, post_u, cpu_id, thread_ptr);
+    iommu_unmap_4k_flush_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, thread_ptr);
 }
 
 /// Clearing progress and unlocking the IOMMU table, the running thread, its process and container, and the cpu after the
@@ -507,32 +356,9 @@ pub(super) proof fn iommu_unmap_4k_exit_step_from_k(
         iommu_unmap_4k_exit_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id),
 {
     reveal(iommu_unmap_4k_exit_step_pre); reveal(iommu_unmap_4k_exit_step);
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
-    let pre_u = kernel_k_to_kernel_u(*pre);
-    let post_u = kernel_k_to_kernel_u(*post);
-    let process = pre_u.process_map.spec_index(process_ptr);
+    kernel_cpu_container_process_thread_iommu_table_lock_states_and_progress_changed_implies_u_step(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, iommu_table_ptr);
     kernel_cpu_projection_at(pre, cpu_id); kernel_cpu_thread_projection_at(pre, cpu_id, process_ptr, thread_ptr, None);
-    kernel_thread_projection_at(pre, thread_ptr); kernel_thread_projection_at(post, thread_ptr);
-    kernel_process_projection_at(pre, process_ptr); kernel_process_projection_at(post, process_ptr);
-    kernel_container_projection_at(pre, container_ptr); kernel_container_projection_at(post, container_ptr);
-    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre_u.cpu_array[cpu_id as int] }), i => {
-        if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); }
-    });
-    assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, ..pre_u.container_map.spec_index(container_ptr) }), c => {
-        if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); } if post.ctn_mp.dom().contains(c) { kernel_container_projection_at(post, c); }
-    });
-    assert_maps_equal!(post_u.process_map, pre_u.process_map.insert(process_ptr, ProcessU {
-        lock_state: LockStateU::Unlocked, iommu_table: Some(PageTableU { lock_state: LockStateU::Unlocked, ..process.iommu_table->Some_0 }), ..process
-    }), p => {
-        if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }
-        reveal(process_iommu_table_match);
-    });
-    assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..pre_u.thread_map.spec_index(thread_ptr) }), t => {
-        if pre.thr_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thr_mp.dom().contains(t) { kernel_thread_projection_at(post, t); }
-    });
-    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => {
-        if pre.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(pre, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(post, e); }
-    });
+    kernel_thread_projection_at(pre, thread_ptr); kernel_process_projection_at(pre, process_ptr); kernel_container_projection_at(pre, container_ptr);
 }
 /// The 4K quota refund steps that `refund_unmap_4k_quota` appended under the IOMMU-unmap context locks after the recorded
 /// flush extend the partial trace `before`.

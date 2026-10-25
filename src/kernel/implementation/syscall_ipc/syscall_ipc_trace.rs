@@ -1008,6 +1008,29 @@ pub(super) proof fn ipc_pages_passed_check_step_from_u(
     ensures ipc_pages_check_step(pre, post, cpu_id),
 { reveal(ipc_pages_check_step); }
 
+/// Recording the share progress on the running thread of a passed pages check, with only that thread's progress changed from `pre` to
+/// `post`, is the check step on their user projections.
+pub(super) proof fn ipc_pages_passed_check_step_from_k(
+    pre: &KernelK, post: &KernelK, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, source_range: VaRange4K, target_range: VaRange4K, peer_ptr: RwLockThreadPtr, tables: IpcPagesTables,
+)
+    requires
+        *post == (KernelK { thr_mp: post.thr_mp, ..*pre }),
+        pre.thr_mp.dom().contains(thread_ptr),
+        post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr),
+        post.thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: post.thr_mp.spec_index(thread_ptr).view().syscall_progress, ..pre.thr_mp.spec_index(thread_ptr).view() }),
+        post.thr_mp.spec_index(thread_ptr).locking_thread() == pre.thr_mp.spec_index(thread_ptr).locking_thread(),
+        post.thr_mp.spec_index(thread_ptr).being_killed() == pre.thr_mp.spec_index(thread_ptr).being_killed(),
+        index_valid(NUM_CPUS, cpu_id),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
+        pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::IpcPages { source_range, target_range, peer: peer_ptr, tables, released: None }),
+        post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k { source_range, target_range, shared: 0, origin: Share4kOrigin::IpcPages { peer: peer_ptr } }),
+        ipc_pages_check_result(kernel_k_to_kernel_u(*pre), cpu_id) is Success,
+    ensures ipc_pages_check_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id),
+{
+    kernel_thread_syscall_progress_changed_implies_u_step(pre, post, thread_ptr); kernel_cpu_projection_at(pre, cpu_id); kernel_thread_projection_at(pre, thread_ptr);
+    ipc_pages_passed_check_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, thread_ptr, source_range, target_range, peer_ptr, tables);
+}
+
 /// Recording a failed check while releasing both page tables, which other readers may still hold, is the check step on `pre`/`post`.
 pub(super) proof fn ipc_pages_failed_check_step_from_u(
     pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, source_range: VaRange4K, target_range: VaRange4K, peer_ptr: RwLockThreadPtr,

@@ -278,6 +278,9 @@ pub(super) proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof(
             &&& old_counter == old_thread.view().free_quota_pending_4k_at_depth(depth)
         }),
         iommu_table_perms_wf(post.it_mp),
+        // Produced by `page_array_remove_last_4k_iommu_mapping_to_cache` and `thread_map_add_free_quota_pending_4k`.
+        page_array_wf(post.pg_arr),
+        thread_perms_wf(post.thr_mp),
         post.pg_arr.inv(),
         post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().inv(),
         post.thr_mp.perms_wf(),
@@ -329,10 +332,7 @@ pub(super) proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof(
         kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
 {
     reveal(reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing);
-    assert(post.subsystems_inv()) by {
-        reveal(pagetable_perms_wf); reveal(page_array_wf); reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
-        reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(allocator_perms_wf); reveal(KernelK::default_pagetable_wf); reveal(thread_ipc_transit_wf);
-    };
+    assert(post.subsystems_inv()) by { reveal(pagetable_perms_wf); reveal(allocator_perms_wf); reveal(KernelK::default_pagetable_wf); };
     reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_memory_management_inv(pre, post, iommu_table, indices, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr);
     reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_process_management_inv(pre, post, iommu_table, indices, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, old_counter, new_counter, node_addr);
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };

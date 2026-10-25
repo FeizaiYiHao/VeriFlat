@@ -57,6 +57,9 @@ pub(super) proof fn remove_iommu_4k_mapping_without_free_eof(pre: KernelK, post:
         post.it_mp.spec_index(iommu_table).inv(),
         post.pg_arr.inv(),
         post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().inv(),
+        // Produced by `iommu_table_map_unmap_4k_kernel` and `page_array_remove_4k_iommu_mapping_without_free`.
+        iommu_table_perms_wf(post.it_mp),
+        page_array_wf(post.pg_arr),
         iommu_table_tlb_entries_present(pre.iommu_tlb, pre.irt.view(), pre.it_mp, iommu_table),
     ensures
         post.inv(),
@@ -65,7 +68,7 @@ pub(super) proof fn remove_iommu_4k_mapping_without_free_eof(pre: KernelK, post:
     reveal(remove_iommu_4k_mapping_without_free_eof_transition_framing);
     let page_index = page_ptr2page_index(page_ptr);
     assert(index_valid(NUM_PAGES, page_index)) by { page_ptr_valid_imply_page_index_valid(); };
-    assert(post.subsystems_inv()) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); reveal(page_array_wf); reveal(KernelK::default_pagetable_wf); };
+    assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     assert(post.memory_management_inv()) by {
         assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
         assert(allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {

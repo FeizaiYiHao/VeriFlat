@@ -178,7 +178,7 @@ pub(crate) fn kill_reclaim_last_4k_mapping_scoped(
 pub(crate) fn kill_reclaim_last_iommu_4k_mapping_scoped(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
     thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, iommu_table: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index, L1Index), page_ptr: PagePtr,
-    owner: RwLockContainerPtr, Tracked(iommu_perm): Tracked<&LockPerm>, Tracked(page_perm): Tracked<LockPerm>, Ghost(stage): Ghost<KillStage>, Ghost(start): Ghost<int>,
+    l1_ptr: PageMapPtr, owner: RwLockContainerPtr, Tracked(iommu_perm): Tracked<&LockPerm>, Tracked(page_perm): Tracked<LockPerm>, Ghost(stage): Ghost<KillStage>, Ghost(start): Ghost<int>,
     Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>, Ghost(entry_lctx): Ghost<LocalContext>,
 )
     requires
@@ -233,6 +233,8 @@ pub(crate) fn kill_reclaim_last_iommu_4k_mapping_scoped(
         iommu_perm.thread_id() == entry_lctx.thread_id(),
         iommu_perm.lock_id() == old(krnl).it_mp.spec_index(iommu_table).locking_thread()->Write_lock_id,
         old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(spec_index2va(indices)).addr == page_ptr,
+        old(krnl).it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some,
+        old(krnl).it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == l1_ptr,
         page_ptr_valid(page_ptr),
         !(old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().ref_count > 1 || old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().is_io_page),
         old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == owner,
@@ -302,7 +304,7 @@ pub(crate) fn kill_reclaim_last_iommu_4k_mapping_scoped(
     }
     let ghost before = steps.view();
     let Tracked(quota_perm) = krnl.wlock_allocator_quota_4k(allocator_ptr, Tracked(&mut *lctx));
-    kill_reclaim_last_iommu_4k_mapping_scoped_to_cache(krnl, Tracked(&mut *lctx), iommu_table, indices, page_ptr, owner, allocator_ptr, cpu_id, Tracked(iommu_perm), Tracked(&page_perm),
+    kill_reclaim_last_iommu_4k_mapping_scoped_to_cache(krnl, Tracked(&mut *lctx), iommu_table, indices, page_ptr, l1_ptr, owner, allocator_ptr, cpu_id, Tracked(iommu_perm), Tracked(&page_perm),
         Tracked(&cache_perm), Tracked(&quota_perm));
     krnl.wunlock_allocator_quota_4k(allocator_ptr, Tracked(&mut *lctx), Tracked(quota_perm));
     krnl.wunlock_allocator_cache_4k(allocator_ptr, cpu_id, Tracked(&mut *lctx), Tracked(cache_perm));

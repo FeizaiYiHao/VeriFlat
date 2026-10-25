@@ -448,7 +448,7 @@ occupied descriptor (IpcEndpointTargetInUse), NoQuota.
 ## 6. mmap_4k — enter, directory/leaf steps, exit
 
 Status: conforms (workspace run #27748; leaf-step IOMMU clause workspace run
-#34522, monolith run #34523).
+#34618, monolith run #34619).
 
 - Arguments: `va`, `range`; `R = mmap_4k_syscall_va_range(va, range)`.
 - U locks retained from enter to exit: `cpu`, `T`, `PT(P)`. Non-U: the
@@ -552,10 +552,10 @@ ThreadKilled, and an unmapped or kernel-range VA.
 Status: implemented (crate `veriflat_syscall_iommu_map_4k`;
 `syscall_iommu_map_4k.rs`, `iommu_map_4k_range.rs`,
 `iommu_map_4k_directory_step.rs`, spec `syscall_iommu_map_4k_spec.rs`);
-verified, package run #34486, workspace run #34522, monolith run #34523. Boot
+verified, package run #34486, workspace run #34618, monolith run #34619. Boot
 `NR_IOMMU_MAP_4K = 45`. Noninterference labels `IommuMap4kEnter`,
 `IommuMap4kDirectory`, `IommuMap4kLeaf`, `IommuMap4kExit`
-(`ni_iommu_map_4k.rs`, run #34521). `domain_4k_only`
+(`ni_iommu_map_4k.rs`, run #34617). `domain_4k_only`
 (`noninterference/src/isolation.rs`) rules out 2M/1G entries in both tables
 but allows 4K IOMMU entries, and `memory_iso` separates the two domains'
 pages across every pair of page-table and IOMMU-table 4K entries.
@@ -622,11 +622,11 @@ IommuVaNotMapped, IommuIovaAlreadyMapped.
 ## 7b. iommu_unmap_4k — enter, leaf/flush/refund steps, exit
 
 Status: implemented (crate `veriflat_syscall_iommu_unmap_4k`;
-`syscall_iommu_unmap_4k.rs`, `_check.rs`, `_lock.rs`); verified, package run
-#34434, workspace run #34522, monolith run #34523. Boot
+`syscall_iommu_unmap_4k.rs`, `_check.rs`, `_lock.rs`, `_range.rs`); verified,
+package run #34434, workspace run #34618, monolith run #34619. Boot
 `NR_IOMMU_UNMAP_4K = 46`. Noninterference labels `IommuUnmap4kEnter`,
 `IommuUnmap4kLeaf`, `IommuUnmap4kFlush`, `IommuUnmap4kRefund`,
-`IommuUnmap4kExit` (`ni_iommu_unmap_4k.rs`, run #34521).
+`IommuUnmap4kExit` (`ni_iommu_unmap_4k.rs`, run #34617).
 
 - Arguments: `iova`, `range`; `IR = iommu_unmap_4k_iova_range(iova, range)`.
 - U locks retained from enter to exit: `cpu`, `C`, `P`, `T`, `IT(P)`.
@@ -725,7 +725,7 @@ and IPC pages. Both steps take only `cpu_id` and derive their objects through
 Noninterference: when the source process lies outside the observed domain
 `x`, the `Share4kLeaf` hypothesis of the theorem (`noninterference/src/theorem.rs`)
 requires that no process of the other domain maps the shared page in either
-its pagetable or its IOMMU table 4K entries (run #34521).
+its pagetable or its IOMMU table 4K entries (run #34617).
 
 ## 9. new_process, new_process_with_endpoint, new_process_with_iommu_and_endpoint
 

@@ -45,6 +45,8 @@ pub mod nonlock_projection;
 pub mod pagetable_read_mode;
 pub mod new_process_read_mode;
 pub mod ipc_pages_tables;
+/// K->U lemmas of IOMMU-table leaf publication and global IOTLB flush steps.
+pub mod iommu_table_steps;
 
 pub use projection::*;
 pub use boundary::*;
@@ -67,6 +69,7 @@ pub use nonlock_projection::*;
 pub use pagetable_read_mode::*;
 pub use new_process_read_mode::*;
 pub use ipc_pages_tables::*;
+pub use iommu_table_steps::*;
 
 verus! {
 /// Each boundary refreshes both stored snapshots after recording its own section.

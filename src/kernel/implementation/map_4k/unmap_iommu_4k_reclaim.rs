@@ -9,8 +9,8 @@ verus! {
 /// Unmaps one hidden 4K leaf of a write-locked IOMMU table whose page has no other mapping, returns the page to the
 /// allocator CPU cache, and increments the owning thread's pending free-quota counter.
 pub fn remove_last_iommu_4k_mapping_to_allocator(
-    krnl: &mut KernelK, iommu_table: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index, L1Index), page_ptr: PagePtr, thread_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, depth: usize, allocator_ptr: RwLockPageAllocatorPtr,
-    cpu_id: CpuId, counter: &mut usize, Tracked(lctx): Tracked<&mut LocalContext>, iommu_table_perm: Tracked<&LockPerm>, page_perm: Tracked<&LockPerm>, thread_perm: Tracked<&LockPerm>,
+    krnl: &mut KernelK, iommu_table: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index, L1Index), page_ptr: PagePtr, l1_ptr: PageMapPtr, thread_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, depth: usize,
+    allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, counter: &mut usize, Tracked(lctx): Tracked<&mut LocalContext>, iommu_table_perm: Tracked<&LockPerm>, page_perm: Tracked<&LockPerm>, thread_perm: Tracked<&LockPerm>,
     cache_perm: Tracked<&LockPerm>,
 )
     requires
@@ -25,6 +25,8 @@ pub fn remove_last_iommu_4k_mapping_to_allocator(
         old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(spec_index2va(indices)),
         !old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(spec_index2va(indices)).present,
         old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(spec_index2va(indices)).addr == page_ptr,
+        old(krnl).it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some,
+        old(krnl).it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == l1_ptr,
         page_ptr_valid(page_ptr),
         old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().ref_count == 1,
         !old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().is_io_page,
@@ -110,20 +112,7 @@ pub fn remove_last_iommu_4k_mapping_to_allocator(
     assert(krnl.allc_4k_mp.spec_index(allocator_ptr).quota.view().value as int + *counter as int <= krnl.allc_4k_mp.spec_index(allocator_ptr).total_free_pages.view()) by { lemma_thread_pending_4k_quota_bounded(krnl, thread_ptr, owner, depth); };
     let page_index = page_ptr2page_index(page_ptr);
     let iova = index2va(indices);
-    proof {
-        iommu_table_perms_wf_map(krnl.it_mp);
-        iommu_table_perms_wf_at(krnl.it_mp, iommu_table);
-        iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, iommu_table);
-    }
-    let l1_ptr;
-    {
-        let it = krnl.it_mp.borrow_typed(iommu_table, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), iommu_table_perm);
-        assert(it.spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some) by { reveal(PageTable::wf_mapping_4k); };
-        let l4 = it.get_entry_l4(indices.0).unwrap();
-        let l3 = it.get_entry_l3(indices.0, indices.1, &l4).unwrap();
-        let l2 = it.get_entry_l2(indices.0, indices.1, indices.2, &l3).unwrap();
-        l1_ptr = l2.addr;
-    }
+    proof { iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, iommu_table); }
     assert(krnl.pg_arr.spec_index(page_index).view().view().addr == page_ptr && index_valid(NUM_PAGES, page_index) && krnl.pg_arr.spec_index(page_index).view().is_init()
         && krnl.pg_arr.spec_index(page_index).view().view().state is Mapped4k && krnl.pg_arr.spec_index(page_index).view().view().iommu_mappings().contains((iommu_table, iova))) by {
         page_ptr_valid_imply_page_index_valid(); page_array_wf_at(krnl.pg_arr, page_index); page_iommu_table_wf_table_at(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr, iommu_table, iova); page_ptr_roundtrip();

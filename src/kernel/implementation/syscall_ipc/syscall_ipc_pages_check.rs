@@ -348,8 +348,7 @@ fn ipc_pages_check_source_owners(
         thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); thread_perms_wf_at(krnl.thr_mp, peer_thread_ptr);
         process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, source_thread); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, target_thread);
         process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, source_process); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target_process);
-        container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, source_thread); container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, target_thread);
-        assert(krnl.thr_mp.perms_wf() && krnl.thr_mp.spec_index(target_thread).inv()) by { thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, target_thread); };
+        container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, target_thread);
         va_range_2m_windows_contains_window_of_first_n_pages(*source_range, source_range.len as int);
         va_range_2m_windows_contains_window_of_first_n_pages(*target_range, target_range.len as int);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl);
@@ -659,41 +658,42 @@ pub(super) fn ipc_pages_check_tables(
     hide(Seq::no_duplicates);
     let ghost mut found: Option<(L4Index, L3Index, L2Index, L1Index)> = None;
     proof {
-        thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); thread_perms_wf_at(krnl.thr_mp, peer_thread_ptr);
-        process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, source_thread); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, target_thread);
-        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, source_process); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target_process);
-        container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, source_thread); container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, target_thread);
-        assert(krnl.thr_mp.perms_wf() && krnl.thr_mp.spec_index(target_thread).inv()) by { thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, target_thread); };
+        assert(krnl.ctn_mp.dom().contains(source_container) && krnl.ctn_mp.dom().contains(target_container)) by {
+            container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, source_thread); container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, target_thread);
+        };
     }
     let result = if !source_user {
         RetValueType::Error
     } else if !share_mapping_4k_source_precheck(&*krnl, source_range, source_pagetable, Tracked(&*lctx), Tracked(source_pagetable_lock_perm)) {
         RetValueType::ErrorIpcSourceUnmapped
-    } else if krnl.thr_mp.borrow_typed(target_thread, Ghost(lctx.thread_lock_map()), Tracked(&*lctx),
-        Tracked(if target_thread == current_thread_ptr { current_thread_lock_perm } else { peer_thread_lock_perm })).quota_4k < 3usize * target_range.len {
-        RetValueType::ErrorNoQuota
-    } else if !target_user {
-        RetValueType::Error
     } else {
-        let containers_compatible = if source_container == target_container { true }
-            else { container_tree_check_is_ancestor(krnl.rt_ctn, &krnl.ctn_mp, source_container, target_container) };
-        let owners_compatible = if containers_compatible {
-            proof {
-                ipc_share_pages_source_owners_in_target_uppertree(&*krnl, cpu_id, current_thread_ptr, peer_thread_ptr, source_thread, source_pagetable, source_container, target_container,
-                    source_range);
-            }
-            true
+        proof { assert(krnl.thr_mp.perms_wf() && krnl.thr_mp.spec_index(target_thread).inv()) by { thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, target_thread); }; }
+        if krnl.thr_mp.borrow_typed(target_thread, Ghost(lctx.thread_lock_map()), Tracked(&*lctx),
+            Tracked(if target_thread == current_thread_ptr { current_thread_lock_perm } else { peer_thread_lock_perm })).quota_4k < 3usize * target_range.len {
+            RetValueType::ErrorNoQuota
+        } else if !target_user {
+            RetValueType::Error
         } else {
-            ipc_pages_check_source_owners(
-                krnl, source_range, target_range, source_thread, target_thread, cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, peer_thread_ptr, source_process,
-                source_container, source_pagetable, target_process, target_container, target_pagetable, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(current_thread_lock_perm),
-                Tracked(peer_thread_lock_perm), fill, source_user, target_user, Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm), Ghost(source_windows),
-                Ghost(target_windows),
-            )
-        };
-        let (target_clear, Ghost(target_found)) = ipc_pages_target_free(&*krnl, target_range, target_pagetable, Tracked(&*lctx), Tracked(target_pagetable_lock_perm));
-        proof { found = target_found; }
-        if !target_clear { RetValueType::ErrorVaInUse } else if !owners_compatible { RetValueType::ErrorIpcPageOwnerMismatch } else { RetValueType::Success }
+            let containers_compatible = if source_container == target_container { true }
+                else { container_tree_check_is_ancestor(krnl.rt_ctn, &krnl.ctn_mp, source_container, target_container) };
+            let owners_compatible = if containers_compatible {
+                proof {
+                    ipc_share_pages_source_owners_in_target_uppertree(&*krnl, cpu_id, current_thread_ptr, peer_thread_ptr, source_thread, source_pagetable, source_container, target_container,
+                        source_range);
+                }
+                true
+            } else {
+                ipc_pages_check_source_owners(
+                    krnl, source_range, target_range, source_thread, target_thread, cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, peer_thread_ptr, source_process,
+                    source_container, source_pagetable, target_process, target_container, target_pagetable, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(current_thread_lock_perm),
+                    Tracked(peer_thread_lock_perm), fill, source_user, target_user, Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm), Ghost(source_windows),
+                    Ghost(target_windows),
+                )
+            };
+            let (target_clear, Ghost(target_found)) = ipc_pages_target_free(&*krnl, target_range, target_pagetable, Tracked(&*lctx), Tracked(target_pagetable_lock_perm));
+            proof { found = target_found; }
+            if !target_clear { RetValueType::ErrorVaInUse } else if !owners_compatible { RetValueType::ErrorIpcPageOwnerMismatch } else { RetValueType::Success }
+        }
     };
     proof {
         if result is Success { va_range_2m_windows_contains_window_of_first_n_pages(*source_range, source_range.len as int); }
