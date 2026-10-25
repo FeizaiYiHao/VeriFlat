@@ -16,11 +16,14 @@
    对象在哪个节点分配就在哪。
 3. **全局 pool 4k/2m/1g 每节点一份**（container/process/thread 三级配额已经分散，不动）。
    本节点 pool 空了不借远端页。
-4. **RwLock 读侧拆每节点读计数**（唯一要改设计的热点）：读锁的原子加减让锁字在所有
-   读者节点间乒乓；读计数拆成每节点（或每 CPU）一个 line，写锁收齐全部计数。
-   lock_id / `TypedHeldLock` 的 ghost 模型不变，改原语实现和 `lock_state_u` 投影。
-   锁字和对象数据分开放。热点对象：页表 root 大锁、锚点页表、热路径 rlock 的
-   container/process。
+4. **多节点共读对象的读锁字**（唯一要改设计的热点）：读锁的原子加减让锁字在所有读者节点间
+   乒乓。决定（2026-10-25）：
+   - 页表 root/锚点的上层：目录页在进程存活期间只增不减，读上层不拿锁；缺页只拿窗口读锁，
+     争用按 2M 分散。exit/kill 释放目录页的 grace 条件就是现有的"cpu_set 清空、所有 CPU 切走"。
+   - 真要排除读者的对象：写者置标志 + 凭 IpiPerm 给 cpu_set 发 IPI 等 ack，读者只做普通 load
+     （见"CPU 入口锁"）；备选 brlock（每 CPU 一个 bit、各占一个 line，读者 `lock bts` 自己的，
+     写者按序拿全部）。
+   - 不做 RCU：VeriFlat 里 RCU 只能是异步形态，表示层改动大，收益只是省读者一个屏障。
 5. **页表惰性备份**（Mitosis lazy 模式）：
    - 每个开了备份的进程有一个锚点页表 + 每节点一个备份 root；CPU 的 CR3 指向本节点备份。
    - 不变量在**映射层**：备份里每个 va→(pa, perms) 在锚点里也有（有 2M 拆分，不能按表项比）。
@@ -34,6 +37,29 @@
    - 依赖：#PF 路径和中断模型（未决设计之一）要先定。
 6. **TLB shootdown**：靠放置减少跨节点；用已有的 CR3-skip/stale 标记对远端空闲 CPU 延迟刷，
    PCID 避免整刷。
+
+## CPU 入口锁（IPI 模型，2026-10-25 定稿，可先于 NUMA 单独做）
+
+目的：把"远端 CPU 是否在内核里"和"本 CPU 是否关中断"两个缺失的模型合成一把锁，闭合
+`src/cpu/atomic_pcid_cr3.rs` 里 "model the IPI wait as a virtual lock" 的 TODO，并去掉 CPU 的 kill 标记。
+- 每 CPU 一把只有写模式的入口锁，内容是两个 tracked perm：`SyscallPerm(cpu)`（可在本 CPU 执行
+  内核步骤）、`IpiPerm(cpu)`（可向本 CPU 发 IPI）。lock id 的 container/process 深度与该 CPU 的
+  CPU 锁相同，major 低 1；随 CPU 锁一起 rekey（切进程、evict、上下线）。
+- 不变量（KernelK 级，跨入口锁和 CPU 锁）：CPU 非 Off 且入口锁未被写持 ⇒ 两个 perm 都在锁里；
+  Off ⇒ SyscallPerm 不存在。
+- 本地：陷入（syscall/timer/缺页）后 swapgs、换栈、存帧，`sti`，自旋拿入口锁，`cli`，再按 step
+  锁放 CPU 锁；`sysret` / idle `hlt` 前放回。TCB 规则只剩"IF=1 ⇔ 本地未持入口锁"。拿到锁后重查
+  CPU 状态（自旋期间 evict handler 可能已跑过），已 Idle 则返回 CpuIdle。
+- 远端：所有 IPI（evict、唤醒）都先写持目标入口锁、凭 IpiPerm 发。唤醒 IPI 现在四处都在放干净
+  所有锁之后发，无锁序问题；evict 由 killer 在持受害者线程锁时取，需要和 `wlock_cpu` killer 分支
+  同样的锁序豁免。持有入口锁 ⇒ 目标不在内核、中断开着、IPI 必到，ack 等待有界。
+- kill：CPU 的 kill 标记去掉；线程标记和 `*_unless_killed` 保留（目标在 syscall 里要锁自己当前线程时
+  看标记返回 None → CpuIdle → 放入口锁）。
+- 上线/下线：上线方持目标（Off）入口锁，TCB `mint_syscall_perm` 存入锁，放锁，发唤醒 IPI；目标醒来
+  拿自己的入口锁，有 SyscallPerm 才进 `cpu_online_resume`，没有（杂散唤醒）就放锁再 `hlt`。
+  下线方 `cpu_offline_check` 走到 Off 时持入口锁调 TCB `collect_syscall_perm` 销毁，放锁，`hlt`。
+- 不进模型：NMI 刷 PCID 路径（不拿锁、无模型效果）。
+- 成本：每次 syscall 多一对本地无争用的锁操作（约 20 周期一次）和一对 `sti`/`cli`。
 
 ## 接受的双写者低频 line（不改）
 远端唤醒写别人的调度 shard、unmap 远端置 `pcid_needflush`、kill 的 cpu/thread 标记、
