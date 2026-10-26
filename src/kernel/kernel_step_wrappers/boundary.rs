@@ -832,6 +832,75 @@ pub proof fn kernel_cpu_thread_pagetable_lock_states_and_progress_changed_implie
     });
 }
 
+/// Setting the lock modes of cpu `cpu_id` and its thread `thread_ptr` to the thread's mode, with at most one pagetable
+/// `table` whose payload and lock mode the section restored, changes only those two lock projections. `lctx` is aligned
+/// with `pre`; the objects it write-holds project as write-locked before the section.
+pub proof fn kernel_cpu_thread_lock_states_changed_implies_u_step(pre: &KernelK, post: &KernelK, lctx: &LocalContext, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, table: Option<RwLockPageTableRoot>)
+    requires
+        typed_lock_maps_aligned(pre, lctx),
+        index_valid(NUM_CPUS, cpu_id),
+        *post == (KernelK { cpu_arr: post.cpu_arr, thr_mp: post.thr_mp, pt_mp: post.pt_mp, ..*pre }),
+        post.cpu_arr.unchanged_except(&pre.cpu_arr, cpu_id),
+        post.cpu_arr.spec_index(cpu_id).value.being_killed() == pre.cpu_arr.spec_index(cpu_id).value.being_killed(),
+        (post.cpu_arr.spec_index(cpu_id).value.locking_thread() is Write) == (post.thr_mp.spec_index(thread_ptr).locking_thread() is Write),
+        (post.cpu_arr.spec_index(cpu_id).value.locking_thread() is Read) == (post.thr_mp.spec_index(thread_ptr).locking_thread() is Read),
+        pre.thr_mp.dom().contains(thread_ptr),
+        post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr),
+        post.thr_mp.spec_index(thread_ptr).view() == pre.thr_mp.spec_index(thread_ptr).view(),
+        post.thr_mp.spec_index(thread_ptr).being_killed() == pre.thr_mp.spec_index(thread_ptr).being_killed(),
+        match table {
+            Some(p) => {
+                &&& post.pt_mp.unchanged_except(&pre.pt_mp, p)
+                &&& post.pt_mp.spec_index(p).view() == pre.pt_mp.spec_index(p).view()
+                &&& (post.pt_mp.spec_index(p).locking_thread() is Write) == (pre.pt_mp.spec_index(p).locking_thread() is Write)
+                &&& (post.pt_mp.spec_index(p).locking_thread() is Read) == (pre.pt_mp.spec_index(p).locking_thread() is Read)
+            },
+            None => post.pt_mp == pre.pt_mp,
+        },
+    ensures
+        ({
+            let pre_u = kernel_k_to_kernel_u(*pre);
+            &&& pre_u.thread_map.dom().contains(thread_ptr)
+            &&& pre_u.thread_map.spec_index(thread_ptr).syscall_progress == pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view()
+            &&& typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write) ==> pre_u.cpu_array[cpu_id as int].lock_state is WriteLocked
+            &&& typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write) ==> pre_u.thread_map.spec_index(thread_ptr).lock_state is WriteLocked
+            &&& pre_u.cpu_array[cpu_id as int].current_thread == pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread
+        }),
+        ({
+            let pre_u = kernel_k_to_kernel_u(*pre);
+            let lock_state = post.thr_mp.spec_index(thread_ptr).lock_state_u();
+            kernel_k_to_kernel_u(*post) == (KernelU {
+                cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state, ..pre_u.cpu_array[cpu_id as int] }),
+                thread_map: pre_u.thread_map.insert(thread_ptr, ThreadU { lock_state, ..pre_u.thread_map.spec_index(thread_ptr) }),
+                ..pre_u
+            })
+        }),
+{
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    let pre_u = kernel_k_to_kernel_u(*pre);
+    let post_u = kernel_k_to_kernel_u(*post);
+    let lock_state = post.thr_mp.spec_index(thread_ptr).lock_state_u();
+    kernel_cpu_projection_at(pre, cpu_id); kernel_thread_projection_at(pre, thread_ptr);
+    assert(typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write) ==> pre.cpu_arr.spec_index(cpu_id).view().wlocked_by_thread(lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
+    if typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write) { pre.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr); }
+    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state, ..pre_u.cpu_array[cpu_id as int] }), i => {
+        if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); }
+    });
+    assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thread_ptr, ThreadU { lock_state, ..pre_u.thread_map.spec_index(thread_ptr) }), t => {
+        if pre.thr_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thr_mp.dom().contains(t) { kernel_thread_projection_at(post, t); }
+    });
+    assert_maps_equal!(pagetable_map_user_view(post.pt_mp, post.pt_lower.view()), pagetable_map_user_view(pre.pt_mp, pre.pt_lower.view()));
+    assert_maps_equal!(post_u.process_map, pre_u.process_map, p => {
+        if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }
+    });
+    assert_maps_equal!(post_u.container_map, pre_u.container_map, p => {
+        if pre.ctn_mp.dom().contains(p) { kernel_container_projection_at(pre, p); } if post.ctn_mp.dom().contains(p) { kernel_container_projection_at(post, p); }
+    });
+    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, p => {
+        if pre.ep_mp.dom().contains(p) { kernel_endpoint_projection_at(pre, p); } if post.ep_mp.dom().contains(p) { kernel_endpoint_projection_at(post, p); }
+    });
+}
+
 /// Setting the cpu, container, process, pagetable, and thread lock modes to the thread's mode and
 /// replacing the thread's progress changes only those five projections. `lctx` is aligned with
 /// `pre`; the objects it write-holds project as write-locked before the section.

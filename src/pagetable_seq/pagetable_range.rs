@@ -49,13 +49,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
                 ==> !self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
     }
 
-    #[verifier::opaque]
-    pub open spec fn spec_mapping_4k_va_range_empty(&self, start_va: VAddr, end_va: VAddr) -> bool {
-        forall|va: VAddr|
-            #![trigger self.mapping_4k().dom().contains(va)]
-            spec_va_4k_valid(va) && start_va <= va <= end_va ==> !self.mapping_4k().dom().contains(va)
-    }
-
     /// Every address in the 4K range resolves to a user-present concrete leaf
     /// whose abstract mapping carries a valid physical page pointer.
     pub open spec fn spec_mapping_4k_va_range_present(&self, range: &VaRange4K) -> bool
@@ -85,59 +78,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
                     &&& resolved->0.perm.present
                 }
             }
-    }
-
-    pub broadcast proof fn mapping_4k_index_range_empty_implies_va_empty_at(&self, start_l4i: L4Index, start_l3i: L3Index, start_l2i: L2Index, start_l1i: L1Index, end_l4i: L4Index, end_l3i: L3Index, end_l2i: L2Index, end_l1i: L1Index, va: VAddr)
-        requires
-            pei_valid(start_l4i),
-            pei_valid(start_l3i),
-            pei_valid(start_l2i),
-            pei_valid(start_l1i),
-            pei_valid(end_l4i),
-            pei_valid(end_l3i),
-            pei_valid(end_l2i),
-            pei_valid(end_l1i),
-            self.spec_mapping_4k_range_empty((start_l4i, start_l3i, start_l2i, start_l1i), (end_l4i, end_l3i, end_l2i, end_l1i)),
-            spec_va_4k_valid(va),
-            spec_index2va((start_l4i, start_l3i, start_l2i, start_l1i)) <= va,
-            va <= spec_index2va((end_l4i, end_l3i, end_l2i, end_l1i)),
-        ensures
-            #![trigger self.mapping_4k().dom().contains(va), spec_index2va((start_l4i, start_l3i, start_l2i, start_l1i)), spec_index2va((end_l4i, end_l3i, end_l2i, end_l1i))]
-            !self.mapping_4k().dom().contains(va),
-    {
-        let va_l4i = spec_v2l4index(va);
-        let va_l3i = spec_v2l3index(va);
-        let va_l2i = spec_v2l2index(va);
-        let va_l1i = spec_v2l1index(va);
-        assert(pei_valid(va_l4i) && pei_valid(va_l3i) && pei_valid(va_l2i) && pei_valid(va_l1i)) by { spec_va_4k_valid_imply_indices_valid(); };
-        assert(spec_index2va(spec_va2index(va)) == va) by { spec_va_4k_index_roundtrip_at(va, va_l4i, va_l3i, va_l2i, va_l1i); };
-        spec_index2va_le_implies_4k_indices_lex_le((start_l4i, start_l3i, start_l2i, start_l1i), (va_l4i, va_l3i, va_l2i, va_l1i));
-        spec_index2va_le_implies_4k_indices_lex_le((va_l4i, va_l3i, va_l2i, va_l1i), (end_l4i, end_l3i, end_l2i, end_l1i));
-    }
-
-    pub fn mapping_4k_va_range_empty(&self, start_va: VAddr, end_va: VAddr) -> (ret: bool)
-        requires
-            self.wf(),
-            va_4k_valid(start_va),
-            va_4k_valid(end_va),
-            start_va <= end_va,
-            self.kernel_l4_end <= spec_va2index(start_va).0,
-        ensures
-            ret == self.spec_mapping_4k_range_empty(spec_va2index(start_va), spec_va2index(end_va)),
-            ret ==> self.spec_mapping_4k_va_range_empty(start_va, end_va),
-    {
-        let start = va2index(start_va);
-        let end = va2index(end_va);
-        proof {
-            assert(spec_index2va(start) == start_va) by { spec_va_4k_index_roundtrip_at(start_va, start.0, start.1, start.2, start.3); };
-            assert(spec_index2va(end) == end_va) by { spec_va_4k_index_roundtrip_at(end_va, end.0, end.1, end.2, end.3); };
-            spec_index2va_le_implies_4k_indices_lex_le(start, end);
-        }
-        let ret = self.mapping_4k_range_empty(start, end);
-        if ret {
-            assert(self.spec_mapping_4k_va_range_empty(start_va, end_va)) by { reveal(PageTable::spec_mapping_4k_va_range_empty); broadcast use PageTable::mapping_4k_index_range_empty_implies_va_empty_at; };
-        }
-        ret
     }
 
     fn mapping_4k_l1_range_empty(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, l2_entry: &PageEntry, start_l1i: L1Index, end_l1i: L1Index) -> (ret: bool)

@@ -445,51 +445,83 @@ Status: conforms (workspace run #28754, monolith run #28755, noninterference run
 Stutters: CpuIdle (cpu not Running or killed), ContainerKilled, ContainerZombie, ProcessKilled, ThreadKilled, an
 occupied descriptor (IpcEndpointTargetInUse), NoQuota.
 
-## 6. mmap_4k — enter, directory/leaf steps, exit
+## 6. mmap_4k — enter (or hold, enter), directory/downgrade/leaf steps, exit
 
-Status: conforms (workspace run #27748; leaf-step IOMMU clause workspace run
-#34649, monolith run #34650).
+Status: conforms (package run #34662; Batch 1 integration workspace run
+#34689, noninterference run #34690, monolith run #34691).
 
 - Arguments: `va`, `range`; `R = mmap_4k_syscall_va_range(va, range)`.
-- U locks retained from enter to exit: `cpu`, `T`, `PT(P)`. Non-U: the
-  allocator of `C` and the new pages.
-- Progress: `Mmap4k { range: R, mapped, directory }`.
+- U locks: `cpu` and `T` are write-locked once and kept from the first section
+  to exit or release, including across the read-miss → fill retry; `PT(P)` is
+  read-locked to read, or write-locked to fill and then downgraded. Non-U: the
+  allocator of `C`, the range's 2M windows, and the new pages.
+- Progress: `Mmap4k { range: R, mapped, directory, phase }` with
+  `phase ∈ {Read, Fill, Filled}`.
 - `mmap_4k_locked(u, cpu_id)`: `current_thread is Some`, `T` and `P` present,
-  `PT(P)` present, and `W` for `cpu`, `T`, and `PT(P)`.
+  `PT(P)` present, `W` for `cpu` and `T`, and `PT(P)` locked.
 
-**Enter** (`mmap_4k_enter_step_pre`, `mmap_4k_enter_step`)
+**Hold** (`mmap_4k_hold_step_pre`, `mmap_4k_hold_step`)
+
+- Recorded when the read section finds a 2M window of `R` without an L2 page:
+  it releases only `PT(P)` (no rlock→wlock upgrade exists) and ends its section
+  with `cpu` and `T` still write-locked.
+- Pre: `Caller`, `Unlocked` for `cpu` and `T`, `prog is None`, `!thr.killed`,
+  `P` present with a pagetable, `R.wf()`, `R.len > 0`, `UserVa(u, R)`,
+  `thr.quota_4k >= 4 * R.len`.
+- Effect: write-locks `cpu` and `T`; nothing else (lock-only, so absent from
+  `nonlock_view()`).
+
+**Enter** (`mmap_4k_enter_step_pre`, `mmap_4k_enter_step`, `phase`)
 
 - Pre: `Caller`, `prog is None`, `!thr.killed`, `P` present with a pagetable;
-  `Unlocked` for `cpu`, `T`, and `PT(P)`; `R.wf()`, `R.len > 0`, `UserVa(u, R)`,
-  `thr.quota_4k >= 4 * R.len`; no VA of `R` in `PT(P).mapping_4k`, and no
-  `mapping_2m` or `mapping_1g` leaf of `PT(P)` covers a VA of `R`.
-- Effect: write-locks `cpu`, `T`, and `PT(P)`; `prog = Mmap4k { R, 0, None }`.
+  to read, `Unlocked` for `cpu` and `T` and `PT(P)` not write-locked; to fill,
+  `W` for `cpu` and `T` (held since the hold step) and `PT(P)` `Unlocked`;
+  `R.wf()`, `R.len > 0`, `UserVa(u, R)`, `thr.quota_4k >= 4 * R.len`; no VA of
+  `R` in `PT(P).mapping_4k`, and no `mapping_2m` or `mapping_1g` leaf covers a
+  VA of `R`.
+- Effect: `cpu` and `T` are write-locked (already so to fill); `PT(P)` is
+  read-locked to read or write-locked to fill; `prog = Mmap4k { R, 0, None,
+  phase }`.
 
-**Directory** (`mmap_4k_directory_step_pre`, `mmap_4k_directory_step`)
+**Directory**, **Downgrade**, **Leaf** (`mmap_4k_range_step`)
 
-- Pre: `mmap_4k_locked`, `prog is Mmap4k`, `mapped < R.len`, `thr.quota_4k >= 1`.
-- Effect: one 4K quota of `T` is consumed; `directory` moves to a deeper level
-  (`mmap_4k_directory_rank` increases); `R` and `mapped` are unchanged.
-
-**Leaf** (`mmap_4k_leaf_step_pre`, `mmap_4k_leaf_step`)
-
-- Pre: `mmap_4k_locked`, `prog is Mmap4k`, `mapped < R.len`,
-  `thr.quota_4k >= 1`, and `R[mapped]` is unmapped in `PT(P)`.
-- Effect: one 4K quota is consumed; `R[mapped]` maps to a present, writable,
-  executable entry owned by `C` whose page is in no process's
-  `mapping_4k` of either its pagetable or its IOMMU table; `mapped` increases
-  and `directory` resets to `None`.
+- Directory: one 4K quota of `T` installs one missing directory page in the
+  fill phase. Downgrade: `PT(P)` write → read lock, `phase = Filled`. Leaf
+  (outside the fill phase): one 4K quota is consumed; `R[mapped]` maps to a
+  present, writable, executable entry owned by `C` whose page is in no
+  process's `mapping_4k` of either its pagetable or its IOMMU table; `mapped`
+  increases and `directory` resets to `None`.
 
 **Exit** (`mmap_4k_exit_step_pre`, `mmap_4k_exit_step`)
 
-- Pre: `mmap_4k_locked`, `prog is Mmap4k`, `mapped == R.len`, `directory is None`.
-- Effect: unlocks `cpu`, `T`, and `PT(P)`; clears `prog`.
+- Pre: `mmap_4k_locked`, `prog is Mmap4k`, not in the fill phase,
+  `mapped == R.len`, `directory is None`.
+- Effect: unlocks `cpu` and `T`, drops `T`'s read lock on `PT(P)`; clears `prog`.
 
-Trace: `range + 2 <= len <= 4 * range + 2`; enter, then directory or leaf
-steps, then exit.
+**Release** (`mmap_4k_release_step_pre`, `mmap_4k_release_step`)
 
-Stutters: argument errors, CpuIdle (cpu not Running or killed), ThreadKilled, NoQuota, a kernel-range VA (Error),
-and VaInUse.
+- Recorded when the fill section rejects `R` (in use or invalid): it releases
+  `PT(P)`, `T`, and `cpu`.
+- Pre: `W` for `cpu` and `T`, `prog is None`. Effect: unlocks `cpu` and `T`;
+  nothing else (lock-only).
+
+Traces (`mmap_4k_syscall_trace(trace, cpu, va, range, phase)`): success is
+`[Enter{Read}, range steps…, Exit]` with `range + 2 <= len <= 4 * range + 3`, or
+`[Hold, Enter{Fill}, range steps…, Exit]` with one more step; the business
+trace has `range + 2 <= nonlock_view().len() <= 4 * range + 3` either way.
+Failure is `[]` or `[Hold, Release]` (`mmap_4k_syscall_failure_trace`), and
+`nonlock_view()` is empty.
+
+Result anchor: `ret.0 == mmap_4k_syscall_result(ret.1, …)`, where `ret.1` is
+the start of the section that decided the result — the entry state for the
+read section (`trace[0].old_u` on success), and the fill section's start
+(`trace[1].old_u`, the old state of `Enter{Fill}` or `Release`) after a hold.
+Other cpus may change the state between `Hold` and the fill section (e.g. a
+sibling thread mapping into `R`), so the fill result is computed there. When
+the entry result is neither Success nor VaInUse, `ret.1` is the entry state.
+
+Stutters: argument errors, CpuIdle (cpu not Running or killed), ThreadKilled,
+NoQuota, a kernel-range VA (Error), and VaInUse found by the read section.
 
 ## 7. unmap_4k — enter, leaf/flush/flushed/refund steps, exit
 

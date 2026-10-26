@@ -575,3 +575,15 @@ Cargo 默认并发，Verus 32 线程，`VERUS_PIPELINE_SMT=1`。vstd 和普通�
 新增：exec 原语 `PageTable::mapping_4k_va_range_absent`；点引理 `container_children_len_bounded_at`、`LinkedList::wf_map_at`。无新 framing spec、invariant、assume、spinoff 或 rlimit 属性。
 
 验证：NI #34648 257 / 0；workspace #34649 17 个结果 3168 / 0，无 warning；单体 #34650 3168 / 0（`--num-threads 32 --time --time-expanded --output-json`，无并行任务），wall 66.3 s（#34619 66.8 s，#34525 68.8 s），SMT 544.9 s（547.7 s，561.0 s），rlimit-run 1,135,582,304（1,148,387,464 −1.1%；1,161,493,270 −2.2%）。计数 −1：新增 3 个函数，删除的 4 个 `by (bit_vector)` 查询应计为另外的验证项，未逐项确认。无 >5 s 函数。单样本，未做交替 A/B。`git diff --check` 通过。
+
+### Batch 1 后续（随 mmap hold/release 一起集成）
+
+- refund：`refund_unmap_4k_quota`、`refund_unmap_4k_quota_at_depth`、`refund_unmap_4k_quota_level` 及循环不变式加写持 `pagetable_c` 边界形相等 ensures；删 `kill_reclaim_unmap_leaves`、`kill_reclaim_iommu_remove_leaves`、`thread_exit_reclaim_unmap_leaves`、`thread_exit_reclaim_iommu_leaves` 中 refund 之后的四个 `pagetable_c` 块（上轮遗留项 f 的剩余部分）。聚焦 #34672/#34676/#34679。
+- `create_process_with_iommu_from_staged_pages/eof.rs` `eof_subsystems_inv`：删 `assert forall`、五个页下标种子与两两不等断言、裸 `pagetable_lower_backup_wf` 断言；`pagetable_window_holders_hold_pagetable` 改为 `reveal(pagetable_window_holders_hold_pagetable); reveal(PageTableC::wf_window_locks);` 直接闭合。#34688。
+- `allocate_free_2m_page_pop_impl.rs`：cache 分支只保留页状态断言，global 分支删 exec `reveal(LinkedList::wf_value_list)` 断言；两者都由既有 `container_allocator_free_2m_page_wf_{cache,global}_at` 给出，故不新增 `wf_value_list_at`。#34687。
+- `pagetable_seq/pagetable_range.rs`：删无调用方的顺序版 `PageTable::mapping_4k_va_range_empty`、私有 spec `spec_mapping_4k_va_range_empty` 与 broadcast 引理 `mapping_4k_index_range_empty_implies_va_empty_at`；`PageTableC` 并发版保留（IPC pages、mmap precheck 使用）。#34674。
+- 普通 Rust（boot）编译：`map_iommu_4k_spec.rs` 的 ghost-only import 加 `#[cfg(verus_keep_ghost)]`，`iommu_map_4k_range.rs` 的 `loop_isolation(false)` 改为 `cfg_attr(verus_keep_ghost, ...)`。无语义变化，聚焦 #34692 0 / 0、#34693 1 / 0。
+
+新增：无证明引理（mmap 的 U/trace spec 与 K→U 引理属 hold/release 已批准实现）。无 assume、spinoff 或 rlimit 属性。
+
+验证：workspace #34689 17 个结果 3172 / 0，无 warning；NI #34690 262 / 0；单体 #34691 3172 / 0（`--num-threads 32 --time --time-expanded --output-json`，无并行任务），wall 66.1 s（#34650 66.3 s），SMT 547.0 s（544.9 s），rlimit-run 1,138,176,482（+0.23%，含 mmap hold/release）。无 >5 s 函数。单体中 refund 三层 0.48 / 0.28 / 0.59 s，`thread_exit_reclaim_iommu_leaves` 2.48 s / 4.31M（#34650 4.27M）。单样本。

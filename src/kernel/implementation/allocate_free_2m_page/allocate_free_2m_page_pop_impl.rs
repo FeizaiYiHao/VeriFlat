@@ -111,12 +111,8 @@ verus! {
         let ghost free_state = match source { Some(cpu_id) => FreePageAllocatorState::PreCpuCache { cpu_id }, None => FreePageAllocatorState::GlobalList };
         proof {
             if let Some(cpu_id) = source {
-                assert({
-                    &&& old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(cpu_id).view().view().view().contains(page_ptr)
-                    &&& krnl.pg_arr.spec_index(page_index).view().view().state == PageState::Free2m { allocator_ptr: Ghost(alloc_ptr_2m), state: free_state }
-                }) by { container_allocator_free_2m_page_wf_cache_at(krnl.allc_2m_mp, krnl.pg_arr, alloc_ptr_2m, cpu_id, page_ptr); };
+                assert(krnl.pg_arr.spec_index(page_index).view().view().state == PageState::Free2m { allocator_ptr: Ghost(alloc_ptr_2m), state: free_state }) by { container_allocator_free_2m_page_wf_cache_at(krnl.allc_2m_mp, krnl.pg_arr, alloc_ptr_2m, cpu_id, page_ptr); };
             } else {
-                assert(old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().view().contains(page_ptr)) by { reveal(LinkedList::wf_value_list); };
                 assert(krnl.pg_arr.spec_index(page_index).view().view().state == PageState::Free2m { allocator_ptr: Ghost(alloc_ptr_2m), state: free_state }) by { container_allocator_free_2m_page_wf_global_at(krnl.allc_2m_mp, krnl.pg_arr, alloc_ptr_2m, page_ptr); };
             }
         }

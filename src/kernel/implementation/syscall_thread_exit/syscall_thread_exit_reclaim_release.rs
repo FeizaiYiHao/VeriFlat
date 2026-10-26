@@ -543,10 +543,6 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
         thread_exit_trace_from_refund(&*steps, refund_before, start, pre, cpu_id, thread_ptr, process_ptr, container_ptr);
         assert(krnl.pt_mp.spec_index(pagetable) == reclaimed_k.pt_mp.spec_index(pagetable) && krnl.prc_mp.spec_index(process_ptr) == entry_k.prc_mp.spec_index(process_ptr)
             && krnl.ctn_mp.spec_index(container_ptr) == entry_k.ctn_mp.spec_index(container_ptr) && krnl.cpu_arr.spec_index(cpu_id) == steps.snapshot_k().cpu_arr.spec_index(cpu_id));
-        assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable) == pagetable_c(reclaimed_k.pt_mp, reclaimed_k.pt_lower.view(), pagetable)) by {
-            krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
-            pagetable_lower_backup_wf_at(reclaimed_k.pt_mp, reclaimed_k.pt_lower.view(), pagetable); pagetable_lower_backup_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
-        };
     }
 }
 
@@ -1098,10 +1094,6 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
         thread_exit_trace_from_refund(&*steps, refund_before, start, pre, cpu_id, thread_ptr, process_ptr, container_ptr);
         assert(krnl.pt_mp.spec_index(pagetable) == reclaimed_k.pt_mp.spec_index(pagetable) && krnl.it_mp.spec_index(iommu_table) == reclaimed_it && krnl.prc_mp.spec_index(process_ptr) == entry_k.prc_mp.spec_index(process_ptr)
             && krnl.ctn_mp.spec_index(container_ptr) == entry_k.ctn_mp.spec_index(container_ptr) && krnl.cpu_arr.spec_index(cpu_id) == steps.snapshot_k().cpu_arr.spec_index(cpu_id));
-        assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable) == pagetable_c(reclaimed_k.pt_mp, reclaimed_k.pt_lower.view(), pagetable)) by {
-            krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
-            pagetable_lower_backup_wf_at(reclaimed_k.pt_mp, reclaimed_k.pt_lower.view(), pagetable); pagetable_lower_backup_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
-        };
     }
 }
 

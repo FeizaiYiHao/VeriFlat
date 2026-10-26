@@ -3,19 +3,18 @@ use crate::*;
 use super::mmap_4k_fill_structure::mmap_4k_fill_range_structure;
 use super::mmap_4k_map_range::mmap_4k_map_leaves_and_finish;
 use super::mmap_4k_precheck::{mmap_4k_precheck, Mmap4kPrecheck};
-use super::syscall_mmap_4k_lock_helpers::mmap_4k_unlock_and_finish;
 use super::syscall_mmap_4k_spec::*;
 use super::syscall_mmap_4k_trace::*;
 
 verus! {
-/// With `cpu_id` and its current `thread_ptr` write-held since the entry snapshot `entry_lctx` was aligned with and the
-/// thread's quota sufficient: write-locks the process pagetable and, if `va_range` is free, holds its existing 2M windows,
+/// At the start of the fill section, with `cpu_id` and its current `thread_ptr` write-held since the recorded hold step and
+/// the thread's quota sufficient: write-locks the process pagetable and, if `va_range` is free, holds its existing 2M windows,
 /// installs every missing L4 and L3 directory of the range, downgrades to a read lock, and maps the range with the recorded
-/// steps; otherwise releases every lock and finishes without recording a step.
+/// steps; otherwise releases every lock and records the release step.
 pub(super) fn mmap_4k_fill_enter(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, range: usize, va_range: &VaRange4K,
     alloc_ptr_4k: RwLockPageAllocatorPtr, thread_ptr: RwLockThreadPtr, process_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr, pagetable_ptr: RwLockPageTableRoot,
-    Ghost(entry_lctx): Ghost<LocalContext>, Tracked(thread_lock_perm): Tracked<LockPerm>, Tracked(cpu_lock_perm): Tracked<LockPerm>,
+    Tracked(thread_lock_perm): Tracked<LockPerm>, Tracked(cpu_lock_perm): Tracked<LockPerm>,
 ) -> (ret: RetValueType)
     requires
         index_valid(NUM_CPUS, cpu_id),
@@ -23,17 +22,17 @@ pub(super) fn mmap_4k_fill_enter(
         old(krnl).inv(),
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        old(steps).view().len() == 0,
+        old(steps).snapshot_k() == *old(krnl),
+        mmap_4k_trace_after_hold(old(steps).view(), cpu_id, *va_range),
+        old(steps).view().len() == 1,
         old(steps).nonlock_view().len() == 0,
-        old(steps).snapshot_k().inv(),
-        typed_lock_maps_aligned(&old(steps).snapshot_k(), &entry_lctx),
         !(range == 0 || range > usize::MAX / 4096 || !spec_va_4k_valid(va) || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range)),
         *va_range == mmap_4k_syscall_va_range(va, range),
         va_range.wf(),
         va_range.len > 0,
-        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, thr_mp: old(krnl).thr_mp, ..old(steps).snapshot_k() }),
-        old(krnl).cpu_arr.unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
-        wlock_ensures(old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view(), old(krnl).cpu_arr.spec_index(cpu_id).view(), old(steps).snapshot_k().cpu_arr.lock_id_by_index(cpu_id), old(lctx), cpu_lock_perm),
+        cpu_lock_perm.state() is WriteLock,
+        cpu_lock_perm.thread_id() == old(lctx).thread_id(),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == (RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: cpu_lock_perm.lock_id() }),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
@@ -48,8 +47,9 @@ pub(super) fn mmap_4k_fill_enter(
         old(krnl).prc_mp.spec_index(process_ptr).view_rodata().view().pagetable == pagetable_ptr,
         old(krnl).prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr,
         old(krnl).thr_mp.dom().contains(thread_ptr),
-        old(krnl).thr_mp.unchanged_except(&old(steps).snapshot_k().thr_mp, thread_ptr),
-        wlock_ensures(old(steps).snapshot_k().thr_mp.spec_index(thread_ptr), old(krnl).thr_mp.spec_index(thread_ptr), old(steps).snapshot_k().thr_mp.lock_id_by_key(thread_ptr), old(lctx), thread_lock_perm),
+        thread_lock_perm.state() is WriteLock,
+        thread_lock_perm.thread_id() == old(lctx).thread_id(),
+        old(krnl).thr_mp.spec_index(thread_ptr).locking_thread() == (RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: thread_lock_perm.lock_id() }),
         !old(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
         old(krnl).thr_mp.spec_index(thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
         old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
@@ -96,14 +96,16 @@ pub(super) fn mmap_4k_fill_enter(
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(steps).snapshot_k() == *final(krnl),
-        ret == mmap_4k_syscall_result(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, va, range),
-        ret is Success ==> range + 2 <= final(steps).view().len() <= 4 * range + 3,
-        ret is Success ==> final(steps).nonlock_view().len() == final(steps).view().len(),
-        ret is Success ==> final(steps).view()[0].old_u == kernel_k_to_kernel_u(old(steps).snapshot_k()),
-        ret is Success ==> mmap_4k_syscall_trace(final(steps).view(), cpu_id, va, range),
+        ret == mmap_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range),
+        ret is Success ==> range + 3 <= final(steps).view().len() <= 4 * range + 4,
+        ret is Success ==> final(steps).nonlock_view().len() + 1 == final(steps).view().len(),
+        ret is Success ==> final(steps).view()[1].old_u == kernel_k_to_kernel_u(*old(krnl)),
+        ret is Success ==> mmap_4k_syscall_trace(final(steps).view(), cpu_id, va, range, Mmap4kPhase::Fill),
         ret is Success ==> mmap_4k_syscall_success_mapped(final(krnl), cpu_id, va, range),
-        !(ret is Success) ==> final(steps).view() == old(steps).view() && final(steps).nonlock_view() == old(steps).nonlock_view(),
+        !(ret is Success) ==> final(steps).nonlock_view().len() == 0,
+        !(ret is Success) ==> mmap_4k_syscall_failure_trace(final(steps).view(), cpu_id, va, range) && final(steps).view()[1].old_u == kernel_k_to_kernel_u(*old(krnl)),
 {
+    let ghost entry_lctx = *lctx;
     let Tracked(pagetable_lock_perm) = krnl.wlock_pagetable(pagetable_ptr, Tracked(&mut *lctx));
     let ghost checked = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
     let (precheck, Ghost(found)) = mmap_4k_precheck(krnl, va_range, pagetable_ptr, Tracked(&*lctx), Tracked(&pagetable_lock_perm));
@@ -111,8 +113,20 @@ pub(super) fn mmap_4k_fill_enter(
     if !ready {
         let ret = if invalid { RetValueType::Error } else { RetValueType::ErrorVaInUse };
         proof { mmap_4k_result_from_k(&old(steps).snapshot_k(), cpu_id, va, range, ret, if invalid { None } else { Some(checked) }, found); }
-        mmap_4k_unlock_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, thread_ptr, pagetable_ptr, Some(Tracked(pagetable_lock_perm)), Tracked(thread_lock_perm),
-            Tracked(cpu_lock_perm));
+        krnl.wunlock_pagetable(pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
+        krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
+        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+        proof {
+            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+            assert(kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
+            assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+            steps.end_kernel_step_nonlock_fields_unchanged(&*krnl, &*lctx);
+            assert(mmap_4k_syscall_failure_trace(steps.view(), cpu_id, va, range) && steps.view()[1].old_u == kernel_k_to_kernel_u(old(steps).snapshot_k())) by {
+                kernel_cpu_thread_lock_states_changed_implies_u_step(&old(steps).snapshot_k(), &*krnl, &entry_lctx, cpu_id, thread_ptr, Some(pagetable_ptr));
+                mmap_4k_release_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, thread_ptr);
+                mmap_4k_trace_release_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, va, range);
+            };
+        }
         return ret;
     }
     proof { mmap_4k_result_from_k(&old(steps).snapshot_k(), cpu_id, va, range, RetValueType::Success, Some(checked), None); }

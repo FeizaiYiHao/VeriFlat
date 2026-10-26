@@ -119,7 +119,7 @@ pub(super) fn iommu_map_4k_map_range_and_exit(
         krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), process_ptr); krnl.it_mp.typed_lock_map_aligned_write_at(lctx.iommu_table_lock_map(), lctx.thread_id(), iommu_table_ptr);
         krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr);
     }
-    #[verifier::loop_isolation(false)]
+    #[cfg_attr(verus_keep_ghost, verifier::loop_isolation(false))]
     while i < range
         invariant
             krnl.inv(),

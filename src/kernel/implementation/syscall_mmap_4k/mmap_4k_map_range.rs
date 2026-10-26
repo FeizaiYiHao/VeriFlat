@@ -226,8 +226,8 @@ pub(super) fn mmap_4k_map_leaf_range(
     }
 }
 
-/// Holding the mmap locks, the big read lock on `pagetable_ptr`, and exactly the 2M windows of `va_range` after the enter
-/// step recorded in `entered` in `enter_phase` and the range steps that follow it: maps every page, clears the progress,
+/// Holding the mmap locks, the big read lock on `pagetable_ptr`, and exactly the 2M windows of `va_range` after the partial
+/// trace `entered` after entering in `enter_phase` and the range steps that follow it: maps every page, clears the progress,
 /// releases the windows and every lock, and records the exiting step.
 pub(super) fn mmap_4k_map_leaves_and_finish(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, range: usize, va_range: &VaRange4K,
@@ -248,9 +248,9 @@ pub(super) fn mmap_4k_map_leaves_and_finish(
         va_range.wf(),
         enter_phase is Read || enter_phase is Fill,
         mmap_4k_trace_after_enter(entered, cpu_id, *va_range, enter_phase),
-        entered.len() == 1,
+        entered.len() == if enter_phase is Fill { 2int } else { 1int },
         entered.len() <= old(steps).view().len() <= entered.len() + 2 * range + 1,
-        old(steps).nonlock_view().len() == old(steps).view().len(),
+        old(steps).nonlock_view().len() + entered.len() == old(steps).view().len() + 1,
         forall|j: int| #![trigger old(steps).view()[j]] 0 <= j < entered.len() ==> old(steps).view()[j] == entered[j],
         forall|j: int| #![trigger old(steps).view()[j]] entered.len() <= j < old(steps).view().len() ==> mmap_4k_range_step(old(steps).view()[j], cpu_id),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
@@ -342,10 +342,10 @@ pub(super) fn mmap_4k_map_leaves_and_finish(
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(steps).snapshot_k() == *final(krnl),
-        final(steps).nonlock_view().len() == final(steps).view().len(),
-        range + 2 <= final(steps).view().len() <= 4 * range + 3,
+        final(steps).nonlock_view().len() + entered.len() == final(steps).view().len() + 1,
+        entered.len() + range + 1 <= final(steps).view().len() <= entered.len() + 4 * range + 2,
         forall|j: int| #![trigger final(steps).view()[j]] 0 <= j < entered.len() ==> final(steps).view()[j] == entered[j],
-        mmap_4k_syscall_trace(final(steps).view(), cpu_id, va, range),
+        mmap_4k_syscall_trace(final(steps).view(), cpu_id, va, range, enter_phase),
         mmap_4k_syscall_success_mapped(final(krnl), cpu_id, va, range),
 {
     let ghost leaf_phase = if enter_phase is Read { Mmap4kPhase::Read } else { Mmap4kPhase::Filled };
@@ -364,7 +364,7 @@ pub(super) fn mmap_4k_map_leaves_and_finish(
     let ghost exit_k = *krnl;
     proof {
         steps.end_kernel_step_thread_syscall_progress_changed(&*krnl, &*lctx, thread_ptr);
-        assert(mmap_4k_syscall_trace(steps.view(), cpu_id, va, range)) by {
+        assert(mmap_4k_syscall_trace(steps.view(), cpu_id, va, range, enter_phase)) by {
             kernel_cpu_thread_unlocked_pagetable_runlocked_and_progress_changed_implies_u_step(&exit_start, &exit_k, &exit_lctx, cpu_id, thread_ptr, process_ptr, pagetable_ptr);
             mmap_4k_exit_step_from_u(kernel_k_to_kernel_u(exit_start), kernel_k_to_kernel_u(exit_k), cpu_id, process_ptr, thread_ptr, exit_k.pt_mp.spec_index(pagetable_ptr).lock_state_u());
             mmap_4k_trace_exit_step(&*steps, range_steps, kernel_k_to_kernel_u(exit_start), kernel_k_to_kernel_u(exit_k), cpu_id, va, range, enter_phase);

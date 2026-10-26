@@ -38,28 +38,12 @@
 6. **TLB shootdown**：靠放置减少跨节点；用已有的 CR3-skip/stale 标记对远端空闲 CPU 延迟刷，
    PCID 避免整刷。
 
-## CPU 入口锁（IPI 模型，2026-10-25 定稿，可先于 NUMA 单独做）
+## CPU 入口锁（已被取代）
 
-目的：把"远端 CPU 是否在内核里"和"本 CPU 是否关中断"两个缺失的模型合成一把锁，闭合
-`src/cpu/atomic_pcid_cr3.rs` 里 "model the IPI wait as a virtual lock" 的 TODO，并去掉 CPU 的 kill 标记。
-- 每 CPU 一把只有写模式的入口锁，内容是两个 tracked perm：`SyscallPerm(cpu)`（可在本 CPU 执行
-  内核步骤）、`IpiPerm(cpu)`（可向本 CPU 发 IPI）。lock id 的 container/process 深度与该 CPU 的
-  CPU 锁相同，major 低 1；随 CPU 锁一起 rekey（切进程、evict、上下线）。
-- 不变量（KernelK 级，跨入口锁和 CPU 锁）：CPU 非 Off 且入口锁未被写持 ⇒ 两个 perm 都在锁里；
-  Off ⇒ SyscallPerm 不存在。
-- 本地：陷入（syscall/timer/缺页）后 swapgs、换栈、存帧，`sti`，自旋拿入口锁，`cli`，再按 step
-  锁放 CPU 锁；`sysret` / idle `hlt` 前放回。TCB 规则只剩"IF=1 ⇔ 本地未持入口锁"。拿到锁后重查
-  CPU 状态（自旋期间 evict handler 可能已跑过），已 Idle 则返回 CpuIdle。
-- 远端：所有 IPI（evict、唤醒）都先写持目标入口锁、凭 IpiPerm 发。唤醒 IPI 现在四处都在放干净
-  所有锁之后发，无锁序问题；evict 由 killer 在持受害者线程锁时取，需要和 `wlock_cpu` killer 分支
-  同样的锁序豁免。持有入口锁 ⇒ 目标不在内核、中断开着、IPI 必到，ack 等待有界。
-- kill：CPU 的 kill 标记去掉；线程标记和 `*_unless_killed` 保留（目标在 syscall 里要锁自己当前线程时
-  看标记返回 None → CpuIdle → 放入口锁）。
-- 上线/下线：上线方持目标（Off）入口锁，TCB `mint_syscall_perm` 存入锁，放锁，发唤醒 IPI；目标醒来
-  拿自己的入口锁，有 SyscallPerm 才进 `cpu_online_resume`，没有（杂散唤醒）就放锁再 `hlt`。
-  下线方 `cpu_offline_check` 走到 Off 时持入口锁调 TCB `collect_syscall_perm` 销毁，放锁，`hlt`。
-- 不进模型：NMI 刷 PCID 路径（不拿锁、无模型效果）。
-- 成本：每次 syscall 多一对本地无争用的锁操作（约 20 周期一次）和一对 `sti`/`cli`。
+本节原先的"独立 CpuEntry 入口锁 + SyscallPerm/IpiPerm"方案已放弃，以 `HANDOFF-cpu-entry-lock.md` 为准。要点：
+- `SyscallPerm` 放在 `Cpu` 对象里（`Cpu.syscall_perm`，受既有 CPU 锁保护），由 TCB `u_sys_enter` / `u_sys_exit` 在 `Cpu` 与 lctx 槽之间移动；
+  Off CPU 没有 SyscallPerm，不能进内核步骤。
+- 不新增入口锁对象 / 锁族，不设 `IpiPerm`；删 offline kick、保留 online wake、删 CPU kill 状态。
 
 ## 接受的双写者低频 line（不改）
 远端唤醒写别人的调度 shard、unmap 远端置 `pcid_needflush`、kill 的 cpu/thread 标记、

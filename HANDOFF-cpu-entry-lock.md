@@ -1,64 +1,45 @@
-# 实施计划 — CPU 入口锁（IPI 模型）
+# 实施计划 — 具体锁序 + 动态容器 + 锚点 DID + Cpu 内含 SyscallPerm
 
-设计定稿见 `.ai-memory/project_numa_plan.md` "CPU 入口锁"一节。本文件是分步实施计划，做完删除。
-基线：main 7fbc98d（lctx 锁序已撤回，锁序为 K 状态形式 0f82379）。
+状态：**已批准**；Batch 1 已完成并随本提交发布，Batch 2–4 未实现。权威细节是用户在对话中批准的实施计划；本文件只记录交接所需的结构与规则，做完删除。
 
-## 0. 先定的两个偏差
-- **major 不能字面"低 1"**：`KILLED_LOCK_MAJOR = 0` 已占用（`src/define/lock_id.rs:12`），`PCID_NEEDFLUSH_LOCK_MAJOR = 30001`。
-  改为重编号：KILLED 0 → ENTRY_RUNNING 1 → CPU_RUNNING 2 → ENTRY_IDLE 3 → CPU_IDLE 4；ENTRY_OFF 30002 → CPU_OFF 30003
-  （pcid_needflush 30001 保持在两者之下）。所有用到 1/2/30002 字面量或常量名的地方跟着改。
-- **入口锁不投影到 U**：它是机制不是语义，`kernel_k_to_kernel_u` 不包含它，NI 不受影响。
-  CPU 的 kill 标记（`CpuU.killed`，NI 用到 9 处）第一阶段保留不用，最后一步再决定删。
+- 取代：原"独立 CpuEntry 入口锁（IPI 模型）"方案已放弃——不新增 `CpuEntry` 对象、第 25 个锁族、`IpiPerm`、`mint/collect_syscall_perm` 或 ENTRY_* major。
+- 被放弃方案的 step 0/1 实现保存在 `/local/home/xiangdc/veriflat-parked/cpu-entry-step01.patch`（原 `stash@{0}` "parked: cpu-entry step 0/1 (ws #34657 3181/0, NI #34658 257/0)"，Batch 1 推送后 drop）。只作参考，不要 apply。
+- 基线：Batch 1 提交。
 
-## 1. kernel_core：新对象、新锁族、不变量（约 10 个文件，一个批次）
-- `src/cpu/cpu_entry.rs`（新）：`CpuEntry { state: CpuState, container_depth, process_depth, syscall_perm: Option<Tracked<SyscallPerm>>, ipi_perm: Option<Tracked<IpiPerm>> }`，
-  `SyscallPerm { cpu_id }` / `IpiPerm { cpu_id }` 为 tracked ghost 结构，只能由 TCB 铸造/销毁。`LockMajorTrait` 按 `state` 给
-  ENTRY_* major，深度字段给 lock id 的 container/process。
-- `src/kernel/kernel_k_define_spec.rs`：`KernelK` 加 `cpu_entry_arr: LockedArray<CpuEntry, (), (), NUM_CPUS, false>`；`KernelObjId::CpuEntry(CpuId)`；
-  `typed_lock_maps_aligned`、`all_objects_unlocked`、`held_locks_order_below`（入口锁 major 低于 CPU 锁，所有"held cpus below X"子句同步）。
-- `src/locks/local_context.rs`：第 25 个锁族 `cpu_entry_lock_map`，`no_locks_held`、`lock_id_acyclic`、`typed_lock_maps_unchanged/inserted`、`update_lock_id`。
-- 新 `*_wf`（`src/kernel/cpu_management/` 或 `process_management/`）：`cpu_entry_wf`：对每个 cpu，entry 的 state/depths == cpu 的；
-  `state != Off ∧ entry 未写锁 ⇒ 两个 perm 都 Some`；`state is Off ⇒ syscall_perm is None`。加进 `KernelK::inv` 和 `init.rs` 的初始状态
-  （boot CPU：Running/Idle，两个 perm 在锁里；未启动 CPU：Off，只有 IpiPerm）。
-- `src/kernel/implementation/locker_unlocker/locker_unlocker_cpu_entry.rs`（新）：`wlock_cpu_entry` / `wunlock_cpu_entry`，
-  以及 kill 用的锁序豁免分支（复制 `locker_unlocker_cpu.rs:9` `wlock_cpu` 的 `killer_held_context` 分支）。
-- 这一步先让"入口锁从不被持有"的平凡不变量成立，工作区全绿后再进 2。
+## 四个批次（顺序固定，每批工作区 + NI + 单体全绿后再进下一批）
+1. **Batch 1（已完成）**：mmap 在 read miss → fill 之间保留 cpu/T 写锁（`Mmap4kHold` / `Mmap4kRelease` U/NI 标签与两条 trace spec），外加证明清理。见 `HANDOFF.md`。
+2. **Batch 2 — 具体锁序 + 动态容器**：OwnerSource/LockControl 规则、`NotApp` 迁移为具体 owner、`ErrorContainerLockOrderConflict`。
+3. **Batch 3 — 锚点 DID**：按用户批准的方案实施；仓库内尚无细节记录，开工前与用户核对语义。
+4. **Batch 4 — SyscallPerm 放进 Cpu + IPI / kill 状态收尾**：`Cpu.syscall_perm`、入口包裹、删 offline kick、保留 online wake、删 CPU kill 状态、boot IF/evicted 规则。
 
-## 2. 边界契约：syscall 全程持有自己的入口锁（机械批量，约 35 个入口 + 边界包装）
-- 定义 `LocalContext::holds_only_cpu_entry(cpu_id)`（入口锁表 = {cpu_id ↦ Write}，其余表空）。
-- 每个 `syscall_*` 入口和 `cpu_offline_check` / `syscall_schedule` / `rebalance_pull` / `cpu_online_resume` 的 `requires old(lctx).no_locks_held()`
-  改成 `holds_only_cpu_entry(cpu_id)`，ensures 同样；`release_and_finish_syscall.rs`、`kernel_step_wrappers/boundary.rs`、
-  `no_locks_held_imply_all_objects_unlocked` 改成对应形式（K→U 边界包装只要求除入口锁外为空）。
-- 新原语 `cpu_entry_enter(krnl, cpu_id)`（写锁自己入口锁，取出两个 perm 交给 lctx 的 tracked 字段）和 `cpu_entry_exit`（放回）。
-  `halt_until_ipi` 的 requires 保持 `no_locks_held`（入口锁已放）。
-- 拿到入口锁后由 `syscall_schedule`/各入口在拿 CPU 锁后检查 `current_thread is None`（自旋期间被 evict）→ 返回 CpuIdle。
+## Batch 2：具体锁序 + 动态容器
+- **OwnerSource**：每个锁族的 lock id owner 分量（container / process 深度）来自一个确定的来源——对象自身的不可变字段，
+  或其当前动态归属（例如 CPU 当前所属容器 / 当前进程）。来源是锁族定义的一部分，不在调用点选择。
+- **LockControl（动态规则）**：动态 owner 分量只能由持有该对象写锁的 section 改变，且改变就是一次 rekey
+  （typed 锁表条目覆写 + pair 替换，按 lock-model 的既有 dynamic-id 规则）。未持写锁时 id 稳定，可作为锁序依据。
+- **`NotApp` 迁移为具体值**：现在用 `NotApp` 通配的 owner 字段（CPU-set 锁、Off / 无上下文 CPU 等）改为由 OwnerSource 给出的
+  具体 owner，使 `lock_id_acyclic` / `held_lock_majors_lt` 在全序下成立。`NotApp` 只剩确实无归属的对象；不改变 IPC 拓扑。
+- **`ErrorContainerLockOrderConflict`**：新返回码。当 syscall 在当前已持锁下，按具体锁序无法合法获取下一把锁
+  （动态容器归属与已持锁冲突）时，放锁并以该错误 stutter 返回，而不是加锁序豁免。对应 U spec / NI 按 stutter 处理。
 
-## 3. TCB 契约（`src/cpu/`）
-- `cpu_ipi.rs`：`send_ipi(target, Tracked(&IpiPerm))` requires `perm.cpu_id == target`；
-  `atomic_pcid_cr3.rs:63` `evict_remote_cpu` 同样要 IpiPerm，删掉注释里的 virtual lock TODO。
-- 新 TCB：`mint_syscall_perm(target) -> Tracked<SyscallPerm>` requires 调用者写持 target 入口锁且 target Off、同一临界区内发布 Idle；
-  `collect_syscall_perm(Tracked<SyscallPerm>)` 销毁。两者 `external_body`，加进 TCB 清单。
-- `cpu_def.rs:403` `evict_remote` 增加 IpiPerm 参数。
+## Batch 3：锚点 DID
+- 语义以用户批准的计划为准；本文件不补写未记录的细节。
 
-## 4. 内核路径（约 10 个文件）
-- kill：`syscall_kill_process_victim.rs:253` `kill_evict_running_victim`：`wlock_cpu_entry(remote)`（豁免分支）→ `wlock_cpu(remote)` → 取 IpiPerm →
-  `evict_remote` → 放回 → 解锁两把；evict 后同一临界区 rekey 入口锁（state Idle）。CPU 标记调用保留但可不再依赖。
-- 上线 `syscall_cpu_online.rs` / `cpu_online_child_locked.rs`：`wlock_cpu_entry(target)`（Off major）→ `wlock_off_cpu` → `publish_idle_from_off` →
-  `mint_syscall_perm` 存入 → rekey 入口锁（Idle）→ 取 IpiPerm → 解锁 CPU → `send_ipi` → 放回 IpiPerm → 解锁入口锁。
-- 下线 `cpu_offline_check.rs`：走到 Off 时（已持自己入口锁）`collect_syscall_perm`，rekey（Off），放锁，boot 层 `hlt`。
-  `syscall_cpu_offline_request.rs:142` / `cpu_offline_request_child_locked.rs:185`：改成 `wlock_cpu_entry(target)` → 取 IpiPerm → `send_ipi` → 放回 → 解锁（lctx 为空，无锁序问题）。
-- `cpu_online_resume.rs`：requires 持自己入口锁；锁里没有 SyscallPerm → 放锁返回 StillOff（杂散唤醒）；有 → 取出，清 hw_halted。
-- rekey 点清单（和 CPU 锁同步）：schedule 切进程、evict、上线、下线、kill 标记（若保留）。
+## Batch 4：SyscallPerm 放进 Cpu + IPI / kill 状态
+- `Cpu` 对象新增 `syscall_perm: Option<Tracked<SyscallPerm>>`（随 CPU 锁保护，不新增锁族、不新增锁）；
+  `LocalContext` 新增 tracked 槽存放本 CPU 取出的 `SyscallPerm`。
+- `u_sys_enter(cpu_id)` / `u_sys_exit(cpu_id)`：`external_body` TCB 原语，把 `SyscallPerm` 在 `Cpu.syscall_perm` 与 lctx 槽之间移动；
+  加入 TCB 清单。U 层与 NI 新增 `SysEnter` / `SysExit` 标签。
+- 所有入口包裹：每个 `syscall_*` 以及 `cpu_offline_check` / `syscall_schedule` / `rebalance_pull` / `cpu_online_resume`
+  的边界契约改为 lctx 只持本 CPU 的 SyscallPerm 槽、其余锁表为空；`release_and_finish_syscall.rs`、`kernel_step_wrappers/boundary.rs`
+  同步。Off CPU 没有 SyscallPerm，因此不能进入内核步骤。
+- **删 offline kick**：`syscall_cpu_offline_request.rs` / `cpu_offline_request_child_locked.rs` 中的 `send_ipi` 删除，目标在下一次入口 / 定时器自行走 `cpu_offline_check`。
+- **保留 online wake**：`syscall_cpu_online.rs` / `cpu_online_child_locked.rs` 的唤醒 IPI 保留（放干净所有锁之后发）。
+- **删 CPU kill 状态**：`CPU_HAS_KILL_STATE`、`CpuU.killed` 及 NI 中的使用一并删除；kill 改由 SyscallPerm / evict 路径保证受害 CPU 不在内核步骤中。删前后量 rlimit。
+- **boot IF / evicted 规则**：内核步骤只在 IF=0 下执行；`u_sys_enter` 之后到 `u_sys_exit` 之前不开中断，idle `hlt` 前已 `u_sys_exit`。
+  被 evict 的 CPU 在下一次 enter 后看到 `current_thread is None` 返回 CpuIdle，不另设标记；`handle_evict_ipi` 对 ring 0 帧只装默认 cr3。NMI 刷 PCID 路径不动。
+- boot：普通 Cargo 编译须保持通过；运行时（QEMU/KVM）已由用户豁免，不作门槛（见 `HANDOFF.md`）。
 
-## 5. boot（`boot/kernel/src/syscalls/mod.rs`、`platform.rs`、`cpu.rs`）
-- `sys_entry`（:129）/ 中断 trampoline 存帧后：`sti` → `cpu_entry_enter` → `cli` → 分发；`restore_frame`（:186）前 `cpu_entry_exit`。
-- `run_idle`（约 :705）：每轮 enter → offline_check/schedule/rebalance → exit → `sti; hlt; cli`。
-- `wait_until_online`：Off CPU 每次醒来 enter（开中断自旋）→ `cpu_online_resume` → 无 perm 则 exit + `hlt`。
-- `timer_interrupt` / `wake_interrupt` 从 ring 3 进来的路径同样 enter/exit 包裹；ring 0 帧只 EOI。
-- `handle_evict_ipi`：对入口自旋中的 ring 0 帧也装默认 cr3（已如此），`evicted` 判定改由第 2 步的 `current_thread is None` 检查承担。
-- NMI 刷 PCID 路径不动。
-
-## 6. 收尾
-- 删 CPU kill 标记（`CPU_HAS_KILL_STATE`、`CpuU.killed`、NI 9 处）——单独一轮，先量 rlimit。
-- 验证顺序：1 → 工作区；2 → 工作区；3+4 → 相关包聚焦后工作区；5 → boot check + KVM 三阶段；最后单体对比 7fbc98d 基线、NI、风格审查。
-- 预计成本：每次 syscall 多一对本地无争用锁操作 + `sti`/`cli`；证明侧新增一个锁族会让所有 `lock_id_acyclic`/`typed_lock_maps_*` 多一个合取项，预期 rlimit +1–2%，做完量。
+## 收尾
+- 每批：聚焦 → 工作区 + NI（并行，最多两个重任务）→ 单体（单独）对比上一批；风格审查只针对本批改动文件。
+- 全部完成后删除本文件。

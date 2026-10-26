@@ -21,7 +21,7 @@ use veriflat_syscall_unmap_4k::syscall_unmap_4k::syscall_unmap_4k_spec::*;
 verus! {
 /// One step of a syscall, with the arguments its step specification takes.
 pub ghost enum StepLabel {
-    Mmap4kEnter { range: VaRange4K, phase: Mmap4kPhase }, Mmap4kDirectory, Mmap4kDowngrade, Mmap4kLeaf, Mmap4kExit,
+    Mmap4kHold { range: VaRange4K }, Mmap4kEnter { range: VaRange4K, phase: Mmap4kPhase }, Mmap4kDirectory, Mmap4kDowngrade, Mmap4kLeaf, Mmap4kExit, Mmap4kRelease,
     Unmap4kEnter { range: VaRange4K }, Unmap4kLeaf { va: VAddr }, Unmap4kTlbCleared { pcid: Pcid }, Unmap4kFlushed, Unmap4kRefund, Unmap4kExit,
     IommuMap4kEnter { va_range: VaRange4K, iova_range: VaRange4K }, IommuMap4kDirectory, IommuMap4kLeaf, IommuMap4kExit,
     IommuUnmap4kEnter { iova_range: VaRange4K }, IommuUnmap4kLeaf, IommuUnmap4kFlush, IommuUnmap4kRefund, IommuUnmap4kExit,
@@ -58,11 +58,13 @@ pub ghost enum StepLabel {
 /// `new_u` follows `old_u` by the step `label` on cpu `cpu_id`.
 pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     match label {
+        StepLabel::Mmap4kHold { range } => mmap_4k_hold_step_pre(old_u, cpu_id, range) && mmap_4k_hold_step(old_u, new_u, cpu_id),
         StepLabel::Mmap4kEnter { range, phase } => mmap_4k_enter_step_pre(old_u, cpu_id, range, phase) && mmap_4k_enter_step(old_u, new_u, cpu_id, range, phase),
         StepLabel::Mmap4kDirectory => mmap_4k_directory_step_pre(old_u, cpu_id) && mmap_4k_directory_step(old_u, new_u, cpu_id),
         StepLabel::Mmap4kDowngrade => mmap_4k_downgrade_step_pre(old_u, cpu_id) && mmap_4k_downgrade_step(old_u, new_u, cpu_id),
         StepLabel::Mmap4kLeaf => mmap_4k_leaf_step_pre(old_u, cpu_id) && mmap_4k_leaf_step(old_u, new_u, cpu_id),
         StepLabel::Mmap4kExit => mmap_4k_exit_step_pre(old_u, cpu_id) && mmap_4k_exit_step(old_u, new_u, cpu_id),
+        StepLabel::Mmap4kRelease => mmap_4k_release_step_pre(old_u, cpu_id) && mmap_4k_release_step(old_u, new_u, cpu_id),
         StepLabel::Unmap4kEnter { range } => unmap_4k_enter_step_pre(old_u, cpu_id, range) && unmap_4k_enter_step(old_u, new_u, cpu_id, range),
         StepLabel::Unmap4kLeaf { va } => unmap_4k_leaf_step_pre(old_u, cpu_id, va) && unmap_4k_leaf_step(old_u, new_u, cpu_id, va),
         StepLabel::Unmap4kTlbCleared { pcid } => unmap_4k_flush_step_pre(old_u, cpu_id) && kernel_u_cpu_tlb_cleared(old_u, new_u, pcid),
@@ -258,11 +260,13 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
         trace_ni_at(us, labels, cpus, steppers, a, b, m, i);
         if x != a { isolated_symmetric(old_u, a, b); }
         match labels[i] {
+            StepLabel::Mmap4kHold { range } => { mmap_4k_hold_step_lr(old_u, new_u, cpu_id, range, x, y); mmap_4k_hold_step_iso(old_u, new_u, cpu_id, range, x, y); },
             StepLabel::Mmap4kEnter { range, phase } => { mmap_4k_enter_step_lr(old_u, new_u, cpu_id, range, phase, x, y); mmap_4k_enter_step_iso(old_u, new_u, cpu_id, range, phase, x, y); },
             StepLabel::Mmap4kDirectory => { mmap_4k_directory_step_lr(old_u, new_u, cpu_id, x, y); mmap_4k_directory_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::Mmap4kDowngrade => { mmap_4k_downgrade_step_lr(old_u, new_u, cpu_id, x, y); mmap_4k_downgrade_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::Mmap4kLeaf => { mmap_4k_leaf_step_lr(old_u, new_u, cpu_id, x, y); mmap_4k_leaf_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::Mmap4kExit => { mmap_4k_exit_step_lr(old_u, new_u, cpu_id, x, y); mmap_4k_exit_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::Mmap4kRelease => { mmap_4k_release_step_lr(old_u, new_u, cpu_id, x, y); mmap_4k_release_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::Unmap4kEnter { range } => { unmap_4k_enter_step_lr(old_u, new_u, cpu_id, range, x, y); unmap_4k_enter_step_iso(old_u, new_u, cpu_id, range, x, y); },
             StepLabel::Unmap4kLeaf { va } => { unmap_4k_leaf_step_lr(old_u, new_u, cpu_id, va, x, y); unmap_4k_leaf_step_iso(old_u, new_u, cpu_id, va, x, y); },
 
