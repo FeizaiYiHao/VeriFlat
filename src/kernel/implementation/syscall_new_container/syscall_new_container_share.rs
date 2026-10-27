@@ -597,7 +597,10 @@ fn create_new_container_root_thread_and_unlock(
         kernel_new_thread_fields(old(krnl), final(krnl), child_process_ptr, current_thread_ptr, child_container_ptr, caller_cpu_id, new_thread_ptr, *initial_regs, endpoint, None),
         forall|p: RwLockContainerPtr| #![trigger final(krnl).ctn_mp.spec_index(p)]
             old(krnl).ctn_mp.dom().contains(p) ==> if p == child_container_ptr || p == parent_container_ptr { final(krnl).ctn_mp.spec_index(p).locking_thread() is None }
-                else { final(krnl).ctn_mp.spec_index(p).locking_thread() == old(krnl).ctn_mp.spec_index(p).locking_thread() },
+                else {
+                    &&& final(krnl).ctn_mp.spec_index(p).locking_thread() == old(krnl).ctn_mp.spec_index(p).locking_thread()
+                    &&& final(krnl).ctn_mp.spec_index(p).lock_process_owner_u() == old(krnl).ctn_mp.spec_index(p).lock_process_owner_u()
+                },
         forall|p: RwLockProcessPtr| #![trigger final(krnl).prc_mp.spec_index(p)]
             old(krnl).prc_mp.dom().contains(p) ==> if p == child_process_ptr || p == parent_process_ptr { final(krnl).prc_mp.spec_index(p).locking_thread() is None }
                 else { final(krnl).prc_mp.spec_index(p).locking_thread() == old(krnl).prc_mp.spec_index(p).locking_thread() },

@@ -36,6 +36,7 @@ pub(super) fn enter_new_endpoint_commit(
         typed_lock_map_contains_mode(old(lctx).container_lock_map(), container_ptr, TypedLockMode::Write),
         old(krnl).ctn_mp.dom().contains(container_ptr),
         old(krnl).ctn_mp.spec_index(container_ptr).being_killed() == false,
+        old(krnl).ctn_mp.spec_index(container_ptr).lock_process_owner_u() == Some(LockOwnerId::Some(old(krnl).prc_mp.spec_index(process_ptr).view_rodata().view().depth)),
         !old(krnl).ctn_mp.spec_index(container_ptr).view().zombie,
         typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
         old(krnl).prc_mp.dom().contains(process_ptr),
@@ -96,7 +97,7 @@ pub(super) fn enter_new_endpoint_commit(
         assert(new_endpoint_trace_after_enter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, endpoint_index)) by {
             kernel_cpu_process_thread_endpoint_lock_modes_changed_implies_u_step(&old(steps).snapshot_k(), old(krnl), old(lctx), cpu_id, process_ptr, thread_ptr, None, true, Some(container_ptr), false, None);
             kernel_thread_syscall_progress_changed_implies_u_step(old(krnl), &entered_k, thread_ptr);
-            new_endpoint_enter_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(entered_k), cpu_id, container_ptr, process_ptr, thread_ptr, endpoint_index);
+            new_endpoint_enter_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(entered_k), old(krnl), cpu_id, container_ptr, process_ptr, thread_ptr, endpoint_index);
             new_endpoint_trace_enter_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(entered_k), cpu_id, endpoint_index);
         };
     }

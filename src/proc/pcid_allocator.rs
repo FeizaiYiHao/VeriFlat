@@ -168,7 +168,7 @@ impl LockMajorTrait for PcidAllocator {
 
 impl LockOwnerIdTrait for PcidAllocator {
     open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::Some(self.container_depth.view()) }
-    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
+    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::None }
 }
 } // verus!
 

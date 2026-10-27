@@ -370,8 +370,7 @@ pub proof fn container_map_add_owned_process(tracked container_map: &mut Contain
         final(container_map).spec_index(container_ptr).view_ghost().owned_processes.view() == old(container_map).spec_index(container_ptr).view_ghost().owned_processes.view().insert(process_ptr),
         final(container_map).spec_index(container_ptr).view_rodata() == old(container_map).spec_index(container_ptr).view_rodata(),
         final(container_map).spec_index(container_ptr).locking_thread() == old(container_map).spec_index(container_ptr).locking_thread(),
-        final(container_map).spec_index(container_ptr).being_killed() == old(container_map).spec_index(container_ptr).being_killed(),
-        final(container_map).spec_index(container_ptr).killer_info() == old(container_map).spec_index(container_ptr).killer_info(),
+        final(container_map).spec_index(container_ptr).control() == old(container_map).spec_index(container_ptr).control(),
         final(container_map).spec_index(container_ptr).inv(),
         forall|ptr: RwLockContainerPtr|
             #![trigger final(container_map).view().spec_index(ptr).is_init()]
@@ -404,8 +403,7 @@ pub proof fn container_map_remove_owned_process(tracked container_map: &mut Cont
         final(container_map).spec_index(container_ptr).view_ghost().owned_processes.view() == old(container_map).spec_index(container_ptr).view_ghost().owned_processes.view().remove(process_ptr),
         final(container_map).spec_index(container_ptr).view_rodata() == old(container_map).spec_index(container_ptr).view_rodata(),
         final(container_map).spec_index(container_ptr).locking_thread() == old(container_map).spec_index(container_ptr).locking_thread(),
-        final(container_map).spec_index(container_ptr).being_killed() == old(container_map).spec_index(container_ptr).being_killed(),
-        final(container_map).spec_index(container_ptr).killer_info() == old(container_map).spec_index(container_ptr).killer_info(),
+        final(container_map).spec_index(container_ptr).control() == old(container_map).spec_index(container_ptr).control(),
         final(container_map).spec_index(container_ptr).inv(),
         forall|ptr: RwLockContainerPtr|
             #![trigger final(container_map).view().spec_index(ptr).is_init()]
@@ -729,8 +727,7 @@ pub proof fn add_thread_to_container_sets(
                 &&& final(container_map).spec_index(c).view() == old(container_map).spec_index(c).view()
                 &&& final(container_map).spec_index(c).view_rodata() == old(container_map).spec_index(c).view_rodata()
                 &&& final(container_map).spec_index(c).locking_thread() == old(container_map).spec_index(c).locking_thread()
-                &&& final(container_map).spec_index(c).being_killed() == old(container_map).spec_index(c).being_killed()
-                &&& final(container_map).spec_index(c).killer_info() == old(container_map).spec_index(c).killer_info()
+                &&& final(container_map).spec_index(c).control() == old(container_map).spec_index(c).control()
                 &&& final(container_map).spec_index(c).view_ghost() == ContainerGhost {
                     uppertree_seq: old(container_map).spec_index(c).view_ghost().uppertree_seq, subtree_set: old(container_map).spec_index(c).view_ghost().subtree_set,
                     owned_processes: old(container_map).spec_index(c).view_ghost().owned_processes,
@@ -794,8 +791,7 @@ pub proof fn remove_thread_from_container_sets(
                 &&& final(container_map).spec_index(c).is_init() == old(container_map).spec_index(c).is_init()
                 &&& final(container_map).spec_index(c).view_rodata() == old(container_map).spec_index(c).view_rodata()
                 &&& final(container_map).spec_index(c).locking_thread() == old(container_map).spec_index(c).locking_thread()
-                &&& final(container_map).spec_index(c).being_killed() == old(container_map).spec_index(c).being_killed()
-                &&& final(container_map).spec_index(c).killer_info() == old(container_map).spec_index(c).killer_info()
+                &&& final(container_map).spec_index(c).control() == old(container_map).spec_index(c).control()
                 &&& final(container_map).spec_index(c).view_ghost() == ContainerGhost {
                     uppertree_seq: old(container_map).spec_index(c).view_ghost().uppertree_seq, subtree_set: old(container_map).spec_index(c).view_ghost().subtree_set,
                     owned_processes: old(container_map).spec_index(c).view_ghost().owned_processes,
@@ -865,7 +861,7 @@ proof fn process_subsystem_create_scheduled_thread_eof_process_thread_wf(
 {
     reveal(process_subsystem_create_scheduled_thread_eof_transition_framing);
     reveal(process_thread_wf);
-    seq_push_lemma::<RwLockThreadPtr>();
+    broadcast use vstd::seq_lib::lemma_seq_contains_after_push;
 }
 
 proof fn process_subsystem_create_scheduled_thread_eof_scheduler_wf(
@@ -1235,7 +1231,8 @@ pub fn pcid_allocator_map_insert_new_2m(allocator_map: &mut PcidAllocatorLockedM
         ret.view().ordering_lock_id() == final(allocator_map).lock_id_by_key(allocator_ptr),
 {
     proof { assert(lctx.typed_lock_entry(KernelObjId::PcidAllocator(allocator_ptr)) is None) by { reveal(LockedMap::typed_lock_map_aligned); }; }
-    let lock_perm = allocator_map.retype_2m_and_insert(allocator_ptr, allocator_value, (), Ghost(()), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::PcidAllocator(allocator_ptr)));
+    let lock_perm = allocator_map.retype_2m_and_insert(allocator_ptr, allocator_value, (), Ghost(()), Tracked(page_perm),
+        Tracked(&mut *lctx), Ghost(KernelObjId::PcidAllocator(allocator_ptr)), LockControl::Clear);
     proof {
         assert(pcid_allocator_perms_wf(*old(allocator_map)) ==> pcid_allocator_perms_wf(*allocator_map)) by { reveal(pcid_allocator_perms_wf); };
         assert(allocator_map.typed_lock_map_aligned(lctx.pcid_allocator_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
@@ -1265,7 +1262,8 @@ pub fn container_map_insert_new_2m(
         final(container_map).spec_index(container_ptr).view_ghost() == container_ghost,
         final(container_map).spec_index(container_ptr).is_init(),
         final(container_map).spec_index(container_ptr).inv(),
-        !final(container_map).spec_index(container_ptr).being_killed(),
+        final(container_map).spec_index(container_ptr).control() == LockControl::DynamicProcess(LockOwnerId::Some(0)),
+        final(container_map).lock_id_by_key(container_ptr) == dynamic_container_lock_id(container_ptr, container_rodata.view().depth, LockOwnerId::Some(0)),
         final(container_map).spec_index(container_ptr).wlocked_by(final(lctx)),
         final(container_map).spec_index(container_ptr).write_lock_perm_match(&ret.view()),
         final(container_map).typed_lock_map_aligned(final(lctx).container_lock_map(), final(lctx).thread_id()),
@@ -1278,7 +1276,8 @@ pub fn container_map_insert_new_2m(
         ret.view().ordering_lock_id() == final(container_map).lock_id_by_key(container_ptr),
 {
     proof { assert(lctx.typed_lock_entry(KernelObjId::Container(container_ptr)) is None) by { reveal(LockedMap::typed_lock_map_aligned); }; }
-    let lock_perm = container_map.retype_2m_and_insert(container_ptr, container_value, container_rodata, Ghost(container_ghost), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::Container(container_ptr)));
+    let lock_perm = container_map.retype_2m_and_insert(container_ptr, container_value, container_rodata, Ghost(container_ghost), Tracked(page_perm),
+        Tracked(&mut *lctx), Ghost(KernelObjId::Container(container_ptr)), LockControl::DynamicProcess(LockOwnerId::Some(0)));
     proof { assert(container_map.typed_lock_map_aligned(lctx.container_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }
     lock_perm
 }
@@ -1310,8 +1309,7 @@ pub fn container_map_take_parent_node(container_map: &mut ContainerLockedMap, co
         final(container_map).spec_index(container_ptr).view_rodata() == old(container_map).spec_index(container_ptr).view_rodata(),
         final(container_map).spec_index(container_ptr).view_ghost() == old(container_map).spec_index(container_ptr).view_ghost(),
         final(container_map).spec_index(container_ptr).locking_thread() == old(container_map).spec_index(container_ptr).locking_thread(),
-        final(container_map).spec_index(container_ptr).being_killed() == old(container_map).spec_index(container_ptr).being_killed(),
-        final(container_map).spec_index(container_ptr).killer_info() == old(container_map).spec_index(container_ptr).killer_info(),
+        final(container_map).spec_index(container_ptr).control() == old(container_map).spec_index(container_ptr).control(),
         final(container_map).lock_id_by_key(container_ptr) == old(container_map).lock_id_by_key(container_ptr),
 {
     let container = container_map.borrow_mut_typed(container_ptr, Ghost(lctx.container_lock_map()), Tracked(lctx), Tracked(container_lock_perm));
@@ -1361,8 +1359,7 @@ pub fn container_map_push_child(
         final(container_map).spec_index(container_ptr).view_rodata() == old(container_map).spec_index(container_ptr).view_rodata(),
         final(container_map).spec_index(container_ptr).view_ghost() == old(container_map).spec_index(container_ptr).view_ghost(),
         final(container_map).spec_index(container_ptr).locking_thread() == old(container_map).spec_index(container_ptr).locking_thread(),
-        final(container_map).spec_index(container_ptr).being_killed() == old(container_map).spec_index(container_ptr).being_killed(),
-        final(container_map).spec_index(container_ptr).killer_info() == old(container_map).spec_index(container_ptr).killer_info(),
+        final(container_map).spec_index(container_ptr).control() == old(container_map).spec_index(container_ptr).control(),
         final(container_map).lock_id_by_key(container_ptr) == old(container_map).lock_id_by_key(container_ptr),
 {
     let container = container_map.borrow_mut_typed(container_ptr, Ghost(lctx.container_lock_map()), Tracked(lctx), Tracked(container_lock_perm));
@@ -1419,8 +1416,7 @@ pub fn container_map_unlink_child(
                 &&& final(container_map).spec_index(c).view_ghost().owned_endpoints == old(container_map).spec_index(c).view_ghost().owned_endpoints
                 &&& final(container_map).spec_index(c).view_ghost().retire_ready == old(container_map).spec_index(c).view_ghost().retire_ready
                 &&& final(container_map).spec_index(c).locking_thread() == old(container_map).spec_index(c).locking_thread()
-                &&& final(container_map).spec_index(c).being_killed() == old(container_map).spec_index(c).being_killed()
-                &&& final(container_map).spec_index(c).killer_info() == old(container_map).spec_index(c).killer_info()
+                &&& final(container_map).spec_index(c).control() == old(container_map).spec_index(c).control()
                 &&& c != parent_ptr ==> final(container_map).spec_index(c).view() == old(container_map).spec_index(c).view()
             },
         forall|c: RwLockContainerPtr| #![trigger final(container_map).spec_index(c).view_ghost().subtree_set]
@@ -1471,8 +1467,7 @@ pub fn container_map_remove_owned_pages(container_map: &mut ContainerLockedMap, 
         final(container_map).spec_index(container_ptr).view_rodata() == old(container_map).spec_index(container_ptr).view_rodata(),
         final(container_map).spec_index(container_ptr).view_ghost() == old(container_map).spec_index(container_ptr).view_ghost(),
         final(container_map).spec_index(container_ptr).locking_thread() == old(container_map).spec_index(container_ptr).locking_thread(),
-        final(container_map).spec_index(container_ptr).being_killed() == old(container_map).spec_index(container_ptr).being_killed(),
-        final(container_map).spec_index(container_ptr).killer_info() == old(container_map).spec_index(container_ptr).killer_info(),
+        final(container_map).spec_index(container_ptr).control() == old(container_map).spec_index(container_ptr).control(),
         final(container_map).lock_id_by_key(container_ptr) == old(container_map).lock_id_by_key(container_ptr),
 {
     let container = container_map.borrow_mut_typed(container_ptr, Ghost(lctx.container_lock_map()), Tracked(lctx), Tracked(container_lock_perm));
@@ -1504,8 +1499,7 @@ pub proof fn insert_endpoint_into_container_set(
             owned_endpoints: Ghost(old(container_map).spec_index(container_ptr).view_ghost().owned_endpoints.view().insert(endpoint_ptr)), ..old(container_map).spec_index(container_ptr).view_ghost()
         }),
         final(container_map).spec_index(container_ptr).locking_thread() == old(container_map).spec_index(container_ptr).locking_thread(),
-        final(container_map).spec_index(container_ptr).being_killed() == old(container_map).spec_index(container_ptr).being_killed(),
-        final(container_map).spec_index(container_ptr).killer_info() == old(container_map).spec_index(container_ptr).killer_info(),
+        final(container_map).spec_index(container_ptr).control() == old(container_map).spec_index(container_ptr).control(),
         final(container_map).lock_id_by_key(container_ptr) == old(container_map).lock_id_by_key(container_ptr),
 {
     let ghost pre_ghost = container_map.spec_index(container_ptr).view_ghost();
@@ -1534,8 +1528,7 @@ pub proof fn remove_endpoint_from_container_set(
             owned_endpoints: Ghost(old(container_map).spec_index(container_ptr).view_ghost().owned_endpoints.view().remove(endpoint_ptr)), ..old(container_map).spec_index(container_ptr).view_ghost()
         }),
         final(container_map).spec_index(container_ptr).locking_thread() == old(container_map).spec_index(container_ptr).locking_thread(),
-        final(container_map).spec_index(container_ptr).being_killed() == old(container_map).spec_index(container_ptr).being_killed(),
-        final(container_map).spec_index(container_ptr).killer_info() == old(container_map).spec_index(container_ptr).killer_info(),
+        final(container_map).spec_index(container_ptr).control() == old(container_map).spec_index(container_ptr).control(),
         final(container_map).lock_id_by_key(container_ptr) == old(container_map).lock_id_by_key(container_ptr),
 {
     let ghost pre_ghost = container_map.spec_index(container_ptr).view_ghost();

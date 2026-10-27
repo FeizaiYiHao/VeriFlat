@@ -358,7 +358,7 @@ pub(crate) fn kill_retire_end_step(
         old(krnl).ctn_mp.spec_index(container_ptr).view_ghost() == (ContainerGhost {
             owned_processes: Ghost(base.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().remove(target)), ..base.ctn_mp.spec_index(container_ptr).view_ghost() }),
         old(krnl).ctn_mp.spec_index(container_ptr).locking_thread() == base.ctn_mp.spec_index(container_ptr).locking_thread(),
-        old(krnl).ctn_mp.spec_index(container_ptr).being_killed() == base.ctn_mp.spec_index(container_ptr).being_killed(),
+        old(krnl).ctn_mp.spec_index(container_ptr).control() == base.ctn_mp.spec_index(container_ptr).control(),
         forall|a: RwLockPageAllocatorPtr| #![trigger old(krnl).allc_4k_mp.spec_index(a)]
             base.allc_4k_mp.dom().contains(a) && a != allocator_ptr ==> old(krnl).allc_4k_mp.spec_index(a).quota.view() == base.allc_4k_mp.spec_index(a).quota.view(),
         base.allc_4k_mp.spec_index(allocator_ptr).quota.view().view() < old(krnl).allc_4k_mp.spec_index(allocator_ptr).quota.view().view(),
@@ -558,8 +558,7 @@ pub(crate) fn kill_retire_commit(
         final(krnl).ctn_mp.spec_index(container_ptr).view_ghost() == (ContainerGhost {
             owned_processes: Ghost(base.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().remove(target)), ..base.ctn_mp.spec_index(container_ptr).view_ghost() }),
         final(krnl).ctn_mp.spec_index(container_ptr).locking_thread() == base.ctn_mp.spec_index(container_ptr).locking_thread(),
-        final(krnl).ctn_mp.spec_index(container_ptr).being_killed() == base.ctn_mp.spec_index(container_ptr).being_killed(),
-        final(krnl).ctn_mp.spec_index(container_ptr).killer_info() == base.ctn_mp.spec_index(container_ptr).killer_info(),
+        final(krnl).ctn_mp.spec_index(container_ptr).control() == base.ctn_mp.spec_index(container_ptr).control(),
         forall|a: RwLockPageAllocatorPtr| #![trigger final(krnl).allc_4k_mp.spec_index(a)]
             base.allc_4k_mp.dom().contains(a) && a != allocator_ptr ==> final(krnl).allc_4k_mp.spec_index(a).quota.view() == base.allc_4k_mp.spec_index(a).quota.view(),
         base.allc_4k_mp.spec_index(allocator_ptr).quota.view().view() < final(krnl).allc_4k_mp.spec_index(allocator_ptr).quota.view().view(),
@@ -675,8 +674,7 @@ pub(crate) fn kill_retire_unlink_process(
         final(krnl).ctn_mp.spec_index(container_ptr).view_ghost() == (ContainerGhost {
             owned_processes: Ghost(old(krnl).ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().remove(target)), ..old(krnl).ctn_mp.spec_index(container_ptr).view_ghost() }),
         final(krnl).ctn_mp.spec_index(container_ptr).locking_thread() == old(krnl).ctn_mp.spec_index(container_ptr).locking_thread(),
-        final(krnl).ctn_mp.spec_index(container_ptr).being_killed() == old(krnl).ctn_mp.spec_index(container_ptr).being_killed(),
-        final(krnl).ctn_mp.spec_index(container_ptr).killer_info() == old(krnl).ctn_mp.spec_index(container_ptr).killer_info(),
+        final(krnl).ctn_mp.spec_index(container_ptr).control() == old(krnl).ctn_mp.spec_index(container_ptr).control(),
         ret.view().is_init(),
         ret.view().addr() == target,
 {

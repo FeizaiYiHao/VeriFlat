@@ -8,8 +8,8 @@ pub struct GlobalPool<const SIZE: usize> {
 }
 
 impl<const SIZE: usize> LockOwnerIdTrait for GlobalPool<SIZE> {
-    open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
-    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
+    open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::None }
+    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::None }
 }
 
 impl<const SIZE: usize> LockInvTrait for GlobalPool<SIZE> {

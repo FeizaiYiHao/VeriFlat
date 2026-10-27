@@ -212,7 +212,10 @@ pub proof fn kernel_cpu_container_process_thread_iommu_table_lock_states_and_pro
             let process = pre_u.process_map.spec_index(process_ptr);
             kernel_k_to_kernel_u(*post) == (KernelU {
                 cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: post.cpu_arr.spec_index(cpu_id).value.lock_state_u(), ..pre_u.cpu_array[cpu_id as int] }),
-                container_map: pre_u.container_map.insert(container_ptr, ContainerU { lock_state: post.ctn_mp.spec_index(container_ptr).lock_state_u(), ..pre_u.container_map.spec_index(container_ptr) }),
+                container_map: pre_u.container_map.insert(container_ptr, ContainerU {
+                    lock_state: post.ctn_mp.spec_index(container_ptr).lock_state_u(), lock_process_owner: post.ctn_mp.spec_index(container_ptr).lock_process_owner_u(),
+                    ..pre_u.container_map.spec_index(container_ptr)
+                }),
                 process_map: pre_u.process_map.insert(process_ptr, ProcessU {
                     lock_state: post.prc_mp.spec_index(process_ptr).lock_state_u(),
                     iommu_table: Some(PageTableU { lock_state: post.it_mp.spec_index(iommu_table_ptr).lock_state_u(), ..process.iommu_table->Some_0 }), ..process
@@ -237,7 +240,8 @@ pub proof fn kernel_cpu_container_process_thread_iommu_table_lock_states_and_pro
         if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); }
     });
     assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(container_ptr, ContainerU {
-        lock_state: post.ctn_mp.spec_index(container_ptr).lock_state_u(), ..pre_u.container_map.spec_index(container_ptr)
+        lock_state: post.ctn_mp.spec_index(container_ptr).lock_state_u(), lock_process_owner: post.ctn_mp.spec_index(container_ptr).lock_process_owner_u(),
+        ..pre_u.container_map.spec_index(container_ptr)
     }), c => { if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); } if post.ctn_mp.dom().contains(c) { kernel_container_projection_at(post, c); } });
     assert_maps_equal!(post_u.process_map, pre_u.process_map.insert(process_ptr, ProcessU {
         lock_state: post.prc_mp.spec_index(process_ptr).lock_state_u(),

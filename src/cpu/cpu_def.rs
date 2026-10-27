@@ -207,6 +207,14 @@ impl Cpu {
         self.current_process
     }
 
+    /// Depth of the current process; the concrete process owner this cpu requests for a dynamic container lock.
+    pub fn process_depth(&self) -> (ret: usize)
+        ensures
+            ret == self.view().process_depth,
+    {
+        self.process_depth
+    }
+
     pub open spec fn spec_current_thread(&self) -> Option<RwLockThreadPtr> { self.view().current_thread }
 
     #[verifier(when_used_as_spec(spec_current_thread))]
@@ -581,11 +589,11 @@ impl LockMajorTrait for Cpu {
 
 impl LockOwnerIdTrait for Cpu {
     open spec fn container_depth(&self) -> LockOwnerId {
-        if self.view().state is Off { LockOwnerId::NotApp } else { LockOwnerId::Some(self.view().container_depth) }
+        if self.view().state is Off { LockOwnerId::None } else { LockOwnerId::Some(self.view().container_depth) }
     }
 
     open spec fn process_depth(&self) -> LockOwnerId {
-        if self.view().current_process is Some { LockOwnerId::Some(self.view().process_depth) } else { LockOwnerId::NotApp }
+        if self.view().current_process is Some { LockOwnerId::Some(self.view().process_depth) } else { LockOwnerId::None }
     }
 }
 }

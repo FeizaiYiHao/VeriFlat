@@ -534,6 +534,7 @@ pub proof fn kernel_thread_context_wlocked_pagetable_rlocked_and_progress_change
         post.ctn_mp.spec_index(container_ptr).view_ghost() == pre.ctn_mp.spec_index(container_ptr).view_ghost(),
         post.ctn_mp.spec_index(container_ptr).being_killed() == pre.ctn_mp.spec_index(container_ptr).being_killed(),
         post.ctn_mp.spec_index(container_ptr).locking_thread() is Write,
+        post.ctn_mp.spec_index(container_ptr).lock_process_owner_u() == Some(LockOwnerId::Some(pre.prc_mp.spec_index(process_ptr).view_rodata().view().depth)),
         post.prc_mp.unchanged_except(&pre.prc_mp, process_ptr),
         post.prc_mp.spec_index(process_ptr).view() == pre.prc_mp.spec_index(process_ptr).view(),
         post.prc_mp.spec_index(process_ptr).view_rodata() == pre.prc_mp.spec_index(process_ptr).view_rodata(),
@@ -590,7 +591,9 @@ pub proof fn kernel_thread_context_wlocked_pagetable_rlocked_and_progress_change
             let process = pre_u.process_map.spec_index(process_ptr);
             kernel_k_to_kernel_u(*post) == (KernelU {
                 cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre_u.cpu_array[cpu_id as int] }),
-                container_map: pre_u.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::WriteLocked, ..pre_u.container_map.spec_index(container_ptr) }),
+                container_map: pre_u.container_map.insert(container_ptr, ContainerU {
+                    lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(process.depth)), ..pre_u.container_map.spec_index(container_ptr)
+                }),
                 process_map: pre_u.process_map.insert(process_ptr, ProcessU {
                     lock_state: LockStateU::WriteLocked, pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..process.pagetable->Some_0 }), ..process
                 }),
@@ -617,7 +620,9 @@ pub proof fn kernel_thread_context_wlocked_pagetable_rlocked_and_progress_change
     assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre_u.cpu_array[cpu_id as int] }), i => {
         if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); }
     });
-    assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::WriteLocked, ..pre_u.container_map.spec_index(container_ptr) }), c => {
+    assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(container_ptr, ContainerU {
+        lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(process.depth)), ..pre_u.container_map.spec_index(container_ptr)
+    }), c => {
         if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); } if post.ctn_mp.dom().contains(c) { kernel_container_projection_at(post, c); }
     });
     assert_maps_equal!(post_u.process_map, pre_u.process_map.insert(process_ptr, ProcessU {
@@ -705,7 +710,7 @@ pub proof fn kernel_thread_context_unlocked_pagetable_runlocked_and_progress_cha
             let process = pre_u.process_map.spec_index(process_ptr);
             kernel_k_to_kernel_u(*post) == (KernelU {
                 cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre_u.cpu_array[cpu_id as int] }),
-                container_map: pre_u.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, ..pre_u.container_map.spec_index(container_ptr) }),
+                container_map: pre_u.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..pre_u.container_map.spec_index(container_ptr) }),
                 process_map: pre_u.process_map.insert(process_ptr, ProcessU {
                     lock_state: LockStateU::Unlocked, pagetable: Some(PageTableU { lock_state: post.pt_mp.spec_index(pagetable_ptr).lock_state_u(), ..process.pagetable->Some_0 }), ..process
                 }),
@@ -734,7 +739,7 @@ pub proof fn kernel_thread_context_unlocked_pagetable_runlocked_and_progress_cha
     assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre_u.cpu_array[cpu_id as int] }), i => {
         if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); }
     });
-    assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, ..pre_u.container_map.spec_index(container_ptr) }), c => {
+    assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..pre_u.container_map.spec_index(container_ptr) }), c => {
         if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); } if post.ctn_mp.dom().contains(c) { kernel_container_projection_at(post, c); }
     });
     assert_maps_equal!(post_u.process_map, pre_u.process_map.insert(process_ptr, ProcessU {

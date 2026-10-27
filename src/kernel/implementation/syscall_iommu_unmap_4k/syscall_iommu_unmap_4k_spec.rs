@@ -8,16 +8,19 @@ pub open spec fn iommu_unmap_4k_iova_range(iova: VAddr, range: usize) -> VaRange
 }
 
 /// The result of `syscall_iommu_unmap_4k` from the state at entry, in the implementation's check order: malformed
-/// arguments, an idle or marked cpu, a killed or zombie container, a killed process or caller, a process without an
-/// IOMMU table, and then a range below the first user L4 index or with an iova that has no present 4K leaf.
+/// arguments, an idle or marked cpu, a killed container, a container write-held under a live process owner below the
+/// caller's process depth, a zombie container, a killed process or caller, a process without an IOMMU table, and then a
+/// range below the first user L4 index or with an iova that has no present 4K leaf.
 pub open spec fn iommu_unmap_4k_syscall_result(pre: KernelU, cpu_id: CpuId, iova: VAddr, range: usize) -> RetValueType {
     let thread = pre.thread_map[pre.cpu_array[cpu_id as int].current_thread->Some_0];
     let process = pre.process_map[thread.owning_proc];
     let mapping = process.iommu_table->Some_0.mapping_4k;
+    let owner = pre.container_map[thread.owning_container].lock_process_owner;
     let iova_range = iommu_unmap_4k_iova_range(iova, range);
     if range == 0 || range > usize::MAX / 4096 || !spec_va_4k_valid(iova) || iova >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(iova, range) { RetValueType::Error }
     else if !(pre.cpu_array[cpu_id as int].state is Running) || pre.cpu_array[cpu_id as int].killed { RetValueType::CpuIdle }
     else if pre.container_map[thread.owning_container].killed { RetValueType::ErrorContainerKilled }
+    else if owner is Some && owner->Some_0 < LockOwnerId::Some(process.depth) { RetValueType::ErrorContainerLockOrderConflict }
     else if pre.container_map[thread.owning_container].zombie { RetValueType::ErrorContainerZombie }
     else if process.killed { RetValueType::ErrorProcessKilled }
     else if thread.killed { RetValueType::ErrorThreadKilled }
@@ -84,8 +87,8 @@ pub open spec fn iommu_unmap_4k_enter_step_pre(old_u: KernelU, cpu_id: CpuId, io
     &&& forall|i: int| #![trigger iommu_table.mapping_4k.dom().contains(iova_range.view()[i])] 0 <= i < iova_range.len ==> iommu_table.mapping_4k.dom().contains(iova_range.view()[i])
 }
 
-/// Entering write-locks the cpu, its running thread, the thread's process and container, and the process's IOMMU
-/// table, and starts progress at the first iova.
+/// Entering write-locks the cpu, its running thread, the thread's process and container, recording the process depth as
+/// the container's lock owner, and the process's IOMMU table, and starts progress at the first iova.
 #[verifier::opaque]
 pub open spec fn iommu_unmap_4k_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, iova_range: VaRange4K) -> bool {
     let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
@@ -94,7 +97,9 @@ pub open spec fn iommu_unmap_4k_enter_step(old_u: KernelU, new_u: KernelU, cpu_i
     let progress = SyscallProgress::IommuUnmap4k { iova_range, unmapped: 0, flushed: false };
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..old_u.cpu_array[cpu_id as int] }),
-        container_map: old_u.container_map.insert(thread.owning_container, ContainerU { lock_state: LockStateU::WriteLocked, ..old_u.container_map.spec_index(thread.owning_container) }),
+        container_map: old_u.container_map.insert(thread.owning_container, ContainerU {
+            lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(process.depth)), ..old_u.container_map.spec_index(thread.owning_container)
+        }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
             lock_state: LockStateU::WriteLocked, iommu_table: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..process.iommu_table->Some_0 }), ..process
         }),
@@ -194,8 +199,8 @@ pub open spec fn iommu_unmap_4k_exit_step_pre(old_u: KernelU, cpu_id: CpuId) -> 
     &&& progress->IommuUnmap4k_flushed
 }
 
-/// Exiting clears the progress and unlocks the cpu, its running thread, the thread's process and container, and the
-/// process's IOMMU table.
+/// Exiting clears the progress and unlocks the cpu, its running thread, the thread's process and container, clearing the
+/// container's lock owner, and the process's IOMMU table.
 #[verifier::opaque]
 pub open spec fn iommu_unmap_4k_exit_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
@@ -203,7 +208,9 @@ pub open spec fn iommu_unmap_4k_exit_step(old_u: KernelU, new_u: KernelU, cpu_id
     let process = old_u.process_map.spec_index(thread.owning_proc);
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..old_u.cpu_array[cpu_id as int] }),
-        container_map: old_u.container_map.insert(thread.owning_container, ContainerU { lock_state: LockStateU::Unlocked, ..old_u.container_map.spec_index(thread.owning_container) }),
+        container_map: old_u.container_map.insert(thread.owning_container, ContainerU {
+            lock_state: LockStateU::Unlocked, lock_process_owner: None, ..old_u.container_map.spec_index(thread.owning_container)
+        }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
             lock_state: LockStateU::Unlocked, iommu_table: Some(PageTableU { lock_state: LockStateU::Unlocked, ..process.iommu_table->Some_0 }), ..process
         }),

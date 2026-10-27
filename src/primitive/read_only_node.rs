@@ -29,5 +29,7 @@ impl<V> ReadOnlyNode<V> {
 impl<V: LockOwnerIdTrait> LockOwnerIdTrait for ReadOnlyNode<V> {
     open spec fn container_depth(&self) -> LockOwnerId { self.view().container_depth() }
     open spec fn process_depth(&self) -> LockOwnerId { self.view().process_depth() }
+    open spec fn container_source(&self) -> OwnerSource { self.view().container_source() }
+    open spec fn process_source(&self) -> OwnerSource { self.view().process_source() }
 }
 }

@@ -23,8 +23,8 @@ pub struct LinkedList<T, const MAJOR: LockMajorId> {
 }
 
 impl<T, const MAJOR: LockMajorId> LockOwnerIdTrait for LinkedList<T, MAJOR> {
-    open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
-    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
+    open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::None }
+    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::None }
 }
 impl<T, const MAJOR: LockMajorId> LockInvTrait for LinkedList<T, MAJOR> {
     open spec fn inv(&self) -> bool { self.wf() }

@@ -292,9 +292,10 @@ impl LockMajorTrait for Process {
     open spec fn lock_major_default_predicate(&self) -> bool { true }
 }
 
+// Intentional payload defaults: `ProcessRO` supplies both fixed owner components, so these are never consulted.
 impl LockOwnerIdTrait for Process {
-    open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
-    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
+    open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::None }
+    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::None }
 }
 
 impl LockOwnerIdTrait for ProcessRO {

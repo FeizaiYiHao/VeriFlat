@@ -16,11 +16,13 @@ verus! {
     pub type EndpointLockedMap = LockedMap<RwLockEndpointPtr, Endpoint, (), (), ENDPOINT_HAS_KILL_STATE>;
     pub type PageAllocatorUnLockedMap<const SIZE: usize> = UnLockedMap<RwLockPageAllocatorPtr, PageAllocator<SIZE>>;
     pub type ProcessLockedMap = LockedMap<RwLockProcessPtr, Process, ReadOnlyNode<ProcessRO>, ProcessGhost, PROCESS_HAS_KILL_STATE>;
+    // `irt` leads the layout (`init.rs` pins its offset); `repr(C)` keeps that independent of lock-word niches.
+    #[repr(C)]
     pub struct KernelK{
+        pub irt: IommuRootTableLock,
         pub pt_mp: PageTableLockedMap,
         pub pt_lower: Tracked<PageTableLowerMap>,
         pub it_mp: IommuTableLockedMap,
-        pub irt: IommuRootTableLock,
         pub pg_arr: PageLockedArray,
         pub cpu_arr: CpuLockedArray,
         pub pcid_needflush: PcidNeedFlushArray,

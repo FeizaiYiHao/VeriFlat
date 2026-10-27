@@ -72,17 +72,29 @@ verus! {
             let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
             let process_ptr = cpu.current_process().unwrap();
             let container_ptr = cpu.owning_container();
-            let container_res = krnl.wlock_container_unless_killed(container_ptr, Tracked(lctx));
-            if container_res.is_none() {
-                krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
-                proof {
-                    steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), None, None, None, None, None);
-                    alloc_quota_4k_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorContainerKilled);
-                    alloc_quota_4k_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::ErrorContainerKilled);
-                }
-                return RetValueType::ErrorContainerKilled;
-            }
-            let Tracked(container_lock_perm) = container_res.unwrap();
+            let requested = LockOwnerId::Some(cpu.process_depth());
+            let container_res = krnl.wlock_container_unless_killed(container_ptr, requested, Tracked(lctx));
+            let Tracked(container_lock_perm) = match container_res {
+                DynamicWLockResult::Acquired(perm) => perm,
+                DynamicWLockResult::Killed(_) => {
+                    krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
+                    proof {
+                        steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), None, None, None, None, None);
+                        alloc_quota_4k_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorContainerKilled);
+                        alloc_quota_4k_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::ErrorContainerKilled);
+                    }
+                    return RetValueType::ErrorContainerKilled;
+                },
+                DynamicWLockResult::DepthConflict { .. } => {
+                    krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
+                    proof {
+                        steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), None, None, None, None, None);
+                        alloc_quota_4k_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorContainerLockOrderConflict);
+                        alloc_quota_4k_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::ErrorContainerLockOrderConflict);
+                    }
+                    return RetValueType::ErrorContainerLockOrderConflict;
+                },
+            };
             let container = krnl.ctn_mp.borrow_typed(container_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(&container_lock_perm));
             if container.zombie {
                 krnl.wunlock_container(container_ptr, Tracked(lctx), Tracked(container_lock_perm));
@@ -376,17 +388,29 @@ verus! {
             let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
             let process_ptr = cpu.current_process().unwrap();
             let container_ptr = cpu.owning_container();
-            let container_res = krnl.wlock_container_unless_killed(container_ptr, Tracked(lctx));
-            if container_res.is_none() {
-                krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
-                proof {
-                    steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), None, None, None, None, None);
-                    alloc_quota_2m_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorContainerKilled);
-                    alloc_quota_2m_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::ErrorContainerKilled);
-                }
-                return RetValueType::ErrorContainerKilled;
-            }
-            let Tracked(container_lock_perm) = container_res.unwrap();
+            let requested = LockOwnerId::Some(cpu.process_depth());
+            let container_res = krnl.wlock_container_unless_killed(container_ptr, requested, Tracked(lctx));
+            let Tracked(container_lock_perm) = match container_res {
+                DynamicWLockResult::Acquired(perm) => perm,
+                DynamicWLockResult::Killed(_) => {
+                    krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
+                    proof {
+                        steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), None, None, None, None, None);
+                        alloc_quota_2m_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorContainerKilled);
+                        alloc_quota_2m_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::ErrorContainerKilled);
+                    }
+                    return RetValueType::ErrorContainerKilled;
+                },
+                DynamicWLockResult::DepthConflict { .. } => {
+                    krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
+                    proof {
+                        steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), None, None, None, None, None);
+                        alloc_quota_2m_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount, RetValueType::ErrorContainerLockOrderConflict);
+                        alloc_quota_2m_result_from_k(&*old(krnl), cpu_id, alloc_amount, RetValueType::ErrorContainerLockOrderConflict);
+                    }
+                    return RetValueType::ErrorContainerLockOrderConflict;
+                },
+            };
             let container = krnl.ctn_mp.borrow_typed(container_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(&container_lock_perm));
             if container.zombie {
                 krnl.wunlock_container(container_ptr, Tracked(lctx), Tracked(container_lock_perm));

@@ -153,8 +153,7 @@ pub fn create_thread_from_staged_page_merged(
                 &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_endpoints == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_endpoints
                 &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_threads.view() == if c == container_ptr { old(krnl).ctn_mp.spec_index(c).view_ghost().owned_threads.view().insert(page_ptr) }
                         else { old(krnl).ctn_mp.spec_index(c).view_ghost().owned_threads.view() }
-                &&& final(krnl).ctn_mp.spec_index(c).being_killed() == old(krnl).ctn_mp.spec_index(c).being_killed()
-                &&& final(krnl).ctn_mp.spec_index(c).killer_info() == old(krnl).ctn_mp.spec_index(c).killer_info()
+                &&& final(krnl).ctn_mp.spec_index(c).control() == old(krnl).ctn_mp.spec_index(c).control()
             },
         forall|c: RwLockContainerPtr|
             #![trigger final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes]

@@ -290,13 +290,15 @@ verus! {
         }
     }
 
-    impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT, const N: usize> LockedArray<T, ROT, GhostT, N, HAS_KILL_STATE> {
+    impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const N: usize> LockedArray<T, ROT, GhostT, N, HAS_KILL_STATE> {
         /// Write-lock entry `index` unless it is marked: a marked entry returns at once with nothing changed.
         #[verifier(external_body)]
         pub fn wlock_unless_killed(&mut self, index: usize, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>) -> (ret: Option<Tracked<LockPerm>>)
             requires
                 old(self).inv(),
                 0 <= index < N,
+                !(old(self).spec_index(index).view().view_rodata().container_source() is Dynamic),
+                !(old(self).spec_index(index).view().view_rodata().process_source() is Dynamic),
                 wlock_requires(old(self).spec_index(index).view(), old(lctx)),
                 !old(self).spec_index(index).view().being_killed() ==> old(lctx).lock_id_acyclic(old(self).lock_id_by_index(index)),
             ensures
@@ -317,6 +319,8 @@ verus! {
             requires
                 old(self).inv(),
                 0 <= index < N,
+                !(old(self).spec_index(index).view().view_rodata().container_source() is Dynamic),
+                !(old(self).spec_index(index).view().view_rodata().process_source() is Dynamic),
                 old(self).spec_index(index).view().wlocked_by(old(lctx)),
                 old(self).spec_index(index).view().being_killed() == false,
                 lock_perm.view().state() is WriteLock,
@@ -342,6 +346,8 @@ verus! {
             requires
                 old(self).inv(),
                 0 <= index < N,
+                !(old(self).spec_index(index).view().view_rodata().container_source() is Dynamic),
+                !(old(self).spec_index(index).view().view_rodata().process_source() is Dynamic),
                 old(self).spec_index(index).view().wlocked_by(lctx),
                 !old(self).spec_index(index).view().being_killed(),
                 lctx.kernel_view_locking_state() is Release,

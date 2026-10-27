@@ -16,14 +16,17 @@ pub(super) proof fn thread_exit_syscall_result_from_k(krnl: &KernelK, cpu_id: Cp
             let caller = thread.view().caller;
             let live = c.state is Running && !cpu.being_killed();
             let peer_killed = caller is Some && krnl.thr_mp.spec_index(caller->Some_0).being_killed();
+            let owner = container.lock_process_owner_u();
+            let conflict = owner is Some && owner->Some_0 < LockOwnerId::Some(process.view_rodata().view().depth);
             &&& live ==> krnl.ctn_mp.dom().contains(c.owning_container) && krnl.prc_mp.dom().contains(c.current_process->Some_0) && krnl.thr_mp.dom().contains(c.current_thread->Some_0)
             &&& live && caller is Some && (ret is CpuIdle || ret is ErrorIpcPeerKilled) ==> krnl.thr_mp.dom().contains(caller->Some_0)
-            &&& ret is CpuIdle ==> !live || (!container.being_killed() && !process.being_killed() && !thread.being_killed() && !peer_killed)
+            &&& ret is CpuIdle ==> !live || (!container.being_killed() && !conflict && !process.being_killed() && !thread.being_killed() && !peer_killed)
             &&& ret is ErrorContainerKilled ==> live && container.being_killed()
-            &&& ret is ErrorProcessKilled ==> live && !container.being_killed() && process.being_killed()
-            &&& ret is ErrorThreadKilled ==> live && !container.being_killed() && !process.being_killed() && thread.being_killed()
-            &&& ret is ErrorIpcPeerKilled ==> live && !container.being_killed() && !process.being_killed() && !thread.being_killed() && peer_killed
-            &&& ret is CpuIdle || ret is ErrorContainerKilled || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorIpcPeerKilled
+            &&& ret is ErrorContainerLockOrderConflict ==> live && !container.being_killed() && conflict
+            &&& ret is ErrorProcessKilled ==> live && !container.being_killed() && !conflict && process.being_killed()
+            &&& ret is ErrorThreadKilled ==> live && !container.being_killed() && !conflict && !process.being_killed() && thread.being_killed()
+            &&& ret is ErrorIpcPeerKilled ==> live && !container.being_killed() && !conflict && !process.being_killed() && !thread.being_killed() && peer_killed
+            &&& ret is CpuIdle || ret is ErrorContainerKilled || ret is ErrorContainerLockOrderConflict || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorIpcPeerKilled
         },
     ensures
         thread_exit_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id) == ret,
@@ -85,9 +88,10 @@ pub(super) proof fn thread_exit_enter_step_pre_from_k(
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_process == Some(process_ptr),
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].owning_container == container_ptr,
         kernel_k_to_kernel_u(*krnl).thread_map[thread_ptr].caller == caller,
+        kernel_k_to_kernel_u(*krnl).process_map[process_ptr].depth == krnl.prc_mp.spec_index(process_ptr).view_rodata().view().depth,
         caller matches Some(caller_ptr) ==> (kernel_k_to_kernel_u(*krnl).thread_map[caller_ptr].state is DANGLING) == dangling,
 {
-    kernel_cpu_thread_projection_at(krnl, cpu_id, process_ptr, thread_ptr, None); kernel_container_projection_at(krnl, container_ptr);
+    kernel_cpu_thread_projection_at(krnl, cpu_id, process_ptr, thread_ptr, None); kernel_container_projection_at(krnl, container_ptr); kernel_process_projection_at(krnl, process_ptr);
     if let Some(caller_ptr) = caller { kernel_thread_projection_at(krnl, caller_ptr); }
     reveal(thread_exit_enter_step_pre);
 }
@@ -107,7 +111,9 @@ pub(super) proof fn thread_exit_enter_step_from_u(
         caller matches Some(caller_ptr) ==> (pre.thread_map[caller_ptr].state is DANGLING) == dangling,
         locked == (KernelU {
             cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre.cpu_array[cpu_id as int] }),
-            container_map: pre.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::WriteLocked, ..pre.container_map[container_ptr] }),
+            container_map: pre.container_map.insert(container_ptr, ContainerU {
+                lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(pre.process_map[process_ptr].depth)), ..pre.container_map[container_ptr]
+            }),
             process_map: pre.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::WriteLocked, ..pre.process_map[process_ptr] }),
             thread_map: pre.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, ..pre.thread_map.spec_index(thread_ptr) }),
             ..pre
@@ -276,7 +282,7 @@ pub(super) proof fn thread_exit_finish_step_from_u(
         pre.cpu_array[cpu_id as int].owning_container == container_ptr,
         kernel_u_thread_exit_changed(KernelU {
             cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre.cpu_array[cpu_id as int] }),
-            container_map: pre.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, ..pre.container_map[container_ptr] }),
+            container_map: pre.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..pre.container_map[container_ptr] }),
             process_map: pre.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::Unlocked, ..pre.process_map[process_ptr] }),
             ..pre
         }, post, cpu_id, thread_ptr, flushed_default_pcid),

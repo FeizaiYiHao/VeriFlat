@@ -51,6 +51,8 @@ impl KernelK {
                         !(state.is_endpoint_waiting() || state.is_reply_waiting() || state is IPC_TRANSIT)
                     }
                 }
+                &&& major < THREAD_SCHEDULED_LOCK_MAJOR ==> forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread)
+                    ==> old(self).thr_mp.spec_index(held_thread).being_killed() || !(old(self).thr_mp.spec_index(held_thread).view().state is SCHEDULED)
             },
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures

@@ -10,8 +10,9 @@ methodological pillar.
 - **User view** (`KernelU`, `src/kernel/kernel_u_define_spec.rs`): the
   projection `kernel_k_to_kernel_u(k)` sampled at atomic-section boundaries.
   It includes address-space mappings, scheduler queues, quotas, TLBs, and
-  object lock modes (`LockStateU`); it excludes lock owners, reader counts,
-  the page array, and allocator internals.
+  object lock modes (`LockStateU`) and each container's dynamic lock owner
+  (`lock_process_owner`); it excludes other lock owners, reader counts, the
+  page array, and allocator internals.
 
 We pick atomicity granularity to match each view:
 
@@ -57,6 +58,15 @@ State machine:
 - `enter_kernel_view_release` (TCB) closes the Acquire phase without changing
   the maps; `update_lock_id` (TCB) replaces a held object's dynamic id during
   `Release`.
+
+`LockId` order is concrete: structural equality and lexicographic comparison
+of container owner, process owner, major, then minor, with owners ordered
+`High < Some(depth) < None` and no wildcard. Each owner component has an
+`OwnerSource` (`Payload`, `Fixed`, or `Dynamic`); `None` is an intentional
+ownerless component. `Dynamic` (only a container's process component) is an
+acquisition policy: the acquirer requests a concrete owner, a shallower live
+holder is reported as a conflict instead of waited for, and the lock records
+the requested owner until unlock. Per-family owners are in `LockId.md`.
 
 `Release` is a sink within a section. Any `lock; ...; unlock; ...; lock`
 pattern fails to verify because the second `lock` requires `Acquire` and the

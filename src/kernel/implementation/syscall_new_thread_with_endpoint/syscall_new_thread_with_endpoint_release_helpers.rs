@@ -96,7 +96,7 @@ pub(super) fn attach_endpoint_and_release_new_thread_locks(
             Some(SyscallProgress::NewThread { regs, endpoint_index: Some(endpoint_index) })),
         *old(krnl) == (KernelK { pg_arr: old(krnl).pg_arr, ctn_mp: old(krnl).ctn_mp, sched_mp: old(krnl).sched_mp, prc_mp: old(krnl).prc_mp, thr_mp: old(krnl).thr_mp, ..finish_k }),
         forall|c: RwLockContainerPtr| #![trigger old(krnl).ctn_mp.spec_index(c).locking_thread()]
-            finish_k.ctn_mp.dom().contains(c) ==> old(krnl).ctn_mp.spec_index(c).locking_thread() == finish_k.ctn_mp.spec_index(c).locking_thread(),
+            finish_k.ctn_mp.dom().contains(c) ==> old(krnl).ctn_mp.spec_index(c).locking_thread() == finish_k.ctn_mp.spec_index(c).locking_thread() && old(krnl).ctn_mp.spec_index(c).control() == finish_k.ctn_mp.spec_index(c).control(),
         forall|p: RwLockProcessPtr| #![trigger old(krnl).prc_mp.spec_index(p).locking_thread()]
             finish_k.prc_mp.dom().contains(p) && p != process_ptr ==> old(krnl).prc_mp.spec_index(p).locking_thread() == finish_k.prc_mp.spec_index(p).locking_thread(),
         forall|t: RwLockThreadPtr| #![trigger old(krnl).thr_mp.spec_index(t)]
@@ -109,7 +109,7 @@ pub(super) fn attach_endpoint_and_release_new_thread_locks(
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         kernel_new_thread_fields(&finish_k, final(krnl), process_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, regs, Some(endpoint_ptr), None),
         forall|p: RwLockContainerPtr| #![trigger final(krnl).ctn_mp.spec_index(p)]
-            finish_k.ctn_mp.dom().contains(p) ==> final(krnl).ctn_mp.spec_index(p).locking_thread() == finish_k.ctn_mp.spec_index(p).locking_thread(),
+            finish_k.ctn_mp.dom().contains(p) ==> final(krnl).ctn_mp.spec_index(p).locking_thread() == finish_k.ctn_mp.spec_index(p).locking_thread() && final(krnl).ctn_mp.spec_index(p).lock_process_owner_u() == finish_k.ctn_mp.spec_index(p).lock_process_owner_u(),
         forall|p: RwLockProcessPtr| #![trigger final(krnl).prc_mp.spec_index(p)]
             finish_k.prc_mp.dom().contains(p) ==> if p == process_ptr { final(krnl).prc_mp.spec_index(p).locking_thread() is None } else { final(krnl).prc_mp.spec_index(p).locking_thread() == finish_k.prc_mp.spec_index(p).locking_thread() },
         forall|p: RwLockThreadPtr| #![trigger final(krnl).thr_mp.spec_index(p)]

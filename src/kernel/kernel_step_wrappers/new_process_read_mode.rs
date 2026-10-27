@@ -68,7 +68,8 @@ pub proof fn kernel_cpu_process_thread_endpoint_wlocked_pagetable_rlocked_implie
                 cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: mode, ..old_u.cpu_array[cpu_id as int] }),
                 container_map: match container {
                     Some(c) => old_u.container_map.insert(c, ContainerU {
-                        lock_state: mode, cpu_set_lock: if cpu_set_unlocked is Some { mode } else { old_u.container_map[c].cpu_set_lock }, ..old_u.container_map[c]
+                        lock_state: mode, lock_process_owner: post.ctn_mp.spec_index(c).lock_process_owner_u(),
+                        cpu_set_lock: if cpu_set_unlocked is Some { mode } else { old_u.container_map[c].cpu_set_lock }, ..old_u.container_map[c]
                     }),
                     None => old_u.container_map,
                 },
@@ -173,7 +174,7 @@ pub proof fn kernel_new_thread_fields_and_unlocks_source_runlocked_implies_u_ste
         index_valid(NUM_CPUS, cpu_id),
         kernel_new_thread_fields(pre, post, process_ptr, thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, endpoint_ptr, None),
         forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)]
-            pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).locking_thread() == pre.ctn_mp.spec_index(p).locking_thread(),
+            pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).locking_thread() == pre.ctn_mp.spec_index(p).locking_thread() && post.ctn_mp.spec_index(p).lock_process_owner_u() == pre.ctn_mp.spec_index(p).lock_process_owner_u(),
         forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
             pre.prc_mp.dom().contains(p) ==> if p == process_ptr { post.prc_mp.spec_index(p).locking_thread() is None } else { post.prc_mp.spec_index(p).locking_thread() == pre.prc_mp.spec_index(p).locking_thread() },
         forall|p: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(p)]
@@ -303,7 +304,7 @@ pub proof fn kernel_new_thread_fields_and_parent_unlocks_source_runlocked_implie
         index_valid(NUM_CPUS, cpu_id),
         kernel_new_thread_fields(pre, post, process_ptr, thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, endpoint_ptr, None),
         forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)]
-            pre.ctn_mp.dom().contains(p) ==> if p == container_ptr || source_container == p { post.ctn_mp.spec_index(p).locking_thread() is None } else { post.ctn_mp.spec_index(p).locking_thread() == pre.ctn_mp.spec_index(p).locking_thread() },
+            pre.ctn_mp.dom().contains(p) ==> if p == container_ptr || source_container == p { post.ctn_mp.spec_index(p).locking_thread() is None } else { post.ctn_mp.spec_index(p).locking_thread() == pre.ctn_mp.spec_index(p).locking_thread() && post.ctn_mp.spec_index(p).lock_process_owner_u() == pre.ctn_mp.spec_index(p).lock_process_owner_u() },
         forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
             pre.prc_mp.dom().contains(p) ==> if p == process_ptr || source == p { post.prc_mp.spec_index(p).locking_thread() is None } else { post.prc_mp.spec_index(p).locking_thread() == pre.prc_mp.spec_index(p).locking_thread() },
         forall|p: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(p)]
@@ -345,8 +346,8 @@ pub proof fn kernel_new_thread_fields_and_parent_unlocks_source_runlocked_implie
             let lock = kernel_k_to_kernel_u(*post).process_map[source].pagetable->Some_0.lock_state;
             kernel_u_new_thread_changed(KernelU {
                 cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: mode, ..old_u.cpu_array[cpu_id as int] }),
-                container_map: old_u.container_map.insert(source_container, ContainerU { lock_state: mode, ..old_u.container_map[source_container] })
-                    .insert(container_ptr, ContainerU { lock_state: mode, ..old_u.container_map[container_ptr] }),
+                container_map: old_u.container_map.insert(source_container, ContainerU { lock_state: mode, lock_process_owner: None, ..old_u.container_map[source_container] })
+                    .insert(container_ptr, ContainerU { lock_state: mode, lock_process_owner: None, ..old_u.container_map[container_ptr] }),
                 process_map: old_u.process_map.insert(source, ProcessU {
                     lock_state: mode, pagetable: Some(PageTableU { lock_state: lock, ..old_u.process_map[source].pagetable->Some_0 }), ..old_u.process_map[source]
                 }).insert(process_ptr, ProcessU {
@@ -373,8 +374,8 @@ pub proof fn kernel_new_thread_fields_and_parent_unlocks_source_runlocked_implie
     });
     let pre_u = KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: mode, ..old_u.cpu_array[cpu_id as int] }),
-        container_map: old_u.container_map.insert(source_container, ContainerU { lock_state: mode, ..old_u.container_map[source_container] })
-            .insert(container_ptr, ContainerU { lock_state: mode, ..old_u.container_map[container_ptr] }),
+        container_map: old_u.container_map.insert(source_container, ContainerU { lock_state: mode, lock_process_owner: None, ..old_u.container_map[source_container] })
+            .insert(container_ptr, ContainerU { lock_state: mode, lock_process_owner: None, ..old_u.container_map[container_ptr] }),
         process_map: unlocked,
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: mode, ..old_u.thread_map.spec_index(thread_ptr) }),
         endpoint_map: match endpoint_ptr {

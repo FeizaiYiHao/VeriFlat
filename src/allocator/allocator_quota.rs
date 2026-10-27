@@ -28,8 +28,8 @@ impl<const SIZE: usize> LockMinorTrait for AllocatorQuota<SIZE> {
 }
 
 impl<const SIZE: usize> LockOwnerIdTrait for AllocatorQuota<SIZE> {
-    open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
-    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
+    open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::None }
+    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::None }
 }
 
 impl<const SIZE: usize> LockIdTrait for AllocatorQuota<SIZE> {

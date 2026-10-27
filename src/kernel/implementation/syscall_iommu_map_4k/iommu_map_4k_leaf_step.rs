@@ -51,6 +51,8 @@ pub(super) fn iommu_map_4k_map_one_page(
         k0.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
         k0.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
         k0.thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
+        forall|held_thread: RwLockThreadPtr| #![trigger lctx0.thread_lock_map().dom().contains(held_thread)] lctx0.thread_lock_map().dom().contains(held_thread)
+            ==> k0.thr_mp.spec_index(held_thread).being_killed() || !(k0.thr_mp.spec_index(held_thread).view().state is SCHEDULED),
         !k0.thr_mp.spec_index(thread_ptr).view_ghost().exited,
         k0.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr,
         k0.prc_mp.spec_index(process_ptr).view().iommu_table == Some(iommu_table_ptr),

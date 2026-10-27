@@ -54,6 +54,8 @@ pub(super) fn new_container_lock_process_and_thread(
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k) && old(lctx).holds_no_allocator_locks(PageSize::SZ2m) && old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
         old(lctx).container_lock_map().dom() =~= set![parent_container_ptr],
+        old(lctx).container_lock_map().index(parent_container_ptr).lock_id == dynamic_container_lock_id(parent_container_ptr, old(krnl).ctn_mp.spec_index(parent_container_ptr).view_rodata().view().depth,
+            LockOwnerId::Some(old(krnl).prc_mp.spec_index(parent_process_ptr).view_rodata().view().depth)),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         cpu_lock_perm.state() is WriteLock && cpu_lock_perm.thread_id() == old(lctx).thread_id(),
         cpu_lock_perm.lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
@@ -61,6 +63,7 @@ pub(super) fn new_container_lock_process_and_thread(
         typed_lock_map_contains_mode(old(lctx).container_lock_map(), parent_container_ptr, TypedLockMode::Write),
         !old(krnl).ctn_mp.spec_index(parent_container_ptr).being_killed() && !old(steps).snapshot_k().ctn_mp.spec_index(parent_container_ptr).being_killed(),
         !old(krnl).ctn_mp.spec_index(parent_container_ptr).view().zombie,
+        old(krnl).ctn_mp.spec_index(parent_container_ptr).lock_process_owner_u() == Some(LockOwnerId::Some(old(krnl).prc_mp.spec_index(parent_process_ptr).view_rodata().view().depth)),
         old(krnl).ctn_mp.spec_index(parent_container_ptr).view_rodata().view().depth < MAX_CONTAINER_TREE_DEPTH,
         old(krnl).ctn_mp.spec_index(parent_container_ptr).view_rodata().view().depth == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().container_depth,
         old(krnl).ctn_mp.spec_index(parent_container_ptr).view_rodata().view().cpu_set == parent_cpu_set,
@@ -148,6 +151,7 @@ pub(super) fn new_container_lock_process_and_thread(
             &&& typed_lock_map_contains_mode(final(lctx).container_lock_map(), e.parent_container_ptr, TypedLockMode::Write)
             &&& !final(krnl).ctn_mp.spec_index(e.parent_container_ptr).being_killed()
             &&& !old(steps).snapshot_k().ctn_mp.spec_index(e.parent_container_ptr).being_killed()
+            &&& final(krnl).ctn_mp.spec_index(e.parent_container_ptr).lock_process_owner_u() == Some(LockOwnerId::Some(final(krnl).prc_mp.spec_index(e.parent_process_ptr).view_rodata().view().depth))
             &&& !final(krnl).ctn_mp.spec_index(e.parent_container_ptr).view().zombie
             &&& final(krnl).ctn_mp.spec_index(e.parent_container_ptr).view_rodata().view().depth < MAX_CONTAINER_TREE_DEPTH
             &&& final(krnl).ctn_mp.spec_index(e.parent_container_ptr).view_rodata().view().cpu_set == e.parent_cpu_set
@@ -187,6 +191,11 @@ pub(super) fn new_container_lock_process_and_thread(
             &&& e.thread_lock_perm.view().lock_id() == final(krnl).thr_mp.spec_index(e.current_thread_ptr).locking_thread()->Write_lock_id
         }),
 {
+    proof {
+        assert(!krnl.prc_mp.spec_index(parent_process_ptr).being_killed() ==> typed_lock_map_ids_lt(lctx.container_lock_map(), krnl.prc_mp.lock_id_by_key(parent_process_ptr))) by {
+            process_perms_wf_at(krnl.prc_mp, parent_process_ptr);
+        };
+    }
     let process_res = krnl.wlock_process_unless_killed(parent_process_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
     if process_res.is_none() {
         krnl.wunlock_container(parent_container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
@@ -269,6 +278,8 @@ pub(super) fn new_container_lock_source_windows(
         old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
         forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+        forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread)
+            ==> old(krnl).thr_mp.spec_index(held_thread).being_killed() || !(old(krnl).thr_mp.spec_index(held_thread).view().state is SCHEDULED),
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), root, TypedLockMode::Read),
         big.state() is ReadLock && big.thread_id() == old(lctx).thread_id(),
         old(krnl).pt_mp.spec_index(root).is_init(),

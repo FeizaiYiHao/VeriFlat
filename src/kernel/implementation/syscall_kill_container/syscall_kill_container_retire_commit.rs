@@ -91,8 +91,7 @@ pub(crate) fn kill_container_retire_commit(
             let target = old(krnl).ctn_mp.spec_index(container_ptr);
             &&& new_c.view_rodata() == old_c.view_rodata()
             &&& new_c.locking_thread() == old_c.locking_thread()
-            &&& new_c.being_killed() == old_c.being_killed()
-            &&& new_c.killer_info() == old_c.killer_info()
+            &&& new_c.control() == old_c.control()
             &&& new_c.view().zombie == old_c.view().zombie
             &&& new_c.view().root_process == old_c.view().root_process
             &&& new_c.view().children.view() == if c == parent_ptr { old_c.view().children.view().remove_value(container_ptr) } else { old_c.view().children.view() }
@@ -309,8 +308,7 @@ fn kill_container_retire_detach(
                 &&& new_c.is_init() == old_c.is_init()
                 &&& new_c.view_rodata() == old_c.view_rodata()
                 &&& new_c.locking_thread() == old_c.locking_thread()
-                &&& new_c.being_killed() == old_c.being_killed()
-                &&& new_c.killer_info() == old_c.killer_info()
+                &&& new_c.control() == old_c.control()
                 &&& final(krnl).ctn_mp.lock_id_by_key(c) == old(krnl).ctn_mp.lock_id_by_key(c)
                 &&& new_c.view() == (Container { children: new_c.view().children, owned_pages: new_c.view().owned_pages, ..old_c.view() })
                 &&& c != parent_ptr ==> new_c.view().children == old_c.view().children

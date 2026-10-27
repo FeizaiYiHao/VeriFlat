@@ -242,7 +242,7 @@ pub proof fn kill_process_dequeue_endpoint_step_iso(old_u: KernelU, new_u: Kerne
         kill_process_dequeue_endpoint_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 {
-    reveal(kill_process_dequeue_endpoint_step); reveal(kernel_u_endpoint_wait_wf);
+    reveal(kill_process_dequeue_endpoint_step); reveal(kernel_u_endpoint_ownership_wf);
     let victim_ptr = kill_stage(old_u, cpu_id)->Thread_thread;
     let endpoint_ptr = old_u.thread_map[victim_ptr].blocking_endpoint_ptr->Some_0;
     let queue = old_u.endpoint_map[endpoint_ptr].queue;
@@ -367,7 +367,7 @@ pub proof fn kill_process_descriptor_dropped_step_iso(old_u: KernelU, new_u: Ker
         kernel_u_killed_descriptor_dropped(old_u, new_u),
     ensures isolated(new_u, a, b),
 {
-    reveal(kernel_u_killed_descriptor_dropped);
+    reveal(kernel_u_killed_descriptor_dropped); reveal(kernel_u_endpoint_ownership_wf);
     let changed = old_u.thread_map.dom().filter(|t: RwLockThreadPtr| new_u.thread_map[t] != old_u.thread_map[t]);
     assert forall|t: RwLockThreadPtr| #![trigger changed.contains(t)] changed.contains(t) implies isolated(new_u, a, b) by {
         let thread = old_u.thread_map[t];
@@ -563,18 +563,11 @@ pub proof fn kill_process_endpoint_released_step_iso(old_u: KernelU, new_u: Kern
         kernel_u_killed_endpoint_released(old_u, new_u),
     ensures isolated(new_u, a, b),
 {
-    reveal(kernel_u_killed_endpoint_released); reveal(kernel_u_endpoint_released); reveal(kernel_u_thread_ownership_wf); reveal(kernel_u_endpoint_wait_wf);
+    reveal(kernel_u_killed_endpoint_released); reveal(kernel_u_endpoint_released); reveal(kernel_u_endpoint_ownership_wf);
     let changed = old_u.thread_map.dom().filter(|t: RwLockThreadPtr| new_u.thread_map[t] != old_u.thread_map[t]);
     assert forall|t: RwLockThreadPtr| #![trigger changed.contains(t)] changed.contains(t) implies isolated(new_u, a, b) by {
         let thread = old_u.thread_map[t];
         let dropped = Set::<int>::range(0, MAX_NUM_ENDPOINT_DESCRIPTORS as int).filter(|j: int| new_u.thread_map[t].endpoint_descriptors[j] != thread.endpoint_descriptors[j]);
-        assert forall|index: int| #![trigger dropped.contains(index)] dropped.contains(index) implies isolated(new_u, a, b) by {
-            let endpoint_ptr = thread.endpoint_descriptors[index]->Some_0;
-            assert forall|p: RwLockThreadPtr| #![trigger old_u.thread_map[p].blocking_endpoint_ptr]
-                old_u.thread_map.dom().contains(p) && old_u.thread_map[p].blocking_endpoint_ptr is Some implies old_u.thread_map[p].blocking_endpoint_ptr->Some_0 != endpoint_ptr by {
-                if old_u.thread_map[p].blocking_endpoint_ptr->Some_0 == endpoint_ptr { assert(old_u.endpoint_map[endpoint_ptr].queue.contains(p)); }
-            };
-        };
         if !isolated(new_u, a, b) { assert(dropped =~= Set::<int>::empty()); }
     };
     if !isolated(new_u, a, b) { assert(changed =~= Set::<RwLockThreadPtr>::empty()); }

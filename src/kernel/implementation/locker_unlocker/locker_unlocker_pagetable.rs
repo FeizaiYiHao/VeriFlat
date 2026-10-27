@@ -21,6 +21,8 @@ impl KernelK {
             old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
             forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
             forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(self).pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
+            forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread)
+                ==> old(self).thr_mp.spec_index(held_thread).being_killed() || !(old(self).thr_mp.spec_index(held_thread).view().state is SCHEDULED),
             forall|held_pagetable: RwLockPageTableRoot| #![trigger old(lctx).pagetable_lock_map().dom().contains(held_pagetable)] old(lctx).pagetable_lock_map().dom().contains(held_pagetable) ==> held_pagetable < pagetable_ptr,
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
@@ -105,6 +107,8 @@ impl KernelK {
             old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
             forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
             forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(self).pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
+            forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread)
+                ==> old(self).thr_mp.spec_index(held_thread).being_killed() || !(old(self).thr_mp.spec_index(held_thread).view().state is SCHEDULED),
             forall|held_pagetable: RwLockPageTableRoot| #![trigger old(lctx).pagetable_lock_map().dom().contains(held_pagetable)] old(lctx).pagetable_lock_map().dom().contains(held_pagetable) ==> held_pagetable < source_pagetable && held_pagetable < target_pagetable,
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
@@ -302,6 +306,8 @@ impl KernelK {
             old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
             forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
             forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(self).pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
+            forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread)
+                ==> old(self).thr_mp.spec_index(held_thread).being_killed() || !(old(self).thr_mp.spec_index(held_thread).view().state is SCHEDULED),
             forall|held_pagetable: RwLockPageTableRoot| #![trigger old(lctx).pagetable_lock_map().dom().contains(held_pagetable)] old(lctx).pagetable_lock_map().dom().contains(held_pagetable) ==> held_pagetable < source_pagetable && held_pagetable < target_pagetable,
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
@@ -387,6 +393,8 @@ impl KernelK {
             old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
             forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
             forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(self).pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
+            forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread)
+                ==> old(self).thr_mp.spec_index(held_thread).being_killed() || !(old(self).thr_mp.spec_index(held_thread).view().state is SCHEDULED),
             forall|held_pagetable: RwLockPageTableRoot| #![trigger old(lctx).pagetable_lock_map().dom().contains(held_pagetable)] old(lctx).pagetable_lock_map().dom().contains(held_pagetable) ==> held_pagetable < read_pagetable && held_pagetable < write_pagetable,
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
@@ -476,6 +484,8 @@ impl KernelK {
             old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
             forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
             forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(self).pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
+            forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread)
+                ==> old(self).thr_mp.spec_index(held_thread).being_killed() || !(old(self).thr_mp.spec_index(held_thread).view().state is SCHEDULED),
             forall|held_pagetable: RwLockPageTableRoot| #![trigger old(lctx).pagetable_lock_map().dom().contains(held_pagetable)] old(lctx).pagetable_lock_map().dom().contains(held_pagetable) ==> held_pagetable < pagetable_ptr,
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures

@@ -14,9 +14,9 @@ impl KernelK {
             index_valid(NUM_CPUS, cpu_id),
             old(lctx).kernel_view_locking_state() is Acquire,
             typed_lock_maps_aligned(old(self), old(lctx)),
-            // An ordinary caller holds only non-Off cpus and containers no deeper than the table. A killer of a deeper table
-            // holds its own cpu, Idle cpus no deeper than the table, its process, thread, and container, objects it
-            // marked, and flags below this one.
+            // An ordinary caller holds only non-Off cpus and containers no deeper than the table and, when the table is its own
+            // running cpu's, that cpu's process and thread. A killer of a deeper table holds its own cpu, Idle cpus no deeper
+            // than the table, its process, thread, and container, objects it marked, and flags below this one.
             ({
                 let depth = old(self).cpu_offline_mp.spec_index(flags_ptr).container_depth.view();
                 let cpu_i = old(lctx).cpu_id();
@@ -24,7 +24,11 @@ impl KernelK {
                 ||| {
                     &&& old(lctx).cpu_offline_flag_lock_map().dom().is_empty()
                     &&& forall|i: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(i)] old(lctx).cpu_lock_map().dom().contains(i) ==> !(old(self).cpu_arr.spec_index(i).view().view().view().state is Off)
-                    &&& old(lctx).process_lock_map().dom().is_empty() && old(lctx).thread_lock_map().dom().is_empty() && old(lctx).cpu_set_lock_map().dom().is_empty()
+                    &&& forall|p: RwLockProcessPtr| #![trigger old(lctx).process_lock_map().dom().contains(p)] old(lctx).process_lock_map().dom().contains(p)
+                        ==> index_valid(NUM_CPUS, cpu_i) && old(lctx).cpu_lock_map().dom().contains(cpu_i) && cpu.state is Running && cpu.current_process == Some(p) && flags_ptr == cpu_offline_flags_ptr(cpu.owning_container)
+                    &&& forall|t: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(t)] old(lctx).thread_lock_map().dom().contains(t)
+                        ==> index_valid(NUM_CPUS, cpu_i) && old(lctx).cpu_lock_map().dom().contains(cpu_i) && cpu.state is Running && cpu.current_thread == Some(t) && flags_ptr == cpu_offline_flags_ptr(cpu.owning_container)
+                    &&& old(lctx).cpu_set_lock_map().dom().is_empty()
                     &&& old(lctx).page_lock_map().dom().is_empty() && old(lctx).pcid_needflush_lock_map().dom().is_empty() && old(lctx).endpoint_lock_map().dom().is_empty()
                     &&& old(lctx).scheduler_lock_map().dom().is_empty() && old(lctx).pcid_allocator_lock_map().dom().is_empty() && old(lctx).pagetable_lock_map().dom().is_empty()
                     &&& old(lctx).iommu_table_lock_map().dom().is_empty() && old(lctx).iommu_root_table_lock_map().dom().is_empty()

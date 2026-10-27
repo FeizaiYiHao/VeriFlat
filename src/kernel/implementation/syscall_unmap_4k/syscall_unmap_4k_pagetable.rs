@@ -48,7 +48,19 @@ pub(super) fn unmap_4k_lock_pagetable_and_unmap(
         typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
         wlock_ensures(old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view(), old(krnl).cpu_arr.spec_index(cpu_id).view(), old(steps).snapshot_k().cpu_arr.lock_id_by_index(cpu_id), old(lctx), cpu_perm),
-        wlock_ensures(old(steps).snapshot_k().ctn_mp.spec_index(container_ptr), old(krnl).ctn_mp.spec_index(container_ptr), old(steps).snapshot_k().ctn_mp.lock_id_by_key(container_ptr), old(lctx), container_perm),
+        ({
+            let pre = old(steps).snapshot_k().ctn_mp.spec_index(container_ptr);
+            let post = old(krnl).ctn_mp.spec_index(container_ptr);
+            &&& !pre.locked()
+            &&& post.locking_thread() == (RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: container_perm.lock_id() })
+            &&& post.lock_process_owner_u() == Some(LockOwnerId::Some(old(steps).snapshot_k().prc_mp.spec_index(process_ptr).view_rodata().view().depth))
+            &&& post.view() == pre.view()
+            &&& post.view_rodata() == pre.view_rodata()
+            &&& post.view_ghost() == pre.view_ghost()
+            &&& post.being_killed() == pre.being_killed()
+            &&& container_perm.state() is WriteLock
+            &&& container_perm.thread_id() == old(lctx).thread_id()
+        }),
         wlock_ensures(old(steps).snapshot_k().prc_mp.spec_index(process_ptr), old(krnl).prc_mp.spec_index(process_ptr), old(steps).snapshot_k().prc_mp.lock_id_by_key(process_ptr), old(lctx), process_perm),
         wlock_ensures(old(steps).snapshot_k().thr_mp.spec_index(thread_ptr), old(krnl).thr_mp.spec_index(thread_ptr), old(steps).snapshot_k().thr_mp.lock_id_by_key(thread_ptr), old(lctx), thread_perm),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
@@ -189,7 +201,19 @@ fn unmap_4k_unlock_all_rejected(
         old(krnl).thr_mp.unchanged_except(&old(steps).snapshot_k().thr_mp, thread_ptr),
         old(krnl).pt_mp.unchanged_except(&old(steps).snapshot_k().pt_mp, pagetable),
         wlock_ensures(old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view(), old(krnl).cpu_arr.spec_index(cpu_id).view(), old(steps).snapshot_k().cpu_arr.lock_id_by_index(cpu_id), old(lctx), cpu_perm),
-        wlock_ensures(old(steps).snapshot_k().ctn_mp.spec_index(container_ptr), old(krnl).ctn_mp.spec_index(container_ptr), old(steps).snapshot_k().ctn_mp.lock_id_by_key(container_ptr), old(lctx), container_perm),
+        ({
+            let pre = old(steps).snapshot_k().ctn_mp.spec_index(container_ptr);
+            let post = old(krnl).ctn_mp.spec_index(container_ptr);
+            &&& !pre.locked()
+            &&& post.locking_thread() == (RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: container_perm.lock_id() })
+            &&& post.lock_process_owner_u() == Some(LockOwnerId::Some(old(steps).snapshot_k().prc_mp.spec_index(process_ptr).view_rodata().view().depth))
+            &&& post.view() == pre.view()
+            &&& post.view_rodata() == pre.view_rodata()
+            &&& post.view_ghost() == pre.view_ghost()
+            &&& post.being_killed() == pre.being_killed()
+            &&& container_perm.state() is WriteLock
+            &&& container_perm.thread_id() == old(lctx).thread_id()
+        }),
         wlock_ensures(old(steps).snapshot_k().prc_mp.spec_index(process_ptr), old(krnl).prc_mp.spec_index(process_ptr), old(steps).snapshot_k().prc_mp.lock_id_by_key(process_ptr), old(lctx), process_perm),
         wlock_ensures(old(steps).snapshot_k().thr_mp.spec_index(thread_ptr), old(krnl).thr_mp.spec_index(thread_ptr), old(steps).snapshot_k().thr_mp.lock_id_by_key(thread_ptr), old(lctx), thread_perm),
         old(steps).snapshot_k().pt_mp.spec_index(pagetable).inv(),

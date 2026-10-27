@@ -3,13 +3,15 @@ use crate::*;
 
 verus! {
 /// The result of `syscall_alloc_quota_4k` from the state at entry, in the implementation's check order:
-/// a cpu no longer Running or marked by a killer, a killed or zombie container, a killed process, too little container 4K quota, and process 4K quota overflow.
+/// a cpu no longer Running or marked by a killer, a killed container, a container write-held by a live owner below the running
+/// process's depth, a zombie container, a killed process, too little container 4K quota, and process 4K quota overflow.
 pub open spec fn alloc_quota_4k_syscall_result(pre: KernelU, cpu_id: CpuId, alloc_amount: usize) -> RetValueType {
     let cpu = pre.cpu_array[cpu_id as int];
     let container = pre.container_map[cpu.owning_container];
     let process = pre.process_map[cpu.current_process->Some_0];
     if !(cpu.state is Running) || cpu.killed { RetValueType::CpuIdle }
     else if container.killed { RetValueType::ErrorContainerKilled }
+    else if container.lock_process_owner is Some && container.lock_process_owner->Some_0 < LockOwnerId::Some(process.depth) { RetValueType::ErrorContainerLockOrderConflict }
     else if container.zombie { RetValueType::ErrorContainerZombie }
     else if process.killed { RetValueType::ErrorProcessKilled }
     else if container.quota_4k < alloc_amount { RetValueType::ErrorContainerQuotaInsufficient }
@@ -118,13 +120,15 @@ pub open spec fn alloc_thread_quota_4k_syscall_trace(trace: Seq<KernelStep>, pre
 }
 
 /// The result of `syscall_alloc_quota_2m` from the state at entry, in the implementation's check order:
-/// a cpu no longer Running or marked by a killer, a killed or zombie container, a killed process, too little container 2M quota, and process 2M quota overflow.
+/// a cpu no longer Running or marked by a killer, a killed container, a container write-held by a live owner below the running
+/// process's depth, a zombie container, a killed process, too little container 2M quota, and process 2M quota overflow.
 pub open spec fn alloc_quota_2m_syscall_result(pre: KernelU, cpu_id: CpuId, alloc_amount: usize) -> RetValueType {
     let cpu = pre.cpu_array[cpu_id as int];
     let container = pre.container_map[cpu.owning_container];
     let process = pre.process_map[cpu.current_process->Some_0];
     if !(cpu.state is Running) || cpu.killed { RetValueType::CpuIdle }
     else if container.killed { RetValueType::ErrorContainerKilled }
+    else if container.lock_process_owner is Some && container.lock_process_owner->Some_0 < LockOwnerId::Some(process.depth) { RetValueType::ErrorContainerLockOrderConflict }
     else if container.zombie { RetValueType::ErrorContainerZombie }
     else if process.killed { RetValueType::ErrorProcessKilled }
     else if container.quota_2m < alloc_amount { RetValueType::ErrorContainerQuotaInsufficient }

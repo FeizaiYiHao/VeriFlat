@@ -76,8 +76,7 @@ pub fn release_endpoint_last_reference(
                 &&& b.view() == a.view()
                 &&& b.view_rodata() == a.view_rodata()
                 &&& b.locking_thread() == a.locking_thread()
-                &&& b.being_killed() == a.being_killed()
-                &&& b.killer_info() == a.killer_info()
+                &&& b.control() == a.control()
                 &&& b.view_ghost() == if c == old(krnl).ep_mp.spec_index(endpoint_ptr).view().owning_container {
                         ContainerGhost { owned_endpoints: Ghost(a.view_ghost().owned_endpoints.view().remove(endpoint_ptr)), ..a.view_ghost() }
                     } else { a.view_ghost() }

@@ -14,8 +14,9 @@ pub(crate) proof fn kill_container_idle_pre_from_k(krnl: &KernelK, cpu_id: CpuId
     ensures kill_container_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, child_index) is CpuIdle,
 { kernel_cpu_projection_at(krnl, cpu_id); }
 
-/// On a running unmarked cpu that runs `thread_ptr` of `process_ptr` in `container_ptr`, a marked container, process, or
-/// thread, a child index past the container's children, and a marked child container each reject the kill.
+/// On a running unmarked cpu that runs `thread_ptr` of `process_ptr` in `container_ptr`, a marked container, a
+/// container write-held by a live owner below the process's depth, a marked process or thread, a child index past the
+/// container's children, and a marked child container each reject the kill.
 pub(crate) proof fn kill_container_result_pre_from_k(
     krnl: &KernelK, cpu_id: CpuId, child_index: usize, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
 )
@@ -33,11 +34,14 @@ pub(crate) proof fn kill_container_result_pre_from_k(
         ({
             let container = krnl.ctn_mp.spec_index(container_ptr);
             let children = container.view().children.view();
-            let live = !container.being_killed() && !krnl.prc_mp.spec_index(process_ptr).being_killed() && !krnl.thr_mp.spec_index(thread_ptr).being_killed();
+            let owner = container.lock_process_owner_u();
+            let conflict = owner is Some && owner->Some_0 < LockOwnerId::Some(krnl.prc_mp.spec_index(process_ptr).view_rodata().view().depth);
+            let live = !container.being_killed() && !conflict && !krnl.prc_mp.spec_index(process_ptr).being_killed() && !krnl.thr_mp.spec_index(thread_ptr).being_killed();
             let result = kill_container_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, child_index);
             &&& container.being_killed() ==> result is ErrorContainerKilled
-            &&& !container.being_killed() && krnl.prc_mp.spec_index(process_ptr).being_killed() ==> result is ErrorProcessKilled
-            &&& !container.being_killed() && !krnl.prc_mp.spec_index(process_ptr).being_killed() && krnl.thr_mp.spec_index(thread_ptr).being_killed() ==> result is ErrorThreadKilled
+            &&& !container.being_killed() && conflict ==> result is ErrorContainerLockOrderConflict
+            &&& !container.being_killed() && !conflict && krnl.prc_mp.spec_index(process_ptr).being_killed() ==> result is ErrorProcessKilled
+            &&& !container.being_killed() && !conflict && !krnl.prc_mp.spec_index(process_ptr).being_killed() && krnl.thr_mp.spec_index(thread_ptr).being_killed() ==> result is ErrorThreadKilled
             &&& live && child_index >= children.len() ==> result is ErrorInvalidChild
             &&& live && child_index < children.len() && krnl.ctn_mp.dom().contains(children[child_index as int]) && krnl.ctn_mp.spec_index(children[child_index as int]).being_killed()
                 ==> result is ErrorContainerKilled
@@ -45,6 +49,7 @@ pub(crate) proof fn kill_container_result_pre_from_k(
 {
     let children = krnl.ctn_mp.spec_index(container_ptr).view().children.view();
     kernel_cpu_thread_projection_at(krnl, cpu_id, process_ptr, thread_ptr, None); kernel_thread_projection_at(krnl, thread_ptr); kernel_container_projection_at(krnl, container_ptr);
+    kernel_process_projection_at(krnl, process_ptr);
     if child_index < children.len() && krnl.ctn_mp.dom().contains(children[child_index as int]) { kernel_container_projection_at(krnl, children[child_index as int]); }
 }
 
@@ -112,6 +117,7 @@ pub(crate) proof fn kill_container_enter_pre_from_k(
             &&& container.children[child_index as int] == child_ptr
             &&& u.container_map.dom().contains(child_ptr)
             &&& !u.container_map[child_ptr].killed
+            &&& process.depth == krnl.prc_mp.spec_index(process_ptr).view_rodata().view().depth
         }),
         kill_container_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, child_index) is Success,
 {
@@ -157,7 +163,9 @@ pub(crate) proof fn kill_container_enter_step_from_u(
         }),
         locked == (KernelU {
             cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre.cpu_array[cpu_id as int] }),
-            container_map: pre.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::WriteLocked, ..pre.container_map[container_ptr] }),
+            container_map: pre.container_map.insert(container_ptr, ContainerU {
+                lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(pre.process_map[process_ptr].depth)), ..pre.container_map[container_ptr]
+            }),
             process_map: pre.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::WriteLocked, ..pre.process_map[process_ptr] }),
             thread_map: pre.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, ..pre.thread_map[thread_ptr] }),
             ..pre
@@ -311,7 +319,7 @@ pub(crate) proof fn kill_container_finish_step_from_u(
         cleared == (KernelU { thread_map: pre.thread_map.insert(thread_ptr, ThreadU { syscall_progress: None, ..pre.thread_map[thread_ptr] }), ..pre }),
         post == (KernelU {
             cpu_array: cleared.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..cleared.cpu_array[cpu_id as int] }),
-            container_map: cleared.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, ..cleared.container_map[container_ptr] }),
+            container_map: cleared.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..cleared.container_map[container_ptr] }),
             process_map: cleared.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::Unlocked, ..cleared.process_map[process_ptr] }),
             thread_map: cleared.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..cleared.thread_map[thread_ptr] }),
             ..cleared

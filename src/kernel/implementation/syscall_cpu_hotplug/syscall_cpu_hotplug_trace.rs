@@ -118,30 +118,37 @@ pub(super) proof fn cpu_offline_request_child_result_from_k(krnl: &KernelK, cpu_
     requires
         index_valid(NUM_CPUS, cpu_id),
         index_valid(NUM_CPUS, target),
+        cpu_array_wf(krnl.cpu_arr, krnl.dflt_pt.view()),
+        process_cpu_wf(krnl.prc_mp, krnl.cpu_arr),
         {
             let cpu = krnl.cpu_arr.spec_index(cpu_id).view();
             let caller = krnl.ctn_mp.spec_index(cpu.view().view().owning_container);
             let children = caller.view().children.view();
             let t = krnl.cpu_arr.spec_index(target).view().view().view();
-            let live = !caller.being_killed() && !caller.view().zombie;
+            let conflict = caller.lock_process_owner_u() is Some && caller.lock_process_owner_u()->Some_0 < LockOwnerId::Some(cpu.view().view().process_depth);
+            let live = !caller.being_killed() && !conflict && !caller.view().zombie;
             let owned = child < children.len() && t.owning_container == children[child as int];
             &&& ret is CpuIdle ==> !(cpu.view().view().state is Running) || cpu.being_killed()
             &&& !(ret is CpuIdle) ==> cpu.view().view().state is Running && !cpu.being_killed() && krnl.ctn_mp.dom().contains(cpu.view().view().owning_container)
             &&& ret is ErrorContainerKilled ==> caller.being_killed()
-            &&& ret is ErrorContainerZombie ==> !caller.being_killed() && caller.view().zombie
+            &&& ret is ErrorContainerLockOrderConflict ==> !caller.being_killed() && conflict
+            &&& ret is ErrorContainerZombie ==> !caller.being_killed() && !conflict && caller.view().zombie
             &&& ret is ErrorCpuOwnerMismatch ==> live && !owned
             &&& ret is ErrorCpuAlreadyOff ==> live && owned && t.state is Off
             &&& ret is Success ==> live && owned && !(t.state is Off)
             &&& ret is Success ==> krnl.ctn_mp.dom().contains(t.owning_container) && pending == krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(t.owning_container)).flags.spec_index(target).view().view().requested
-            &&& ret is CpuIdle || ret is ErrorContainerKilled || ret is ErrorContainerZombie || ret is ErrorCpuOwnerMismatch || ret is ErrorCpuAlreadyOff || ret is Success
+            &&& ret is CpuIdle || ret is ErrorContainerKilled || ret is ErrorContainerLockOrderConflict || ret is ErrorContainerZombie || ret is ErrorCpuOwnerMismatch || ret is ErrorCpuAlreadyOff || ret is Success
         },
     ensures
         cpu_offline_request_child_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, child, target) == ret,
         ret is Success ==> cpu_offline_request_child_pending(kernel_k_to_kernel_u(*krnl), target) == pending,
 {
-    let container_ptr = krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container;
+    let cpu = krnl.cpu_arr.spec_index(cpu_id).view().view().view();
+    let container_ptr = cpu.owning_container;
     kernel_cpu_projection_at(krnl, cpu_id); kernel_cpu_projection_at(krnl, target);
     if krnl.ctn_mp.dom().contains(container_ptr) { kernel_container_projection_at(krnl, container_ptr); }
+    cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
+    if cpu.current_process is Some { kernel_process_projection_at(krnl, cpu.current_process->Some_0); }
     let t = krnl.cpu_arr.spec_index(target).view().view().view();
     if krnl.ctn_mp.dom().contains(t.owning_container) { kernel_container_projection_at(krnl, t.owning_container); }
     reveal(cpu_offline_requests_of);
@@ -186,28 +193,35 @@ pub(super) proof fn cpu_online_child_result_from_k(krnl: &KernelK, cpu_id: CpuId
         index_valid(NUM_CPUS, cpu_id),
         index_valid(NUM_CPUS, target),
         container_cpu_wf(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr),
+        cpu_array_wf(krnl.cpu_arr, krnl.dflt_pt.view()),
+        process_cpu_wf(krnl.prc_mp, krnl.cpu_arr),
         {
             let cpu = krnl.cpu_arr.spec_index(cpu_id).view();
             let caller = krnl.ctn_mp.spec_index(cpu.view().view().owning_container);
             let children = caller.view().children.view();
             let child_set = krnl.cpu_set_mp.spec_index(krnl.ctn_mp.spec_index(children[child as int]).view_rodata().view().cpu_set).view().owned_cpus;
-            let live = !caller.being_killed() && !caller.view().zombie;
+            let conflict = caller.lock_process_owner_u() is Some && caller.lock_process_owner_u()->Some_0 < LockOwnerId::Some(cpu.view().view().process_depth);
+            let live = !caller.being_killed() && !conflict && !caller.view().zombie;
             let owned = child < children.len() && krnl.ctn_mp.dom().contains(children[child as int]) && child_set.view().contains(target);
             &&& ret is CpuIdle ==> !(cpu.view().view().state is Running) || cpu.being_killed()
             &&& !(ret is CpuIdle) ==> cpu.view().view().state is Running && !cpu.being_killed() && krnl.ctn_mp.dom().contains(cpu.view().view().owning_container)
             &&& ret is ErrorContainerKilled ==> caller.being_killed()
-            &&& ret is ErrorContainerZombie ==> !caller.being_killed() && caller.view().zombie
+            &&& ret is ErrorContainerLockOrderConflict ==> !caller.being_killed() && conflict
+            &&& ret is ErrorContainerZombie ==> !caller.being_killed() && !conflict && caller.view().zombie
             &&& ret is ErrorCpuOwnerMismatch ==> live && !owned
             &&& ret is ErrorCpuNotOff ==> live && owned && !child_set.closed_view().contains(target)
             &&& ret is Success ==> live && owned && child_set.closed_view().contains(target)
-            &&& ret is CpuIdle || ret is ErrorContainerKilled || ret is ErrorContainerZombie || ret is ErrorCpuOwnerMismatch || ret is ErrorCpuNotOff || ret is Success
+            &&& ret is CpuIdle || ret is ErrorContainerKilled || ret is ErrorContainerLockOrderConflict || ret is ErrorContainerZombie || ret is ErrorCpuOwnerMismatch || ret is ErrorCpuNotOff || ret is Success
         },
     ensures
         cpu_online_child_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, child, target) == ret,
 {
-    let container_ptr = krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container;
+    let cpu = krnl.cpu_arr.spec_index(cpu_id).view().view().view();
+    let container_ptr = cpu.owning_container;
     reveal(container_cpu_wf); kernel_cpu_projection_at(krnl, cpu_id); kernel_cpu_projection_at(krnl, target);
     if krnl.ctn_mp.dom().contains(container_ptr) { kernel_container_projection_at(krnl, container_ptr); }
+    cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
+    if cpu.current_process is Some { kernel_process_projection_at(krnl, cpu.current_process->Some_0); }
 }
 
 /// The online wrapper's user-view facts on the child path are exactly the child online step on `pre`/`post`.

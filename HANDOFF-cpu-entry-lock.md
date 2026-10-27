@@ -1,6 +1,6 @@
 # 实施计划 — 具体锁序 + 动态容器 + 锚点 DID + Cpu 内含 SyscallPerm
 
-状态：**已批准**；Batch 1 已完成并随本提交发布，Batch 2–4 未实现。权威细节是用户在对话中批准的实施计划；本文件只记录交接所需的结构与规则，做完删除。
+状态：**已批准**；Batch 1 已完成；Batch 2 已实施并完整验证（workspace #34945 3189 / 0、NI #34944 266 / 0、单体 #34946 3189 / 0，详见 `HANDOFF.md`）；Batch 3–4 待实施。权威细节是用户在对话中批准的实施计划；本文件只记录交接所需的结构与规则，做完删除。
 
 - 取代：原"独立 CpuEntry 入口锁（IPI 模型）"方案已放弃——不新增 `CpuEntry` 对象、第 25 个锁族、`IpiPerm`、`mint/collect_syscall_perm` 或 ENTRY_* major。
 - 被放弃方案的 step 0/1 实现保存在 `/local/home/xiangdc/veriflat-parked/cpu-entry-step01.patch`（原 `stash@{0}` "parked: cpu-entry step 0/1 (ws #34657 3181/0, NI #34658 257/0)"，Batch 1 推送后 drop）。只作参考，不要 apply。
@@ -8,24 +8,31 @@
 
 ## 四个批次（顺序固定，每批工作区 + NI + 单体全绿后再进下一批）
 1. **Batch 1（已完成）**：mmap 在 read miss → fill 之间保留 cpu/T 写锁（`Mmap4kHold` / `Mmap4kRelease` U/NI 标签与两条 trace spec），外加证明清理。见 `HANDOFF.md`。
-2. **Batch 2 — 具体锁序 + 动态容器**：OwnerSource/LockControl 规则、`NotApp` 迁移为具体 owner、`ErrorContainerLockOrderConflict`。
+2. **Batch 2（已实施，完整验证通过）— 具体锁序 + 动态容器**：OwnerSource/LockControl 规则、删除 owner 通配、`ErrorContainerLockOrderConflict`。
 3. **Batch 3 — 锚点 DID**：按用户批准的方案实施；仓库内尚无细节记录，开工前与用户核对语义。
 4. **Batch 4 — SyscallPerm 放进 Cpu + IPI / kill 状态收尾**：`Cpu.syscall_perm`、入口包裹、删 offline kick、保留 online wake、删 CPU kill 状态、boot IF/evicted 规则。
 
-## Batch 2：具体锁序 + 动态容器
-- **OwnerSource**：每个锁族的 lock id owner 分量（container / process 深度）来自一个确定的来源——对象自身的不可变字段，
-  或其当前动态归属（例如 CPU 当前所属容器 / 当前进程）。来源是锁族定义的一部分，不在调用点选择。
-- **LockControl（动态规则）**：动态 owner 分量只能由持有该对象写锁的 section 改变，且改变就是一次 rekey
-  （typed 锁表条目覆写 + pair 替换，按 lock-model 的既有 dynamic-id 规则）。未持写锁时 id 稳定，可作为锁序依据。
-- **`NotApp` 迁移为具体值**：现在用 `NotApp` 通配的 owner 字段（CPU-set 锁、Off / 无上下文 CPU 等）改为由 OwnerSource 给出的
-  具体 owner，使 `lock_id_acyclic` / `held_lock_majors_lt` 在全序下成立。`NotApp` 只剩确实无归属的对象；不改变 IPC 拓扑。
-- **`ErrorContainerLockOrderConflict`**：新返回码。当 syscall 在当前已持锁下，按具体锁序无法合法获取下一把锁
-  （动态容器归属与已持锁冲突）时，放锁并以该错误 stutter 返回，而不是加锁序豁免。对应 U spec / NI 按 stutter 处理。
+## Batch 2：具体锁序 + 动态容器（已实施，完整验证通过）
+- `LockOwnerId` 只有 `High | Some(usize) | None`，无通配；`LockId` 结构相等，按 (container, process, major, minor)
+  具体字典序比较，owner 序 `High < Some(小) < … < Some(大) < None`。`None` 是有意的"无 owner"分量，不是兜底。
+- **OwnerSource**：`Payload`（payload 自身 owner，`ROT = ()` 默认）、`Fixed(owner)`（只读数据的固定 owner）、
+  `Dynamic`（当前动态写获取记录的具体 owner，否则 `None`）。被 killer 标记的对象两个分量都报 `High`。
+  各锁族的具体 owner 见 `LockId.md`。
+- **Dynamic 只用于 Container 的 process 分量**，是获取 / 来源策略，不是最终 owner。请求 `r` 时在锁 guard 下：
+  Killed 优先；活跃持有者 `h < r` 立即 `DepthConflict`；`h >= r` 等待并重查；空闲则获取并记录
+  `LockControl::DynamicProcess(r)`；unlock 清除。
+- 普通 Container 加锁请求当前进程深度，冲突时 stutter 返回 `ErrorContainerLockOrderConflict`（ABI 下标 49，
+  result spec 中紧跟 ContainerKilled）；标记更深容器请求 `High`；新建子容器以 `Some(0)` 写持有发布；
+  U 投影 `ContainerU.lock_process_owner`。
+- **OfflineFlag** 固定 owner `(Some(container_depth), None)`。自 offline：持 cpu 探测请求位后放 flag →
+  持 cpu 跨边界（Hold）→ 锁 process / thread → 重新获取 flag 并重查。完整 trace 为 Hold + Release 或
+  Hold + went-off；决策结果与 flush 标签都取边界后的具体状态。
 
 ## Batch 3：锚点 DID
-- 语义以用户批准的计划为准；本文件不补写未记录的细节。
+- 待实施。语义以用户批准的计划为准；本文件不补写未记录的细节。
 
 ## Batch 4：SyscallPerm 放进 Cpu + IPI / kill 状态
+- 待实施。
 - `Cpu` 对象新增 `syscall_perm: Option<Tracked<SyscallPerm>>`（随 CPU 锁保护，不新增锁族、不新增锁）；
   `LocalContext` 新增 tracked 槽存放本 CPU 取出的 `SyscallPerm`。
 - `u_sys_enter(cpu_id)` / `u_sys_exit(cpu_id)`：`external_body` TCB 原语，把 `SyscallPerm` 在 `Cpu.syscall_perm` 与 lctx 槽之间移动；

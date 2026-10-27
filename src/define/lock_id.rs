@@ -16,8 +16,8 @@ pub const CPU_LOCK_MAJOR_IDLE: LockMajorId = 2;
 pub const CPU_LOCK_MAJOR_OFF: LockMajorId = 30002;
 pub const PCID_NEEDFLUSH_LOCK_MAJOR: LockMajorId = 30001;
 pub const CONTAINER_LOCK_MAJOR: LockMajorId = 101;
-// Per-container offline request cells: held through an entire self-offline, so it sits below the process,
-// thread, and cpu-set locks taken there; above the container lock so a parent can request a child's cpu.
+// Per-container offline request cells have the fixed owner (Some(C.depth), None). cpu_offline_check probes and
+// releases a cell, then reacquires it after C's process and thread locks and before CS(C).
 pub const CPU_OFFLINE_FLAG_LOCK_MAJOR: LockMajorId = 104;
 pub const PROCESS_LOCK_MAJOR: LockMajorId = 105;
 pub const THREAD_LOCK_MAJOR: LockMajorId = 106;
@@ -100,72 +100,75 @@ pub type LockThreadId = usize;
 // -------------------- End of lock thread id  ----------------
 
 // -------------------- Begin of lock id  ---------------------
-#[derive(PartialEq)]
-#[derive(Eq)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub enum LockOwnerId {
     High,
     Some(usize),
     None,
-    NotApp,
 }
 impl LockOwnerId {
     pub open spec fn none() -> Self { LockOwnerId::None }
-    pub open spec fn spec_eq(self, other: Self) -> bool {
-        ||| self === other
-        ||| self is NotApp || other is NotApp
-    }
     pub open spec fn spec_gt(self, other: Self) -> bool {
-        // Owner-id order (high → low): None > Some(big) > … > Some(small) > High.
-        //   - `None` is the MAX: a `None`-owner object (a Free page, pagetable)
-        //     is locked LAST in an atomic section — once one is held, nothing
-        //     with a concrete (`Some`) owner is acquired afterward.
-        //   - `High` is the MIN: an `Owned` object (the intended owner-id for a
-        //     page once it leaves the allocator) can only be acquired when NO
-        //     `Some`-owner lock is held. Since the protocol always locks the CPU
-        //     / process (a `Some` owner) first, a `High`-owner object can never
-        //     be locked on top of it — i.e. owned pages are effectively private.
-        //   - `NotApp` is a wildcard (spec_eq with anything), so its rows never
-        //     decide an ordering — the LockId comparison skips to the next field.
+        // Owner-id order (low → high): High < Some(small) < … < Some(big) < None.
+        //   - `High` is the MIN: a killed object sinks below every live owner, so its killer may still acquire every
+        //     ordinary lock afterwards.
+        //   - `None` is the MAX: an object without a concrete owner is locked after every owned object of a section.
         match (self, other) {
-            (LockOwnerId::NotApp, _) => false,
-            (_, LockOwnerId::NotApp) => false,
-            (LockOwnerId::High, LockOwnerId::High) => false,
-            (LockOwnerId::High, LockOwnerId::Some(_)) => false,
-            (LockOwnerId::High, LockOwnerId::None) => false,
-            (LockOwnerId::Some(_), LockOwnerId::High) => true,
             (LockOwnerId::Some(x), LockOwnerId::Some(y)) => x > y,
-            (LockOwnerId::Some(_), LockOwnerId::None) => false,
+            (LockOwnerId::Some(_), LockOwnerId::High) => true,
             (LockOwnerId::None, LockOwnerId::High) => true,
             (LockOwnerId::None, LockOwnerId::Some(_)) => true,
-            (LockOwnerId::None, LockOwnerId::None) => false,
+            _ => false,
         }
     }
     pub open spec fn spec_ge(self, other: Self) -> bool {
         ||| self == other
         ||| self > other
     }
+    /// Mirror of `spec_gt`: `a < b` iff `b > a`.
     pub open spec fn spec_lt(self, other: Self) -> bool {
-        // Mirror of spec_gt: a < b iff b > a (NotApp rows stay false). Order
-        // high → low is None > Some(big) > Some(small) > High, so `None` is
-        // never less than anything and `High` is less than everything.
         match (self, other) {
-            (LockOwnerId::NotApp, _) => false,
-            (_, LockOwnerId::NotApp) => false,
-            (LockOwnerId::High, LockOwnerId::High) => false,
+            (LockOwnerId::Some(x), LockOwnerId::Some(y)) => x < y,
             (LockOwnerId::High, LockOwnerId::Some(_)) => true,
             (LockOwnerId::High, LockOwnerId::None) => true,
-            (LockOwnerId::Some(_), LockOwnerId::High) => false,
-            (LockOwnerId::Some(x), LockOwnerId::Some(y)) => x < y,
             (LockOwnerId::Some(_), LockOwnerId::None) => true,
-            (LockOwnerId::None, LockOwnerId::High) => false,
-            (LockOwnerId::None, LockOwnerId::Some(_)) => false,
-            (LockOwnerId::None, LockOwnerId::None) => false,
+            _ => false,
         }
     }
     pub open spec fn spec_le(self, other: Self) -> bool {
         ||| self == other
         ||| self < other
     }
+}
+
+pub proof fn lock_owner_id_gt_transitive(a: LockOwnerId, b: LockOwnerId, c: LockOwnerId)
+    requires
+        a > b,
+        b > c,
+    ensures
+        a > c,
+{}
+
+/// Exec mirror of `spec_lt`, used by the dynamic container acquire to decide a depth conflict.
+pub fn lock_owner_lt(lhs: LockOwnerId, rhs: LockOwnerId) -> (ret: bool)
+    ensures
+        ret == (lhs < rhs),
+{
+    match (lhs, rhs) {
+        (LockOwnerId::High, LockOwnerId::High) => false,
+        (LockOwnerId::High, _) => true,
+        (LockOwnerId::Some(x), LockOwnerId::Some(y)) => x < y,
+        (LockOwnerId::Some(_), LockOwnerId::None) => true,
+        _ => false,
+    }
+}
+
+/// Where one owner component of a lock family's ordering id comes from: the payload's own owner id, a fixed id of the
+/// read-only data, or the concrete owner recorded by the current dynamic write acquisition.
+pub ghost enum OwnerSource {
+    Payload,
+    Fixed(LockOwnerId),
+    Dynamic,
 }
 
 pub type LockMajorId = usize;
@@ -201,8 +204,8 @@ pub proof fn lock_id_fields_eq_imply_eq()
 
 impl LockId {
     pub open spec fn spec_gt(self, other: Self) -> bool {
-        if self.container.spec_eq(other.container) == false { self.container.spec_gt(other.container) }
-        else if self.process.spec_eq(other.process) == false { self.process.spec_gt(other.process) }
+        if self.container != other.container { self.container > other.container }
+        else if self.process != other.process { self.process > other.process }
         else if self.major != other.major { self.major > other.major }
         else { lock_minor_lt(other.minor, self.minor) }
     }
@@ -220,6 +223,29 @@ impl LockId {
         ||| self == other
         ||| self < other
     }
+}
+
+// The minor case inducts on the common prefix of the three minors.
+pub proof fn lock_id_gt_transitive(a: LockId, b: LockId, c: LockId)
+    requires
+        a > b,
+        b > c,
+    ensures
+        a > c,
+    decreases c.minor.len(),
+{
+    reveal_with_fuel(lock_minor_lt, 2);
+    if a.container != b.container && b.container != c.container { lock_owner_id_gt_transitive(a.container, b.container, c.container); }
+    else if a.container == b.container && b.container == c.container && a.process != b.process && b.process != c.process { lock_owner_id_gt_transitive(a.process, b.process, c.process); }
+    else if a.container == b.container && b.container == c.container && a.process == b.process && b.process == c.process && a.major == b.major && b.major == c.major
+        && c.minor.len() > 1 && b.minor.len() > 1 && c.minor[0] == b.minor[0] && b.minor[0] == a.minor[0] {
+        lock_id_gt_transitive(LockId { minor: a.minor.skip(1), ..a }, LockId { minor: b.minor.skip(1), ..b }, LockId { minor: c.minor.skip(1), ..c });
+    }
+}
+
+/// Ordering id of a container write-acquired dynamically for the concrete process owner `requested`.
+pub open spec fn dynamic_container_lock_id(container_ptr: RwLockContainerPtr, container_depth: usize, requested: LockOwnerId) -> LockId {
+    LockId { container: LockOwnerId::Some(container_depth), process: requested, major: CONTAINER_LOCK_MAJOR, minor: seq![container_ptr] }
 }
 
 // -------------------- End of lock id  -----------------------

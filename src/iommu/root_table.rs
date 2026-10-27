@@ -385,8 +385,8 @@ impl LockInvTrait for IommuRootTable {
 }
 
 impl LockOwnerIdTrait for IommuRootTable {
-    open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
-    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
+    open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::None }
+    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::None }
 }
 
 impl LockMajorTrait for IommuRootTable {
@@ -406,7 +406,7 @@ impl LockMinorTrait for IommuRootTable {
 
 impl LockIdTrait for IommuRootTable {
     open spec fn lock_id(&self) -> LockId {
-        LockId { container: LockOwnerId::NotApp, process: LockOwnerId::NotApp, major: IOMMU_ROOT_TABLE_LOCK_MAJOR, minor: seq![self.table_base()] }
+        LockId { container: LockOwnerId::None, process: LockOwnerId::None, major: IOMMU_ROOT_TABLE_LOCK_MAJOR, minor: seq![self.table_base()] }
     }
 }
 

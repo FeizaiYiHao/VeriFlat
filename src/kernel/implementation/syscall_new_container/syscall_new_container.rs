@@ -268,6 +268,7 @@ fn new_container_lock_owners(
             &&& !final(krnl).ctn_mp.spec_index(e.parent_container_ptr).being_killed()
             &&& !old(krnl).ctn_mp.spec_index(e.parent_container_ptr).being_killed()
             &&& !final(krnl).ctn_mp.spec_index(e.parent_container_ptr).view().zombie
+            &&& final(krnl).ctn_mp.spec_index(e.parent_container_ptr).lock_process_owner_u() == Some(LockOwnerId::Some(final(krnl).prc_mp.spec_index(e.parent_process_ptr).view_rodata().view().depth))
             &&& final(krnl).ctn_mp.spec_index(e.parent_container_ptr).view_rodata().view().depth < MAX_CONTAINER_TREE_DEPTH
             &&& final(krnl).ctn_mp.spec_index(e.parent_container_ptr).view_rodata().view().cpu_set == e.parent_cpu_set
             &&& !final(krnl).ctn_mp.spec_index(e.parent_container_ptr).view_ghost().owned_processes.view().is_empty()
@@ -366,18 +367,32 @@ fn new_container_lock_owners(
             &&& krnl.thr_mp.spec_index(current_thread_ptr).view().process_depth == krnl.prc_mp.spec_index(parent_process_ptr).view_rodata().view().depth
         }) by { thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); };
     }
-    let container_res = krnl.wlock_container_unless_killed(parent_container_ptr, Tracked(&mut *lctx));
-    if container_res.is_none() {
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-        proof {
-            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(parent_container_ptr), None, None, None, None, None);
-            new_container_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, endpoint_index,
-                RetValueType::ErrorContainerKilled);
-            new_container_result_from_k(old(krnl), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index, RetValueType::ErrorContainerKilled);
-        }
-        return Err(RetValueType::ErrorContainerKilled);
-    }
-    let Tracked(container_lock_perm) = container_res.unwrap();
+    let requested = LockOwnerId::Some(krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm)).process_depth());
+    let container_res = krnl.wlock_container_unless_killed(parent_container_ptr, requested, Tracked(&mut *lctx));
+    let Tracked(container_lock_perm) = match container_res {
+        DynamicWLockResult::Acquired(perm) => perm,
+        DynamicWLockResult::Killed(_) => {
+            krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+            proof {
+                steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(parent_container_ptr), None, None, None, None, None);
+                new_container_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, endpoint_index,
+                    RetValueType::ErrorContainerKilled);
+                new_container_result_from_k(old(krnl), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index, RetValueType::ErrorContainerKilled);
+            }
+            return Err(RetValueType::ErrorContainerKilled);
+        },
+        DynamicWLockResult::DepthConflict { .. } => {
+            proof { assert(krnl.pt_mp.dom().contains(krnl.prc_mp.spec_index(parent_process_ptr).view().pagetable)) by { process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, parent_process_ptr); }; }
+            krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+            proof {
+                steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(parent_container_ptr), None, None, None, None, None);
+                new_container_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, endpoint_index,
+                    RetValueType::ErrorContainerLockOrderConflict);
+                new_container_result_from_k(old(krnl), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index, RetValueType::ErrorContainerLockOrderConflict);
+            }
+            return Err(RetValueType::ErrorContainerLockOrderConflict);
+        },
+    };
     proof { assert(!krnl.ctn_mp.spec_index(parent_container_ptr).view_ghost().owned_processes.view().is_empty()) by { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, parent_process_ptr); }; }
     let parent_container = krnl.ctn_mp.borrow_typed(parent_container_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(&container_lock_perm));
     let parent_zombie = parent_container.zombie;
@@ -539,6 +554,7 @@ fn new_container_lock_entry(
             &&& typed_lock_map_contains_mode(final(lctx).container_lock_map(), e.parent_container_ptr, TypedLockMode::Write)
             &&& !final(krnl).ctn_mp.spec_index(e.parent_container_ptr).being_killed()
             &&& !final(krnl).ctn_mp.spec_index(e.parent_container_ptr).view().zombie
+            &&& final(krnl).ctn_mp.spec_index(e.parent_container_ptr).lock_process_owner_u() == Some(LockOwnerId::Some(final(krnl).prc_mp.spec_index(e.parent_process_ptr).view_rodata().view().depth))
             &&& final(krnl).ctn_mp.spec_index(e.parent_container_ptr).view_rodata().view().depth < MAX_CONTAINER_TREE_DEPTH
             &&& e.container_lock_perm.view().state() is WriteLock
             &&& e.container_lock_perm.view().thread_id() == final(lctx).thread_id()

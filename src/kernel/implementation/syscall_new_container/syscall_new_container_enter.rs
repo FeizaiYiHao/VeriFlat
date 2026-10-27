@@ -92,6 +92,7 @@ pub(super) fn enter_new_container_commit(
         typed_lock_map_contains_mode(old(lctx).container_lock_map(), parent_container_ptr, TypedLockMode::Write),
         !old(krnl).ctn_mp.spec_index(parent_container_ptr).being_killed(),
         !old(krnl).ctn_mp.spec_index(parent_container_ptr).view().zombie,
+        old(krnl).ctn_mp.spec_index(parent_container_ptr).lock_process_owner_u() == Some(LockOwnerId::Some(old(krnl).prc_mp.spec_index(parent_process_ptr).view_rodata().view().depth)),
         old(krnl).ctn_mp.spec_index(parent_container_ptr).view_rodata().view().depth < MAX_CONTAINER_TREE_DEPTH,
         old(krnl).prc_mp.dom().contains(parent_process_ptr),
         typed_lock_map_contains_mode(old(lctx).process_lock_map(), parent_process_ptr, TypedLockMode::Write),
@@ -176,7 +177,7 @@ pub(super) fn enter_new_container_commit(
             kernel_cpu_process_thread_endpoint_wlocked_pagetable_rlocked_implies_u_step(&old(steps).snapshot_k(), old(krnl), old(lctx), caller_cpu_id, parent_process_ptr,
                 current_thread_ptr, endpoint, Some(parent_container_ptr), Some(KernelK { cpu_set_mp: old(steps).snapshot_k().cpu_set_mp, ..*old(krnl) }));
             kernel_thread_syscall_progress_changed_implies_u_step(old(krnl), &entered_k, current_thread_ptr);
-            new_container_enter_step_from_u(old(steps).snapshot_u(), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(entered_k), caller_cpu_id, parent_process_ptr,
+            new_container_enter_step_from_u(old(steps).snapshot_u(), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(entered_k), old(krnl), caller_cpu_id, parent_process_ptr,
                 current_thread_ptr, parent_container_ptr, endpoint, *source_range, funding_page_count, process_quota_4k, transfer_cpu_id, regs, endpoint_index_opt);
             new_container_trace_enter_step(&*steps, old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(entered_k), caller_cpu_id, *source_range,
                 funding_page_count, process_quota_4k, transfer_cpu_id, regs, endpoint_index_opt);

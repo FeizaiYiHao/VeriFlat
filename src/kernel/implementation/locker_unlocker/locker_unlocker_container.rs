@@ -5,7 +5,10 @@ use crate::*;
 
 verus! {
 impl KernelK {
-    pub fn wlock_container_unless_killed(&mut self, container_ptr: RwLockContainerPtr, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Option<Tracked<LockPerm>>)
+    /// Dynamically write-lock the running context's container for the concrete process owner `requested`: the existing
+    /// kill record, or a shallower live dynamic holder, is reported without any change.
+    pub fn wlock_container_unless_killed(&mut self, container_ptr: RwLockContainerPtr, requested: LockOwnerId,
+        Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: DynamicWLockResult)
         requires
             old(self).inv(),
             old(self).ctn_mp.dom().contains(container_ptr),
@@ -40,6 +43,8 @@ impl KernelK {
                     &&& old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().owning_container == container_ptr
                     &&& !(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off)
                     &&& old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().container_depth == old(self).ctn_mp.spec_index(container_ptr).view_rodata().view().depth
+                    &&& old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().current_process is Some
+                    &&& requested == LockOwnerId::Some(old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().process_depth)
                 }),
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
@@ -49,37 +54,53 @@ impl KernelK {
             kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), final(self)),
             kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, final(self).ep_mp),
             kernel_container_nonlock_fields_and_quotas_unchanged(old(self), final(self)),
-            // ---- Every held lock still matches lctx (success: container locked; failure: no-op) ----
-            // ---- Dynamic lock ids remain aligned ----
+            // ---- Every held lock and its dynamic lock id still match lctx (success: container locked; failure: no-op) ----
             typed_lock_maps_aligned(final(self), final(lctx)),
             // ---- Field framing: only container_map's lock state moves ----
             *final(self) == (KernelK { ctn_mp: final(self).ctn_mp, ..*old(self) }),
-            // ---- container_map: only the targeted entry's lock state
-            // ---- (success) or nothing at all (failure) changed.
+            // ---- container_map: only the targeted entry's lock state (success) or nothing at all (failure) changed ----
             final(self).ctn_mp.unchanged_except(&old(self).ctn_mp, container_ptr),
             final(self).ctn_mp.perms_wf(),
             // ---- LocalContext phase preservation ----
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
-            // ---- Failure: container is being killed; complete no-op ----
-            ret is None ==> {
-                &&& old(self).ctn_mp.spec_index(container_ptr).being_killed() == true
+            // ---- Killed or depth conflict: complete no-op ----
+            !(ret is Acquired) ==> {
                 &&& final(self).ctn_mp.spec_index(container_ptr) == old(self).ctn_mp.spec_index(container_ptr)
-                &&& typed_lock_maps_unchanged(old(lctx), final(lctx))
+                &&& *final(lctx) == *old(lctx)
             },
-            // ---- Success: container locked by us, perm returned ----
-            ret is Some ==> {
-                &&& old(self).ctn_mp.spec_index(container_ptr).being_killed() == false
+            ret is Killed ==> old(self).ctn_mp.spec_index(container_ptr).killer_info() == Some(ret->Killed_0),
+            ret is DepthConflict ==> {
+                &&& !old(self).ctn_mp.spec_index(container_ptr).being_killed()
+                &&& old(self).ctn_mp.spec_index(container_ptr).lock_process_owner_u() == Some(ret->DepthConflict_observed_owner)
+                &&& ret->DepthConflict_observed_owner < requested
+            },
+            // ---- Success: container locked by us under the requested candidate id ----
+            ret is Acquired ==> {
+                let new_c = final(self).ctn_mp.spec_index(container_ptr);
+                let lock_id = dynamic_container_lock_id(container_ptr, old(self).ctn_mp.spec_index(container_ptr).view_rodata().view().depth, requested);
+                &&& !old(self).ctn_mp.spec_index(container_ptr).being_killed()
+                &&& !old(self).ctn_mp.spec_index(container_ptr).locked()
                 &&& !old(self).ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().is_empty()
-                &&& wlock_ensures(old(self).ctn_mp.spec_index(container_ptr), final(self).ctn_mp.spec_index(container_ptr), old(self).ctn_mp.lock_id_by_key(container_ptr), final(lctx), ret.unwrap().view())
-                &&& typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Container(container_ptr), TypedHeldLock { lock_id: final(self).ctn_mp.lock_id_by_key(container_ptr), mode: TypedLockMode::Write })
+                &&& new_c.locking_thread() == RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: ret->Acquired_0.view().lock_id() }
+                &&& new_c.inv()
+                &&& new_c.view() == old(self).ctn_mp.spec_index(container_ptr).view()
+                &&& new_c.view_rodata() == old(self).ctn_mp.spec_index(container_ptr).view_rodata()
+                &&& new_c.view_ghost() == old(self).ctn_mp.spec_index(container_ptr).view_ghost()
+                &&& new_c.control() == LockControl::DynamicProcess(requested)
+                &&& ret->Acquired_0.view().state() is WriteLock
+                &&& ret->Acquired_0.view().ordering_lock_id() == lock_id
+                &&& ret->Acquired_0.view().thread_id() == final(lctx).thread_id()
+                &&& final(self).ctn_mp.lock_id_by_key(container_ptr) == lock_id
+                &&& typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Container(container_ptr), TypedHeldLock { lock_id, mode: TypedLockMode::Write })
             },
     {
         proof {
             container_perms_wf_map(old(self).ctn_mp);
             container_perms_wf_at(old(self).ctn_mp, container_ptr);
             if !old(self).ctn_mp.spec_index(container_ptr).being_killed() {
-                assert(old(lctx).lock_id_acyclic(old(self).ctn_mp.lock_id_by_key(container_ptr))) by { reveal(LocalContext::lock_id_acyclic); reveal(pagetable_window_typed_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); };
+                let lock_id = dynamic_container_lock_id(container_ptr, old(self).ctn_mp.spec_index(container_ptr).view_rodata().view().depth, requested);
+                assert(old(lctx).lock_id_acyclic(lock_id)) by { reveal(LocalContext::lock_id_acyclic); reveal(pagetable_window_typed_lock_map_aligned); reveal(LockedArray::typed_lock_map_aligned); };
             }
             assert(!old(self).ctn_mp.spec_index(container_ptr).locked_by_thread(old(lctx).thread_id())) by {
                 if old(self).ctn_mp.spec_index(container_ptr).locked_by_thread(old(lctx).thread_id()) {
@@ -87,20 +108,21 @@ impl KernelK {
                 }
             };
         }
-        let res = self.ctn_mp.wlock_unless_killed(container_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Container(container_ptr)));
+        let lock_id = Ghost(dynamic_container_lock_id(container_ptr, self.ctn_mp.spec_index(container_ptr).view_rodata().view().depth, requested));
+        let res = self.ctn_mp.dynamic_wlock(container_ptr, Tracked(&mut *lctx), lock_id, Ghost(KernelObjId::Container(container_ptr)), requested);
         proof {
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-            wlock_container_eof(*old(self), *self, container_ptr, *lctx, res);
+            wlock_container_eof(*old(self), *self, container_ptr, requested, res is Acquired);
         }
         res
     }
 
     /// Write-lock a child of a container the killer write-holds and mark it for the killer running on this cpu. A
     /// container another killer already marked is left untouched. On success the held entry moves to the sunk id a
-    /// marked object reports.
+    /// marked object reports. The acquisition requests the killer owner `High`, so it never reports a depth conflict.
     pub fn try_wlock_container_and_mark_kill(&mut self, container_ptr: RwLockContainerPtr, killer_info: KillerInfo, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Option<Tracked<LockPerm>>)
         requires
             old(self).inv(),
@@ -129,8 +151,12 @@ impl KernelK {
             final(self).ctn_mp.spec_index(container_ptr).view_rodata() == old(self).ctn_mp.spec_index(container_ptr).view_rodata(),
             final(self).ctn_mp.spec_index(container_ptr).view_ghost() == old(self).ctn_mp.spec_index(container_ptr).view_ghost(),
             (ret is None) == old(self).ctn_mp.spec_index(container_ptr).being_killed(),
-            ret is None ==> final(self).ctn_mp.spec_index(container_ptr) == old(self).ctn_mp.spec_index(container_ptr) && *final(lctx) == *old(lctx),
+            ret is None ==> {
+                &&& final(self).ctn_mp.spec_index(container_ptr) == old(self).ctn_mp.spec_index(container_ptr)
+                &&& *final(lctx) == *old(lctx)
+            },
             ret is Some ==> {
+                &&& !old(self).ctn_mp.spec_index(container_ptr).locked()
                 &&& !old(self).ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().is_empty()
                 &&& final(self).ctn_mp.spec_index(container_ptr).being_killed()
                 &&& final(self).ctn_mp.spec_index(container_ptr).killer_info() == Some(killer_info)
@@ -145,7 +171,7 @@ impl KernelK {
             container_perms_wf_map(old(self).ctn_mp);
             container_perms_wf_at(old(self).ctn_mp, container_ptr);
             if !old(self).ctn_mp.spec_index(container_ptr).being_killed() {
-                assert(old(lctx).lock_id_acyclic(old(self).ctn_mp.lock_id_by_key(container_ptr))) by {
+                assert(old(lctx).lock_id_acyclic(dynamic_container_lock_id(container_ptr, old(self).ctn_mp.spec_index(container_ptr).view_rodata().view().depth, LockOwnerId::High))) by {
                     let cpu_id = old(lctx).cpu_id();
                     let cpu = old(self).cpu_arr.spec_index(cpu_id).view().view().view();
                     thread_cpu_wf_cpu_at(old(self).thr_mp, old(self).cpu_arr, cpu_id); process_cpu_wf_at(old(self).prc_mp, old(self).cpu_arr, cpu_id);
@@ -161,11 +187,12 @@ impl KernelK {
                 }
             };
         }
-        let res = self.ctn_mp.try_wlock_and_mark_kill(container_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Container(container_ptr)), killer_info);
+        let lock_id = Ghost(dynamic_container_lock_id(container_ptr, self.ctn_mp.spec_index(container_ptr).view_rodata().view().depth, LockOwnerId::High));
+        let res = self.ctn_mp.try_wlock_dynamic_and_mark_kill(container_ptr, Tracked(&mut *lctx), lock_id, Ghost(KernelObjId::Container(container_ptr)), Ghost(LockOwnerId::High), killer_info);
         proof {
             if res is Some {
-                let entry = TypedHeldLock { lock_id: old(self).ctn_mp.lock_id_by_key(container_ptr), mode: TypedLockMode::Write };
-                lctx.update_lock_id(KernelObjId::Container(container_ptr), old(self).ctn_mp.lock_id_by_key(container_ptr), self.ctn_mp.lock_id_by_key(container_ptr));
+                let entry = TypedHeldLock { lock_id: lock_id.view(), mode: TypedLockMode::Write };
+                lctx.update_lock_id(KernelObjId::Container(container_ptr), lock_id.view(), self.ctn_mp.lock_id_by_key(container_ptr));
                 map_insert_overwrite_lemma(old(lctx).container_lock_map(), container_ptr, entry, TypedHeldLock { lock_id: self.ctn_mp.lock_id_by_key(container_ptr), mode: TypedLockMode::Write });
             }
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
@@ -174,20 +201,10 @@ impl KernelK {
         res
     }
 
-    /// Companion of `wlock_container_unless_killed` for the unlock side.
-    /// Wraps `LockedMap::wunlock` for `container_map` and re-establishes
-    /// `inv()` immediately afterwards. Unlocking has no killed-branch — the
-    /// caller already holds the write lock, so this is unconditional.
-    ///
-    /// What changes in this lock phase:
-    ///  * `container_map[container_ptr]`'s `locking_thread()` becomes
-    ///    `None`; its payload view, rodata, and ghost state are all
-    ///    preserved (`wunlock_ensures`).
-    ///  * Every other entry of `container_map` is byte-equal pre/post
-    ///    (`unchanged_except`).
-    ///  * Every other `KernelK` field is byte-equal pre/post.
-    ///  * the typed held-lock maps lose the container entry
-    ///    (encapsulated by `unlock_ensures`).
+    /// Release this thread's live dynamic write acquisition of a live container through `LockedMap::dynamic_wunlock` and
+    /// re-establish `inv()`. The entry becomes unlocked with a clear control word and unchanged payload, rodata, and
+    /// ghost state (`dynamic_wunlock_ensures`); every other entry and `KernelK` field is unchanged, and the typed
+    /// held-lock maps lose the container entry (`unlock_ensures`).
     pub fn wunlock_container(&mut self, container_ptr: RwLockContainerPtr, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
         requires
             old(self).inv(),
@@ -213,14 +230,13 @@ impl KernelK {
             kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), final(self)),
             kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, final(self).ep_mp),
             kernel_container_nonlock_fields_and_quotas_unchanged(old(self), final(self)),
-            // ---- Every held lock still matches lctx (container now released) ----
-            // ---- Dynamic lock ids remain aligned ----
+            // ---- Every held lock and its dynamic lock id still match lctx (container now released) ----
             typed_lock_maps_aligned(final(self), final(lctx)),
             // ---- Field framing: only container_map's lock state moves ----
             *final(self) == (KernelK { ctn_mp: final(self).ctn_mp, ..*old(self) }),
             // ---- container_map: only the targeted entry's lock state changed (now unlocked) ----
             final(self).ctn_mp.unchanged_except(&old(self).ctn_mp, container_ptr),
-            wunlock_ensures(old(self).ctn_mp.spec_index(container_ptr), final(self).ctn_mp.spec_index(container_ptr)),
+            dynamic_wunlock_ensures(old(self).ctn_mp.spec_index(container_ptr), final(self).ctn_mp.spec_index(container_ptr)),
             unlock_ensures(old(lctx), final(lctx), KernelObjId::Container(container_ptr), old(self).ctn_mp.lock_id_by_key(container_ptr)),
     {
         proof {
@@ -228,7 +244,7 @@ impl KernelK {
             assert(old(lctx).lock_entry_contains(old(self).ctn_mp.lock_id_by_key(container_ptr), KernelObjId::Container(container_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         assert(self.ctn_mp.spec_index(container_ptr).wlocked_by(&*lctx)) by { old(self).ctn_mp.typed_lock_map_aligned_write_at(old(lctx).container_lock_map(), old(lctx).thread_id(), container_ptr); };
-        self.ctn_mp.wunlock(container_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::Container(container_ptr)));
+        self.ctn_mp.dynamic_wunlock(container_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::Container(container_ptr)));
         proof {
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };

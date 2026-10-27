@@ -186,7 +186,6 @@ pub(super) proof fn cpu_went_off_eof_fields(
             cpu_arr: entry.cpu_arr, prc_mp: entry.prc_mp, thr_mp: entry.thr_mp, sched_mp: entry.sched_mp, cpu_set_mp: entry.cpu_set_mp, cpu_offline_mp: entry.cpu_offline_mp, ..snapshot
         }),
         entry.cpu_arr.unchanged_except(&snapshot.cpu_arr, cpu_id),
-        snapshot.cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
         forall|p: RwLockProcessPtr| #![trigger entry.prc_mp.spec_index(p)]
             snapshot.prc_mp.dom().contains(p) ==> if current_process == Some(p) {
                 snapshot.prc_mp.spec_index(p).locking_thread() is None
@@ -252,7 +251,9 @@ pub(super) proof fn cpu_went_off_eof_fields(
         wunlock_ensures(mid.cpu_set_mp.spec_index(cpu_set_ptr), post.cpu_set_mp.spec_index(cpu_set_ptr)),
         post.cpu_offline_mp.unchanged_except(&mid.cpu_offline_mp, flags_ptr),
         cpu_offline_requests_of(post.cpu_offline_mp.spec_index(flags_ptr)) == cpu_offline_requests_of(mid.cpu_offline_mp.spec_index(flags_ptr)),
-    ensures kernel_cpu_went_off_fields(&snapshot, &post, cpu_id, entry_regs, cpu_offline_check_flushed_default_pcid(entry, cpu_id)),
+    ensures
+        kernel_cpu_went_off_fields(&snapshot, &post, cpu_id, entry_regs, cpu_offline_check_flushed_default_pcid(entry, cpu_id)),
+        post.ctn_mp == snapshot.ctn_mp,
 {
     reveal(cpu_went_off_eof_transition_framing);
     assert(scheduler_shards_of(mid.sched_mp.spec_index(scheduler_ptr)) =~= match current_thread {

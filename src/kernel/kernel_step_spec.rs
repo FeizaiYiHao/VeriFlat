@@ -2132,7 +2132,7 @@ pub open spec fn kernel_u_container_root_published(
     &&& post.container_map[parent].owned_pages.contains(thread_page)
     &&& moved.contains(child) && moved.contains(process) && moved.contains(post.container_map[child].cpu_set)
     &&& post.container_map[child] == (ContainerU {
-        lock_state: LockStateU::WriteLocked, zombie: false, children: Seq::empty(), uppertree_seq: ancestors, subtree_set: Set::empty(),
+        lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(0)), zombie: false, children: Seq::empty(), uppertree_seq: ancestors, subtree_set: Set::empty(),
         root_process: process, owned_processes: set![process], owned_threads: Set::empty(), owned_endpoints: Set::empty(), owned_pages: moved,
         parent: Some(parent), depth: (pre.container_map[parent].depth + 1) as usize, scheduler: Seq::new(NUM_CPUS as nat, |i: int| Seq::<RwLockThreadPtr>::empty()),
         cpu_set: post.container_map[child].cpu_set, cpu_set_lock: LockStateU::WriteLocked,
@@ -2195,7 +2195,7 @@ pub open spec fn kernel_u_container_root_created(
     &&& moved.len() == 2 * 512 + 9 + funding
     &&& moved.contains(child) && moved.contains(process) && moved.contains(post.container_map[child].cpu_set)
     &&& post.container_map[child] == (ContainerU {
-        lock_state: LockStateU::WriteLocked, zombie: false, children: Seq::empty(), uppertree_seq: ancestors, subtree_set: Set::empty(),
+        lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(0)), zombie: false, children: Seq::empty(), uppertree_seq: ancestors, subtree_set: Set::empty(),
         root_process: process, owned_processes: set![process], owned_threads: Set::empty(), owned_endpoints: Set::empty(), owned_pages: moved,
         parent: Some(parent), depth: (pre.container_map[parent].depth + 1) as usize, scheduler: Seq::new(NUM_CPUS as nat, |i: int| Seq::<RwLockThreadPtr>::empty()),
         cpu_set: post.container_map[child].cpu_set, cpu_set_lock: LockStateU::Unlocked,
@@ -2450,7 +2450,7 @@ pub open spec fn cpu_tlb_after_cpu_went_off(tlb: Map<(CpuId, Pcid), SingleTLB>, 
     Map::new(after_default.dom(), |key: (CpuId, Pcid)| if key.0 == cpu_id && key.1 != KERNEL_DEFAULT_PCID { empty } else { after_default[key] })
 }
 
-/// The non-Off cpu `cpu_id`, whose container `C` has a pending request for it, goes Off: its running
+/// The non-Off cpu `cpu_id`, whose container `C` has a pending request for it, goes Off and unlocked: its running
 /// thread, if any, is requeued at the tail of shard `cpu_id` of `C`'s scheduler with `regs`, `C`'s request bit for the cpu is
 /// cleared, and the cpu's TLB entries are flushed except an unflushed default-PCID entry.
 #[verifier::opaque]
@@ -2479,7 +2479,7 @@ pub open spec fn kernel_u_cpu_went_off_changed(old_u: KernelU, new_u: KernelU, c
         &&& !old_u.process_map.spec_index(cpu.current_process.unwrap()).killed
     })
     &&& new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { state: CpuState::Off, current_process: None, current_thread: None, ..cpu }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, state: CpuState::Off, current_process: None, current_thread: None, ..cpu }),
         container_map: old_u.container_map.insert(container_ptr, ContainerU {
             scheduler: match cpu.current_thread {
                 Some(prev) => container.scheduler.update(cpu_id as int, container.scheduler[cpu_id as int].push(prev)),
@@ -2496,8 +2496,9 @@ pub open spec fn kernel_u_cpu_went_off_changed(old_u: KernelU, new_u: KernelU, c
 
 #[verifier::opaque]
 /// `cpu_offline_check` with every lock released again: the non-Off cpu `cpu_id`, with a pending request of
-/// its container, went Off, its live running thread (if any) was requeued at the tail of shard `cpu_id` with `regs`, the
-/// request bit was cleared, and the cpu's TLB entries were flushed.
+/// its container, went Off and unlocked, its live running thread (if any) was requeued at the tail of shard `cpu_id` with
+/// `regs`, the request bit was cleared, and the cpu's TLB entries were flushed. The cpu may be write-held at `pre`; every
+/// other cpu keeps its lock mode.
 pub open spec fn kernel_cpu_went_off_fields(pre: &KernelK, post: &KernelK, cpu_id: CpuId, regs: Registers, flushed_default_pcid: bool) -> bool {
     let cpu = pre.cpu_arr.spec_index(cpu_id).value.view().view();
     let previous = cpu.current_thread;
@@ -2516,7 +2517,7 @@ pub open spec fn kernel_cpu_went_off_fields(pre: &KernelK, post: &KernelK, cpu_i
     &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
         pre.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread()
     &&& forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]
-        index_valid(NUM_CPUS, i) ==> post.cpu_arr.spec_index(i).value.locking_thread() == pre.cpu_arr.spec_index(i).value.locking_thread()
+        index_valid(NUM_CPUS, i) && i != cpu_id ==> post.cpu_arr.spec_index(i).value.locking_thread() == pre.cpu_arr.spec_index(i).value.locking_thread()
     &&& post.cpu_set_mp.dom() == pre.cpu_set_mp.dom()
     &&& forall|p: RwLockCpuSetPtr| #![trigger post.cpu_set_mp.spec_index(p)]
         pre.cpu_set_mp.dom().contains(p) ==> post.cpu_set_mp.spec_index(p).locking_thread() == pre.cpu_set_mp.spec_index(p).locking_thread() && post.cpu_set_mp.spec_index(p).being_killed() == pre.cpu_set_mp.spec_index(p).being_killed()
@@ -2529,7 +2530,7 @@ pub open spec fn kernel_cpu_went_off_fields(pre: &KernelK, post: &KernelK, cpu_i
     &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
     &&& post.dflt_pt == pre.dflt_pt
     &&& post.cpu_tlb.view() == cpu_tlb_after_cpu_went_off(pre.cpu_tlb.view(), cpu_id, flushed_default_pcid)
-    &&& pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
+    &&& post.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
     &&& !(cpu.state is Off)
     &&& pre.ctn_mp.dom().contains(container_ptr)
     &&& pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).locking_thread() is None
@@ -2930,6 +2931,7 @@ pub open spec fn kernel_dangling_thread_reclaimed_fields(pre: &KernelK, post: &K
             &&& b.view_ghost().owned_threads.view() == if c == dangling.view().owning_container { a.view_ghost().owned_threads.view().remove(dangling_ptr) } else { a.view_ghost().owned_threads.view() }
             &&& b.locking_thread() == a.locking_thread()
             &&& b.being_killed() == a.being_killed()
+            &&& b.control() == a.control()
             &&& post.allc_4k_mp.spec_index(a.view_rodata().view().allocator_ptr_4k).quota.view().view() as int == pre.allc_4k_mp.spec_index(a.view_rodata().view().allocator_ptr_4k).quota.view().view() as int + if a.view().owned_pages.view().contains(dangling_ptr) { 1int } else { 0int }
         }
     &&& post.thr_mp.dom() == pre.thr_mp.dom().remove(dangling_ptr)

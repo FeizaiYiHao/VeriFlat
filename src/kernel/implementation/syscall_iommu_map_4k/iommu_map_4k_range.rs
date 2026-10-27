@@ -67,6 +67,8 @@ pub(super) fn iommu_map_4k_map_range_and_exit(
         !(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Off),
         !old(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited,
         !(old(krnl).thr_mp.spec_index(thread_ptr).view().state is IPC_TRANSIT) && !(old(krnl).thr_mp.spec_index(thread_ptr).view().state is KILLED),
+        forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread)
+            ==> old(krnl).thr_mp.spec_index(held_thread).being_killed() || !(old(krnl).thr_mp.spec_index(held_thread).view().state is SCHEDULED),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
         !old(krnl).prc_mp.spec_index(process_ptr).being_killed(),
         old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Running || old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Zombie,

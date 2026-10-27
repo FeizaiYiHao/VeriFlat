@@ -28,7 +28,19 @@ pub(super) fn cpu_offline_request_child_locked(
         old(krnl).ctn_mp.perms_wf(),
         !old(krnl).ctn_mp.spec_index(caller_ptr).view_ghost().owned_processes.view().is_empty(),
         wlock_ensures(old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view(), old(krnl).cpu_arr.spec_index(cpu_id).view(), old(steps).snapshot_k().cpu_arr.lock_id_by_index(cpu_id), old(lctx), cpu_lock_perm),
-        wlock_ensures(old(steps).snapshot_k().ctn_mp.spec_index(caller_ptr), old(krnl).ctn_mp.spec_index(caller_ptr), old(steps).snapshot_k().ctn_mp.lock_id_by_key(caller_ptr), old(lctx), container_lock_perm),
+        !old(steps).snapshot_k().ctn_mp.spec_index(caller_ptr).locked(),
+        ({
+            let pre_c = old(steps).snapshot_k().ctn_mp.spec_index(caller_ptr);
+            let c = old(krnl).ctn_mp.spec_index(caller_ptr);
+            &&& c.locking_thread() == RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: container_lock_perm.lock_id() }
+            &&& c.inv()
+            &&& !c.being_killed()
+            &&& c.view() == pre_c.view()
+            &&& c.view_rodata() == pre_c.view_rodata()
+            &&& c.view_ghost() == pre_c.view_ghost()
+            &&& container_lock_perm.state() is WriteLock
+            &&& container_lock_perm.thread_id() == old(lctx).thread_id()
+        }),
         kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),

@@ -13,17 +13,22 @@ pub(super) proof fn alloc_quota_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, 
             let container = krnl.ctn_mp.spec_index(container_ptr);
             let process = krnl.prc_mp.spec_index(process_ptr);
             let quota = krnl.allc_4k_mp.spec_index(container.view_rodata().view().allocator_ptr_4k).quota.view().value;
-            let live = !container.being_killed() && !container.view().zombie && !process.being_killed();
+            let owner = container.lock_process_owner_u();
+            let conflict = owner is Some && owner->Some_0 < LockOwnerId::Some(process.view_rodata().view().depth);
+            let unblocked = !container.being_killed() && !conflict;
+            let live = unblocked && !container.view().zombie && !process.being_killed();
             &&& ret is CpuIdle ==> !(cpu.view().view().state is Running) || cpu.being_killed()
             &&& !(ret is CpuIdle) ==> cpu.view().view().state is Running && !cpu.being_killed() && cpu.view().view().current_process is Some
             &&& !(ret is CpuIdle) ==> krnl.ctn_mp.dom().contains(container_ptr) && krnl.prc_mp.dom().contains(process_ptr)
             &&& ret is ErrorContainerKilled ==> container.being_killed()
-            &&& ret is ErrorContainerZombie ==> !container.being_killed() && container.view().zombie
-            &&& ret is ErrorProcessKilled ==> !container.being_killed() && !container.view().zombie && process.being_killed()
+            &&& ret is ErrorContainerLockOrderConflict ==> !container.being_killed() && conflict
+            &&& ret is ErrorContainerZombie ==> unblocked && container.view().zombie
+            &&& ret is ErrorProcessKilled ==> unblocked && !container.view().zombie && process.being_killed()
             &&& ret is ErrorContainerQuotaInsufficient ==> live && quota < alloc_amount
             &&& ret is ErrorProcessQuotaOverflow ==> live && quota >= alloc_amount && alloc_amount > usize::MAX - process.view().quota_4k
             &&& ret is Success ==> live && quota >= alloc_amount && alloc_amount <= usize::MAX - process.view().quota_4k
-            &&& ret is CpuIdle || ret is ErrorContainerKilled || ret is ErrorContainerZombie || ret is ErrorProcessKilled || ret is ErrorContainerQuotaInsufficient || ret is ErrorProcessQuotaOverflow || ret is Success
+            &&& ret is CpuIdle || ret is ErrorContainerKilled || ret is ErrorContainerLockOrderConflict || ret is ErrorContainerZombie || ret is ErrorProcessKilled
+                || ret is ErrorContainerQuotaInsufficient || ret is ErrorProcessQuotaOverflow || ret is Success
         },
     ensures
         alloc_quota_4k_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, alloc_amount) == ret,
@@ -168,17 +173,22 @@ pub(super) proof fn alloc_quota_2m_result_from_k(krnl: &KernelK, cpu_id: CpuId, 
             let container = krnl.ctn_mp.spec_index(container_ptr);
             let process = krnl.prc_mp.spec_index(process_ptr);
             let quota = krnl.allc_2m_mp.spec_index(container.view_rodata().view().allocator_ptr_2m).quota.view().value;
-            let live = !container.being_killed() && !container.view().zombie && !process.being_killed();
+            let owner = container.lock_process_owner_u();
+            let conflict = owner is Some && owner->Some_0 < LockOwnerId::Some(process.view_rodata().view().depth);
+            let unblocked = !container.being_killed() && !conflict;
+            let live = unblocked && !container.view().zombie && !process.being_killed();
             &&& ret is CpuIdle ==> !(cpu.view().view().state is Running) || cpu.being_killed()
             &&& !(ret is CpuIdle) ==> cpu.view().view().state is Running && !cpu.being_killed() && cpu.view().view().current_process is Some
             &&& !(ret is CpuIdle) ==> krnl.ctn_mp.dom().contains(container_ptr) && krnl.prc_mp.dom().contains(process_ptr)
             &&& ret is ErrorContainerKilled ==> container.being_killed()
-            &&& ret is ErrorContainerZombie ==> !container.being_killed() && container.view().zombie
-            &&& ret is ErrorProcessKilled ==> !container.being_killed() && !container.view().zombie && process.being_killed()
+            &&& ret is ErrorContainerLockOrderConflict ==> !container.being_killed() && conflict
+            &&& ret is ErrorContainerZombie ==> unblocked && container.view().zombie
+            &&& ret is ErrorProcessKilled ==> unblocked && !container.view().zombie && process.being_killed()
             &&& ret is ErrorContainerQuotaInsufficient ==> live && quota < alloc_amount
             &&& ret is ErrorProcessQuotaOverflow ==> live && quota >= alloc_amount && alloc_amount > usize::MAX - process.view().quota_2m
             &&& ret is Success ==> live && quota >= alloc_amount && alloc_amount <= usize::MAX - process.view().quota_2m
-            &&& ret is CpuIdle || ret is ErrorContainerKilled || ret is ErrorContainerZombie || ret is ErrorProcessKilled || ret is ErrorContainerQuotaInsufficient || ret is ErrorProcessQuotaOverflow || ret is Success
+            &&& ret is CpuIdle || ret is ErrorContainerKilled || ret is ErrorContainerLockOrderConflict || ret is ErrorContainerZombie || ret is ErrorProcessKilled
+                || ret is ErrorContainerQuotaInsufficient || ret is ErrorProcessQuotaOverflow || ret is Success
         },
     ensures
         alloc_quota_2m_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, alloc_amount) == ret,

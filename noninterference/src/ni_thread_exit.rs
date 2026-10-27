@@ -33,7 +33,11 @@ pub proof fn thread_exit_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: 
         thread_exit_enter_step_pre(old_u, cpu_id),
         thread_exit_enter_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(thread_exit_enter_step_pre); assert(memory_iso(new_u, a, b)) by { reveal(thread_exit_enter_step); }; reveal(thread_exit_enter_step); }
+{
+    reveal(thread_exit_enter_step_pre); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_thread_caller_wf);
+    assert(memory_iso(new_u, a, b)) by { reveal(thread_exit_enter_step); };
+    reveal(thread_exit_enter_step);
+}
 
 /// A killed thread of the exiting thread's container, in `a`, dropping a descriptor changes only that thread and an endpoint
 /// that `b` neither owns nor holds, so it leaves the view of `b` unchanged.

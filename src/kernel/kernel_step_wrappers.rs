@@ -185,6 +185,7 @@ impl KernelSteps {
                     &&& krnl.ctn_mp.spec_index(p).being_killed() == old(self).snapshot_k().ctn_mp.spec_index(p).being_killed()
                     &&& (krnl.ctn_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().ctn_mp.spec_index(p).locking_thread() is Write)
                     &&& (krnl.ctn_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().ctn_mp.spec_index(p).locking_thread() is Read)
+                    &&& krnl.ctn_mp.spec_index(p).lock_process_owner_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u()
                 },
                 None => krnl.ctn_mp == old(self).snapshot_k().ctn_mp,
             },
@@ -300,6 +301,7 @@ impl KernelSteps {
                     &&& krnl.ctn_mp.spec_index(p).being_killed() == old(self).snapshot_k().ctn_mp.spec_index(p).being_killed()
                     &&& (krnl.ctn_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().ctn_mp.spec_index(p).locking_thread() is Write)
                     &&& (krnl.ctn_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().ctn_mp.spec_index(p).locking_thread() is Read)
+                    &&& krnl.ctn_mp.spec_index(p).lock_process_owner_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u()
                 },
                 None => krnl.ctn_mp == old(self).snapshot_k().ctn_mp,
             },
@@ -389,6 +391,7 @@ impl KernelSteps {
                     let after = krnl.ctn_mp.spec_index(p).locking_thread();
                     &&& (after is Write) == (before is Write)
                     &&& (after is Read) == (before is Read)
+                    &&& krnl.ctn_mp.spec_index(p).lock_process_owner_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u()
                 },
             forall|p: RwLockProcessPtr| #![trigger krnl.prc_mp.spec_index(p)]
                 krnl.prc_mp.dom().contains(p) && old(self).snapshot_k().prc_mp.dom().contains(p) ==> {
@@ -731,6 +734,7 @@ impl KernelSteps {
             krnl.inv(),
             lctx.kernel_view_locking_state() is Release,
             kernel_context_switch_fields(&old(self).snapshot_k(), krnl, cpu_id, next_thread, entry_regs, flushed_pcid),
+            forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)] old(self).snapshot_k().ctn_mp.dom().contains(p) ==> krnl.ctn_mp.spec_index(p).lock_process_owner_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u(),
         ensures
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
@@ -936,6 +940,7 @@ impl KernelSteps {
             krnl.inv(),
             lctx.kernel_view_locking_state() is Release,
             kernel_ipc_block_fields(&old(self).snapshot_k(), krnl, cpu_id, thread_ptr, endpoint_ptr, endpoint_index, waiting_state, payload, regs, flushed_default_pcid),
+            forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)] old(self).snapshot_k().ctn_mp.dom().contains(p) ==> krnl.ctn_mp.spec_index(p).lock_process_owner_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u(),
         ensures
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
@@ -1050,6 +1055,7 @@ impl KernelSteps {
             krnl.inv(),
             lctx.kernel_view_locking_state() is Release,
             kernel_ipc_call_handoff_fields(&old(self).snapshot_k(), krnl, cpu_id, caller_ptr, endpoint_ptr, endpoint_index, callee_ptr, regs, flushed_pcid),
+            forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)] old(self).snapshot_k().ctn_mp.dom().contains(p) ==> krnl.ctn_mp.spec_index(p).lock_process_owner_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u(),
         ensures
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
@@ -1325,6 +1331,7 @@ impl KernelSteps {
             krnl.inv(),
             lctx.kernel_view_locking_state() is Release,
             kernel_ipc_reply_handoff_fields(&old(self).snapshot_k(), krnl, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, regs, flushed_pcid),
+            forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)] old(self).snapshot_k().ctn_mp.dom().contains(p) ==> krnl.ctn_mp.spec_index(p).lock_process_owner_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u(),
         ensures
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
@@ -1469,7 +1476,8 @@ impl KernelSteps {
                 &&& snap.cpu_set_mp.spec_index(snap.ctn_mp.spec_index(snap.thr_mp.spec_index(peer_thread_ptr).view().owning_container).view_rodata().view().cpu_set).locking_thread() is None
             },
             forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)]
-                old(self).snapshot_k().ctn_mp.dom().contains(p) && krnl.ctn_mp.dom().contains(p) ==> krnl.ctn_mp.spec_index(p).locking_thread() == old(self).snapshot_k().ctn_mp.spec_index(p).locking_thread(),
+                old(self).snapshot_k().ctn_mp.dom().contains(p) && krnl.ctn_mp.dom().contains(p) ==> krnl.ctn_mp.spec_index(p).locking_thread() == old(self).snapshot_k().ctn_mp.spec_index(p).locking_thread()
+                    && krnl.ctn_mp.spec_index(p).lock_process_owner_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u(),
             forall|p: RwLockProcessPtr| #![trigger krnl.prc_mp.spec_index(p)]
                 old(self).snapshot_k().prc_mp.dom().contains(p) && krnl.prc_mp.dom().contains(p) ==> krnl.prc_mp.spec_index(p).locking_thread() == old(self).snapshot_k().prc_mp.spec_index(p).locking_thread(),
             forall|p: RwLockThreadPtr| #![trigger krnl.thr_mp.spec_index(p)]
@@ -1625,6 +1633,7 @@ impl KernelSteps {
             krnl.inv(),
             lctx.kernel_view_locking_state() is Release,
             kernel_process_quota_4k_changed(&old(self).snapshot_k(), krnl, cpu_id, process_ptr, container_ptr, delta),
+            forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)] old(self).snapshot_k().ctn_mp.dom().contains(p) ==> krnl.ctn_mp.spec_index(p).lock_process_owner_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u(),
         ensures
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
@@ -1793,6 +1802,7 @@ impl KernelSteps {
             krnl.inv(),
             lctx.kernel_view_locking_state() is Release,
             kernel_process_quota_2m_changed(&old(self).snapshot_k(), krnl, cpu_id, process_ptr, container_ptr, delta),
+            forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)] old(self).snapshot_k().ctn_mp.dom().contains(p) ==> krnl.ctn_mp.spec_index(p).lock_process_owner_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u(),
         ensures
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
@@ -1962,6 +1972,7 @@ impl KernelSteps {
             krnl.inv(),
             lctx.kernel_view_locking_state() is Release,
             kernel_cpu_offline_request_changed(&old(self).snapshot_k(), krnl, cpu_id, container_ptr, target),
+            forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)] old(self).snapshot_k().ctn_mp.dom().contains(p) ==> krnl.ctn_mp.spec_index(p).lock_process_owner_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u(),
         ensures
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
@@ -2032,6 +2043,7 @@ impl KernelSteps {
             krnl.inv(),
             lctx.kernel_view_locking_state() is Release,
             kernel_cpu_online_changed(&old(self).snapshot_k(), krnl, cpu_id, container_ptr, target),
+            forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)] old(self).snapshot_k().ctn_mp.dom().contains(p) ==> krnl.ctn_mp.spec_index(p).lock_process_owner_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u(),
         ensures
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
@@ -2134,6 +2146,7 @@ impl KernelSteps {
                     let after = krnl.ctn_mp.spec_index(p).locking_thread();
                     &&& (after is Write) == (before is Write)
                     &&& (after is Read) == (before is Read)
+                    &&& krnl.ctn_mp.spec_index(p).lock_process_owner_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u()
                 },
             forall|p: RwLockProcessPtr| #![trigger krnl.prc_mp.spec_index(p)]
                 krnl.prc_mp.dom().contains(p) && old(self).snapshot_k().prc_mp.dom().contains(p) ==> {
@@ -2269,6 +2282,10 @@ impl KernelSteps {
             krnl.inv(),
             lctx.kernel_view_locking_state() is Release,
             kernel_cpu_went_off_fields(&old(self).snapshot_k(), krnl, cpu_id, regs, flushed_default_pcid),
+            forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)] old(self).snapshot_k().ctn_mp.dom().contains(p) ==> krnl.ctn_mp.spec_index(p).lock_process_owner_u() == old(self).snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u(),
+            // The snapshot write-holds `cpu_id` for this section; the went-off step releases that hold.
+            old(self).snapshot_k().cpu_arr.spec_index(cpu_id).value.locking_thread() is Write,
+            old(self).snapshot_k().cpu_arr.spec_index(cpu_id).value.locking_thread()->Write_thread_id == lctx.thread_id(),
         ensures
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
@@ -2288,7 +2305,7 @@ impl KernelSteps {
             {
                 let old_u = kernel_k_to_kernel_u(old(self).snapshot_k());
                 let cpu = old_u.cpu_array[cpu_id as int];
-                &&& cpu.lock_state is Unlocked
+                &&& cpu.lock_state is WriteLocked
                 &&& old_u.container_map[cpu.owning_container].cpu_set_lock is Unlocked
                 &&& (cpu.current_thread is Some ==> old_u.thread_map[cpu.current_thread.unwrap()].lock_state is Unlocked && old_u.process_map[cpu.current_process.unwrap()].lock_state is Unlocked)
             },
@@ -2311,7 +2328,7 @@ impl KernelSteps {
         assert({
             let pre_u = kernel_k_to_kernel_u(self.snapshot_k());
             let cpu = pre_u.cpu_array[cpu_id as int];
-            &&& cpu.lock_state is Unlocked
+            &&& cpu.lock_state is WriteLocked
             &&& pre_u.container_map[cpu.owning_container].cpu_set_lock is Unlocked
             &&& (cpu.current_thread is Some ==> pre_u.thread_map[cpu.current_thread.unwrap()].lock_state is Unlocked && pre_u.process_map[cpu.current_process.unwrap()].lock_state is Unlocked)
         }) by {

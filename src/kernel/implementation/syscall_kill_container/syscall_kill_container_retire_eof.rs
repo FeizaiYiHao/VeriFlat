@@ -35,8 +35,8 @@ pub open spec fn kill_container_retire_eof_transition_framing(
         &&& new_c.is_init() == old_c.is_init()
         &&& new_c.view_rodata() == old_c.view_rodata()
         &&& new_c.locking_thread() == old_c.locking_thread()
-        &&& new_c.being_killed() == old_c.being_killed()
         &&& new_c.killer_info() == old_c.killer_info()
+        &&& new_c.control() == old_c.control()
         &&& post.ctn_mp.lock_id_by_key(c) == pre.ctn_mp.lock_id_by_key(c)
         &&& new_c.view() == (Container { children: new_c.view().children, owned_pages: new_c.view().owned_pages, ..old_c.view() })
         &&& c != parent_ptr ==> new_c.view().children == old_c.view().children

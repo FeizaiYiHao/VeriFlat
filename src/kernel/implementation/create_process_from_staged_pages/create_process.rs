@@ -92,8 +92,7 @@ pub fn create_process_from_staged_pages(
         final(krnl).prc_mp.spec_index(process_page_ptr).view().pagetable == pagetable_page_ptr,
         final(krnl).ctn_mp.dom() == old(krnl).ctn_mp.dom(),
         final(krnl).ctn_mp.spec_index(container_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(container_ptr).view_rodata(),
-        final(krnl).ctn_mp.spec_index(container_ptr).being_killed() == old(krnl).ctn_mp.spec_index(container_ptr).being_killed(),
-        final(krnl).ctn_mp.spec_index(container_ptr).killer_info() == old(krnl).ctn_mp.spec_index(container_ptr).killer_info(),
+        final(krnl).ctn_mp.spec_index(container_ptr).control() == old(krnl).ctn_mp.spec_index(container_ptr).control(),
         final(krnl).thr_mp.dom() == old(krnl).thr_mp.dom(),
         final(krnl).thr_mp.spec_index(staging_thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(staging_thread_ptr).view_ghost(),
         final(krnl).thr_mp.spec_index(staging_thread_ptr).view() == (Thread {

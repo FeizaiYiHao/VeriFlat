@@ -159,7 +159,8 @@ pub(super) fn thread_exit_destroy_remove_thread(
         final(krnl).cpu_published[cpu_id as int].view() == (final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, KERNEL_DEFAULT_PCID),
         final(krnl).pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID).locking_thread() == old(krnl).pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID).locking_thread(),
         final(krnl).ctn_mp.dom() == old(krnl).ctn_mp.dom(),
-        forall|c: RwLockContainerPtr| #![trigger final(krnl).ctn_mp.spec_index(c)] old(krnl).ctn_mp.dom().contains(c) ==> final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread(),
+        forall|c: RwLockContainerPtr| #![trigger final(krnl).ctn_mp.spec_index(c)] old(krnl).ctn_mp.dom().contains(c)
+            ==> final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread() && final(krnl).ctn_mp.spec_index(c).lock_process_owner_u() == old(krnl).ctn_mp.spec_index(c).lock_process_owner_u(),
         !final(krnl).ctn_mp.spec_index(container_ptr).being_killed(),
         final(krnl).ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().contains(process_ptr),
         final(krnl).prc_mp.dom() == old(krnl).prc_mp.dom(),

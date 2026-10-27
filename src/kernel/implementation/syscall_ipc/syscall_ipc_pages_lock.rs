@@ -31,6 +31,8 @@ fn ipc_pages_lock_pair_windows(
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
         forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)]
             old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+        forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread)
+            ==> old(krnl).thr_mp.spec_index(held_thread).being_killed() || !(old(krnl).thr_mp.spec_index(held_thread).view().state is SCHEDULED),
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).pagetable_window_lock_map().dom().is_empty(),
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), source_pagetable, TypedLockMode::Read),
@@ -452,6 +454,8 @@ fn ipc_pages_lock_tables_and_windows(
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
         forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)]
             old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+        forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread)
+            ==> old(krnl).thr_mp.spec_index(held_thread).being_killed() || !(old(krnl).thr_mp.spec_index(held_thread).view().state is SCHEDULED),
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).pagetable_lock_map().dom().is_empty(),
         old(lctx).pagetable_window_lock_map().dom().is_empty(),

@@ -34,7 +34,7 @@ pub proof fn kernel_endpoint_released_implies_u_step(before: &KernelK, after: &K
                 &&& b.view() == a.view()
                 &&& b.view_rodata() == a.view_rodata()
                 &&& b.locking_thread() == a.locking_thread()
-                &&& b.being_killed() == a.being_killed()
+                &&& b.control() == a.control()
                 &&& b.view_ghost() == if c == before.ep_mp.spec_index(endpoint_ptr).view().owning_container {
                         ContainerGhost { owned_endpoints: Ghost(a.view_ghost().owned_endpoints.view().remove(endpoint_ptr)), ..a.view_ghost() }
                     } else { a.view_ghost() }
@@ -125,7 +125,7 @@ pub proof fn kernel_killed_endpoint_released_implies_u_step(before: &KernelK, af
                 &&& b.view() == a.view()
                 &&& b.view_rodata() == a.view_rodata()
                 &&& b.locking_thread() == a.locking_thread()
-                &&& b.being_killed() == a.being_killed()
+                &&& b.control() == a.control()
                 &&& b.view_ghost() == if c == before.ep_mp.spec_index(endpoint_ptr).view().owning_container {
                         ContainerGhost { owned_endpoints: Ghost(a.view_ghost().owned_endpoints.view().remove(endpoint_ptr)), ..a.view_ghost() }
                     } else { a.view_ghost() }

@@ -281,7 +281,7 @@ pub(super) fn ipc_block_current_release_and_end_step(
     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         let ghost flushed = ipc_block_flushes_default_pcid(entry_k, cpu_id);
-        assert(kernel_ipc_block_fields(&steps.snapshot_k(), &*krnl, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, payload, *pt_regs, flushed)) by {
+        assert(kernel_ipc_block_fields(&steps.snapshot_k(), &*krnl, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, payload, *pt_regs, flushed) && krnl.ctn_mp == steps.snapshot_k().ctn_mp) by {
             reveal(kernel_ipc_block_fields); reveal(ipc_block_current_eof_transition_framing);
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
             reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged);

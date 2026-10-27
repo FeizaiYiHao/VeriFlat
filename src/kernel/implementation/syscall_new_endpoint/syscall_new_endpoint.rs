@@ -72,17 +72,29 @@ pub fn syscall_new_endpoint(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loca
     let process_ptr = cpu.current_process().unwrap();
     let thread_ptr = cpu.current_thread().unwrap();
     let container_ptr = cpu.owning_container();
-    let container_res = krnl.wlock_container_unless_killed(container_ptr, Tracked(&mut *lctx));
-    if container_res.is_none() {
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-        proof {
-            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), None, None, None, None, None);
-            new_endpoint_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index);
-            new_endpoint_result_from_k(&*old(krnl), cpu_id, endpoint_index, RetValueType::ErrorContainerKilled);
-        }
-        return RetValueType::ErrorContainerKilled;
-    }
-    let Tracked(container_lock_perm) = container_res.unwrap();
+    let requested = LockOwnerId::Some(cpu.process_depth());
+    let container_res = krnl.wlock_container_unless_killed(container_ptr, requested, Tracked(&mut *lctx));
+    let Tracked(container_lock_perm) = match container_res {
+        DynamicWLockResult::Acquired(perm) => perm,
+        DynamicWLockResult::Killed(_) => {
+            krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+            proof {
+                steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), None, None, None, None, None);
+                new_endpoint_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index);
+                new_endpoint_result_from_k(&*old(krnl), cpu_id, endpoint_index, RetValueType::ErrorContainerKilled);
+            }
+            return RetValueType::ErrorContainerKilled;
+        },
+        DynamicWLockResult::DepthConflict { .. } => {
+            krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+            proof {
+                steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), None, None, None, None, None);
+                new_endpoint_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index);
+                new_endpoint_result_from_k(&*old(krnl), cpu_id, endpoint_index, RetValueType::ErrorContainerLockOrderConflict);
+            }
+            return RetValueType::ErrorContainerLockOrderConflict;
+        },
+    };
     let container = krnl.ctn_mp.borrow_typed(container_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(&container_lock_perm));
     if container.zombie {
         krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));

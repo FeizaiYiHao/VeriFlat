@@ -16,22 +16,25 @@ pub(super) proof fn iommu_unmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, 
             let process = krnl.prc_mp.spec_index(thread.view().owning_proc);
             let table = krnl.it_mp.spec_index(process.view().iommu_table->Some_0).view();
             let iova_range = iommu_unmap_4k_iova_range(iova, range);
-            let live = !container.being_killed() && !container.view().zombie && !process.being_killed() && !thread.being_killed() && !process.view().zombie;
+            let unowned = container.lock_process_owner_u() is None;
+            let conflict = container.lock_process_owner_u() is Some && container.lock_process_owner_u()->Some_0 < LockOwnerId::Some(process.view_rodata().view().depth);
+            let live = !container.being_killed() && unowned && !container.view().zombie && !process.being_killed() && !thread.being_killed() && !process.view().zombie;
             let mapped = spec_v2l4index(iova) >= krnl.dflt_pt.view().kernel_l4_end && forall|j: int| #![trigger iova_range.view()[j]] 0 <= j < range
                 ==> table.mapping_4k().dom().contains(iova_range.view()[j]) && table.mapping_4k()[iova_range.view()[j]].present;
             &&& ret is CpuIdle ==> !(cpu.view().view().state is Running) || cpu.being_killed()
             &&& !(ret is CpuIdle) ==> cpu.view().view().state is Running && !cpu.being_killed() && cpu.view().view().current_thread is Some
             &&& !(ret is CpuIdle) ==> krnl.thr_mp.dom().contains(thread_ptr) && krnl.prc_mp.dom().contains(thread.view().owning_proc) && krnl.ctn_mp.dom().contains(thread.view().owning_container)
             &&& ret is ErrorContainerKilled ==> container.being_killed()
-            &&& ret is ErrorContainerZombie ==> !container.being_killed() && container.view().zombie
-            &&& ret is ErrorProcessKilled ==> !container.being_killed() && !container.view().zombie && process.being_killed()
-            &&& ret is ErrorThreadKilled ==> !container.being_killed() && !container.view().zombie && !process.being_killed() && thread.being_killed()
+            &&& ret is ErrorContainerLockOrderConflict ==> !container.being_killed() && conflict
+            &&& ret is ErrorContainerZombie ==> !container.being_killed() && unowned && container.view().zombie
+            &&& ret is ErrorProcessKilled ==> !container.being_killed() && unowned && !container.view().zombie && process.being_killed()
+            &&& ret is ErrorThreadKilled ==> !container.being_killed() && unowned && !container.view().zombie && !process.being_killed() && thread.being_killed()
             &&& ret is ErrorPciNoIommuTable ==> live && process.view().iommu_table is None
             &&& (ret is Success || ret is ErrorIommuIovaNotMapped) ==> live && process.view().iommu_table is Some && krnl.it_mp.dom().contains(process.view().iommu_table->Some_0) && table.leaves_present()
             &&& ret is Success ==> mapped
             &&& ret is ErrorIommuIovaNotMapped ==> !mapped
-            &&& ret is CpuIdle || ret is ErrorContainerKilled || ret is ErrorContainerZombie || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is ErrorPciNoIommuTable || ret is Success
-                || ret is ErrorIommuIovaNotMapped
+            &&& ret is CpuIdle || ret is ErrorContainerKilled || ret is ErrorContainerLockOrderConflict || ret is ErrorContainerZombie || ret is ErrorProcessKilled || ret is ErrorThreadKilled
+                || ret is ErrorPciNoIommuTable || ret is Success || ret is ErrorIommuIovaNotMapped
         },
     ensures
         iommu_unmap_4k_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, iova, range) == ret,
@@ -171,6 +174,7 @@ pub(super) proof fn iommu_unmap_4k_enter_step_from_k(
         post.ctn_mp.spec_index(container_ptr).view_ghost() == pre.ctn_mp.spec_index(container_ptr).view_ghost(),
         post.ctn_mp.spec_index(container_ptr).being_killed() == pre.ctn_mp.spec_index(container_ptr).being_killed(),
         post.ctn_mp.spec_index(container_ptr).locking_thread() is Write,
+        post.ctn_mp.spec_index(container_ptr).lock_process_owner_u() == Some(LockOwnerId::Some(pre.prc_mp.spec_index(process_ptr).view_rodata().view().depth)),
         !pre.prc_mp.spec_index(process_ptr).locked(),
         post.prc_mp.unchanged_except(&pre.prc_mp, process_ptr),
         post.prc_mp.spec_index(process_ptr).view() == pre.prc_mp.spec_index(process_ptr).view(),

@@ -45,8 +45,8 @@ impl LockInvTrait for PcidNeedFlush {
 }
 
 impl LockOwnerIdTrait for PcidNeedFlush {
-    open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
-    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
+    open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::None }
+    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::None }
 }
 
 impl LockMinorTrait for PcidNeedFlush {

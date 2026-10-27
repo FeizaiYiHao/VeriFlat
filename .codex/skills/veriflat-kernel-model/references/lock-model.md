@@ -39,17 +39,31 @@
   name. New framing specs and framing lemmas require approval; ordinary edits
   to function `requires`/`ensures`, including typed-map preservation clauses,
   do not. Approval to retain an existing abstraction does not authorize a new one.
+- `LockId` equality is structural and its order is concrete and
+  lexicographic: container owner, process owner, major, minor. `LockOwnerId`
+  is `High < Some(depth) < None`; there is no wildcard. `None` is an
+  intentional ownerless component, not a fallback. Owner components come from
+  `OwnerSource::{Payload, Fixed, Dynamic}`; the live per-family mapping is
+  summarized in `LockId.md`.
+- `Dynamic` is only the container's process component and is an acquisition
+  policy, never a final owner. A dynamic write acquisition requesting `r`
+  reports the kill record first, returns `DepthConflict` at once for a live
+  holder `h < r`, waits and rechecks for `h >= r`, and on a free lock records
+  `r`; unlock clears it. Ordinary container locks request the current process
+  depth and stutter with `ErrorContainerLockOrderConflict`; marking a deeper
+  container requests `High`; a new child container is published with
+  `Some(0)`. `ContainerU.lock_process_owner` projects the recorded owner.
 - Thread ownership metadata never disappears. Running, scheduled, and blocked
-  states use their established dynamic lock-id majors; `NotApp` changes only
-  lock ordering and does not restrict IPC topology.
+  states use their established dynamic lock-id majors; a `None` owner
+  component changes only lock ordering and does not restrict IPC topology.
 - Container-scoped transitions may hold a non-empty set of CPU locks when every
   CPU belongs to that container. Process/thread scopes require at least one CPU
   carrying the target process; the remaining held CPUs are contextless or carry
   that same process. Exclude `Off` CPUs from these ordinary scopes.
 - Container CPU membership and closed slots live in `KernelK.cpu_set_mp`;
   `ContainerRO.cpu_set` discovers the independently locked 4K object. CPU-set
-  locks follow mapped pages and precede schedulers. Their owner-order fields
-  are `NotApp`; acquire multiple CPU sets in increasing pointer order.
+  locks follow mapped pages and precede schedulers. Their owner components
+  are `None`; acquire multiple CPU sets in increasing pointer order.
 - `CPU_LOCK_MAJOR_OFF` is the terminal major. `wlock_off_cpu` requires the
   owning CPU-set write lock and a closed slot in that set. Keep it above the
   ordinary object-lock majors; do not use it to justify acquiring another
@@ -68,12 +82,20 @@
   affected object's own (ghost) state, for example a container or process ghost
   kill flag, and that object's invariant constrains it. `SyscallProgress` stays
   in step specs, trace lemmas, and exec contracts.
+- A CPU offline request cell has the fixed owner `(Some(container depth),
+  None)`, so it follows the process and thread locks of that container. The
+  self-offline check probes the cell under the cpu lock and releases it, holds
+  the cpu across a boundary (Hold step), then locks the process and thread
+  unless killed and reacquires and rechecks the cell. Its trace is empty on an
+  early Continue, otherwise Hold plus Release or Hold plus went-off; the
+  decision and the flush label read the post-boundary state.
 - `KernelU` projects the outer physical lock mode as
   `LockStateU::{Unlocked, ReadLocked, WriteLocked}` on containers, processes,
   threads, endpoints, CPUs, and both page-table views, and each container's
-  CPU-set lock as `ContainerU.cpu_set_lock`. Complete snapshots and
-  traces retain these modes; record changes only at existing kernel boundaries
-  and syscall finish. `kernel_u_nonlock_fields` normalizes only these modes,
+  CPU-set lock as `ContainerU.cpu_set_lock`, plus the container's dynamic
+  `lock_process_owner`. Complete snapshots and traces retain these; record
+  changes only at existing kernel boundaries and syscall finish.
+  `kernel_u_nonlock_fields` normalizes only these lock fields,
   and `KernelSteps::nonlock_view` filters lock-only transitions for business
   contracts. Never use the normalized projection for actual snapshots or
   recording. The strict no-step wrapper also requires equal observable modes.

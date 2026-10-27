@@ -1,6 +1,6 @@
-# Handoff — Batch 1：mmap hold/release + 四组证明清理（2026-10-25）
+# Handoff — Batch 1：mmap hold/release + 四组证明清理（2026-10-25）；Batch 2 已实施并完整验证，见下文“Batch 2”节
 
-## 现状
+## Batch 1 现状
 - Batch 1 作为 02ad734（CPU 入口锁实施计划；该计划已被替换，见 `HANDOFF-cpu-entry-lock.md`）之上的一个提交发布。
 - 被放弃方案的 step 0/1 补丁保存在 `/local/home/xiangdc/veriflat-parked/cpu-entry-step01.patch`；对应
   `stash@{0}`（"parked: cpu-entry step 0/1 (ws #34657 3181/0, NI #34658 257/0)"）在 Batch 1 推送后 drop。
@@ -21,21 +21,21 @@
   `#[cfg(verus_keep_ghost)]`；`iommu_map_4k_range.rs` 的 `#[verifier::loop_isolation(false)]` 改为
   `#[cfg_attr(verus_keep_ghost, ...)]`。无语义变化；聚焦 #34692（spec-only，0 / 0）、#34693（循环函数，1 / 0）。
 
-## 验证（最终集成）
+## Batch 1 验证（最终集成）
 - #34689 workspace（17 个结果，与 NI 并行）：3172 verified / 0 errors，无 warning，cargo 1m43s。
 - #34690 NI：262 verified / 0 errors（u_facts 1 + noninterference 261），1m24s。
 - #34691 单体（`--num-threads 32 --time --time-expanded --output-json`，无并行任务）：见下表。
-- 先前分段运行：mmap focused/workspace/NI/单体 #34662/#34668/#34669/#34670（单体 3174 / 0）；refund #34672/#34676/#34679；
+- Batch 1 先前分段运行：mmap focused/workspace/NI/单体 #34662/#34668/#34669/#34670（单体 3174 / 0）；refund #34672/#34676/#34679；
   pagetable_seq #34674；allocate_free_2m #34687；create_process_with_iommu #34688。
 
 | 树 | 结果 | total | SMT | rlimit-run |
 |---|---|---|---|---|
 | Batch 1 #34691 | 3172 / 0 | 66.1 s | 547.0 s | 1,138,176,482（+0.23%） |
-| mmap-only #34670 | 3174 / 0 | — | — | — |
-| 基线 #34650 | 3168 / 0 | 66.3 s | 544.9 s | 1,135,582,304 |
+| Batch 1 mmap-only #34670 | 3174 / 0 | — | — | — |
+| Batch 1 基线 #34650 | 3168 / 0 | 66.3 s | 544.9 s | 1,135,582,304 |
 
-计数：mmap +6，删除顺序版 `mapping_4k_va_range_empty` exec 与 broadcast 引理 −2。单样本，未做交替 A/B。
-#34691 无 >5 s 函数；前五：`share_mapping_4k_build_and_share` 4.33 s / 7.65M、`map_one_mmap_4k_page` 3.87 s / 5.52M、
+Batch 1 计数：mmap +6，删除顺序版 `mapping_4k_va_range_empty` exec 与 broadcast 引理 −2。单样本，未做交替 A/B。
+Batch 1 #34691 无 >5 s 函数；前五：`share_mapping_4k_build_and_share` 4.33 s / 7.65M、`map_one_mmap_4k_page` 3.87 s / 5.52M、
 `install_one_mmap_4k_directory_page` 3.48 s / 4.83M、`ipc_pages_prepare_target` 3.33 s / 4.86M、`create_process_with_iommu_from_staged_pages` 3.25 s / 5.32M。
 mmap 新路径：`mmap_4k_try_read_enter` 3.04 s / 4.78M、`mmap_4k_fill_enter` 2.32 s / 3.87M。
 
@@ -44,7 +44,15 @@ mmap 新路径：`mmap_4k_try_read_enter` 3.04 s / 4.78M、`mmap_4k_fill_enter` 
 - **boot**：上述两处 cfg 修复后，普通 Cargo boot 编译成功。运行时未执行：主机 QEMU 3.1 加载 multiboot2 镜像时在进入 guest 前报
   `linux kernel too old to load a ram disk`，没有 guest 运行；用户已豁免 boot 运行时，不再作为门槛。未声称任何 KVM / QEMU 通过。
 
+## Batch 2（已实施，完整验证通过）
+- 最终验证（全绿）：冷启动 split workspace #34945 3189 verified / 0 errors；冷启动完整 NI #34944 266 verified / 0 errors
+  （NI 265 + u_facts 1）；无并发单体 #34946 3189 / 0，total 67.294 s，SMT 571.483 s，rlimit 1,175,192,647。
+  上文 Batch 1 运行编号不覆盖 Batch 2 语义；未执行 QEMU / KVM 运行时。
+- 具体锁序 + 动态容器：`LockOwnerId` 为 `High | Some | None`、`OwnerSource`、动态 Container 获取、
+  `ErrorContainerLockOrderConflict`（ABI 下标 49）、OfflineFlag 固定 owner 与自 offline 的 Hold 边界。
+  设计摘要见 `HANDOFF-cpu-entry-lock.md`，锁 owner 映射见 `LockId.md`。
+
 ## 剩余项
-- Batch 2–4（`HANDOFF-cpu-entry-lock.md`）：2 具体锁序 + 动态容器；3 锚点 DID；4 Cpu 内含 SyscallPerm 与 IPI / CPU kill 状态收尾。
+- Batch 3–4（`HANDOFF-cpu-entry-lock.md`，待实施）：3 锚点 DID；4 Cpu 内含 SyscallPerm 与 IPI / CPU kill 状态收尾。
 - 既有遗留：`iommu_tlb_wf_spec` 依赖 `CAP.CM = 0`；待批准 kill / thread_exit 共用 exec helper `reclaim_hidden_iommu_4k_leaves`（项 d）；
   `ipc_rendezvous_cpu_cross_container` 残余 +4%。

@@ -1032,14 +1032,13 @@ impl LockMajorTrait for Thread {
 }
 
 impl LockOwnerIdTrait for Thread {
+    // Only a running thread and an unmarked killed thread carry their container; only a running thread its process.
     open spec fn container_depth(&self) -> LockOwnerId {
-        if self.state.is_endpoint_waiting() || self.state.is_reply_waiting() || self.state is IPC_TRANSIT { LockOwnerId::NotApp }
-        else { LockOwnerId::Some(self.container_depth) }
+        if self.state is RUNNING || self.state is KILLED { LockOwnerId::Some(self.container_depth) } else { LockOwnerId::None }
     }
 
     open spec fn process_depth(&self) -> LockOwnerId {
-        if self.state.is_endpoint_waiting() || self.state.is_reply_waiting() || self.state is IPC_TRANSIT || self.state is SCHEDULED || self.state is KILLED { LockOwnerId::NotApp }
-        else { LockOwnerId::Some(self.process_depth) }
+        if self.state is RUNNING { LockOwnerId::Some(self.process_depth) } else { LockOwnerId::None }
     }
 }
 } // verus!

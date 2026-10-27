@@ -205,7 +205,10 @@ pub(crate) fn kill_mark_child(
                 assert(uppers.contains(target)) by { process_children_depth_wf_at(root, tree, krnl.prc_mp, child_ptr); };
                 assert(uppers.contains(process_ptr)) by { process_subtree_set_wf_at(root, tree, krnl.prc_mp, process_ptr, target); };
             };
-        } else { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, child_ptr); }
+        } else {
+            container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, child_ptr);
+            assert(krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == krnl.cpu_arr.spec_index(cpu_id).view().view().view().owning_container) by { process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id); };
+        }
         assert(!krnl.prc_mp.spec_index(child_ptr).being_killed()) by { process_kill_mark_wf_at(krnl.ctn_mp, krnl.prc_mp, child_ptr); krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), target); };
     }
     let Tracked(child_perm) = krnl.try_wlock_process_and_mark_kill(child_ptr, process_ptr, thread_ptr, killer_info, Tracked(&mut *lctx)).unwrap();
@@ -293,6 +296,9 @@ pub(crate) fn kill_first_thread(
         assert(!krnl.thr_mp.spec_index(victim_ptr).being_killed()) by {
             assert(!krnl.thr_mp.spec_index(victim_ptr).wlocked_by_thread(lctx.thread_id())) by { krnl.thr_mp.typed_lock_map_aligned_locked_at(lctx.thread_lock_map(), lctx.thread_id(), victim_ptr); };
             krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), target); process_thread_wf_killed_thread_at(krnl.prc_mp, krnl.thr_mp, victim_ptr);
+        };
+        assert(typed_lock_map_ids_lt(lctx.container_lock_map(), krnl.thr_mp.lock_id_by_key(victim_ptr))) by {
+            container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, cpu_id); reveal(LockedMap::typed_lock_map_aligned);
         };
     }
     let Tracked(victim_perm) = krnl.wlock_kill_victim_thread(victim_ptr, Tracked(&mut *lctx)).unwrap();

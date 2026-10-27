@@ -7,12 +7,13 @@ use veriflat_kernel_core::kernel_u_new_thread_changed;
 use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
 
 verus! {
-/// The result of `syscall_new_container` from the state at entry, in the implementation's check order:
-/// malformed arguments or funding, a cpu no longer Running or marked by a killer, a killed or zombie parent container, a parent at the maximum tree depth, a
-/// killed process or caller, an empty `endpoint_index` descriptor, too little caller 4K or 2M quota, a
-/// source range below the first user L4 index or with a page that has no present 4K leaf, and a transfer
-/// cpu that the parent container does not own or that is not Off. `Success` stands for
-/// `SuccessThreeUsize`, whose fresh container, process, and thread pointers the state does not determine.
+/// The result of `syscall_new_container` from the state at entry, in the implementation's check order: malformed
+/// arguments or funding, a cpu no longer Running or marked by a killer, a killed parent container, a parent write-held
+/// by a live dynamic owner below the caller's process, a zombie parent container, a parent at the maximum tree depth, a
+/// killed process or caller, an empty `endpoint_index` descriptor, too little caller 4K or 2M quota, a source range
+/// below the first user L4 index or with a page that has no present 4K leaf, and a transfer cpu that the parent
+/// container does not own or that is not Off. `Success` stands for `SuccessThreeUsize`, whose fresh container, process,
+/// and thread pointers the state does not determine.
 pub open spec fn new_container_syscall_result(
     pre: KernelU, cpu_id: CpuId, va: VAddr, range: usize, funding_page_count: usize, process_quota_4k: usize, transfer_cpu_id: CpuId, endpoint_index: Option<EndpointIdx>,
 ) -> RetValueType {
@@ -27,6 +28,7 @@ pub open spec fn new_container_syscall_result(
         RetValueType::Error
     } else if !(pre.cpu_array[cpu_id as int].state is Running) || pre.cpu_array[cpu_id as int].killed { RetValueType::CpuIdle }
     else if parent.killed { RetValueType::ErrorContainerKilled }
+    else if parent.lock_process_owner is Some && parent.lock_process_owner->Some_0 < LockOwnerId::Some(pre.process_map[thread.owning_proc].depth) { RetValueType::ErrorContainerLockOrderConflict }
     else if parent.zombie { RetValueType::ErrorContainerZombie }
     else if parent.depth >= MAX_CONTAINER_TREE_DEPTH { RetValueType::Error }
     else if pre.process_map[thread.owning_proc].killed { RetValueType::ErrorProcessKilled }
@@ -93,9 +95,9 @@ pub open spec fn new_container_enter_step_pre(old_u: KernelU, cpu_id: CpuId, ran
     }
 }
 
-/// Entering write-locks the cpu, the container and its cpu set, the process, the thread, and the endpoint
-/// at `endpoint_index`, read-locks the process's page table, and records the call's arguments in the
-/// thread's progress.
+/// Entering write-locks the cpu, the container (for the process's depth as its dynamic owner) and its cpu set, the
+/// process, the thread, and the endpoint at `endpoint_index`, read-locks the process's page table, and records the
+/// call's arguments in the thread's progress.
 #[verifier::opaque]
 pub open spec fn new_container_enter_step(
     old_u: KernelU, new_u: KernelU, cpu_id: CpuId, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, endpoint_index: Option<EndpointIdx>,
@@ -107,7 +109,9 @@ pub open spec fn new_container_enter_step(
     let progress = SyscallProgress::NewContainer(NewContainerProgress { range, funding, process_quota, transfer_cpu, regs, endpoint_index, child_container: None });
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..cpu }),
-        container_map: old_u.container_map.insert(thread.owning_container, ContainerU { lock_state: LockStateU::WriteLocked, cpu_set_lock: LockStateU::WriteLocked, ..old_u.container_map[thread.owning_container] }),
+        container_map: old_u.container_map.insert(thread.owning_container, ContainerU {
+            lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(process.depth)), cpu_set_lock: LockStateU::WriteLocked, ..old_u.container_map[thread.owning_container]
+        }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { lock_state: LockStateU::WriteLocked, pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..process.pagetable->Some_0 }), ..process }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(progress), ..thread }),
         endpoint_map: match endpoint_index {
@@ -226,7 +230,8 @@ pub open spec fn new_container_finish_step(old_u: KernelU, new_u: KernelU, cpu_i
     &&& table_lock is Unlocked || table_lock is ReadLocked
     &&& kernel_u_new_thread_changed(KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..cpu }),
-        container_map: old_u.container_map.insert(container, ContainerU { lock_state: LockStateU::Unlocked, ..old_u.container_map[container] }).insert(child, ContainerU { lock_state: LockStateU::Unlocked, ..old_u.container_map[child] }),
+        container_map: old_u.container_map.insert(container, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..old_u.container_map[container] })
+            .insert(child, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..old_u.container_map[child] }),
         process_map: old_u.process_map.insert(parent, ProcessU { lock_state: LockStateU::Unlocked,
             pagetable: Some(PageTableU { lock_state: table_lock, ..old_u.process_map[parent].pagetable->Some_0 }), ..old_u.process_map[parent]
         }).insert(root, ProcessU { lock_state: LockStateU::Unlocked,

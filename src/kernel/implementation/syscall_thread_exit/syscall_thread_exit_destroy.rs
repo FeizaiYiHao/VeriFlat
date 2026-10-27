@@ -129,7 +129,10 @@ pub(super) fn thread_exit_destroy(
         final(krnl).cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
         forall|c: RwLockContainerPtr| #![trigger final(krnl).ctn_mp.spec_index(c)]
             start.ctn_mp.dom().contains(c) ==> if c == container_ptr { final(krnl).ctn_mp.spec_index(c).locking_thread() is None }
-                else { final(krnl).ctn_mp.spec_index(c).locking_thread() == start.ctn_mp.spec_index(c).locking_thread() },
+                else {
+                    &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == start.ctn_mp.spec_index(c).locking_thread()
+                    &&& final(krnl).ctn_mp.spec_index(c).lock_process_owner_u() == start.ctn_mp.spec_index(c).lock_process_owner_u()
+                },
         final(krnl).prc_mp.spec_index(process_ptr).locking_thread() is None,
 {
     let page_index = page_ptr2page_index(thread_ptr);

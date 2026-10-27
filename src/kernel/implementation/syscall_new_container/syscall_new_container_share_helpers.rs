@@ -183,7 +183,10 @@ pub(super) fn release_new_container_root_thread_locks_and_attach_endpoint(
             thr_mp: final(krnl).thr_mp, ep_mp: final(krnl).ep_mp, cpu_arr: final(krnl).cpu_arr, ..*old(krnl) }),
         forall|p: RwLockContainerPtr| #![trigger final(krnl).ctn_mp.spec_index(p)]
             old(krnl).ctn_mp.dom().contains(p) ==> if p == child_container_ptr || p == parent_container_ptr { final(krnl).ctn_mp.spec_index(p).locking_thread() is None }
-                else { final(krnl).ctn_mp.spec_index(p).locking_thread() == old(krnl).ctn_mp.spec_index(p).locking_thread() },
+                else {
+                    &&& final(krnl).ctn_mp.spec_index(p).locking_thread() == old(krnl).ctn_mp.spec_index(p).locking_thread()
+                    &&& final(krnl).ctn_mp.spec_index(p).lock_process_owner_u() == old(krnl).ctn_mp.spec_index(p).lock_process_owner_u()
+                },
         forall|p: RwLockProcessPtr| #![trigger final(krnl).prc_mp.spec_index(p)]
             old(krnl).prc_mp.dom().contains(p) ==> if p == child_process_ptr || p == parent_process_ptr { final(krnl).prc_mp.spec_index(p).locking_thread() is None }
                 else { final(krnl).prc_mp.spec_index(p).locking_thread() == old(krnl).prc_mp.spec_index(p).locking_thread() },
@@ -554,7 +557,10 @@ fn release_new_container_caller_side_locks(
         *final(krnl) == (KernelK { ctn_mp: final(krnl).ctn_mp, prc_mp: final(krnl).prc_mp, thr_mp: final(krnl).thr_mp, cpu_arr: final(krnl).cpu_arr, ..*old(krnl) }),
         forall|p: RwLockContainerPtr| #![trigger final(krnl).ctn_mp.spec_index(p)]
             old(krnl).ctn_mp.dom().contains(p) ==> if p == child_container_ptr || p == parent_container_ptr { final(krnl).ctn_mp.spec_index(p).locking_thread() is None }
-                else { final(krnl).ctn_mp.spec_index(p).locking_thread() == old(krnl).ctn_mp.spec_index(p).locking_thread() },
+                else {
+                    &&& final(krnl).ctn_mp.spec_index(p).locking_thread() == old(krnl).ctn_mp.spec_index(p).locking_thread()
+                    &&& final(krnl).ctn_mp.spec_index(p).lock_process_owner_u() == old(krnl).ctn_mp.spec_index(p).lock_process_owner_u()
+                },
         forall|p: RwLockProcessPtr| #![trigger final(krnl).prc_mp.spec_index(p)]
             old(krnl).prc_mp.dom().contains(p) ==> if p == parent_process_ptr { final(krnl).prc_mp.spec_index(p).locking_thread() is None }
                 else { final(krnl).prc_mp.spec_index(p).locking_thread() == old(krnl).prc_mp.spec_index(p).locking_thread() },

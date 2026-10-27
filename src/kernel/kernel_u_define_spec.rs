@@ -33,7 +33,8 @@ verus! {
     pub open spec fn kernel_u_nonlock_fields(u: KernelU) -> KernelU {
         KernelU {
             cpu_array: u.cpu_array.map_values(|c: CpuU| CpuU { lock_state: LockStateU::Unlocked, ..c }),
-            container_map: Map::new(u.container_map.dom(), |k: RwLockContainerPtr| ContainerU { lock_state: LockStateU::Unlocked, cpu_set_lock: LockStateU::Unlocked, ..u.container_map.spec_index(k) }),
+            container_map: Map::new(u.container_map.dom(), |k: RwLockContainerPtr|
+                ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, cpu_set_lock: LockStateU::Unlocked, ..u.container_map.spec_index(k) }),
             process_map: Map::new(u.process_map.dom(), |k: RwLockProcessPtr| {
                 let p = u.process_map.spec_index(k);
                 ProcessU {
@@ -85,7 +86,8 @@ verus! {
                 let c_ghost = krnl.ctn_mp.spec_index(ptr).view_ghost();
                 let c_ro = krnl.ctn_mp.spec_index(ptr).view_rodata().view();
                 ContainerU {
-                    lock_state: if include_lock_state { krnl.ctn_mp.spec_index(ptr).lock_state_u() } else { LockStateU::Unlocked }, zombie: c.zombie,
+                    lock_state: if include_lock_state { krnl.ctn_mp.spec_index(ptr).lock_state_u() } else { LockStateU::Unlocked },
+                    lock_process_owner: if include_lock_state { krnl.ctn_mp.spec_index(ptr).lock_process_owner_u() } else { None }, zombie: c.zombie,
                     children: c.children.view(), uppertree_seq: c_ghost.uppertree_seq.view(), subtree_set: c_ghost.subtree_set.view(),
                     root_process: c.root_process, owned_processes: c_ghost.owned_processes.view(), owned_threads: c_ghost.owned_threads.view(),
                     owned_endpoints: c_ghost.owned_endpoints.view(), owned_pages: c.owned_pages.view(),

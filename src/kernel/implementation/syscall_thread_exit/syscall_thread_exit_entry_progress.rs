@@ -33,6 +33,7 @@ pub(super) fn thread_exit_enter_record_progress(
         typed_lock_map_contains_mode(held_lctx.process_lock_map(), process_ptr, TypedLockMode::Write),
         typed_lock_map_contains_mode(held_lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
         held_k.ctn_mp.dom().contains(container_ptr) && held_k.prc_mp.dom().contains(process_ptr) && held_k.thr_mp.dom().contains(thread_ptr),
+        held_k.ctn_mp.spec_index(container_ptr).lock_process_owner_u() == Some(LockOwnerId::Some(pre.prc_mp.spec_index(process_ptr).view_rodata().view().depth)),
         held_k == (KernelK { cpu_arr: held_k.cpu_arr, ctn_mp: held_k.ctn_mp, prc_mp: held_k.prc_mp, thr_mp: held_k.thr_mp, ..pre }),
         held_k.cpu_arr.unchanged_except(&pre.cpu_arr, cpu_id),
         held_k.ctn_mp.unchanged_except(&pre.ctn_mp, container_ptr),

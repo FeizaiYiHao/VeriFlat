@@ -1552,10 +1552,10 @@ pub(super) fn publish_new_container_pcid_allocator_and_container(
             old(krnl).pcid_allc_mp.dom().contains(ptr) ==> final(krnl).pcid_allc_mp.spec_index(ptr) == old(krnl).pcid_allc_mp.spec_index(ptr),
         final(krnl).ctn_mp.dom() =~= old(krnl).ctn_mp.dom().insert(child_container_ptr),
         final(krnl).ctn_mp.spec_index(child_container_ptr).is_init(),
-        !final(krnl).ctn_mp.spec_index(child_container_ptr).being_killed(),
         final(krnl).ctn_mp.spec_index(child_container_ptr).view() == container_value,
         final(krnl).ctn_mp.spec_index(child_container_ptr).view_rodata() == container_rodata,
         final(krnl).ctn_mp.spec_index(child_container_ptr).view_ghost() == container_ghost,
+        final(krnl).ctn_mp.spec_index(child_container_ptr).control() == LockControl::DynamicProcess(LockOwnerId::Some(0)),
         forall|ptr: RwLockContainerPtr|
             #![trigger final(krnl).ctn_mp.spec_index(ptr)]
             old(krnl).ctn_mp.dom().contains(ptr) ==> final(krnl).ctn_mp.spec_index(ptr) == old(krnl).ctn_mp.spec_index(ptr),
@@ -1705,6 +1705,7 @@ pub(super) fn link_new_container_into_tree(
         final(containers).spec_index(child_container_ptr).view_ghost().owned_threads == old(containers).spec_index(child_container_ptr).view_ghost().owned_threads,
         final(containers).spec_index(child_container_ptr).view_ghost().owned_indirect_threads == old(containers).spec_index(child_container_ptr).view_ghost().owned_indirect_threads,
         final(containers).spec_index(child_container_ptr).view_ghost().retire_ready == old(containers).spec_index(child_container_ptr).view_ghost().retire_ready,
+        final(containers).spec_index(child_container_ptr).control() == old(containers).spec_index(child_container_ptr).control(),
         parent_container_lock_perm.lock_id() == final(containers).spec_index(parent_container_ptr).locking_thread()->Write_lock_id,
         child_container_lock_perm.lock_id() == final(containers).spec_index(child_container_ptr).locking_thread()->Write_lock_id,
         forall|container_ptr: RwLockContainerPtr|
@@ -1713,8 +1714,7 @@ pub(super) fn link_new_container_into_tree(
                 &&& final(containers).spec_index(container_ptr).is_init() == base_containers.spec_index(container_ptr).is_init()
                 &&& final(containers).spec_index(container_ptr).view_rodata() == base_containers.spec_index(container_ptr).view_rodata()
                 &&& final(containers).spec_index(container_ptr).locking_thread() == base_containers.spec_index(container_ptr).locking_thread()
-                &&& final(containers).spec_index(container_ptr).being_killed() == base_containers.spec_index(container_ptr).being_killed()
-                &&& final(containers).spec_index(container_ptr).killer_info() == base_containers.spec_index(container_ptr).killer_info()
+                &&& final(containers).spec_index(container_ptr).control() == base_containers.spec_index(container_ptr).control()
                 &&& final(containers).spec_index(container_ptr).view().parent_linkedlist_node == base_containers.spec_index(container_ptr).view().parent_linkedlist_node
                 &&& final(containers).spec_index(container_ptr).view_ghost().owned_threads == base_containers.spec_index(container_ptr).view_ghost().owned_threads
                 &&& final(containers).spec_index(container_ptr).view_ghost().owned_processes == base_containers.spec_index(container_ptr).view_ghost().owned_processes

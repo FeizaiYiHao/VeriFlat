@@ -1551,7 +1551,8 @@ pub fn finish_init_from_boot(
 
     pt_mp.retype_4k_as_unlocked_singleton(layout.cpu_pagetable, cpu_pagetable, (), Ghost(cpu_pagetable_lower), Tracked(cpu_pagetable_page_perm), 0, layout.root_thread, Ghost(KernelObjId::PageTable(layout.cpu_pagetable)));
     it_mp.retype_4k_as_unlocked_singleton(layout.iommu_table, iommu_table, (), Ghost(()), Tracked(iommu_table_page_perm), 0, layout.root_thread, Ghost(KernelObjId::IommuTable(layout.iommu_table)));
-    ctn_mp.retype_2m_as_unlocked_singleton(layout.root_container, container, container_rodata, Ghost(container_ghost), Tracked(container_page_perm), 0, layout.root_thread, Ghost(KernelObjId::Container(layout.root_container)));
+    ctn_mp.retype_2m_as_unlocked_singleton(layout.root_container, container, container_rodata, Ghost(container_ghost), Tracked(container_page_perm),
+        0, layout.root_thread, Ghost(KernelObjId::Container(layout.root_container)), LockOwnerId::Some(0));
     let tracked boot_lctx = LocalContext::new_bootstrap(0, layout.root_thread);
     sched_mp.retype_page_to_scheduler_and_insert(layout.scheduler, scheduler, Tracked(scheduler_page_perm), Tracked(&boot_lctx));
     pcid_allc_mp.retype_2m_as_unlocked_singleton(layout.pcid_allocator, pcid_allocator, (), Ghost(()), Tracked(pcid_allocator_page_perm), 0, layout.root_thread, Ghost(KernelObjId::PcidAllocator(layout.pcid_allocator)));

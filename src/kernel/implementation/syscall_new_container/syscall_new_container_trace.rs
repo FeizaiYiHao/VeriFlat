@@ -8,13 +8,18 @@ use veriflat_kernel_core::kernel_u_new_thread_changed;
 #[cfg(verus_keep_ghost)]
 use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
 verus! {
-/// Acquiring the caller's context locks and recording the progress is the enter step on `pre`/`post`.
+/// Acquiring the caller's context locks, the container under the owner `locked_k` records for it, and recording the
+/// progress is the enter step on `pre`/`post`.
 pub(super) proof fn new_container_enter_step_from_u(
-    pre: KernelU, locked: KernelU, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr,
-    endpoint_ptr: Option<RwLockEndpointPtr>, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers, endpoint_index: Option<EndpointIdx>,
+    pre: KernelU, locked: KernelU, post: KernelU, locked_k: &KernelK, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
+    container_ptr: RwLockContainerPtr, endpoint_ptr: Option<RwLockEndpointPtr>, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers,
+    endpoint_index: Option<EndpointIdx>,
 )
     requires
         index_valid(NUM_CPUS, cpu_id),
+        locked == kernel_k_to_kernel_u(*locked_k),
+        locked_k.prc_mp.dom().contains(process_ptr),
+        locked_k.ctn_mp.spec_index(container_ptr).lock_process_owner_u() == Some(LockOwnerId::Some(locked_k.prc_mp.spec_index(process_ptr).view_rodata().view().depth)),
         {
             let cpu = pre.cpu_array[cpu_id as int];
             let thread = pre.thread_map.spec_index(thread_ptr);
@@ -57,7 +62,10 @@ pub(super) proof fn new_container_enter_step_from_u(
         },
         locked == (KernelU {
             cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre.cpu_array[cpu_id as int] }),
-            container_map: pre.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::WriteLocked, cpu_set_lock: LockStateU::WriteLocked, ..pre.container_map[container_ptr] }),
+            container_map: pre.container_map.insert(container_ptr, ContainerU {
+                lock_state: LockStateU::WriteLocked, lock_process_owner: locked_k.ctn_mp.spec_index(container_ptr).lock_process_owner_u(), cpu_set_lock: LockStateU::WriteLocked,
+                ..pre.container_map[container_ptr]
+            }),
             process_map: pre.process_map.insert(process_ptr, ProcessU {
                 lock_state: LockStateU::WriteLocked,
                 pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..pre.process_map[process_ptr].pagetable->Some_0 }),
@@ -78,7 +86,7 @@ pub(super) proof fn new_container_enter_step_from_u(
         new_container_enter_step_pre(pre, cpu_id, range, funding, process_quota, transfer_cpu, endpoint_index),
         new_container_enter_step(pre, post, cpu_id, range, funding, process_quota, transfer_cpu, regs, endpoint_index),
 {
-    reveal(new_container_enter_step_pre); reveal(new_container_enter_step);
+    kernel_process_projection_at(locked_k, process_ptr); reveal(new_container_enter_step_pre); reveal(new_container_enter_step);
     assert_maps_equal!(post.thread_map, pre.thread_map.insert(thread_ptr, ThreadU {
         lock_state: LockStateU::WriteLocked,
         syscall_progress: Some(SyscallProgress::NewContainer(NewContainerProgress { range, funding, process_quota, transfer_cpu, regs, endpoint_index, child_container: None })),
@@ -211,8 +219,8 @@ pub(super) proof fn new_container_finish_step_from_u(
         post.process_map[process_ptr].pagetable->Some_0.lock_state is Unlocked || post.process_map[process_ptr].pagetable->Some_0.lock_state is ReadLocked,
         kernel_u_new_thread_changed(KernelU {
             cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre.cpu_array[cpu_id as int] }),
-            container_map: pre.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, ..pre.container_map[container_ptr] })
-                .insert(child_ptr, ContainerU { lock_state: LockStateU::Unlocked, ..pre.container_map[child_ptr] }),
+            container_map: pre.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..pre.container_map[container_ptr] })
+                .insert(child_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..pre.container_map[child_ptr] }),
             process_map: pre.process_map.insert(process_ptr, ProcessU {
                 lock_state: LockStateU::Unlocked,
                 pagetable: Some(PageTableU { lock_state: post.process_map[process_ptr].pagetable->Some_0.lock_state, ..pre.process_map[process_ptr].pagetable->Some_0 }),
@@ -306,6 +314,7 @@ pub(super) proof fn new_container_result_from_k(
             let process = krnl.prc_mp.spec_index(t.owning_proc);
             let table = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), process.view().pagetable);
             let transfer = krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().view();
+            let owner = container.lock_process_owner_u();
             let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
             let bad_args = range == 0 || range > usize::MAX / 4096 || range > (usize::MAX - 9) / 3 || !spec_va_4k_valid(va) || transfer_cpu_id >= NUM_CPUS
                 || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range) || process_quota_4k > funding_page_count
@@ -319,6 +328,7 @@ pub(super) proof fn new_container_result_from_k(
             &&& ret == if bad_args { RetValueType::Error }
                 else if !(c.state is Running) || cpu.being_killed() { RetValueType::CpuIdle }
                 else if container.being_killed() { RetValueType::ErrorContainerKilled }
+                else if owner is Some && owner->Some_0 < LockOwnerId::Some(process.view_rodata().view().depth) { RetValueType::ErrorContainerLockOrderConflict }
                 else if container.view().zombie { RetValueType::ErrorContainerZombie }
                 else if container.view_rodata().view().depth >= MAX_CONTAINER_TREE_DEPTH { RetValueType::Error }
                 else if process.being_killed() { RetValueType::ErrorProcessKilled }
@@ -341,10 +351,8 @@ pub(super) proof fn new_container_result_from_k(
     if index_valid(NUM_CPUS, transfer_cpu_id) { kernel_cpu_projection_at(krnl, transfer_cpu_id); }
     if krnl.ctn_mp.dom().contains(t.owning_container) { kernel_container_projection_at(krnl, t.owning_container); }
     if krnl.thr_mp.dom().contains(thread_ptr) && krnl.prc_mp.dom().contains(t.owning_proc) {
-        kernel_cpu_thread_projection_at(krnl, cpu_id, t.owning_proc, thread_ptr, None);
-        if !process.zombie && krnl.pt_mp.dom().contains(process.pagetable) {
-            kernel_l4_end_projection_at(krnl, process.pagetable); kernel_process_projection_at(krnl, t.owning_proc);
-        }
+        kernel_cpu_thread_projection_at(krnl, cpu_id, t.owning_proc, thread_ptr, None); kernel_process_projection_at(krnl, t.owning_proc);
+        if !process.zombie && krnl.pt_mp.dom().contains(process.pagetable) { kernel_l4_end_projection_at(krnl, process.pagetable); }
     }
 }
 

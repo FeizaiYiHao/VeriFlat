@@ -9,6 +9,7 @@ pub proof fn kernel_container_locked_and_marked_implies_u_step(before: &KernelK,
     requires
         *after == (KernelK { ctn_mp: after.ctn_mp, ..*before }),
         before.ctn_mp.dom().contains(container_ptr),
+        !before.ctn_mp.spec_index(container_ptr).locked(),
         after.ctn_mp.unchanged_except(&before.ctn_mp, container_ptr),
         after.ctn_mp.spec_index(container_ptr).view() == before.ctn_mp.spec_index(container_ptr).view(),
         after.ctn_mp.spec_index(container_ptr).view_rodata() == before.ctn_mp.spec_index(container_ptr).view_rodata(),

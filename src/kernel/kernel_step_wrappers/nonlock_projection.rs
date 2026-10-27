@@ -41,7 +41,7 @@ pub proof fn kernel_container_nonlock_projection_at(krnl: &KernelK, ptr: RwLockC
             let c_ghost = krnl.ctn_mp.spec_index(ptr).view_ghost();
             let c_ro = krnl.ctn_mp.spec_index(ptr).view_rodata().view();
             kernel_k_to_nonlock_kernel_u(*krnl).container_map[ptr] == (ContainerU {
-                lock_state: LockStateU::Unlocked, zombie: c.zombie,
+                lock_state: LockStateU::Unlocked, lock_process_owner: None, zombie: c.zombie,
                 children: c.children.view(), uppertree_seq: c_ghost.uppertree_seq.view(), subtree_set: c_ghost.subtree_set.view(),
                 root_process: c.root_process, owned_processes: c_ghost.owned_processes.view(), owned_threads: c_ghost.owned_threads.view(),
                 owned_endpoints: c_ghost.owned_endpoints.view(), owned_pages: c.owned_pages.view(),
@@ -111,7 +111,8 @@ pub proof fn kernel_container_user_projection_at(krnl: &KernelK, include_lock_st
             let c_ghost = krnl.ctn_mp.spec_index(ptr).view_ghost();
             let c_ro = krnl.ctn_mp.spec_index(ptr).view_rodata().view();
             kernel_k_user_projection(*krnl, include_lock_state).container_map[ptr] == (ContainerU {
-                lock_state: if include_lock_state { krnl.ctn_mp.spec_index(ptr).lock_state_u() } else { LockStateU::Unlocked }, zombie: c.zombie,
+                lock_state: if include_lock_state { krnl.ctn_mp.spec_index(ptr).lock_state_u() } else { LockStateU::Unlocked },
+                lock_process_owner: if include_lock_state { krnl.ctn_mp.spec_index(ptr).lock_process_owner_u() } else { None }, zombie: c.zombie,
                 children: c.children.view(), uppertree_seq: c_ghost.uppertree_seq.view(), subtree_set: c_ghost.subtree_set.view(),
                 root_process: c.root_process, owned_processes: c_ghost.owned_processes.view(), owned_threads: c_ghost.owned_threads.view(),
                 owned_endpoints: c_ghost.owned_endpoints.view(), owned_pages: c.owned_pages.view(),

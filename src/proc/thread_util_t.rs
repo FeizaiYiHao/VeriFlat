@@ -19,6 +19,8 @@ pub fn retype_page_perm_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerId
     page_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm4k>, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>,
 ) -> (ret: (Tracked<PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>, Tracked<LockPerm>))
     requires
+        !(rodata.container_source() is Dynamic),
+        !(rodata.process_source() is Dynamic),
         page_perm.is_init(),
         page_perm.addr() == page_ptr,
         value.inv(),
@@ -31,20 +33,20 @@ pub fn retype_page_perm_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerId
         ret.0.view().value().view() == value,
         ret.0.view().value().view_rodata() == rodata,
         ret.0.view().value().view_ghost() == ghost,
-        ret.0.view().value().being_killed() == false,
+        ret.0.view().value().control() == LockControl::Clear,
         ret.0.view().value().locking_thread() == (RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: ret.1.view().lock_id() }),
         ret.1.view().state() is WriteLock,
         ret.1.view().thread_id() == final(lctx).thread_id(),
         ret.1.view().ordering_lock_id() == (LockId {
-            container: if rodata.container_depth() != LockOwnerId::NotApp { rodata.container_depth() } else { value.container_depth() },
-            process: if rodata.process_depth() != LockOwnerId::NotApp { rodata.process_depth() } else { value.process_depth() },
+            container: match rodata.container_source() { OwnerSource::Payload => value.container_depth(), OwnerSource::Fixed(owner) => owner, OwnerSource::Dynamic => LockOwnerId::None },
+            process: match rodata.process_source() { OwnerSource::Payload => value.process_depth(), OwnerSource::Fixed(owner) => owner, OwnerSource::Dynamic => LockOwnerId::None },
             major: value.current_lock_major(), minor: seq![page_ptr],
         }),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
         typed_lock_maps_inserted(old(lctx), final(lctx), obj_id.view(), TypedHeldLock { lock_id: ret.1.view().ordering_lock_id(), mode: TypedLockMode::Write }),
 {
-    unsafe { (page_ptr as *mut RwLock<T, ROT, GhostT, HAS_KILL_STATE>).write(RwLock::new_wlocked_for_retype(value, rodata)); }
+    unsafe { (page_ptr as *mut RwLock<T, ROT, GhostT, HAS_KILL_STATE>).write(RwLock::new_wlocked_for_retype(value, rodata, LockControl::Clear)); }
     (Tracked::assume_new(), Tracked::assume_new())
 }
 
@@ -84,12 +86,19 @@ pub fn retype_thread_rwlock_to_4k_page_perm(
     Tracked::assume_new()
 }
 
-/// Approved TCB boundary for retyping one owned 2M page; callers use `retype_2m_and_insert`.
+/// Approved TCB boundary for retyping one owned 2M page; callers use `retype_2m_and_insert`. A dynamic lock is created
+/// write-held under the concrete `LockOwnerId::Some` owner recorded in `control`; every other lock is created with a
+/// clear control word.
 #[verifier::external_body]
 fn retype_page_perm_2m_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: bool>(
     page_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm2m>, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>,
+    control: LockControl,
 ) -> (ret: (Tracked<PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>, Tracked<LockPerm>))
     requires
+        !(rodata.container_source() is Dynamic),
+        (rodata.process_source() is Dynamic) == (control is DynamicProcess),
+        !(control is Killed),
+        control is DynamicProcess ==> control->DynamicProcess_0 is Some,
         page_perm.is_init(),
         page_perm.addr() == page_ptr,
         value.inv(),
@@ -102,20 +111,20 @@ fn retype_page_perm_2m_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdT
         ret.0.view().value().view() == value,
         ret.0.view().value().view_rodata() == rodata,
         ret.0.view().value().view_ghost() == ghost,
-        ret.0.view().value().being_killed() == false,
+        ret.0.view().value().control() == control,
         ret.0.view().value().locking_thread() == (RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: ret.1.view().lock_id() }),
         ret.1.view().state() is WriteLock,
         ret.1.view().thread_id() == final(lctx).thread_id(),
         ret.1.view().ordering_lock_id() == (LockId {
-            container: if rodata.container_depth() != LockOwnerId::NotApp { rodata.container_depth() } else { value.container_depth() },
-            process: if rodata.process_depth() != LockOwnerId::NotApp { rodata.process_depth() } else { value.process_depth() },
+            container: match rodata.container_source() { OwnerSource::Payload => value.container_depth(), OwnerSource::Fixed(owner) => owner, OwnerSource::Dynamic => LockOwnerId::None },
+            process: match rodata.process_source() { OwnerSource::Payload => value.process_depth(), OwnerSource::Fixed(owner) => owner, OwnerSource::Dynamic => control->DynamicProcess_0 },
             major: value.current_lock_major(), minor: seq![page_ptr],
         }),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
         typed_lock_maps_inserted(old(lctx), final(lctx), obj_id.view(), TypedHeldLock { lock_id: ret.1.view().ordering_lock_id(), mode: TypedLockMode::Write }),
 {
-    unsafe { (page_ptr as *mut RwLock<T, ROT, GhostT, HAS_KILL_STATE>).write(RwLock::new_wlocked_for_retype(value, rodata)); }
+    unsafe { (page_ptr as *mut RwLock<T, ROT, GhostT, HAS_KILL_STATE>).write(RwLock::new_wlocked_for_retype(value, rodata, control)); }
     (Tracked::assume_new(), Tracked::assume_new())
 }
 
@@ -123,6 +132,8 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
     LockedMap<usize, T, ROT, GhostT, HAS_KILL_STATE> {
     pub fn retype_4k_and_insert(&mut self, page_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm4k>, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>) -> (ret: Tracked<LockPerm>)
         requires
+            !(rodata.container_source() is Dynamic),
+            !(rodata.process_source() is Dynamic),
             old(self).perms_wf(),
             !old(self).dom().contains(page_ptr),
             page_perm.is_init(),
@@ -146,10 +157,10 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             final(self).spec_index(page_ptr).view_ghost() == ghost,
             final(self).spec_index(page_ptr).is_init(),
             final(self).spec_index(page_ptr).inv(),
-            !final(self).spec_index(page_ptr).being_killed(),
+            final(self).spec_index(page_ptr).control() == LockControl::Clear,
             final(self).lock_id_by_key(page_ptr) == (LockId {
-                container: if rodata.container_depth() != LockOwnerId::NotApp { rodata.container_depth() } else { value.container_depth() },
-                process: if rodata.process_depth() != LockOwnerId::NotApp { rodata.process_depth() } else { value.process_depth() },
+                container: match rodata.container_source() { OwnerSource::Payload => value.container_depth(), OwnerSource::Fixed(owner) => owner, OwnerSource::Dynamic => LockOwnerId::None },
+                process: match rodata.process_source() { OwnerSource::Payload => value.process_depth(), OwnerSource::Fixed(owner) => owner, OwnerSource::Dynamic => LockOwnerId::None },
                 major: value.current_lock_major(), minor: seq![page_ptr],
             }),
             final(self).spec_index(page_ptr).wlocked_by(final(lctx)),
@@ -166,8 +177,13 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
         Tracked(lock_perm)
     }
 
-    pub fn retype_2m_and_insert(&mut self, page_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm2m>, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>) -> (ret: Tracked<LockPerm>)
+    pub fn retype_2m_and_insert(&mut self, page_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm2m>,
+        Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>, control: LockControl) -> (ret: Tracked<LockPerm>)
         requires
+            !(rodata.container_source() is Dynamic),
+            (rodata.process_source() is Dynamic) == (control is DynamicProcess),
+            !(control is Killed),
+            control is DynamicProcess ==> control->DynamicProcess_0 is Some,
             old(self).perms_wf(),
             !old(self).dom().contains(page_ptr),
             page_perm.is_init(),
@@ -191,10 +207,10 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             final(self).spec_index(page_ptr).view_ghost() == ghost,
             final(self).spec_index(page_ptr).is_init(),
             final(self).spec_index(page_ptr).inv(),
-            !final(self).spec_index(page_ptr).being_killed(),
+            final(self).spec_index(page_ptr).control() == control,
             final(self).lock_id_by_key(page_ptr) == (LockId {
-                container: if rodata.container_depth() != LockOwnerId::NotApp { rodata.container_depth() } else { value.container_depth() },
-                process: if rodata.process_depth() != LockOwnerId::NotApp { rodata.process_depth() } else { value.process_depth() },
+                container: match rodata.container_source() { OwnerSource::Payload => value.container_depth(), OwnerSource::Fixed(owner) => owner, OwnerSource::Dynamic => LockOwnerId::None },
+                process: match rodata.process_source() { OwnerSource::Payload => value.process_depth(), OwnerSource::Fixed(owner) => owner, OwnerSource::Dynamic => control->DynamicProcess_0 },
                 major: value.current_lock_major(), minor: seq![page_ptr],
             }),
             final(self).spec_index(page_ptr).wlocked_by(final(lctx)),
@@ -206,7 +222,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
             typed_lock_maps_inserted(old(lctx), final(lctx), obj_id.view(), TypedHeldLock { lock_id: final(self).lock_id_by_key(page_ptr), mode: TypedLockMode::Write }),
     {
-        let (Tracked(rwlock_perm), Tracked(lock_perm)) = retype_page_perm_2m_to_rwlock::<T, ROT, GhostT, HAS_KILL_STATE>(page_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut *lctx), obj_id);
+        let (Tracked(rwlock_perm), Tracked(lock_perm)) = retype_page_perm_2m_to_rwlock::<T, ROT, GhostT, HAS_KILL_STATE>(page_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut *lctx), obj_id, control);
         self.insert_with_perm(page_ptr, Tracked(rwlock_perm));
         Tracked(lock_perm)
     }
@@ -217,6 +233,8 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
     #[verifier::spinoff_prover]
     pub fn retype_4k_as_unlocked_singleton(&mut self, page_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm4k>, cpu_id: CpuId, lock_thread_id: LockThreadId, Ghost(obj_id): Ghost<KernelObjId>)
         requires
+            !(rodata.container_source() is Dynamic),
+            !(rodata.process_source() is Dynamic),
             old(self).perms_wf(),
             old(self).dom().is_empty(),
             page_perm.is_init(),
@@ -242,6 +260,8 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
     #[verifier::spinoff_prover]
     pub fn retype_2m_as_unlocked_singleton(&mut self, page_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm2m>, cpu_id: CpuId, lock_thread_id: LockThreadId, Ghost(obj_id): Ghost<KernelObjId>)
         requires
+            !(rodata.container_source() is Dynamic),
+            !(rodata.process_source() is Dynamic),
             old(self).perms_wf(),
             old(self).dom().is_empty(),
             page_perm.is_init(),
@@ -260,7 +280,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             final(self).spec_index(page_ptr).locking_thread() is None,
     {
         let tracked mut lctx = LocalContext::new_bootstrap(cpu_id, lock_thread_id);
-        let Tracked(lock_perm) = self.retype_2m_and_insert(page_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut lctx), Ghost(obj_id));
+        let Tracked(lock_perm) = self.retype_2m_and_insert(page_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut lctx), Ghost(obj_id), LockControl::Clear);
         self.wunlock(page_ptr, Tracked(&mut lctx), Tracked(lock_perm), Ghost(obj_id));
     }
 }
@@ -270,6 +290,8 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
     #[verifier::spinoff_prover]
     pub fn retype_4k_as_unlocked_singleton(&mut self, page_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm4k>, cpu_id: CpuId, lock_thread_id: LockThreadId, Ghost(obj_id): Ghost<KernelObjId>)
         requires
+            !(rodata.container_source() is Dynamic),
+            !(rodata.process_source() is Dynamic),
             old(self).perms_wf(),
             old(self).dom().is_empty(),
             page_perm.is_init(),
@@ -292,9 +314,14 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
         self.wunlock(page_ptr, Tracked(&mut lctx), Tracked(lock_perm), Ghost(obj_id));
     }
 
+    /// Boot-only: retype a dynamic lock held under the concrete owner `requested`, then release it.
     #[verifier::spinoff_prover]
-    pub fn retype_2m_as_unlocked_singleton(&mut self, page_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm2m>, cpu_id: CpuId, lock_thread_id: LockThreadId, Ghost(obj_id): Ghost<KernelObjId>)
+    pub fn retype_2m_as_unlocked_singleton(&mut self, page_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm2m>,
+        cpu_id: CpuId, lock_thread_id: LockThreadId, Ghost(obj_id): Ghost<KernelObjId>, requested: LockOwnerId)
         requires
+            !(rodata.container_source() is Dynamic),
+            rodata.process_source() is Dynamic,
+            requested is Some,
             old(self).perms_wf(),
             old(self).dom().is_empty(),
             page_perm.is_init(),
@@ -313,8 +340,8 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             final(self).spec_index(page_ptr).locking_thread() is None,
     {
         let tracked mut lctx = LocalContext::new_bootstrap(cpu_id, lock_thread_id);
-        let Tracked(lock_perm) = self.retype_2m_and_insert(page_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut lctx), Ghost(obj_id));
-        self.wunlock(page_ptr, Tracked(&mut lctx), Tracked(lock_perm), Ghost(obj_id));
+        let Tracked(lock_perm) = self.retype_2m_and_insert(page_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut lctx), Ghost(obj_id), LockControl::DynamicProcess(requested));
+        self.dynamic_wunlock(page_ptr, Tracked(&mut lctx), Tracked(lock_perm), Ghost(obj_id));
     }
 }
 

@@ -305,6 +305,8 @@ verus! {
                 old(container_map).dom().contains(c) ==> final(container_map).spec_index(c).being_killed() == old(container_map).spec_index(c).being_killed(),
             forall|c: RwLockContainerPtr| #![trigger final(container_map).spec_index(c).killer_info()]
                 old(container_map).dom().contains(c) ==> final(container_map).spec_index(c).killer_info() == old(container_map).spec_index(c).killer_info(),
+            forall|c: RwLockContainerPtr| #![trigger final(container_map).spec_index(c).control()]
+                old(container_map).dom().contains(c) ==> final(container_map).spec_index(c).control() == old(container_map).spec_index(c).control(),
             forall|c: RwLockContainerPtr| #![trigger final(container_map).spec_index(c).view_ghost().retire_ready]
                 old(container_map).dom().contains(c) ==> final(container_map).spec_index(c).view_ghost().retire_ready == old(container_map).spec_index(c).view_ghost().retire_ready,
             forall|c: RwLockContainerPtr| #![trigger final(container_map).spec_index(c).is_init()]
@@ -363,6 +365,8 @@ verus! {
                 old(container_map).dom().contains(c) ==> final(container_map).spec_index(c).being_killed() == old(container_map).spec_index(c).being_killed(),
             forall|c: RwLockContainerPtr| #![trigger final(container_map).spec_index(c).killer_info()]
                 old(container_map).dom().contains(c) ==> final(container_map).spec_index(c).killer_info() == old(container_map).spec_index(c).killer_info(),
+            forall|c: RwLockContainerPtr| #![trigger final(container_map).spec_index(c).control()]
+                old(container_map).dom().contains(c) ==> final(container_map).spec_index(c).control() == old(container_map).spec_index(c).control(),
             forall|c: RwLockContainerPtr| #![trigger final(container_map).spec_index(c).view_ghost().retire_ready]
                 old(container_map).dom().contains(c) ==> final(container_map).spec_index(c).view_ghost().retire_ready == old(container_map).spec_index(c).view_ghost().retire_ready,
             forall|c: RwLockContainerPtr| #![trigger final(container_map).spec_index(c).is_init()]

@@ -17,20 +17,24 @@ pub(super) proof fn unmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VA
             let process = krnl.prc_mp.spec_index(thread.view().owning_proc);
             let table = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), process.view().pagetable);
             let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
-            let live = !container.being_killed() && !container.view().zombie && !process.being_killed() && !thread.being_killed();
+            let unowned = container.lock_process_owner_u() is None;
+            let conflict = container.lock_process_owner_u() is Some && container.lock_process_owner_u()->Some_0 < LockOwnerId::Some(process.view_rodata().view().depth);
+            let live = !container.being_killed() && unowned && !container.view().zombie && !process.being_killed() && !thread.being_killed();
             let mapped = spec_v2l4index(va) >= table.kernel_l4_end() && forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range
                 ==> table.mapping_4k().dom().contains(va_range.view()[j]) && table.mapping_4k()[va_range.view()[j]].present;
             &&& ret is CpuIdle ==> !(cpu.view().view().state is Running) || cpu.being_killed()
             &&& !(ret is CpuIdle) ==> cpu.view().view().state is Running && !cpu.being_killed() && cpu.view().view().current_thread is Some
             &&& !(ret is CpuIdle) ==> krnl.thr_mp.dom().contains(thread_ptr) && krnl.prc_mp.dom().contains(thread.view().owning_proc) && krnl.ctn_mp.dom().contains(thread.view().owning_container)
             &&& ret is ErrorContainerKilled ==> container.being_killed()
-            &&& ret is ErrorContainerZombie ==> !container.being_killed() && container.view().zombie
-            &&& ret is ErrorProcessKilled ==> !container.being_killed() && !container.view().zombie && process.being_killed()
-            &&& ret is ErrorThreadKilled ==> !container.being_killed() && !container.view().zombie && !process.being_killed() && thread.being_killed()
+            &&& ret is ErrorContainerLockOrderConflict ==> !container.being_killed() && conflict
+            &&& ret is ErrorContainerZombie ==> !container.being_killed() && unowned && container.view().zombie
+            &&& ret is ErrorProcessKilled ==> !container.being_killed() && unowned && !container.view().zombie && process.being_killed()
+            &&& ret is ErrorThreadKilled ==> !container.being_killed() && unowned && !container.view().zombie && !process.being_killed() && thread.being_killed()
             &&& (ret is Success || ret is Error) ==> live && !process.view().zombie && krnl.pt_mp.dom().contains(process.view().pagetable)
             &&& ret is Success ==> mapped
             &&& ret is Error ==> !mapped
-            &&& ret is CpuIdle || ret is ErrorContainerKilled || ret is ErrorContainerZombie || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is Success || ret is Error
+            &&& ret is CpuIdle || ret is ErrorContainerKilled || ret is ErrorContainerLockOrderConflict || ret is ErrorContainerZombie || ret is ErrorProcessKilled || ret is ErrorThreadKilled
+                || ret is Success || ret is Error
         },
     ensures
         unmap_4k_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, va, range) == ret,
@@ -40,13 +44,14 @@ pub(super) proof fn unmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VA
     kernel_cpu_projection_at(krnl, cpu_id);
     if !(ret is CpuIdle) {
         kernel_cpu_thread_projection_at(krnl, cpu_id, thread.owning_proc, c.current_thread->Some_0, None); kernel_container_projection_at(krnl, thread.owning_container);
+        if ret is ErrorContainerLockOrderConflict { kernel_process_projection_at(krnl, thread.owning_proc); }
         if ret is Success || ret is Error {
             kernel_l4_end_projection_at(krnl, krnl.prc_mp.spec_index(thread.owning_proc).view().pagetable); kernel_process_projection_at(krnl, thread.owning_proc);
         }
     }
 }
 
-/// Write-locking the caller's context and recording the first page is the enter step on `pre`/`post`.
+/// Write-locking the caller's context under its process depth and recording the first page is the enter step on `pre`/`post`.
 pub(super) proof fn unmap_4k_enter_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, range: VaRange4K)
     requires
         index_valid(NUM_CPUS, cpu_id),
@@ -81,7 +86,9 @@ pub(super) proof fn unmap_4k_enter_step_from_u(pre: KernelU, post: KernelU, cpu_
         },
         post == (KernelU {
             cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre.cpu_array[cpu_id as int] }),
-            container_map: pre.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::WriteLocked, ..pre.container_map.spec_index(container_ptr) }),
+            container_map: pre.container_map.insert(container_ptr, ContainerU {
+                lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(pre.process_map.spec_index(process_ptr).depth)), ..pre.container_map.spec_index(container_ptr)
+            }),
             process_map: pre.process_map.insert(process_ptr, ProcessU {
                 lock_state: LockStateU::WriteLocked,
                 pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..pre.process_map.spec_index(process_ptr).pagetable->Some_0 }),
@@ -126,7 +133,7 @@ pub(super) proof fn unmap_4k_exit_step_from_u(
         table_lock is Unlocked || table_lock is ReadLocked,
         post == (KernelU {
             cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre.cpu_array[cpu_id as int] }),
-            container_map: pre.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, ..pre.container_map.spec_index(container_ptr) }),
+            container_map: pre.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..pre.container_map.spec_index(container_ptr) }),
             process_map: pre.process_map.insert(process_ptr, ProcessU {
                 lock_state: LockStateU::Unlocked,
                 pagetable: Some(PageTableU { lock_state: table_lock, ..pre.process_map.spec_index(process_ptr).pagetable->Some_0 }),

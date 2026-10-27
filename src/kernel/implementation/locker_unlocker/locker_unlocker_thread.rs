@@ -90,17 +90,16 @@ impl KernelK {
                     cpus.contains(held_cpu_id) ==> {
                         &&& index_valid(NUM_CPUS, held_cpu_id)
                         &&& old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().owning_container == thread.owning_container
-                        &&& old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().current_process is None || old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().current_process == Some(thread.owning_proc)
+                        &&& old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().current_process == Some(thread.owning_proc)
                         &&& old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().container_depth == thread.container_depth
-                        &&& old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().current_process is Some ==> old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().process_depth == thread.process_depth
+                        &&& old(self).cpu_arr.spec_index(held_cpu_id).view().view().view().process_depth == thread.process_depth
                     })
                 &&& old(lctx).process_lock_map().dom().contains(thread.owning_proc) ==> {
                     &&& old(self).prc_mp.spec_index(thread.owning_proc).view_rodata().view().container_depth == thread.container_depth
                     &&& old(self).prc_mp.spec_index(thread.owning_proc).view_rodata().view().depth == thread.process_depth
                 }
-                &&& containers.contains(thread.owning_container) ==> old(self).ctn_mp.spec_index(thread.owning_container).view_rodata().view().depth == thread.container_depth
                 &&& forall|f: RwLockCpuOfflineFlagsPtr, i: CpuId| #![trigger old(lctx).cpu_offline_flag_lock_map().dom().contains((f, i))] old(lctx).cpu_offline_flag_lock_map().dom().contains((f, i))
-                    ==> old(self).cpu_offline_mp.spec_index(f).flags.spec_index(i).view().view().container_depth.view() <= thread.container_depth
+                    ==> old(self).cpu_offline_mp.spec_index(f).flags.spec_index(i).view().view().container_depth.view() < thread.container_depth
                 &&& old(lctx).page_lock_map().dom().is_empty()
                 &&& old(lctx).process_lock_map().dom().subset_of(set![thread.owning_proc])
                 &&& old(lctx).thread_lock_map().dom().is_empty()
@@ -123,6 +122,7 @@ impl KernelK {
                 &&& containers.subset_of(set![thread.owning_container])
                 &&& old(lctx).pcid_allocator_lock_map().dom().is_empty()
             }),
+            !old(self).thr_mp.spec_index(thread_ptr).being_killed() ==> typed_lock_map_ids_lt(old(lctx).container_lock_map(), old(self).thr_mp.lock_id_by_key(thread_ptr)),
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -441,6 +441,7 @@ impl KernelK {
             !old(lctx).thread_lock_map().dom().contains(thread_ptr),
             old(lctx).kernel_view_locking_state() is Acquire,
             killer_any_thread_lock_context(*old(self), *old(lctx), thread_ptr, old(lctx).container_lock_map().dom()),
+            !old(self).thr_mp.spec_index(thread_ptr).being_killed() ==> typed_lock_map_ids_lt(old(lctx).container_lock_map(), old(self).thr_mp.lock_id_by_key(thread_ptr)),
             typed_lock_maps_aligned(old(self), old(lctx)),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),

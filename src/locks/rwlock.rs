@@ -17,12 +17,29 @@ pub struct KillerInfo {
     pub cpu_id: CpuId,
 }
 
+/// Control word of a lock. Non-dynamic locks use only `Clear` and `Killed`; a dynamic lock records the concrete owner
+/// of its current write acquisition as `DynamicProcess`. Its layout is fixed by the assertions at the end of this file.
+#[derive(Clone,Copy)]
+pub enum LockControl {
+    Clear,
+    DynamicProcess(LockOwnerId),
+    Killed(KillerInfo),
+}
+
+/// Outcome of a dynamic write acquisition: the lock, the existing kill record, or the shallower concrete owner of a
+/// live holder that the requested owner must not wait for.
+pub enum DynamicWLockResult {
+    Acquired(Tracked<LockPerm>),
+    Killed(KillerInfo),
+    DepthConflict { observed_owner: LockOwnerId },
+}
+
 pub struct RwLockInner {
     lock: AtomicBool, // false means no one is read/writing the lock content.
     writing: bool,
     num_of_reader: usize, // right now we don't need to worry about overflow because we don't support kernel interrupt.
 
-    killer_info: Option<KillerInfo>,
+    control: LockControl,
 }
 
 impl RwLockInner {
@@ -44,8 +61,7 @@ impl RwLockInner {
     pub fn wlock_unless_killed(&mut self) -> Result<(),KillerInfo> {
         loop {
             if self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok() {
-                if self.killer_info.is_some() {
-                    let ret = self.killer_info.unwrap();
+                if let LockControl::Killed(ret) = self.control {
                     self.lock.store(false, Ordering::Release);
                     return Err(ret);
                 }
@@ -63,14 +79,13 @@ impl RwLockInner {
     pub fn try_wlock_and_mark_kill(&mut self, killer_info: KillerInfo) -> Result<(),KillerInfo> {
         loop {
             if self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok() {
-                if self.killer_info.is_some() {
-                    let ret = self.killer_info.unwrap();
+                if let LockControl::Killed(ret) = self.control {
                     self.lock.store(false, Ordering::Release);
                     return Err(ret);
                 }
                 if self.num_of_reader == 0 && self.writing == false {
                     self.writing = true;
-                    self.killer_info = Some(killer_info);
+                    self.control = LockControl::Killed(killer_info);
                     self.lock.store(false, Ordering::Release);
                     return Ok(());
                 }
@@ -85,7 +100,7 @@ impl RwLockInner {
         loop {
             if self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok() {
                 debug_assert!(self.writing, "mark_kill called on object that is not write-locked");
-                self.killer_info = Some(killer_info);
+                self.control = LockControl::Killed(killer_info);
                 self.lock.store(false, Ordering::Release);
                 break;
             }
@@ -97,8 +112,8 @@ impl RwLockInner {
     pub fn unkill(&mut self) {
         loop {
             if self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok() {
-                debug_assert!(self.writing && self.killer_info.is_some(), "unkill called on object that is not write-locked and marked");
-                self.killer_info = None;
+                debug_assert!(self.writing && matches!(self.control, LockControl::Killed(_)), "unkill called on object that is not write-locked and marked");
+                self.control = LockControl::Clear;
                 self.lock.store(false, Ordering::Release);
                 break;
             }
@@ -111,6 +126,51 @@ impl RwLockInner {
             if self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok() {
                 debug_assert!(self.writing, "wunlock called on object that is not write-locked");
                 self.writing = false;
+                self.lock.store(false, Ordering::Release);
+                break;
+            }
+        }
+    }
+
+    /// Dynamic write acquisition for the concrete owner `requested`. Under the guard, every iteration first reports a
+    /// kill record, then a live writer whose recorded owner is below `requested`; a free lock is taken and records
+    /// `requested`; any other holder is waited for.
+    #[verifier::external_body]
+    pub fn dynamic_wlock(&mut self, requested: LockOwnerId) -> Result<(), LockControl> {
+        loop {
+            if self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok() {
+                match self.control {
+                    LockControl::Killed(killer_info) => {
+                        self.lock.store(false, Ordering::Release);
+                        return Err(LockControl::Killed(killer_info));
+                    }
+                    LockControl::DynamicProcess(holder) => {
+                        if self.writing && lock_owner_lt(holder, requested) {
+                            self.lock.store(false, Ordering::Release);
+                            return Err(LockControl::DynamicProcess(holder));
+                        }
+                    }
+                    LockControl::Clear => {}
+                }
+                if self.num_of_reader == 0 && self.writing == false {
+                    self.writing = true;
+                    self.control = LockControl::DynamicProcess(requested);
+                    self.lock.store(false, Ordering::Release);
+                    return Ok(());
+                }
+                self.lock.store(false, Ordering::Release);
+            }
+        }
+    }
+
+    /// Release a live dynamic write acquisition and clear its recorded owner in the same guarded update.
+    #[verifier::external_body]
+    pub fn dynamic_wunlock(&mut self) {
+        loop {
+            if self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok() {
+                debug_assert!(self.writing, "dynamic_wunlock called on object that is not write-locked");
+                self.writing = false;
+                self.control = LockControl::Clear;
                 self.lock.store(false, Ordering::Release);
                 break;
             }
@@ -134,8 +194,7 @@ impl RwLockInner {
     pub fn rlock_unless_killed(&mut self) -> Result<(),KillerInfo> {
         loop {
             if self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok() {
-                if self.killer_info.is_some() {
-                    let ret = self.killer_info.unwrap();
+                if let LockControl::Killed(ret) = self.control {
                     self.lock.store(false, Ordering::Release);
                     return Err(ret);
                 }
@@ -216,17 +275,17 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL
             !ret.being_killed(),
     {
         Self {
-            lock: RwLockInner { lock: AtomicBool::new(false), writing: false, num_of_reader: 0, killer_info: None },
+            lock: RwLockInner { lock: AtomicBool::new(false), writing: false, num_of_reader: 0, control: LockControl::Clear },
             value, read_only_value, ghost_value: Ghost(ghost_value), is_init: Ghost(true), locking_thread: Ghost(RwLockState::None),
         }
     }
 
-    /// TCB: runtime image of a freshly retyped object that its creator holds write-locked. Only
-    /// the retype primitives use it; their contracts supply the ghost state.
+    /// TCB: runtime image of a freshly retyped object that its creator holds write-locked under `control` (`Clear`, or
+    /// `DynamicProcess` for a dynamic lock). Only the retype primitives use it; their contracts supply the ghost state.
     #[verifier::external]
-    pub fn new_wlocked_for_retype(value: T, read_only_value: ROT) -> Self {
+    pub fn new_wlocked_for_retype(value: T, read_only_value: ROT, control: LockControl) -> Self {
         Self {
-            lock: RwLockInner { lock: AtomicBool::new(false), writing: true, num_of_reader: 0, killer_info: None },
+            lock: RwLockInner { lock: AtomicBool::new(false), writing: true, num_of_reader: 0, control },
             value, read_only_value, ghost_value: Ghost::assume_new(), is_init: Ghost::assume_new(), locking_thread: Ghost::assume_new(),
         }
     }
@@ -288,7 +347,18 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL
         ||| self.rlocked_by(lctx)
         ||| self.wlocked_by(lctx)
     }
-    pub closed spec fn killer_info_inner(&self) -> Option<KillerInfo> { self.lock.killer_info }
+    pub closed spec fn control(&self) -> LockControl { self.lock.control }
+    pub open spec fn killer_info_inner(&self) -> Option<KillerInfo> {
+        match self.control() { LockControl::Killed(killer_info) => Some(killer_info), _ => None }
+    }
+    /// Concrete owner recorded by the current dynamic write acquisition.
+    pub open spec fn dynamic_process_owner(&self) -> Option<LockOwnerId> {
+        match self.control() { LockControl::DynamicProcess(owner) => Some(owner), _ => None }
+    }
+    /// User-visible owner of a live dynamic write acquisition; absent unless write-held under a recorded owner.
+    pub open spec fn lock_process_owner_u(&self) -> Option<LockOwnerId> {
+        if self.locking_thread() is Write { self.dynamic_process_owner() } else { None }
+    }
     pub open spec fn killer_info(&self) -> Option<KillerInfo> {
         if HAS_KILL_STATE { self.killer_info_inner() } else { None }
     }
@@ -428,8 +498,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL
             final(self).view_rodata() == old(self).view_rodata(),
             final(self).view_ghost() == old(self).view_ghost(),
             final(self).locking_thread() == old(self).locking_thread(),
-            final(self).being_killed() == old(self).being_killed(),
-            final(self).killer_info() == old(self).killer_info(),
+            final(self).control() == old(self).control(),
             // The `&mut T` ⇄ inner value linkage.
             *ret == old(self).view(),
             final(self).view() == *final(ret),
@@ -556,10 +625,14 @@ impl<T: LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, 
     }
 }
 
-impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT> RwLock<T, ROT, GhostT, HAS_KILL_STATE> {
+// The ordinary kill-state entry points below take no dynamic owner, so they refuse read-only data that selects a
+// `Dynamic` owner component; dynamic locks use the dynamic entry points.
+impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT> RwLock<T, ROT, GhostT, HAS_KILL_STATE> {
     #[verifier::external_body]
     pub fn wlock_unless_killed(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>) -> (ret: Option<Tracked<LockPerm>>)
         requires
+            !(old(self).view_rodata().container_source() is Dynamic),
+            !(old(self).view_rodata().process_source() is Dynamic),
             wlock_requires(*old(self), old(lctx)),
             !old(self).being_killed() ==> {
                 &&& old(self).view().container_depth() == lock_id.view().container
@@ -589,6 +662,8 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT> RwLock<T,
     #[verifier::external_body]
     pub fn wunlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>)
         requires
+            !(old(self).view_rodata().container_source() is Dynamic),
+            !(old(self).view_rodata().process_source() is Dynamic),
             old(self).wlocked_by(old(lctx)),
             old(self).inv(),
             lp.view().state() is WriteLock,
@@ -623,6 +698,8 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT> RwLock<T,
     #[verifier::external_body]
     pub fn try_wlock_and_mark_kill(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>, killer_info: KillerInfo) -> (ret: (bool, Option<Tracked<LockPerm>>))
         requires
+            !(old(self).view_rodata().container_source() is Dynamic),
+            !(old(self).view_rodata().process_source() is Dynamic),
             wlock_requires(*old(self), old(lctx)),
             !old(self).being_killed() ==> {
                 &&& old(self).view().container_depth() == lock_id.view().container
@@ -676,6 +753,8 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT> RwLock<T,
     #[verifier::external_body]
     pub fn mark_kill(&mut self, Tracked(lctx): Tracked<&LocalContext>, killer_info: KillerInfo)
         requires
+            !(old(self).view_rodata().container_source() is Dynamic),
+            !(old(self).view_rodata().process_source() is Dynamic),
             old(self).wlocked_by(lctx),
             !old(self).being_killed(),
             lctx.kernel_view_locking_state() is Release,
@@ -701,6 +780,99 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT> RwLock<T,
     }
 }
 
+impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT> RwLock<T, ROT, GhostT, HAS_KILL_STATE> {
+    /// Dynamic write acquisition for the concrete owner `requested` under the candidate ordering id `lock_id`.
+    #[verifier::external_body]
+    pub fn dynamic_wlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>, requested: LockOwnerId) -> (ret: DynamicWLockResult)
+        requires
+            old(self).view_rodata().process_source() is Dynamic,
+            wlock_requires(*old(self), old(lctx)),
+            !old(self).being_killed() ==> {
+                &&& old(self).container_depth() == lock_id.view().container
+                &&& lock_id.view().process == requested
+                &&& old(self).view().lock_major_sat(lock_id.view().major)
+                &&& old(lctx).lock_id_acyclic(lock_id.view())
+            },
+        ensures
+            dynamic_wlock_ensures(*old(self), *final(self), old(lctx), final(lctx), lock_id.view(), obj_id.view(), requested, ret),
+    {
+        match self.lock.dynamic_wlock(requested) {
+            Ok(()) => DynamicWLockResult::Acquired(Tracked::assume_new()),
+            Err(LockControl::Killed(killer_info)) => DynamicWLockResult::Killed(killer_info),
+            Err(LockControl::DynamicProcess(observed_owner)) => DynamicWLockResult::DepthConflict { observed_owner },
+            Err(LockControl::Clear) => unreachable!(),
+        }
+    }
+
+    /// Release this thread's live dynamic write acquisition, registered under `lock_id`.
+    #[verifier::external_body]
+    pub fn dynamic_wunlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>)
+        requires
+            old(self).view_rodata().process_source() is Dynamic,
+            !old(self).being_killed(),
+            old(self).wlocked_by(old(lctx)),
+            old(self).inv(),
+            lp.view().state() is WriteLock,
+            lp.view().thread_id() == old(lctx).thread_id(),
+            lp.view().lock_id() == old(self).locking_thread()->Write_lock_id,
+            old(lctx).lock_entry_contains(lock_id.view(), obj_id.view()),
+        ensures
+            dynamic_wunlock_ensures(*old(self), *final(self)),
+            unlock_ensures(old(lctx), final(lctx), obj_id.view(), lock_id.view()),
+    {
+        self.lock.dynamic_wunlock();
+    }
+
+    /// `try_wlock_and_mark_kill` for a dynamic lock, registered under the candidate `lock_id` of the killer owner `High`.
+    /// It waits for any holder and never reports a depth conflict, which is lock-order-safe only for `High`.
+    #[verifier::external_body]
+    pub fn try_wlock_dynamic_and_mark_kill(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>,
+        Ghost(requested): Ghost<LockOwnerId>, killer_info: KillerInfo) -> (ret: (bool, Option<Tracked<LockPerm>>))
+        requires
+            requested == LockOwnerId::High,
+            old(self).view_rodata().process_source() is Dynamic,
+            wlock_requires(*old(self), old(lctx)),
+            !old(self).being_killed() ==> {
+                &&& old(self).container_depth() == lock_id.view().container
+                &&& lock_id.view().process == requested
+                &&& old(self).view().lock_major_sat(lock_id.view().major)
+                &&& old(lctx).lock_id_acyclic(lock_id.view())
+            },
+        ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
+            ret.0 == false ==> {
+                &&& old(self).being_killed() == true
+                &&& *old(self) == *final(self)
+                &&& ret.1 is None
+                &&& *final(lctx) == *old(lctx)
+            },
+            ret.0 == true ==> {
+                &&& old(self).being_killed() == false
+                &&& old(self).locked() == false
+                &&& final(self).being_killed() == true
+                &&& final(self).killer_info_inner() == Some(killer_info)
+                &&& ret.1 is Some
+                &&& final(self).locking_thread() == RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: ret.1.unwrap().view().lock_id() }
+                &&& final(self).inv()
+                &&& final(self).view() == old(self).view()
+                &&& final(self).view_rodata() == old(self).view_rodata()
+                &&& final(self).view_ghost() == old(self).view_ghost()
+                &&& ret.1.unwrap().view().state() is WriteLock
+                &&& ret.1.unwrap().view().ordering_lock_id() == lock_id.view()
+                &&& ret.1.unwrap().view().thread_id() == final(lctx).thread_id()
+                &&& final(lctx).thread_id() == old(lctx).thread_id()
+                &&& final(lctx).kernel_view_locking_state() is Release
+                &&& typed_lock_maps_inserted(old(lctx), final(lctx), obj_id.view(), TypedHeldLock { lock_id: lock_id.view(), mode: TypedLockMode::Write })
+            }
+    {
+        if self.lock.try_wlock_and_mark_kill(killer_info).is_err() {
+            (false, None)
+        } else {
+            (true, Some(Tracked::assume_new()))
+        }
+    }
+}
+
 pub open spec fn wlock_requires<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool>(old: RwLock<T, ROT, GhostT, HAS_KILL_STATE>, lctx: &LocalContext) -> bool {
     &&& old.inv()
     // The acquiring thread must hold neither a read nor a write lock here; other
@@ -718,6 +890,7 @@ pub open spec fn wlock_ensures<T: LockInvTrait + LockMajorTrait, ROT, GhostT, co
     &&& new.view_ghost() == old.view_ghost()
     &&& new.being_killed() == old.being_killed()
     &&& new.killer_info() == old.killer_info()
+    &&& new.control() == old.control()
     &&& old.locked() == false
     &&& lock_perm.state() is WriteLock
     &&& new.locking_thread()->Write_lock_id == lock_perm.lock_id()
@@ -734,6 +907,7 @@ pub open spec fn rlock_ensures<T: LockInvTrait + LockMajorTrait, ROT, GhostT, co
     &&& new.view_rodata() == old.view_rodata()
     &&& new.view_ghost() == old.view_ghost()
     &&& new.being_killed() == old.being_killed()
+    &&& new.control() == old.control()
     &&& old.wlocked() == false
     &&& lock_perm.state() is ReadLock
     &&& new.read_lock_perm_match(&lock_perm)
@@ -748,6 +922,7 @@ pub open spec fn runlock_ensures<T: LockInvTrait, ROT, GhostT, const HAS_KILL_ST
     &&& new.view_rodata() == old.view_rodata()
     &&& new.view_ghost() == old.view_ghost()
     &&& new.being_killed() == old.being_killed()
+    &&& new.control() == old.control()
 }
 
 pub open spec fn wunlock_ensures<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool>(old: RwLock<T, ROT, GhostT, HAS_KILL_STATE>, new: RwLock<T, ROT, GhostT, HAS_KILL_STATE>) -> bool {
@@ -758,6 +933,54 @@ pub open spec fn wunlock_ensures<T: LockInvTrait, ROT, GhostT, const HAS_KILL_ST
     &&& new.view_ghost() == old.view_ghost()
     &&& new.being_killed() == old.being_killed()
     &&& new.killer_info() == old.killer_info()
+    &&& new.control() == old.control()
+}
+
+/// A dynamic write acquisition of the free, live lock records `requested`; a kill record or a shallower live dynamic
+/// holder is reported without changing the lock or the local context.
+pub open spec fn dynamic_wlock_ensures<T: LockInvTrait + LockMajorTrait, ROT, GhostT, const HAS_KILL_STATE: bool>(
+    old: RwLock<T, ROT, GhostT, HAS_KILL_STATE>, new: RwLock<T, ROT, GhostT, HAS_KILL_STATE>, old_lctx: &LocalContext, new_lctx: &LocalContext,
+    lock_id: LockId, obj_id: KernelObjId, requested: LockOwnerId, ret: DynamicWLockResult,
+) -> bool {
+    match ret {
+        DynamicWLockResult::Killed(killer_info) => {
+            &&& old.killer_info_inner() == Some(killer_info)
+            &&& new == old
+            &&& *new_lctx == *old_lctx
+        },
+        DynamicWLockResult::DepthConflict { observed_owner } => {
+            &&& old.killer_info_inner() is None
+            &&& old.wlocked()
+            &&& old.dynamic_process_owner() == Some(observed_owner)
+            &&& observed_owner < requested
+            &&& new == old
+            &&& *new_lctx == *old_lctx
+        },
+        DynamicWLockResult::Acquired(lock_perm) => {
+            &&& old.killer_info_inner() is None
+            &&& old.locked() == false
+            &&& new.locking_thread() == RwLockState::Write { thread_id: new_lctx.thread_id(), lock_id: lock_perm.view().lock_id() }
+            &&& new.inv()
+            &&& new.view() == old.view()
+            &&& new.view_rodata() == old.view_rodata()
+            &&& new.view_ghost() == old.view_ghost()
+            &&& new.control() == LockControl::DynamicProcess(requested)
+            &&& lock_perm.view().state() is WriteLock
+            &&& lock_perm.view().ordering_lock_id() == lock_id
+            &&& lock_perm.view().thread_id() == new_lctx.thread_id()
+            &&& lock_ensures(old_lctx, new_lctx, lock_id, obj_id)
+        },
+    }
+}
+
+/// Releasing a live dynamic write acquisition clears the recorded owner; payload, read-only data, and ghost stay.
+pub open spec fn dynamic_wunlock_ensures<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool>(old: RwLock<T, ROT, GhostT, HAS_KILL_STATE>, new: RwLock<T, ROT, GhostT, HAS_KILL_STATE>) -> bool {
+    &&& new.locking_thread() == RwLockState::None
+    &&& new.inv()
+    &&& new.view() == old.view()
+    &&& new.view_rodata() == old.view_rodata()
+    &&& new.view_ghost() == old.view_ghost()
+    &&& new.control() == LockControl::Clear
 }
 
 /// The writer becomes the only reader under its write token; payload, ghost slot, and kill state stay.
@@ -769,6 +992,7 @@ pub open spec fn downgrade_ensures<T: LockInvTrait, ROT, GhostT, const HAS_KILL_
     &&& new.view_ghost() == old.view_ghost()
     &&& new.being_killed() == old.being_killed()
     &&& new.killer_info() == old.killer_info()
+    &&& new.control() == old.control()
     &&& new_perm.state() is ReadLock
     &&& new_perm.lock_id() == old_perm.lock_id()
     &&& new_perm.ordering_lock_id() == old_perm.ordering_lock_id()
@@ -782,7 +1006,7 @@ pub open spec fn take_ensures<T, ROT, GhostT, const HAS_KILL_STATE: bool>(old: R
     &&& new.view() == old.view()
     &&& new.view_rodata() == old.view_rodata()
     &&& new.view_ghost() == old.view_ghost()
-    &&& new.killer_info_inner() == old.killer_info_inner()
+    &&& new.control() == old.control()
 }
 
 pub open spec fn put_ensures<T, ROT, GhostT, const HAS_KILL_STATE: bool>(old: RwLock<T, ROT, GhostT, HAS_KILL_STATE>, new: RwLock<T, ROT, GhostT, HAS_KILL_STATE>, v: T) -> bool {
@@ -791,7 +1015,7 @@ pub open spec fn put_ensures<T, ROT, GhostT, const HAS_KILL_STATE: bool>(old: Rw
     &&& new.view() == v
     &&& new.view_rodata() == old.view_rodata()
     &&& new.view_ghost() == old.view_ghost()
-    &&& new.killer_info_inner() == old.killer_info_inner()
+    &&& new.control() == old.control()
     &&& new.being_killed() == old.being_killed()
 }
 
@@ -801,17 +1025,31 @@ pub open spec fn update_ghost_ensures<T, ROT, GhostT, const HAS_KILL_STATE: bool
     &&& new.view() == old.view()
     &&& new.view_rodata() == old.view_rodata()
     &&& new.view_ghost() == new_ghost
-    &&& new.killer_info_inner() == old.killer_info_inner()
+    &&& new.control() == old.control()
 }
 
 impl<T: LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: bool> LockOwnerIdTrait for RwLock<T, ROT, GhostT, HAS_KILL_STATE> {
     open spec fn container_depth(&self) -> LockOwnerId {
         if self.being_killed() { LockOwnerId::High }
-        else if self.view_rodata().container_depth() != LockOwnerId::NotApp { self.view_rodata().container_depth() } else { self.view().container_depth() }
+        else {
+            match self.view_rodata().container_source() {
+                OwnerSource::Payload => self.view().container_depth(),
+                OwnerSource::Fixed(owner) => owner,
+                // Only a live write acquisition has a concrete dynamic owner; otherwise the lock reports `None`.
+                OwnerSource::Dynamic => match self.lock_process_owner_u() { Some(owner) => owner, None => LockOwnerId::None },
+            }
+        }
     }
     open spec fn process_depth(&self) -> LockOwnerId {
         if self.being_killed() { LockOwnerId::High }
-        else if self.view_rodata().process_depth() != LockOwnerId::NotApp { self.view_rodata().process_depth() } else { self.view().process_depth() }
+        else {
+            match self.view_rodata().process_source() {
+                OwnerSource::Payload => self.view().process_depth(),
+                OwnerSource::Fixed(owner) => owner,
+                // Only a live write acquisition has a concrete dynamic owner; otherwise the lock reports `None`.
+                OwnerSource::Dynamic => match self.lock_process_owner_u() { Some(owner) => owner, None => LockOwnerId::None },
+            }
+        }
     }
 }
 
@@ -819,3 +1057,9 @@ impl<T: LockIdTrait, const HAS_KILL_STATE: bool> LockIdTrait for RwLock<T, (), (
     open spec fn lock_id(&self) -> LockId { self.view().lock_id() }
 }
 }
+
+// Layout contract: `LockControl` has the size and alignment of `Option<KillerInfo>`, 56 bytes on 64-bit targets.
+const _: () = assert!(core::mem::size_of::<LockControl>() == core::mem::size_of::<Option<KillerInfo>>());
+const _: () = assert!(core::mem::align_of::<LockControl>() == core::mem::align_of::<Option<KillerInfo>>());
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(core::mem::size_of::<LockControl>() == 56);

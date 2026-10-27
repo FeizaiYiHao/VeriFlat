@@ -61,7 +61,7 @@ impl LockInvTrait for OfflineFlag {
 
 impl LockOwnerIdTrait for OfflineFlag {
     open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::Some(self.container_depth.view()) }
-    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
+    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::None }
 }
 
 impl LockMajorTrait for OfflineFlag {

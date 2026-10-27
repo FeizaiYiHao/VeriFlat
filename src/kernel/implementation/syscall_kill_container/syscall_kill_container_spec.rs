@@ -5,13 +5,16 @@ use super::super::syscall_kill_process::syscall_kill_process_spec::{kill_killer,
 
 verus! {
 /// The result of `syscall_kill_container` from the state at entry, in the implementation's check order: a killed
-/// container, process, or thread, a child index past the container's children, and a child container already being
-/// killed. A kill otherwise succeeds. A cpu no longer Running or marked by a killer returns CpuIdle first.
+/// container, a container write-held by a live owner below the running process's depth, a killed process or thread, a
+/// child index past the container's children, and a child container already being killed. A kill otherwise succeeds. A
+/// cpu no longer Running or marked by a killer returns CpuIdle first.
 pub open spec fn kill_container_syscall_result(pre: KernelU, cpu_id: CpuId, child_index: usize) -> RetValueType {
     let cpu = pre.cpu_array[cpu_id as int];
     let container = pre.container_map[cpu.owning_container];
+    let owner = container.lock_process_owner;
     if !(cpu.state is Running) || cpu.killed { RetValueType::CpuIdle }
     else if container.killed { RetValueType::ErrorContainerKilled }
+    else if owner is Some && owner->Some_0 < LockOwnerId::Some(pre.process_map[cpu.current_process->Some_0].depth) { RetValueType::ErrorContainerLockOrderConflict }
     else if pre.process_map[cpu.current_process->Some_0].killed { RetValueType::ErrorProcessKilled }
     else if pre.thread_map[cpu.current_thread->Some_0].killed { RetValueType::ErrorThreadKilled }
     else if child_index >= container.children.len() { RetValueType::ErrorInvalidChild }
@@ -76,8 +79,9 @@ pub open spec fn kill_container_enter_step(old_u: KernelU, new_u: KernelU, cpu_i
     let child_ptr = old_u.container_map[owner_ptr].children[child_index as int];
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..cpu }),
-        container_map: old_u.container_map.insert(owner_ptr, ContainerU { lock_state: LockStateU::WriteLocked, ..old_u.container_map[owner_ptr] })
-            .insert(child_ptr, ContainerU { lock_state: LockStateU::WriteLocked, killed: true, ..old_u.container_map[child_ptr] }),
+        container_map: old_u.container_map.insert(owner_ptr, ContainerU {
+            lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(old_u.process_map[process_ptr].depth)), ..old_u.container_map[owner_ptr]
+        }).insert(child_ptr, ContainerU { lock_state: LockStateU::WriteLocked, killed: true, ..old_u.container_map[child_ptr] }),
         process_map: old_u.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::WriteLocked, ..old_u.process_map[process_ptr] }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU {
             lock_state: LockStateU::WriteLocked, syscall_progress: kill_container_progress(child_ptr, ContainerKillStage::Walk), ..old_u.thread_map[thread_ptr]
@@ -357,7 +361,7 @@ pub open spec fn kill_container_finish_step(old_u: KernelU, new_u: KernelU, cpu_
     let thread_ptr = cpu.current_thread->Some_0;
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..cpu }),
-        container_map: old_u.container_map.insert(owner_ptr, ContainerU { lock_state: LockStateU::Unlocked, ..old_u.container_map[owner_ptr] }),
+        container_map: old_u.container_map.insert(owner_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..old_u.container_map[owner_ptr] }),
         process_map: old_u.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::Unlocked, ..old_u.process_map[process_ptr] }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..old_u.thread_map[thread_ptr] }),
         ..old_u

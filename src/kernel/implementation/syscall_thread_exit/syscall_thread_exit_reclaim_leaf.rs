@@ -22,6 +22,7 @@ pub(super) fn thread_exit_reclaim_clear_leaf(
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         typed_lock_map_contains_mode(old(lctx).container_lock_map(), container_ptr, TypedLockMode::Write),
         typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
+        old(lctx).thread_lock_map().dom() =~= set![thread_ptr],
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, TypedLockMode::Write),
         iommu_table is Some ==> old(lctx).iommu_table_lock_map().dom().contains(iommu_table->Some_0),

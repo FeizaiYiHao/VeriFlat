@@ -3,9 +3,9 @@ use crate::*;
 use super::cpu_offline_check::OfflineCheckResult;
 
 verus! {
-/// The result of `cpu_offline_check` from the state at entry: an Off cpu, a cpu a killer marked, a clear request
-/// bit, a cpu set a killer marked, or a killed running process or thread continue to the scheduler; otherwise the cpu
-/// goes Off.
+/// The result of `cpu_offline_check` from the state where it decides, the entry for an early Continue and otherwise the
+/// snapshot after the hold under the held cpu lock: an Off cpu, a cpu a killer marked, a clear request bit, a cpu set a
+/// killer marked, or a killed running process or thread continue to the scheduler; otherwise the cpu goes Off.
 pub open spec fn cpu_offline_check_result(pre: KernelU, cpu_id: CpuId) -> OfflineCheckResult {
     let cpu = pre.cpu_array[cpu_id as int];
     if cpu.state is Off || cpu.killed || !pre.container_map[cpu.owning_container].cpu_offline_requests[cpu_id as int] || pre.container_map[cpu.owning_container].cpu_set_killed
@@ -142,15 +142,49 @@ pub open spec fn cpu_went_off_eof_transition_framing(
     &&& cpu_offline_requests_of(table_after) == cpu_offline_requests_of(table_before).update(cpu_id as int, false)
 }
 
-/// User-visible precondition of the offline step on `cpu_id`: the non-Off cpu and its container's cpu-set
-/// lock are unlocked, the container's request bit for the cpu is set, and the running thread and process,
-/// if any, are live and unlocked.
+/// User-visible precondition of the hold step on `cpu_id`: the live, non-Off cpu is unlocked and its container's
+/// request bit for the cpu is set.
+#[verifier::opaque]
+pub open spec fn cpu_offline_check_hold_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+    let cpu = old_u.cpu_array[cpu_id as int];
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& old_u.cpu_array.len() == NUM_CPUS
+    &&& cpu.lock_state is Unlocked
+    &&& !cpu.killed
+    &&& !(cpu.state is Off)
+    &&& old_u.container_map.dom().contains(cpu.owning_container)
+    &&& old_u.container_map.spec_index(cpu.owning_container).cpu_offline_requests[cpu_id as int]
+}
+
+/// Holding write-locks cpu `cpu_id` across the boundary before the recheck and changes nothing else.
+#[verifier::opaque]
+pub open spec fn cpu_offline_check_hold_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    new_u == (KernelU { cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..old_u.cpu_array[cpu_id as int] }), ..old_u })
+}
+
+/// Releasing happens with cpu `cpu_id` write-locked since the hold step.
+#[verifier::opaque]
+pub open spec fn cpu_offline_check_release_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& old_u.cpu_array.len() == NUM_CPUS
+    &&& old_u.cpu_array[cpu_id as int].lock_state is WriteLocked
+}
+
+/// Releasing unlocks cpu `cpu_id` and changes nothing else, when the recheck continues to the scheduler.
+#[verifier::opaque]
+pub open spec fn cpu_offline_check_release_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    new_u == (KernelU { cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..old_u.cpu_array[cpu_id as int] }), ..old_u })
+}
+
+/// User-visible precondition of the offline step on `cpu_id`: the non-Off cpu is write-locked since the hold step, its
+/// container's cpu-set lock is unlocked, the container's request bit for the cpu is set, and the running thread and
+/// process, if any, are live and unlocked.
 #[verifier::opaque]
 pub open spec fn cpu_offline_check_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
     let container = old_u.container_map.spec_index(cpu.owning_container);
     &&& index_valid(NUM_CPUS, cpu_id)
-    &&& cpu.lock_state is Unlocked
+    &&& cpu.lock_state is WriteLocked
     &&& !(cpu.state is Off)
     &&& old_u.container_map.dom().contains(cpu.owning_container)
     &&& container.cpu_set_lock is Unlocked
@@ -175,16 +209,29 @@ pub open spec fn cpu_offline_check_step(old_u: KernelU, new_u: KernelU, cpu_id: 
     kernel_u_cpu_went_off_changed(old_u, new_u, cpu_id, entry_regs, flushed_default_pcid)
 }
 
-/// Complete trace of one offline check, including its unchanged lock modes.
+/// The partial trace after holding from the entry state `pre`: the single hold step.
+#[verifier::opaque]
+pub open spec fn cpu_offline_check_trace_after_hold(trace: Seq<KernelStep>, pre: KernelU, cpu_id: CpuId) -> bool {
+    &&& trace.len() == 1
+    &&& trace[0].old_u == pre
+    &&& cpu_offline_check_hold_step_pre(pre, cpu_id)
+    &&& cpu_offline_check_hold_step(pre, trace[0].new_u, cpu_id)
+}
+
+/// Complete trace of one offline check from the entry state `pre`. A check whose entry cpu is killed, already Off, or
+/// not requested continues without a step. Otherwise it records the hold step from `pre` and, from the decision state
+/// after the boundary, where unheld objects may have changed, either the release step or the offline step to `post`.
 #[verifier::opaque]
 pub open spec fn cpu_offline_check_entry_trace(trace: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, regs: Registers, went_off: bool, flushed_default_pcid: bool) -> bool {
-    if went_off {
-        &&& trace.len() == 1
+    if cpu_offline_check_hold_step_pre(pre, cpu_id) {
+        &&& trace.len() == 2
         &&& trace[0].old_u == pre
-        &&& trace[0].new_u == post
-        &&& cpu_offline_check_step_pre(pre, cpu_id)
-        &&& cpu_offline_check_step(pre, post, cpu_id, regs, flushed_default_pcid)
+        &&& cpu_offline_check_hold_step(pre, trace[0].new_u, cpu_id)
+        &&& trace[1].new_u == post
+        &&& went_off ==> cpu_offline_check_step_pre(trace[1].old_u, cpu_id) && cpu_offline_check_step(trace[1].old_u, post, cpu_id, regs, flushed_default_pcid)
+        &&& !went_off ==> cpu_offline_check_release_step_pre(trace[1].old_u, cpu_id) && cpu_offline_check_release_step(trace[1].old_u, post, cpu_id)
     } else {
+        &&& !went_off
         &&& trace.len() == 0
         &&& post == pre
     }

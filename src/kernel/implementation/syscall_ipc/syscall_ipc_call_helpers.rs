@@ -190,7 +190,7 @@ pub(super) fn ipc_reply_handoff_release_and_end_step(
     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         let ghost flushed_pcid = ipc_handoff_flushed_pcid(old(steps).snapshot_k(), cpu_id, caller_ptr);
-        assert(kernel_ipc_reply_handoff_fields(&steps.snapshot_k(), &*krnl, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, entry_regs, flushed_pcid)) by {
+        assert(kernel_ipc_reply_handoff_fields(&steps.snapshot_k(), &*krnl, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, entry_regs, flushed_pcid) && krnl.ctn_mp == steps.snapshot_k().ctn_mp) by {
             broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive;
             reveal(kernel_ipc_reply_handoff_fields); reveal(ipc_reply_handoff_eof_transition_framing);
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);

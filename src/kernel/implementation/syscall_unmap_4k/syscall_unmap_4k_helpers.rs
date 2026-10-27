@@ -68,7 +68,15 @@ pub(super) fn unmap_4k_lock_running_thread(krnl: &mut KernelK, Tracked(lctx): Tr
             &&& typed_lock_map_contains_mode(final(lctx).process_lock_map(), e.process_ptr, TypedLockMode::Write)
             &&& typed_lock_map_contains_mode(final(lctx).thread_lock_map(), e.thread_ptr, TypedLockMode::Write)
             &&& wlock_ensures(old(krnl).cpu_arr.spec_index(cpu_id).view(), final(krnl).cpu_arr.spec_index(cpu_id).view(), old(krnl).cpu_arr.lock_id_by_index(cpu_id), final(lctx), e.cpu_lock_perm.view())
-            &&& wlock_ensures(old(krnl).ctn_mp.spec_index(e.container_ptr), final(krnl).ctn_mp.spec_index(e.container_ptr), old(krnl).ctn_mp.lock_id_by_key(e.container_ptr), final(lctx), e.container_lock_perm.view())
+            &&& !old(krnl).ctn_mp.spec_index(e.container_ptr).locked()
+            &&& final(krnl).ctn_mp.spec_index(e.container_ptr).locking_thread() == (RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: e.container_lock_perm.view().lock_id() })
+            &&& final(krnl).ctn_mp.spec_index(e.container_ptr).lock_process_owner_u() == Some(LockOwnerId::Some(final(krnl).prc_mp.spec_index(e.process_ptr).view_rodata().view().depth))
+            &&& final(krnl).ctn_mp.spec_index(e.container_ptr).view() == old(krnl).ctn_mp.spec_index(e.container_ptr).view()
+            &&& final(krnl).ctn_mp.spec_index(e.container_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(e.container_ptr).view_rodata()
+            &&& final(krnl).ctn_mp.spec_index(e.container_ptr).view_ghost() == old(krnl).ctn_mp.spec_index(e.container_ptr).view_ghost()
+            &&& final(krnl).ctn_mp.spec_index(e.container_ptr).being_killed() == old(krnl).ctn_mp.spec_index(e.container_ptr).being_killed()
+            &&& e.container_lock_perm.view().state() is WriteLock
+            &&& e.container_lock_perm.view().thread_id() == final(lctx).thread_id()
             &&& wlock_ensures(old(krnl).prc_mp.spec_index(e.process_ptr), final(krnl).prc_mp.spec_index(e.process_ptr), old(krnl).prc_mp.lock_id_by_key(e.process_ptr), final(lctx), e.process_lock_perm.view())
             &&& wlock_ensures(old(krnl).thr_mp.spec_index(e.thread_ptr), final(krnl).thr_mp.spec_index(e.thread_ptr), old(krnl).thr_mp.lock_id_by_key(e.thread_ptr), final(lctx), e.thread_lock_perm.view())
             &&& cpu.state is Running && !final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed()
@@ -125,16 +133,27 @@ pub(super) fn unmap_4k_lock_running_thread(krnl: &mut KernelK, Tracked(lctx): Tr
     let process_ptr = cpu.current_process().unwrap();
     let thread_ptr = cpu.current_thread().unwrap();
     let container_ptr = cpu.owning_container();
-    let container_res = krnl.wlock_container_unless_killed(container_ptr, Tracked(&mut *lctx));
-    if container_res.is_none() {
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
-        proof {
-            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), None, None, None, None, None);
-            unmap_4k_result_from_k(&*old(krnl), cpu_id, va, range, RetValueType::ErrorContainerKilled);
-        }
-        return Err(RetValueType::ErrorContainerKilled);
-    }
-    let Tracked(container_perm) = container_res.unwrap();
+    let requested = LockOwnerId::Some(cpu.process_depth());
+    let container_res = krnl.wlock_container_unless_killed(container_ptr, requested, Tracked(&mut *lctx));
+    let Tracked(container_perm) = match container_res {
+        DynamicWLockResult::Acquired(perm) => perm,
+        DynamicWLockResult::Killed(_) => {
+            krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
+            proof {
+                steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), None, None, None, None, None);
+                unmap_4k_result_from_k(&*old(krnl), cpu_id, va, range, RetValueType::ErrorContainerKilled);
+            }
+            return Err(RetValueType::ErrorContainerKilled);
+        },
+        DynamicWLockResult::DepthConflict { .. } => {
+            krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
+            proof {
+                steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), None, None, None, None, None);
+                unmap_4k_result_from_k(&*old(krnl), cpu_id, va, range, RetValueType::ErrorContainerLockOrderConflict);
+            }
+            return Err(RetValueType::ErrorContainerLockOrderConflict);
+        },
+    };
     let container = krnl.ctn_mp.borrow_typed(container_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(&container_perm));
     if container.zombie {
         krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_perm));
@@ -145,6 +164,7 @@ pub(super) fn unmap_4k_lock_running_thread(krnl: &mut KernelK, Tracked(lctx): Tr
         }
         return Err(RetValueType::ErrorContainerZombie);
     }
+    assert(!krnl.prc_mp.spec_index(process_ptr).being_killed() ==> typed_lock_map_ids_lt(lctx.container_lock_map(), krnl.prc_mp.lock_id_by_key(process_ptr))) by { process_perms_wf_at(krnl.prc_mp, process_ptr); };
     let process_res = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
     if process_res.is_none() {
         krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_perm));
@@ -207,7 +227,19 @@ pub(super) fn unmap_4k_unmap_and_finish(
         old(krnl).pt_mp.unchanged_except(&old(steps).snapshot_k().pt_mp, pagetable),
         old(krnl).pt_lower.view() =~= old(steps).snapshot_k().pt_lower.view().insert(pagetable, old(krnl).pt_lower.view().spec_index(pagetable)),
         wlock_ensures(old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view(), old(krnl).cpu_arr.spec_index(cpu_id).view(), old(steps).snapshot_k().cpu_arr.lock_id_by_index(cpu_id), old(lctx), cpu_perm),
-        wlock_ensures(old(steps).snapshot_k().ctn_mp.spec_index(container_ptr), old(krnl).ctn_mp.spec_index(container_ptr), old(steps).snapshot_k().ctn_mp.lock_id_by_key(container_ptr), old(lctx), container_perm),
+        ({
+            let pre = old(steps).snapshot_k().ctn_mp.spec_index(container_ptr);
+            let post = old(krnl).ctn_mp.spec_index(container_ptr);
+            &&& !pre.locked()
+            &&& post.locking_thread() == (RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: container_perm.lock_id() })
+            &&& post.lock_process_owner_u() == Some(LockOwnerId::Some(old(steps).snapshot_k().prc_mp.spec_index(process_ptr).view_rodata().view().depth))
+            &&& post.view() == pre.view()
+            &&& post.view_rodata() == pre.view_rodata()
+            &&& post.view_ghost() == pre.view_ghost()
+            &&& post.being_killed() == pre.being_killed()
+            &&& container_perm.state() is WriteLock
+            &&& container_perm.thread_id() == old(lctx).thread_id()
+        }),
         wlock_ensures(old(steps).snapshot_k().prc_mp.spec_index(process_ptr), old(krnl).prc_mp.spec_index(process_ptr), old(steps).snapshot_k().prc_mp.lock_id_by_key(process_ptr), old(lctx), process_perm),
         wlock_ensures(old(steps).snapshot_k().thr_mp.spec_index(thread_ptr), old(krnl).thr_mp.spec_index(thread_ptr), old(steps).snapshot_k().thr_mp.lock_id_by_key(thread_ptr), old(lctx), thread_perm),
         !old(steps).snapshot_k().pt_mp.spec_index(pagetable).wlocked(),

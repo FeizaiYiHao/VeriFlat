@@ -3,14 +3,18 @@ use crate::*;
 
 verus! {
 /// The result of `syscall_new_endpoint` from the state at entry, in the implementation's check order:
-/// a cpu no longer Running or marked by a killer, a killed or zombie container, a killed process or caller, an occupied descriptor, and a caller without 4K quota.
+/// a cpu no longer Running or marked by a killer, a killed container, a container write-held by a live owner below the
+/// running process's depth, a zombie container, a killed process or caller, an occupied descriptor, and a caller without 4K quota.
 pub open spec fn new_endpoint_syscall_result(pre: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx) -> RetValueType {
     let cpu = pre.cpu_array[cpu_id as int];
+    let container = pre.container_map[cpu.owning_container];
+    let process = pre.process_map[cpu.current_process->Some_0];
     let thread = pre.thread_map[cpu.current_thread->Some_0];
     if !(cpu.state is Running) || cpu.killed { RetValueType::CpuIdle }
-    else if pre.container_map[cpu.owning_container].killed { RetValueType::ErrorContainerKilled }
-    else if pre.container_map[cpu.owning_container].zombie { RetValueType::ErrorContainerZombie }
-    else if pre.process_map[cpu.current_process->Some_0].killed { RetValueType::ErrorProcessKilled }
+    else if container.killed { RetValueType::ErrorContainerKilled }
+    else if container.lock_process_owner is Some && container.lock_process_owner->Some_0 < LockOwnerId::Some(process.depth) { RetValueType::ErrorContainerLockOrderConflict }
+    else if container.zombie { RetValueType::ErrorContainerZombie }
+    else if process.killed { RetValueType::ErrorProcessKilled }
     else if thread.killed { RetValueType::ErrorThreadKilled }
     else if thread.endpoint_descriptors[endpoint_index as int] is Some { RetValueType::ErrorIpcEndpointTargetInUse }
     else if thread.quota_4k == 0 { RetValueType::ErrorNoQuota }
@@ -50,8 +54,8 @@ pub open spec fn new_endpoint_enter_step_pre(old_u: KernelU, cpu_id: CpuId, endp
     &&& thread.quota_4k >= 1
 }
 
-/// Entering write-locks the cpu, the container, the process, and the thread, and records
-/// `endpoint_index` in the thread's progress.
+/// Entering write-locks the cpu, the container under the running process's depth, the process, and the thread, and
+/// records `endpoint_index` in the thread's progress.
 #[verifier::opaque]
 pub open spec fn new_endpoint_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -60,7 +64,9 @@ pub open spec fn new_endpoint_enter_step(old_u: KernelU, new_u: KernelU, cpu_id:
     let thread_ptr = cpu.current_thread->Some_0;
     let locked = KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..cpu }),
-        container_map: old_u.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::WriteLocked, ..old_u.container_map.spec_index(container_ptr) }),
+        container_map: old_u.container_map.insert(container_ptr, ContainerU {
+            lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(old_u.process_map.spec_index(process_ptr).depth)), ..old_u.container_map.spec_index(container_ptr)
+        }),
         process_map: old_u.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::WriteLocked, ..old_u.process_map.spec_index(process_ptr) }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, ..old_u.thread_map.spec_index(thread_ptr) }),
         ..old_u
@@ -102,7 +108,7 @@ pub open spec fn new_endpoint_finish_step(old_u: KernelU, new_u: KernelU, cpu_id
     let endpoint_index = old_u.thread_map.spec_index(thread_ptr).syscall_progress->Some_0->NewEndpoint_slot;
     kernel_u_new_endpoint_changed(KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..cpu }),
-        container_map: old_u.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, ..old_u.container_map.spec_index(container_ptr) }),
+        container_map: old_u.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..old_u.container_map.spec_index(container_ptr) }),
         process_map: old_u.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::Unlocked, ..old_u.process_map.spec_index(process_ptr) }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..old_u.thread_map.spec_index(thread_ptr) }),
         ..old_u

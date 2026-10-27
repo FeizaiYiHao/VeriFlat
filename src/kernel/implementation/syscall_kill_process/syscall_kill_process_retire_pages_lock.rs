@@ -104,7 +104,8 @@ pub(crate) fn wlock_kill_retire_pages<const N: usize>(
         forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
         forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread) ==> {
             let state = old(krnl).thr_mp.spec_index(held_thread).view().state;
-            !(state.is_endpoint_waiting() || state.is_reply_waiting() || state is IPC_TRANSIT)
+            &&& !(state.is_endpoint_waiting() || state.is_reply_waiting() || state is IPC_TRANSIT)
+            &&& major < THREAD_SCHEDULED_LOCK_MAJOR ==> old(krnl).thr_mp.spec_index(held_thread).being_killed() || !(state is SCHEDULED)
         },
         forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> {
             let page = old(krnl).pg_arr.spec_index(held_page).view().view();
@@ -226,7 +227,8 @@ pub(crate) fn wlock_kill_retire_pages<const N: usize>(
             forall|held_cpu_id: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(held_cpu_id)] lctx.cpu_lock_map().dom().contains(held_cpu_id) ==> !(krnl.cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
             forall|held_thread: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(held_thread)] lctx.thread_lock_map().dom().contains(held_thread) ==> {
                 let state = krnl.thr_mp.spec_index(held_thread).view().state;
-                !(state.is_endpoint_waiting() || state.is_reply_waiting() || state is IPC_TRANSIT)
+                &&& !(state.is_endpoint_waiting() || state.is_reply_waiting() || state is IPC_TRANSIT)
+                &&& major < THREAD_SCHEDULED_LOCK_MAJOR ==> krnl.thr_mp.spec_index(held_thread).being_killed() || !(state is SCHEDULED)
             },
             lctx.cpu_lock_map() == old(lctx).cpu_lock_map(),
             lctx.pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),

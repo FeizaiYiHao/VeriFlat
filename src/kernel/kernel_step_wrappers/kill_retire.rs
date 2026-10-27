@@ -41,7 +41,7 @@ pub proof fn kernel_zombie_process_retired_implies_u_step(
         post.ctn_mp.spec_index(container_ptr).view_ghost() == (ContainerGhost {
             owned_processes: Ghost(pre.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().remove(process_ptr)), ..pre.ctn_mp.spec_index(container_ptr).view_ghost() }),
         post.ctn_mp.spec_index(container_ptr).locking_thread() == pre.ctn_mp.spec_index(container_ptr).locking_thread(),
-        post.ctn_mp.spec_index(container_ptr).being_killed() == pre.ctn_mp.spec_index(container_ptr).being_killed(),
+        post.ctn_mp.spec_index(container_ptr).control() == pre.ctn_mp.spec_index(container_ptr).control(),
         forall|a: RwLockPageAllocatorPtr| #![trigger post.allc_4k_mp.spec_index(a)]
             pre.allc_4k_mp.dom().contains(a) && a != allocator_ptr ==> post.allc_4k_mp.spec_index(a).quota.view() == pre.allc_4k_mp.spec_index(a).quota.view(),
         post.pt_mp.dom() == pre.pt_mp.dom().remove(pre.prc_mp.spec_index(process_ptr).view().pagetable),

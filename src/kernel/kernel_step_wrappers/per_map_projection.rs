@@ -8,7 +8,7 @@ pub proof fn kernel_container_nonlock_fields_and_locks_unchanged_implies_u_conta
     requires
         kernel_container_nonlock_fields_and_quotas_unchanged(pre, post),
         forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)]
-            pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).locking_thread() == pre.ctn_mp.spec_index(p).locking_thread(),
+            pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).locking_thread() == pre.ctn_mp.spec_index(p).locking_thread() && post.ctn_mp.spec_index(p).lock_process_owner_u() == pre.ctn_mp.spec_index(p).lock_process_owner_u(),
     ensures kernel_k_user_projection(*post, include_lock_state).container_map == kernel_k_user_projection(*pre, include_lock_state).container_map,
 {
     hide(kernel_k_user_projection);
@@ -242,6 +242,7 @@ pub proof fn kernel_cpu_went_off_fields_implies_u_container_map(pre: &KernelK, p
     requires
         container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp),
         kernel_cpu_went_off_fields(pre, post, cpu_id, regs, flushed_default_pcid),
+        forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)] pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).lock_process_owner_u() == pre.ctn_mp.spec_index(p).lock_process_owner_u(),
     ensures
         ({
             let pre_u = kernel_k_user_projection(*pre, include_lock_state);
@@ -375,6 +376,7 @@ pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_container_map(
             &&& post.ctn_mp.spec_index(c).view_rodata() == pre.ctn_mp.spec_index(c).view_rodata()
             &&& post.ctn_mp.spec_index(c).view_ghost() == pre.ctn_mp.spec_index(c).view_ghost()
             &&& post.ctn_mp.spec_index(c).locking_thread() == pre.ctn_mp.spec_index(c).locking_thread()
+            &&& post.ctn_mp.spec_index(c).lock_process_owner_u() == pre.ctn_mp.spec_index(c).lock_process_owner_u()
             &&& post.ctn_mp.spec_index(c).being_killed() == pre.ctn_mp.spec_index(c).being_killed()
             &&& post.ctn_mp.spec_index(c).view() == (Container { owned_pages: post.ctn_mp.spec_index(c).view().owned_pages, ..pre.ctn_mp.spec_index(c).view() })
             &&& post.ctn_mp.spec_index(c).view().owned_pages.view() == if c == source { pre.ctn_mp.spec_index(c).view().owned_pages.view().remove(page) }
@@ -448,7 +450,8 @@ pub proof fn kernel_container_lock_mode_changed_implies_u_container_map(
             let old_u = kernel_k_to_kernel_u(*pre);
             kernel_k_to_kernel_u(*post).container_map == match container {
                 Some(c) => old_u.container_map.insert(c, ContainerU {
-                    lock_state: mode, cpu_set_lock: if cpu_set_unlocked is Some { mode } else { old_u.container_map[c].cpu_set_lock }, ..old_u.container_map[c]
+                    lock_state: mode, lock_process_owner: if mode is WriteLocked { post.ctn_mp.spec_index(c).lock_process_owner_u() } else { None },
+                    cpu_set_lock: if cpu_set_unlocked is Some { mode } else { old_u.container_map[c].cpu_set_lock }, ..old_u.container_map[c]
                 }),
                 None => old_u.container_map,
             }
@@ -459,7 +462,10 @@ pub proof fn kernel_container_lock_mode_changed_implies_u_container_map(
     let new_u = kernel_k_to_kernel_u(*post);
     match container {
         Some(c) => {
-            let new_c = ContainerU { lock_state: mode, cpu_set_lock: if cpu_set_unlocked is Some { mode } else { old_u.container_map[c].cpu_set_lock }, ..old_u.container_map[c] };
+            let new_c = ContainerU {
+                lock_state: mode, lock_process_owner: if mode is WriteLocked { post.ctn_mp.spec_index(c).lock_process_owner_u() } else { None },
+                cpu_set_lock: if cpu_set_unlocked is Some { mode } else { old_u.container_map[c].cpu_set_lock }, ..old_u.container_map[c]
+            };
             assert(new_u.container_map[c] == new_c) by { kernel_container_projection_at(pre, c); kernel_container_projection_at(post, c); reveal(container_cpu_set_wf); };
             assert_maps_equal!(new_u.container_map, old_u.container_map.insert(c, new_c), p => {
                 if pre.ctn_mp.dom().contains(p) && p != c { kernel_container_projection_at(pre, p); kernel_container_projection_at(post, p); reveal(container_cpu_set_wf); }

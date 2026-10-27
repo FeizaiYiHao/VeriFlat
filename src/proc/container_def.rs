@@ -39,6 +39,8 @@ pub struct ContainerGhost {
 
 pub ghost struct ContainerU {
     pub lock_state: LockStateU,
+    /// Concrete process owner of a live write acquisition; absent when unlocked or killed.
+    pub lock_process_owner: Option<LockOwnerId>,
     pub zombie: bool,
     pub children: Seq<RwLockContainerPtr>,
     pub uppertree_seq: Seq<RwLockContainerPtr>,
@@ -112,13 +114,17 @@ impl LockMajorTrait for Container {
     open spec fn lock_major_default_predicate(&self) -> bool { true }
 }
 
+// Intentional payload defaults: `ContainerRO` selects both owner components (its fixed depth and the dynamic process
+// owner recorded by the lock), so these are never consulted.
 impl LockOwnerIdTrait for Container {
-    open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
-    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
+    open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::None }
+    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::None }
 }
 
 impl LockOwnerIdTrait for ContainerRO {
     open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::Some(self.depth) }
-    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
+    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::None }
+    // The process component is the concrete owner of the current dynamic write acquisition.
+    open spec fn process_source(&self) -> OwnerSource { OwnerSource::Dynamic }
 }
 } // verus!

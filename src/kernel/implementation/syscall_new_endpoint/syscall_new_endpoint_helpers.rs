@@ -45,6 +45,7 @@ pub(super) fn commit_new_endpoint(
         typed_lock_map_contains_mode(old(lctx).container_lock_map(), container_ptr, TypedLockMode::Write),
         old(krnl).ctn_mp.dom().contains(container_ptr),
         old(krnl).ctn_mp.spec_index(container_ptr).being_killed() == false,
+        old(krnl).ctn_mp.spec_index(container_ptr).lock_process_owner_u() == Some(LockOwnerId::Some(old(krnl).prc_mp.spec_index(process_ptr).view_rodata().view().depth)),
         !old(krnl).ctn_mp.spec_index(container_ptr).view().zombie,
         old(krnl).ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().contains(process_ptr),
         process_lock_perm.view().state() is WriteLock,

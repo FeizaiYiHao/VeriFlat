@@ -165,8 +165,8 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
             &&& post.ctn_mp.spec_index(ptr).is_init() == pre.ctn_mp.spec_index(ptr).is_init()
             &&& post.ctn_mp.spec_index(ptr).view_rodata() == pre.ctn_mp.spec_index(ptr).view_rodata()
             &&& post.ctn_mp.spec_index(ptr).locking_thread() == pre.ctn_mp.spec_index(ptr).locking_thread()
-            &&& post.ctn_mp.spec_index(ptr).being_killed() == pre.ctn_mp.spec_index(ptr).being_killed()
             &&& post.ctn_mp.spec_index(ptr).killer_info() == pre.ctn_mp.spec_index(ptr).killer_info()
+            &&& post.ctn_mp.spec_index(ptr).control() == pre.ctn_mp.spec_index(ptr).control()
             &&& post.ctn_mp.spec_index(ptr).view().parent_linkedlist_node == pre.ctn_mp.spec_index(ptr).view().parent_linkedlist_node
             &&& post.ctn_mp.spec_index(ptr).view_ghost().owned_threads == pre.ctn_mp.spec_index(ptr).view_ghost().owned_threads
             &&& post.ctn_mp.spec_index(ptr).view_ghost().owned_processes == pre.ctn_mp.spec_index(ptr).view_ghost().owned_processes
@@ -201,7 +201,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& post.ctn_mp.spec_index(parent_container_ptr).view().owned_pages.view() == pre.ctn_mp.spec_index(parent_container_ptr).view().owned_pages.view().difference(moved_pages)
     &&& post.ctn_mp.spec_index(container_page).view().root_process == process_page
     &&& !post.ctn_mp.spec_index(container_page).view().zombie
-    &&& !post.ctn_mp.spec_index(container_page).being_killed()
+    &&& post.ctn_mp.spec_index(container_page).control() == LockControl::DynamicProcess(LockOwnerId::Some(0))
     &&& post.ctn_mp.spec_index(container_page).view_ghost().owned_processes.view() == set![process_page]
     &&& post.ctn_mp.spec_index(container_page).view_ghost().owned_endpoints.view().is_empty()
     &&& !post.ctn_mp.spec_index(container_page).view_ghost().retire_ready

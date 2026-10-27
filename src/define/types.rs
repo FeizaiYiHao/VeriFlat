@@ -261,6 +261,8 @@ pub enum RetValueType {
     ErrorIommuIovaNotMapped,
     /// A source VA page of the requested range is not mapped in the caller's page table.
     ErrorIommuVaNotMapped,
+    /// The caller's container is write-held by a live dynamic owner below the caller's requested process owner.
+    ErrorContainerLockOrderConflict,
 }
 pub type PTType = bool;
 

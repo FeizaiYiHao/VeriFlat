@@ -3,19 +3,27 @@ use crate::*;
 
 verus! {
 /// Closes `inv()` after `wlock_container_unless_killed`: only the target entry's lock state moved.
-pub(super) proof fn wlock_container_eof(pre: KernelK, post: KernelK, container_ptr: RwLockContainerPtr, lctx: LocalContext, ret: Option<Tracked<LockPerm>>)
+pub(super) proof fn wlock_container_eof(pre: KernelK, post: KernelK, container_ptr: RwLockContainerPtr, requested: LockOwnerId, acquired: bool)
     requires
         pre.inv(),
         post == (KernelK { ctn_mp: post.ctn_mp, ..pre }),
         post.ctn_mp.perms_wf(),
         post.ctn_mp.unchanged_except(&pre.ctn_mp, container_ptr),
-        ret is None ==> post.ctn_mp.spec_index(container_ptr) == pre.ctn_mp.spec_index(container_ptr),
-        ret is Some ==> wlock_ensures(pre.ctn_mp.spec_index(container_ptr), post.ctn_mp.spec_index(container_ptr), pre.ctn_mp.lock_id_by_key(container_ptr), &lctx, ret.unwrap().view()),
+        !acquired ==> post.ctn_mp.spec_index(container_ptr) == pre.ctn_mp.spec_index(container_ptr),
+        acquired ==> {
+            &&& !pre.ctn_mp.spec_index(container_ptr).being_killed()
+            &&& !pre.ctn_mp.spec_index(container_ptr).locked()
+            &&& post.ctn_mp.spec_index(container_ptr).inv()
+            &&& post.ctn_mp.spec_index(container_ptr).view() == pre.ctn_mp.spec_index(container_ptr).view()
+            &&& post.ctn_mp.spec_index(container_ptr).view_rodata() == pre.ctn_mp.spec_index(container_ptr).view_rodata()
+            &&& post.ctn_mp.spec_index(container_ptr).view_ghost() == pre.ctn_mp.spec_index(container_ptr).view_ghost()
+            &&& post.ctn_mp.spec_index(container_ptr).control() == LockControl::DynamicProcess(requested)
+        },
     ensures
         post.inv(),
-        ret is Some ==> !pre.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().is_empty(),
+        acquired ==> !pre.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().is_empty(),
 {
-    assert(ret is Some ==> !pre.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().is_empty()) by { reveal(container_process_wf); };
+    assert(acquired ==> !pre.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().is_empty()) by { reveal(container_process_wf); };
     assert(container_perms_wf(post.ctn_mp)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
     assert(container_invariant_fields_unchanged(pre.ctn_mp, post.ctn_mp)) by { container_lock_op_preserves_invariant_fields(pre.ctn_mp, post.ctn_mp, container_ptr); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
@@ -106,7 +114,7 @@ pub(super) proof fn wunlock_container_eof(pre: KernelK, post: KernelK, pre_lctx:
         post == (KernelK { ctn_mp: post.ctn_mp, ..pre }),
         post.ctn_mp.perms_wf(),
         post.ctn_mp.unchanged_except(&pre.ctn_mp, container_ptr),
-        wunlock_ensures(pre.ctn_mp.spec_index(container_ptr), post.ctn_mp.spec_index(container_ptr)),
+        dynamic_wunlock_ensures(pre.ctn_mp.spec_index(container_ptr), post.ctn_mp.spec_index(container_ptr)),
     ensures
         post.inv(),
 {

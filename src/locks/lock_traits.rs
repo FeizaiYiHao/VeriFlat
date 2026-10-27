@@ -41,15 +41,18 @@ pub trait LockMajorTrait {
 pub trait LockOwnerIdTrait {
     spec fn container_depth(&self) -> LockOwnerId;
     spec fn process_depth(&self) -> LockOwnerId;
+    /// Source of the container component when this is a lock's read-only data: by default its own fixed owner.
+    open spec fn container_source(&self) -> OwnerSource { OwnerSource::Fixed(self.container_depth()) }
+    /// Source of the process component when this is a lock's read-only data: by default its own fixed owner.
+    open spec fn process_source(&self) -> OwnerSource { OwnerSource::Fixed(self.process_depth()) }
 }
 
-/// Empty read-only data (`ROT = ()`) carries no owner-id, so it reports
-/// `NotApp` for both — the `RwLock` owner-id accessors then fall back to the
-/// payload `T`'s own owner-id. Lets `thread_map` / `scheduler_map` (both
-/// `ROT = ()`) participate in the lock system.
+/// Empty read-only data (`ROT = ()`) selects the payload `T`'s own owner ids; its own depths are never consulted.
 impl LockOwnerIdTrait for () {
-    open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
-    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
+    open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::None }
+    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::None }
+    open spec fn container_source(&self) -> OwnerSource { OwnerSource::Payload }
+    open spec fn process_source(&self) -> OwnerSource { OwnerSource::Payload }
 }
 
 pub trait LockMinorTrait {

@@ -50,8 +50,8 @@ impl LockMajorTrait for SchedulerShard {
 }
 
 impl LockOwnerIdTrait for SchedulerShard {
-    open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
-    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::NotApp }
+    open spec fn container_depth(&self) -> LockOwnerId { LockOwnerId::None }
+    open spec fn process_depth(&self) -> LockOwnerId { LockOwnerId::None }
 }
 
 impl Scheduler {

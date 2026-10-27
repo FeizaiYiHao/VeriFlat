@@ -45,6 +45,7 @@ pub proof fn kernel_snapshot_nonlock_fields_and_lock_states_unchanged_implies_u_
                 let after = krnl.ctn_mp.spec_index(p).locking_thread();
                 &&& (after is Write) == (before is Write)
                 &&& (after is Read) == (before is Read)
+                &&& krnl.ctn_mp.spec_index(p).lock_process_owner_u() == steps.snapshot_k().ctn_mp.spec_index(p).lock_process_owner_u()
             },
         forall|p: RwLockProcessPtr| #![trigger krnl.prc_mp.spec_index(p)]
             krnl.prc_mp.dom().contains(p) && steps.snapshot_k().prc_mp.dom().contains(p) ==> {

@@ -327,7 +327,7 @@ pub fn wake_interrupt(regs: &mut Registers) {
     interrupt::end_of_interrupt();
     if from_user(regs) {
         let cpu_id = cpu::get_cpu_id();
-        if let OfflineCheckResult::Off = cpu_offline_check(kernel(), Tracked::assume_new(), Tracked::assume_new(), cpu_id, regs) {
+        if let OfflineCheckResult::Off = cpu_offline_check(kernel(), Tracked::assume_new(), Tracked::assume_new(), cpu_id, regs).0 {
             wait_until_online(cpu_id);
             run_idle(regs);
         }
@@ -407,6 +407,7 @@ fn error_index(ret: RetValueType) -> usize {
         ErrorIommuIovaAlreadyMapped => 46,
         ErrorIommuIovaNotMapped => 47,
         ErrorIommuVaNotMapped => 48,
+        ErrorContainerLockOrderConflict => 49,
     }
 }
 
@@ -693,7 +694,7 @@ fn debug_print(data: usize, len: usize) {
 fn schedule_from_running(regs: &mut Registers) {
     let cpu_id = cpu::get_cpu_id();
     let k = kernel();
-    if let OfflineCheckResult::Off = cpu_offline_check(k, Tracked::assume_new(), Tracked::assume_new(), cpu_id, regs) {
+    if let OfflineCheckResult::Off = cpu_offline_check(k, Tracked::assume_new(), Tracked::assume_new(), cpu_id, regs).0 {
         wait_until_online(cpu_id);
         run_idle(regs);
         return;
@@ -722,7 +723,7 @@ fn run_idle(regs: &mut Registers) {
     let cpu_id = cpu::get_cpu_id();
     let k = kernel();
     loop {
-        if let OfflineCheckResult::Off = cpu_offline_check(k, Tracked::assume_new(), Tracked::assume_new(), cpu_id, regs) {
+        if let OfflineCheckResult::Off = cpu_offline_check(k, Tracked::assume_new(), Tracked::assume_new(), cpu_id, regs).0 {
             wait_until_online(cpu_id);
             continue;
         }

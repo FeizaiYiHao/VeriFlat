@@ -12,7 +12,8 @@ specs; remove a section's differences list once that syscall conforms.
 - `KernelU` is the projection of `KernelK` sampled at atomic-section
   boundaries. It shows object lock modes (`LockStateU::{Unlocked, ReadLocked,
   WriteLocked}`) on CPUs, containers, processes, threads, endpoints, and page
-  tables, but not lock owners, reader counts, or allocator internals. The
+  tables, plus each container's dynamic lock owner `lock_process_owner`
+  (R9), but no other lock owners, reader counts, or allocator internals. The
   process PCID and the global `kernel_l4_end` are in U (§15).
 - A `KernelStep` is `{ old_u, new_u }`. An atomic section whose U projection
   does not change records no step (it stutters). Every recorded step is one
@@ -129,10 +130,29 @@ argument errors first. The result specs and traces state this as their first
 branch (after the argument checks); IPC traces that classify `CpuIdle` as a
 block step take that branch only when the cpu is Running at entry.
 
+**R9 Dynamic container lock.** A syscall that write-locks the caller's
+container (`P` on the hotplug child variants, `C` elsewhere) requests the
+caller process's depth `r = Some(depth)`; `ContainerU.lock_process_owner` is
+the owner recorded by the live write acquisition, `None` when there is none.
+A killed container reports ContainerKilled first. Otherwise a holder owner
+`h < r` makes the syscall stutter with ContainerLockOrderConflict
+(`ErrorContainerLockOrderConflict`, ABI error index 49) instead of waiting; a
+holder with `h >= r` is waited for. The result specs place this branch right
+after ContainerKilled: alloc_quota_4k/2m, cpu_offline_request_child,
+cpu_online_child, new_endpoint, unmap_4k, iommu_unmap_4k, new_container and
+its endpoint variant, thread_exit, and kill_container. A killer marking a
+deeper container requests `High`; a published child container is write-held
+with owner `Some(0)`.
+
+**Batch 2 validation.** R9 and the cpu_offline_check Hold/Release protocol
+(§4b) are covered by the Batch 2 final runs: cold split workspace run #34945
+(3189 verified, 0 errors), cold noninterference run #34944 (266 verified,
+0 errors: 265 noninterference + 1 u_facts), and monolith run #34946 (3189
+verified, 0 errors). Earlier run numbers in this document predate Batch 2.
+
 ## 3. alloc_quota_4k, alloc_quota_2m — one step each
 
-Status: conforms (alloc_quota_4k focused run #27373; alloc_quota_2m workspace
-run #28754, monolith run #28755, noninterference run #28756).
+Status: conforms, including R9 (Batch 2 validation, §2).
 
 - Arguments: `amount`. A zero amount succeeds with no step.
 - U locks acquired and released in the step: `cpu`, container `cpu.owning_container`,
@@ -150,8 +170,8 @@ run #28754, monolith run #28755, noninterference run #28756).
 - Effect: the container's `quota_4k` decreases by `amount` and the process's
   increases by it (`kernel_u_only_process_quota_4k_changed`).
 
-Stutters: CpuIdle (cpu not Running or killed), ContainerKilled, ContainerZombie, ProcessKilled,
-ContainerQuotaInsufficient, ProcessQuotaOverflow.
+Stutters: CpuIdle (cpu not Running or killed), ContainerKilled, ContainerLockOrderConflict (R9),
+ContainerZombie, ProcessKilled, ContainerQuotaInsufficient, ProcessQuotaOverflow.
 
 ## 3a. alloc_thread_quota_4k, alloc_thread_quota_2m — one step each
 
@@ -207,9 +227,7 @@ Stutters: Off, a `killed` cpu (Idle), a killed running process or thread (Contin
 
 ## 4a. cpu_offline_request, cpu_online, and their child variants — one step each
 
-Status: conforms (own variants workspace run #28133, noninterference run
-#28132; child variants workspace run #28754, monolith run #28755,
-noninterference run #28756).
+Status: conforms, including R9 on the child variants (Batch 2 validation, §2).
 
 All four are issued by a running thread of container `P`
 (`cpu.owning_container`). The own variants `cpu_offline_request(target)` and
@@ -251,6 +269,8 @@ Stutters:
   `i >= P.children.len()` or a `target` that `P.children[i]` does not own;
 - CpuIdle: after the `target` index check, a cpu no longer Running;
 - ContainerKilled: child variant only, when `P` is killed;
+- ContainerLockOrderConflict: child variant only, on a dynamic-owner conflict
+  at `P` (R9);
 - ContainerZombie: child variant only, when `P` is a zombie;
 - CpuAlreadyOff;
 - Success, when the bit was already set.
@@ -265,12 +285,15 @@ Stutters:
   the request bit of an Off cpu is already clear. The caller then sends an IPI
   to `target` (no U effect).
 
-Stutters: CpuOwnerMismatch for an invalid `target` index, CpuIdle (cpu not Running or killed), CpuOwnerMismatch (with the same child cases), ContainerKilled and
-ContainerZombie (child variant), CpuNotOff.
+Stutters (in this order, `cpu_online_syscall_result` and `cpu_online_child_syscall_result`):
+CpuOwnerMismatch for an invalid `target` index; CpuIdle (cpu not Running or killed); child variant
+only, ContainerKilled, ContainerLockOrderConflict (R9), and ContainerZombie at `P`; CpuOwnerMismatch
+for a `target` that `C` does not own, or on the child variant `i >= P.children.len()` or a `target`
+that `P.children[i]` does not own; CpuNotOff.
 
 ## 4b. cpu_offline_check — one step before each schedule
 
-Status: conforms (workspace run #28133, noninterference run #28132).
+Status: conforms, including the Hold/Release protocol (Batch 2 validation, §2).
 
 Entry `cpu_offline_check(cpu_id, pt_regs) -> OfflineCheckResult { Continue, Off }`
 is run by the trap layer on every cpu right before `syscall_schedule` and on
@@ -278,17 +301,27 @@ IPI entry of a non-Off cpu. It is not a syscall: no `Caller`, and `C` is
 `cpu.owning_container` (R3). The cpu that goes Off is the one running the
 entry (`cpu_id == lctx.cpu_id()`); the trap layer halts it afterwards.
 
-- U locks acquired and released in the step: `cpu`, `CS(C)`, and when the cpu
-  is Running also `current_process` and `current_thread`. Non-U: the request
-  cell `F(C, cpu_id)` (lock major 104) is held from the read through the whole
-  offline, then shard `cpu_id` of `C`'s scheduler and
-  `(cpu_id, KERNEL_DEFAULT_PCID)` needflush.
+- Sections. The probe section write-locks `cpu`, then the non-U request cell
+  `F(C, cpu_id)` (major 104, fixed owner `(Some(C.depth), None)`), reads it,
+  and releases the cell. A clear bit releases `cpu` and continues with no
+  step. A set bit keeps `cpu` write-held across a boundary, recording the
+  lock-only hold step. The decision section then write-locks, when the cpu
+  is Running, `current_process` and `current_thread` unless killed,
+  reacquires and rereads `F(C, cpu_id)`, and, while the bit is still set,
+  write-locks `CS(C)` unless killed, then shard `cpu_id` of `C`'s scheduler
+  and `(cpu_id, KERNEL_DEFAULT_PCID)` needflush, and commits; otherwise it
+  releases every lock with the release step.
+- Hold step (`cpu_offline_check_hold_step`): pre `cpu_offline_check_hold_step_pre`
+  (live, non-Off, unlocked `cpu` with `C.cpu_offline_requests[cpu_id]`);
+  effect: `cpu` becomes write-locked, nothing else changes.
+- Release step (`cpu_offline_check_release_step`): `cpu`, write-held since
+  the hold step, is unlocked; nothing else changes.
 
 **cpu_offline_check step** (`cpu_offline_check_step`, label
 `flushed_default_pcid`)
 
 - Pre: `index_valid(cpu_id)`, `!(cpu.state is Off)`, `C` present,
-  `C.cpu_offline_requests[cpu_id]`, `Unlocked(cpu)`, `Unlocked(CS(C))`;
+  `C.cpu_offline_requests[cpu_id]`, `W(cpu)` since the hold step, `Unlocked(CS(C))`;
   if `cpu.current_thread is Some(prev)`: `prev` and `cpu.current_process` are
   present, not killed, `Unlocked`, `prev.state == RUNNING { cpu_id }`, and
   `prev.owning_proc == cpu.current_process`.
@@ -302,13 +335,20 @@ entry (`cpu_id == lctx.cpu_id()`); the trap layer halts it afterwards.
   `flushed_default_pcid` holds (the cpu was Running and its default-PCID
   needflush bit was set: `cpu_offline_check_flushed_default_pcid`). Nothing
   else changes; the cpu's lock state is Unlocked again at the end.
-- Result: `cpu_offline_check_result(u, cpu_id)` is `Off` exactly when the step
-  pre holds; the trace predicate `cpu_offline_check_entry_trace` records
-  `went_off` and the label.
+- Trace (`cpu_offline_check_entry_trace`): when the hold pre holds at entry,
+  exactly two steps, Hold then either Release or the went-off step; otherwise
+  none. Objects not held across the boundary may change in between, so the
+  second step starts from the post-boundary decision state.
+- Result: `cpu_offline_check_result` is evaluated on the decision state
+  returned with the result (the post-boundary snapshot, or the entry for an
+  early Continue); the flush label `cpu_offline_check_flushed_default_pcid`
+  also reads the post-boundary state.
 
-Stutters (`Continue`, no U step): the cpu is already Off or `killed`; the request bit is
-clear; the running thread or its process is already killed (the bit is kept
-and `syscall_schedule` handles the kill). Each stutter leaves U unchanged.
+Continue without a step: the cpu is already Off or `killed`, or the probe
+finds the bit clear; U is unchanged. Continue with Hold + Release: after the
+boundary the bit is clear, the running thread or its process is killed (the
+bit is kept and `syscall_schedule` handles the kill), or a killer marked
+`CS(C)`.
 
 **cpu_online_resume** (`cpu_online_resume(cpu_id) -> OnlineResumeResult
 { StillOff, Resumed }`, no U step)
@@ -414,8 +454,7 @@ Stutters: CpuIdle (cpu not Running or killed), ProcessKilled, ThreadKilled, NoQu
 
 ## 5a. new_endpoint — enter, finish
 
-Status: conforms (workspace run #28754, monolith run #28755, noninterference run
-#28756).
+Status: conforms, including R9 (Batch 2 validation, §2).
 
 - Arguments: `endpoint_index`.
 - U locks retained from enter to finish: `cpu`, `C`, `P`, and `T`. Non-U: the
@@ -442,8 +481,8 @@ Status: conforms (workspace run #28754, monolith run #28755, noninterference run
   only at `(T, slot)`; `T.endpoint_descriptors[slot] = Some(E)` and `E` joins
   `C.owned_endpoints`. The step unlocks `cpu`, `C`, `P`, and `T` and clears `prog`.
 
-Stutters: CpuIdle (cpu not Running or killed), ContainerKilled, ContainerZombie, ProcessKilled, ThreadKilled, an
-occupied descriptor (IpcEndpointTargetInUse), NoQuota.
+Stutters: CpuIdle (cpu not Running or killed), ContainerKilled, ContainerLockOrderConflict (R9),
+ContainerZombie, ProcessKilled, ThreadKilled, an occupied descriptor (IpcEndpointTargetInUse), NoQuota.
 
 ## 6. mmap_4k — enter (or hold, enter), directory/downgrade/leaf steps, exit
 
@@ -525,7 +564,7 @@ NoQuota, a kernel-range VA (Error), and VaInUse found by the read section.
 
 ## 7. unmap_4k — enter, leaf/flush/flushed/refund steps, exit
 
-Status: conforms (workspace run #27748).
+Status: conforms, including R9 (Batch 2 validation, §2).
 
 - Arguments: `va`, `range`; `R` as for mmap.
 - U locks retained from enter to exit: `cpu`, `C`, `P`, `PT(P)`, `T`. Non-U:
@@ -576,8 +615,9 @@ Status: conforms (workspace run #27748).
 
 Trace: `range + 3 <= len <= range + NUM_CPUS + MAX_CONTAINER_TREE_DEPTH + 4`.
 
-Stutters: argument errors, CpuIdle (cpu not Running or killed), ContainerKilled, ContainerZombie, ProcessKilled,
-ThreadKilled, and an unmapped or kernel-range VA.
+Stutters: argument errors, CpuIdle (cpu not Running or killed), ContainerKilled,
+ContainerLockOrderConflict (R9), ContainerZombie, ProcessKilled, ThreadKilled, and an unmapped or
+kernel-range VA.
 
 ## 7a. iommu_map_4k — enter, directory/leaf steps, exit
 
@@ -655,7 +695,7 @@ IommuVaNotMapped, IommuIovaAlreadyMapped.
 
 Status: implemented (crate `veriflat_syscall_iommu_unmap_4k`;
 `syscall_iommu_unmap_4k.rs`, `_check.rs`, `_lock.rs`, `_range.rs`); verified,
-package run #34434, workspace run #34649, monolith run #34650. Boot
+including R9 (Batch 2 validation, §2). Boot
 `NR_IOMMU_UNMAP_4K = 46`. Noninterference labels `IommuUnmap4kEnter`,
 `IommuUnmap4kLeaf`, `IommuUnmap4kFlush`, `IommuUnmap4kRefund`,
 `IommuUnmap4kExit` (`ni_iommu_unmap_4k.rs`, run #34648).
@@ -713,8 +753,8 @@ Trace (`iommu_unmap_4k_syscall_trace`):
 
 Stutters (in this order, `iommu_unmap_4k_syscall_result`): argument errors
 (Error), CpuIdle (cpu not Running or killed), ContainerKilled,
-ContainerZombie, ProcessKilled, ThreadKilled, PciNoIommuTable, and a
-kernel-range or unmapped IOVA (IommuIovaNotMapped).
+ContainerLockOrderConflict (R9), ContainerZombie, ProcessKilled, ThreadKilled,
+PciNoIommuTable, and a kernel-range or unmapped IOVA (IommuIovaNotMapped).
 
 ## 8. share_4k — directory and leaf sub-steps
 
@@ -816,8 +856,7 @@ not check whether `C` is killed.
 
 ## 10. new_container, new_container_with_endpoint — enter, publish, share steps, finish
 
-Status: conforms (new_container workspace run #27748; new_container_with_endpoint
-workspace run #28754, monolith run #28755, noninterference run #28756).
+Status: conforms, including R9 (Batch 2 validation, §2).
 
 - Arguments: `va`, `range`, `funding`, `process_quota`, `transfer_cpu`, `regs`;
   for the endpoint variant, `endpoint_index`.
@@ -875,7 +914,8 @@ workspace run #28754, monolith run #28755, noninterference run #28756).
 
 Trace: `range + 3 <= len <= 4 * range + 3`.
 
-Stutters: argument errors, CpuIdle (cpu not Running or killed), ContainerKilled, ContainerZombie, depth overflow,
+Stutters: argument errors, CpuIdle (cpu not Running or killed), ContainerKilled,
+ContainerLockOrderConflict (R9), ContainerZombie, depth overflow,
 ProcessKilled, ThreadKilled, a missing endpoint descriptor (Error), NoQuota,
 a bad source range, IpcCpuOwnerMismatch, IpcCpuNotOff.
 
@@ -1265,10 +1305,17 @@ holds every container's table at `cpu_offline_flags_ptr(c) = c + 4096`, with
 `cpu_offline_flags_wf` (cells aligned, `Off ⇒ !requested`) and
 `container_cpu_offline_flags_wf` (container ↔ table); the cell locks form the
 new family `CPU_OFFLINE_FLAG_LOCK_MAJOR = 104` (`KernelObjId::CpuOfflineFlag`,
-`LocalContext.cpu_offline_flag_lock_map`). The major lies above the container
-lock (101) and below the process lock (105), so a parent's container lock
-precedes a child's request cell (§4a), and the container and PCID allocator
-(107) locks require that no request cell is held.
+`LocalContext.cpu_offline_flag_lock_map`). A cell has the fixed owner
+`(Some(c.depth), None)`, so its lock id is `(Some(c.depth), None, 104, minor)`.
+Ids compare by container, then process component, then major: the cell's
+`None` process component orders it after the same container's process lock
+and RUNNING-thread lock (process component `Some(process depth)`) despite its
+lower major, while a parent's container lock precedes a child's cell through
+the smaller container depth (§4a). Container locks (dynamic acquisition and
+killer marking) and the ordinary PCID allocator (107) lock require that no
+request cell is held, and an ordinary cell acquisition requires that no other
+cell is held; only a killer retiring a marked container may lock that
+container's PCID allocator while holding that container's cells.
 
 `Cpu.hw_halted: Ghost<bool>`
 (`CpuView.hw_halted`) records whether the hardware is halted: set when the cpu
@@ -1351,9 +1398,12 @@ New results: `ErrorIommuVaNotMapped`, `ErrorIommuIovaAlreadyMapped`,
 2. The unmap flush PCID comes from `ProcessU.pcid`.
 3. The user-VA bound is `KernelU.kernel_l4_end`, compared through `UserVa`.
 4. CPU hotplug (2026-10-03): offline requests are per-container cells locked
-   per cpu (major 104, held through the whole offline); no permission check
+   per cpu (major 104, fixed owner `(Some(depth), None)`); no permission check
    beyond container ownership of the target; the target cpu offlines itself in
-   `cpu_offline_check` right before each schedule, requeueing its running
+   `cpu_offline_check` right before each schedule: it probes its cell under the
+   cpu lock and releases the cell, keeps the cpu write-held across a boundary
+   (Hold), locks its running process and thread, then reacquires the cell and
+   rechecks the bit before going Off (§4b), requeueing its running
    thread and deferring to `syscall_schedule` when that thread or its process
    is killed; `syscall_cpu_online` publishes Idle and sends the IPI, and the
    woken cpu only clears `hw_halted` (re-halting while still Off); there is no
@@ -1428,8 +1478,7 @@ New results: `ErrorIommuVaNotMapped`, `ErrorIommuIovaAlreadyMapped`,
 
 Status: implemented, including zombie reclaim of 4K mappings, quota, and the
 PCID (stage A) and of PCI attachments and IOMMU 4K mappings (stage B).
-Verified: thread_exit focused run #29094, workspace run #29101, monolith run
-#29105, noninterference run #29108.
+Conforms, including R9 (Batch 2 validation, §2).
 
 
 - Arguments: none; the running thread `T` of `cpu_id` exits. The trap layer
@@ -1587,8 +1636,9 @@ reclaim steps in the order above), then finish; `2 <= len`, with no
 numeric upper bound. A stutter leaves an empty trace, `post == pre`, and no
 lock held.
 
-Stutters (in this order): CpuIdle (cpu not Running or killed), ContainerKilled, ProcessKilled, ThreadKilled,
-PeerKilled (a killed `R`, met when its lock is tried after `T`'s).
+Stutters (in this order): CpuIdle (cpu not Running or killed), ContainerKilled,
+ContainerLockOrderConflict (R9), ProcessKilled, ThreadKilled, PeerKilled (a killed `R`, met when
+its lock is tried after `T`'s).
 
 Trusted primitive: `retype_thread_rwlock_to_4k_page_perm` (external_body;
 authorized TCB), the inverse of the `retype_page_perm_to_rwlock` mint that
@@ -1862,9 +1912,10 @@ Differences:
 Status: implemented, including the container walk, the process kill of each
 emptied container (the §18 middle steps in a container scope), the root
 retire, and the Cpus, Pages, and Retire stages. No `TODO` remains in
-`syscall_kill_container/`. Verified: kill focused run #TBD, workspace run
-#TBD, monolith run #TBD; noninterference run #33949 covers its own steps but
-not the reused §18 process kill steps (below).
+`syscall_kill_container/`. Verified, including R9 (Batch 2 validation, §2).
+The pre-Batch-2 noninterference run #33949 covered its own steps but not the
+reused §18 process kill steps (below); this document does not record separate
+noninterference coverage of those reused steps.
 
 - Arguments: `child_index` (boot `NR_KILL_CONTAINER`). The running thread `T`
   of `cpu_id`, in container `C = cpu.owning_container`, kills
@@ -2065,7 +2116,8 @@ Trace (`kill_container_syscall_trace`): enter, the middle steps, then finish;
 `kill_partial_trace` with `KillTraceCtx::Container { child_index }`.
 
 Stutters (in this order): CpuIdle (cpu not Running or killed),
-ContainerKilled (`C`), ProcessKilled (`P`), ThreadKilled, InvalidChild
+ContainerKilled (`C`), ContainerLockOrderConflict (`C`, R9), ProcessKilled
+(`P`), ThreadKilled, InvalidChild
 (`child_index >= C.children.len()`), ContainerKilled (`D` marked in the entry
 state).
 

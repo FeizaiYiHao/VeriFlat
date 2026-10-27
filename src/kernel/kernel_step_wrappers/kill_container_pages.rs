@@ -20,7 +20,7 @@ pub proof fn kernel_container_free_4k_page_moved_implies_u_step(pre: &KernelK, p
                 &&& post.ctn_mp.spec_index(c).view_rodata() == pre.ctn_mp.spec_index(c).view_rodata()
                 &&& post.ctn_mp.spec_index(c).view_ghost() == pre.ctn_mp.spec_index(c).view_ghost()
                 &&& post.ctn_mp.spec_index(c).locking_thread() == pre.ctn_mp.spec_index(c).locking_thread()
-                &&& post.ctn_mp.spec_index(c).being_killed() == pre.ctn_mp.spec_index(c).being_killed()
+                &&& post.ctn_mp.spec_index(c).control() == pre.ctn_mp.spec_index(c).control()
                 &&& post.ctn_mp.spec_index(c).view() == (Container { owned_pages: post.ctn_mp.spec_index(c).view().owned_pages, ..pre.ctn_mp.spec_index(c).view() })
             },
         moved.subset_of(pre.ctn_mp.spec_index(src).view().owned_pages.view()),
@@ -97,7 +97,7 @@ pub proof fn kernel_container_free_2m_page_moved_implies_u_step(pre: &KernelK, p
                 &&& post.ctn_mp.spec_index(c).view_rodata() == pre.ctn_mp.spec_index(c).view_rodata()
                 &&& post.ctn_mp.spec_index(c).view_ghost() == pre.ctn_mp.spec_index(c).view_ghost()
                 &&& post.ctn_mp.spec_index(c).locking_thread() == pre.ctn_mp.spec_index(c).locking_thread()
-                &&& post.ctn_mp.spec_index(c).being_killed() == pre.ctn_mp.spec_index(c).being_killed()
+                &&& post.ctn_mp.spec_index(c).control() == pre.ctn_mp.spec_index(c).control()
                 &&& post.ctn_mp.spec_index(c).view() == (Container { owned_pages: post.ctn_mp.spec_index(c).view().owned_pages, ..pre.ctn_mp.spec_index(c).view() })
             },
         moved.subset_of(pre.ctn_mp.spec_index(src).view().owned_pages.view()),
