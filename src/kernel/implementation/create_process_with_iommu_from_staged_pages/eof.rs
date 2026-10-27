@@ -126,6 +126,7 @@ pub open spec fn create_process_with_iommu_from_staged_pages_eof_transition_fram
     &&& !post.it_mp.spec_index(iommu_table_page_ptr).being_killed()
     &&& post.it_mp.spec_index(iommu_table_page_ptr).view().proc_ptr == process_page_ptr
     &&& post.it_mp.spec_index(iommu_table_page_ptr).view().pcid is None
+    &&& post.it_mp.spec_index(iommu_table_page_ptr).view().did is None
     &&& post.it_mp.spec_index(iommu_table_page_ptr).view().cr3 == iommu_l4_page_ptr
     &&& post.it_mp.spec_index(iommu_table_page_ptr).view().kernel_l4_end == 0
     &&& post.it_mp.spec_index(iommu_table_page_ptr).view().is_empty()
@@ -190,6 +191,7 @@ pub open spec fn create_process_with_iommu_from_staged_pages_eof_transition_fram
     &&& post.prc_mp.spec_index(process_page_ptr).view_rodata().view().pagetable == pagetable_page_ptr
     &&& post.prc_mp.spec_index(process_page_ptr).view_rodata().view().cr3 == l4_page_ptr
     &&& post.prc_mp.spec_index(process_page_ptr).view_rodata().view().iommu_cr3 == Some(iommu_l4_page_ptr)
+    &&& post.prc_mp.spec_index(process_page_ptr).view_rodata().view().iommu_table_ptr == Some(iommu_table_page_ptr)
     &&& post.prc_mp.spec_index(process_page_ptr).view_rodata().view().pcid == pcid
     &&& post.prc_mp.spec_index(process_page_ptr).view_ghost().uppertree_seq.view() == ancestors
     &&& post.prc_mp.spec_index(process_page_ptr).view_ghost().subtree_set.view() == Set::<RwLockProcessPtr>::empty()
@@ -292,7 +294,7 @@ pub(super) proof fn eof_subsystems_inv(
     reveal(create_process_with_iommu_from_staged_pages_eof_transition_framing);
     assert(pagetable_perms_wf(post.pt_mp)) by { reveal(pagetable_perms_wf); };
     assert(pagetable_lower_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_lower_wf); };
-    assert(pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_window_holders_hold_pagetable); reveal(PageTableC::wf_window_locks); };
+    eof_pagetable_window_holders_hold_pagetable(pre, post, pagetable_page_ptr);
     assert(pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_hidden_leaves_only_when_locked); };
     assert(pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_window_stale_cpus_only_when_locked); };
     assert(iommu_table_perms_wf(post.it_mp)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); };
@@ -302,6 +304,25 @@ pub(super) proof fn eof_subsystems_inv(
     eof_thread_perms_wf(pre, post, staging_thread_ptr);
     assert(pcid_allocator_perms_wf(post.pcid_allc_mp)) by { reveal(pcid_allocator_perms_wf); };
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
+}
+
+/// The new empty page table has no locked window; every other page table keeps its window holders.
+proof fn eof_pagetable_window_holders_hold_pagetable(pre: KernelK, post: KernelK, pagetable_page_ptr: PagePtr)
+    requires
+        pagetable_window_holders_hold_pagetable(pre.pt_mp, pre.pt_lower.view()),
+        post.pt_mp.dom() == pre.pt_mp.dom().insert(pagetable_page_ptr),
+        forall|pt_ptr: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(pt_ptr)]
+            post.pt_mp.dom().contains(pt_ptr) && pt_ptr != pagetable_page_ptr ==> pre.pt_mp.dom().contains(pt_ptr) && post.pt_mp.spec_index(pt_ptr) == pre.pt_mp.spec_index(pt_ptr),
+        forall|pt_ptr: RwLockPageTableRoot| #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), pt_ptr)]
+            pre.pt_mp.dom().contains(pt_ptr) ==> pagetable_c(post.pt_mp, post.pt_lower.view(), pt_ptr) == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pt_ptr),
+        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_page_ptr).wf(),
+        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_page_ptr).is_empty(),
+    ensures
+        pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
+{
+    reveal(pagetable_window_holders_hold_pagetable); reveal(PageTableC::wf_window_locks);
+    assert(forall|l4i: L4Index| #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_page_ptr).spec_resolve_mapping_l4(l4i)]
+        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_page_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) ==> pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_page_ptr).spec_resolve_mapping_l4(l4i) is None);
 }
 
 /// The new process joins its parent's child list; every other process keeps its tree fields.

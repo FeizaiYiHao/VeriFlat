@@ -284,34 +284,35 @@ pub open spec fn kill_process_reassigns(table: IommuRootTableU, process_ptr: RwL
     table.owners[bus][device][function] == process_ptr
 }
 
-/// The root table after the kill detaches the functions `process_ptr` owns and reassigns them to `owner`.
-pub open spec fn kill_process_reassigned_table(table: IommuRootTableU, process_ptr: RwLockProcessPtr, owner: RwLockProcessPtr) -> IommuRootTableU {
-    IommuRootTableU {
-        owners: Seq::new(PCI_BUS_COUNT as nat, |bus: int| Seq::new(PCI_DEVICE_COUNT as nat, |device: int| Seq::new(PCI_FUNCTION_COUNT as nat,
-            |function: int| if kill_process_reassigns(table, process_ptr, bus, device, function) { owner } else { table.owners[bus][device][function] }))),
-        attached: Seq::new(PCI_BUS_COUNT as nat, |bus: int| Seq::new(PCI_DEVICE_COUNT as nat, |device: int| Seq::new(PCI_FUNCTION_COUNT as nat,
-            |function: int| table.attached[bus][device][function] && !kill_process_reassigns(table, process_ptr, bus, device, function)))),
-    }
-}
-
-/// The empty target hands every PCI function it owns, detached and with its IOTLB domain emptied, to the killer's
-/// process.
+/// The empty target hands every PCI function it owns, detached, to the killer's process; its IOMMU table, if any, loses its
+/// DID, and the only IOTLB domain that changes is the emptied candidate domain of an attached function the target owned.
 #[verifier::opaque]
 pub open spec fn kill_process_reassign_functions_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let process_ptr = kill_target(old_u, cpu_id);
     let owner = old_u.cpu_array[cpu_id as int].current_process->Some_0;
     let table = old_u.iommu_root_table;
+    let target = old_u.process_map[process_ptr];
     &&& kill_stage(old_u, cpu_id) is Walk
     &&& kill_process_empty_target_pre(old_u, cpu_id)
+    &&& forall|bus: usize, device: usize, function: usize| #![trigger new_u.iommu_root_table.owners[bus as int][device as int][function as int]]
+        #![trigger new_u.iommu_root_table.attached[bus as int][device as int][function as int]] pci_bdf_valid(bus, device, function) ==> {
+        let reassigned = kill_process_reassigns(table, process_ptr, bus as int, device as int, function as int);
+        &&& new_u.iommu_root_table.owners[bus as int][device as int][function as int] == if reassigned { owner } else { table.owners[bus as int][device as int][function as int] }
+        &&& new_u.iommu_root_table.attached[bus as int][device as int][function as int] == (table.attached[bus as int][device as int][function as int] && !reassigned)
+    }
     &&& new_u.iommu_tlb.dom() == old_u.iommu_tlb.dom()
-    &&& forall|bus: usize, device: usize, function: usize| #![trigger new_u.iommu_tlb[pci_bdf_did(bus, device, function)]]
-        pci_bdf_valid(bus, device, function) ==> new_u.iommu_tlb[pci_bdf_did(bus, device, function)]
-            == if kill_process_reassigns(table, process_ptr, bus as int, device as int, function as int) { SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() } }
-            else { old_u.iommu_tlb[pci_bdf_did(bus, device, function)] }
+    &&& forall|did: VtdDomainId| #![trigger new_u.iommu_tlb[did]] new_u.iommu_tlb[did] != old_u.iommu_tlb[did] ==> {
+        let anchor = pci_bdf_of_did(did);
+        &&& pci_bdf_valid(anchor.0, anchor.1, anchor.2)
+        &&& kill_process_reassigns(table, process_ptr, anchor.0 as int, anchor.1 as int, anchor.2 as int)
+        &&& table.attached[anchor.0 as int][anchor.1 as int][anchor.2 as int]
+        &&& new_u.iommu_tlb[did].is_empty()
+    }
     &&& new_u == (KernelU {
-        process_map: old_u.process_map.insert(process_ptr, ProcessU { owned_pci_functions: Set::empty(), ..old_u.process_map[process_ptr] })
-            .insert(owner, ProcessU { owned_pci_functions: old_u.process_map[owner].owned_pci_functions.union(old_u.process_map[process_ptr].owned_pci_functions), ..old_u.process_map[owner] }),
-        iommu_root_table: kill_process_reassigned_table(table, process_ptr, owner),
+        process_map: old_u.process_map.insert(process_ptr, ProcessU {
+            owned_pci_functions: Set::empty(), iommu_table: match target.iommu_table { Some(t) => Some(PageTableU { did: None, ..t }), None => None }, ..target
+        }).insert(owner, ProcessU { owned_pci_functions: old_u.process_map[owner].owned_pci_functions.union(target.owned_pci_functions), ..old_u.process_map[owner] }),
+        iommu_root_table: new_u.iommu_root_table,
         iommu_tlb: new_u.iommu_tlb,
         ..old_u
     })
@@ -408,14 +409,6 @@ pub open spec fn kill_process_iommu_leaf_step(old_u: KernelU, new_u: KernelU, cp
         process_map: old_u.process_map.insert(process_ptr, ProcessU { iommu_table: Some(PageTableU { mapping_4k: iommu_table.mapping_4k.restrict(kept), ..iommu_table }), ..target }),
         ..old_u
     })
-}
-
-/// Flushing the IOTLB empties every domain and changes nothing else.
-#[verifier::opaque]
-pub open spec fn kill_process_iommu_flush_step(old_u: KernelU, new_u: KernelU) -> bool {
-    &&& new_u.iommu_tlb.dom() == old_u.iommu_tlb.dom()
-    &&& forall|did: VtdDomainId| #![trigger new_u.iommu_tlb[did]] vtd_domain_id_valid(did) ==> new_u.iommu_tlb[did].is_empty()
-    &&& new_u == (KernelU { iommu_tlb: new_u.iommu_tlb, ..old_u })
 }
 
 /// The stage before the target returns its `size` quota.
@@ -536,7 +529,7 @@ pub open spec fn kill_process_retire_step(old_u: KernelU, new_u: KernelU, cpu_id
 /// A step between entering and finishing: descending into a child, turning a thread waiting for a reply into a dangling thread,
 /// marking, dequeuing, evicting, or unlinking a thread, reclaiming killed threads of the target's container, and, for an empty target,
 /// reassigning its PCI functions, locking its tables, clearing one 4K leaf, flushing one cpu's TLB for its PCID,
-/// recording the flush, clearing one IOMMU 4K leaf, flushing the IOTLB, returning quota of freed pages to the target's container chain,
+/// recording the flush, removing one IOMMU 4K leaf, returning quota of freed pages to the target's container chain,
 /// returning one size of its quota, unlocking its tables, making it a zombie, or retiring it.
 pub open spec fn kill_process_middle_step(step: KernelStep, cpu_id: CpuId) -> bool {
     let old_u = step.old_u;
@@ -558,7 +551,6 @@ pub open spec fn kill_process_middle_step(step: KernelStep, cpu_id: CpuId) -> bo
         ||| kill_process_flush_step_pre(old_u, cpu_id) && kernel_u_cpu_tlb_cleared(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].pcid)
         ||| kill_process_flush_step_pre(old_u, cpu_id) && kill_process_flushed_step(old_u, new_u, cpu_id)
         ||| kill_process_iommu_leaf_step(old_u, new_u, cpu_id)
-        ||| kill_process_reclaim_step_pre(old_u, cpu_id, KillStage::Reclaim { flushed: true }) && kill_process_iommu_flush_step(old_u, new_u)
         ||| kernel_u_container_quota_4k_increased(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].owning_container)
         ||| kill_process_quota_step(old_u, new_u, cpu_id)
         ||| kill_process_unlock_table_step(old_u, new_u, cpu_id)

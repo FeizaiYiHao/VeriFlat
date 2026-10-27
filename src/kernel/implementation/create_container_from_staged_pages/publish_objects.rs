@@ -886,6 +886,7 @@ pub(super) fn publish_new_container_process_and_pagetable(
         final(krnl).prc_mp.spec_index(child_process_ptr).view_rodata().view().pagetable == child_pagetable_ptr,
         final(krnl).prc_mp.spec_index(child_process_ptr).view_rodata().view().cr3 == l4_page,
         final(krnl).prc_mp.spec_index(child_process_ptr).view_rodata().view().iommu_cr3 is None,
+        final(krnl).prc_mp.spec_index(child_process_ptr).view_rodata().view().iommu_table_ptr is None,
         final(krnl).prc_mp.spec_index(child_process_ptr).view_rodata().view().pcid == root_pcid,
         final(krnl).prc_mp.spec_index(child_process_ptr).view().pcid == root_pcid,
         final(krnl).prc_mp.spec_index(child_process_ptr).view().pagetable == child_pagetable_ptr,
@@ -977,7 +978,7 @@ pub(super) fn publish_new_container_process_and_pagetable(
     let process_rodata = ReadOnlyNode::new(
         ProcessRO {
             owning_container: child_container_ptr, container_depth: child_depth, parent: None, depth: 0, pagetable: child_pagetable_ptr,
-            cr3: l4_ptr, iommu_cr3: None, pcid: root_pcid,
+            cr3: l4_ptr, iommu_cr3: None, iommu_table_ptr: None, pcid: root_pcid,
         },
         Ghost(child_process_ptr),
     );

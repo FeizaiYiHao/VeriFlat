@@ -22,6 +22,7 @@ pub(super) open spec fn map_shared_page_into_iommu_4k_eof_transition_framing(
     &&& new_it.view().page_closure() == old_it.view().page_closure()
     &&& new_it.view().cr3 == old_it.view().cr3
     &&& new_it.view().proc_ptr == old_it.view().proc_ptr
+    &&& new_it.view().did == old_it.view().did
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, page_index)
     &&& new_page.locking_thread() == old_page.locking_thread()
     &&& new_page.being_killed() == old_page.being_killed()
@@ -57,8 +58,8 @@ pub(super) proof fn map_shared_page_into_iommu_4k_eof(
         pre.pt_mp.dom().contains(source_pagetable),
         pre.pt_mp.spec_index(source_pagetable).view().proc_ptr == process_ptr,
         pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(va),
-        page_index == page_ptr2page_index(pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr),
         page_ptr_valid(pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr),
+        page_index == page_ptr2page_index(pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr),
         index_valid(NUM_PAGES, page_index),
         pre.pg_arr.spec_index(page_index).view().view().state is Mapped4k,
         pre.it_mp.dom().contains(iommu_table_ptr),

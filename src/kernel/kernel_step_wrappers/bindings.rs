@@ -1,5 +1,5 @@
 use vstd::prelude::*;
-use vstd::assert_seqs_equal;
+use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_seqs_equal};
 use crate::*;
 
 verus! {
@@ -96,46 +96,62 @@ pub proof fn kernel_snapshot_nonlock_fields_and_lock_states_unchanged_implies_u_
     kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), krnl);
 }
 
-/// Detaching in the root table every PCI function owned by `process`, and emptying the IOTLB domain of each detached
-/// function, clears exactly those functions' attached flags in the projected root table, keeps its owners, and empties
-/// exactly their projected IOTLB domains.
-pub proof fn kernel_iommu_root_table_process_detached_implies_u(pre: &KernelK, post: &KernelK, process: RwLockProcessPtr)
+/// Clearing in the root table every context entry that the owner `process` of the IOMMU table `iommu_table` owns, owners
+/// untouched, dropping the table's DID, and emptying the IOTLB domain `did` the table carried, if any, clears exactly those
+/// functions' attached flags, empties only that projected IOTLB domain, and drops the DID of `process`'s projected IOMMU
+/// table; nothing else in the complete projection changes.
+pub proof fn kernel_iommu_root_table_process_detached_implies_u_step(pre: &KernelK, post: &KernelK, iommu_table: RwLockPageTableRoot, did: Option<VtdDomainId>)
     requires
+        process_iommu_table_match(pre.prc_mp, pre.it_mp),
+        pre.it_mp.dom().contains(iommu_table),
+        pre.it_mp.spec_index(iommu_table).view().did == did,
+        *post == (KernelK { irt: post.irt, iommu_tlb: post.iommu_tlb, it_mp: post.it_mp, ..*pre }),
         post.irt.view().owners() == pre.irt.view().owners(),
-        forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_iommu_root(b, d, f)] pci_bdf_valid(b, d, f)
-            ==> post.irt.view().spec_index_iommu_root(b, d, f) == if pre.irt.view().spec_index_owner(b, d, f) == process { None } else { pre.irt.view().spec_index_iommu_root(b, d, f) },
-        post.iommu_tlb.view().dom() == pre.iommu_tlb.view().dom(),
-        forall|b: usize, d: usize, f: usize| #![trigger post.iommu_tlb.view()[pci_bdf_did(b, d, f)]] pci_bdf_valid(b, d, f)
-            ==> post.iommu_tlb.view()[pci_bdf_did(b, d, f)] == if pre.irt.view().spec_index_owner(b, d, f) == process && pre.irt.view().spec_index_iommu_root(b, d, f) is Some {
-                SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }
-            } else { pre.iommu_tlb.view()[pci_bdf_did(b, d, f)] },
+        forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_iommu_root(b, d, f)] pci_bdf_valid(b, d, f) ==> post.irt.view().spec_index_iommu_root(b, d, f)
+            == if pre.irt.view().spec_index_owner(b, d, f) == pre.it_mp.spec_index(iommu_table).view().proc_ptr { None } else { pre.irt.view().spec_index_iommu_root(b, d, f) },
+        post.it_mp.unchanged_except(&pre.it_mp, iommu_table),
+        post.it_mp.spec_index(iommu_table).locking_thread() == pre.it_mp.spec_index(iommu_table).locking_thread(),
+        post.it_mp.spec_index(iommu_table).view() == (PageTable { did: None, ..pre.it_mp.spec_index(iommu_table).view() }),
+        did matches Some(d) ==> post.iommu_tlb.view() == pre.iommu_tlb.view().insert(d, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
+        did is None ==> post.iommu_tlb.view() == pre.iommu_tlb.view(),
     ensures
         ({
-            let a = kernel_k_to_kernel_u(*pre).iommu_root_table;
-            kernel_k_to_kernel_u(*post).iommu_root_table == (IommuRootTableU {
-                attached: Seq::new(PCI_BUS_COUNT as nat, |bus: int| Seq::new(PCI_DEVICE_COUNT as nat, |device: int|
-                    Seq::new(PCI_FUNCTION_COUNT as nat, |function: int| a.attached[bus][device][function] && a.owners[bus][device][function] != process))),
+            let a = kernel_k_to_kernel_u(*pre);
+            let process = pre.it_mp.spec_index(iommu_table).view().proc_ptr;
+            let p = a.process_map[process];
+            &&& a.process_map.dom().contains(process)
+            &&& kernel_k_to_kernel_u(*post) == (KernelU {
+                process_map: a.process_map.insert(process, ProcessU { iommu_table: match p.iommu_table { Some(t) => Some(PageTableU { did: None, ..t }), None => None }, ..p }),
+                iommu_root_table: IommuRootTableU {
+                    attached: Seq::new(PCI_BUS_COUNT as nat, |bus: int| Seq::new(PCI_DEVICE_COUNT as nat, |device: int|
+                        Seq::new(PCI_FUNCTION_COUNT as nat, |function: int| a.iommu_root_table.attached[bus][device][function] && a.iommu_root_table.owners[bus][device][function] != process))),
+                    ..a.iommu_root_table
+                },
+                iommu_tlb: match did { Some(d) => a.iommu_tlb.insert(d, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }), None => a.iommu_tlb },
                 ..a
             })
         }),
-        kernel_k_to_kernel_u(*post).iommu_tlb.dom() == kernel_k_to_kernel_u(*pre).iommu_tlb.dom(),
-        forall|b: usize, d: usize, f: usize| #![trigger kernel_k_to_kernel_u(*post).iommu_tlb[pci_bdf_did(b, d, f)]] pci_bdf_valid(b, d, f)
-            ==> kernel_k_to_kernel_u(*post).iommu_tlb[pci_bdf_did(b, d, f)] == if kernel_k_to_kernel_u(*pre).iommu_root_table.attached[b as int][d as int][f as int]
-                && kernel_k_to_kernel_u(*pre).iommu_root_table.owners[b as int][d as int][f as int] == process {
-                SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }
-            } else { kernel_k_to_kernel_u(*pre).iommu_tlb[pci_bdf_did(b, d, f)] },
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_iommu_table_match);
     kernel_iommu_root_table_projection(pre); kernel_iommu_root_table_projection(post);
     pre.irt.view().user_view_unfold(); post.irt.view().user_view_unfold();
-    let a = kernel_k_to_kernel_u(*pre).iommu_root_table;
-    let attached = kernel_k_to_kernel_u(*post).iommu_root_table.attached;
+    let a = kernel_k_to_kernel_u(*pre);
+    let b = kernel_k_to_kernel_u(*post);
+    let process = pre.it_mp.spec_index(iommu_table).view().proc_ptr;
+    let p = a.process_map[process];
+    kernel_process_projection_at(pre, process); kernel_process_projection_at(post, process);
+    assert_maps_equal!(b.process_map, a.process_map.insert(process, ProcessU { iommu_table: match p.iommu_table { Some(t) => Some(PageTableU { did: None, ..t }), None => None }, ..p }), q => {
+        if pre.prc_mp.dom().contains(q) { kernel_process_projection_at(pre, q); kernel_process_projection_at(post, q); }
+    });
+    let attached = b.iommu_root_table.attached;
     let expected = Seq::new(PCI_BUS_COUNT as nat, |bus: int| Seq::new(PCI_DEVICE_COUNT as nat, |device: int|
-        Seq::new(PCI_FUNCTION_COUNT as nat, |function: int| a.attached[bus][device][function] && a.owners[bus][device][function] != process)));
+        Seq::new(PCI_FUNCTION_COUNT as nat, |function: int| a.iommu_root_table.attached[bus][device][function] && a.iommu_root_table.owners[bus][device][function] != process)));
     assert_seqs_equal!(attached, expected, bus => {
         assert_seqs_equal!(attached[bus], expected[bus], device => {
             assert_seqs_equal!(attached[bus][device], expected[bus][device], function => {});
         });
     });
+    kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post);
+    kernel_thread_map_unchanged_implies_u_thread_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
 }
 }

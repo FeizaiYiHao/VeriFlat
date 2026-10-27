@@ -9,7 +9,8 @@ use super::syscall_ipc_trace::*;
 
 verus! {
     /// Hands the PCI function named on both sides from the sending to the receiving process under the root-table
-    /// lock, detaching it and flushing its IOTLB domain, and schedules the waiting peer with Success. A same-process
+    /// lock; an attached function is detached under the sender's IOMMU table write lock, which invalidates its old DID
+    /// domain, and the waiting peer is scheduled with Success. A same-process
     /// pair or a sender that does not own the function schedules the peer with that error and moves nothing.
     #[verifier::spinoff_prover]
     pub(super) fn ipc_rendezvous_pci(
@@ -196,7 +197,7 @@ verus! {
         let wake_cpu = if peer_container == current_container { cpu_id } else { peer_last_cpu };
         let peer_scheduler_ptr = krnl.ctn_mp.borrow_rodata(peer_container).borrow().scheduler;
         proof { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, peer_container); }
-        let (result, Tracked(irt_lock_perm), Tracked(peer_scheduler_lock_perm)) = ipc_pci_lock_transfer_and_schedule_peer(
+        let (result, iommu_table, Ghost(anchor), Tracked(irt_lock_perm), Tracked(peer_scheduler_lock_perm), Tracked(iommu_table_lock_perm)) = ipc_pci_lock_transfer_and_schedule_peer(
             krnl, Tracked(&mut *lctx), cpu_id, current_thread_ptr, endpoint_ptr, peer_thread_ptr, peer_scheduler_ptr, wake_cpu, bus, dev, fun, sender_proc, receiver_proc,
             Tracked(&endpoint_lock_perm), Tracked(&peer_thread_lock_perm),
         );
@@ -205,7 +206,7 @@ verus! {
         proof {
             ipc_pci_rendezvous_eof(
                 *old(krnl), *krnl, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, result is Success,
-                result, lctx.thread_id(), steps.snapshot_k(), cpu_id, process_ptr, endpoint_index, waiting_state,
+                result, lctx.thread_id(), iommu_table, anchor, steps.snapshot_k(), cpu_id, process_ptr, endpoint_index, waiting_state,
             );
             assert((result is Success) == old(krnl).prc_mp.spec_index(sender_proc).view_ghost().owned_pci_functions.view().contains(bdf)) by { process_pci_function_ownership_wf_at(old(krnl).irt.view(), old(krnl).prc_mp, bdf, sender_proc); };
             ipc_rendezvous_result_from_k(&steps.snapshot_k(), cpu_id, endpoint_index, waiting_state, payload, current_thread_ptr, endpoint_ptr, peer_thread_ptr, result);
@@ -214,6 +215,7 @@ verus! {
             krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, peer_thread_ptr, peer_scheduler_ptr, wake_cpu,
             Ghost(endpoint_index), Ghost(waiting_state), Ghost(result), Ghost(pci_transfer), Ghost(payload), Tracked(cpu_lock_perm),
             Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm), Tracked(peer_scheduler_lock_perm), Tracked(irt_lock_perm),
+            iommu_table, Tracked(iommu_table_lock_perm),
         );
         result
     }

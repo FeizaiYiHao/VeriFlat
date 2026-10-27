@@ -135,6 +135,7 @@ pub open spec fn kernel_iommu_table_nonlock_fields_unchanged(pre: IommuTableLock
         pre.dom().contains(p) ==> {
             let before = pre.spec_index(p).view();
             let after = post.spec_index(p).view();
+            &&& after.did == before.did
             &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
             &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
             &&& after.mapping_1g().filter_keys(|va: VAddr| after.mapping_1g().spec_index(va).present) == before.mapping_1g().filter_keys(|va: VAddr| before.mapping_1g().spec_index(va).present)
@@ -335,6 +336,7 @@ pub open spec fn kernel_new_thread_fields(
     &&& post.it_mp.dom() == pre.it_mp.dom()
     &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
         pre.it_mp.dom().contains(p) ==> {
+            &&& post.it_mp.spec_index(p).view().did == pre.it_mp.spec_index(p).view().did
             &&& post.it_mp.spec_index(p).view().mapping_4k() == pre.it_mp.spec_index(p).view().mapping_4k()
             &&& post.it_mp.spec_index(p).view().mapping_2m() == pre.it_mp.spec_index(p).view().mapping_2m()
             &&& post.it_mp.spec_index(p).view().mapping_1g() == pre.it_mp.spec_index(p).view().mapping_1g()
@@ -1297,7 +1299,10 @@ pub open spec fn kernel_u_ipc_reply_handoff_changed(
 /// The live head `peer_thread_ptr` of the endpoint at `endpoint_index`, waiting opposite to the live caller
 /// running on `cpu_id`, is dequeued and scheduled with `peer_result`; with `cpu_transfer == Some((cpu, receiver))`
 /// that Off CPU also moves to the receiver's container, and with `pci_transfer == Some((bdf, sender, receiver))`
-/// that PCI function moves from the sender to the receiver process, detached and with its IOTLB domain flushed.
+/// that PCI function moves from the sender to the receiver process, detached, while every other function stays attached
+/// exactly when it was. Detaching an attached function empties
+/// the sender table's old DID domain; detaching its anchor re-anchors the table as `pci_handoff_table_did` states.
+/// Only that table's DID changes; every IOMMU table keeps its present mappings.
 pub open spec fn kernel_ipc_rendezvous_fields(
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, caller_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
     endpoint_index: EndpointIdx, waiting_state: ThreadState, peer_thread_ptr: RwLockThreadPtr, peer_result: RetValueType,
@@ -1340,21 +1345,39 @@ pub open spec fn kernel_ipc_rendezvous_fields(
     &&& (cpu_transfer is Some ==> index_valid(NUM_CPUS, cpu_transfer.unwrap().0) && pre.thr_mp.dom().contains(cpu_transfer.unwrap().1))
     &&& cpu_transfer is Some ==> pre.cpu_arr.spec_index(cpu_transfer.unwrap().0).value.locking_thread() is None
     &&& kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view())
-    &&& kernel_iommu_table_nonlock_fields_unchanged(pre.it_mp, post.it_mp)
     &&& pci_transfer is None ==> {
+        &&& kernel_iommu_table_nonlock_fields_unchanged(pre.it_mp, post.it_mp)
         &&& kernel_process_nonlock_fields_unchanged(pre.prc_mp, post.prc_mp)
         &&& post.irt.view().owners() == pre.irt.view().owners()
         &&& post.irt.view().iommu_roots() == pre.irt.view().iommu_roots()
         &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
     }
     &&& pci_transfer matches Some((bdf, sender, receiver)) ==> {
+        let sender_table = pre.prc_mp.spec_index(sender).view().iommu_table;
+        let attached = iommu_roots_attached(pre.irt.view().iommu_roots());
+        let old_did = match sender_table { Some(t) => pre.it_mp.spec_index(t).view().did, None => None };
         &&& pci_bdf_valid(bdf.0, bdf.1, bdf.2)
         &&& pre.prc_mp.dom().contains(sender)
         &&& pre.prc_mp.dom().contains(receiver)
         &&& sender != receiver
+        &&& !pre.prc_mp.spec_index(sender).view().zombie
         &&& post.irt.view().owners() == seq3_update(pre.irt.view().owners(), bdf.0 as int, bdf.1 as int, bdf.2 as int, receiver)
-        &&& post.irt.view().iommu_roots() == seq3_update(pre.irt.view().iommu_roots(), bdf.0 as int, bdf.1 as int, bdf.2 as int, None)
-        &&& post.iommu_tlb.view() == pre.iommu_tlb.view().insert(pci_bdf_did(bdf.0, bdf.1, bdf.2), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
+        &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_iommu_root(b, d, f)] pci_bdf_valid(b, d, f)
+            ==> (post.irt.view().spec_index_iommu_root(b, d, f) is Some) == ((b, d, f) != bdf && pre.irt.view().spec_index_iommu_root(b, d, f) is Some)
+        &&& post.iommu_tlb.view() == if attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] && old_did is Some {
+            pre.iommu_tlb.view().insert(old_did->Some_0, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
+        } else { pre.iommu_tlb.view() }
+        &&& sender_table matches Some(t) ==> pci_handoff_table_did(pre.irt.view().owners(), attached, sender, bdf, old_did, post.it_mp.spec_index(t).view().did)
+        &&& post.it_mp.dom() == pre.it_mp.dom()
+        &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
+            pre.it_mp.dom().contains(p) ==> {
+                let before = pre.it_mp.spec_index(p).view();
+                let after = post.it_mp.spec_index(p).view();
+                &&& sender_table != Some(p) ==> after.did == before.did
+                &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
+                &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
+                &&& after.mapping_1g().filter_keys(|va: VAddr| after.mapping_1g().spec_index(va).present) == before.mapping_1g().filter_keys(|va: VAddr| before.mapping_1g().spec_index(va).present)
+            }
         &&& post.prc_mp.dom() == pre.prc_mp.dom()
         &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
             pre.prc_mp.dom().contains(p) ==> {
@@ -1471,8 +1494,8 @@ pub open spec fn kernel_ipc_rendezvous_fields(
 
 /// The live endpoint head waiting opposite to the live caller running on `cpu_id` is dequeued and scheduled
 /// with `peer_result` on shard `cpu_id` of a same-container peer, else on the peer's `last_cpu` shard; an Off
-/// CPU may move to the receiver's container, and a detached PCI function with a flushed IOTLB domain may move
-/// to the receiver process.
+/// CPU may move to the receiver's container, and a detached PCI function may move to the receiver process. Detaching an
+/// attached function empties the sender table's old DID domain, and the sender table's DID follows `pci_handoff_table_did`.
 #[verifier::opaque]
 pub open spec fn kernel_u_ipc_rendezvous_changed(
     old_u: KernelU, new_u: KernelU, cpu_id: CpuId, caller_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
@@ -1513,6 +1536,8 @@ pub open spec fn kernel_u_ipc_rendezvous_changed(
         &&& old_u.process_map.dom().contains(sender)
         &&& old_u.process_map.dom().contains(receiver)
         &&& sender != receiver
+        &&& old_u.process_map.spec_index(sender).iommu_table matches Some(t) ==> pci_handoff_table_did(old_u.iommu_root_table.owners, old_u.iommu_root_table.attached, sender, bdf,
+            t.did, new_u.process_map.spec_index(sender).iommu_table->Some_0.did)
     }
     &&& new_u == (KernelU {
         cpu_array: match cpu_transfer {
@@ -1532,7 +1557,9 @@ pub open spec fn kernel_u_ipc_rendezvous_changed(
             Some((bdf, sender, receiver)) => {
                 let s = old_u.process_map.spec_index(sender);
                 let r = old_u.process_map.spec_index(receiver);
-                old_u.process_map.insert(sender, ProcessU { owned_pci_functions: s.owned_pci_functions.remove(bdf), ..s }).insert(receiver, ProcessU { owned_pci_functions: r.owned_pci_functions.insert(bdf), ..r })
+                let s_table = match s.iommu_table { Some(t) => Some(PageTableU { did: new_u.process_map.spec_index(sender).iommu_table->Some_0.did, ..t }), None => None };
+                old_u.process_map.insert(sender, ProcessU { iommu_table: s_table, owned_pci_functions: s.owned_pci_functions.remove(bdf), ..s })
+                    .insert(receiver, ProcessU { owned_pci_functions: r.owned_pci_functions.insert(bdf), ..r })
             },
             None => old_u.process_map,
         },
@@ -1544,7 +1571,12 @@ pub open spec fn kernel_u_ipc_rendezvous_changed(
             None => old_u.iommu_root_table,
         },
         iommu_tlb: match pci_transfer {
-            Some((bdf, _, _)) => old_u.iommu_tlb.insert(pci_bdf_did(bdf.0, bdf.1, bdf.2), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
+            Some((bdf, sender, _)) => {
+                let old_did = match old_u.process_map.spec_index(sender).iommu_table { Some(t) => t.did, None => None };
+                if old_u.iommu_root_table.attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] && old_did is Some {
+                    old_u.iommu_tlb.insert(old_did->Some_0, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
+                } else { old_u.iommu_tlb }
+            },
             None => old_u.iommu_tlb,
         },
         ..old_u
@@ -1705,6 +1737,7 @@ pub open spec fn kernel_process_quota_4k_changed(pre: &KernelK, post: &KernelK, 
             let before = pre.it_mp.spec_index(p).view();
             let after = post.it_mp.spec_index(p).view();
             &&& post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread()
+            &&& after.did == before.did
             &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
             &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
             &&& after.mapping_1g().filter_keys(|va: VAddr| after.mapping_1g().spec_index(va).present) == before.mapping_1g().filter_keys(|va: VAddr| before.mapping_1g().spec_index(va).present)
@@ -1848,6 +1881,7 @@ pub open spec fn kernel_process_quota_2m_changed(pre: &KernelK, post: &KernelK, 
             let before = pre.it_mp.spec_index(p).view();
             let after = post.it_mp.spec_index(p).view();
             &&& post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread()
+            &&& after.did == before.did
             &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
             &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
             &&& after.mapping_1g().filter_keys(|va: VAddr| after.mapping_1g().spec_index(va).present) == before.mapping_1g().filter_keys(|va: VAddr| before.mapping_1g().spec_index(va).present)
@@ -2144,7 +2178,7 @@ pub open spec fn kernel_u_container_root_published(
         container_map: post.container_map,
         process_map: pre.process_map.insert(process, ProcessU {
             lock_state: LockStateU::WriteLocked, zombie: false,
-            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty() }),
+            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty() }),
             iommu_table: None, pcid: post.process_map[process].pcid, owning_container: child, owned_pci_functions: Set::empty(), quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
             parent: None, children: Seq::empty(), depth: 0, uppertree_seq: Seq::empty(), subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
         }),
@@ -2207,7 +2241,7 @@ pub open spec fn kernel_u_container_root_created(
         container_map: post.container_map,
         process_map: pre.process_map.insert(process, ProcessU {
             lock_state: LockStateU::WriteLocked, zombie: false,
-            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty() }),
+            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty() }),
             iommu_table: None, pcid: post.process_map[process].pcid, owning_container: child, owned_pci_functions: Set::empty(), quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
             parent: None, children: Seq::empty(), depth: 0, uppertree_seq: Seq::empty(), subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
         }),
@@ -2340,13 +2374,16 @@ pub open spec fn kernel_u_cpu_online_changed(old_u: KernelU, new_u: KernelU, cpu
     &&& new_u == (KernelU { cpu_array: old_u.cpu_array.update(target as int, CpuU { state: CpuState::Idle, ..target_cpu }), ..old_u })
 }
 
-/// The running process, a live owner of `(bus, device, function)` with an IOMMU table, attaches DMA
-/// translation to that function; nothing else changes.
+/// The running process, a live owner of `(bus, device, function)` with an IOMMU table, attaches DMA translation
+/// to that function. The table keeps its DID, or adopts the function's candidate DID when it has none; nothing
+/// else changes.
 #[verifier::opaque]
 pub open spec fn kernel_u_pci_attach_changed(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, bus: usize, device: usize, function: usize) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
     let process = old_u.process_map[cpu.current_process.unwrap()];
     let attached = old_u.iommu_root_table.attached;
+    let table = process.iommu_table.unwrap();
+    let did = match table.did { Some(did) => did, None => pci_bdf_did(bus, device, function) };
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& cpu.state is Running
     &&& cpu.current_process is Some
@@ -2357,6 +2394,7 @@ pub open spec fn kernel_u_pci_attach_changed(old_u: KernelU, new_u: KernelU, cpu
     &&& process.iommu_table is Some
     &&& !attached[bus as int][device as int][function as int]
     &&& new_u == (KernelU {
+        process_map: old_u.process_map.insert(cpu.current_process.unwrap(), ProcessU { iommu_table: Some(PageTableU { did: Some(did), ..table }), ..process }),
         iommu_root_table: IommuRootTableU { attached: seq3_update(attached, bus as int, device as int, function as int, true), ..old_u.iommu_root_table },
         ..old_u
     })

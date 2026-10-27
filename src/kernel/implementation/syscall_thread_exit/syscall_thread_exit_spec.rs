@@ -201,28 +201,26 @@ pub open spec fn thread_exit_detached_attached(table: IommuRootTableU, process_p
         Seq::new(PCI_FUNCTION_COUNT as nat, |function: int| table.attached[bus][device][function] && !thread_exit_detaches(table, process_ptr, bus, device, function))))
 }
 
-/// Locking the process's page table starts reclaiming: the process's attached functions are detached with their IOTLB
-/// domains emptied, its IOMMU table is write-locked, and the thread records that nothing is flushed yet.
+/// Locking the process's page table starts reclaiming and the thread records that nothing is flushed yet. A process
+/// with an IOMMU table write-locks it and detaches it: every attached function the process owns is detached, the
+/// table drops its DID, and the IOTLB domain of that DID, if any, is emptied; owners stay.
 #[verifier::opaque]
 pub open spec fn thread_exit_lock_table_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let thread = old_u.thread_map.spec_index(thread_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
     let table = old_u.iommu_root_table;
-    &&& new_u.iommu_tlb.dom() == old_u.iommu_tlb.dom()
-    &&& forall|bus: usize, device: usize, function: usize| #![trigger new_u.iommu_tlb[pci_bdf_did(bus, device, function)]]
-        pci_bdf_valid(bus, device, function) ==> new_u.iommu_tlb[pci_bdf_did(bus, device, function)]
-            == if thread_exit_detaches(table, thread.owning_proc, bus as int, device as int, function as int) { SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() } }
-            else { old_u.iommu_tlb[pci_bdf_did(bus, device, function)] }
-    &&& new_u == (KernelU {
+    new_u == (KernelU {
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(SyscallProgress::ThreadExitReclaim { flushed: false }), ..thread }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
             pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..process.pagetable->Some_0 }),
-            iommu_table: match process.iommu_table { Some(t) => Some(PageTableU { lock_state: LockStateU::WriteLocked, ..t }), None => None },
+            iommu_table: match process.iommu_table { Some(t) => Some(PageTableU { lock_state: LockStateU::WriteLocked, did: None, ..t }), None => None },
             ..process
         }),
-        iommu_root_table: IommuRootTableU { attached: thread_exit_detached_attached(table, thread.owning_proc), ..table },
-        iommu_tlb: new_u.iommu_tlb,
+        iommu_root_table: if process.iommu_table is Some { IommuRootTableU { attached: thread_exit_detached_attached(table, thread.owning_proc), ..table } } else { table },
+        iommu_tlb: if process.iommu_table is Some && process.iommu_table->Some_0.did is Some {
+            old_u.iommu_tlb.insert(process.iommu_table->Some_0.did->Some_0, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
+        } else { old_u.iommu_tlb },
         ..old_u
     })
 }
@@ -277,14 +275,6 @@ pub open spec fn thread_exit_iommu_leaf_step(old_u: KernelU, new_u: KernelU, cpu
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { iommu_table: Some(PageTableU { mapping_4k: iommu_table.mapping_4k.restrict(kept), ..iommu_table }), ..process }),
         ..old_u
     })
-}
-
-/// Flushing the IOTLB empties every domain and changes nothing else.
-#[verifier::opaque]
-pub open spec fn thread_exit_iommu_flush_step(old_u: KernelU, new_u: KernelU) -> bool {
-    &&& new_u.iommu_tlb.dom() == old_u.iommu_tlb.dom()
-    &&& forall|did: VtdDomainId| #![trigger new_u.iommu_tlb[did]] vtd_domain_id_valid(did) ==> new_u.iommu_tlb[did].is_empty()
-    &&& new_u == (KernelU { iommu_tlb: new_u.iommu_tlb, ..old_u })
 }
 
 /// No IOVA has a 4K mapping in `iommu_table`.
@@ -399,8 +389,8 @@ pub open spec fn thread_exit_unlock_table_step(old_u: KernelU, new_u: KernelU, c
 /// A step between entering and finishing: reclaiming the dangling thread of a killed caller and the killed callers it takes over,
 /// changing or removing only threads of the exiting thread's container, releasing a descriptor, releasing an endpoint with
 /// its last descriptor, or, for a process's last thread, locking the process's tables, clearing one user 4K leaf, flushing
-/// one cpu's TLB for the process's PCID, recording the flush, clearing one IOMMU 4K leaf, flushing the IOTLB, refunding 4K
-/// quota to the thread's container chain, returning one size of quota, or unlocking the tables.
+/// one cpu's TLB for the process's PCID, recording the flush, removing one IOMMU 4K leaf, refunding 4K quota to the
+/// thread's container chain, returning one size of quota, or unlocking the tables.
 pub open spec fn thread_exit_middle_step(step: KernelStep, cpu_id: CpuId) -> bool {
     let old_u = step.old_u;
     let new_u = step.new_u;
@@ -414,7 +404,6 @@ pub open spec fn thread_exit_middle_step(step: KernelStep, cpu_id: CpuId) -> boo
     ||| thread_exit_flush_step_pre(old_u, cpu_id) && kernel_u_cpu_tlb_cleared(old_u, new_u, old_u.process_map.spec_index(thread.owning_proc).pcid)
     ||| thread_exit_flush_step_pre(old_u, cpu_id) && thread_exit_flushed_step(old_u, new_u, cpu_id)
     ||| thread_exit_reclaim_step_pre(old_u, cpu_id, true) && thread_exit_iommu_leaf_step(old_u, new_u, cpu_id)
-    ||| thread_exit_reclaim_step_pre(old_u, cpu_id, true) && thread_exit_iommu_flush_step(old_u, new_u)
     ||| thread_exit_reclaim_step_pre(old_u, cpu_id, true) && kernel_u_container_quota_4k_increased(old_u, new_u, thread.owning_container)
     ||| thread_exit_quota_step_pre(old_u, cpu_id) && thread_exit_quota_step(old_u, new_u, cpu_id)
     ||| thread_exit_unlock_table_step_pre(old_u, cpu_id) && thread_exit_unlock_table_step(old_u, new_u, cpu_id)

@@ -36,7 +36,16 @@ pub proof fn kill_process_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id:
         kill_process_enter_step_pre(old_u, cpu_id, child_index),
         kill_process_enter_step(old_u, new_u, cpu_id, child_index),
     ensures isolated(new_u, a, b),
-{ reveal(kill_process_enter_step_pre); reveal(kill_process_enter_step); }
+{
+    assert({
+        &&& new_u.process_map.dom() =~= old_u.process_map.dom() && new_u.thread_map.dom() =~= old_u.thread_map.dom()
+        &&& new_u.container_map == old_u.container_map && new_u.endpoint_map == old_u.endpoint_map
+        &&& forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] new_u.process_map[p].owning_container == old_u.process_map[p].owning_container
+            && new_u.process_map[p].pagetable == old_u.process_map[p].pagetable && new_u.process_map[p].iommu_table == old_u.process_map[p].iommu_table
+        &&& forall|t: RwLockThreadPtr| #![trigger new_u.thread_map[t]] new_u.thread_map[t].owning_container == old_u.thread_map[t].owning_container
+            && new_u.thread_map[t].state == old_u.thread_map[t].state
+    }) by { reveal(kill_process_enter_step_pre); reveal(kill_process_enter_step); };
+}
 
 /// Descending from the target of a process kill on a cpu of `a`, which lies in `a`, marks a child of the target, which
 /// shares its container, so it leaves the view of `b` unchanged.
@@ -574,8 +583,8 @@ pub proof fn kill_process_endpoint_released_step_iso(old_u: KernelU, new_u: Kern
 }
 
 /// Handing the PCI functions of the empty target of a process kill on a cpu of `a`, which lies in `a`, to the killer's
-/// process detaches only functions the target owns, none of which a process of `b` owns, so it leaves the view of `b`
-/// unchanged.
+/// process detaches only functions the target owns, none of which a process of `b` owns, and clears only the DID of the
+/// target's IOMMU table, so it leaves the view of `b` unchanged.
 pub proof fn kill_process_reassign_functions_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
@@ -615,7 +624,10 @@ pub proof fn kill_process_reassign_functions_step_iso(old_u: KernelU, new_u: Ker
         &&& new_u.process_map.dom() =~= old_u.process_map.dom()
         &&& new_u.container_map == old_u.container_map && new_u.thread_map == old_u.thread_map && new_u.endpoint_map == old_u.endpoint_map
         &&& forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] old_u.process_map.dom().contains(p) ==> new_u.process_map[p].owning_container == old_u.process_map[p].owning_container
-            && new_u.process_map[p].pagetable == old_u.process_map[p].pagetable && new_u.process_map[p].iommu_table == old_u.process_map[p].iommu_table
+            && new_u.process_map[p].pagetable == old_u.process_map[p].pagetable && (new_u.process_map[p].iommu_table is Some) == (old_u.process_map[p].iommu_table is Some)
+            && new_u.process_map[p].iommu_table->Some_0.mapping_4k == old_u.process_map[p].iommu_table->Some_0.mapping_4k
+            && new_u.process_map[p].iommu_table->Some_0.mapping_2m == old_u.process_map[p].iommu_table->Some_0.mapping_2m
+            && new_u.process_map[p].iommu_table->Some_0.mapping_1g == old_u.process_map[p].iommu_table->Some_0.mapping_1g
     }) by { reveal(kill_process_step_pre); reveal(kill_process_reassign_functions_step); };
 }
 
@@ -771,31 +783,6 @@ pub proof fn kill_process_iommu_leaf_step_iso(old_u: KernelU, new_u: KernelU, cp
 {
     reveal(kill_process_step_pre); reveal(kill_process_iommu_leaf_step);
 }
-
-/// A process kill IOTLB flush on a cpu of `a` empties every IOTLB domain and changes nothing else; no domain view
-/// contains the IOTLB, so the flush is a stutter step for every domain.
-pub proof fn kill_process_iommu_flush_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
-    requires
-        kernel_u_ownership_wf(old_u),
-        isolated(old_u, a, b),
-        steps_in_domain(old_u, cpu_id, a),
-        kill_process_step_pre(old_u, cpu_id),
-        kill_process_reclaim_step_pre(old_u, cpu_id, KillStage::Reclaim { flushed: true }),
-        kill_process_iommu_flush_step(old_u, new_u),
-    ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
-{ reveal(kill_process_iommu_flush_step); }
-
-/// The step of `kill_process_iommu_flush_step_lr` preserves isolation, which does not read the IOTLB.
-pub proof fn kill_process_iommu_flush_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
-    requires
-        kernel_u_ownership_wf(old_u),
-        isolated(old_u, a, b),
-        steps_in_domain(old_u, cpu_id, a),
-        kill_process_step_pre(old_u, cpu_id),
-        kill_process_reclaim_step_pre(old_u, cpu_id, KillStage::Reclaim { flushed: true }),
-        kill_process_iommu_flush_step(old_u, new_u),
-    ensures isolated(new_u, a, b),
-{ reveal(kill_process_iommu_flush_step); }
 
 /// Refunding 4K quota of a process kill on a cpu of `a` raises the quota of the target's container, which lies in `a`, or
 /// of an ancestor of it, neither of which lies in `b`.

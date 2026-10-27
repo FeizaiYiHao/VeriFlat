@@ -28,8 +28,8 @@ pub proof fn ipc_block_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, e
 
 /// A rendezvous of a running thread of `a` with the queue head of an endpoint it holds touches only that
 /// endpoint, the head, which is outside `b`, a cpu moving between the head's container and `a`, and a PCI
-/// function moving between the processes of the thread and the head, which no process of `b` owns, so it
-/// leaves the view of `b` unchanged.
+/// function moving between the processes of the thread and the head, which no process of `b` owns, together with
+/// the DID of the sender's IOMMU table, so it leaves the view of `b` unchanged.
 pub proof fn ipc_rendezvous_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),

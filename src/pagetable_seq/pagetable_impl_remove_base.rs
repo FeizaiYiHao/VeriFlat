@@ -32,6 +32,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             final(self).cr3 == old(self).cr3,
             final(self).proc_ptr == old(self).proc_ptr,
             final(self).pcid_value() == old(self).pcid_value(),
+            final(self).did == old(self).did,
             final(self).page_closure() =~= old(self).page_closure(),
             final(self).mapping_4k() == old(self).mapping_4k().insert(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)),
                 MapEntry { addr: old(self).mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).addr,
@@ -76,9 +77,10 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
     }
 
     /// Final half of 4K unmap: remove the kernel mapping only after its user
-    /// present bit is already clear. Kernel-level callers must additionally
-    /// establish that no stale TLB entry remains; restoring `tlb_wf_spec` after
-    /// this removal enforces that obligation.
+    /// present bit is already clear, or directly from an IOMMU table that no
+    /// device domain references (`did is None`), which no IOTLB can cache.
+    /// Kernel-level callers must additionally establish that no stale TLB entry
+    /// remains; restoring `tlb_wf_spec` after this removal enforces that obligation.
     pub fn unmap_4k_page_kernel(&mut self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             old(self).wf(),
@@ -89,7 +91,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             old(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             old(self).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             old(self).mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
-            old(self).mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).present == false,
+            old(self).mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).present == false || (TABLE_TYPE == IOMMU_TYPE && old(self).did is None),
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -101,6 +103,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             final(self).cr3 == old(self).cr3,
             final(self).proc_ptr == old(self).proc_ptr,
             final(self).pcid_value() == old(self).pcid_value(),
+            final(self).did == old(self).did,
             final(self).page_closure() =~= old(self).page_closure(),
             final(self).mapping_4k.view() == old(self).mapping_4k.view().remove(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
             final(self).spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) is None,
@@ -199,6 +202,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             final(self).kernel_entries =~= old(self).kernel_entries,
             final(self).cr3 == old(self).cr3,
             final(self).pcid == old(self).pcid,
+            final(self).did == old(self).did,
             final(self).proc_ptr == old(self).proc_ptr,
             ret.0 == target_l1_p,
             ret.1.view().is_init(),
@@ -261,6 +265,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             final(self).kernel_entries =~= old(self).kernel_entries,
             final(self).cr3 == old(self).cr3,
             final(self).pcid == old(self).pcid,
+            final(self).did == old(self).did,
             final(self).proc_ptr == old(self).proc_ptr,
             ret.0 == target_l2_p,
             ret.1.view().is_init(),
@@ -321,6 +326,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             final(self).kernel_entries =~= old(self).kernel_entries,
             final(self).cr3 == old(self).cr3,
             final(self).pcid == old(self).pcid,
+            final(self).did == old(self).did,
             final(self).proc_ptr == old(self).proc_ptr,
             ret.0 == target_l3_p,
             ret.1.view().is_init(),

@@ -657,30 +657,68 @@ pub(crate) proof fn kill_finish_step_from_u(pre: KernelU, cleared: KernelU, post
     assert(post.thread_map =~= pre.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..pre.thread_map[thread_ptr] }));
 }
 
-/// Handing every PCI function of the empty target to the killer's process `process_ptr`, detached and with their IOTLB
-/// domains emptied, is a middle step.
-pub(crate) proof fn kill_reassign_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, target: RwLockProcessPtr)
+/// Handing every PCI function of the empty target to the killer's process `process_ptr`, detached, while the target's IOMMU
+/// table `iommu_table`, if any, drops its DID `did` and only that IOTLB domain is emptied, is a middle step: `did` is the
+/// candidate domain of its anchor, an attached function the target owns.
+pub(crate) proof fn kill_reassign_step_from_k(
+    pre: &KernelK, post: &KernelK, cpu_id: CpuId, process_ptr: RwLockProcessPtr, target: RwLockProcessPtr, iommu_table: Option<RwLockPageTableRoot>, did: Option<VtdDomainId>,
+)
     requires
-        kill_process_step_pre(pre, cpu_id),
-        pre.cpu_array[cpu_id as int].current_process == Some(process_ptr),
-        kill_target(pre, cpu_id) == target,
-        kill_stage(pre, cpu_id) is Walk,
-        pre.process_map[target].children.len() == 0,
-        pre.process_map[target].owned_threads.len() == 0,
-        post.iommu_tlb.dom() == pre.iommu_tlb.dom(),
-        forall|bus: usize, device: usize, function: usize| #![trigger post.iommu_tlb[pci_bdf_did(bus, device, function)]]
-            pci_bdf_valid(bus, device, function) ==> post.iommu_tlb[pci_bdf_did(bus, device, function)]
-                == if kill_process_reassigns(pre.iommu_root_table, target, bus as int, device as int, function as int) { SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() } }
-                else { pre.iommu_tlb[pci_bdf_did(bus, device, function)] },
-        post == (KernelU {
-            process_map: pre.process_map.insert(target, ProcessU { owned_pci_functions: Set::empty(), ..pre.process_map[target] })
-                .insert(process_ptr, ProcessU { owned_pci_functions: pre.process_map[process_ptr].owned_pci_functions.union(pre.process_map[target].owned_pci_functions), ..pre.process_map[process_ptr] }),
-            iommu_root_table: kill_process_reassigned_table(pre.iommu_root_table, target, process_ptr),
-            iommu_tlb: post.iommu_tlb,
-            ..pre
+        pre.inv(),
+        kill_process_step_pre(kernel_k_to_kernel_u(*pre), cpu_id),
+        kernel_k_to_kernel_u(*pre).cpu_array[cpu_id as int].current_process == Some(process_ptr),
+        kill_target(kernel_k_to_kernel_u(*pre), cpu_id) == target,
+        kill_stage(kernel_k_to_kernel_u(*pre), cpu_id) is Walk,
+        kernel_k_to_kernel_u(*pre).process_map[target].children.len() == 0,
+        kernel_k_to_kernel_u(*pre).process_map[target].owned_threads.len() == 0,
+        pre.prc_mp.dom().contains(target),
+        pre.prc_mp.spec_index(target).view().iommu_table == iommu_table,
+        iommu_table is None ==> did is None,
+        iommu_table matches Some(t) ==> pre.it_mp.spec_index(t).view().did == did,
+        ({
+            let a = kernel_k_to_kernel_u(*pre);
+            let t = a.process_map[target];
+            let o = a.process_map[process_ptr];
+            kernel_k_to_kernel_u(*post) == (KernelU {
+                process_map: a.process_map.insert(target, ProcessU {
+                    owned_pci_functions: Set::empty(), iommu_table: match t.iommu_table { Some(x) => Some(PageTableU { did: None, ..x }), None => None }, ..t
+                }).insert(process_ptr, ProcessU { owned_pci_functions: o.owned_pci_functions.union(t.owned_pci_functions), ..o }),
+                iommu_root_table: post.irt.view().user_view(),
+                iommu_tlb: match did { Some(d) => a.iommu_tlb.insert(d, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }), None => a.iommu_tlb },
+                ..a
+            })
         }),
-    ensures kill_process_middle_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
-{ reveal(kill_process_reassign_functions_step); }
+        forall|b: usize, d: usize, f: usize| #![trigger kernel_k_to_kernel_u(*post).iommu_root_table.attached[b as int][d as int][f as int]]
+            #![trigger kernel_k_to_kernel_u(*post).iommu_root_table.owners[b as int][d as int][f as int]] pci_bdf_valid(b, d, f) ==> {
+            let r = kernel_k_to_kernel_u(*pre).iommu_root_table;
+            let s = kernel_k_to_kernel_u(*post).iommu_root_table;
+            &&& s.attached[b as int][d as int][f as int] == (r.attached[b as int][d as int][f as int] && r.owners[b as int][d as int][f as int] != target)
+            &&& s.owners[b as int][d as int][f as int] == if r.owners[b as int][d as int][f as int] == target { process_ptr } else { r.owners[b as int][d as int][f as int] }
+        },
+    ensures kill_process_middle_step(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*post) }, cpu_id),
+{
+    reveal(kill_process_reassign_functions_step);
+    kernel_u_domains_projection(pre); kernel_iommu_root_table_projection(pre);
+    if let Some(d) = did {
+        let t = iommu_table->Some_0;
+        let anchor = pci_bdf_of_did(d);
+        assert(vtd_domain_id_valid(d) && pre.iommu_tlb.view().dom().contains(d) && pci_bdf_valid(anchor.0, anchor.1, anchor.2)
+            && pre.irt.view().spec_index_owner(anchor.0, anchor.1, anchor.2) == target && pre.irt.view().spec_index_iommu_root(anchor.0, anchor.1, anchor.2) is Some) by {
+            reveal(iommu_root_table_process_wf); reveal(process_iommu_table_match); reveal(IommuTLB::inv);
+        };
+    }
+    let old_u = kernel_k_to_kernel_u(*pre);
+    let new_u = kernel_k_to_kernel_u(*post);
+    assert(new_u.iommu_tlb.dom() == old_u.iommu_tlb.dom());
+    assert(forall|x: VtdDomainId| #![trigger new_u.iommu_tlb[x]] new_u.iommu_tlb[x] != old_u.iommu_tlb[x] ==> {
+        let anchor = pci_bdf_of_did(x);
+        &&& pci_bdf_valid(anchor.0, anchor.1, anchor.2)
+        &&& kill_process_reassigns(old_u.iommu_root_table, target, anchor.0 as int, anchor.1 as int, anchor.2 as int)
+        &&& old_u.iommu_root_table.attached[anchor.0 as int][anchor.1 as int][anchor.2 as int]
+        &&& new_u.iommu_tlb[x].is_empty()
+    });
+    assert(kill_process_empty_target_pre(old_u, cpu_id));
+}
 
 /// Write-locking the page table and IOMMU table of the empty live target owning no PCI function, and recording that
 /// nothing is flushed yet, is a middle step.
@@ -751,12 +789,14 @@ pub(crate) proof fn kill_flushed_step_from_u(pre: KernelU, post: KernelU, cpu_id
     ensures kill_process_middle_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
 { reveal(kill_process_flushed_step); }
 
-/// Clearing the 4K leaf `iova` of the target's write-locked IOMMU table after the flush is a middle step.
+/// Removing or hiding the 4K leaf `iova` of the target's write-locked IOMMU table after the flush is a middle step; the
+/// kill's step precondition, read on `post`, ignores that leaf.
 pub(crate) proof fn kill_iommu_leaf_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, target: RwLockProcessPtr, iova: VAddr)
     requires
-        kill_process_step_pre(pre, cpu_id),
-        kill_target(pre, cpu_id) == target,
-        kill_process_reclaim_step_pre(pre, cpu_id, KillStage::Reclaim { flushed: true }),
+        kill_process_step_pre(post, cpu_id),
+        kill_target(post, cpu_id) == target,
+        kill_process_reclaim_step_pre(post, cpu_id, KillStage::Reclaim { flushed: true }),
+        pre.process_map.dom().contains(target),
         pre.process_map[target].iommu_table is Some,
         pre.process_map[target].iommu_table->Some_0.mapping_4k.dom().contains(iova),
         post == (KernelU {
@@ -768,33 +808,12 @@ pub(crate) proof fn kill_iommu_leaf_step_from_u(pre: KernelU, post: KernelU, cpu
         }),
     ensures kill_process_middle_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
 {
-    reveal(kill_process_iommu_leaf_step);
+    reveal(kill_process_iommu_leaf_step); reveal(kill_process_step_pre);
     let mapping = pre.process_map[target].iommu_table->Some_0.mapping_4k;
     let kept = post.process_map[target].iommu_table->Some_0.mapping_4k.dom();
     assert(mapping.dom().difference(kept) =~= set![iova]);
     assert(mapping.remove(iova) =~= mapping.restrict(kept));
 }
-
-/// Flushing the IOTLB on `pre` to `post` is a flush step on the projections, which change exactly when the IOTLB view
-/// does.
-pub(crate) proof fn kill_process_iommu_flush_step_from_k(pre: &KernelK, post: &KernelK)
-    requires
-        *post == (KernelK { iommu_tlb: post.iommu_tlb, ..*pre }),
-        post.iommu_tlb.view().dom() == pre.iommu_tlb.view().dom(),
-        forall|did: VtdDomainId| #![trigger post.iommu_tlb.view()[did]] vtd_domain_id_valid(did) ==> post.iommu_tlb.spec_index(did).is_empty(),
-    ensures
-        kill_process_iommu_flush_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post)),
-        pre.iommu_tlb.view() != post.iommu_tlb.view() ==> kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post) && kernel_k_to_nonlock_kernel_u(*pre) != kernel_k_to_nonlock_kernel_u(*post),
-{ reveal(kill_process_iommu_flush_step); kernel_iommu_tlb_flushed_implies_u_step(pre, post); }
-
-/// Flushing the IOTLB while the target's tables are reclaimed after the PCID flush is a middle step.
-pub(crate) proof fn kill_iommu_flush_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId)
-    requires
-        kill_process_step_pre(pre, cpu_id),
-        kill_process_reclaim_step_pre(pre, cpu_id, KillStage::Reclaim { flushed: true }),
-        kill_process_iommu_flush_step(pre, post),
-    ensures kill_process_middle_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
-{}
 
 /// Returning the target's whole `size` quota to its container and recording the return is a middle step.
 pub(crate) proof fn kill_quota_step_from_u(pre: KernelU, returned: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, size: PageSize, scope: KillScope)

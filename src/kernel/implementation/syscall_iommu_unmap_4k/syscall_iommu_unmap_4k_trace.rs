@@ -82,11 +82,13 @@ pub(super) proof fn iommu_unmap_4k_leaf_step_from_u(pre: KernelU, post: KernelU,
         iommu_unmap_4k_range_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
 { reveal(iommu_unmap_4k_leaf_step_pre); reveal(iommu_unmap_4k_leaf_step); reveal(iommu_unmap_4k_range_step); }
 
-/// Emptying every IOTLB domain and recording the flush after the last hidden iova is the flush step on `pre`/`post`.
+/// Emptying only the IOTLB domain of the process's IOMMU table, or nothing when it has no DID, and recording the flush
+/// after the last hidden iova is the flush step on `pre`/`post`.
 pub(super) proof fn iommu_unmap_4k_flush_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr)
     requires
         {
             let thread = pre.thread_map.spec_index(thread_ptr);
+            let did = pre.process_map.spec_index(thread.owning_proc).iommu_table->Some_0.did;
             let progress = thread.syscall_progress->Some_0;
             &&& iommu_unmap_4k_table_locked(pre, cpu_id)
             &&& pre.cpu_array[cpu_id as int].current_thread == Some(thread_ptr)
@@ -94,10 +96,8 @@ pub(super) proof fn iommu_unmap_4k_flush_step_from_u(pre: KernelU, post: KernelU
             &&& progress is IommuUnmap4k
             &&& progress->IommuUnmap4k_unmapped == progress->IommuUnmap4k_iova_range.len
             &&& !progress->IommuUnmap4k_flushed
-            &&& post.iommu_tlb.dom() == pre.iommu_tlb.dom()
-            &&& forall|did: VtdDomainId| #![trigger post.iommu_tlb[did]] vtd_domain_id_valid(did) ==> post.iommu_tlb[did].is_empty()
             &&& post == (KernelU {
-                iommu_tlb: post.iommu_tlb,
+                iommu_tlb: match did { Some(d) => pre.iommu_tlb.insert(d, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }), None => pre.iommu_tlb },
                 thread_map: pre.thread_map.insert(thread_ptr, ThreadU {
                     syscall_progress: Some(SyscallProgress::IommuUnmap4k { iova_range: progress->IommuUnmap4k_iova_range, unmapped: progress->IommuUnmap4k_unmapped, flushed: true }),
                     ..thread
@@ -246,6 +246,7 @@ pub(super) proof fn iommu_unmap_4k_leaf_step_from_k(
             MapEntry { present: false, ..mid.it_mp.spec_index(iommu_table_ptr).view().mapping_4k()[iova_range.view()[unmapped as int]] }),
         post.it_mp.spec_index(iommu_table_ptr).view().mapping_2m() == mid.it_mp.spec_index(iommu_table_ptr).view().mapping_2m(),
         post.it_mp.spec_index(iommu_table_ptr).view().mapping_1g() == mid.it_mp.spec_index(iommu_table_ptr).view().mapping_1g(),
+        post.it_mp.spec_index(iommu_table_ptr).view().did == mid.it_mp.spec_index(iommu_table_ptr).view().did,
     ensures
         iommu_unmap_4k_range_step(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*post) }, cpu_id),
 {
@@ -260,8 +261,8 @@ pub(super) proof fn iommu_unmap_4k_leaf_step_from_k(
     iommu_unmap_4k_leaf_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, process_ptr, thread_ptr, iova);
 }
 
-/// Flushing every IOTLB domain and then recording the flush after the last hidden iova under the IOMMU-unmap locks is the
-/// flush step from `pre` to `post`.
+/// Invalidating the IOTLB domain of the write-held IOMMU table, if it has one, and then recording the flush after the last
+/// hidden iova under the IOMMU-unmap locks is the flush step from `pre` to `post`.
 pub(super) proof fn iommu_unmap_4k_flush_step_from_k(
     pre: &KernelK, mid: &KernelK, post: &KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
     iommu_table_ptr: RwLockPageTableRoot, iova_range: VaRange4K,
@@ -283,9 +284,12 @@ pub(super) proof fn iommu_unmap_4k_flush_step_from_k(
         pre.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
         pre.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
         pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::IommuUnmap4k { iova_range, unmapped: iova_range.len, flushed: false }),
+        pre.iommu_tlb.inv(),
+        mid.iommu_tlb.inv(),
         *mid == (KernelK { iommu_tlb: mid.iommu_tlb, ..*pre }),
-        mid.iommu_tlb.view().dom() == pre.iommu_tlb.view().dom(),
-        forall|did: VtdDomainId| #![trigger mid.iommu_tlb.view()[did]] vtd_domain_id_valid(did) ==> mid.iommu_tlb.spec_index(did).is_empty(),
+        pre.it_mp.spec_index(iommu_table_ptr).view().did matches Some(did)
+            ==> mid.iommu_tlb.view() == pre.iommu_tlb.view().insert(did, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
+        pre.it_mp.spec_index(iommu_table_ptr).view().did is None ==> mid.iommu_tlb == pre.iommu_tlb,
         *post == (KernelK { thr_mp: post.thr_mp, ..*mid }),
         post.thr_mp.unchanged_except(&mid.thr_mp, thread_ptr),
         post.thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: post.thr_mp.spec_index(thread_ptr).view().syscall_progress, ..mid.thr_mp.spec_index(thread_ptr).view() }),
@@ -296,7 +300,11 @@ pub(super) proof fn iommu_unmap_4k_flush_step_from_k(
         iommu_unmap_4k_range_step(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*post) }, cpu_id),
 {
     assert(pre.it_mp.dom().contains(iommu_table_ptr)) by { reveal(process_iommu_table_match); };
-    kernel_iommu_tlb_flushed_implies_u_step(pre, mid); kernel_thread_syscall_progress_changed_implies_u_step(mid, post, thread_ptr);
+    if let Some(did) = pre.it_mp.spec_index(iommu_table_ptr).view().did {
+        assert(mid.iommu_tlb.view().dom().contains(did) ==> vtd_domain_id_valid(did)) by { reveal(IommuTLB::inv); };
+        kernel_iommu_tlb_domain_invalidated_implies_u_step(pre, mid, did);
+    }
+    kernel_thread_syscall_progress_changed_implies_u_step(mid, post, thread_ptr);
     kernel_cpu_projection_at(pre, cpu_id); kernel_container_projection_at(pre, container_ptr); kernel_thread_projection_at(pre, thread_ptr);
     kernel_process_projection_at(pre, process_ptr); kernel_iommu_table_mappings_projection_at(pre, process_ptr);
     iommu_unmap_4k_flush_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, thread_ptr);

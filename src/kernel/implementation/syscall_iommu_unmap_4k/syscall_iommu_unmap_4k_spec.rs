@@ -153,16 +153,17 @@ pub open spec fn iommu_unmap_4k_flush_step_pre(old_u: KernelU, cpu_id: CpuId) ->
     &&& !progress->IommuUnmap4k_flushed
 }
 
-/// The flush step empties every IOTLB domain and records the flush.
+/// The flush step empties only the IOTLB domain of the process's IOMMU table, keeping every other domain, or leaves the
+/// IOTLB unchanged when the table has no DID, and records the flush.
 #[verifier::opaque]
 pub open spec fn iommu_unmap_4k_flush_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let thread = old_u.thread_map.spec_index(thread_ptr);
+    let did = old_u.process_map.spec_index(thread.owning_proc).iommu_table->Some_0.did;
     let progress = thread.syscall_progress->Some_0;
     let flushed = SyscallProgress::IommuUnmap4k { iova_range: progress->IommuUnmap4k_iova_range, unmapped: progress->IommuUnmap4k_unmapped, flushed: true };
-    &&& new_u.iommu_tlb.dom() == old_u.iommu_tlb.dom()
-    &&& forall|did: VtdDomainId| #![trigger new_u.iommu_tlb[did]] vtd_domain_id_valid(did) ==> new_u.iommu_tlb[did].is_empty()
-    &&& new_u == (KernelU { iommu_tlb: new_u.iommu_tlb, thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(flushed), ..thread }), ..old_u })
+    let iommu_tlb = match did { Some(d) => old_u.iommu_tlb.insert(d, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }), None => old_u.iommu_tlb };
+    new_u == (KernelU { iommu_tlb, thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(flushed), ..thread }), ..old_u })
 }
 
 /// A refund step runs under the cpu, container, process, and thread locks after the flush has been recorded.

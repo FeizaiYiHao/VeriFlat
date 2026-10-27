@@ -211,6 +211,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(self).kernel_l4_end == old(self).kernel_l4_end,
             final(self).cr3 == old(self).cr3,
             final(self).pcid == old(self).pcid,
+            final(self).did == old(self).did,
             final(self).proc_ptr == old(self).proc_ptr,
             final(lower).l2_lock == old(lower).l2_lock.remove(target_l2_p),
             final(lower).locked_windows == old(lower).locked_windows,
@@ -274,6 +275,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(self).kernel_l4_end == old(self).kernel_l4_end,
             final(self).cr3 == old(self).cr3,
             final(self).pcid == old(self).pcid,
+            final(self).did == old(self).did,
             final(self).proc_ptr == old(self).proc_ptr,
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
                 #![trigger (PageTableC { higher: *final(self), lower: *lower }).window_locked_by_thread(l4i, l3i, l2i, thread_id)]

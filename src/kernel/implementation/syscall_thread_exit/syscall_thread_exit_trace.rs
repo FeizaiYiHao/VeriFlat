@@ -292,7 +292,7 @@ pub(super) proof fn thread_exit_finish_step_from_u(
 
 /// A state holding the cpu, `container_ptr`, `process_ptr`, and the running `thread_ptr`, the process's last thread
 /// that has released every descriptor and has no caller, with the process's page table and IOMMU table unlocked, gives
-/// the lock-table step precondition.
+/// the lock-table step precondition and the projected DID of the IOMMU table.
 pub(super) proof fn thread_exit_lock_table_step_pre_from_k(
     krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
     pagetable: RwLockPageTableRoot,
@@ -326,6 +326,8 @@ pub(super) proof fn thread_exit_lock_table_step_pre_from_k(
         thread_exit_lock_table_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
         kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_thread == Some(thread_ptr),
         kernel_k_to_kernel_u(*krnl).thread_map[thread_ptr].owning_proc == process_ptr,
+        krnl.prc_mp.spec_index(process_ptr).view().iommu_table matches Some(t)
+            ==> kernel_k_to_kernel_u(*krnl).process_map[process_ptr].iommu_table->Some_0.did == krnl.it_mp.spec_index(t).view().did,
 {
     kernel_write_held_context_projection(krnl, lctx, cpu_id, process_ptr, thread_ptr, None);
     kernel_cpu_thread_projection_at(krnl, cpu_id, process_ptr, thread_ptr, None); kernel_process_projection_at(krnl, process_ptr);
@@ -334,43 +336,55 @@ pub(super) proof fn thread_exit_lock_table_step_pre_from_k(
     reveal(thread_exit_lock_table_step_pre);
 }
 
-/// Write-locking the page table of the process of the running last thread, while recording reclaim progress, is the
-/// lock-table step on `pre`/`post`.
-pub(super) proof fn thread_exit_lock_table_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr)
+/// Write-locking the tables of the process of the running last thread while recording reclaim progress (`pre` to `mid`),
+/// then, for a process with an IOMMU table of DID `did`, detaching that table (`mid` to `post`), is the lock-table step on
+/// `pre`/`post`.
+pub(super) proof fn thread_exit_lock_table_step_from_u(
+    pre: KernelU, mid: KernelU, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, did: Option<VtdDomainId>,
+)
     requires
         thread_exit_lock_table_step_pre(pre, cpu_id),
         pre.cpu_array[cpu_id as int].current_thread == Some(thread_ptr),
         pre.thread_map[thread_ptr].owning_proc == process_ptr,
-        post.iommu_root_table == (IommuRootTableU {
-            attached: Seq::new(PCI_BUS_COUNT as nat, |bus: int| Seq::new(PCI_DEVICE_COUNT as nat, |device: int|
-                Seq::new(PCI_FUNCTION_COUNT as nat, |function: int| pre.iommu_root_table.attached[bus][device][function] && pre.iommu_root_table.owners[bus][device][function] != process_ptr))),
-            ..pre.iommu_root_table
-        }),
-        post.iommu_tlb.dom() == pre.iommu_tlb.dom(),
-        forall|b: usize, d: usize, f: usize| #![trigger post.iommu_tlb[pci_bdf_did(b, d, f)]] pci_bdf_valid(b, d, f)
-            ==> post.iommu_tlb[pci_bdf_did(b, d, f)] == if pre.iommu_root_table.attached[b as int][d as int][f as int] && pre.iommu_root_table.owners[b as int][d as int][f as int] == process_ptr {
-                SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }
-            } else { pre.iommu_tlb[pci_bdf_did(b, d, f)] },
-        post == (KernelU {
+        mid == (KernelU {
             thread_map: pre.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(SyscallProgress::ThreadExitReclaim { flushed: false }), ..pre.thread_map[thread_ptr] }),
             process_map: pre.process_map.insert(process_ptr, ProcessU {
                 pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..pre.process_map[process_ptr].pagetable->Some_0 }),
                 iommu_table: match pre.process_map[process_ptr].iommu_table { Some(t) => Some(PageTableU { lock_state: LockStateU::WriteLocked, ..t }), None => None },
                 ..pre.process_map[process_ptr]
             }),
-            iommu_root_table: post.iommu_root_table,
-            iommu_tlb: post.iommu_tlb,
             ..pre
         }),
+        pre.process_map[process_ptr].iommu_table is None ==> post == mid,
+        pre.process_map[process_ptr].iommu_table matches Some(t) ==> {
+            let p = mid.process_map[process_ptr];
+            &&& t.did == did
+            &&& post == (KernelU {
+                process_map: mid.process_map.insert(process_ptr, ProcessU { iommu_table: match p.iommu_table { Some(t) => Some(PageTableU { did: None, ..t }), None => None }, ..p }),
+                iommu_root_table: IommuRootTableU {
+                    attached: Seq::new(PCI_BUS_COUNT as nat, |bus: int| Seq::new(PCI_DEVICE_COUNT as nat, |device: int|
+                        Seq::new(PCI_FUNCTION_COUNT as nat, |function: int| mid.iommu_root_table.attached[bus][device][function] && mid.iommu_root_table.owners[bus][device][function] != process_ptr))),
+                    ..mid.iommu_root_table
+                },
+                iommu_tlb: match did { Some(d) => mid.iommu_tlb.insert(d, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }), None => mid.iommu_tlb },
+                ..mid
+            })
+        },
     ensures
         thread_exit_lock_table_step(pre, post, cpu_id),
 {
     reveal(thread_exit_lock_table_step);
-    let attached = post.iommu_root_table.attached;
-    let expected = thread_exit_detached_attached(pre.iommu_root_table, process_ptr);
-    assert_seqs_equal!(attached, expected, bus => {
-        assert_seqs_equal!(attached[bus], expected[bus], device => { assert_seqs_equal!(attached[bus][device], expected[bus][device], function => {}); });
-    });
+    if pre.process_map[process_ptr].iommu_table is Some {
+        let attached = post.iommu_root_table.attached;
+        let expected = thread_exit_detached_attached(pre.iommu_root_table, process_ptr);
+        assert_seqs_equal!(attached, expected, bus => {
+            assert_seqs_equal!(attached[bus], expected[bus], device => { assert_seqs_equal!(attached[bus][device], expected[bus][device], function => {}); });
+        });
+        assert(post.process_map =~= pre.process_map.insert(process_ptr, ProcessU {
+            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..pre.process_map[process_ptr].pagetable->Some_0 }),
+            iommu_table: Some(PageTableU { lock_state: LockStateU::WriteLocked, did: None, ..pre.process_map[process_ptr].iommu_table->Some_0 }), ..pre.process_map[process_ptr]
+        }));
+    }
 }
 
 /// A state holding the cpu, `container_ptr`, `process_ptr` with its page table `pagetable`, and the running `thread_ptr`
@@ -472,7 +486,7 @@ pub(super) proof fn thread_exit_iommu_leaf_step_pre_from_k(
     reveal(thread_exit_reclaim_step_pre);
 }
 
-/// Clearing the 4K leaf `iova` of the locked IOMMU table after the flush is an IOMMU leaf step on `pre`/`post`.
+/// Removing the 4K leaf `iova` of the locked, detached IOMMU table after the flush is an IOMMU leaf step on `pre`/`post`.
 pub(super) proof fn thread_exit_iommu_leaf_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, iova: VAddr)
     requires
         pre.cpu_array[cpu_id as int].current_thread == Some(thread_ptr),
@@ -498,17 +512,59 @@ pub(super) proof fn thread_exit_iommu_leaf_step_from_u(pre: KernelU, post: Kerne
     assert(mapping.remove(iova) =~= mapping.restrict(kept));
 }
 
-/// Flushing the IOTLB on `pre` to `post` is an IOMMU flush step on the projections, which change exactly when the IOTLB
-/// view does.
-pub(super) proof fn thread_exit_iommu_flush_step_from_k(pre: &KernelK, post: &KernelK)
+/// Removing the present 4K leaf `iova` of the write-held, detached IOMMU table `iommu_table` of `process_ptr` from `pre` to
+/// `post`, with page, 4K-allocator, and `thread_ptr` bookkeeping, where `post` holds the cpu, `container_ptr`, `process_ptr`
+/// with its page table `pagetable`, and the running `thread_ptr` that records flushed reclaim progress, is an IOMMU leaf step
+/// after its reclaim precondition, and changes both projections.
+pub(super) proof fn thread_exit_iommu_leaf_step_from_k(
+    pre: &KernelK, post: &KernelK, lctx: &LocalContext, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
+    pagetable: RwLockPageTableRoot, iommu_table: RwLockPageTableRoot, iova: VAddr,
+)
     requires
-        *post == (KernelK { iommu_tlb: post.iommu_tlb, ..*pre }),
-        post.iommu_tlb.view().dom() == pre.iommu_tlb.view().dom(),
-        forall|did: VtdDomainId| #![trigger post.iommu_tlb.view()[did]] vtd_domain_id_valid(did) ==> post.iommu_tlb.spec_index(did).is_empty(),
+        index_valid(NUM_CPUS, cpu_id),
+        typed_lock_maps_aligned(post, lctx),
+        typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.container_lock_map(), container_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.process_lock_map(), process_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.iommu_table_lock_map(), iommu_table, TypedLockMode::Write),
+        post.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
+        post.prc_mp.dom().contains(process_ptr),
+        !post.prc_mp.spec_index(process_ptr).view().zombie,
+        post.prc_mp.spec_index(process_ptr).view().pagetable == pagetable,
+        post.prc_mp.spec_index(process_ptr).view().iommu_table == Some(iommu_table),
+        post.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
+        post.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
+        post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: true }),
+        process_iommu_table_match(pre.prc_mp, pre.it_mp),
+        pre.it_mp.dom().contains(iommu_table),
+        pre.it_mp.spec_index(iommu_table).view().proc_ptr == process_ptr,
+        *post == (KernelK { it_mp: post.it_mp, pg_arr: post.pg_arr, thr_mp: post.thr_mp, allc_4k_mp: post.allc_4k_mp, ..*pre }),
+        post.it_mp.unchanged_except(&pre.it_mp, iommu_table),
+        post.it_mp.spec_index(iommu_table).locking_thread() == pre.it_mp.spec_index(iommu_table).locking_thread(),
+        post.it_mp.spec_index(iommu_table).view().proc_ptr == process_ptr,
+        post.it_mp.spec_index(iommu_table).view().did == pre.it_mp.spec_index(iommu_table).view().did,
+        pre.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(iova),
+        pre.it_mp.spec_index(iommu_table).view().mapping_4k()[iova].present,
+        post.it_mp.spec_index(iommu_table).view().mapping_4k() == pre.it_mp.spec_index(iommu_table).view().mapping_4k().remove(iova),
+        post.it_mp.spec_index(iommu_table).view().mapping_2m() == pre.it_mp.spec_index(iommu_table).view().mapping_2m(),
+        post.it_mp.spec_index(iommu_table).view().mapping_1g() == pre.it_mp.spec_index(iommu_table).view().mapping_1g(),
+        post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr),
+        post.thr_mp.spec_index(thread_ptr).locking_thread() == pre.thr_mp.spec_index(thread_ptr).locking_thread(),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(pre, &KernelK { it_mp: pre.it_mp, ..*post }),
+        kernel_container_nonlock_fields_and_quotas_unchanged(pre, post),
     ensures
-        thread_exit_iommu_flush_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post)),
-        pre.iommu_tlb.view() != post.iommu_tlb.view() ==> kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post) && kernel_k_to_nonlock_kernel_u(*pre) != kernel_k_to_nonlock_kernel_u(*post),
-{ reveal(thread_exit_iommu_flush_step); kernel_iommu_tlb_flushed_implies_u_step(pre, post); }
+        thread_exit_reclaim_step_pre(kernel_k_to_kernel_u(*pre), cpu_id, true),
+        thread_exit_iommu_leaf_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id),
+        kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
+        kernel_k_to_nonlock_kernel_u(*pre) != kernel_k_to_nonlock_kernel_u(*post),
+{
+    thread_exit_iommu_leaf_step_pre_from_k(post, lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, iommu_table);
+    kernel_iommu_table_4k_mapping_removed_implies_u_step(pre, post, iommu_table, iova, thread_ptr);
+    reveal(thread_exit_reclaim_step_pre);
+    thread_exit_iommu_leaf_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, process_ptr, thread_ptr, iova);
+}
 
 /// A state holding the cpu, `container_ptr`, `process_ptr` with its page table `pagetable` of PCID `pcid`, and the
 /// running `thread_ptr` that records unflushed reclaim progress, where no user 4K leaf of the page table is left, gives

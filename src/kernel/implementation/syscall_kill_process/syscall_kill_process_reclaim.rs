@@ -1,4 +1,3 @@
-use vstd::assert_seqs_equal;
 use vstd::prelude::*;
 use crate::*;
 use super::syscall_kill_process_spec::*;
@@ -83,9 +82,9 @@ pub(crate) fn kill_reclaim_target(
     parent
 }
 
-/// Hand every PCI function of the empty target to the killer's process under the root-table lock: each function the
-/// target owns is detached, its IOTLB domain emptied, and the killer's process made its owner. A target owning no
-/// function records no step.
+/// Hand every PCI function of the empty target to the killer's process under the root-table lock and, for a target with an
+/// IOMMU table, that table's write lock: every function the target owns is detached and handed to the killer's process,
+/// and the table drops its DID, invalidated once. A target owning no function records no step.
 pub(crate) fn kill_reassign_functions(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
     thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>, Tracked(chain_perms): Tracked<&Map<RwLockProcessPtr, LockPerm>>,
@@ -132,35 +131,61 @@ pub(crate) fn kill_reassign_functions(
     let ghost before = *krnl;
     let ghost before_lctx = *lctx;
     let ghost before_steps = steps.view();
+    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target); }
+    let iommu_table = {
+        let tracked target_perm = chain_perms.tracked_borrow(target);
+        krnl.prc_mp.borrow_typed(target, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(target_perm)).iommu_table
+    };
+    let ghost did = match iommu_table { Some(t) => krnl.it_mp.spec_index(t).view().did, None => None };
     let Tracked(irt_perm) = krnl.wlock_iommu_root_table(Tracked(&mut *lctx));
-    let ghost locked = *krnl;
-    let (moved, Ghost(witness)) = kill_reassign_scan(krnl, Tracked(&*lctx), target, process_ptr, Tracked(&irt_perm));
-    if moved {
-        proof {
-            process_perms_wf_map(krnl.prc_mp);
-            let target_ghost = krnl.prc_mp.spec_index(target).view_ghost();
-            let owner_ghost = krnl.prc_mp.spec_index(process_ptr).view_ghost();
-            krnl.prc_mp.update_ghost(target, ProcessGhost { owned_pci_functions: Ghost(Set::empty()), ..target_ghost });
-            krnl.prc_mp.update_ghost(process_ptr, ProcessGhost { owned_pci_functions: Ghost(owner_ghost.owned_pci_functions.view().union(target_ghost.owned_pci_functions.view())), ..owner_ghost });
-            assert(krnl.prc_mp.typed_lock_map_aligned(lctx.process_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
-            assert(kill_reassign_eof_transition_framing(locked, *krnl, target, process_ptr)) by { reveal(kill_reassign_eof_transition_framing); };
-            kill_reassign_eof(locked, *krnl, target, process_ptr);
+    let found = kill_reassign_find_owned(&krnl.irt, target, Tracked(&irt_perm));
+    if found.is_some() {
+        match iommu_table {
+            Some(it) => {
+                let Tracked(iommu_perm) = krnl.wlock_iommu_table(it, Tracked(&mut *lctx));
+                let ghost locked = *krnl;
+                iommu_root_table_reassign_detach_all(&mut krnl.irt, &mut krnl.iommu_tlb, &mut krnl.it_mp, it, process_ptr, Tracked(&*lctx), Tracked(&irt_perm), Tracked(&iommu_perm));
+                proof {
+                    process_perms_wf_map(krnl.prc_mp);
+                    let target_ghost = krnl.prc_mp.spec_index(target).view_ghost();
+                    let owner_ghost = krnl.prc_mp.spec_index(process_ptr).view_ghost();
+                    krnl.prc_mp.update_ghost(target, ProcessGhost { owned_pci_functions: Ghost(Set::empty()), ..target_ghost });
+                    krnl.prc_mp.update_ghost(process_ptr, ProcessGhost { owned_pci_functions: Ghost(owner_ghost.owned_pci_functions.view().union(target_ghost.owned_pci_functions.view())), ..owner_ghost });
+                    assert(krnl.prc_mp.typed_lock_map_aligned(lctx.process_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
+                    assert(kill_reassign_eof_transition_framing(locked, *krnl, target, process_ptr, iommu_table)) by { reveal(kill_reassign_eof_transition_framing); };
+                    assert(krnl.it_mp.spec_index(it).view().leaves_present()) by { reveal(kill_reassign_eof_transition_framing); };
+                    kill_reassign_eof(locked, *krnl, target, process_ptr, iommu_table);
+                }
+                krnl.wunlock_iommu_table(it, Tracked(&mut *lctx), Tracked(iommu_perm));
+            },
+            None => {
+                let ghost locked = *krnl;
+                iommu_root_table_reassign_owned(&mut krnl.irt, target, process_ptr, Tracked(&*lctx), Tracked(&irt_perm));
+                proof {
+                    process_perms_wf_map(krnl.prc_mp);
+                    let target_ghost = krnl.prc_mp.spec_index(target).view_ghost();
+                    let owner_ghost = krnl.prc_mp.spec_index(process_ptr).view_ghost();
+                    krnl.prc_mp.update_ghost(target, ProcessGhost { owned_pci_functions: Ghost(Set::empty()), ..target_ghost });
+                    krnl.prc_mp.update_ghost(process_ptr, ProcessGhost { owned_pci_functions: Ghost(owner_ghost.owned_pci_functions.view().union(target_ghost.owned_pci_functions.view())), ..owner_ghost });
+                    assert(krnl.prc_mp.typed_lock_map_aligned(lctx.process_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
+                    assert(kill_reassign_eof_transition_framing(locked, *krnl, target, process_ptr, iommu_table)) by { reveal(kill_reassign_eof_transition_framing); };
+                    kill_reassign_eof(locked, *krnl, target, process_ptr, iommu_table);
+                }
+            },
         }
     }
     krnl.wunlock_iommu_root_table(Tracked(&mut *lctx), Tracked(irt_perm));
     let ghost after = *krnl;
     proof {
-        let before_u = kernel_k_to_kernel_u(before);
-        if moved {
+        if found is Some {
+            let w = found->Some_0;
             kill_step_pre_from_k(&before, &before_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Walk, scope); kill_reassign_pre_from_k(&before, target);
-            assert(before.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view().contains((witness.0, witness.1, witness.2))) by {
-                process_pci_function_ownership_wf_at(before.irt.view(), before.prc_mp, (witness.0, witness.1, witness.2), target);
-            };
+            assert(before.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view().contains(w)) by { process_pci_function_ownership_wf_at(before.irt.view(), before.prc_mp, w, target); };
             reveal(kill_reassign_eof_transition_framing);
-            kernel_process_functions_reassigned_implies_u_step(&before, &after, target, process_ptr);
+            kernel_process_functions_reassigned_implies_u_step(&before, &after, target, process_ptr, iommu_table, did);
+            kill_reassign_step_from_k(&before, &after, cpu_id, process_ptr, target, iommu_table, did);
             krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
-            kill_reassign_step_from_u(before_u, kernel_k_to_kernel_u(after), cpu_id, process_ptr, target);
-            kill_trace_push(&*steps, before_steps, start, pre, before_u, kernel_k_to_kernel_u(after), cpu_id, ctx);
+            kill_trace_push(&*steps, before_steps, start, pre, kernel_k_to_kernel_u(before), kernel_k_to_kernel_u(after), cpu_id, ctx);
         } else {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&before, &after)) by {
                 broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
@@ -174,95 +199,37 @@ pub(crate) fn kill_reassign_functions(
     }
 }
 
-/// Scan every B/D/F under the held root-table lock and hand each function `target` owns to `owner`, detached and with its
-/// IOTLB domain emptied. Returns whether a function moved, with one moved B/D/F.
-pub(crate) fn kill_reassign_scan(krnl: &mut KernelK, Tracked(lctx): Tracked<&LocalContext>, target: RwLockProcessPtr, owner: RwLockProcessPtr, Tracked(irt_perm): Tracked<&LockPerm>)
-    -> (ret: (bool, Ghost<PciBdf>))
+/// Scan every B/D/F under the held root-table lock for a function `target` owns; returns the first one, or none when
+/// `target` owns no function.
+fn kill_reassign_find_owned(irt: &IommuRootTableLock, target: RwLockProcessPtr, Tracked(irt_perm): Tracked<&LockPerm>) -> (ret: Option<PciBdf>)
     requires
-        old(krnl).inv(),
-        typed_lock_maps_aligned(old(krnl), lctx),
-        old(krnl).irt.wlocked_by(lctx),
-        typed_lock_map_contains_mode(lctx.iommu_root_table_lock_map(), old(krnl).irt.view().table_base(), TypedLockMode::Write),
+        irt.inv(),
         irt_perm.state() is WriteLock,
-        irt_perm.thread_id() == lctx.thread_id(),
-        irt_perm.lock_id() == old(krnl).irt.locking_thread()->Write_lock_id,
+        irt.write_lock_perm_match(irt_perm),
     ensures
-        *final(krnl) == (KernelK { irt: final(krnl).irt, iommu_tlb: final(krnl).iommu_tlb, ..*old(krnl) }),
-        final(krnl).irt.inv(),
-        final(krnl).iommu_tlb.inv(),
-        iommu_root_table_typed_lock_map_aligned(final(krnl).irt, lctx.iommu_root_table_lock_map(), lctx.thread_id()),
-        final(krnl).irt.locking_thread() == old(krnl).irt.locking_thread(),
-        final(krnl).irt.view().table_base() == old(krnl).irt.view().table_base(),
-        forall|b: usize, d: usize, f: usize| #![trigger final(krnl).irt.view().spec_index_owner(b, d, f)] #![trigger final(krnl).irt.view().spec_index_iommu_root(b, d, f)] pci_bdf_valid(b, d, f) ==> {
-            &&& final(krnl).irt.view().spec_index_owner(b, d, f) == if old(krnl).irt.view().spec_index_owner(b, d, f) == target { owner } else { old(krnl).irt.view().spec_index_owner(b, d, f) }
-            &&& final(krnl).irt.view().spec_index_iommu_root(b, d, f) == if old(krnl).irt.view().spec_index_owner(b, d, f) == target { None } else { old(krnl).irt.view().spec_index_iommu_root(b, d, f) }
-        },
-        final(krnl).iommu_tlb.view().dom() == old(krnl).iommu_tlb.view().dom(),
-        forall|b: usize, d: usize, f: usize| #![trigger final(krnl).iommu_tlb.view()[pci_bdf_did(b, d, f)]] pci_bdf_valid(b, d, f) ==> final(krnl).iommu_tlb.view()[pci_bdf_did(b, d, f)]
-            == if old(krnl).irt.view().spec_index_owner(b, d, f) == target { SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() } }
-            else { old(krnl).iommu_tlb.view()[pci_bdf_did(b, d, f)] },
-        forall|b: usize, d: usize, f: usize| #![trigger final(krnl).iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f))] pci_bdf_valid(b, d, f) ==> {
-            &&& final(krnl).iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f)) == (old(krnl).iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f)) && old(krnl).irt.view().spec_index_owner(b, d, f) != target)
-            &&& final(krnl).iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f)) ==> final(krnl).iommu_tlb.context_cache()[pci_bdf_did(b, d, f)] == old(krnl).iommu_tlb.context_cache()[pci_bdf_did(b, d, f)]
-        },
-        !ret.0 ==> final(krnl).irt == old(krnl).irt && final(krnl).iommu_tlb == old(krnl).iommu_tlb,
-        !ret.0 ==> forall|b: usize, d: usize, f: usize| #![trigger old(krnl).irt.view().spec_index_owner(b, d, f)] pci_bdf_valid(b, d, f) ==> old(krnl).irt.view().spec_index_owner(b, d, f) != target,
-        ret.0 ==> pci_bdf_valid(ret.1.view().0, ret.1.view().1, ret.1.view().2) && old(krnl).irt.view().spec_index_owner(ret.1.view().0, ret.1.view().1, ret.1.view().2) == target,
-        ret.0 ==> final(krnl).irt.view().user_view() == kill_process_reassigned_table(old(krnl).irt.view().user_view(), target, owner),
+        ret matches Some(bdf) ==> pci_bdf_valid(bdf.0, bdf.1, bdf.2) && irt.view().spec_index_owner(bdf.0, bdf.1, bdf.2) == target,
+        ret is None ==> forall|b: usize, d: usize, f: usize| #![trigger irt.view().spec_index_owner(b, d, f)] pci_bdf_valid(b, d, f) ==> irt.view().spec_index_owner(b, d, f) != target,
 {
-    let ghost mut witness: PciBdf = (0, 0, 0);
-    let mut moved = false;
+    let mut found: Option<PciBdf> = None;
     let mut bus: usize = 0;
     let mut device: usize = 0;
     let mut function: usize = 0;
-    while bus < PCI_BUS_COUNT
+    while bus < PCI_BUS_COUNT && found.is_none()
         invariant
-            old(krnl).inv(),
-            *krnl == (KernelK { irt: krnl.irt, iommu_tlb: krnl.iommu_tlb, ..*old(krnl) }),
-            krnl.irt.inv(),
-            krnl.iommu_tlb.inv(),
-            iommu_root_table_typed_lock_map_aligned(krnl.irt, lctx.iommu_root_table_lock_map(), lctx.thread_id()),
-            krnl.irt.locking_thread() == old(krnl).irt.locking_thread(),
-            krnl.irt.view().table_base() == old(krnl).irt.view().table_base(),
-            old(krnl).irt.wlocked_by(lctx),
-            typed_lock_map_contains_mode(lctx.iommu_root_table_lock_map(), old(krnl).irt.view().table_base(), TypedLockMode::Write),
+            irt.inv(),
             irt_perm.state() is WriteLock,
-            irt_perm.thread_id() == lctx.thread_id(),
-            irt_perm.lock_id() == old(krnl).irt.locking_thread()->Write_lock_id,
+            irt.write_lock_perm_match(irt_perm),
             bus <= PCI_BUS_COUNT,
             device < PCI_DEVICE_COUNT,
             function < PCI_FUNCTION_COUNT,
             bus == PCI_BUS_COUNT ==> device == 0 && function == 0,
-            forall|b: usize, d: usize, f: usize| #![trigger krnl.irt.view().spec_index_owner(b, d, f)] #![trigger krnl.irt.view().spec_index_iommu_root(b, d, f)] pci_bdf_valid(b, d, f) ==> {
-                let moves = (b < bus || (b == bus && (d < device || (d == device && f < function)))) && old(krnl).irt.view().spec_index_owner(b, d, f) == target;
-                &&& krnl.irt.view().spec_index_owner(b, d, f) == if moves { owner } else { old(krnl).irt.view().spec_index_owner(b, d, f) }
-                &&& krnl.irt.view().spec_index_iommu_root(b, d, f) == if moves { None } else { old(krnl).irt.view().spec_index_iommu_root(b, d, f) }
-            },
-            krnl.iommu_tlb.view().dom() == old(krnl).iommu_tlb.view().dom(),
-            forall|b: usize, d: usize, f: usize| #![trigger krnl.iommu_tlb.view()[pci_bdf_did(b, d, f)]] pci_bdf_valid(b, d, f) ==> krnl.iommu_tlb.view()[pci_bdf_did(b, d, f)]
-                == if (b < bus || (b == bus && (d < device || (d == device && f < function)))) && old(krnl).irt.view().spec_index_owner(b, d, f) == target {
-                    SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }
-                } else { old(krnl).iommu_tlb.view()[pci_bdf_did(b, d, f)] },
-            forall|b: usize, d: usize, f: usize| #![trigger krnl.iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f))] pci_bdf_valid(b, d, f) ==> {
-                let moves = (b < bus || (b == bus && (d < device || (d == device && f < function)))) && old(krnl).irt.view().spec_index_owner(b, d, f) == target;
-                &&& krnl.iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f)) == (old(krnl).iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f)) && !moves)
-                &&& krnl.iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f)) ==> krnl.iommu_tlb.context_cache()[pci_bdf_did(b, d, f)] == old(krnl).iommu_tlb.context_cache()[pci_bdf_did(b, d, f)]
-            },
-            !moved ==> krnl.irt == old(krnl).irt && krnl.iommu_tlb == old(krnl).iommu_tlb,
-            !moved ==> forall|b: usize, d: usize, f: usize| #![trigger old(krnl).irt.view().spec_index_owner(b, d, f)]
-                pci_bdf_valid(b, d, f) && (b < bus || (b == bus && (d < device || (d == device && f < function)))) ==> old(krnl).irt.view().spec_index_owner(b, d, f) != target,
-            moved ==> pci_bdf_valid(witness.0, witness.1, witness.2) && old(krnl).irt.view().spec_index_owner(witness.0, witness.1, witness.2) == target,
-            moved ==> krnl.irt.view().owners().len() == PCI_BUS_COUNT,
-            moved ==> forall|b: int| #![trigger krnl.irt.view().owners()[b]] 0 <= b < PCI_BUS_COUNT ==> krnl.irt.view().owners()[b].len() == PCI_DEVICE_COUNT,
-            moved ==> forall|b: int, d: int| #![trigger krnl.irt.view().owners()[b][d]] 0 <= b < PCI_BUS_COUNT && 0 <= d < PCI_DEVICE_COUNT ==> krnl.irt.view().owners()[b][d].len() == PCI_FUNCTION_COUNT,
+            found matches Some(bdf) ==> pci_bdf_valid(bdf.0, bdf.1, bdf.2) && irt.view().spec_index_owner(bdf.0, bdf.1, bdf.2) == target,
+            found is None ==> forall|b: usize, d: usize, f: usize| #![trigger irt.view().spec_index_owner(b, d, f)]
+                pci_bdf_valid(b, d, f) && pci_bdf_lt((b, d, f), (bus, device, function)) ==> irt.view().spec_index_owner(b, d, f) != target,
         decreases PCI_BUS_COUNT - bus, PCI_DEVICE_COUNT - device, PCI_FUNCTION_COUNT - function,
     {
-        let current = krnl.irt.borrow(Tracked(irt_perm)).owner(bus, device, function);
-        if current == target {
-            proof { assert(krnl.iommu_tlb.view().dom().contains(pci_bdf_did(bus, device, function))) by { reveal(IommuTLB::inv); reveal(iommu_tlb_wf_spec); }; }
-            iommu_root_table_reassign_detached(&mut krnl.irt, &mut krnl.iommu_tlb, bus, device, function, owner, Tracked(lctx), Tracked(irt_perm));
-            moved = true;
-            proof { witness = (bus, device, function); }
+        if irt.borrow(Tracked(irt_perm)).owner(bus, device, function) == target {
+            found = Some((bus, device, function));
         }
         if function + 1 < PCI_FUNCTION_COUNT {
             function = function + 1;
@@ -275,27 +242,7 @@ pub(crate) fn kill_reassign_scan(krnl: &mut KernelK, Tracked(lctx): Tracked<&Loc
             bus = bus + 1;
         }
     }
-    proof {
-        if moved {
-            reveal(IommuRootTable::user_view);
-            let after = krnl.irt.view().user_view();
-            let expected = kill_process_reassigned_table(old(krnl).irt.view().user_view(), target, owner);
-            assert_seqs_equal!(after.owners, expected.owners, b => {
-                assert_seqs_equal!(after.owners[b], expected.owners[b], d => {
-                    assert_seqs_equal!(after.owners[b][d], expected.owners[b][d], f => { assert(krnl.irt.view().spec_index_owner(b as usize, d as usize, f as usize) == after.owners[b][d][f]); });
-                });
-            });
-            assert_seqs_equal!(after.attached, expected.attached, b => {
-                assert_seqs_equal!(after.attached[b], expected.attached[b], d => {
-                    assert_seqs_equal!(after.attached[b][d], expected.attached[b][d], f => {
-                        assert(krnl.irt.view().spec_index_owner(b as usize, d as usize, f as usize) == after.owners[b][d][f]);
-                        assert(krnl.irt.view().spec_index_iommu_root(b as usize, d as usize, f as usize) is Some == after.attached[b][d][f]);
-                    });
-                });
-            });
-        }
-    }
-    (moved, Ghost(witness))
+    found
 }
 
 /// Send the empty target, already a zombie that owns no PCI function, straight to retiring.
@@ -492,7 +439,8 @@ pub(crate) fn kill_reclaim_lock_table(
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).leaves_present(),
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
         pei_valid(final(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end),
-        iommu_table is Some ==> final(krnl).it_mp.spec_index(iommu_table->Some_0).view().leaves_present() && final(krnl).it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0,
+        iommu_table is Some ==> final(krnl).it_mp.spec_index(iommu_table->Some_0).view().leaves_present() && final(krnl).it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0
+            && final(krnl).it_mp.spec_index(iommu_table->Some_0).view().did is None,
         final(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set == old(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set,
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
             &&& final(krnl).ctn_mp.dom().contains(c)
@@ -532,9 +480,13 @@ pub(crate) fn kill_reclaim_lock_table(
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         kill_trace_push(&*steps, before_steps, start, pre, before_u, kernel_k_to_kernel_u(after), cpu_id, ctx);
         pagetable_perms_wf_at(krnl.pt_mp, pagetable); krnl.pt_mp.spec_index(pagetable).view().kernel_l4_end_valid();
-        if iommu_table is Some {
-            iommu_table_perms_wf_at(krnl.it_mp, iommu_table->Some_0);
-            assert(krnl.it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0) by { krnl.it_mp.spec_index(iommu_table->Some_0).view().kernel_entries_wf_l4_end_at(); };
+        if let Some(t) = iommu_table {
+            iommu_table_perms_wf_at(krnl.it_mp, t);
+            assert(krnl.it_mp.spec_index(t).view().kernel_l4_end == 0) by { krnl.it_mp.spec_index(t).view().kernel_entries_wf_l4_end_at(); };
+            assert(krnl.it_mp.spec_index(t).view().did is None) by {
+                iommu_root_table_process_wf_table_at(krnl.irt.view(), krnl.prc_mp, krnl.it_mp, t); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target);
+                process_pci_function_ownership_wf_at(krnl.irt.view(), krnl.prc_mp, pci_bdf_of_did(krnl.it_mp.spec_index(t).view().did->Some_0), target);
+            };
         }
     }
     (Tracked(pagetable_perm), iommu_perm)

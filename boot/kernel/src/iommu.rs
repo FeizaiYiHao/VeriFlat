@@ -10,7 +10,8 @@
 //!
 //! - CAP.CM = 0: not-present entries are never cached, so `pci_attach_dma` needs no invalidation;
 //!   the model encodes this by caching only roots.
-//! - CAP.ND >= 6: 16-bit domain IDs, because the model's domain ID is the B/D/F.
+//! - CAP.RWBF = 0: table stores need no write-buffer flush before the unit can see them.
+//! - CAP.ND >= 6: 16-bit domain IDs, the model's `VtdDomainId` range.
 //! - CAP.SAGAW bit 2: 4-level second-level tables, the address width the model writes.
 //! - ECAP.C = 1: table walks snoop CPU caches, so the hardware reads what the model stores. An
 //!   emulated remapping unit (under a hypervisor) reads guest memory directly and is accepted
@@ -47,6 +48,7 @@ const CCMD_REG: usize = 0x28;
 const FSTS_REG: usize = 0x34;
 const IRTA_REG: usize = 0xb8;
 
+const CAP_RWBF: u64 = 1 << 4;
 const CAP_CM: u64 = 1 << 7;
 const CAP_SAGAW_4_LEVEL: u64 = 1 << 10;
 const CAP_DWD: u64 = 1 << 54;
@@ -66,10 +68,18 @@ const GSTS_ONE_SHOT: u32 = (1 << 30) | (1 << 29) | (1 << 27) | (1 << 24);
 const CCMD_ICC: u64 = 1 << 63;
 const CCMD_GLOBAL: u64 = 1 << 61;
 const CCMD_DOMAIN: u64 = 2 << 61;
+/// CCMD.CAIG (bits 60:59): the granularity the unit actually performed.
+const CCMD_CAIG_SHIFT: u32 = 59;
+const CCMD_CAIG_GLOBAL: u64 = 1;
+const CCMD_CAIG_DOMAIN: u64 = 2;
 
 const IOTLB_IVT: u64 = 1 << 63;
 const IOTLB_GLOBAL: u64 = 1 << 60;
 const IOTLB_DOMAIN: u64 = 2 << 60;
+/// IOTLB.IAIG (bits 58:57): the granularity the unit actually performed.
+const IOTLB_IAIG_SHIFT: u32 = 57;
+const IOTLB_IAIG_GLOBAL: u64 = 1;
+const IOTLB_IAIG_DOMAIN: u64 = 2;
 const IOTLB_DR: u64 = 1 << 49;
 const IOTLB_DW: u64 = 1 << 48;
 
@@ -78,6 +88,11 @@ const FSTS_PPF: u32 = 1 << 1;
 const FRCD_F: u64 = 1 << 63;
 
 const REGISTER_PAGE: usize = 4096;
+/// Domain IDs are 16 bits (CAP.ND >= 6).
+const DOMAIN_COUNT: usize = 1 << 16;
+/// RTADDR.RTA: a 4 KiB-aligned root table below the model's 48-bit `MEM_MASK`; TTM (bits 11:10)
+/// stays 00, legacy mode.
+const RTADDR_RTA_MASK: u64 = 0x0000_ffff_ffff_f000;
 
 fn read32(base: u64, offset: usize) -> u32 {
     unsafe { ptr::read_volatile((base as usize + offset) as *const u32) }
@@ -115,11 +130,21 @@ fn global_command(base: u64, command: u32) {
     }
 }
 
+/// Whether the actual granularity `actual` covers the requested `global` or domain invalidation:
+/// a domain request accepts domain or the coarser global granularity; a global one needs global.
+fn granularity_covers(global: bool, actual: u64, actual_global: u64, actual_domain: u64) -> bool {
+    actual == actual_global || (!global && actual == actual_domain)
+}
+
 fn invalidate_context_cache(base: u64, command: u64) {
     write64(base, CCMD_REG, CCMD_ICC | command);
-    while read64(base, CCMD_REG) & CCMD_ICC != 0 {
+    let mut ccmd = read64(base, CCMD_REG);
+    while ccmd & CCMD_ICC != 0 {
         core::hint::spin_loop();
+        ccmd = read64(base, CCMD_REG);
     }
+    let caig = (ccmd >> CCMD_CAIG_SHIFT) & 0x3;
+    assert!(granularity_covers(command == CCMD_GLOBAL, caig, CCMD_CAIG_GLOBAL, CCMD_CAIG_DOMAIN), "VT-d context invalidation {:#x} performed at granularity {}", command, caig);
 }
 
 fn invalidate_iotlb(base: u64, command: u64) {
@@ -127,9 +152,19 @@ fn invalidate_iotlb(base: u64, command: u64) {
     let drain = if cap & CAP_DRD != 0 { IOTLB_DR } else { 0 } | if cap & CAP_DWD != 0 { IOTLB_DW } else { 0 };
     let reg = iotlb_reg(base);
     write64(base, reg, IOTLB_IVT | drain | command);
-    while read64(base, reg) & IOTLB_IVT != 0 {
+    let mut iotlb = read64(base, reg);
+    while iotlb & IOTLB_IVT != 0 {
         core::hint::spin_loop();
+        iotlb = read64(base, reg);
     }
+    let iaig = (iotlb >> IOTLB_IAIG_SHIFT) & 0x3;
+    assert!(granularity_covers(command == IOTLB_GLOBAL, iaig, IOTLB_IAIG_GLOBAL, IOTLB_IAIG_DOMAIN), "VT-d IOTLB invalidation {:#x} performed at granularity {}", command, iaig);
+}
+
+/// The 16-bit domain ID of a hook argument; a wider value is a kernel bug, never masked.
+fn domain_id(did: usize) -> u64 {
+    assert!(did < DOMAIN_COUNT, "VT-d domain ID {:#x} out of range", did);
+    did as u64
 }
 
 /// CPUID.01H:ECX[31]: a hypervisor emulates this machine, and with it the remapping unit.
@@ -157,6 +192,7 @@ fn init_unit(base: u64, root_table: u64) {
     let ecap = read64(base, ECAP_REG);
     log::info!("VT-d at {:#x}: CAP {:#x} ECAP {:#x}", base, cap, ecap);
     assert!(cap & CAP_CM == 0, "VT-d caching mode: attach would need an invalidation the model does not issue");
+    assert!(cap & CAP_RWBF == 0, "VT-d requires write-buffer flushing, which the model does not issue");
     assert!(cap & 0x7 >= CAP_ND_16_BIT, "VT-d supports fewer than 2^16 domain IDs");
     assert!(cap & CAP_SAGAW_4_LEVEL != 0, "VT-d does not support 4-level tables");
     let (records, count) = fault_records(base);
@@ -164,6 +200,8 @@ fn init_unit(base: u64, root_table: u64) {
     assert!(read32(base, GSTS_REG) & (GCMD_TE | GCMD_IRE) == 0, "VT-d translation or interrupt remapping already enabled");
     assert!(ecap & ECAP_C != 0 || under_hypervisor(), "VT-d table walks do not snoop CPU caches");
     assert!(ecap & ECAP_IR != 0, "VT-d does not support interrupt remapping");
+
+    assert!(root_table & !RTADDR_RTA_MASK == 0, "VT-d root table {:#x} is not a 4 KiB-aligned 48-bit address", root_table);
 
     // TTM = 00: legacy-mode root table. After SRTP, invalidate the context cache, then the IOTLB.
     write64(base, RTADDR_REG, root_table);
@@ -201,10 +239,22 @@ fn release_invalidation_lock() {
 /// the model's `IommuTLB::invalidate_domain` states both effects.
 #[unsafe(no_mangle)]
 pub extern "C" fn veriflat_iommu_invalidate_domain(did: usize) {
-    let did = did as u64 & 0xffff;
+    let did = domain_id(did);
     acquire_invalidation_lock();
     for base in units() {
         invalidate_context_cache(base, CCMD_DOMAIN | did);
+        invalidate_iotlb(base, IOTLB_DOMAIN | (did << 32));
+    }
+    release_invalidation_lock();
+}
+
+/// Empties one domain's IOTLB on every unit and waits, with only domain-selective IOTLB
+/// invalidation; the context cache is untouched.
+#[unsafe(no_mangle)]
+pub extern "C" fn veriflat_iommu_invalidate_iotlb_domain(did: usize) {
+    let did = domain_id(did);
+    acquire_invalidation_lock();
+    for base in units() {
         invalidate_iotlb(base, IOTLB_DOMAIN | (did << 32));
     }
     release_invalidation_lock();

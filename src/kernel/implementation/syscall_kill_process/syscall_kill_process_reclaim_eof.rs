@@ -4,30 +4,33 @@ use crate::*;
 use super::syscall_kill_process_reclaim_spec::*;
 
 verus! {
-proof fn kill_reassign_eof_memory(pre: KernelK, post: KernelK, target: RwLockProcessPtr, owner: RwLockProcessPtr)
+proof fn kill_reassign_eof_memory(pre: KernelK, post: KernelK, target: RwLockProcessPtr, owner: RwLockProcessPtr, iommu_table: Option<RwLockPageTableRoot>)
     requires
         pre.inv(),
-        kill_reassign_eof_transition_framing(pre, post, target, owner),
+        kill_reassign_eof_transition_framing(pre, post, target, owner, iommu_table),
         post.subsystems_inv(),
+        iommu_table_perms_wf(post.it_mp),
     ensures post.memory_management_inv(),
 {
     reveal(kill_reassign_eof_transition_framing);
     assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
     assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); };
+    assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); };
+    assert(pagetable_no_huge_leaf_wf(post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(pagetable_no_huge_leaf_wf); };
     assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { lemma_process_pages_wf_preserved_for_process_domain_eq_forall(); };
     assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
     assert(process_pagetable_match(post.prc_mp, post.pt_mp)) by { lemma_process_pagetable_match_preserved_for_process_pagetable_fields_forall(); };
-    assert(process_iommu_table_match(post.prc_mp, post.it_mp)) by { lemma_process_iommu_table_match_preserved_for_process_iommu_table_fields_forall(); };
-    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(process_emptied_tables_wf); };
+    assert(process_iommu_table_match(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_match); };
+    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(process_emptied_tables_wf); reveal(process_iommu_table_match); };
     container_process_allocator_quota_4k_wf_preserved_for_process_4k_fields(post.ctn_mp, post.thr_mp, post.allc_4k_mp, pre.prc_mp, post.prc_mp);
     container_process_allocator_quota_2m_wf_preserved_for_process_2m_fields(post.ctn_mp, post.thr_mp, post.allc_2m_mp, pre.prc_mp, post.prc_mp);
     container_process_allocator_quota_1g_wf_preserved_for_process_1g_fields(post.ctn_mp, post.thr_mp, post.allc_1g_mp, pre.prc_mp, post.prc_mp);
 }
 
-proof fn kill_reassign_eof_process(pre: KernelK, post: KernelK, target: RwLockProcessPtr, owner: RwLockProcessPtr)
+proof fn kill_reassign_eof_process(pre: KernelK, post: KernelK, target: RwLockProcessPtr, owner: RwLockProcessPtr, iommu_table: Option<RwLockPageTableRoot>)
     requires
         pre.inv(),
-        kill_reassign_eof_transition_framing(pre, post, target, owner),
+        kill_reassign_eof_transition_framing(pre, post, target, owner, iommu_table),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
@@ -44,26 +47,48 @@ proof fn kill_reassign_eof_process(pre: KernelK, post: KernelK, target: RwLockPr
     assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
 }
 
-/// Reassigning the PCI functions of the empty target `target` to the killer's process `owner` keeps the kernel invariant.
-pub(crate) proof fn kill_reassign_eof(pre: KernelK, post: KernelK, target: RwLockProcessPtr, owner: RwLockProcessPtr)
+/// The IOTLB stays well formed: the only emptied domain is the dropped DID of the target's table, and the candidate domain
+/// of every other function the target owned carried no present entry, so it was inactive and already empty.
+proof fn kill_reassign_eof_iotlb(pre: KernelK, post: KernelK, target: RwLockProcessPtr, owner: RwLockProcessPtr, iommu_table: Option<RwLockPageTableRoot>)
     requires
         pre.inv(),
-        kill_reassign_eof_transition_framing(pre, post, target, owner),
+        kill_reassign_eof_transition_framing(pre, post, target, owner, iommu_table),
+        pre.prc_mp.dom().contains(target),
+        target != owner,
+        post.iommu_tlb.inv(),
+        forall|b: usize, d: usize, f: usize| #![trigger pre.irt.view().spec_index_iommu_did(b, d, f)]
+            pci_bdf_valid(b, d, f) ==> (pre.irt.view().spec_index_iommu_did(b, d, f) is Some) == (pre.irt.view().spec_index_iommu_root(b, d, f) is Some),
+    ensures iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp),
+{
+    reveal(kill_reassign_eof_transition_framing);
+    reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_match); reveal(IommuTLB::inv);
+}
+
+/// Reassigning the PCI functions of the empty target `target` to the killer's process `owner` keeps the kernel invariant:
+/// the only emptied domain is the dropped DID of the target's table, and the candidate domain of every other function the
+/// target owned carried no present entry, so it was inactive and already empty.
+pub(crate) proof fn kill_reassign_eof(pre: KernelK, post: KernelK, target: RwLockProcessPtr, owner: RwLockProcessPtr, iommu_table: Option<RwLockPageTableRoot>)
+    requires
+        pre.inv(),
+        kill_reassign_eof_transition_framing(pre, post, target, owner, iommu_table),
         pre.prc_mp.dom().contains(target),
         pre.prc_mp.dom().contains(owner),
         target != owner,
         post.irt.inv(),
         post.iommu_tlb.inv(),
         post.prc_mp.perms_wf(),
+        iommu_table_perms_wf(post.it_mp),
+        forall|b: usize, d: usize, f: usize| #![trigger pre.irt.view().spec_index_iommu_did(b, d, f)]
+            pci_bdf_valid(b, d, f) ==> (pre.irt.view().spec_index_iommu_did(b, d, f) is Some) == (pre.irt.view().spec_index_iommu_root(b, d, f) is Some),
     ensures post.inv(),
 {
     reveal(kill_reassign_eof_transition_framing);
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); reveal(process_perms_wf); };
-    kill_reassign_eof_memory(pre, post, target, owner);
-    kill_reassign_eof_process(pre, post, target, owner);
-    assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
+    kill_reassign_eof_memory(pre, post, target, owner, iommu_table);
+    kill_reassign_eof_process(pre, post, target, owner, iommu_table);
+    assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); reveal(process_iommu_table_match); };
     assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
-    assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
+    kill_reassign_eof_iotlb(pre, post, target, owner, iommu_table);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_proc_pcid_match); };
 }
 

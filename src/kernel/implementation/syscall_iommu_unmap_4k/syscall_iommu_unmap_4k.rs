@@ -55,7 +55,7 @@ pub fn syscall_iommu_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
         Tracked(&thread_perm));
     let ghost flush_pre = *krnl;
     proof { enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx); }
-    flush_iommu_tlb_for_table(krnl, iommu_table, Tracked(&*lctx));
+    flush_iommu_tlb_for_table(krnl, iommu_table, Tracked(&*lctx), Tracked(&iommu_table_perm));
     let ghost flush_mid = *krnl;
     krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::IommuUnmap4k { iova_range: r, unmapped: range, flushed: true })), Tracked(&*lctx), Tracked(&thread_perm));
     proof {

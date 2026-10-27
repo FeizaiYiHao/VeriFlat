@@ -348,6 +348,7 @@ pub(crate) fn kill_reclaim_last_iommu_4k_mapping_scoped_to_cache(
         final(krnl).it_mp.spec_index(iommu_table).view().mapping_2m() == old(krnl).it_mp.spec_index(iommu_table).view().mapping_2m(),
         final(krnl).it_mp.spec_index(iommu_table).view().mapping_1g() == old(krnl).it_mp.spec_index(iommu_table).view().mapping_1g(),
         final(krnl).it_mp.spec_index(iommu_table).view().kernel_l4_end == old(krnl).it_mp.spec_index(iommu_table).view().kernel_l4_end,
+        final(krnl).it_mp.spec_index(iommu_table).view().did == old(krnl).it_mp.spec_index(iommu_table).view().did,
         final(krnl).pg_arr.entries_unchanged_except(&old(krnl).pg_arr, page_ptr2page_index(page_ptr)),
         final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread() == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread(),
         final(krnl).allc_4k_mp.dom() == old(krnl).allc_4k_mp.dom(),
@@ -473,6 +474,7 @@ pub(crate) fn kill_reclaim_unmapped_iommu_4k_page_scoped(
         final(krnl).it_mp.spec_index(iommu_table).view().mapping_2m() == old(krnl).it_mp.spec_index(iommu_table).view().mapping_2m(),
         final(krnl).it_mp.spec_index(iommu_table).view().mapping_1g() == old(krnl).it_mp.spec_index(iommu_table).view().mapping_1g(),
         final(krnl).it_mp.spec_index(iommu_table).view().kernel_l4_end == old(krnl).it_mp.spec_index(iommu_table).view().kernel_l4_end,
+        final(krnl).it_mp.spec_index(iommu_table).view().did == old(krnl).it_mp.spec_index(iommu_table).view().did,
 {
     let ghost entry_lctx = *lctx;
     let iova = index2va(indices);
@@ -496,7 +498,7 @@ pub(crate) fn kill_reclaim_unmapped_iommu_4k_page_scoped(
     };
     let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(page_index);
     if ref_count > 1 || is_io_page {
-        remove_iommu_4k_mapping_without_free(krnl, iommu_table, indices, page_ptr, l2.addr, Tracked(&mut *lctx), Tracked(iommu_perm), Tracked(&page_perm));
+        remove_iommu_4k_mapping_without_free(krnl, iommu_table, indices, page_ptr, l2.addr, Ghost(false), Tracked(&mut *lctx), Tracked(iommu_perm), Tracked(&page_perm));
         krnl.wunlock_page(page_index, Tracked(&mut *lctx), Tracked(page_perm));
         proof {
             assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {

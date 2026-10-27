@@ -270,6 +270,7 @@ pub(crate) fn kill_reclaim_last_iommu_4k_mapping_scoped(
         final(krnl).it_mp.spec_index(iommu_table).view().mapping_2m() == old(krnl).it_mp.spec_index(iommu_table).view().mapping_2m(),
         final(krnl).it_mp.spec_index(iommu_table).view().mapping_1g() == old(krnl).it_mp.spec_index(iommu_table).view().mapping_1g(),
         final(krnl).it_mp.spec_index(iommu_table).view().kernel_l4_end == old(krnl).it_mp.spec_index(iommu_table).view().kernel_l4_end,
+        final(krnl).it_mp.spec_index(iommu_table).view().did == old(krnl).it_mp.spec_index(iommu_table).view().did,
 {
     let page_index = page_ptr2page_index(page_ptr);
     let ghost origin = krnl.prc_mp.spec_index(target).view_rodata().view().owning_container;

@@ -758,7 +758,7 @@ pub proof fn kernel_container_root_published_implies_u_step(
     reveal(process_pagetable_match);
     assert_maps_equal!(post.process_map, pre.process_map.insert(process, ProcessU {
         lock_state: LockStateU::WriteLocked, zombie: false,
-        pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty() }),
+        pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty() }),
         iommu_table: None, pcid: post.process_map[process].pcid, owning_container: child, owned_pci_functions: Set::empty(), quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
         parent: None, children: Seq::empty(), depth: 0, uppertree_seq: Seq::empty(), subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
     }));
@@ -1479,6 +1479,7 @@ pub proof fn kernel_process_published_and_parent_unlocked_implies_u_step(
             &&& forall|p: RwLockPageTableRoot| #![trigger after.it_mp.spec_index(p)] before.it_mp.dom().contains(p) ==> after.it_mp.spec_index(p) == before.it_mp.spec_index(p)
             &&& typed_lock_map_contains_mode(lctx.iommu_table_lock_map(), t, TypedLockMode::Write)
             &&& after.it_mp.spec_index(t).view().is_empty()
+            &&& after.it_mp.spec_index(t).view().did is None
         },
     ensures
         forall|c: CpuId| #![trigger kernel_k_to_kernel_u(*before).cpu_array[c as int]] index_valid(NUM_CPUS, c) ==> kernel_k_to_kernel_u(*before).cpu_array[c as int] == (CpuU {
@@ -1500,7 +1501,7 @@ pub proof fn kernel_process_published_and_parent_unlocked_implies_u_step(
             let pre = kernel_k_to_kernel_u(*before);
             let post = kernel_k_to_kernel_u(*after);
             let ancestors = pre.process_map[parent].uppertree_seq.push(parent);
-            let empty_table = PageTableU { lock_state: LockStateU::WriteLocked, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty() };
+            let empty_table = PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty() };
             let cost: usize = if (iommu is Some) { 5 } else { 3 };
             &&& pre.process_map.dom().contains(parent)
             &&& !pre.process_map.dom().contains(child)
@@ -2347,7 +2348,13 @@ pub(super) proof fn kernel_ipc_rendezvous_fields_implies_u_step(
     if pre.prc_mp.dom().contains(pre.thr_mp.spec_index(caller_thread_ptr).view().owning_proc) { kernel_process_user_projection_at(pre, include_lock_state, pre.thr_mp.spec_index(caller_thread_ptr).view().owning_proc); }
     if pre.ctn_mp.dom().contains(pre.thr_mp.spec_index(peer_thread_ptr).view().owning_container) { kernel_container_user_projection_at(pre, include_lock_state, pre.thr_mp.spec_index(peer_thread_ptr).view().owning_container); }
     if let Some((transfer, receiver)) = cpu_transfer { kernel_cpu_user_projection_at(pre, include_lock_state, transfer); if pre.thr_mp.dom().contains(receiver) { kernel_thread_user_projection_at(pre, include_lock_state, receiver); } }
-    if let Some((_, sender, receiver)) = pci_transfer { if pre.prc_mp.dom().contains(sender) { kernel_process_user_projection_at(pre, include_lock_state, sender); } if pre.prc_mp.dom().contains(receiver) { kernel_process_user_projection_at(pre, include_lock_state, receiver); } }
+    if let Some((_, sender, receiver)) = pci_transfer {
+        if pre.prc_mp.dom().contains(sender) {
+            kernel_process_user_projection_at(pre, include_lock_state, sender); kernel_process_user_projection_at(post, include_lock_state, sender); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, sender);
+        }
+        if pre.prc_mp.dom().contains(receiver) { kernel_process_user_projection_at(pre, include_lock_state, receiver); }
+        pre.irt.view().user_view_unfold();
+    }
     kernel_ipc_rendezvous_fields_implies_u_cpu_array(pre, post, cpu_id, caller_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer, pci_transfer, include_lock_state);
     kernel_ipc_rendezvous_fields_implies_u_container_map(pre, post, cpu_id, caller_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer, pci_transfer, include_lock_state);
     kernel_ipc_rendezvous_fields_implies_u_process_map(pre, post, pci_transfer, include_lock_state);
@@ -2447,12 +2454,22 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_process_map(
         process_pagetable_match(post.prc_mp, post.pt_mp),
         process_iommu_table_match(post.prc_mp, post.it_mp),
         kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view()),
-        kernel_iommu_table_nonlock_fields_unchanged(pre.it_mp, post.it_mp),
+        pci_transfer is None ==> kernel_iommu_table_nonlock_fields_unchanged(pre.it_mp, post.it_mp),
         pci_transfer is None ==> kernel_process_nonlock_fields_unchanged(pre.prc_mp, post.prc_mp),
         pci_transfer matches Some((bdf, sender, receiver)) ==> {
             &&& pre.prc_mp.dom().contains(sender)
             &&& pre.prc_mp.dom().contains(receiver)
             &&& sender != receiver
+            &&& post.it_mp.dom() == pre.it_mp.dom()
+            &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
+                pre.it_mp.dom().contains(p) ==> {
+                    let before = pre.it_mp.spec_index(p).view();
+                    let after = post.it_mp.spec_index(p).view();
+                    &&& pre.prc_mp.spec_index(sender).view().iommu_table != Some(p) ==> after.did == before.did
+                    &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
+                    &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
+                    &&& after.mapping_1g().filter_keys(|va: VAddr| after.mapping_1g().spec_index(va).present) == before.mapping_1g().filter_keys(|va: VAddr| before.mapping_1g().spec_index(va).present)
+                }
             &&& post.prc_mp.dom() == pre.prc_mp.dom()
             &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
                 pre.prc_mp.dom().contains(p) ==> {
@@ -2491,7 +2508,9 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_process_map(
                 Some((bdf, sender, receiver)) => {
                     let s = pre_u.process_map.spec_index(sender);
                     let r = pre_u.process_map.spec_index(receiver);
-                    pre_u.process_map.insert(sender, ProcessU { owned_pci_functions: s.owned_pci_functions.remove(bdf), ..s }).insert(receiver, ProcessU { owned_pci_functions: r.owned_pci_functions.insert(bdf), ..r })
+                    let s_table = match s.iommu_table { Some(t) => Some(PageTableU { did: post_u.process_map.spec_index(sender).iommu_table->Some_0.did, ..t }), None => None };
+                    pre_u.process_map.insert(sender, ProcessU { iommu_table: s_table, owned_pci_functions: s.owned_pci_functions.remove(bdf), ..s })
+                        .insert(receiver, ProcessU { owned_pci_functions: r.owned_pci_functions.insert(bdf), ..r })
                 },
                 None => pre_u.process_map,
             }
@@ -2511,7 +2530,16 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_process_map_pci_moved(
         process_pagetable_match(post.prc_mp, post.pt_mp),
         process_iommu_table_match(post.prc_mp, post.it_mp),
         kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view()),
-        kernel_iommu_table_nonlock_fields_unchanged(pre.it_mp, post.it_mp),
+        post.it_mp.dom() == pre.it_mp.dom(),
+        forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
+            pre.it_mp.dom().contains(p) ==> {
+                let before = pre.it_mp.spec_index(p).view();
+                let after = post.it_mp.spec_index(p).view();
+                &&& pre.prc_mp.spec_index(sender).view().iommu_table != Some(p) ==> after.did == before.did
+                &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
+                &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
+                &&& after.mapping_1g().filter_keys(|va: VAddr| after.mapping_1g().spec_index(va).present) == before.mapping_1g().filter_keys(|va: VAddr| before.mapping_1g().spec_index(va).present)
+            },
         pre.prc_mp.dom().contains(sender),
         pre.prc_mp.dom().contains(receiver),
         sender != receiver,
@@ -2550,7 +2578,9 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_process_map_pci_moved(
             let post_u = kernel_k_user_projection(*post, include_lock_state);
             let s = pre_u.process_map.spec_index(sender);
             let r = pre_u.process_map.spec_index(receiver);
-            &&& post_u.process_map == pre_u.process_map.insert(sender, ProcessU { owned_pci_functions: s.owned_pci_functions.remove(bdf), ..s }).insert(receiver, ProcessU { owned_pci_functions: r.owned_pci_functions.insert(bdf), ..r })
+            let s_table = match s.iommu_table { Some(t) => Some(PageTableU { did: post_u.process_map.spec_index(sender).iommu_table->Some_0.did, ..t }), None => None };
+            &&& post_u.process_map == pre_u.process_map.insert(sender, ProcessU { iommu_table: s_table, owned_pci_functions: s.owned_pci_functions.remove(bdf), ..s })
+                .insert(receiver, ProcessU { owned_pci_functions: r.owned_pci_functions.insert(bdf), ..r })
         }),
 {
     hide(kernel_k_user_projection);
@@ -2559,10 +2589,12 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_process_map_pci_moved(
     let post_u = kernel_k_user_projection(*post, include_lock_state);
     let s = pre_u.process_map.spec_index(sender);
     let r = pre_u.process_map.spec_index(receiver);
-    assert_maps_equal!(post_u.process_map, pre_u.process_map.insert(sender, ProcessU { owned_pci_functions: s.owned_pci_functions.remove(bdf), ..s })
+    let s_table = match s.iommu_table { Some(t) => Some(PageTableU { did: post_u.process_map.spec_index(sender).iommu_table->Some_0.did, ..t }), None => None };
+    assert_maps_equal!(post_u.process_map, pre_u.process_map.insert(sender, ProcessU { iommu_table: s_table, owned_pci_functions: s.owned_pci_functions.remove(bdf), ..s })
         .insert(receiver, ProcessU { owned_pci_functions: r.owned_pci_functions.insert(bdf), ..r }), p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, include_lock_state, p); } if post.prc_mp.dom().contains(p) { kernel_process_user_projection_at(post, include_lock_state, p); }
-        process_pagetable_match_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, p); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
+        process_pagetable_match_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, p); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, sender);
+        reveal(kernel_pagetable_nonlock_fields_unchanged);
     });
 }
 
@@ -2596,7 +2628,9 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_iommu_root_table(
         let attached = seq3_update(pre_u.iommu_root_table.attached, bdf.0 as int, bdf.1 as int, bdf.2 as int, false);
         assert_seqs_equal!(post_u.iommu_root_table.attached == attached, b => {
             assert_seqs_equal!(post_u.iommu_root_table.attached[b] == attached[b], d => {
-                assert_seqs_equal!(post_u.iommu_root_table.attached[b][d] == attached[b][d], f => {});
+                assert_seqs_equal!(post_u.iommu_root_table.attached[b][d] == attached[b][d], f => {
+                    assert((post.irt.view().spec_index_iommu_root(b as usize, d as usize, f as usize) is Some) == attached[b][d][f]);
+                });
             });
         });
     }

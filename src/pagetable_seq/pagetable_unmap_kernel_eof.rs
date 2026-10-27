@@ -31,7 +31,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
-            pre.mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).present == false,
             Self::unmap_4k_page_kernel_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
         ensures
             post.wf(),
@@ -65,7 +64,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
-            pre.mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).present == false,
             Self::unmap_4k_page_kernel_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
         ensures
             post.wf_l4(),
@@ -85,7 +83,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
-            pre.mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).present == false,
             Self::unmap_4k_page_kernel_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
         ensures
             post.wf_l3(),
@@ -105,7 +102,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
-            pre.mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).present == false,
             Self::unmap_4k_page_kernel_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
         ensures
             post.wf_l2(),
@@ -125,7 +121,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
-            pre.mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).present == false,
             Self::unmap_4k_page_kernel_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
         ensures
             post.wf_l1(),
@@ -145,7 +140,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
-            pre.mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).present == false,
             Self::unmap_4k_page_kernel_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
         ensures
             post.disjoint_l4(),
@@ -165,7 +159,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
-            pre.mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).present == false,
             Self::unmap_4k_page_kernel_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
         ensures
             post.disjoint_l3(),
@@ -185,7 +178,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
-            pre.mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).present == false,
             Self::unmap_4k_page_kernel_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
         ensures
             post.disjoint_l2(),
@@ -205,7 +197,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
-            pre.mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).present == false,
             Self::unmap_4k_page_kernel_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
         ensures
             post.wf_mapping_4k(),
@@ -235,7 +226,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
-            pre.mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).present == false,
             Self::unmap_4k_page_kernel_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
         ensures
             post.wf_mapping_2m(),
@@ -255,7 +245,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
-            pre.mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).present == false,
             Self::unmap_4k_page_kernel_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
         ensures
             post.wf_mapping_1g(),
@@ -275,7 +264,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
-            pre.mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).present == false,
             Self::unmap_4k_page_kernel_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
         ensures
             post.user_only(),
@@ -295,7 +283,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
-            pre.mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).present == false,
             Self::unmap_4k_page_kernel_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
         ensures
             post.rwx_upper_level_entries(),
@@ -315,7 +302,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
-            pre.mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).present == false,
             Self::unmap_4k_page_kernel_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
         ensures
             post.table_pages_wf(),
@@ -335,7 +321,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
-            pre.mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).present == false,
             Self::unmap_4k_page_kernel_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
         ensures
             post.tables_reachable_wf(),
@@ -355,7 +340,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
-            pre.mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).present == false,
             Self::unmap_4k_page_kernel_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
         ensures
             post.kernel_entries_wf(),
@@ -364,7 +348,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         assert(post.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
     }
 
-    /// EOF closure of `unmap_4k_page_kernel`: `va_addr_valid` and `pcid_wf`.
+    /// EOF closure of `unmap_4k_page_kernel`: `va_addr_valid`, `pcid_wf`, and `did_wf`.
     proof fn unmap_4k_page_kernel_eof_va_addr_valid_and_pcid_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L2Index, target_l1_p: PageMapPtr)
         requires
             pre.wf(),
@@ -375,11 +359,11 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
-            pre.mapping_4k().spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).present == false,
             Self::unmap_4k_page_kernel_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
         ensures
             post.va_addr_valid(),
             post.pcid_wf(),
+            post.did_wf(),
     {
         reveal(PageTable::unmap_4k_page_kernel_eof_transition_framing);
     }

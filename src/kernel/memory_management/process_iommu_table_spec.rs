@@ -4,11 +4,13 @@ use crate::*;
 verus! {
 #[verifier::opaque]
 pub open spec fn process_iommu_table_match(process_map: ProcessLockedMap, iommu_table_map: IommuTableLockedMap) -> bool {
-    // Process -> IOMMU table; the read-only `iommu_cr3` mirrors the table's root so attach never locks the table.
+    // Process -> IOMMU table; the read-only `iommu_table_ptr` and `iommu_cr3` mirror the table object and its root so readers never lock the
+    // process or the table.
     &&& forall|proc_ptr: RwLockProcessPtr|
         #![trigger process_map.spec_index(proc_ptr).view().iommu_table]
         process_map.dom().contains(proc_ptr) ==> {
             let process = process_map.spec_index(proc_ptr);
+            &&& process.view_rodata().view().iommu_table_ptr == process.view().iommu_table
             &&& (process.view().iommu_table is Some) == (process.view_rodata().view().iommu_cr3 is Some)
             &&& process.view().iommu_table is Some ==> {
                 let iommu_root = process.view().iommu_table.unwrap();
@@ -33,6 +35,7 @@ pub proof fn process_iommu_table_match_process_at(process_map: ProcessLockedMap,
     ensures
         process_map.dom().contains(proc_ptr) ==> ({
             let process = process_map.spec_index(proc_ptr);
+            &&& process.view_rodata().view().iommu_table_ptr == process.view().iommu_table
             &&& (process.view().iommu_table is Some) == (process.view_rodata().view().iommu_cr3 is Some)
             &&& process.view().iommu_table is Some ==> {
                 let iommu_root = process.view().iommu_table.unwrap();

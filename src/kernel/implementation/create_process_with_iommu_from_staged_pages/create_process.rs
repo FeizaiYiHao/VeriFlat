@@ -132,6 +132,7 @@ pub fn create_process_with_iommu_from_staged_pages(
         final(krnl).pcid_allc_mp.dom() == old(krnl).pcid_allc_mp.dom(),
         final(krnl).it_mp.dom() == old(krnl).it_mp.dom().insert(iommu_table_page_ptr),
         final(krnl).it_mp.spec_index(iommu_table_page_ptr).view().is_empty(),
+        final(krnl).it_mp.spec_index(iommu_table_page_ptr).view().did is None,
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(krnl).inv(),
         ret.0 == process_page_ptr,
@@ -302,7 +303,7 @@ pub fn create_process_with_iommu_from_staged_pages(
     process_value.iommu_table = Some(iommu_table_page_ptr);
     let process_rodata = ReadOnlyNode::new(ProcessRO {
         owning_container: container_ptr, container_depth: krnl.ctn_mp.borrow_rodata(container_ptr).borrow().depth, parent: Some(parent_ptr), depth: parent_depth + 1,
-        pagetable: pagetable_page_ptr, cr3, iommu_cr3: Some(iommu_l4_page_ptr), pcid,
+        pagetable: pagetable_page_ptr, cr3, iommu_cr3: Some(iommu_l4_page_ptr), iommu_table_ptr: Some(iommu_table_page_ptr), pcid,
     }, Ghost(process_page_ptr));
     let process_ghost = ProcessGhost { uppertree_seq: Ghost(ancestors), subtree_set: Ghost(Set::empty()), owned_pci_functions: Ghost(Set::empty()) };
     proof { assert(parent_ancestors.len() == parent_depth) by { process_perms_wf_at(krnl.prc_mp, parent_ptr); }; }

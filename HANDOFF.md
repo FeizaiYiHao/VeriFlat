@@ -1,4 +1,4 @@
-# Handoff — Batch 1：mmap hold/release + 四组证明清理（2026-10-25）；Batch 2 已实施并完整验证，见下文“Batch 2”节
+# Handoff — Batch 1：mmap hold/release + 四组证明清理（2026-10-25）；Batch 2 已实施并完整验证；Batch 3 为部分完成检查点，见 `HANDOFF-anchor-did.md`
 
 ## Batch 1 现状
 - Batch 1 作为 02ad734（CPU 入口锁实施计划；该计划已被替换，见 `HANDOFF-cpu-entry-lock.md`）之上的一个提交发布。
@@ -52,7 +52,15 @@ mmap 新路径：`mmap_4k_try_read_enter` 3.04 s / 4.78M、`mmap_4k_fill_enter` 
   `ErrorContainerLockOrderConflict`（ABI 下标 49）、OfflineFlag 固定 owner 与自 offline 的 Hold 边界。
   设计摘要见 `HANDOFF-cpu-entry-lock.md`，锁 owner 映射见 `LockId.md`。
 
+## Batch 3（部分完成检查点，未验证通过）
+- 基线 Batch 2 提交 `2011fb98c04becad78fc2ee4db8705c6b1f6e136`。按用户要求在未完成状态收尾；详情、剩余项与下一步命令见 `HANDOFF-anchor-did.md`。
+- 最新：workspace #35088 3203 / 6 errors（iommu_map_4k trace 2、kill_process 4）；冷启动 NI #35087 259 / 3 errors（`ni_ipc` rlimit）；
+  无 Batch 3 单体。不得声称 Batch 3 完成。
+- boot：检查点后 `cd boot && cargo +1.98.1 check -p kernel` exit 0（9.38 s，`boot/kernel/src/iommu.rs` 无 warning）；运行时豁免，未运行。
+- 新增 / 变更 TCB 边界与已知证明纪律债（3 处 exec / 重 wf reveal，本检查点不阻塞）见 `HANDOFF-anchor-did.md`。
+  Batch 4 未开始；`.verus-log/verify-count` 不提交。
+
 ## 剩余项
-- Batch 3–4（`HANDOFF-cpu-entry-lock.md`，待实施）：3 锚点 DID；4 Cpu 内含 SyscallPerm 与 IPI / CPU kill 状态收尾。
+- Batch 3 收尾（`HANDOFF-anchor-did.md`）；Batch 4（`HANDOFF-cpu-entry-lock.md`，未开始）：Cpu 内含 SyscallPerm 与 IPI / CPU kill 状态收尾。
 - 既有遗留：`iommu_tlb_wf_spec` 依赖 `CAP.CM = 0`；待批准 kill / thread_exit 共用 exec helper `reclaim_hidden_iommu_4k_leaves`（项 d）；
   `ipc_rendezvous_cpu_cross_container` 残余 +4%。

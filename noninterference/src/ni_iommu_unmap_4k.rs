@@ -47,8 +47,8 @@ pub proof fn iommu_unmap_4k_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
     ensures isolated(new_u, a, b),
 { reveal(iommu_unmap_4k_leaf_step_pre); reveal(iommu_unmap_4k_leaf_step); reveal(kernel_u_cpu_ownership_wf); }
 
-/// An IOTLB flush on a cpu of `a` empties every IOTLB domain, which no domain view contains, and records the flush
-/// on its running thread.
+/// An IOTLB flush on a cpu of `a` empties only the IOTLB domain of its process's IOMMU table, if it has a DID, and
+/// records the flush on its running thread; no domain view contains the IOTLB.
 pub proof fn iommu_unmap_4k_flush_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),

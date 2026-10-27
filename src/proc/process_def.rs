@@ -64,6 +64,8 @@ pub struct ProcessRO {
     pub pagetable: RwLockPageTableRoot,
     pub cr3: PageTableRoot,
     pub iommu_cr3: Option<PageTableRoot>,
+    // Immutable mirror of `Process::iommu_table`, readable without locking the process (K-only, not projected to U).
+    pub iommu_table_ptr: Option<RwLockPageTableRoot>,
     pub pcid: Pcid,
 }
 

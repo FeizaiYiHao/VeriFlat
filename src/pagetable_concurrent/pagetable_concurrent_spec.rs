@@ -11,6 +11,7 @@ use super::l2_page_map::*;
 pub struct PageTableHigher<const TABLE_TYPE: PTType> {
     pub cr3: PageTableRoot,
     pub pcid: Option<Pcid>,
+    pub did: Option<VtdDomainId>,
     pub kernel_l4_end: usize,
     pub l4_table: Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
     pub l3_rev_map: Ghost<Map<PageMapPtr, (L4Index)>>,
@@ -94,6 +95,12 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     pub open spec fn pcid_wf(&self) -> bool {
         &&& TABLE_TYPE == PT_TYPE ==> self.pcid is Some
         &&& TABLE_TYPE == IOMMU_TYPE ==> self.pcid is None
+    }
+
+    /// A CPU table has no VT-d domain id; an IOMMU table may carry one valid id.
+    pub open spec fn did_wf(&self) -> bool {
+        &&& TABLE_TYPE == PT_TYPE ==> self.did is None
+        &&& self.did is Some ==> vtd_domain_id_valid(self.did->Some_0)
     }
 
     pub open spec fn pcid_value(&self) -> Pcid
@@ -284,6 +291,7 @@ impl<const TABLE_TYPE: PTType> LockInvTrait for PageTableHigher<TABLE_TYPE> {
         &&& self.tables_reachable_wf()
         &&& self.kernel_entries_wf()
         &&& self.pcid_wf()
+        &&& self.did_wf()
     }
 }
 
@@ -318,6 +326,7 @@ impl<const TABLE_TYPE: PTType> PageTableLower<TABLE_TYPE> {
 
 impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
     pub open spec fn cr3(&self) -> PageTableRoot { self.higher.cr3 }
+    pub open spec fn did(&self) -> Option<VtdDomainId> { self.higher.did }
     pub open spec fn kernel_l4_end(&self) -> usize { self.higher.kernel_l4_end }
     pub open spec fn mapping_4k(&self) -> Map<VAddr, MapEntry> { self.lower.mapping_4k }
     pub open spec fn mapping_2m(&self) -> Map<VAddr, MapEntry> { self.lower.mapping_2m }
@@ -327,6 +336,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
     pub open spec fn user_view(&self, lock_state: LockStateU) -> PageTableU {
         PageTableU {
             lock_state,
+            did: if TABLE_TYPE == PT_TYPE { None } else { self.did() },
             mapping_4k: self.mapping_4k().filter_keys(|va: VAddr| self.mapping_4k().spec_index(va).present),
             mapping_2m: self.mapping_2m().filter_keys(|va: VAddr| self.mapping_2m().spec_index(va).present),
             mapping_1g: self.mapping_1g().filter_keys(|va: VAddr| self.mapping_1g().spec_index(va).present),

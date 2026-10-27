@@ -27,6 +27,7 @@ pub(super) open spec fn install_staged_4k_iommu_table_page_eof_transition_framin
     &&& new_it.view().mapping_1g() == old_it.view().mapping_1g()
     &&& new_it.view().cr3 == old_it.view().cr3
     &&& new_it.view().proc_ptr == old_it.view().proc_ptr
+    &&& new_it.view().did == old_it.view().did
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, page_index)
     &&& new_page.is_init()
     &&& new_page.locking_thread() == old_page.locking_thread()

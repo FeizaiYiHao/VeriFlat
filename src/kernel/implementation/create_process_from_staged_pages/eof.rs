@@ -149,6 +149,7 @@ pub open spec fn create_process_from_staged_pages_eof_transition_framing(
     &&& post.prc_mp.spec_index(process_page_ptr).view_rodata().view().pagetable == pagetable_page_ptr
     &&& post.prc_mp.spec_index(process_page_ptr).view_rodata().view().cr3 == l4_page_ptr
     &&& post.prc_mp.spec_index(process_page_ptr).view_rodata().view().iommu_cr3 is None
+    &&& post.prc_mp.spec_index(process_page_ptr).view_rodata().view().iommu_table_ptr is None
     &&& post.prc_mp.spec_index(process_page_ptr).view_rodata().view().pcid == pcid
     &&& post.prc_mp.spec_index(process_page_ptr).view_ghost().uppertree_seq.view() == ancestors
     &&& post.prc_mp.spec_index(process_page_ptr).view_ghost().subtree_set.view() == Set::<RwLockProcessPtr>::empty()

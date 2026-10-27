@@ -95,23 +95,47 @@ pub(super) proof fn thread_exit_tables_emptied_eof(pre: KernelK, post: KernelK, 
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_proc_pcid_match); };
 }
 
-/// Detaching one function of the exiting process keeps every invariant; the slot's IOTLB domain was already present.
-pub(super) proof fn thread_exit_detach_process_functions_eof(pre: KernelK, post: KernelK, bus: usize, device: usize, function: usize)
+/// Detaching the IOMMU table `iommu_table` keeps the memory invariants: the table keeps its mappings, pages, and owner.
+proof fn thread_exit_detach_process_functions_eof_memory(pre: KernelK, post: KernelK, iommu_table: RwLockPageTableRoot)
     requires
         pre.inv(),
-        thread_exit_detach_process_functions_eof_transition_framing(pre, post, bus, device, function),
-        pci_bdf_valid(bus, device, function),
-        post.irt.inv(),
-        post.iommu_tlb.inv(),
-    ensures
-        post.inv(),
-        pre.iommu_tlb.view().dom().contains(pci_bdf_did(bus, device, function)),
+        thread_exit_detach_process_functions_eof_transition_framing(pre, post, iommu_table),
+        pre.it_mp.dom().contains(iommu_table),
+    ensures post.memory_management_inv(),
 {
     reveal(thread_exit_detach_process_functions_eof_transition_framing);
-    assert(pre.iommu_tlb.view().dom().contains(pci_bdf_did(bus, device, function))) by { reveal(IommuTLB::inv); };
-    assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
+    assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); };
+    assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { reveal(iommu_table_pages_wf); };
+    assert(process_iommu_table_match(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_match); };
+    assert(pagetable_no_huge_leaf_wf(post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(pagetable_no_huge_leaf_wf); };
+    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(process_emptied_tables_wf); reveal(process_iommu_table_match); };
+    assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { reveal(process_kernel_pages_owner_wf); reveal(iommu_table_pages_wf); };
+}
+
+/// Detaching the IOMMU table `iommu_table` of the exiting process keeps every invariant: only slots of its owner lose their
+/// root and DID, the table drops its DID, and that DID loses its anchor together with its IOTLB domain and cached contexts.
+pub(super) proof fn thread_exit_detach_process_functions_eof(pre: KernelK, post: KernelK, iommu_table: RwLockPageTableRoot)
+    requires
+        pre.inv(),
+        thread_exit_detach_process_functions_eof_transition_framing(pre, post, iommu_table),
+        pre.it_mp.dom().contains(iommu_table),
+        // Produced by `iommu_root_table_detach_all`.
+        post.irt.inv(),
+        post.iommu_tlb.inv(),
+        iommu_table_perms_wf(post.it_mp),
+        forall|b: usize, d: usize, f: usize| #![trigger pre.irt.view().spec_index_iommu_did(b, d, f)]
+            pci_bdf_valid(b, d, f) ==> (pre.irt.view().spec_index_iommu_did(b, d, f) is Some) == (pre.irt.view().spec_index_iommu_root(b, d, f) is Some),
+    ensures
+        post.inv(),
+        pre.it_mp.spec_index(iommu_table).view().leaves_present() ==> post.it_mp.spec_index(iommu_table).view().leaves_present(),
+{
+    thread_exit_detach_process_functions_eof_memory(pre, post, iommu_table);
+    reveal(thread_exit_detach_process_functions_eof_transition_framing);
+    assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); reveal(process_iommu_table_match); };
     assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
-    assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); };
+    assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by {
+        reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_match); reveal(IommuTLB::inv);
+    };
     assert(post.inv()) by { reveal(KernelK::default_pagetable_wf); };
 }
 } // verus!

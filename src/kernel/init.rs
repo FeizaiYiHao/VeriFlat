@@ -91,7 +91,7 @@ pub open spec fn boot_dom0_pagetable_model(
     l2_tables: Map<PageMapPtr, PointsTo<PageMap>>, l1_tables: Map<PageMapPtr, PointsTo<PageMap>>, rev_maps: BootRevMaps,
 ) -> PageTable<PT_TYPE> {
     PageTable {
-        cr3: raw_cr3, pcid: Some(1), kernel_l4_end, l4_table: Tracked(l4_tables), l3_rev_map: Ghost(rev_maps.0), l3_tables: Tracked(l3_tables),
+        cr3: raw_cr3, pcid: Some(1), did: None, kernel_l4_end, l4_table: Tracked(l4_tables), l3_rev_map: Ghost(rev_maps.0), l3_tables: Tracked(l3_tables),
         l2_rev_map: Ghost(rev_maps.1), l2_tables: Tracked(l2_tables), l1_rev_map: Ghost(rev_maps.2), l1_tables: Tracked(l1_tables),
         mapping_4k: Ghost(manifest_4k), mapping_2m: Ghost(Map::empty()), mapping_1g: Ghost(Map::empty()), kernel_entries: Ghost(kernel_entries), proc_ptr: process_ptr,
     }
@@ -277,6 +277,7 @@ pub fn adopt_boot_dom0_pagetable(
         ret.0.cr3 == raw_cr3,
         ret.0.pcid == Some(1usize),
         ret.0.pcid_value() == 1,
+        ret.0.did is None,
         ret.0.proc_ptr == process_ptr,
         ret.0.kernel_l4_end == kernel_l4_end,
         ret.0.kernel_entries == kernel_entries,
@@ -290,7 +291,7 @@ pub fn adopt_boot_dom0_pagetable(
         (PageTableC { higher: ret.0, lower: ret.1.view() }).mapping_1g() == Map::<VAddr, MapEntry>::empty(),
 {
     let higher = PageTableHigher {
-        cr3: raw_cr3, pcid: Some(1), kernel_l4_end, l4_table: Tracked(l4_tables), l3_rev_map: Ghost(rev_maps.view().0), l3_tables: Tracked(l3_tables),
+        cr3: raw_cr3, pcid: Some(1), did: None, kernel_l4_end, l4_table: Tracked(l4_tables), l3_rev_map: Ghost(rev_maps.view().0), l3_tables: Tracked(l3_tables),
         l2_rev_map: Ghost(rev_maps.view().1), mapping_1g: Ghost(Map::empty()), kernel_entries, proc_ptr: process_ptr,
     };
     (higher, Tracked::assume_new())
@@ -615,7 +616,7 @@ pub open spec fn boot_kernel_state(
     &&& forall|cpu_id: CpuId, pcid: Pcid| #![trigger krnl.cpu_tlb.spec_index((cpu_id, pcid))] index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) ==> krnl.cpu_tlb.spec_index((cpu_id, pcid)).is_empty()
     &&& krnl.iommu_tlb.inv()
     &&& forall|did: VtdDomainId| #![trigger krnl.iommu_tlb.spec_index(did)] vtd_domain_id_valid(did) ==> krnl.iommu_tlb.spec_index(did).is_empty()
-    &&& krnl.iommu_tlb.context_cache() == Map::<VtdDomainId, PageTableRoot>::empty()
+    &&& krnl.iommu_tlb.context_cache() == Map::<PciBdf, (PageTableRoot, VtdDomainId)>::empty()
     &&& krnl.irt.inv()
     &&& krnl.irt.locking_thread() is None
     &&& !krnl.irt.locked()
@@ -655,6 +656,7 @@ pub open spec fn boot_kernel_state(
     &&& krnl.it_mp.spec_index(layout.iommu_table).view().wf()
     &&& krnl.it_mp.spec_index(layout.iommu_table).view().cr3 == layout.iommu_l4
     &&& krnl.it_mp.spec_index(layout.iommu_table).view().pcid is None
+    &&& krnl.it_mp.spec_index(layout.iommu_table).view().did is None
     &&& krnl.it_mp.spec_index(layout.iommu_table).view().kernel_l4_end == 0
     &&& krnl.it_mp.spec_index(layout.iommu_table).view().kernel_entries.view() =~= Seq::<PageEntry>::empty()
     &&& krnl.it_mp.spec_index(layout.iommu_table).view().is_empty()
@@ -740,7 +742,7 @@ pub open spec fn boot_kernel_state(
     &&& krnl.prc_mp.spec_index(layout.root_process).view_rodata().owner_addr() == layout.root_process
     &&& krnl.prc_mp.spec_index(layout.root_process).view_rodata().view() == (ProcessRO {
         owning_container: layout.root_container, container_depth: 0, parent: None, depth: 0, pagetable: layout.cpu_pagetable, cr3: layout.cpu_cr3,
-        iommu_cr3: Some(layout.iommu_l4), pcid: 1,
+        iommu_cr3: Some(layout.iommu_l4), iommu_table_ptr: Some(layout.iommu_table), pcid: 1,
     })
     &&& krnl.prc_mp.spec_index(layout.root_process).view_ghost() == (ProcessGhost { uppertree_seq: Ghost(Seq::empty()), subtree_set: Ghost(Set::empty()), owned_pci_functions: Ghost(owned_pci_functions) })
     &&& krnl.thr_mp.perms_wf()
@@ -1524,7 +1526,8 @@ pub fn finish_init_from_boot(
 
     let process_rodata = ReadOnlyNode::new(ProcessRO {
         owning_container: layout.root_container, container_depth: 0, parent: None, depth: 0,
-        pagetable: layout.cpu_pagetable, cr3: layout.cpu_cr3, iommu_cr3: Some(layout.iommu_l4), pcid: 1,
+        pagetable: layout.cpu_pagetable, cr3: layout.cpu_cr3, iommu_cr3: Some(layout.iommu_l4), iommu_table_ptr: Some(layout.iommu_table),
+        pcid: 1,
     }, Ghost(layout.root_process));
     let process_ghost = ProcessGhost { uppertree_seq: Ghost(Seq::empty()), subtree_set: Ghost(Set::empty()), owned_pci_functions };
     let container_rodata = ReadOnlyNode::new(ContainerRO {

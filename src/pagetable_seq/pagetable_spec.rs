@@ -34,6 +34,7 @@ pub open spec fn page_table_key_1g_valid<const TABLE_TYPE: PTType>(addr: usize) 
 pub struct PageTable<const TABLE_TYPE: PTType> {
     pub cr3: PageTableRoot,
     pub pcid: Option<Pcid>,
+    pub did: Option<VtdDomainId>,
     pub kernel_l4_end: usize,
     pub l4_table: Tracked<Map<PageMapPtr, PointsTo<PageMap>>>,
     pub l3_rev_map: Ghost<Map<PageMapPtr, (L4Index)>>,
@@ -49,14 +50,15 @@ pub struct PageTable<const TABLE_TYPE: PTType> {
     pub proc_ptr: RwLockProcessPtr
 }
 
-/// The page-table mappings and outer lock mode visible through a process.
+/// The page-table mappings, VT-d domain id, and outer lock mode visible through a process.
 ///
 /// Directory topology, backing page-map pages, CR3/PCID bookkeeping, and the
-/// owning process pointer are kernel implementation state.  Publishing or
+/// owning process pointer are kernel implementation state. A CPU table never has a domain id.  Publishing or
 /// removing an abstract mapping changes this view; preparing an empty walk
 /// does not.
 pub ghost struct PageTableU {
     pub lock_state: LockStateU,
+    pub did: Option<VtdDomainId>,
     pub mapping_4k: Map<VAddr, MapEntry>,
     pub mapping_2m: Map<VAddr, MapEntry>,
     pub mapping_1g: Map<VAddr, MapEntry>,
@@ -67,6 +69,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
     pub open spec fn user_view(&self, lock_state: LockStateU) -> PageTableU {
         PageTableU {
             lock_state,
+            did: if TABLE_TYPE == PT_TYPE { None } else { self.did },
             mapping_4k: self.mapping_4k().filter_keys(|va: VAddr| self.mapping_4k().spec_index(va).present),
             mapping_2m: self.mapping_2m().filter_keys(|va: VAddr| self.mapping_2m().spec_index(va).present),
             mapping_1g: self.mapping_1g().filter_keys(|va: VAddr| self.mapping_1g().spec_index(va).present),
@@ -103,6 +106,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             ret.wf(),
             ret.cr3 == page_map_ptr,
             ret.pcid == pcid,
+            ret.did is None,
             ret.kernel_l4_end == mem_end_l4_index,
             ret.kernel_entries =~= kernel_entries_ghost,
             ret.is_empty(),
@@ -112,6 +116,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         let mut ret = Self {
             cr3: page_map_ptr,
             pcid,
+            did: None,
             kernel_l4_end: mem_end_l4_index,
             l4_table: Tracked(Map::<PageMapPtr, PointsTo<PageMap>>::tracked_empty()),
             l3_rev_map: Ghost(Map::<PageMapPtr, (L4Index)>::empty()),
@@ -170,6 +175,12 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
     pub open spec fn pcid_wf(&self) -> bool {
         &&& TABLE_TYPE == PT_TYPE ==> self.pcid is Some
         &&& TABLE_TYPE == IOMMU_TYPE ==> self.pcid is None
+    }
+
+    /// A CPU table has no VT-d domain id; an IOMMU table may carry one valid id.
+    pub open spec fn did_wf(&self) -> bool {
+        &&& TABLE_TYPE == PT_TYPE ==> self.did is None
+        &&& self.did is Some ==> vtd_domain_id_valid(self.did->Some_0)
     }
 
     pub open spec fn pcid_value(&self) -> Pcid
@@ -602,6 +613,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         &&& self.tables_reachable_wf()
         &&& self.kernel_entries_wf()
         &&& self.pcid_wf()
+        &&& self.did_wf()
     }
 }
 

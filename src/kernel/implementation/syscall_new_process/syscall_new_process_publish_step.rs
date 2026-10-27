@@ -95,6 +95,7 @@ pub(super) fn end_new_process_publish_step(
             &&& forall|p: RwLockPageTableRoot| #![trigger old(krnl).it_mp.spec_index(p)] old(steps).snapshot_k().it_mp.dom().contains(p) ==> old(krnl).it_mp.spec_index(p) == old(steps).snapshot_k().it_mp.spec_index(p)
             &&& typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), t, TypedLockMode::Write)
             &&& old(krnl).it_mp.spec_index(t).view().is_empty()
+            &&& old(krnl).it_mp.spec_index(t).view().did is None
         },
     ensures
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),

@@ -28,6 +28,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             ret.inv(),
             ret.cr3 == page_map_ptr,
             ret.pcid == pcid,
+            ret.did is None,
             ret.kernel_l4_end == mem_end_l4_index,
             ret.kernel_entries =~= kernel_entries_ghost,
             ret.l4_table.view() == Map::<PageMapPtr, PointsTo<PageMap>>::empty().insert(page_map_ptr, page_map_perm),
@@ -36,7 +37,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             ret.proc_ptr == proc_ptr,
     {
         let mut ret = Self {
-            cr3: page_map_ptr, pcid, kernel_l4_end: mem_end_l4_index, l4_table: Tracked(Map::<PageMapPtr, PointsTo<PageMap>>::tracked_empty()),
+            cr3: page_map_ptr, pcid, did: None, kernel_l4_end: mem_end_l4_index, l4_table: Tracked(Map::<PageMapPtr, PointsTo<PageMap>>::tracked_empty()),
             l3_rev_map: Ghost(Map::<PageMapPtr, (L4Index)>::empty()), l3_tables: Tracked(Map::<PageMapPtr, PointsTo<PageMap>>::tracked_empty()),
             l2_rev_map: Ghost(Map::<PageMapPtr, (L4Index, L3Index)>::empty()), mapping_1g: Ghost(Map::<VAddr, MapEntry>::empty()), kernel_entries: kernel_entries_ghost,
             proc_ptr,
@@ -69,6 +70,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
                 #![trigger page_map_perm.value().spec_index(i)]
                 0 <= i < self.kernel_l4_end ==> self.kernel_entries.view().spec_index(i as int) == page_map_perm.value().spec_index(i),
             self.pcid_wf(),
+            self.did_wf(),
             TABLE_TYPE == IOMMU_TYPE ==> self.kernel_l4_end == 0,
         ensures
             self.inv(),

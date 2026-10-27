@@ -11,9 +11,9 @@ use super::syscall_thread_exit_reclaim_eof::thread_exit_detach_process_functions
 
 verus! {
 /// Reclaim the user memory of the running last thread's process inside its exit: write-lock the process's page table,
-/// detach the process's attached functions and write-lock its IOMMU table, clear every user 4K leaf, flush the
-/// process's PCID from every cpu once, unmap the cleared pages and then every IOMMU 4K leaf while refunding their quota
-/// to the thread's container chain, return the thread's and the process's quota of every size to their container, and
+/// write-lock and detach its IOMMU table, clear every user 4K leaf, flush the process's PCID from every cpu once, unmap
+/// the cleared pages and then remove every IOMMU 4K leaf of the detached table while refunding their quota to the
+/// thread's container chain, return the thread's and the process's quota of every size to their container, and
 /// unlock the tables. Each change is one middle step of the partial trace that starts at `start`.
 pub(super) fn thread_exit_reclaim(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, container_ptr: RwLockContainerPtr,
@@ -148,8 +148,9 @@ pub(super) fn thread_exit_reclaim(
         Tracked(process_lock_perm), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(iommu_table_lock_perm), Ghost(start), Ghost(pre));
 }
 
-/// Write-lock the process's page table, detach the process's attached functions with their IOTLB domains emptied,
-/// write-lock its IOMMU table, and record that nothing is flushed yet.
+/// Write-lock the process's page table, record that nothing is flushed yet, and, for a process with an IOMMU table,
+/// write-lock the root table and the IOMMU table and detach the IOMMU table once: every function the process owns is
+/// detached and the table drops its DID with that DID's IOTLB domain invalidated.
 fn thread_exit_reclaim_lock_table(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, Ghost(cpu_id): Ghost<CpuId>,
     Ghost(container_ptr): Ghost<RwLockContainerPtr>, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot,
@@ -270,6 +271,7 @@ fn thread_exit_reclaim_lock_table(
             &&& it.view().leaves_present()
             &&& it.view().proc_ptr == process_ptr
             &&& it.view().kernel_l4_end == 0
+            &&& it.view().did is None
             &&& ret.1.view().unwrap().state() is WriteLock
             &&& ret.1.view().unwrap().thread_id() == old(lctx).thread_id()
             &&& ret.1.view().unwrap().lock_id() == it.locking_thread()->Write_lock_id
@@ -320,130 +322,49 @@ fn thread_exit_reclaim_lock_table(
     let ghost lock_before = steps.view();
     let Tracked(pagetable_lock_perm) = krnl.wlock_pagetable(pagetable, Tracked(&mut *lctx));
     let ghost table_lctx = *lctx;
-    let Tracked(irt_lock_perm) = krnl.wlock_iommu_root_table(Tracked(&mut *lctx));
-    thread_exit_detach_process_functions(krnl, process_ptr, Tracked(&*lctx), Tracked(&irt_lock_perm));
+    let ghost mut locked_k = *krnl;
+    let ghost mut locked_lctx = *lctx;
     let iommu_table_lock_perm = match iommu_table {
         Some(it) => {
             proof { assert(krnl.it_mp.dom().contains(it) && krnl.it_mp.spec_index(it).view().proc_ptr == process_ptr) by { process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, process_ptr); }; }
+            let Tracked(irt_lock_perm) = krnl.wlock_iommu_root_table(Tracked(&mut *lctx));
             let Tracked(perm) = krnl.wlock_iommu_table(it, Tracked(&mut *lctx));
+            krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::ThreadExitReclaim { flushed: false })), Tracked(&*lctx), Tracked(thread_lock_perm));
+            proof { locked_k = *krnl; locked_lctx = *lctx; }
+            iommu_root_table_detach_all(&mut krnl.irt, &mut krnl.iommu_tlb, &mut krnl.it_mp, it, Tracked(&*lctx), Tracked(&irt_lock_perm), Tracked(&perm));
+            proof {
+                assert(thread_exit_detach_process_functions_eof_transition_framing(locked_k, *krnl, it)) by { reveal(thread_exit_detach_process_functions_eof_transition_framing); };
+                thread_exit_detach_process_functions_eof(locked_k, *krnl, it);
+            }
+            krnl.wunlock_iommu_root_table(Tracked(&mut *lctx), Tracked(irt_lock_perm));
             Tracked(Some(perm))
         },
-        None => Tracked(None),
+        None => {
+            krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::ThreadExitReclaim { flushed: false })), Tracked(&*lctx), Tracked(thread_lock_perm));
+            proof { enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx); locked_k = *krnl; locked_lctx = *lctx; }
+            Tracked(None)
+        },
     };
-    krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::ThreadExitReclaim { flushed: false })), Tracked(&*lctx), Tracked(thread_lock_perm));
-    krnl.wunlock_iommu_root_table(Tracked(&mut *lctx), Tracked(irt_lock_perm));
     proof {
-        let locked_k = *krnl;
+        let post_k = *krnl;
+        let did = match iommu_table { Some(it) => lock_k.it_mp.spec_index(it).view().did, None => None };
         assert(lctx.iommu_root_table_lock_map() =~= table_lctx.iommu_root_table_lock_map());
-        let locked_lctx = *lctx;
         assert(lctx.pagetable_lock_map().dom().contains(pagetable));
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
             thread_exit_lock_table_step_pre_from_k(&lock_k, &lock_lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable);
             kernel_process_tables_lock_state_and_progress_changed_implies_u_step(&lock_k, &locked_k, &locked_lctx, process_ptr, pagetable, thread_ptr, true);
-            kernel_iommu_root_table_process_detached_implies_u(&lock_k, &locked_k, process_ptr);
-            thread_exit_lock_table_step_from_u(kernel_k_to_kernel_u(lock_k), kernel_k_to_kernel_u(locked_k), cpu_id, process_ptr, thread_ptr);
-            thread_exit_trace_push(&*steps, lock_before, start, pre, kernel_k_to_kernel_u(lock_k), kernel_k_to_kernel_u(locked_k), cpu_id);
+            if let Some(it) = iommu_table { kernel_iommu_root_table_process_detached_implies_u_step(&locked_k, &post_k, it, did); }
+            thread_exit_lock_table_step_from_u(kernel_k_to_kernel_u(lock_k), kernel_k_to_kernel_u(locked_k), kernel_k_to_kernel_u(post_k), cpu_id, process_ptr, thread_ptr, did);
+            thread_exit_trace_push(&*steps, lock_before, start, pre, kernel_k_to_kernel_u(lock_k), kernel_k_to_kernel_u(post_k), cpu_id);
         };
         pagetable_perms_wf_at(krnl.pt_mp, pagetable); krnl.pt_mp.spec_index(pagetable).view().kernel_l4_end_valid();
         if iommu_table is Some {
-            iommu_table_perms_wf_at(krnl.it_mp, iommu_table->Some_0); iommu_table_perms_wf_at(locked_k.it_mp, iommu_table->Some_0);
+            iommu_table_perms_wf_at(krnl.it_mp, iommu_table->Some_0); iommu_table_perms_wf_at(lock_k.it_mp, iommu_table->Some_0);
             assert(krnl.it_mp.spec_index(iommu_table->Some_0).view().kernel_l4_end == 0) by { krnl.it_mp.spec_index(iommu_table->Some_0).view().kernel_entries_wf_l4_end_at(); };
         }
     }
     (Tracked(pagetable_lock_perm), iommu_table_lock_perm, Ghost(table_lctx))
-}
-
-/// Detach every attached function that `process_ptr` owns under the held root-table lock and empty its IOTLB domain,
-/// scanning every B/D/F.
-fn thread_exit_detach_process_functions(krnl: &mut KernelK, process_ptr: RwLockProcessPtr, Tracked(lctx): Tracked<&LocalContext>, Tracked(irt_lock_perm): Tracked<&LockPerm>)
-    requires
-        old(krnl).inv(),
-        typed_lock_maps_aligned(old(krnl), lctx),
-        old(krnl).irt.wlocked_by(lctx),
-        typed_lock_map_contains_mode(lctx.iommu_root_table_lock_map(), old(krnl).irt.view().table_base(), TypedLockMode::Write),
-        irt_lock_perm.state() is WriteLock,
-        irt_lock_perm.thread_id() == lctx.thread_id(),
-        irt_lock_perm.lock_id() == old(krnl).irt.locking_thread()->Write_lock_id,
-    ensures
-        final(krnl).inv(),
-        typed_lock_maps_aligned(final(krnl), lctx),
-        *final(krnl) == (KernelK { irt: final(krnl).irt, iommu_tlb: final(krnl).iommu_tlb, ..*old(krnl) }),
-        final(krnl).irt.locking_thread() == old(krnl).irt.locking_thread(),
-        final(krnl).irt.view().table_base() == old(krnl).irt.view().table_base(),
-        final(krnl).irt.view().owners() == old(krnl).irt.view().owners(),
-        final(krnl).iommu_tlb.view().dom() == old(krnl).iommu_tlb.view().dom(),
-        forall|b: usize, d: usize, f: usize| #![trigger final(krnl).irt.view().spec_index_iommu_root(b, d, f)] pci_bdf_valid(b, d, f)
-            ==> final(krnl).irt.view().spec_index_iommu_root(b, d, f) == if old(krnl).irt.view().spec_index_owner(b, d, f) == process_ptr { None } else { old(krnl).irt.view().spec_index_iommu_root(b, d, f) },
-        forall|b: usize, d: usize, f: usize| #![trigger final(krnl).iommu_tlb.view()[pci_bdf_did(b, d, f)]] pci_bdf_valid(b, d, f)
-            ==> final(krnl).iommu_tlb.view()[pci_bdf_did(b, d, f)] == if old(krnl).irt.view().spec_index_owner(b, d, f) == process_ptr && old(krnl).irt.view().spec_index_iommu_root(b, d, f) is Some {
-                SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }
-            } else { old(krnl).iommu_tlb.view()[pci_bdf_did(b, d, f)] },
-        forall|b: usize, d: usize, f: usize| #![trigger final(krnl).iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f))] pci_bdf_valid(b, d, f)
-            ==> final(krnl).iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f)) == (old(krnl).iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f))
-                && !(old(krnl).irt.view().spec_index_owner(b, d, f) == process_ptr && old(krnl).irt.view().spec_index_iommu_root(b, d, f) is Some)),
-        forall|did: VtdDomainId| #![trigger final(krnl).iommu_tlb.context_cache().dom().contains(did)] final(krnl).iommu_tlb.context_cache().dom().contains(did)
-            ==> old(krnl).iommu_tlb.context_cache().dom().contains(did) && final(krnl).iommu_tlb.context_cache()[did] == old(krnl).iommu_tlb.context_cache()[did],
-{
-    let mut bus: usize = 0;
-    let mut device: usize = 0;
-    let mut function: usize = 0;
-    while bus < PCI_BUS_COUNT
-        invariant
-            krnl.inv(),
-            typed_lock_maps_aligned(krnl, lctx),
-            *krnl == (KernelK { irt: krnl.irt, iommu_tlb: krnl.iommu_tlb, ..*old(krnl) }),
-            krnl.irt.locking_thread() == old(krnl).irt.locking_thread(),
-            krnl.irt.view().table_base() == old(krnl).irt.view().table_base(),
-            krnl.irt.view().owners() == old(krnl).irt.view().owners(),
-            krnl.iommu_tlb.view().dom() == old(krnl).iommu_tlb.view().dom(),
-            old(krnl).irt.wlocked_by(lctx),
-            typed_lock_map_contains_mode(lctx.iommu_root_table_lock_map(), old(krnl).irt.view().table_base(), TypedLockMode::Write),
-            irt_lock_perm.state() is WriteLock,
-            irt_lock_perm.thread_id() == lctx.thread_id(),
-            irt_lock_perm.lock_id() == old(krnl).irt.locking_thread()->Write_lock_id,
-            bus <= PCI_BUS_COUNT,
-            device < PCI_DEVICE_COUNT,
-            function < PCI_FUNCTION_COUNT,
-            bus == PCI_BUS_COUNT ==> device == 0 && function == 0,
-            forall|b: usize, d: usize, f: usize| #![trigger krnl.irt.view().spec_index_iommu_root(b, d, f)] pci_bdf_valid(b, d, f)
-                ==> krnl.irt.view().spec_index_iommu_root(b, d, f) == if (b < bus || (b == bus && (d < device || (d == device && f < function)))) && old(krnl).irt.view().spec_index_owner(b, d, f) == process_ptr {
-                    None
-                } else { old(krnl).irt.view().spec_index_iommu_root(b, d, f) },
-            forall|b: usize, d: usize, f: usize| #![trigger krnl.iommu_tlb.view()[pci_bdf_did(b, d, f)]] pci_bdf_valid(b, d, f)
-                ==> krnl.iommu_tlb.view()[pci_bdf_did(b, d, f)] == if (b < bus || (b == bus && (d < device || (d == device && f < function))))
-                    && old(krnl).irt.view().spec_index_owner(b, d, f) == process_ptr && old(krnl).irt.view().spec_index_iommu_root(b, d, f) is Some {
-                    SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }
-                } else { old(krnl).iommu_tlb.view()[pci_bdf_did(b, d, f)] },
-            forall|b: usize, d: usize, f: usize| #![trigger krnl.iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f))] pci_bdf_valid(b, d, f)
-                ==> krnl.iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f)) == (old(krnl).iommu_tlb.context_cache().dom().contains(pci_bdf_did(b, d, f))
-                    && !((b < bus || (b == bus && (d < device || (d == device && f < function)))) && old(krnl).irt.view().spec_index_owner(b, d, f) == process_ptr
-                    && old(krnl).irt.view().spec_index_iommu_root(b, d, f) is Some)),
-            forall|did: VtdDomainId| #![trigger krnl.iommu_tlb.context_cache().dom().contains(did)] krnl.iommu_tlb.context_cache().dom().contains(did)
-                ==> old(krnl).iommu_tlb.context_cache().dom().contains(did) && krnl.iommu_tlb.context_cache()[did] == old(krnl).iommu_tlb.context_cache()[did],
-        decreases PCI_BUS_COUNT - bus, PCI_DEVICE_COUNT - device, PCI_FUNCTION_COUNT - function,
-    {
-        let owner = krnl.irt.borrow(Tracked(irt_lock_perm)).owner(bus, device, function);
-        let attached = krnl.irt.borrow(Tracked(irt_lock_perm)).is_attached(bus, device, function);
-        if owner == process_ptr && attached {
-            let ghost detach_k = *krnl;
-            iommu_root_table_detach(&mut krnl.irt, &mut krnl.iommu_tlb, bus, device, function, Tracked(lctx), Tracked(irt_lock_perm));
-            proof {
-                assert(thread_exit_detach_process_functions_eof_transition_framing(detach_k, *krnl, bus, device, function)) by { reveal(thread_exit_detach_process_functions_eof_transition_framing); };
-                thread_exit_detach_process_functions_eof(detach_k, *krnl, bus, device, function);
-            }
-        }
-        if function + 1 < PCI_FUNCTION_COUNT {
-            function = function + 1;
-        } else if device + 1 < PCI_DEVICE_COUNT {
-            function = 0;
-            device = device + 1;
-        } else {
-            function = 0;
-            device = 0;
-            bus = bus + 1;
-        }
-    }
 }
 
 /// Clear every user 4K leaf of the locked page table, one leaf step each, walking the mapped VAs in index order.

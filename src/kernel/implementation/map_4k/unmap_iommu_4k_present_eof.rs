@@ -20,6 +20,7 @@ pub(super) open spec fn clear_iommu_4k_mapping_present_eof_transition_framing(pr
     &&& new_it.view().cr3 == old_it.view().cr3
     &&& new_it.view().pcid == old_it.view().pcid
     &&& new_it.view().proc_ptr == old_it.view().proc_ptr
+    &&& new_it.view().did == old_it.view().did
 }
 
 pub(super) proof fn clear_iommu_4k_mapping_present_eof(pre: KernelK, post: KernelK, iommu_table: RwLockPageTableRoot, iova: VAddr)

@@ -22,6 +22,94 @@ pub proof fn kernel_iommu_tlb_flushed_implies_u_step(pre: &KernelK, post: &Kerne
     kernel_process_maps_unchanged_implies_u_process_map(pre, post); kernel_thread_map_unchanged_implies_u_thread_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
 }
 
+/// Emptying the valid IOTLB domain `did`, with the K-only context cache free to change and no other kernel field changed,
+/// empties only that domain of the IOTLB projection and keeps every other domain; the complete and lock-free projections
+/// change exactly when the IOTLB view does, i.e. when that domain was nonempty.
+pub proof fn kernel_iommu_tlb_domain_invalidated_implies_u_step(pre: &KernelK, post: &KernelK, did: VtdDomainId)
+    requires
+        pre.iommu_tlb.inv(),
+        vtd_domain_id_valid(did),
+        *post == (KernelK { iommu_tlb: post.iommu_tlb, ..*pre }),
+        post.iommu_tlb.view() == pre.iommu_tlb.view().insert(did, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
+    ensures
+        kernel_k_to_kernel_u(*post) == (KernelU {
+            iommu_tlb: kernel_k_to_kernel_u(*pre).iommu_tlb.insert(did, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }), ..kernel_k_to_kernel_u(*pre)
+        }),
+        kernel_k_to_kernel_u(*post).iommu_tlb.dom() == kernel_k_to_kernel_u(*pre).iommu_tlb.dom(),
+        forall|d: VtdDomainId| #![trigger kernel_k_to_kernel_u(*post).iommu_tlb[d]] d != did ==> kernel_k_to_kernel_u(*post).iommu_tlb[d] == kernel_k_to_kernel_u(*pre).iommu_tlb[d],
+        (kernel_k_to_kernel_u(*pre) == kernel_k_to_kernel_u(*post)) == (pre.iommu_tlb.view() == post.iommu_tlb.view()),
+        (kernel_k_to_nonlock_kernel_u(*pre) == kernel_k_to_nonlock_kernel_u(*post)) == (pre.iommu_tlb.view() == post.iommu_tlb.view()),
+{
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); kernel_u_nonlock_domains_projection(pre); kernel_u_nonlock_domains_projection(post);
+    kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post);
+    kernel_process_maps_unchanged_implies_u_process_map(pre, post); kernel_thread_map_unchanged_implies_u_thread_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
+    assert(pre.iommu_tlb.view().dom().contains(did)) by { reveal(IommuTLB::inv); };
+    kernel_nonlock_projection_is_u_nonlock_fields(*pre); kernel_nonlock_projection_is_u_nonlock_fields(*post);
+}
+
+/// Removing one present 4K entry `iova` of an IOMMU table, together with page bookkeeping, 4K-allocator bookkeeping that keeps
+/// every container quota, and K-only bookkeeping of the thread `thread_ptr`, removes that IOVA from the owning process's user
+/// IOMMU mapping and changes nothing else in the complete projection.
+pub proof fn kernel_iommu_table_4k_mapping_removed_implies_u_step(pre: &KernelK, post: &KernelK, iommu_table: RwLockPageTableRoot, iova: VAddr, thread_ptr: RwLockThreadPtr)
+    requires
+        process_iommu_table_match(pre.prc_mp, pre.it_mp),
+        pre.it_mp.dom().contains(iommu_table),
+        *post == (KernelK { it_mp: post.it_mp, pg_arr: post.pg_arr, thr_mp: post.thr_mp, allc_4k_mp: post.allc_4k_mp, ..*pre }),
+        post.it_mp.unchanged_except(&pre.it_mp, iommu_table),
+        post.it_mp.spec_index(iommu_table).locking_thread() == pre.it_mp.spec_index(iommu_table).locking_thread(),
+        post.it_mp.spec_index(iommu_table).view().proc_ptr == pre.it_mp.spec_index(iommu_table).view().proc_ptr,
+        post.it_mp.spec_index(iommu_table).view().did == pre.it_mp.spec_index(iommu_table).view().did,
+        pre.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(iova),
+        pre.it_mp.spec_index(iommu_table).view().mapping_4k()[iova].present,
+        post.it_mp.spec_index(iommu_table).view().mapping_4k() == pre.it_mp.spec_index(iommu_table).view().mapping_4k().remove(iova),
+        post.it_mp.spec_index(iommu_table).view().mapping_2m() == pre.it_mp.spec_index(iommu_table).view().mapping_2m(),
+        post.it_mp.spec_index(iommu_table).view().mapping_1g() == pre.it_mp.spec_index(iommu_table).view().mapping_1g(),
+        !pre.prc_mp.spec_index(pre.it_mp.spec_index(iommu_table).view().proc_ptr).view().zombie,
+        post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr),
+        post.thr_mp.spec_index(thread_ptr).locking_thread() == pre.thr_mp.spec_index(thread_ptr).locking_thread(),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(pre, &KernelK { it_mp: pre.it_mp, ..*post }),
+        kernel_container_nonlock_fields_and_quotas_unchanged(pre, post),
+    ensures
+        ({
+            let before = kernel_k_to_kernel_u(*pre);
+            let process = pre.it_mp.spec_index(iommu_table).view().proc_ptr;
+            &&& before.process_map.dom().contains(process)
+            &&& before.process_map[process].iommu_table is Some
+            &&& before.process_map[process].iommu_table->Some_0.mapping_4k.dom().contains(iova)
+            &&& kernel_k_to_kernel_u(*post) == (KernelU {
+                process_map: before.process_map.insert(process, ProcessU {
+                    iommu_table: Some(PageTableU { mapping_4k: before.process_map[process].iommu_table->Some_0.mapping_4k.remove(iova), ..before.process_map[process].iommu_table->Some_0 }),
+                    ..before.process_map[process]
+                }),
+                ..before
+            })
+        }),
+        kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
+        kernel_k_to_nonlock_kernel_u(*pre) != kernel_k_to_nonlock_kernel_u(*post),
+{
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_iommu_table_match);
+    let before = kernel_k_to_kernel_u(*pre);
+    let after = kernel_k_to_kernel_u(*post);
+    let process = pre.it_mp.spec_index(iommu_table).view().proc_ptr;
+    kernel_process_projection_at(pre, process); kernel_process_projection_at(post, process);
+    assert_maps_equal!(after.process_map[process].iommu_table->Some_0.mapping_4k, before.process_map[process].iommu_table->Some_0.mapping_4k.remove(iova), a => {});
+    assert_maps_equal!(after.process_map, before.process_map.insert(process, ProcessU {
+        iommu_table: Some(PageTableU { mapping_4k: before.process_map[process].iommu_table->Some_0.mapping_4k.remove(iova), ..before.process_map[process].iommu_table->Some_0 }),
+        ..before.process_map[process]
+    }), p => { if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); } });
+    assert_maps_equal!(after.thread_map, before.thread_map, t => {
+        if pre.thr_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thr_mp.dom().contains(t) { kernel_thread_projection_at(post, t); }
+        reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
+    });
+    kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
+    assert_maps_equal!(after.container_map, before.container_map, c => {
+        if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); kernel_container_projection_at(post, c); } reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
+    });
+    assert(after.process_map[process].iommu_table->Some_0.mapping_4k.dom().contains(iova) != before.process_map[process].iommu_table->Some_0.mapping_4k.dom().contains(iova)
+        && kernel_k_to_nonlock_kernel_u(*pre).process_map[process].iommu_table->Some_0.mapping_4k.dom().contains(iova)
+        != kernel_k_to_nonlock_kernel_u(*post).process_map[process].iommu_table->Some_0.mapping_4k.dom().contains(iova)) by { kernel_process_nonlock_projection_at(pre, process); kernel_process_nonlock_projection_at(post, process); };
+}
+
 /// Publishing one present 4K entry at an unmapped IOVA of an IOMMU table, together with page bookkeeping, inserts that
 /// entry into the owning process's user IOMMU mapping and changes nothing else in the complete projection.
 pub proof fn kernel_iommu_table_4k_mapping_added_implies_u_step(pre: &KernelK, post: &KernelK, iommu_table: RwLockPageTableRoot, iova: VAddr, entry: MapEntry)
@@ -37,6 +125,7 @@ pub proof fn kernel_iommu_table_4k_mapping_added_implies_u_step(pre: &KernelK, p
         post.it_mp.spec_index(iommu_table).view().mapping_4k() == pre.it_mp.spec_index(iommu_table).view().mapping_4k().insert(iova, entry),
         post.it_mp.spec_index(iommu_table).view().mapping_2m() == pre.it_mp.spec_index(iommu_table).view().mapping_2m(),
         post.it_mp.spec_index(iommu_table).view().mapping_1g() == pre.it_mp.spec_index(iommu_table).view().mapping_1g(),
+        post.it_mp.spec_index(iommu_table).view().did == pre.it_mp.spec_index(iommu_table).view().did,
         !pre.prc_mp.spec_index(pre.it_mp.spec_index(iommu_table).view().proc_ptr).view().zombie,
     ensures
         ({
@@ -278,6 +367,7 @@ pub proof fn kernel_thread_quota_4k_progress_and_iommu_table_structure_changed_i
         post.it_mp.spec_index(iommu_table_ptr).view().mapping_4k() == pre.it_mp.spec_index(iommu_table_ptr).view().mapping_4k(),
         post.it_mp.spec_index(iommu_table_ptr).view().mapping_2m() == pre.it_mp.spec_index(iommu_table_ptr).view().mapping_2m(),
         post.it_mp.spec_index(iommu_table_ptr).view().mapping_1g() == pre.it_mp.spec_index(iommu_table_ptr).view().mapping_1g(),
+        post.it_mp.spec_index(iommu_table_ptr).view().did == pre.it_mp.spec_index(iommu_table_ptr).view().did,
     ensures
         ({
             let pre_u = kernel_k_to_kernel_u(*pre);

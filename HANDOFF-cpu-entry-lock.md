@@ -1,6 +1,6 @@
 # 实施计划 — 具体锁序 + 动态容器 + 锚点 DID + Cpu 内含 SyscallPerm
 
-状态：**已批准**；Batch 1 已完成；Batch 2 已实施并完整验证（workspace #34945 3189 / 0、NI #34944 266 / 0、单体 #34946 3189 / 0，详见 `HANDOFF.md`）；Batch 3–4 待实施。权威细节是用户在对话中批准的实施计划；本文件只记录交接所需的结构与规则，做完删除。
+状态：**已批准**；Batch 1 已完成；Batch 2 已实施并完整验证（workspace #34945 3189 / 0、NI #34944 266 / 0、单体 #34946 3189 / 0，详见 `HANDOFF.md`）；Batch 3 为部分完成检查点（workspace / NI 仍红，见 `HANDOFF-anchor-did.md`）；Batch 4 未开始。权威细节是用户在对话中批准的实施计划；本文件只记录交接所需的结构与规则，做完删除。
 
 - 取代：原"独立 CpuEntry 入口锁（IPI 模型）"方案已放弃——不新增 `CpuEntry` 对象、第 25 个锁族、`IpiPerm`、`mint/collect_syscall_perm` 或 ENTRY_* major。
 - 被放弃方案的 step 0/1 实现保存在 `/local/home/xiangdc/veriflat-parked/cpu-entry-step01.patch`（原 `stash@{0}` "parked: cpu-entry step 0/1 (ws #34657 3181/0, NI #34658 257/0)"，Batch 1 推送后 drop）。只作参考，不要 apply。
@@ -9,7 +9,7 @@
 ## 四个批次（顺序固定，每批工作区 + NI + 单体全绿后再进下一批）
 1. **Batch 1（已完成）**：mmap 在 read miss → fill 之间保留 cpu/T 写锁（`Mmap4kHold` / `Mmap4kRelease` U/NI 标签与两条 trace spec），外加证明清理。见 `HANDOFF.md`。
 2. **Batch 2（已实施，完整验证通过）— 具体锁序 + 动态容器**：OwnerSource/LockControl 规则、删除 owner 通配、`ErrorContainerLockOrderConflict`。
-3. **Batch 3 — 锚点 DID**：按用户批准的方案实施；仓库内尚无细节记录，开工前与用户核对语义。
+3. **Batch 3 — 锚点 DID（部分完成检查点）**：已实施部分、红项与剩余工作见 `HANDOFF-anchor-did.md`。
 4. **Batch 4 — SyscallPerm 放进 Cpu + IPI / kill 状态收尾**：`Cpu.syscall_perm`、入口包裹、删 offline kick、保留 online wake、删 CPU kill 状态、boot IF/evicted 规则。
 
 ## Batch 2：具体锁序 + 动态容器（已实施，完整验证通过）
@@ -29,10 +29,12 @@
   Hold + went-off；决策结果与 flush 标签都取边界后的具体状态。
 
 ## Batch 3：锚点 DID
-- 待实施。语义以用户批准的计划为准；本文件不补写未记录的细节。
+- 部分完成检查点，基线 `2011fb98c04becad78fc2ee4db8705c6b1f6e136`。workspace #35088 3203 / 6、NI #35087 259 / 3，无单体。
+  boot `cargo +1.98.1 check -p kernel` 通过（运行时豁免，未运行）。
+  完整状态、新增 / 变更 TCB 边界、已知证明纪律债、文件归属与下一步命令见 `HANDOFF-anchor-did.md`；语义以用户批准的计划为准。
 
 ## Batch 4：SyscallPerm 放进 Cpu + IPI / kill 状态
-- 待实施。
+- 未开始；须 Batch 3 workspace + NI + 单体全绿后再开工。
 - `Cpu` 对象新增 `syscall_perm: Option<Tracked<SyscallPerm>>`（随 CPU 锁保护，不新增锁族、不新增锁）；
   `LocalContext` 新增 tracked 槽存放本 CPU 取出的 `SyscallPerm`。
 - `u_sys_enter(cpu_id)` / `u_sys_exit(cpu_id)`：`external_body` TCB 原语，把 `SyscallPerm` 在 `Cpu.syscall_perm` 与 lctx 槽之间移动；

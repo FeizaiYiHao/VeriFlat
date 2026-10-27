@@ -313,7 +313,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         assert(post.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
     }
 
-    /// EOF closure of `remove_l4_entry`: `va_addr_valid` and `pcid_wf`.
+    /// EOF closure of `remove_l4_entry`: `va_addr_valid`, `pcid_wf`, and `did_wf`.
     proof fn remove_l4_entry_eof_va_addr_valid_and_pcid_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3_p: PageMapPtr)
         requires
             pre.wf(),
@@ -326,6 +326,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         ensures
             post.va_addr_valid(),
             post.pcid_wf(),
+            post.did_wf(),
     {
         reveal(PageTable::remove_l4_entry_eof_transition_framing);
     }

@@ -1,6 +1,6 @@
 .verus-log/*
 !.verus-log/verify-count
-.verus-solver-log/*
+**/.verus-solver-log/
 
 /target
 __pycache__/

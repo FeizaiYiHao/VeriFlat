@@ -245,6 +245,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& post.prc_mp.spec_index(process_page).view_rodata().view().pagetable == pagetable_page
     &&& post.prc_mp.spec_index(process_page).view_rodata().view().cr3 == l4_page
     &&& post.prc_mp.spec_index(process_page).view_rodata().view().iommu_cr3 is None
+    &&& post.prc_mp.spec_index(process_page).view_rodata().view().iommu_table_ptr is None
     &&& post.prc_mp.spec_index(process_page).view_rodata().view().pcid == root_pcid
     &&& post.prc_mp.spec_index(process_page).view_ghost().uppertree_seq.view().len() == 0
     &&& post.prc_mp.spec_index(process_page).view_ghost().subtree_set.view().is_empty()

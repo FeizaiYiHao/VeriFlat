@@ -127,7 +127,7 @@ pub open spec fn new_process_publish_step(old_u: KernelU, new_u: KernelU, cpu_id
     let progress = thread.syscall_progress->Some_0;
     let child = new_u.process_map[parent].children.last();
     let ancestors = old_u.process_map[parent].uppertree_seq.push(parent);
-    let empty_table = PageTableU { lock_state: LockStateU::WriteLocked, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty() };
+    let empty_table = PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty() };
     let cost: usize = if progress->NewProcess_0.with_iommu { 5 } else { 3 };
     let range = progress->NewProcess_0.range;
     let origin = Share4kOrigin::NewProcess(NewProcessProgress { child: Some(child), ..progress->NewProcess_0 });

@@ -230,7 +230,7 @@ pub fn create_process_from_staged_pages(
     let process_value = Process::new_fresh(process_page_ptr, pcid, pagetable_page_ptr, krnl.ctn_mp.borrow_rodata(container_ptr).borrow().depth, parent_depth + 1);
     let process_rodata = ReadOnlyNode::new(ProcessRO {
         owning_container: container_ptr, container_depth: krnl.ctn_mp.borrow_rodata(container_ptr).borrow().depth, parent: Some(parent_ptr), depth: parent_depth + 1,
-        pagetable: pagetable_page_ptr, cr3, iommu_cr3: None, pcid,
+        pagetable: pagetable_page_ptr, cr3, iommu_cr3: None, iommu_table_ptr: None, pcid,
     }, Ghost(process_page_ptr));
     let process_ghost = ProcessGhost { uppertree_seq: Ghost(ancestors), subtree_set: Ghost(Set::empty()), owned_pci_functions: Ghost(Set::empty()) };
     proof { assert(parent_ancestors.len() == parent_depth && ancestors.len() == process_rodata.view().depth) by { process_perms_wf_at(krnl.prc_mp, parent_ptr); }; }

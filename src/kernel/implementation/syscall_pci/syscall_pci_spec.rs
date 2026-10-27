@@ -34,7 +34,8 @@ pub open spec fn pci_attach_dma_step_pre(old_u: KernelU, cpu_id: CpuId, bus: usi
     &&& !old_u.iommu_root_table.attached[bus as int][device as int][function as int]
 }
 
-/// DMA translation of `(bus, device, function)` is attached.
+/// DMA translation of `(bus, device, function)` is attached; the caller's IOMMU table keeps its DID or, on first
+/// attach, adopts the function's candidate DID. The IOTLB and context cache are unchanged.
 pub open spec fn pci_attach_dma_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, bus: usize, device: usize, function: usize) -> bool {
     kernel_u_pci_attach_changed(old_u, new_u, cpu_id, bus, device, function)
 }

@@ -3,16 +3,18 @@ use crate::*;
 
 verus! {
 /// Dequeues and schedules the endpoint waiter with `peer_result`; when `transferred`, also hands the PCI function
-/// `bdf` from the sender to the receiver process, detaches it, and flushes its IOTLB domain.
+/// `bdf` from the sender to the receiver process. An attached `bdf` is detached under the write lock of the sender's
+/// IOMMU table `iommu_table` (read from the sender's read-only mirror), which re-anchors at `anchor` or loses its DID
+/// when `bdf` was its anchor, and the old DID domain is invalidated; an absent `bdf` only changes owner.
 #[verifier::opaque]
 pub open spec fn ipc_pci_rendezvous_eof_transition_framing(
     pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr,
     endpoint_ptr: RwLockEndpointPtr, peer_scheduler_ptr: RwLockSchedulerPtr, wake_cpu: CpuId,
     sender_proc: RwLockProcessPtr, receiver_proc: RwLockProcessPtr, bdf: PciBdf, transferred: bool, peer_result: RetValueType, thread_id: LockThreadId,
+    iommu_table: Option<RwLockPageTableRoot>, anchor: Option<PciBdf>,
 ) -> bool {
     &&& post.pt_mp == pre.pt_mp
     &&& post.pt_lower == pre.pt_lower
-    &&& post.it_mp == pre.it_mp
     &&& post.pg_arr == pre.pg_arr
     &&& post.ctn_mp == pre.ctn_mp
     &&& post.cpu_arr == pre.cpu_arr
@@ -27,18 +29,65 @@ pub open spec fn ipc_pci_rendezvous_eof_transition_framing(
     &&& post.cpu_tlb == pre.cpu_tlb
     &&& post.rt_ctn == pre.rt_ctn
     &&& post.dflt_pt == pre.dflt_pt
-    &&& !transferred ==> post.irt.view() == pre.irt.view() && post.iommu_tlb.view() == pre.iommu_tlb.view() && post.prc_mp == pre.prc_mp
-    &&& transferred ==> {
-        &&& post.irt.view().owners() == seq3_update(pre.irt.view().owners(), bdf.0 as int, bdf.1 as int, bdf.2 as int, receiver_proc)
-        &&& post.irt.view().iommu_roots() == seq3_update(pre.irt.view().iommu_roots(), bdf.0 as int, bdf.1 as int, bdf.2 as int, None)
-        &&& forall|bus: usize, device: usize, function: usize| #![trigger post.irt.view().spec_index_owner(bus, device, function)] #![trigger post.irt.view().spec_index_iommu_root(bus, device, function)]
-            pci_bdf_valid(bus, device, function) ==> {
-                &&& post.irt.view().spec_index_owner(bus, device, function) == if (bus, device, function) == bdf { receiver_proc } else { pre.irt.view().spec_index_owner(bus, device, function) }
-                &&& post.irt.view().spec_index_iommu_root(bus, device, function) == if (bus, device, function) == bdf { None } else { pre.irt.view().spec_index_iommu_root(bus, device, function) }
-            }
-        &&& post.iommu_tlb.view() == pre.iommu_tlb.view().insert(pci_bdf_did(bdf.0, bdf.1, bdf.2), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
+    &&& !transferred ==> post.irt.view() == pre.irt.view() && post.iommu_tlb == pre.iommu_tlb && post.prc_mp == pre.prc_mp
+    &&& iommu_table == if transferred && pre.irt.view().spec_index_iommu_root(bdf.0, bdf.1, bdf.2) is Some {
+        pre.prc_mp.spec_index(sender_proc).view_rodata().view().iommu_table_ptr
+    } else { None }
+    &&& iommu_table is None ==> post.it_mp == pre.it_mp && anchor is None
+    &&& transferred ==> post.irt.view().owners() == seq3_update(pre.irt.view().owners(), bdf.0 as int, bdf.1 as int, bdf.2 as int, receiver_proc)
+    &&& transferred && iommu_table is None ==> {
+        &&& post.iommu_tlb == pre.iommu_tlb
+        &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_owner(b, d, f)] #![trigger post.irt.view().spec_index_iommu_root(b, d, f)]
+            #![trigger post.irt.view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
+            &&& post.irt.view().spec_index_owner(b, d, f) == if (b, d, f) == bdf { receiver_proc } else { pre.irt.view().spec_index_owner(b, d, f) }
+            &&& post.irt.view().spec_index_iommu_root(b, d, f) == pre.irt.view().spec_index_iommu_root(b, d, f)
+            &&& post.irt.view().spec_index_iommu_did(b, d, f) == pre.irt.view().spec_index_iommu_did(b, d, f)
+        }
     }
-    &&& post.iommu_tlb.context_cache() == if transferred { pre.iommu_tlb.context_cache().remove(pci_bdf_did(bdf.0, bdf.1, bdf.2)) } else { pre.iommu_tlb.context_cache() }
+    &&& iommu_table matches Some(t) ==> {
+        let table = pre.it_mp.spec_index(t);
+        let old_did = pre.irt.view().spec_index_iommu_did(bdf.0, bdf.1, bdf.2);
+        let anchored = old_did == Some(pci_bdf_did(bdf.0, bdf.1, bdf.2));
+        &&& transferred
+        &&& pre.it_mp.dom().contains(t)
+        &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_owner(b, d, f)] #![trigger post.irt.view().spec_index_iommu_root(b, d, f)]
+            #![trigger post.irt.view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {
+            let moved = anchor is Some && (b, d, f) != bdf && pre.irt.view().spec_index_owner(b, d, f) == table.view().proc_ptr && pre.irt.view().spec_index_iommu_did(b, d, f) == old_did;
+            &&& post.irt.view().spec_index_owner(b, d, f) == if (b, d, f) == bdf { receiver_proc } else { pre.irt.view().spec_index_owner(b, d, f) }
+            &&& post.irt.view().spec_index_iommu_root(b, d, f) == if (b, d, f) == bdf { None } else if moved { Some(table.view().cr3) } else { pre.irt.view().spec_index_iommu_root(b, d, f) }
+            &&& post.irt.view().spec_index_iommu_did(b, d, f) == if (b, d, f) == bdf { None }
+                else if moved { Some(pci_bdf_did(anchor.unwrap().0, anchor.unwrap().1, anchor.unwrap().2)) } else { pre.irt.view().spec_index_iommu_did(b, d, f) }
+        }
+        &&& anchor matches Some(a) ==> {
+            &&& anchored
+            &&& pci_bdf_valid(a.0, a.1, a.2)
+            &&& a != bdf
+            &&& pre.irt.view().spec_index_owner(a.0, a.1, a.2) == table.view().proc_ptr
+            &&& pre.irt.view().spec_index_iommu_did(a.0, a.1, a.2) == old_did
+            &&& forall|b: usize, d: usize, f: usize| #![trigger pre.irt.view().spec_index_iommu_did(b, d, f)]
+                pci_bdf_valid(b, d, f) ==> (pre.irt.view().spec_index_iommu_did(b, d, f) is Some) == (pre.irt.view().spec_index_iommu_root(b, d, f) is Some)
+        }
+        &&& anchored ==> forall|b: usize, d: usize, f: usize| #![trigger pre.irt.view().owners()[b as int][d as int][f as int]] #![trigger pre.irt.view().spec_index_iommu_did(b, d, f)]
+            pci_bdf_valid(b, d, f) && (anchor is None || pci_bdf_lt((b, d, f), anchor.unwrap())) && (b, d, f) != bdf && pre.irt.view().owners()[b as int][d as int][f as int] == table.view().proc_ptr
+                && pre.irt.view().spec_index_iommu_root(b, d, f) is Some ==> pre.irt.view().spec_index_iommu_did(b, d, f) != old_did
+        &&& post.it_mp.unchanged_except(&pre.it_mp, t)
+        &&& post.it_mp.spec_index(t).being_killed() == table.being_killed()
+        &&& post.it_mp.spec_index(t).locking_thread() is Write
+        &&& post.it_mp.spec_index(t).locking_thread()->Write_thread_id == thread_id
+        &&& post.it_mp.spec_index(t).view() == (PageTable { did: post.it_mp.spec_index(t).view().did, ..table.view() })
+        &&& post.it_mp.spec_index(t).view().page_closure() == table.view().page_closure()
+        &&& post.it_mp.spec_index(t).view().mapping_4k() == table.view().mapping_4k()
+        &&& post.it_mp.spec_index(t).view().mapping_2m() == table.view().mapping_2m()
+        &&& post.it_mp.spec_index(t).view().mapping_1g() == table.view().mapping_1g()
+        &&& post.it_mp.spec_index(t).view().did == if anchor is Some { Some(pci_bdf_did(anchor.unwrap().0, anchor.unwrap().1, anchor.unwrap().2)) }
+            else if anchored { None } else { table.view().did }
+        &&& old_did matches Some(did) ==> {
+            &&& post.iommu_tlb.view() == pre.iommu_tlb.view().insert(did, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
+            &&& forall|x: VtdDomainId| #![trigger post.iommu_tlb.spec_index(x)] x != did ==> post.iommu_tlb.spec_index(x) == pre.iommu_tlb.spec_index(x)
+            &&& post.iommu_tlb.context_cache() == Map::new(pre.iommu_tlb.context_cache().dom().filter(|x: PciBdf| pre.iommu_tlb.context_cache()[x].1 != did), |x: PciBdf| pre.iommu_tlb.context_cache()[x])
+        }
+        &&& old_did is None ==> post.iommu_tlb.view() == pre.iommu_tlb.view() && post.iommu_tlb.context_cache() == pre.iommu_tlb.context_cache()
+    }
     &&& post.prc_mp.dom() == pre.prc_mp.dom()
     &&& forall|key: RwLockProcessPtr| #![trigger pre.prc_mp.spec_index(key)] #![trigger post.prc_mp.spec_index(key)] pre.prc_mp.dom().contains(key) ==> {
         let before = pre.prc_mp.spec_index(key);

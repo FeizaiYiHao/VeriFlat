@@ -2112,8 +2112,9 @@ impl KernelSteps {
         self.end_kernel_step_raw(krnl, lctx);
     }
 
-    /// Records the attach step of `syscall_pci_attach_dma`: every lock is released again and only the
-    /// context entry of `(bus, device, function)` now points at `root`.
+    /// Records the attach step of `syscall_pci_attach_dma`: every lock is released again, only the context entry of
+    /// `(bus, device, function)` now points at `root`, and the caller's IOMMU table without a DID adopts the
+    /// function's candidate DID.
     pub proof fn end_kernel_step_pci_attach(
         tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, process_ptr: RwLockProcessPtr, bus: usize, device: usize, function: usize,
         root: PageTableRoot,
@@ -2133,7 +2134,22 @@ impl KernelSteps {
             old(self).snapshot_k().prc_mp.spec_index(process_ptr).view_ghost().owned_pci_functions.view().contains((bus, device, function)),
             pci_bdf_valid(bus, device, function),
             old(self).snapshot_k().irt.view().spec_index_iommu_root(bus, device, function) is None,
-            kernel_cpu_process_thread_nonlock_fields_unchanged(&old(self).snapshot_k(), krnl),
+            kernel_pagetable_nonlock_fields_unchanged(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), krnl.pt_mp, krnl.pt_lower.view()),
+            kernel_cpu_nonlock_fields_unchanged(old(self).snapshot_k().cpu_arr, krnl.cpu_arr),
+            kernel_process_nonlock_fields_unchanged(old(self).snapshot_k().prc_mp, krnl.prc_mp),
+            kernel_thread_nonlock_fields_unchanged(old(self).snapshot_k().thr_mp, krnl.thr_mp),
+            krnl.dflt_pt == old(self).snapshot_k().dflt_pt,
+            krnl.it_mp.dom() == old(self).snapshot_k().it_mp.dom(),
+            forall|p: RwLockPageTableRoot| #![trigger krnl.it_mp.spec_index(p)]
+                old(self).snapshot_k().it_mp.dom().contains(p) ==> {
+                    let table = old(self).snapshot_k().prc_mp.spec_index(process_ptr).view().iommu_table->Some_0;
+                    let before = old(self).snapshot_k().it_mp.spec_index(p).view();
+                    let after = krnl.it_mp.spec_index(p).view();
+                    &&& after.did == if p != table { before.did } else if before.did is Some { before.did } else { Some(pci_bdf_did(bus, device, function)) }
+                    &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
+                    &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
+                    &&& after.mapping_1g().filter_keys(|va: VAddr| after.mapping_1g().spec_index(va).present) == before.mapping_1g().filter_keys(|va: VAddr| before.mapping_1g().spec_index(va).present)
+                },
             kernel_endpoint_nonlock_fields_unchanged(old(self).snapshot_k().ep_mp, krnl.ep_mp),
             krnl.irt.view().owners() == old(self).snapshot_k().irt.view().owners(),
             krnl.irt.view().iommu_roots() == seq3_update(old(self).snapshot_k().irt.view().iommu_roots(), bus as int, device as int, function as int, Some(root)),
@@ -2209,15 +2225,21 @@ impl KernelSteps {
         reveal(kernel_u_pci_attach_changed);
         use_type_invariant(&*self);
         let snap = self.snapshot_k();
-        let mid = KernelK { irt: krnl.irt, ..snap };
-        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&mid, krnl)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
+        let mid = KernelK { irt: krnl.irt, it_mp: krnl.it_mp, ..snap };
+        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&mid, krnl)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged); };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&mid, krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
         kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&mid, krnl);
         kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(&mid, krnl);
         assert({
             let pre_u = kernel_k_to_kernel_u(snap);
             let attached = seq3_update(pre_u.iommu_root_table.attached, bus as int, device as int, function as int, true);
-            &&& kernel_k_to_kernel_u(mid) == (KernelU { iommu_root_table: IommuRootTableU { attached, ..pre_u.iommu_root_table }, ..pre_u })
+            let process = pre_u.process_map[process_ptr];
+            let table = process.iommu_table->Some_0;
+            let did = match table.did { Some(did) => did, None => pci_bdf_did(bus, device, function) };
+            &&& kernel_k_to_kernel_u(mid) == (KernelU {
+                process_map: pre_u.process_map.insert(process_ptr, ProcessU { iommu_table: Some(PageTableU { did: Some(did), ..table }), ..process }),
+                iommu_root_table: IommuRootTableU { attached, ..pre_u.iommu_root_table }, ..pre_u
+            })
             &&& pre_u.cpu_array[cpu_id as int].lock_state is Unlocked
             &&& pre_u.cpu_array[cpu_id as int].state is Running
             &&& pre_u.cpu_array[cpu_id as int].current_process == Some(process_ptr)
@@ -2240,14 +2262,26 @@ impl KernelSteps {
             });
             assert_seqs_equal!(mid_u.cpu_array == pre_u.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(&snap, i as usize); kernel_cpu_projection_at(&mid, i as usize); } });
             assert_maps_equal!(mid_u.container_map, pre_u.container_map, c => { if snap.ctn_mp.dom().contains(c) { kernel_container_projection_at(&snap, c); kernel_container_projection_at(&mid, c); } });
-            assert_maps_equal!(mid_u.process_map, pre_u.process_map, p => { if snap.prc_mp.dom().contains(p) { kernel_process_projection_at(&snap, p); kernel_process_projection_at(&mid, p); } });
+            let process = pre_u.process_map[process_ptr];
+            let table = process.iommu_table->Some_0;
+            let did = match table.did { Some(did) => did, None => pci_bdf_did(bus, device, function) };
+            reveal(kernel_process_nonlock_fields_unchanged); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, process_ptr);
+            assert_maps_equal!(mid_u.process_map, pre_u.process_map.insert(process_ptr, ProcessU { iommu_table: Some(PageTableU { did: Some(did), ..table }), ..process }), p => {
+                if snap.prc_mp.dom().contains(p) { kernel_process_projection_at(&snap, p); kernel_process_projection_at(&mid, p); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, p); }
+            });
             assert_maps_equal!(mid_u.thread_map, pre_u.thread_map, t => { if snap.thr_mp.dom().contains(t) { kernel_thread_projection_at(&snap, t); kernel_thread_projection_at(&mid, t); } });
             assert_maps_equal!(mid_u.endpoint_map, pre_u.endpoint_map, e => { if snap.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(&snap, e); kernel_endpoint_projection_at(&mid, e); } });
         };
         assert({
             let pre_u = kernel_k_to_nonlock_kernel_u(snap);
             let attached = seq3_update(pre_u.iommu_root_table.attached, bus as int, device as int, function as int, true);
-            &&& kernel_k_to_nonlock_kernel_u(mid) == (KernelU { iommu_root_table: IommuRootTableU { attached, ..pre_u.iommu_root_table }, ..pre_u })
+            let process = pre_u.process_map[process_ptr];
+            let table = process.iommu_table->Some_0;
+            let did = match table.did { Some(did) => did, None => pci_bdf_did(bus, device, function) };
+            &&& kernel_k_to_nonlock_kernel_u(mid) == (KernelU {
+                process_map: pre_u.process_map.insert(process_ptr, ProcessU { iommu_table: Some(PageTableU { did: Some(did), ..table }), ..process }),
+                iommu_root_table: IommuRootTableU { attached, ..pre_u.iommu_root_table }, ..pre_u
+            })
             &&& pre_u.cpu_array[cpu_id as int].lock_state is Unlocked
             &&& pre_u.cpu_array[cpu_id as int].state is Running
             &&& pre_u.cpu_array[cpu_id as int].current_process == Some(process_ptr)
@@ -2270,7 +2304,13 @@ impl KernelSteps {
             });
             assert_seqs_equal!(mid_u.cpu_array == pre_u.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_nonlock_projection_at(&snap, i as usize); kernel_cpu_nonlock_projection_at(&mid, i as usize); } });
             assert_maps_equal!(mid_u.container_map, pre_u.container_map, c => { if snap.ctn_mp.dom().contains(c) { kernel_container_nonlock_projection_at(&snap, c); kernel_container_nonlock_projection_at(&mid, c); } });
-            assert_maps_equal!(mid_u.process_map, pre_u.process_map, p => { if snap.prc_mp.dom().contains(p) { kernel_process_nonlock_projection_at(&snap, p); kernel_process_nonlock_projection_at(&mid, p); } });
+            let process = pre_u.process_map[process_ptr];
+            let table = process.iommu_table->Some_0;
+            let did = match table.did { Some(did) => did, None => pci_bdf_did(bus, device, function) };
+            reveal(kernel_process_nonlock_fields_unchanged); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, process_ptr);
+            assert_maps_equal!(mid_u.process_map, pre_u.process_map.insert(process_ptr, ProcessU { iommu_table: Some(PageTableU { did: Some(did), ..table }), ..process }), p => {
+                if snap.prc_mp.dom().contains(p) { kernel_process_nonlock_projection_at(&snap, p); kernel_process_nonlock_projection_at(&mid, p); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, p); }
+            });
             assert_maps_equal!(mid_u.thread_map, pre_u.thread_map, t => { if snap.thr_mp.dom().contains(t) { kernel_thread_nonlock_projection_at(&snap, t); kernel_thread_nonlock_projection_at(&mid, t); } });
             assert_maps_equal!(mid_u.endpoint_map, pre_u.endpoint_map, e => { if snap.ep_mp.dom().contains(e) { kernel_endpoint_nonlock_projection_at(&snap, e); kernel_endpoint_nonlock_projection_at(&mid, e); } });
         };

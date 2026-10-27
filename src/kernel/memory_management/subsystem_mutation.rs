@@ -545,6 +545,7 @@ pub fn pagetable_map_create_entry_l4(
         final(pagetable_map).spec_index(pagetable_ptr).view().kernel_entries == old(pagetable_map).spec_index(pagetable_ptr).view().kernel_entries,
         final(pagetable_map).spec_index(pagetable_ptr).view().cr3 == old(pagetable_map).spec_index(pagetable_ptr).view().cr3,
         final(pagetable_map).spec_index(pagetable_ptr).view().pcid == old(pagetable_map).spec_index(pagetable_ptr).view().pcid,
+        final(pagetable_map).spec_index(pagetable_ptr).view().did == old(pagetable_map).spec_index(pagetable_ptr).view().did,
         final(pagetable_map).spec_index(pagetable_ptr).view().proc_ptr == old(pagetable_map).spec_index(pagetable_ptr).view().proc_ptr,
         pagetable_c(*final(pagetable_map), *pt_lower, pagetable_ptr).spec_resolve_mapping_l4(indices.0) is Some,
         pagetable_c(*final(pagetable_map), *pt_lower, pagetable_ptr).spec_resolve_mapping_l4(indices.0)->0.addr == page_map_ptr,
@@ -653,6 +654,7 @@ pub fn pagetable_map_create_entry_l3(
         final(pagetable_map).spec_index(pagetable_ptr).view().kernel_entries == old(pagetable_map).spec_index(pagetable_ptr).view().kernel_entries,
         final(pagetable_map).spec_index(pagetable_ptr).view().cr3 == old(pagetable_map).spec_index(pagetable_ptr).view().cr3,
         final(pagetable_map).spec_index(pagetable_ptr).view().pcid == old(pagetable_map).spec_index(pagetable_ptr).view().pcid,
+        final(pagetable_map).spec_index(pagetable_ptr).view().did == old(pagetable_map).spec_index(pagetable_ptr).view().did,
         final(pagetable_map).spec_index(pagetable_ptr).view().proc_ptr == old(pagetable_map).spec_index(pagetable_ptr).view().proc_ptr,
         pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).spec_resolve_mapping_l4(indices.0) == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l4(indices.0),
         pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).spec_resolve_mapping_l3(indices.0, indices.1) is Some,
@@ -1143,12 +1145,51 @@ pub fn iommu_table_map_clear_4k_present(iommu_table_map: &mut IommuTableLockedMa
         final(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_entries == old(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_entries,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().cr3 == old(iommu_table_map).spec_index(iommu_table_ptr).view().cr3,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().pcid == old(iommu_table_map).spec_index(iommu_table_ptr).view().pcid,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().did == old(iommu_table_map).spec_index(iommu_table_ptr).view().did,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr == old(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr,
 {
     assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).inv()) by { iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
     let iommu_table = iommu_table_map.borrow_mut_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm));
     iommu_table.unmap_4k_page_user_view(indices.0, indices.1, indices.2, indices.3, target_l1_ptr, Tracked(&mut *lctx));
     proof { assert(iommu_table_perms_wf(*iommu_table_map)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }; }
+}
+
+/// Sets the VT-d domain ID of the write-held IOMMU table `iommu_table_ptr`; its mappings, topology, owner, and lock state are untouched.
+pub fn iommu_table_map_set_did(
+    iommu_table_map: &mut IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot, did: Option<VtdDomainId>, Tracked(lctx): Tracked<&LocalContext>,
+    Tracked(iommu_table_lock_perm): Tracked<&LockPerm>,
+)
+    requires
+        iommu_table_perms_wf(*old(iommu_table_map)),
+        old(iommu_table_map).dom().contains(iommu_table_ptr),
+        old(iommu_table_map).typed_lock_map_aligned(lctx.iommu_table_lock_map(), lctx.thread_id()),
+        typed_lock_map_contains_mode(lctx.iommu_table_lock_map(), iommu_table_ptr, TypedLockMode::Write),
+        iommu_table_lock_perm.state() is WriteLock,
+        iommu_table_lock_perm.thread_id() == lctx.thread_id(),
+        iommu_table_lock_perm.lock_id() == old(iommu_table_map).spec_index(iommu_table_ptr).locking_thread()->Write_lock_id,
+        did matches Some(d) ==> vtd_domain_id_valid(d),
+    ensures
+        iommu_table_perms_wf(*final(iommu_table_map)),
+        final(iommu_table_map).unchanged_except(old(iommu_table_map), iommu_table_ptr),
+        final(iommu_table_map).typed_lock_map_aligned(lctx.iommu_table_lock_map(), lctx.thread_id()),
+        final(iommu_table_map).lock_id_by_key(iommu_table_ptr) == old(iommu_table_map).lock_id_by_key(iommu_table_ptr),
+        final(iommu_table_map).spec_index(iommu_table_ptr).locking_thread() == old(iommu_table_map).spec_index(iommu_table_ptr).locking_thread(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).being_killed() == old(iommu_table_map).spec_index(iommu_table_ptr).being_killed(),
+        final(iommu_table_map).spec_index(iommu_table_ptr).view() == (PageTable { did, ..old(iommu_table_map).spec_index(iommu_table_ptr).view() }),
+{
+    assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).inv()) by { iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
+    let iommu_table = iommu_table_map.borrow_mut_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(lctx), Tracked(iommu_table_lock_perm));
+    iommu_table.did = did;
+    proof {
+        assert(iommu_table_perms_wf(*iommu_table_map)) by {
+            reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked);
+            reveal(PageTable::wf_l4); reveal(PageTable::wf_l3); reveal(PageTable::wf_l2); reveal(PageTable::wf_l1);
+            reveal(PageTable::disjoint_l4); reveal(PageTable::disjoint_l3); reveal(PageTable::disjoint_l2);
+            reveal(PageTable::wf_mapping_4k); reveal(PageTable::wf_mapping_2m); reveal(PageTable::wf_mapping_1g);
+            reveal(PageTable::user_only); reveal(PageTable::rwx_upper_level_entries); reveal(PageTable::table_pages_wf);
+            reveal(PageTable::tables_reachable_wf); reveal(PageTable::kernel_entries_wf);
+        };
+    }
 }
 
 pub fn iommu_table_map_unmap_4k_kernel(iommu_table_map: &mut IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index, L1Index), target_l1_ptr: PageMapPtr, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(iommu_table_lock_perm): Tracked<&LockPerm>)
@@ -1168,7 +1209,7 @@ pub fn iommu_table_map_unmap_4k_kernel(iommu_table_map: &mut IommuTableLockedMap
         old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some,
         old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == target_l1_ptr,
         old(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_4k().dom().contains(spec_index2va(indices)),
-        !old(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_4k().spec_index(spec_index2va(indices)).present,
+        !old(iommu_table_map).spec_index(iommu_table_ptr).view().mapping_4k().spec_index(spec_index2va(indices)).present || old(iommu_table_map).spec_index(iommu_table_ptr).view().did is None,
     ensures
         iommu_table_perms_wf(*final(iommu_table_map)),
         final(iommu_table_map).perms_wf(),
@@ -1191,6 +1232,7 @@ pub fn iommu_table_map_unmap_4k_kernel(iommu_table_map: &mut IommuTableLockedMap
         final(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_entries == old(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_entries,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().cr3 == old(iommu_table_map).spec_index(iommu_table_ptr).view().cr3,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().pcid == old(iommu_table_map).spec_index(iommu_table_ptr).view().pcid,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().did == old(iommu_table_map).spec_index(iommu_table_ptr).view().did,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr == old(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr,
 {
     assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).inv()) by { iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
@@ -1247,6 +1289,7 @@ pub fn iommu_table_map_insert_4k(
         final(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_entries == old(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_entries,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().cr3 == old(iommu_table_map).spec_index(iommu_table_ptr).view().cr3,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().pcid == old(iommu_table_map).spec_index(iommu_table_ptr).view().pcid,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().did == old(iommu_table_map).spec_index(iommu_table_ptr).view().did,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr == old(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr,
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
             #![trigger final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(l4i, l3i, l2i)]
@@ -1304,6 +1347,7 @@ pub fn iommu_table_map_create_entry_l4(
         final(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_entries == old(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_entries,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().cr3 == old(iommu_table_map).spec_index(iommu_table_ptr).view().cr3,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().pcid == old(iommu_table_map).spec_index(iommu_table_ptr).view().pcid,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().did == old(iommu_table_map).spec_index(iommu_table_ptr).view().did,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr == old(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(indices.0) is Some,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(indices.0)->0.addr == page_map_ptr,
@@ -1365,6 +1409,7 @@ pub fn iommu_table_map_create_entry_l3(
         final(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_entries == old(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_entries,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().cr3 == old(iommu_table_map).spec_index(iommu_table_ptr).view().cr3,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().pcid == old(iommu_table_map).spec_index(iommu_table_ptr).view().pcid,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().did == old(iommu_table_map).spec_index(iommu_table_ptr).view().did,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr == old(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(indices.0) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(indices.0),
         final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(indices.0, indices.1) is Some,
@@ -1427,6 +1472,7 @@ pub fn iommu_table_map_create_entry_l2(
         final(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_entries == old(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_entries,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().cr3 == old(iommu_table_map).spec_index(iommu_table_ptr).view().cr3,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().pcid == old(iommu_table_map).spec_index(iommu_table_ptr).view().pcid,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().did == old(iommu_table_map).spec_index(iommu_table_ptr).view().did,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr == old(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(indices.0) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(indices.0),
         final(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(indices.0, indices.1) == old(iommu_table_map).spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(indices.0, indices.1),
@@ -1495,6 +1541,7 @@ pub fn pagetable_map_remove_table_page(
         final(pagetable_map).spec_index(pagetable_ptr).view().kernel_entries == old(pagetable_map).spec_index(pagetable_ptr).view().kernel_entries,
         final(pagetable_map).spec_index(pagetable_ptr).view().cr3 == old(pagetable_map).spec_index(pagetable_ptr).view().cr3,
         final(pagetable_map).spec_index(pagetable_ptr).view().pcid == old(pagetable_map).spec_index(pagetable_ptr).view().pcid,
+        final(pagetable_map).spec_index(pagetable_ptr).view().did == old(pagetable_map).spec_index(pagetable_ptr).view().did,
         final(pagetable_map).spec_index(pagetable_ptr).view().proc_ptr == old(pagetable_map).spec_index(pagetable_ptr).view().proc_ptr,
         scan is L1 ==> pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_lock == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_lock,
         scan is L1 ==> pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).higher == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).higher,
@@ -1571,6 +1618,7 @@ pub fn iommu_table_map_remove_table_page(
         final(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_entries == old(iommu_table_map).spec_index(iommu_table_ptr).view().kernel_entries,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().cr3 == old(iommu_table_map).spec_index(iommu_table_ptr).view().cr3,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().pcid == old(iommu_table_map).spec_index(iommu_table_ptr).view().pcid,
+        final(iommu_table_map).spec_index(iommu_table_ptr).view().did == old(iommu_table_map).spec_index(iommu_table_ptr).view().did,
         final(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr == old(iommu_table_map).spec_index(iommu_table_ptr).view().proc_ptr,
         ret.view().is_init(),
         ret.view().addr() == scan.spec_table_page()->Some_0,

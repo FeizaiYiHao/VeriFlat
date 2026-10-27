@@ -4,10 +4,11 @@ use crate::*;
 use super::unmap_iommu_4k_remove_eof::*;
 
 verus! {
-/// Unmaps one hidden 4K leaf of a write-locked IOMMU table whose page keeps another mapping or is an I/O page; the page
-/// drops the IOMMU reverse entry and is not freed.
+/// Unmaps one 4K leaf of a write-locked IOMMU table whose page keeps another mapping or is an I/O page; the page drops the
+/// IOMMU reverse entry and is not freed. The leaf is hidden iff `!was_present`; a present leaf requires a table without a
+/// domain id, and its removal also drops `iova` from the table's user view.
 pub fn remove_iommu_4k_mapping_without_free(
-    krnl: &mut KernelK, iommu_table: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index, L1Index), page_ptr: PagePtr, l1_ptr: PageMapPtr,
+    krnl: &mut KernelK, iommu_table: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index, L1Index), page_ptr: PagePtr, l1_ptr: PageMapPtr, Ghost(was_present): Ghost<bool>,
     Tracked(lctx): Tracked<&mut LocalContext>, iommu_table_perm: Tracked<&LockPerm>, page_perm: Tracked<&LockPerm>,
 )
     requires
@@ -20,7 +21,8 @@ pub fn remove_iommu_4k_mapping_without_free(
         pei_valid(indices.2),
         pei_valid(indices.3),
         old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(spec_index2va(indices)),
-        !old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(spec_index2va(indices)).present,
+        old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(spec_index2va(indices)).present == was_present,
+        was_present ==> old(krnl).it_mp.spec_index(iommu_table).view().did is None,
         old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(spec_index2va(indices)).addr == page_ptr,
         old(krnl).it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some,
         old(krnl).it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == l1_ptr,
@@ -34,7 +36,7 @@ pub fn remove_iommu_4k_mapping_without_free(
         iommu_table_perm.view().state() is WriteLock,
         iommu_table_perm.view().thread_id() == old(lctx).thread_id(),
         iommu_table_perm.view().lock_id() == old(krnl).it_mp.spec_index(iommu_table).locking_thread()->Write_lock_id,
-        iommu_table_tlb_entries_present(old(krnl).iommu_tlb, old(krnl).irt.view(), old(krnl).it_mp, iommu_table),
+        !was_present ==> iommu_table_tlb_entries_present(old(krnl).iommu_tlb, old(krnl).irt.view(), old(krnl).it_mp, iommu_table),
     ensures
         final(krnl).inv(),
         iommu_table_tlb_entries_present(final(krnl).iommu_tlb, final(krnl).irt.view(), final(krnl).it_mp, iommu_table),
@@ -55,6 +57,9 @@ pub fn remove_iommu_4k_mapping_without_free(
         final(krnl).it_mp.spec_index(iommu_table).view().kernel_l4_end == old(krnl).it_mp.spec_index(iommu_table).view().kernel_l4_end,
         final(krnl).it_mp.spec_index(iommu_table).view().cr3 == old(krnl).it_mp.spec_index(iommu_table).view().cr3,
         final(krnl).it_mp.spec_index(iommu_table).view().proc_ptr == old(krnl).it_mp.spec_index(iommu_table).view().proc_ptr,
+        final(krnl).it_mp.spec_index(iommu_table).view().did == old(krnl).it_mp.spec_index(iommu_table).view().did,
+        was_present ==> final(krnl).it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k
+            == old(krnl).it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k.remove(spec_index2va(indices)),
         final(krnl).pg_arr.entries_unchanged_except(&old(krnl).pg_arr, page_ptr2page_index(page_ptr)),
         final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().ref_count == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().ref_count - 1,
         final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().iommu_mappings()
@@ -63,7 +68,8 @@ pub fn remove_iommu_4k_mapping_without_free(
             == if old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().ref_count > 1 { PageState::Mapped4k } else { PageState::Unavailable },
         final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread() == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().locking_thread(),
         final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().being_killed() == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().being_killed(),
-        kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
+        !was_present ==> kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
+        was_present ==> kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &KernelK { it_mp: old(krnl).it_mp, ..*final(krnl) }),
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
 {
@@ -81,14 +87,7 @@ pub fn remove_iommu_4k_mapping_without_free(
         lctx.update_lock_id(KernelObjId::Page(page_index), old_page_lock_id, krnl.pg_arr.lock_id_by_index(page_index));
         old(krnl).it_mp.typed_lock_map_aligned_write_at(old(lctx).iommu_table_lock_map(), old(lctx).thread_id(), iommu_table);
         assert(remove_iommu_4k_mapping_without_free_eof_transition_framing(*old(krnl), *krnl, iommu_table, spec_index2va(indices), page_ptr)) by { reveal(remove_iommu_4k_mapping_without_free_eof_transition_framing); };
-        remove_iommu_4k_mapping_without_free_eof(*old(krnl), *krnl, iommu_table, spec_index2va(indices), page_ptr);
-        assert(krnl.it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k =~= old(krnl).it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k);
-        assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
-        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by {
-            broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive;
-            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); kernel_pagetable_nonlock_fields_unchanged_for_equal(old(krnl).pt_mp, old(krnl).pt_lower.view(), krnl.pt_mp, krnl.pt_lower.view()); reveal(kernel_iommu_table_nonlock_fields_unchanged);
-        };
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+        remove_iommu_4k_mapping_without_free_eof(*old(krnl), *krnl, iommu_table, spec_index2va(indices), page_ptr, was_present);
     }
 }
 }

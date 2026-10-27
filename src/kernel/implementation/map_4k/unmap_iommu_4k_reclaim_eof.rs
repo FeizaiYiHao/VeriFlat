@@ -45,7 +45,6 @@ proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_page_relations(
             &&& pei_valid(indices.2)
             &&& pei_valid(indices.3)
             &&& pre.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(iova)
-            &&& !pre.it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(iova).present
             &&& pre.it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(iova).addr == page_ptr
             &&& pre.it_mp.spec_index(iommu_table).locking_thread() is Write
             &&& page_ptr_valid(page_ptr)
@@ -201,7 +200,6 @@ proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_memory_management_inv(
             &&& pei_valid(indices.2)
             &&& pei_valid(indices.3)
             &&& pre.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(iova)
-            &&& !pre.it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(iova).present
             &&& pre.it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(iova).addr == page_ptr
             &&& pre.it_mp.spec_index(iommu_table).locking_thread() is Write
             &&& page_ptr_valid(page_ptr)
@@ -241,7 +239,7 @@ proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_memory_management_inv(
 
 pub(super) proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof(
     pre: KernelK, post: KernelK, iommu_table: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index, L1Index), page_ptr: PagePtr, thread_ptr: RwLockThreadPtr, owner: RwLockContainerPtr,
-    depth: usize, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, old_counter: usize, new_counter: usize, node_addr: usize,
+    depth: usize, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, old_counter: usize, new_counter: usize, node_addr: usize, was_present: bool,
 )
     requires
         pre.inv(),
@@ -256,7 +254,8 @@ pub(super) proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof(
             &&& pei_valid(indices.2)
             &&& pei_valid(indices.3)
             &&& pre.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(iova)
-            &&& !pre.it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(iova).present
+            &&& pre.it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(iova).present == was_present
+            &&& (was_present ==> pre.it_mp.spec_index(iommu_table).view().did is None)
             &&& pre.it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(iova).addr == page_ptr
             &&& pre.it_mp.spec_index(iommu_table).locking_thread() is Write
             &&& page_ptr_valid(page_ptr)
@@ -287,7 +286,7 @@ pub(super) proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof(
         post.thr_mp.spec_index(thread_ptr).inv(),
         post.allc_4k_mp.perms_wf(),
         post.allc_4k_mp.spec_index(allocator_ptr).wf(),
-        iommu_table_tlb_entries_present(pre.iommu_tlb, pre.irt.view(), pre.it_mp, iommu_table),
+        !was_present ==> iommu_table_tlb_entries_present(pre.iommu_tlb, pre.irt.view(), pre.it_mp, iommu_table),
     ensures
         post.inv(),
         iommu_table_tlb_entries_present(post.iommu_tlb, post.irt.view(), post.it_mp, iommu_table),
@@ -303,6 +302,9 @@ pub(super) proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof(
         post.it_mp.spec_index(iommu_table).view().kernel_l4_end == pre.it_mp.spec_index(iommu_table).view().kernel_l4_end,
         post.it_mp.spec_index(iommu_table).view().cr3 == pre.it_mp.spec_index(iommu_table).view().cr3,
         post.it_mp.spec_index(iommu_table).view().proc_ptr == pre.it_mp.spec_index(iommu_table).view().proc_ptr,
+        post.it_mp.spec_index(iommu_table).view().did == pre.it_mp.spec_index(iommu_table).view().did,
+        was_present ==> post.it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k
+            == pre.it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k.remove(spec_index2va(indices)),
         post.pg_arr.entries_unchanged_except(&pre.pg_arr, page_ptr2page_index(page_ptr)),
         post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().ref_count == pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().ref_count - 1,
         post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().iommu_mappings()
@@ -327,7 +329,8 @@ pub(super) proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof(
         post.allc_4k_mp.spec_index(allocator_ptr).total_free_pages.view() == pre.allc_4k_mp.spec_index(allocator_ptr).total_free_pages.view() + 1,
         post.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().view() == pre.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().view().insert(0, page_ptr),
         post.allc_4k_mp.spec_index(allocator_ptr).global_pool == pre.allc_4k_mp.spec_index(allocator_ptr).global_pool,
-        kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post),
+        !was_present ==> kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post),
+        was_present ==> kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &KernelK { it_mp: pre.it_mp, ..post }),
         kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
 {
@@ -339,12 +342,20 @@ pub(super) proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof(
     assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp) && iommu_table_tlb_entries_present(post.iommu_tlb, post.irt.view(), post.it_mp, iommu_table)) by {
         reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); reveal(iommu_table_tlb_entries_present);
     };
-    assert(post.it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k =~= pre.it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k);
-    assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post)) by {
-        reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); kernel_pagetable_nonlock_fields_unchanged_for_equal(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view()); reveal(kernel_iommu_table_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
-        kernel_cpu_nonlock_fields_unchanged_for_equal(pre.cpu_arr, post.cpu_arr);
-        kernel_process_nonlock_fields_unchanged_for_equal(pre.prc_mp, post.prc_mp);
-    };
+    if was_present {
+        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &KernelK { it_mp: pre.it_mp, ..post })) by {
+            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); kernel_pagetable_nonlock_fields_unchanged_for_equal(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view()); reveal(kernel_iommu_table_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
+            kernel_cpu_nonlock_fields_unchanged_for_equal(pre.cpu_arr, post.cpu_arr);
+            kernel_process_nonlock_fields_unchanged_for_equal(pre.prc_mp, post.prc_mp);
+        };
+    } else {
+        assert(post.it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k =~= pre.it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k);
+        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post)) by {
+            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); kernel_pagetable_nonlock_fields_unchanged_for_equal(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view()); reveal(kernel_iommu_table_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
+            kernel_cpu_nonlock_fields_unchanged_for_equal(pre.cpu_arr, post.cpu_arr);
+            kernel_process_nonlock_fields_unchanged_for_equal(pre.prc_mp, post.prc_mp);
+        };
+    }
     kernel_endpoint_nonlock_fields_unchanged_for_equal(pre.ep_mp, post.ep_mp);
     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_allocator_wf); };
 }

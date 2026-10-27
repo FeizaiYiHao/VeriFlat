@@ -277,8 +277,8 @@ pub proof fn thread_exit_release_step_iso(old_u: KernelU, new_u: KernelU, cpu_id
     assert(old_u.thread_map.dom().contains(old_u.cpu_array[cpu_id as int].current_thread->Some_0)) by { reveal(thread_exit_drop_step_pre); };
 }
 
-/// Locking the tables of the exiting thread's process on a cpu of `a` detaches only PCI functions that process owns, so
-/// it leaves the view of `b` unchanged.
+/// Locking the tables of the exiting thread's process on a cpu of `a` detaches only PCI functions that process owns and
+/// clears only the DID of that process's IOMMU table, so it leaves the view of `b` unchanged.
 pub proof fn thread_exit_lock_table_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
@@ -387,29 +387,6 @@ pub proof fn thread_exit_iommu_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu
         thread_exit_iommu_leaf_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 { reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_iommu_leaf_step); reveal(kernel_u_cpu_ownership_wf); }
-
-/// An IOTLB flush on a cpu of `a` empties every IOTLB domain and changes nothing else; no domain view contains the
-/// IOTLB, so the flush is a stutter step for every domain.
-pub proof fn thread_exit_iommu_flush_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
-    requires
-        kernel_u_ownership_wf(old_u),
-        isolated(old_u, a, b),
-        steps_in_domain(old_u, cpu_id, a),
-        thread_exit_reclaim_step_pre(old_u, cpu_id, true),
-        thread_exit_iommu_flush_step(old_u, new_u),
-    ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
-{ reveal(thread_exit_iommu_flush_step); }
-
-/// The step of `thread_exit_iommu_flush_step_lr` preserves isolation, which does not read the IOTLB.
-pub proof fn thread_exit_iommu_flush_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
-    requires
-        kernel_u_ownership_wf(old_u),
-        isolated(old_u, a, b),
-        steps_in_domain(old_u, cpu_id, a),
-        thread_exit_reclaim_step_pre(old_u, cpu_id, true),
-        thread_exit_iommu_flush_step(old_u, new_u),
-    ensures isolated(new_u, a, b),
-{ reveal(thread_exit_iommu_flush_step); }
 
 /// Refunding 4K quota on a cpu of `a` raises the quota of the exiting thread's container, which lies in `a`, or of an
 /// ancestor of `a`, neither of which lies in `b`.

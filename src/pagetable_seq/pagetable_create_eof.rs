@@ -312,7 +312,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         assert(post.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
     }
 
-    /// EOF closure of `create_entry_l4`: `va_addr_valid` and `pcid_wf`.
+    /// EOF closure of `create_entry_l4`: `va_addr_valid`, `pcid_wf`, and `did_wf`.
     proof fn create_entry_l4_eof_va_addr_valid_and_pcid_wf(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
@@ -324,6 +324,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         ensures
             post.va_addr_valid(),
             post.pcid_wf(),
+            post.did_wf(),
     {
         reveal(PageTable::create_entry_l4_eof_transition_framing);
     }
@@ -701,7 +702,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         assert(post.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
     }
 
-    /// EOF closure of `create_entry_l3`: `va_addr_valid` and `pcid_wf`.
+    /// EOF closure of `create_entry_l3`: `va_addr_valid`, `pcid_wf`, and `did_wf`.
     proof fn create_entry_l3_eof_va_addr_valid_and_pcid_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
@@ -717,6 +718,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         ensures
             post.va_addr_valid(),
             post.pcid_wf(),
+            post.did_wf(),
     {
         reveal(PageTable::create_entry_l3_eof_transition_framing);
     }
@@ -1105,7 +1107,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         assert(post.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
     }
 
-    /// EOF closure of `create_entry_l2`: `va_addr_valid` and `pcid_wf`.
+    /// EOF closure of `create_entry_l2`: `va_addr_valid`, `pcid_wf`, and `did_wf`.
     proof fn create_entry_l2_eof_va_addr_valid_and_pcid_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, page_map_ptr: PageMapPtr)
         requires
             pre.wf(),
@@ -1122,6 +1124,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         ensures
             post.va_addr_valid(),
             post.pcid_wf(),
+            post.did_wf(),
     {
         reveal(PageTable::create_entry_l2_eof_transition_framing);
     }

@@ -2,8 +2,8 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// Removes the non-present 4K leaf `iova` from IOMMU table `iommu_table` and its reverse entry from a page that keeps
-/// other references or is an I/O page; every other kernel field is unchanged.
+/// Removes the 4K leaf `iova`, hidden or (in a table without a domain id) present, from IOMMU table `iommu_table` and its
+/// reverse entry from a page that keeps other references or is an I/O page; every other kernel field is unchanged.
 #[verifier::opaque]
 pub(super) open spec fn remove_iommu_4k_mapping_without_free_eof_transition_framing(pre: KernelK, post: KernelK, iommu_table: RwLockPageTableRoot, iova: VAddr, page_ptr: PagePtr) -> bool {
     let page_index = page_ptr2page_index(page_ptr);
@@ -23,6 +23,7 @@ pub(super) open spec fn remove_iommu_4k_mapping_without_free_eof_transition_fram
     &&& new_it.view().kernel_l4_end == old_it.view().kernel_l4_end
     &&& new_it.view().cr3 == old_it.view().cr3
     &&& new_it.view().pcid == old_it.view().pcid
+    &&& new_it.view().did == old_it.view().did
     &&& new_it.view().proc_ptr == old_it.view().proc_ptr
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, page_index)
     &&& new_page.is_init()
@@ -40,13 +41,14 @@ pub(super) open spec fn remove_iommu_4k_mapping_without_free_eof_transition_fram
         && new_page.view().perm_4k.view() is None
 }
 
-pub(super) proof fn remove_iommu_4k_mapping_without_free_eof(pre: KernelK, post: KernelK, iommu_table: RwLockPageTableRoot, iova: VAddr, page_ptr: PagePtr)
+pub(super) proof fn remove_iommu_4k_mapping_without_free_eof(pre: KernelK, post: KernelK, iommu_table: RwLockPageTableRoot, iova: VAddr, page_ptr: PagePtr, was_present: bool)
     requires
         pre.inv(),
         remove_iommu_4k_mapping_without_free_eof_transition_framing(pre, post, iommu_table, iova, page_ptr),
         pre.it_mp.dom().contains(iommu_table),
         pre.it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(iova),
-        !pre.it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(iova).present,
+        pre.it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(iova).present == was_present,
+        was_present ==> pre.it_mp.spec_index(iommu_table).view().did is None,
         pre.it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(iova).addr == page_ptr,
         pre.it_mp.spec_index(iommu_table).locking_thread() is Write,
         page_ptr_valid(page_ptr),
@@ -60,10 +62,15 @@ pub(super) proof fn remove_iommu_4k_mapping_without_free_eof(pre: KernelK, post:
         // Produced by `iommu_table_map_unmap_4k_kernel` and `page_array_remove_4k_iommu_mapping_without_free`.
         iommu_table_perms_wf(post.it_mp),
         page_array_wf(post.pg_arr),
-        iommu_table_tlb_entries_present(pre.iommu_tlb, pre.irt.view(), pre.it_mp, iommu_table),
+        !was_present ==> iommu_table_tlb_entries_present(pre.iommu_tlb, pre.irt.view(), pre.it_mp, iommu_table),
     ensures
         post.inv(),
         iommu_table_tlb_entries_present(post.iommu_tlb, post.irt.view(), post.it_mp, iommu_table),
+        !was_present ==> kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post),
+        was_present ==> kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &KernelK { it_mp: pre.it_mp, ..post }),
+        was_present ==> post.it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k == pre.it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k.remove(iova),
+        kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp),
+        kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
 {
     reveal(remove_iommu_4k_mapping_without_free_eof_transition_framing);
     let page_index = page_ptr2page_index(page_ptr);
@@ -108,5 +115,21 @@ pub(super) proof fn remove_iommu_4k_mapping_without_free_eof(pre: KernelK, post:
     assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp) && iommu_table_tlb_entries_present(post.iommu_tlb, post.irt.view(), post.it_mp, iommu_table)) by {
         reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); reveal(iommu_table_tlb_entries_present);
     };
+    if was_present {
+        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &KernelK { it_mp: pre.it_mp, ..post })) by {
+            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); kernel_pagetable_nonlock_fields_unchanged_for_equal(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view());
+            reveal(kernel_iommu_table_nonlock_fields_unchanged); kernel_cpu_nonlock_fields_unchanged_for_equal(pre.cpu_arr, post.cpu_arr); kernel_process_nonlock_fields_unchanged_for_equal(pre.prc_mp, post.prc_mp);
+            reveal(kernel_thread_nonlock_fields_unchanged);
+        };
+    } else {
+        assert(post.it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k =~= pre.it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k);
+        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post)) by {
+            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); kernel_pagetable_nonlock_fields_unchanged_for_equal(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view());
+            reveal(kernel_iommu_table_nonlock_fields_unchanged); kernel_cpu_nonlock_fields_unchanged_for_equal(pre.cpu_arr, post.cpu_arr); kernel_process_nonlock_fields_unchanged_for_equal(pre.prc_mp, post.prc_mp);
+            reveal(kernel_thread_nonlock_fields_unchanged);
+        };
+    }
+    kernel_endpoint_nonlock_fields_unchanged_for_equal(pre.ep_mp, post.ep_mp);
+    assert(kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
 }
 }

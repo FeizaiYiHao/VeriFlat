@@ -140,6 +140,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             final(self).kernel_entries =~= old(self).kernel_entries,
             final(self).cr3 == old(self).cr3,
             final(self).pcid == old(self).pcid,
+            final(self).did == old(self).did,
             final(self).proc_ptr == old(self).proc_ptr,
             ret.view().is_init(),
             ret.view().addr() == scan.spec_table_page()->Some_0,

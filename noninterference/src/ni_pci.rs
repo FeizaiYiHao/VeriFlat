@@ -3,8 +3,9 @@ use crate::*;
 use veriflat_syscall_pci::syscall_pci::syscall_pci_spec::*;
 
 verus! {
-/// Attaching a PCI function of the running process of a cpu of `a` changes only that function's attached
-/// bit, and no process of `b` owns the function, so the view of `b` is unchanged.
+/// Attaching a PCI function of the running process of a cpu of `a` changes only that function's attached bit and, on
+/// first attach, the DID of that process's IOMMU table; no process of `b` owns the function or is that process, so the
+/// view of `b` is unchanged.
 pub proof fn pci_attach_dma_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, bus: usize, device: usize, function: usize, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),

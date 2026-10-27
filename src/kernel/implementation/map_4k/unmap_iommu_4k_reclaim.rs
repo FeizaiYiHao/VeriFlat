@@ -6,12 +6,13 @@ use super::unmap_iommu_4k_reclaim_eof::reclaim_last_iommu_4k_mapping_to_cpu_cach
 use super::unmap_iommu_4k_reclaim_spec::reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing;
 
 verus! {
-/// Unmaps one hidden 4K leaf of a write-locked IOMMU table whose page has no other mapping, returns the page to the
-/// allocator CPU cache, and increments the owning thread's pending free-quota counter.
+/// Unmaps one 4K leaf of a write-locked IOMMU table whose page has no other mapping, returns the page to the allocator CPU
+/// cache, and increments the owning thread's pending free-quota counter. The leaf is hidden iff `!was_present`; a present
+/// leaf requires a table without a domain id, and its removal also drops the leaf from the table's user view.
 pub fn remove_last_iommu_4k_mapping_to_allocator(
     krnl: &mut KernelK, iommu_table: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index, L1Index), page_ptr: PagePtr, l1_ptr: PageMapPtr, thread_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, depth: usize,
-    allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, counter: &mut usize, Tracked(lctx): Tracked<&mut LocalContext>, iommu_table_perm: Tracked<&LockPerm>, page_perm: Tracked<&LockPerm>, thread_perm: Tracked<&LockPerm>,
-    cache_perm: Tracked<&LockPerm>,
+    allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, counter: &mut usize, Ghost(was_present): Ghost<bool>, Tracked(lctx): Tracked<&mut LocalContext>, iommu_table_perm: Tracked<&LockPerm>,
+    page_perm: Tracked<&LockPerm>, thread_perm: Tracked<&LockPerm>, cache_perm: Tracked<&LockPerm>,
 )
     requires
         old(krnl).inv(),
@@ -23,7 +24,8 @@ pub fn remove_last_iommu_4k_mapping_to_allocator(
         pei_valid(indices.2),
         pei_valid(indices.3),
         old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().dom().contains(spec_index2va(indices)),
-        !old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(spec_index2va(indices)).present,
+        old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(spec_index2va(indices)).present == was_present,
+        was_present ==> old(krnl).it_mp.spec_index(iommu_table).view().did is None,
         old(krnl).it_mp.spec_index(iommu_table).view().mapping_4k().spec_index(spec_index2va(indices)).addr == page_ptr,
         old(krnl).it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some,
         old(krnl).it_mp.spec_index(iommu_table).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == l1_ptr,
@@ -57,7 +59,7 @@ pub fn remove_last_iommu_4k_mapping_to_allocator(
         iommu_table_perm.view().state() is WriteLock,
         iommu_table_perm.view().thread_id() == old(lctx).thread_id(),
         iommu_table_perm.view().lock_id() == old(krnl).it_mp.spec_index(iommu_table).locking_thread()->Write_lock_id,
-        iommu_table_tlb_entries_present(old(krnl).iommu_tlb, old(krnl).irt.view(), old(krnl).it_mp, iommu_table),
+        !was_present ==> iommu_table_tlb_entries_present(old(krnl).iommu_tlb, old(krnl).irt.view(), old(krnl).it_mp, iommu_table),
     ensures
         final(krnl).inv(),
         iommu_table_tlb_entries_present(final(krnl).iommu_tlb, final(krnl).irt.view(), final(krnl).it_mp, iommu_table),
@@ -78,6 +80,9 @@ pub fn remove_last_iommu_4k_mapping_to_allocator(
         final(krnl).it_mp.spec_index(iommu_table).view().kernel_l4_end == old(krnl).it_mp.spec_index(iommu_table).view().kernel_l4_end,
         final(krnl).it_mp.spec_index(iommu_table).view().cr3 == old(krnl).it_mp.spec_index(iommu_table).view().cr3,
         final(krnl).it_mp.spec_index(iommu_table).view().proc_ptr == old(krnl).it_mp.spec_index(iommu_table).view().proc_ptr,
+        final(krnl).it_mp.spec_index(iommu_table).view().did == old(krnl).it_mp.spec_index(iommu_table).view().did,
+        was_present ==> final(krnl).it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k
+            == old(krnl).it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k.remove(spec_index2va(indices)),
         final(krnl).pg_arr.entries_unchanged_except(&old(krnl).pg_arr, page_ptr2page_index(page_ptr)),
         final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().ref_count == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().ref_count - 1,
         final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().iommu_mappings()
@@ -104,7 +109,8 @@ pub fn remove_last_iommu_4k_mapping_to_allocator(
         final(krnl).allc_4k_mp.spec_index(allocator_ptr).total_free_pages.view() == old(krnl).allc_4k_mp.spec_index(allocator_ptr).total_free_pages.view() + 1,
         final(krnl).allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().view() == old(krnl).allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().view().insert(0, page_ptr),
         final(krnl).allc_4k_mp.spec_index(allocator_ptr).global_pool == old(krnl).allc_4k_mp.spec_index(allocator_ptr).global_pool,
-        kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
+        !was_present ==> kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
+        was_present ==> kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &KernelK { it_mp: old(krnl).it_mp, ..*final(krnl) }),
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
 {
@@ -138,7 +144,7 @@ pub fn remove_last_iommu_4k_mapping_to_allocator(
         assert(reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing(*old(krnl), *krnl, iommu_table, indices, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, *old(counter), *counter, node_addr)) by {
             reveal(reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing);
         };
-        reclaim_last_iommu_4k_mapping_to_cpu_cache_eof(*old(krnl), *krnl, iommu_table, indices, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, *old(counter), *counter, node_addr);
+        reclaim_last_iommu_4k_mapping_to_cpu_cache_eof(*old(krnl), *krnl, iommu_table, indices, page_ptr, thread_ptr, owner, depth, allocator_ptr, cpu_id, *old(counter), *counter, node_addr, was_present);
         held_threads_unchanged_except_for_unchanged_except(old(krnl).thr_mp, krnl.thr_mp, old(lctx), thread_ptr);
     }
 }

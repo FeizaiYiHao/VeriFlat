@@ -54,7 +54,7 @@ use kernel::implementation::map_4k::unmap_4k_flush_all::flush_pagetable_tlbs;
 use kernel::implementation::map_4k::unmap_4k_present::clear_4k_mapping_present;
 use kernel::implementation::map_4k::unmap_4k_reclaim_one::reclaim_unmapped_4k_page;
 use kernel::implementation::map_4k::unmap_iommu_4k_present::clear_iommu_4k_mapping_present;
-use kernel::implementation::map_4k::unmap_iommu_4k_reclaim_one::reclaim_unmapped_iommu_4k_page;
+use kernel::implementation::map_4k::unmap_iommu_4k_reclaim_one::{reclaim_unmapped_iommu_4k_page, reclaim_detached_iommu_4k_page};
 use kernel::implementation::map_4k::flush_iommu_tlb::flush_iommu_tlb_for_table;
 use kernel::implementation::map_4k::unmap_4k_remove::remove_4k_mapping_without_free;
 use kernel::implementation::map_4k::unmap_iommu_4k_remove::remove_iommu_4k_mapping_without_free;

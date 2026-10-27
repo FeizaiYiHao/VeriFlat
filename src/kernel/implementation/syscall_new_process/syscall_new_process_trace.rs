@@ -193,7 +193,7 @@ pub(super) proof fn new_process_publish_step_from_u(
         },
         {
             let ancestors = pre.process_map[parent_ptr].uppertree_seq.push(parent_ptr);
-            let empty_table = PageTableU { lock_state: LockStateU::WriteLocked, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty() };
+            let empty_table = PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty() };
             let cost: usize = if with_iommu { 5 } else { 3 };
             let origin = Share4kOrigin::NewProcess(NewProcessProgress { range, regs, endpoint_index, with_iommu, child: Some(child_ptr) });
             let sharing = SyscallProgress::Share4k { source_range: range, target_range: range, shared: 0, origin };
