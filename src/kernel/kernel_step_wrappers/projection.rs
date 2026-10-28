@@ -304,7 +304,7 @@ pub(super) proof fn kernel_context_switch_fields_implies_u_step(pre: &KernelK, p
         }),
         thread_map: requeued.insert(next_thread, ThreadU { state: ThreadState::RUNNING { cpu_id }, last_cpu: cpu_id, error_code: None, trap_frame: None, ..next }),
         cpu_tlb: match flushed_pcid {
-            Some(pcid) => pre_u.cpu_tlb.insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
+            Some(pcid) => pre_u.cpu_tlb.insert((cpu_id, pcid), post_u.cpu_tlb[(cpu_id, pcid)]),
             None => pre_u.cpu_tlb,
         },
         ..pre_u
@@ -313,6 +313,10 @@ pub(super) proof fn kernel_context_switch_fields_implies_u_step(pre: &KernelK, p
         assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { reveal(IommuRootTable::user_view); };
         assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => { if pre.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(pre, include_lock_state, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(post, include_lock_state, e); } });
     };
+    if let Some(pcid) = flushed_pcid {
+        assert(cpu_tlb_within_may_cache(*post, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)))) by { reveal(kernel_context_switch_fields); };
+        kernel_cpu_tlb_within_may_cache_projection(post, include_lock_state, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)));
+    }
 }
 
 /// The context-switch fields project to the cpu array with only `cpu_id` running `next_thread`.
@@ -2130,8 +2134,7 @@ pub(super) proof fn kernel_ipc_call_handoff_fields_implies_u_step(
     callee_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>, include_lock_state: bool,
 )
     requires
-        process_pagetable_match(post.prc_mp, post.pt_mp),
-        process_iommu_table_match(post.prc_mp, post.it_mp),
+        post.inv(),
         kernel_ipc_call_handoff_fields(pre, post, cpu_id, caller_ptr, endpoint_ptr, endpoint_index, callee_ptr, regs, flushed_pcid),
         forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)] pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).lock_process_owner_u() == pre.ctn_mp.spec_index(p).lock_process_owner_u(),
     ensures
@@ -2153,6 +2156,7 @@ pub(super) proof fn kernel_ipc_call_handoff_fields_implies_u_step(
     let pre_u = kernel_k_user_projection(*pre, include_lock_state);
     let post_u = kernel_k_user_projection(*post, include_lock_state);
     assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { pre.irt.view().user_view_unfold(); post.irt.view().user_view_unfold(); };
+    if let Some(pcid) = flushed_pcid { kernel_cpu_tlb_within_may_cache_projection(post, include_lock_state, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid))); }
 }
 
 #[verifier::spinoff_prover]
@@ -2196,8 +2200,7 @@ pub(super) proof fn kernel_ipc_reply_handoff_fields_implies_u_step(
     caller_ptr: RwLockThreadPtr, regs: Registers, flushed_pcid: Option<Pcid>, include_lock_state: bool,
 )
     requires
-        process_pagetable_match(post.prc_mp, post.pt_mp),
-        process_iommu_table_match(post.prc_mp, post.it_mp),
+        post.inv(),
         kernel_ipc_reply_handoff_fields(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, regs, flushed_pcid),
         forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)] pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).lock_process_owner_u() == pre.ctn_mp.spec_index(p).lock_process_owner_u(),
     ensures
@@ -2222,6 +2225,7 @@ pub(super) proof fn kernel_ipc_reply_handoff_fields_implies_u_step(
     assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map.insert(endpoint_ptr, EndpointU {
         queue: endpoint.queue.push(callee_ptr), queue_state: if endpoint.queue.len() == 0 { EndpointState::RECEIVE } else { endpoint.queue_state }, ..endpoint
     }), e => { if pre.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(pre, include_lock_state, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(post, include_lock_state, e); } });
+    if let Some(pcid) = flushed_pcid { kernel_cpu_tlb_within_may_cache_projection(post, include_lock_state, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid))); }
 }
 
 /// The reply-handoff fields project to the cpu array with only `cpu_id` switched to the caller.
@@ -2328,9 +2332,7 @@ pub(super) proof fn kernel_ipc_rendezvous_fields_implies_u_step(
     cpu_transfer: Option<(CpuId, RwLockThreadPtr)>, pci_transfer: Option<(PciBdf, RwLockProcessPtr, RwLockProcessPtr)>, include_lock_state: bool,
 )
     requires
-        container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp),
-        process_pagetable_match(post.prc_mp, post.pt_mp),
-        process_iommu_table_match(post.prc_mp, post.it_mp),
+        post.inv(),
         kernel_ipc_rendezvous_fields(pre, post, cpu_id, caller_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer, pci_transfer),
         post.cpu_op.view().view() == pre.cpu_op.view().view(),
         forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)]
@@ -2362,12 +2364,18 @@ pub(super) proof fn kernel_ipc_rendezvous_fields_implies_u_step(
     if pre.prc_mp.dom().contains(pre.thr_mp.spec_index(caller_thread_ptr).view().owning_proc) { kernel_process_user_projection_at(pre, include_lock_state, pre.thr_mp.spec_index(caller_thread_ptr).view().owning_proc); }
     if pre.ctn_mp.dom().contains(pre.thr_mp.spec_index(peer_thread_ptr).view().owning_container) { kernel_container_user_projection_at(pre, include_lock_state, pre.thr_mp.spec_index(peer_thread_ptr).view().owning_container); }
     if let Some((transfer, receiver)) = cpu_transfer { kernel_cpu_user_projection_at(pre, include_lock_state, transfer); if pre.thr_mp.dom().contains(receiver) { kernel_thread_user_projection_at(pre, include_lock_state, receiver); } }
-    if let Some((_, sender, receiver)) = pci_transfer {
+    if let Some((bdf, sender, receiver)) = pci_transfer {
+        let old_did = match pre.prc_mp.spec_index(sender).view().iommu_table { Some(t) => pre.it_mp.spec_index(t).view().did, None => None };
         if pre.prc_mp.dom().contains(sender) {
             kernel_process_user_projection_at(pre, include_lock_state, sender); kernel_process_user_projection_at(post, include_lock_state, sender); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, sender);
         }
         if pre.prc_mp.dom().contains(receiver) { kernel_process_user_projection_at(pre, include_lock_state, receiver); }
         pre.irt.view().user_view_unfold();
+        if iommu_roots_attached(pre.irt.view().iommu_roots())[bdf.0 as int][bdf.1 as int][bdf.2 as int] && old_did is Some {
+            assert(post.iommu_tlb.view().dom().contains(old_did->Some_0));
+            assert(vtd_domain_id_valid(old_did->Some_0)) by { reveal(IommuTLB::inv); };
+            kernel_iommu_tlb_within_may_cache_projection(post, include_lock_state, old_did->Some_0, post.iommu_tlb.spec_index(old_did->Some_0));
+        }
     }
     kernel_ipc_rendezvous_fields_implies_u_cpu_array(pre, post, cpu_id, caller_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer, pci_transfer, include_lock_state);
     kernel_ipc_rendezvous_fields_implies_u_container_map(pre, post, cpu_id, caller_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer, pci_transfer, include_lock_state);

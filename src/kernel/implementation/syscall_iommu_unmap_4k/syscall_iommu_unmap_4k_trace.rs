@@ -82,8 +82,8 @@ pub(super) proof fn iommu_unmap_4k_leaf_step_from_u(pre: KernelU, post: KernelU,
         iommu_unmap_4k_range_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
 { reveal(iommu_unmap_4k_leaf_step_pre); reveal(iommu_unmap_4k_leaf_step); reveal(iommu_unmap_4k_range_step); }
 
-/// Emptying only the IOTLB domain of the process's IOMMU table, or nothing when it has no DID, and recording the flush
-/// after the last hidden iova is the flush step on `pre`/`post`.
+/// Invalidating only the IOTLB domain of the process's IOMMU table to what it may cache, or nothing when it has no DID, and
+/// recording the flush after the last hidden iova is the flush step on `pre`/`post`.
 pub(super) proof fn iommu_unmap_4k_flush_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr)
     requires
         {
@@ -96,8 +96,9 @@ pub(super) proof fn iommu_unmap_4k_flush_step_from_u(pre: KernelU, post: KernelU
             &&& progress is IommuUnmap4k
             &&& progress->IommuUnmap4k_unmapped == progress->IommuUnmap4k_iova_range.len
             &&& !progress->IommuUnmap4k_flushed
+            &&& did matches Some(d) ==> iommu_tlb_within_may_cache_u(post, d, post.iommu_tlb[d])
             &&& post == (KernelU {
-                iommu_tlb: match did { Some(d) => pre.iommu_tlb.insert(d, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }), None => pre.iommu_tlb },
+                iommu_tlb: match did { Some(d) => pre.iommu_tlb.insert(d, post.iommu_tlb[d]), None => pre.iommu_tlb },
                 thread_map: pre.thread_map.insert(thread_ptr, ThreadU {
                     syscall_progress: Some(SyscallProgress::IommuUnmap4k { iova_range: progress->IommuUnmap4k_iova_range, unmapped: progress->IommuUnmap4k_unmapped, flushed: true }),
                     ..thread
@@ -288,9 +289,12 @@ pub(super) proof fn iommu_unmap_4k_flush_step_from_k(
         pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::IommuUnmap4k { iova_range, unmapped: iova_range.len, flushed: false }),
         pre.iommu_tlb.inv(),
         mid.iommu_tlb.inv(),
+        mid.inv(),
         *mid == (KernelK { iommu_tlb: mid.iommu_tlb, ..*pre }),
-        pre.it_mp.spec_index(iommu_table_ptr).view().did matches Some(did)
-            ==> mid.iommu_tlb.view() == pre.iommu_tlb.view().insert(did, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
+        pre.it_mp.spec_index(iommu_table_ptr).view().did matches Some(did) ==> {
+            &&& mid.iommu_tlb.view() == pre.iommu_tlb.view().insert(did, mid.iommu_tlb.spec_index(did))
+            &&& iommu_tlb_within_may_cache(*mid, did, mid.iommu_tlb.spec_index(did))
+        },
         pre.it_mp.spec_index(iommu_table_ptr).view().did is None ==> mid.iommu_tlb == pre.iommu_tlb,
         *post == (KernelK { thr_mp: post.thr_mp, ..*mid }),
         post.thr_mp.unchanged_except(&mid.thr_mp, thread_ptr),
@@ -305,6 +309,7 @@ pub(super) proof fn iommu_unmap_4k_flush_step_from_k(
     if let Some(did) = pre.it_mp.spec_index(iommu_table_ptr).view().did {
         assert(mid.iommu_tlb.view().dom().contains(did) ==> vtd_domain_id_valid(did)) by { reveal(IommuTLB::inv); };
         kernel_iommu_tlb_domain_invalidated_implies_u_step(pre, mid, did);
+        kernel_iommu_tlb_within_may_cache_projection(mid, true, did, mid.iommu_tlb.spec_index(did));
     }
     kernel_thread_syscall_progress_changed_implies_u_step(mid, post, thread_ptr);
     kernel_cpu_projection_at(pre, cpu_id); kernel_container_projection_at(pre, container_ptr); kernel_thread_projection_at(pre, thread_ptr);

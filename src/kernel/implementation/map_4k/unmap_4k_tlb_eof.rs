@@ -2,14 +2,15 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// Empties the TLB of `(cpu_id, pcid)` and clears its needflush bit; every other kernel field is unchanged.
+/// Flushes the TLB of `(cpu_id, pcid)`, which keeps at most what the cpu may cache in `pre`, and clears its needflush bit;
+/// every other kernel field is unchanged.
 #[verifier::opaque]
 pub(super) open spec fn flush_remote_pcid_and_clear_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, pcid: Pcid) -> bool {
     let old_entry = pre.pcid_needflush.spec_index(cpu_id, pcid);
     let new_entry = post.pcid_needflush.spec_index(cpu_id, pcid);
     &&& post == (KernelK { cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, ..pre })
-    &&& post.cpu_tlb.view() == pre.cpu_tlb.view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
-    &&& post.cpu_tlb.spec_index((cpu_id, pcid)).is_empty()
+    &&& post.cpu_tlb.view() == pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid)))
+    &&& cpu_tlb_within_may_cache(pre, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)))
     &&& forall|c: CpuId, p: Pcid| #![trigger post.cpu_tlb.spec_index((c, p))] #![trigger pre.cpu_tlb.spec_index((c, p))] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid)
         ==> post.cpu_tlb.spec_index((c, p)) == pre.cpu_tlb.spec_index((c, p))
     &&& new_entry.view() == (PcidNeedFlush { needflush: false, ..old_entry.view() })
@@ -36,13 +37,15 @@ pub(super) proof fn flush_remote_pcid_and_clear_eof(pre: KernelK, post: KernelK,
     assert(post.subsystems_inv()) by { reveal(cpu_hw_cr3_pcid_wf); reveal(KernelK::default_pagetable_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
         reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match);
-        reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
+        reveal(cpu_not_in_dirty_map_imply_not_in_tlb); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
     };
-    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
+    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
+        reveal(tlb_wf_spec); reveal(cpu_dirty_map_contains_pagetable_pcid_match); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
+    };
 }
 
-/// Flushes the calling cpu's current TLB for `pcid` and clears its needflush bit; the cpu entry keeps its value and
-/// every other kernel field is unchanged.
+/// Flushes the calling cpu's current TLB for `pcid`, which keeps at most what the cpu may cache in `pre`, and clears its
+/// needflush bit; the cpu entry keeps its value and every other kernel field is unchanged.
 #[verifier::opaque]
 pub(super) open spec fn flush_local_pcid_and_clear_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, pcid: Pcid) -> bool {
     let old_cpu = pre.cpu_arr.spec_index(cpu_id).view();
@@ -59,8 +62,8 @@ pub(super) open spec fn flush_local_pcid_and_clear_eof_transition_framing(pre: K
     &&& new_cpu.killer_info() == old_cpu.killer_info()
     &&& new_cpu.view_rodata() == old_cpu.view_rodata()
     &&& new_cpu.view_ghost() == old_cpu.view_ghost()
-    &&& post.cpu_tlb.view() == pre.cpu_tlb.view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
-    &&& post.cpu_tlb.spec_index((cpu_id, pcid)).is_empty()
+    &&& post.cpu_tlb.view() == pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid)))
+    &&& cpu_tlb_within_may_cache(pre, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)))
     &&& forall|c: CpuId, p: Pcid| #![trigger post.cpu_tlb.spec_index((c, p))] #![trigger pre.cpu_tlb.spec_index((c, p))] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid)
         ==> post.cpu_tlb.spec_index((c, p)) == pre.cpu_tlb.spec_index((c, p))
     &&& new_entry.view() == (PcidNeedFlush { needflush: false, ..old_entry.view() })
@@ -90,8 +93,10 @@ pub(super) proof fn flush_local_pcid_and_clear_eof(pre: KernelK, post: KernelK, 
     assert(post.process_management_inv()) by { reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
         reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match);
-        reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
+        reveal(cpu_not_in_dirty_map_imply_not_in_tlb); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
     };
-    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
+    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
+        reveal(tlb_wf_spec); reveal(cpu_dirty_map_contains_pagetable_pcid_match); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
+    };
 }
 }

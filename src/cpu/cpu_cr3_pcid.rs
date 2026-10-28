@@ -25,7 +25,8 @@ impl CpuCr3Pcid {
         Self { hardware: Ghost((cr3, pcid)), current_cr3: cr3, current_pcid: pcid }
     }
 
-    pub(super) fn flush_current(&mut self, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, tlb: &mut CpuTLB, Tracked(lctx): Tracked<&LocalContext>)
+    pub(super) fn flush_current(&mut self, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, tlb: &mut CpuTLB, Ghost(k): Ghost<KernelK>, Ghost(next_table): Ghost<Option<RwLockPageTableRoot>>,
+        Tracked(lctx): Tracked<&LocalContext>)
         requires
             old(tlb).inv(),
             index_valid(NUM_CPUS, cpu_id),
@@ -35,17 +36,22 @@ impl CpuCr3Pcid {
             old(self).cr3() == cr3,
             old(self).pcid() == pcid,
             lctx.kernel_view_locking_state() is Release,
+            next_table matches Some(ptr) ==> k.pt_mp.dom().contains(ptr) && k.pt_mp.spec_index(ptr).view().cr3 == cr3,
         ensures
             *final(self) == *old(self),
             final(tlb).inv(),
             forall|c: CpuId, p: Pcid| #![trigger final(tlb).spec_index((c, p))] #![trigger old(tlb).spec_index((c, p))] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid) ==> final(tlb).spec_index((c, p)) == old(tlb).spec_index((c, p)),
-            final(tlb).spec_index((cpu_id, pcid)).is_empty(),
-            final(tlb).view() == old(tlb).view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
+            final(tlb).view() == old(tlb).view().insert((cpu_id, pcid), final(tlb).spec_index((cpu_id, pcid))),
+            match next_table {
+                Some(ptr) => single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(tlb).spec_index((cpu_id, pcid)), pagetable_c(k.pt_mp, k.pt_lower.view(), ptr)),
+                None => final(tlb).spec_index((cpu_id, pcid)).is_empty(),
+            },
     {
-        tlb.write_cr3_pcid(cpu_id, cr3, pcid, true, self, Tracked(lctx));
+        tlb.write_cr3_pcid(cpu_id, cr3, pcid, true, self, Ghost(k), Ghost(next_table), Tracked(lctx));
     }
 
-    pub(super) fn write(&mut self, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, flush: bool, tlb: &mut CpuTLB, Tracked(lctx): Tracked<&mut LocalContext>)
+    pub(super) fn write(&mut self, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, flush: bool, tlb: &mut CpuTLB, Ghost(k): Ghost<KernelK>,
+        Ghost(next_table): Ghost<Option<RwLockPageTableRoot>>, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             old(self).wf(),
             old(lctx).kernel_view_locking_state() is Acquire,
@@ -54,6 +60,7 @@ impl CpuCr3Pcid {
             page_ptr_valid(cr3),
             pcid_valid(pcid),
             old(tlb).inv(),
+            next_table matches Some(ptr) ==> k.pt_mp.dom().contains(ptr) && k.pt_mp.spec_index(ptr).view().cr3 == cr3,
         ensures
             final(self).wf(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -67,13 +74,17 @@ impl CpuCr3Pcid {
             forall|other_cpu: CpuId, other_pcid: Pcid|
                 #![trigger final(tlb).spec_index((other_cpu, other_pcid))]
                 #![trigger old(tlb).spec_index((other_cpu, other_pcid))]
-                index_valid(NUM_CPUS, other_cpu) && pcid_valid(other_pcid) ==>
-                    final(tlb).spec_index((other_cpu, other_pcid)) == if flush && other_cpu == cpu_id && other_pcid == pcid { SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() } } else { old(tlb).spec_index((other_cpu, other_pcid)) },
-            final(tlb).view() == if flush { old(tlb).view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }) } else { old(tlb).view() },
+                index_valid(NUM_CPUS, other_cpu) && pcid_valid(other_pcid) && (other_cpu != cpu_id || other_pcid != pcid)
+                    ==> final(tlb).spec_index((other_cpu, other_pcid)) == old(tlb).spec_index((other_cpu, other_pcid)),
+            final(tlb).view() == if flush { old(tlb).view().insert((cpu_id, pcid), final(tlb).spec_index((cpu_id, pcid))) } else { old(tlb).view() },
+            flush ==> match next_table {
+                Some(ptr) => single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(tlb).spec_index((cpu_id, pcid)), pagetable_c(k.pt_mp, k.pt_lower.view(), ptr)),
+                None => final(tlb).spec_index((cpu_id, pcid)).is_empty(),
+            },
     {
         proof { lctx.enter_kernel_view_release(); }
         if flush || self.current_cr3 != cr3 || self.current_pcid != pcid {
-            tlb.write_cr3_pcid(cpu_id, cr3, pcid, flush, self, Tracked(&*lctx));
+            tlb.write_cr3_pcid(cpu_id, cr3, pcid, flush, self, Ghost(k), Ghost(next_table), Tracked(&*lctx));
             self.current_cr3 = cr3;
             self.current_pcid = pcid;
         }

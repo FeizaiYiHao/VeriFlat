@@ -324,6 +324,7 @@ impl KernelK {
                 &&& old(self).cpu_tlb.spec_index((cpu_id, pcid)).is_empty()
                     || (old(self).pcid_needflush.spec_index(cpu_id, pcid).view().needflush && old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid)
                     || (old(self).cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some && old(self).cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr != root)
+                || single_cpu_single_pcid_tlb_subset_of_present_pagetable(old(self).cpu_tlb.spec_index((cpu_id, pcid)), pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root))
             }) || tlb_wf_spec(old(self).cpu_tlb, old(self).pt_mp, old(self).pt_lower.view().insert(root, PageTableLower {
                 window_stale_cpus: window_stale_cpus_after(update, pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root), typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write), lctx.thread_id()),
                 ..pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower }), old(self).cpu_arr, old(self).pcid_needflush),

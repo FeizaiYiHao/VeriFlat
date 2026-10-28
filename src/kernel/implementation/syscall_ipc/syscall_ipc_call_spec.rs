@@ -408,11 +408,10 @@ pub open spec fn ipc_call_handoff_eof_transition_framing(pre: KernelK, post: Ker
     &&& post.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu() == pre.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu()
     &&& post.cpu_hw_cr3_pcid[cpu_id as int].view() == (target.cr3, pcid)
     &&& (forall|c: CpuId| #![trigger pre.cpu_hw_cr3_pcid[c as int]] #![trigger post.cpu_hw_cr3_pcid[c as int]] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_hw_cr3_pcid[c as int] == pre.cpu_hw_cr3_pcid[c as int])
-    &&& post.cpu_tlb.view() == if flush { pre.cpu_tlb.view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }) } else { pre.cpu_tlb.view() }
+    &&& post.cpu_tlb.view() == if flush { pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid))) } else { pre.cpu_tlb.view() }
     &&& (forall|c: CpuId, p: Pcid| #![trigger pre.cpu_tlb.spec_index((c, p))] #![trigger post.cpu_tlb.spec_index((c, p))]
-        index_valid(NUM_CPUS, c) && pcid_valid(p) ==> post.cpu_tlb.spec_index((c, p)) == if flush && c == cpu_id && p == pcid {
-            SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }
-        } else { pre.cpu_tlb.spec_index((c, p)) })
+        index_valid(NUM_CPUS, c) && pcid_valid(p) && !(flush && c == cpu_id && p == pcid) ==> post.cpu_tlb.spec_index((c, p)) == pre.cpu_tlb.spec_index((c, p)))
+    &&& flush ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(post.cpu_tlb.spec_index((cpu_id, pcid)), pagetable_c(pre.pt_mp, pre.pt_lower.view(), target.pagetable))
 }
 
 /// Dequeues the caller at the queue head, parks it waiting for the reply of the running callee, and records
@@ -579,10 +578,9 @@ pub open spec fn ipc_reply_handoff_eof_transition_framing(pre: KernelK, post: Ke
     &&& post.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu() == pre.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu()
     &&& post.cpu_hw_cr3_pcid[cpu_id as int].view() == (target.cr3, pcid)
     &&& (forall|c: CpuId| #![trigger pre.cpu_hw_cr3_pcid[c as int]] #![trigger post.cpu_hw_cr3_pcid[c as int]] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_hw_cr3_pcid[c as int] == pre.cpu_hw_cr3_pcid[c as int])
-    &&& post.cpu_tlb.view() == if flush { pre.cpu_tlb.view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }) } else { pre.cpu_tlb.view() }
+    &&& post.cpu_tlb.view() == if flush { pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid))) } else { pre.cpu_tlb.view() }
     &&& (forall|c: CpuId, p: Pcid| #![trigger pre.cpu_tlb.spec_index((c, p))] #![trigger post.cpu_tlb.spec_index((c, p))]
-        index_valid(NUM_CPUS, c) && pcid_valid(p) ==> post.cpu_tlb.spec_index((c, p)) == if flush && c == cpu_id && p == pcid {
-            SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }
-        } else { pre.cpu_tlb.spec_index((c, p)) })
+        index_valid(NUM_CPUS, c) && pcid_valid(p) && !(flush && c == cpu_id && p == pcid) ==> post.cpu_tlb.spec_index((c, p)) == pre.cpu_tlb.spec_index((c, p)))
+    &&& flush ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(post.cpu_tlb.spec_index((cpu_id, pcid)), pagetable_c(pre.pt_mp, pre.pt_lower.view(), target.pagetable))
 }
 }

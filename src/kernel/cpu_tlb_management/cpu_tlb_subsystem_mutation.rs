@@ -37,9 +37,13 @@ pub fn pcid_needflush_array_clear(needflush: &mut PcidNeedFlushArray, cpu_id: Cp
     }
 }
 
-pub fn cpu_array_flush_current_tlb(cpu_array: &mut CpuLockedArray, cpu_tlb: &mut CpuTLB, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, Tracked(lctx): Tracked<&LocalContext>, Tracked(cpu_lock_perm): Tracked<&LockPerm>)
+/// Flushes the calling cpu's current `(cpu_id, pcid)`; it may refill at once with what the cpu may cache in `k`, the kernel
+/// state whose cpu array this is.
+pub fn cpu_array_flush_current_tlb(cpu_array: &mut CpuLockedArray, cpu_tlb: &mut CpuTLB, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, Ghost(k): Ghost<KernelK>,
+    Tracked(lctx): Tracked<&LocalContext>, Tracked(cpu_lock_perm): Tracked<&LockPerm>)
     requires
         old(cpu_array).inv(),
+        k.cpu_arr == *old(cpu_array),
         index_valid(NUM_CPUS, cpu_id),
         old(cpu_array).spec_index(cpu_id).view().is_init(),
         old(cpu_array).typed_lock_map_aligned(lctx.cpu_lock_map(), lctx.thread_id()),
@@ -53,6 +57,7 @@ pub fn cpu_array_flush_current_tlb(cpu_array: &mut CpuLockedArray, cpu_tlb: &mut
         pcid_valid(pcid),
         old(cpu_array).spec_index(cpu_id).view().view().view().current_cr3 == cr3,
         old(cpu_array).spec_index(cpu_id).view().view().view().current_pcid == pcid,
+        old(cpu_array).spec_index(cpu_id).view().view().view().current_pagetable matches Some(ptr) ==> k.pt_mp.dom().contains(ptr) && k.pt_mp.spec_index(ptr).view().cr3 == cr3,
         lctx.kernel_view_locking_state() is Release,
     ensures
         final(cpu_array).inv(),
@@ -68,11 +73,11 @@ pub fn cpu_array_flush_current_tlb(cpu_array: &mut CpuLockedArray, cpu_tlb: &mut
         final(cpu_array).spec_index(cpu_id).view().view_rodata() == old(cpu_array).spec_index(cpu_id).view().view_rodata(),
         final(cpu_array).spec_index(cpu_id).view().view_ghost() == old(cpu_array).spec_index(cpu_id).view().view_ghost(),
         final(cpu_tlb).inv(),
-        final(cpu_tlb).view() == old(cpu_tlb).view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
-        final(cpu_tlb).spec_index((cpu_id, pcid)).is_empty(),
+        final(cpu_tlb).view() == old(cpu_tlb).view().insert((cpu_id, pcid), final(cpu_tlb).spec_index((cpu_id, pcid))),
+        cpu_tlb_within_may_cache(k, cpu_id, pcid, final(cpu_tlb).spec_index((cpu_id, pcid))),
         forall|c: CpuId, p: Pcid| #![trigger final(cpu_tlb).spec_index((c, p))] #![trigger old(cpu_tlb).spec_index((c, p))] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid) ==> final(cpu_tlb).spec_index((c, p)) == old(cpu_tlb).spec_index((c, p)),
 {
     let cpu = cpu_array.borrow_mut_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(lctx), Tracked(cpu_lock_perm));
-    cpu.flush_current_tlb(cpu_id, cr3, pcid, cpu_tlb, Tracked(lctx));
+    cpu.flush_current_tlb(cpu_id, cr3, pcid, cpu_tlb, Ghost(k), Tracked(lctx));
 }
 }

@@ -5,7 +5,8 @@ verus! {
 /// Dequeues and schedules the endpoint waiter with `peer_result`; when `transferred`, also hands the PCI function
 /// `bdf` from the sender to the receiver process. An attached `bdf` is detached under the write lock of the sender's
 /// IOMMU table `iommu_table` (read from the sender's read-only mirror), which re-anchors at `anchor` or loses its DID
-/// when `bdf` was its anchor, and the old DID domain is invalidated; an absent `bdf` only changes owner.
+/// when `bdf` was its anchor, and the old DID domain is invalidated down to what the IOMMU may cache in the detached root
+/// table; an absent `bdf` only changes owner.
 #[verifier::opaque]
 pub open spec fn ipc_pci_rendezvous_eof_transition_framing(
     pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr,
@@ -83,9 +84,13 @@ pub open spec fn ipc_pci_rendezvous_eof_transition_framing(
         &&& post.it_mp.spec_index(t).view().did == if anchor is Some { Some(pci_bdf_did(anchor.unwrap().0, anchor.unwrap().1, anchor.unwrap().2)) }
             else if anchored { None } else { table.view().did }
         &&& old_did matches Some(did) ==> {
-            &&& post.iommu_tlb.view() == pre.iommu_tlb.view().insert(did, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
+            &&& post.iommu_tlb.view() == pre.iommu_tlb.view().insert(did, post.iommu_tlb.spec_index(did))
             &&& forall|x: VtdDomainId| #![trigger post.iommu_tlb.spec_index(x)] x != did ==> post.iommu_tlb.spec_index(x) == pre.iommu_tlb.spec_index(x)
-            &&& post.iommu_tlb.context_cache() == Map::new(pre.iommu_tlb.context_cache().dom().filter(|x: PciBdf| pre.iommu_tlb.context_cache()[x].1 != did), |x: PciBdf| pre.iommu_tlb.context_cache()[x])
+            &&& iommu_tlb_within_may_cache(KernelK { irt: post.irt, ..pre }, did, post.iommu_tlb.spec_index(did))
+            &&& Map::new(post.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| post.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| post.iommu_tlb.context_cache()[bdf])
+                == Map::new(pre.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf])
+            &&& forall|bdf: PciBdf| #![trigger post.iommu_tlb.context_cache().dom().contains(bdf)] post.iommu_tlb.context_cache().dom().contains(bdf) && post.iommu_tlb.context_cache()[bdf].1 == did
+                ==> iommu_context_cache_entry_present(KernelK { irt: post.irt, ..pre }, bdf, post.iommu_tlb.context_cache()[bdf])
         }
         &&& old_did is None ==> post.iommu_tlb.view() == pre.iommu_tlb.view() && post.iommu_tlb.context_cache() == pre.iommu_tlb.context_cache()
     }

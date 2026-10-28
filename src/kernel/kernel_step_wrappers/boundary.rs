@@ -1287,8 +1287,9 @@ impl KernelK {
             index_valid(NUM_CPUS, cpu_id),
             pcid_valid(pcid),
             old(self).cpu_tlb.view() == if flushed {
-                old(steps).snapshot_k().cpu_tlb.view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
+                old(steps).snapshot_k().cpu_tlb.view().insert((cpu_id, pcid), old(self).cpu_tlb.spec_index((cpu_id, pcid)))
             } else { old(steps).snapshot_k().cpu_tlb.view() },
+            flushed ==> cpu_tlb_within_may_cache(*old(self), cpu_id, pcid, old(self).cpu_tlb.spec_index((cpu_id, pcid))),
             old(self).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
             kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(self)),
             old(lctx).kernel_view_locking_state() is Release,
@@ -1363,8 +1364,9 @@ impl KernelK {
         assert(steps.snapshot_u() != kernel_k_to_kernel_u(*self) ==> kernel_u_cpu_tlb_cleared(steps.snapshot_u(), kernel_k_to_kernel_u(*self), pcid)) by {
             reveal(kernel_u_cpu_tlb_cleared); reveal(kernel_k_to_kernel_u);
             if steps.snapshot_u() != kernel_k_to_kernel_u(*self) {
-                assert(!steps.snapshot_u().cpu_tlb.dom().contains((cpu_id, pcid)) || steps.snapshot_u().cpu_tlb[(cpu_id, pcid)] != (SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })) by {
-                    if steps.snapshot_u().cpu_tlb.dom().contains((cpu_id, pcid)) && steps.snapshot_u().cpu_tlb[(cpu_id, pcid)] == (SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }) {
+                kernel_cpu_tlb_within_may_cache_projection(self, true, cpu_id, pcid, self.cpu_tlb.spec_index((cpu_id, pcid)));
+                assert(!steps.snapshot_u().cpu_tlb.dom().contains((cpu_id, pcid)) || steps.snapshot_u().cpu_tlb[(cpu_id, pcid)] != self.cpu_tlb.spec_index((cpu_id, pcid))) by {
+                    if steps.snapshot_u().cpu_tlb.dom().contains((cpu_id, pcid)) && steps.snapshot_u().cpu_tlb[(cpu_id, pcid)] == self.cpu_tlb.spec_index((cpu_id, pcid)) {
                         assert_maps_equal!(steps.snapshot_u().cpu_tlb, self.cpu_tlb.view(), key => {});
                     }
                 };

@@ -453,9 +453,10 @@ pub open spec fn kernel_context_switch_fields(pre: &KernelK, post: &KernelK, cpu
     &&& post.cpu_offline_mp == pre.cpu_offline_mp
     &&& post.cpu_set_mp == pre.cpu_set_mp
     &&& post.cpu_tlb.view() == match flushed_pcid {
-        Some(pcid) => pre.cpu_tlb.view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
+        Some(pcid) => pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid))),
         None => pre.cpu_tlb.view(),
     }
+    &&& flushed_pcid matches Some(pcid) ==> cpu_tlb_within_may_cache(*post, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)))
     &&& pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
     &&& !(cpu.state is Off)
     &&& pre.ctn_mp.dom().contains(cpu.owning_container)
@@ -603,11 +604,12 @@ pub open spec fn kernel_u_context_switch_changed(old_u: KernelU, new_u: KernelU,
         }),
         thread_map: requeued.insert(next_thread, ThreadU { state: ThreadState::RUNNING { cpu_id }, last_cpu: cpu_id, error_code: None, trap_frame: None, ..next }),
         cpu_tlb: match flushed_pcid {
-            Some(pcid) => old_u.cpu_tlb.insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
+            Some(pcid) => old_u.cpu_tlb.insert((cpu_id, pcid), new_u.cpu_tlb[(cpu_id, pcid)]),
             None => old_u.cpu_tlb,
         },
         ..old_u
     })
+    &&& flushed_pcid matches Some(pcid) ==> cpu_tlb_within_may_cache_u(new_u, cpu_id, pcid, new_u.cpu_tlb[(cpu_id, pcid)])
 }
 
 #[verifier::opaque]
@@ -873,9 +875,10 @@ pub open spec fn kernel_ipc_call_handoff_fields(
     &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
     &&& post.dflt_pt == pre.dflt_pt
     &&& post.cpu_tlb.view() == match flushed_pcid {
-        Some(pcid) => pre.cpu_tlb.view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
+        Some(pcid) => pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid))),
         None => pre.cpu_tlb.view(),
     }
+    &&& flushed_pcid matches Some(pcid) ==> cpu_tlb_within_may_cache(*post, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)))
     &&& pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
     &&& cpu.state is Running
     &&& cpu.current_thread == Some(caller_ptr)
@@ -996,11 +999,12 @@ pub open spec fn kernel_u_ipc_call_handoff_changed(
             .insert(callee_ptr, ThreadU { state: ThreadState::RUNNING { cpu_id }, caller: Some(caller_ptr), last_cpu: cpu_id, blocking_endpoint_ptr: None, trap_frame: None, ..callee }),
         endpoint_map: old_u.endpoint_map.insert(endpoint_ptr, EndpointU { queue: endpoint.queue.skip(1), ..endpoint }),
         cpu_tlb: match flushed_pcid {
-            Some(pcid) => old_u.cpu_tlb.insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
+            Some(pcid) => old_u.cpu_tlb.insert((cpu_id, pcid), new_u.cpu_tlb[(cpu_id, pcid)]),
             None => old_u.cpu_tlb,
         },
         ..old_u
     })
+    &&& flushed_pcid matches Some(pcid) ==> cpu_tlb_within_may_cache_u(new_u, cpu_id, pcid, new_u.cpu_tlb[(cpu_id, pcid)])
 }
 
 #[verifier::opaque]
@@ -1178,9 +1182,10 @@ pub open spec fn kernel_ipc_reply_handoff_fields(
     &&& post.iommu_tlb.view() == pre.iommu_tlb.view()
     &&& post.dflt_pt == pre.dflt_pt
     &&& post.cpu_tlb.view() == match flushed_pcid {
-        Some(pcid) => pre.cpu_tlb.view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
+        Some(pcid) => pre.cpu_tlb.view().insert((cpu_id, pcid), post.cpu_tlb.spec_index((cpu_id, pcid))),
         None => pre.cpu_tlb.view(),
     }
+    &&& flushed_pcid matches Some(pcid) ==> cpu_tlb_within_may_cache(*post, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)))
     &&& pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
     &&& cpu.state is Running
     &&& cpu.current_thread == Some(callee_ptr)
@@ -1297,11 +1302,12 @@ pub open spec fn kernel_u_ipc_reply_handoff_changed(
             queue: endpoint.queue.push(callee_ptr), queue_state: if endpoint.queue.len() == 0 { EndpointState::RECEIVE } else { endpoint.queue_state }, ..endpoint
         }),
         cpu_tlb: match flushed_pcid {
-            Some(pcid) => old_u.cpu_tlb.insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
+            Some(pcid) => old_u.cpu_tlb.insert((cpu_id, pcid), new_u.cpu_tlb[(cpu_id, pcid)]),
             None => old_u.cpu_tlb,
         },
         ..old_u
     })
+    &&& flushed_pcid matches Some(pcid) ==> cpu_tlb_within_may_cache_u(new_u, cpu_id, pcid, new_u.cpu_tlb[(cpu_id, pcid)])
 }
 
 #[verifier::opaque]
@@ -1375,8 +1381,9 @@ pub open spec fn kernel_ipc_rendezvous_fields(
         &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_iommu_root(b, d, f)] pci_bdf_valid(b, d, f)
             ==> (post.irt.view().spec_index_iommu_root(b, d, f) is Some) == ((b, d, f) != bdf && pre.irt.view().spec_index_iommu_root(b, d, f) is Some)
         &&& post.iommu_tlb.view() == if attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] && old_did is Some {
-            pre.iommu_tlb.view().insert(old_did->Some_0, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
+            pre.iommu_tlb.view().insert(old_did->Some_0, post.iommu_tlb.spec_index(old_did->Some_0))
         } else { pre.iommu_tlb.view() }
+        &&& attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] && old_did is Some ==> iommu_tlb_within_may_cache(*post, old_did->Some_0, post.iommu_tlb.spec_index(old_did->Some_0))
         &&& sender_table matches Some(t) ==> pci_handoff_table_did(pre.irt.view().owners(), attached, sender, bdf, old_did, post.it_mp.spec_index(t).view().did)
         &&& post.it_mp.dom() == pre.it_mp.dom()
         &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
@@ -1584,13 +1591,18 @@ pub open spec fn kernel_u_ipc_rendezvous_changed(
             Some((bdf, sender, _)) => {
                 let old_did = match old_u.process_map.spec_index(sender).iommu_table { Some(t) => t.did, None => None };
                 if old_u.iommu_root_table.attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] && old_did is Some {
-                    old_u.iommu_tlb.insert(old_did->Some_0, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
+                    old_u.iommu_tlb.insert(old_did->Some_0, new_u.iommu_tlb[old_did->Some_0])
                 } else { old_u.iommu_tlb }
             },
             None => old_u.iommu_tlb,
         },
         ..old_u
     })
+    &&& pci_transfer matches Some((bdf, sender, _)) ==> {
+        let old_did = match old_u.process_map.spec_index(sender).iommu_table { Some(t) => t.did, None => None };
+        old_u.iommu_root_table.attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] && old_did is Some
+            ==> iommu_tlb_within_may_cache_u(new_u, old_did->Some_0, new_u.iommu_tlb[old_did->Some_0])
+    }
 }
 
 /// The caller's result of meeting the queue head of the endpoint at `endpoint_index`, decided from the two
@@ -2130,7 +2142,7 @@ pub open spec fn kernel_u_cpu_tlb_cleared(pre: KernelU, post: KernelU, pcid: Pci
     &&& forall|key: (CpuId, Pcid)| #![trigger changed.contains(key)] changed.contains(key) ==> {
         &&& index_valid(NUM_CPUS, key.0)
         &&& key.1 == pcid
-        &&& post.cpu_tlb[key] == (SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
+        &&& cpu_tlb_within_may_cache_u(post, key.0, pcid, post.cpu_tlb[key])
     }
     &&& post == (KernelU { cpu_tlb: post.cpu_tlb, ..pre })
 }

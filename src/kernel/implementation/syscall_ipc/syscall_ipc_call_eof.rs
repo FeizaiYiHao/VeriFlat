@@ -292,7 +292,7 @@ pub(super) proof fn ipc_call_handoff_eof(pre: KernelK, post: KernelK, cpu_id: Cp
         reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
         reveal(process_pagetable_match); reveal(container_process_wf); reveal(process_thread_wf);
     };
-    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
+    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, pre.thr_mp.spec_index(callee_ptr).view().owning_proc); };
 }
 
 /// The cpu and emptied-thread relations close after the acceptance.
@@ -773,6 +773,6 @@ pub(super) proof fn ipc_reply_handoff_eof(pre: KernelK, post: KernelK, cpu_id: C
         reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
         reveal(process_pagetable_match); reveal(container_process_wf); reveal(process_thread_wf);
     };
-    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
+    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, pre.thr_mp.spec_index(caller_ptr).view().owning_proc); };
 }
 }

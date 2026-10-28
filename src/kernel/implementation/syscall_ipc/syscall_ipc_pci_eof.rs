@@ -205,13 +205,15 @@ proof fn ipc_pci_rendezvous_eof_iommu_inv(
         iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
         process_pci_function_ownership_wf(post.irt.view(), post.prc_mp),
 {
+    ipc_pci_rendezvous_eof_sender_table(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor);
     reveal(ipc_pci_rendezvous_eof_transition_framing);
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); reveal(process_iommu_table_match); };
     assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
 }
 
-/// Detaching an attached function empties its old DID domain and drops the context-cache entries of that DID; a re-anchored
-/// table moves its remaining functions to the previously inactive, hence empty, candidate domain of `anchor`.
+/// Detaching an attached function leaves its old DID domain and the context-cache entries of that DID within what the IOMMU
+/// may cache in the detached root table; a re-anchored table moves its remaining functions to the previously inactive, hence
+/// empty, candidate domain of `anchor`.
 proof fn ipc_pci_rendezvous_eof_iotlb(
     pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
     peer_scheduler_ptr: RwLockSchedulerPtr, wake_cpu: CpuId, sender_proc: RwLockProcessPtr, receiver_proc: RwLockProcessPtr, bdf: PciBdf,
@@ -228,12 +230,17 @@ proof fn ipc_pci_rendezvous_eof_iotlb(
 {
     ipc_pci_rendezvous_eof_sender_table(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor);
     reveal(ipc_pci_rendezvous_eof_transition_framing);
+    if iommu_table is Some && pre.irt.view().spec_index_iommu_did(bdf.0, bdf.1, bdf.2) is Some {
+        let did = pre.irt.view().spec_index_iommu_did(bdf.0, bdf.1, bdf.2)->Some_0;
+        assert(post.iommu_tlb.context_cache() =~= Map::new(pre.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf])
+            .union_prefer_right(Map::new(post.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| post.iommu_tlb.context_cache()[bdf].1 == did), |bdf: PciBdf| post.iommu_tlb.context_cache()[bdf])));
+    }
     assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); reveal(IommuTLB::inv); };
 }
 
 /// The transfer's root-table, IOTLB, and IOMMU-table effects in the form of `kernel_ipc_rendezvous_fields`: the old DID domain
-/// is emptied exactly when `bdf` was attached, the sender table's DID follows `pci_handoff_table_did`, and every table keeps its
-/// mappings.
+/// is invalidated exactly when `bdf` was attached, the sender table's DID follows `pci_handoff_table_did`, and every table keeps
+/// its mappings; an anchor that still carries the sender table's old DID is the sender's.
 proof fn ipc_pci_rendezvous_eof_handoff(
     pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
     peer_scheduler_ptr: RwLockSchedulerPtr, wake_cpu: CpuId, sender_proc: RwLockProcessPtr, receiver_proc: RwLockProcessPtr, bdf: PciBdf,
@@ -252,8 +259,9 @@ proof fn ipc_pci_rendezvous_eof_handoff(
             let attached = iommu_roots_attached(pre.irt.view().iommu_roots());
             let old_did = match sender_table { Some(t) => pre.it_mp.spec_index(t).view().did, None => None };
             &&& post.iommu_tlb.view() == if attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] && old_did is Some {
-                pre.iommu_tlb.view().insert(old_did->Some_0, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
+                pre.iommu_tlb.view().insert(old_did->Some_0, post.iommu_tlb.spec_index(old_did->Some_0))
             } else { pre.iommu_tlb.view() }
+            &&& attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] && old_did is Some ==> iommu_tlb_within_may_cache(post, old_did->Some_0, post.iommu_tlb.spec_index(old_did->Some_0))
             &&& sender_table matches Some(t) ==> pci_handoff_table_did(pre.irt.view().owners(), attached, sender_proc, bdf, old_did, post.it_mp.spec_index(t).view().did)
             &&& post.it_mp.dom() == pre.it_mp.dom()
             &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)] pre.it_mp.dom().contains(p) ==> {
@@ -267,9 +275,15 @@ proof fn ipc_pci_rendezvous_eof_handoff(
         },
         transferred ==> forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_iommu_root(b, d, f)] pci_bdf_valid(b, d, f)
             ==> (post.irt.view().spec_index_iommu_root(b, d, f) is Some) == ((b, d, f) != bdf && pre.irt.view().spec_index_iommu_root(b, d, f) is Some),
+        iommu_table matches Some(t) ==> {
+            let did = pre.it_mp.spec_index(t).view().did;
+            let anchor = pci_bdf_of_did(did->Some_0);
+            did is Some && post.irt.view().spec_index_iommu_did(anchor.0, anchor.1, anchor.2) == did ==> post.irt.view().spec_index_owner(anchor.0, anchor.1, anchor.2) == sender_proc
+        },
 {
     ipc_pci_rendezvous_eof_sender_table(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor);
     reveal(ipc_pci_rendezvous_eof_transition_framing);
+    if let Some(t) = iommu_table { iommu_root_table_process_wf_table_at(pre.irt.view(), pre.prc_mp, pre.it_mp, t); }
     assert(transferred ==> (pre.prc_mp.spec_index(sender_proc).view().iommu_table matches Some(t) ==> pci_handoff_table_did(pre.irt.view().owners(),
         iommu_roots_attached(pre.irt.view().iommu_roots()), sender_proc, bdf, pre.it_mp.spec_index(t).view().did, post.it_mp.spec_index(t).view().did))) by {
         reveal(iommu_root_table_process_wf);
@@ -345,6 +359,11 @@ pub(super) proof fn ipc_pci_rendezvous_eof(
     ensures
         post.inv(),
         kernel_ipc_rendezvous_fields(&snapshot, &post, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, None, if transferred { Some((bdf, sender_proc, receiver_proc)) } else { None }),
+        iommu_table matches Some(t) ==> {
+            let did = snapshot.it_mp.spec_index(t).view().did;
+            let anchor = pci_bdf_of_did(did->Some_0);
+            did is Some && post.irt.view().spec_index_iommu_did(anchor.0, anchor.1, anchor.2) == did ==> post.irt.view().spec_index_owner(anchor.0, anchor.1, anchor.2) == sender_proc
+        },
 {
     reveal(ipc_pci_rendezvous_eof_transition_framing);
     assert(post.subsystems_inv()) by {
@@ -373,6 +392,7 @@ pub(super) proof fn ipc_pci_rendezvous_eof(
         &&& sender_table == pre.prc_mp.spec_index(sender_proc).view().iommu_table
         &&& (match sender_table { Some(t) => snapshot.it_mp.spec_index(t).view().did, None => None }) == match sender_table { Some(t) => pre.it_mp.spec_index(t).view().did, None => None }
         &&& snapshot.it_mp.dom() == pre.it_mp.dom()
+        &&& iommu_table matches Some(t) ==> snapshot.it_mp.spec_index(t).view().did == pre.it_mp.spec_index(t).view().did
     }) by {
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
         process_iommu_table_match_process_at(pre.prc_mp, pre.it_mp, sender_proc);

@@ -184,6 +184,7 @@ pub(super) proof fn cpu_went_off_eof_fields(
 )
     requires
         entry.inv(),
+        mid.cpu_tlb.inv(),
         entry == (KernelK {
             cpu_arr: entry.cpu_arr, prc_mp: entry.prc_mp, thr_mp: entry.thr_mp, sched_mp: entry.sched_mp, cpu_set_mp: entry.cpu_set_mp, cpu_offline_mp: entry.cpu_offline_mp, ..snapshot
         }),
@@ -261,6 +262,15 @@ pub(super) proof fn cpu_went_off_eof_fields(
         post.ctn_mp == snapshot.ctn_mp,
 {
     reveal(cpu_went_off_eof_transition_framing);
+    assert(mid.cpu_tlb.view() == cpu_tlb_after_cpu_went_off(pre.cpu_tlb.view(), cpu_id, cpu_offline_check_flushed_default_pcid(pre, cpu_id))) by {
+        reveal(CpuTLB::inv);
+        vstd::assert_maps_equal!(mid.cpu_tlb.view(), cpu_tlb_after_cpu_went_off(pre.cpu_tlb.view(), cpu_id, cpu_offline_check_flushed_default_pcid(pre, cpu_id)), key => {
+            let tlb = mid.cpu_tlb.spec_index((key.0, key.1));
+            if mid.cpu_tlb.view().dom().contains((key.0, key.1)) && key.0 == cpu_id && (key.1 != KERNEL_DEFAULT_PCID || cpu_offline_check_flushed_default_pcid(pre, cpu_id)) {
+                assert(tlb.tlb_4k =~= Map::empty() && tlb.tlb_2m =~= Map::empty() && tlb.tlb_1g =~= Map::empty());
+            }
+        });
+    };
     assert(scheduler_shards_of(mid.sched_mp.spec_index(scheduler_ptr)) =~= match current_thread {
         Some(prev) => scheduler_shards_of(pre.sched_mp.spec_index(scheduler_ptr)).update(cpu_id as int, scheduler_shards_of(pre.sched_mp.spec_index(scheduler_ptr))[cpu_id as int].push(prev)),
         None => scheduler_shards_of(pre.sched_mp.spec_index(scheduler_ptr)),

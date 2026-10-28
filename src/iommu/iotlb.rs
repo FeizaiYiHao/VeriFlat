@@ -44,34 +44,43 @@ impl IommuTLB {
     }
 
     /// Drops every cached context entry tagged `did`, then empties its IOTLB domain, in the order VT-d requires.
-    /// The root-table lock serializes it with the context-entry update that makes it necessary.
+    /// The root-table lock serializes it with the context-entry update that makes it necessary. The unit may refill the
+    /// domain and the context entries tagged `did` at once with what `k`, the kernel state whose IOTLB this is, presents.
     #[verifier::external_body]
-    pub fn invalidate_domain(&mut self, did: VtdDomainId, Tracked(lctx): Tracked<&LocalContext>)
+    pub fn invalidate_domain(&mut self, did: VtdDomainId, Ghost(k): Ghost<KernelK>, Tracked(lctx): Tracked<&LocalContext>)
         requires
             old(self).inv(),
+            k.iommu_tlb == *old(self),
             vtd_domain_id_valid(did),
             !lctx.iommu_root_table_lock_map().dom().is_empty(),
         ensures
             final(self).inv(),
-            final(self).view() == old(self).view().insert(did, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
-            final(self).context_cache() == Map::new(old(self).context_cache().dom().filter(|bdf: PciBdf| old(self).context_cache()[bdf].1 != did), |bdf: PciBdf| old(self).context_cache()[bdf]),
+            final(self).view() == old(self).view().insert(did, final(self).spec_index(did)),
+            iommu_tlb_within_may_cache(k, did, final(self).spec_index(did)),
+            Map::new(final(self).context_cache().dom().filter(|bdf: PciBdf| final(self).context_cache()[bdf].1 != did), |bdf: PciBdf| final(self).context_cache()[bdf])
+                == Map::new(old(self).context_cache().dom().filter(|bdf: PciBdf| old(self).context_cache()[bdf].1 != did), |bdf: PciBdf| old(self).context_cache()[bdf]),
+            forall|bdf: PciBdf| #![trigger final(self).context_cache().dom().contains(bdf)] final(self).context_cache().dom().contains(bdf) && final(self).context_cache()[bdf].1 == did
+                ==> iommu_context_cache_entry_present(k, bdf, final(self).context_cache()[bdf]),
     {
         unsafe { veriflat_iommu_invalidate_domain(did); }
         self.domain_tlbs = Ghost(self.domain_tlbs.view().insert(did, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }));
         self.context_cache = Ghost(Map::new(self.context_cache.view().dom().filter(|bdf: PciBdf| self.context_cache.view()[bdf].1 != did), |bdf: PciBdf| self.context_cache.view()[bdf]));
     }
 
-    /// Empties only the DID's IOTLB domain; the context cache is untouched.
+    /// Empties only the DID's IOTLB domain; the context cache is untouched. The unit may refill the domain at once with
+    /// what `k`, the kernel state whose IOTLB this is, presents.
     /// A held IOMMU-table lock serializes it with the leaf update that makes it necessary.
     #[verifier::external_body]
-    pub fn invalidate_iotlb_domain(&mut self, did: VtdDomainId, Tracked(lctx): Tracked<&LocalContext>)
+    pub fn invalidate_iotlb_domain(&mut self, did: VtdDomainId, Ghost(k): Ghost<KernelK>, Tracked(lctx): Tracked<&LocalContext>)
         requires
             old(self).inv(),
+            k.iommu_tlb == *old(self),
             vtd_domain_id_valid(did),
             !lctx.iommu_table_lock_map().dom().is_empty(),
         ensures
             final(self).inv(),
-            final(self).view() == old(self).view().insert(did, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
+            final(self).view() == old(self).view().insert(did, final(self).spec_index(did)),
+            iommu_tlb_within_may_cache(k, did, final(self).spec_index(did)),
             final(self).context_cache() == old(self).context_cache(),
     {
         unsafe { veriflat_iommu_invalidate_iotlb_domain(did); }

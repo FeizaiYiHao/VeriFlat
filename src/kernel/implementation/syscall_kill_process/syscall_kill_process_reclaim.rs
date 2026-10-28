@@ -144,8 +144,11 @@ pub(crate) fn kill_reassign_functions(
             Some(it) => {
                 let Tracked(iommu_perm) = krnl.wlock_iommu_table(it, Tracked(&mut *lctx));
                 let ghost locked = *krnl;
-                iommu_root_table_reassign_detach_all(&mut krnl.irt, &mut krnl.iommu_tlb, &mut krnl.it_mp, it, process_ptr, Tracked(&*lctx), Tracked(&irt_perm), Tracked(&iommu_perm));
+                iommu_root_table_reassign_detach_all(&mut krnl.irt, &mut krnl.iommu_tlb, &mut krnl.it_mp, it, process_ptr, Ghost(locked), Tracked(&*lctx), Tracked(&irt_perm), Tracked(&iommu_perm));
                 proof {
+                    assert(locked.it_mp.spec_index(it).view().did matches Some(d) ==> krnl.iommu_tlb.spec_index(d).tlb_4k() =~= Map::empty() && krnl.iommu_tlb.spec_index(d).tlb_2m() =~= Map::empty() && krnl.iommu_tlb.spec_index(d).tlb_1g() =~= Map::empty()) by {
+                        iommu_root_table_process_wf_table_at(locked.irt.view(), locked.prc_mp, locked.it_mp, it);
+                    };
                     process_perms_wf_map(krnl.prc_mp);
                     let target_ghost = krnl.prc_mp.spec_index(target).view_ghost();
                     let owner_ghost = krnl.prc_mp.spec_index(process_ptr).view_ghost();

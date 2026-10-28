@@ -73,7 +73,8 @@ pub open spec fn window_stale_cpus_update_eof_transition_framing(pre: KernelK, p
 /// EOF closure of `KernelK::replace_window_stale_cpus`: `update` adds a record only for the window `Set` names, which a
 /// table that is not write-held has locked; a `Set` that only grows a record and a `ClearEmpty` keep every listed CPU listed,
 /// so the TLB invariant carries over; a `RemoveCpu` drops only `cpu_id`, whose TLB under the table's PCID is empty,
-/// exempt until its activation flush, or recorded under another table; any other update brings the invariant for the new map.
+/// exempt until its activation flush, recorded under another table, or backed only by present leaves of the table; any
+/// other update brings the invariant for the new map.
 pub(super) proof fn window_stale_cpus_update_eof(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, update: WindowStaleUpdate, root_write_held: bool, thread_id: LockThreadId)
     requires
         pre.inv(),
@@ -100,6 +101,7 @@ pub(super) proof fn window_stale_cpus_update_eof(pre: KernelK, post: KernelK, ro
             &&& pre.cpu_tlb.spec_index((cpu_id, pcid)).is_empty()
                 || (pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush && pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid)
                 || (pre.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some && pre.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr != root)
+            || single_cpu_single_pcid_tlb_subset_of_present_pagetable(pre.cpu_tlb.spec_index((cpu_id, pcid)), pagetable_c(pre.pt_mp, pre.pt_lower.view(), root))
         }) || tlb_wf_spec(pre.cpu_tlb, pre.pt_mp, post.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
     ensures
         post.inv(),

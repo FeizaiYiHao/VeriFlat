@@ -48,6 +48,7 @@ pub mod ni_kill_container;
 pub mod ni_kill_process;
 pub mod ni_thread_exit;
 pub mod ni_trap;
+pub mod ni_env;
 pub mod theorem;
 
 pub use domain::*;

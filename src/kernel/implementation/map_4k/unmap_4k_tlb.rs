@@ -59,8 +59,8 @@ pub fn flush_remote_pcid_and_clear(krnl: &mut KernelK, cpu_id: CpuId, pcid: Pcid
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
         typed_lock_maps_aligned(final(krnl), lctx),
         *final(krnl) == (KernelK { cpu_tlb: final(krnl).cpu_tlb, pcid_needflush: final(krnl).pcid_needflush, ..*old(krnl) }),
-        final(krnl).cpu_tlb.view() == old(krnl).cpu_tlb.view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
-        final(krnl).cpu_tlb.spec_index((cpu_id, pcid)).is_empty(),
+        final(krnl).cpu_tlb.view() == old(krnl).cpu_tlb.view().insert((cpu_id, pcid), final(krnl).cpu_tlb.spec_index((cpu_id, pcid))),
+        cpu_tlb_within_may_cache(*final(krnl), cpu_id, pcid, final(krnl).cpu_tlb.spec_index((cpu_id, pcid))),
         forall|c: CpuId, p: Pcid| #![trigger final(krnl).cpu_tlb.spec_index((c, p))] #![trigger old(krnl).cpu_tlb.spec_index((c, p))] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid) ==> final(krnl).cpu_tlb.spec_index((c, p)) == old(krnl).cpu_tlb.spec_index((c, p)),
         !final(krnl).pcid_needflush.spec_index(cpu_id, pcid).view().needflush,
         final(krnl).pcid_needflush.lock_id_by_index(cpu_id, pcid) == old(krnl).pcid_needflush.lock_id_by_index(cpu_id, pcid),
@@ -69,7 +69,7 @@ pub fn flush_remote_pcid_and_clear(krnl: &mut KernelK, cpu_id: CpuId, pcid: Pcid
         forall|c: CpuId, p: Pcid| #![trigger final(krnl).pcid_needflush.spec_index(c, p)] #![trigger old(krnl).pcid_needflush.spec_index(c, p)] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid)
             ==> final(krnl).pcid_needflush.spec_index(c, p) == old(krnl).pcid_needflush.spec_index(c, p),
 {
-    krnl.cpu_tlb.flush_remote_pcid(cpu_id, pcid, Tracked(lctx));
+    krnl.cpu_tlb.flush_remote_pcid(cpu_id, pcid, Ghost(*krnl), Tracked(lctx));
     pcid_needflush_array_clear(&mut krnl.pcid_needflush, cpu_id, pcid, Tracked(lctx), needflush_perm);
     proof {
         assert(flush_remote_pcid_and_clear_eof_transition_framing(*old(krnl), *krnl, cpu_id, pcid)) by { reveal(flush_remote_pcid_and_clear_eof_transition_framing); };
@@ -110,8 +110,8 @@ pub fn flush_local_pcid_and_clear(krnl: &mut KernelK, cpu_id: CpuId, pcid: Pcid,
         final(krnl).cpu_arr.spec_index(cpu_id).view().killer_info() == old(krnl).cpu_arr.spec_index(cpu_id).view().killer_info(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().view_rodata() == old(krnl).cpu_arr.spec_index(cpu_id).view().view_rodata(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().view_ghost() == old(krnl).cpu_arr.spec_index(cpu_id).view().view_ghost(),
-        final(krnl).cpu_tlb.view() == old(krnl).cpu_tlb.view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
-        final(krnl).cpu_tlb.spec_index((cpu_id, pcid)).is_empty(),
+        final(krnl).cpu_tlb.view() == old(krnl).cpu_tlb.view().insert((cpu_id, pcid), final(krnl).cpu_tlb.spec_index((cpu_id, pcid))),
+        cpu_tlb_within_may_cache(*final(krnl), cpu_id, pcid, final(krnl).cpu_tlb.spec_index((cpu_id, pcid))),
         forall|c: CpuId, p: Pcid| #![trigger final(krnl).cpu_tlb.spec_index((c, p))] #![trigger old(krnl).cpu_tlb.spec_index((c, p))] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid) ==> final(krnl).cpu_tlb.spec_index((c, p)) == old(krnl).cpu_tlb.spec_index((c, p)),
         !final(krnl).pcid_needflush.spec_index(cpu_id, pcid).view().needflush,
         final(krnl).pcid_needflush.lock_id_by_index(cpu_id, pcid) == old(krnl).pcid_needflush.lock_id_by_index(cpu_id, pcid),
@@ -121,7 +121,12 @@ pub fn flush_local_pcid_and_clear(krnl: &mut KernelK, cpu_id: CpuId, pcid: Pcid,
             ==> final(krnl).pcid_needflush.spec_index(c, p) == old(krnl).pcid_needflush.spec_index(c, p),
 {
     assert(krnl.cpu_arr.inv() && krnl.cpu_arr.spec_index(cpu_id).view().is_init()) by { cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
-    cpu_array_flush_current_tlb(&mut krnl.cpu_arr, &mut krnl.cpu_tlb, cpu_id, cr3, pcid, Tracked(lctx), cpu_perm);
+    assert(krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_pagetable matches Some(ptr) ==> krnl.pt_mp.dom().contains(ptr) && krnl.pt_mp.spec_index(ptr).view().cr3 == cr3) by {
+        cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
+        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap());
+    };
+    let ghost pre = *krnl;
+    cpu_array_flush_current_tlb(&mut krnl.cpu_arr, &mut krnl.cpu_tlb, cpu_id, cr3, pcid, Ghost(pre), Tracked(lctx), cpu_perm);
     pcid_needflush_array_clear(&mut krnl.pcid_needflush, cpu_id, pcid, Tracked(lctx), needflush_perm);
     proof {
         assert(flush_local_pcid_and_clear_eof_transition_framing(*old(krnl), *krnl, cpu_id, pcid)) by { reveal(flush_local_pcid_and_clear_eof_transition_framing); };

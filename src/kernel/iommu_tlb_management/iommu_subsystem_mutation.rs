@@ -9,8 +9,8 @@ verus! {
 /// with none left the table loses its DID. Every path that cleared a present entry ends with an invalidation of the old DID.
 pub fn iommu_root_table_reassign_detached(
     irt: &mut IommuRootTableLock, iommu_tlb: &mut IommuTLB, iommu_table_map: &mut IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot,
-    bus: usize, device: usize, function: usize, owner: RwLockProcessPtr, Tracked(lctx): Tracked<&LocalContext>, Tracked(irt_lock_perm): Tracked<&LockPerm>,
-    Tracked(iommu_table_lock_perm): Tracked<&LockPerm>,
+    bus: usize, device: usize, function: usize, owner: RwLockProcessPtr, Ghost(k): Ghost<KernelK>, Tracked(lctx): Tracked<&LocalContext>,
+    Tracked(irt_lock_perm): Tracked<&LockPerm>, Tracked(iommu_table_lock_perm): Tracked<&LockPerm>,
 ) -> (ret: Option<PciBdf>)
     requires
         old(irt).inv(),
@@ -72,8 +72,12 @@ pub fn iommu_root_table_reassign_detached(
             else { old(iommu_table_map).spec_index(iommu_table_ptr).view().did },
         final(iommu_tlb).inv(),
         old(irt).view().spec_index_iommu_did(bus, device, function) matches Some(did) ==> {
-            &&& final(iommu_tlb).view() == old(iommu_tlb).view().insert(did, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
-            &&& final(iommu_tlb).context_cache() == Map::new(old(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| old(iommu_tlb).context_cache()[bdf].1 != did), |bdf: PciBdf| old(iommu_tlb).context_cache()[bdf])
+            &&& final(iommu_tlb).view() == old(iommu_tlb).view().insert(did, final(iommu_tlb).spec_index(did))
+            &&& iommu_tlb_within_may_cache(KernelK { irt: *final(irt), ..k }, did, final(iommu_tlb).spec_index(did))
+            &&& Map::new(final(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| final(iommu_tlb).context_cache()[bdf].1 != did), |bdf: PciBdf| final(iommu_tlb).context_cache()[bdf])
+                == Map::new(old(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| old(iommu_tlb).context_cache()[bdf].1 != did), |bdf: PciBdf| old(iommu_tlb).context_cache()[bdf])
+            &&& forall|bdf: PciBdf| #![trigger final(iommu_tlb).context_cache().dom().contains(bdf)] final(iommu_tlb).context_cache().dom().contains(bdf) && final(iommu_tlb).context_cache()[bdf].1 == did
+                ==> iommu_context_cache_entry_present(KernelK { irt: *final(irt), ..k }, bdf, final(iommu_tlb).context_cache()[bdf])
         },
         old(irt).view().spec_index_iommu_did(bus, device, function) is None ==> final(iommu_tlb).view() == old(iommu_tlb).view() && final(iommu_tlb).context_cache() == old(iommu_tlb).context_cache(),
 {
@@ -100,11 +104,11 @@ pub fn iommu_root_table_reassign_detached(
             match new_anchor {
                 Some(anchor) => {
                     let new_did = IommuRootTable::pci_bdf_slot(anchor.0, anchor.1, anchor.2);
-                    iommu_root_table_migrate_did(irt, iommu_tlb, sender, root, did, new_did, Tracked(lctx), Tracked(irt_lock_perm));
+                    iommu_root_table_migrate_did(irt, iommu_tlb, sender, root, did, new_did, Ghost(k), Tracked(lctx), Tracked(irt_lock_perm));
                     iommu_table_map_set_did(iommu_table_map, iommu_table_ptr, Some(new_did), Tracked(lctx), Tracked(iommu_table_lock_perm));
                 },
                 None => {
-                    iommu_tlb.invalidate_domain(did, Tracked(lctx));
+                    iommu_tlb.invalidate_domain(did, Ghost(KernelK { irt: *irt, iommu_tlb: *iommu_tlb, ..k }), Tracked(lctx));
                     if anchored { iommu_table_map_set_did(iommu_table_map, iommu_table_ptr, None, Tracked(lctx), Tracked(iommu_table_lock_perm)); }
                 },
             }
@@ -118,7 +122,7 @@ pub fn iommu_root_table_reassign_detached(
 /// A last invalidation drops whatever a not-yet-moved entry cached meanwhile, so no `old_did` context or IOTLB entry survives.
 fn iommu_root_table_migrate_did(
     irt: &mut IommuRootTableLock, iommu_tlb: &mut IommuTLB, owner: RwLockProcessPtr, root: PageTableRoot, old_did: VtdDomainId, new_did: VtdDomainId,
-    Tracked(lctx): Tracked<&LocalContext>, Tracked(irt_lock_perm): Tracked<&LockPerm>,
+    Ghost(k): Ghost<KernelK>, Tracked(lctx): Tracked<&LocalContext>, Tracked(irt_lock_perm): Tracked<&LockPerm>,
 )
     requires
         old(irt).inv(),
@@ -144,11 +148,15 @@ fn iommu_root_table_migrate_did(
             &&& final(irt).view().spec_index_iommu_did(b, d, f) == if moved { Some(new_did) } else { old(irt).view().spec_index_iommu_did(b, d, f) }
         },
         final(iommu_tlb).inv(),
-        final(iommu_tlb).view() == old(iommu_tlb).view().insert(old_did, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
-        final(iommu_tlb).context_cache() == Map::new(old(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| old(iommu_tlb).context_cache()[bdf].1 != old_did), |bdf: PciBdf| old(iommu_tlb).context_cache()[bdf]),
+        final(iommu_tlb).view() == old(iommu_tlb).view().insert(old_did, final(iommu_tlb).spec_index(old_did)),
+        iommu_tlb_within_may_cache(KernelK { irt: *final(irt), ..k }, old_did, final(iommu_tlb).spec_index(old_did)),
+        Map::new(final(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| final(iommu_tlb).context_cache()[bdf].1 != old_did), |bdf: PciBdf| final(iommu_tlb).context_cache()[bdf])
+            == Map::new(old(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| old(iommu_tlb).context_cache()[bdf].1 != old_did), |bdf: PciBdf| old(iommu_tlb).context_cache()[bdf]),
+        forall|bdf: PciBdf| #![trigger final(iommu_tlb).context_cache().dom().contains(bdf)] final(iommu_tlb).context_cache().dom().contains(bdf) && final(iommu_tlb).context_cache()[bdf].1 == old_did
+            ==> iommu_context_cache_entry_present(KernelK { irt: *final(irt), ..k }, bdf, final(iommu_tlb).context_cache()[bdf]),
 {
     assert(irt.wlocked_by(lctx)) by { reveal(iommu_root_table_typed_lock_map_aligned); };
-    iommu_tlb.invalidate_domain(old_did, Tracked(lctx));
+    iommu_tlb.invalidate_domain(old_did, Ghost(KernelK { irt: *irt, iommu_tlb: *iommu_tlb, ..k }), Tracked(lctx));
     let mut bus: usize = 0;
     let mut device: usize = 0;
     let mut function: usize = 0;
@@ -160,9 +168,9 @@ fn iommu_root_table_migrate_did(
             irt.view().table_base() == old(irt).view().table_base(),
             irt.view().owners() == old(irt).view().owners(),
             iommu_tlb.inv(),
-            iommu_tlb.view() =~= old(iommu_tlb).view().insert(old_did, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
-            iommu_tlb.context_cache() =~= Map::new(old(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| old(iommu_tlb).context_cache()[bdf].1 != old_did),
-                |bdf: PciBdf| old(iommu_tlb).context_cache()[bdf]),
+            iommu_tlb.view() =~= old(iommu_tlb).view().insert(old_did, iommu_tlb.spec_index(old_did)),
+            Map::new(iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| iommu_tlb.context_cache()[bdf].1 != old_did), |bdf: PciBdf| iommu_tlb.context_cache()[bdf])
+                == Map::new(old(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| old(iommu_tlb).context_cache()[bdf].1 != old_did), |bdf: PciBdf| old(iommu_tlb).context_cache()[bdf]),
             page_ptr_valid(root),
             vtd_domain_id_valid(old_did),
             vtd_domain_id_valid(new_did),
@@ -185,10 +193,9 @@ fn iommu_root_table_migrate_did(
         let current_owner = irt.borrow(Tracked(irt_lock_perm)).owner(bus, device, function);
         let current_did = irt.borrow(Tracked(irt_lock_perm)).iommu_did(bus, device, function);
         if current_owner == owner && current_did.is_some() && current_did.unwrap() == old_did {
-            let table = irt.borrow_mut(Tracked(lctx), Tracked(irt_lock_perm));
-            table.detach(bus, device, function);
-            iommu_tlb.invalidate_domain(old_did, Tracked(lctx));
-            table.attach(bus, device, function, root, new_did);
+            irt.borrow_mut(Tracked(lctx), Tracked(irt_lock_perm)).detach(bus, device, function);
+            iommu_tlb.invalidate_domain(old_did, Ghost(KernelK { irt: *irt, iommu_tlb: *iommu_tlb, ..k }), Tracked(lctx));
+            irt.borrow_mut(Tracked(lctx), Tracked(irt_lock_perm)).attach(bus, device, function, root, new_did);
         }
         if function + 1 < PCI_FUNCTION_COUNT {
             function = function + 1;
@@ -201,15 +208,15 @@ fn iommu_root_table_migrate_did(
             bus = bus + 1;
         }
     }
-    iommu_tlb.invalidate_domain(old_did, Tracked(lctx));
+    iommu_tlb.invalidate_domain(old_did, Ghost(KernelK { irt: *irt, iommu_tlb: *iommu_tlb, ..k }), Tracked(lctx));
     proof { assert(iommu_root_table_typed_lock_map_aligned(*irt, lctx.iommu_root_table_lock_map(), lctx.thread_id())) by { reveal(iommu_root_table_typed_lock_map_aligned); }; }
 }
 
 /// Detaches one B/D/F under the held root-table lock; its owner is untouched. If the entry was present, drops every cached
 /// context entry tagged with its old DID and flushes that DID's IOTLB domain; an absent entry is never cached.
 pub fn iommu_root_table_detach(
-    irt: &mut IommuRootTableLock, iommu_tlb: &mut IommuTLB, bus: usize, device: usize, function: usize, Tracked(lctx): Tracked<&LocalContext>,
-    Tracked(irt_lock_perm): Tracked<&LockPerm>,
+    irt: &mut IommuRootTableLock, iommu_tlb: &mut IommuTLB, bus: usize, device: usize, function: usize, Ghost(k): Ghost<KernelK>,
+    Tracked(lctx): Tracked<&LocalContext>, Tracked(irt_lock_perm): Tracked<&LockPerm>,
 )
     requires
         old(irt).inv(),
@@ -235,8 +242,12 @@ pub fn iommu_root_table_detach(
         },
         final(iommu_tlb).inv(),
         old(irt).view().spec_index_iommu_did(bus, device, function) matches Some(did) ==> {
-            &&& final(iommu_tlb).view() == old(iommu_tlb).view().insert(did, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
-            &&& final(iommu_tlb).context_cache() == Map::new(old(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| old(iommu_tlb).context_cache()[bdf].1 != did), |bdf: PciBdf| old(iommu_tlb).context_cache()[bdf])
+            &&& final(iommu_tlb).view() == old(iommu_tlb).view().insert(did, final(iommu_tlb).spec_index(did))
+            &&& iommu_tlb_within_may_cache(KernelK { irt: *final(irt), ..k }, did, final(iommu_tlb).spec_index(did))
+            &&& Map::new(final(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| final(iommu_tlb).context_cache()[bdf].1 != did), |bdf: PciBdf| final(iommu_tlb).context_cache()[bdf])
+                == Map::new(old(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| old(iommu_tlb).context_cache()[bdf].1 != did), |bdf: PciBdf| old(iommu_tlb).context_cache()[bdf])
+            &&& forall|bdf: PciBdf| #![trigger final(iommu_tlb).context_cache().dom().contains(bdf)] final(iommu_tlb).context_cache().dom().contains(bdf) && final(iommu_tlb).context_cache()[bdf].1 == did
+                ==> iommu_context_cache_entry_present(KernelK { irt: *final(irt), ..k }, bdf, final(iommu_tlb).context_cache()[bdf])
         },
         old(irt).view().spec_index_iommu_did(bus, device, function) is None ==> final(iommu_tlb).view() == old(iommu_tlb).view() && final(iommu_tlb).context_cache() == old(iommu_tlb).context_cache(),
 {
@@ -244,7 +255,7 @@ pub fn iommu_root_table_detach(
     let table = irt.borrow_mut(Tracked(lctx), Tracked(irt_lock_perm));
     let old_did = table.iommu_did(bus, device, function);
     table.detach(bus, device, function);
-    if let Some(did) = old_did { iommu_tlb.invalidate_domain(did, Tracked(lctx)); }
+    if let Some(did) = old_did { iommu_tlb.invalidate_domain(did, Ghost(KernelK { irt: *irt, iommu_tlb: *iommu_tlb, ..k }), Tracked(lctx)); }
     proof { assert(iommu_root_table_typed_lock_map_aligned(*irt, lctx.iommu_root_table_lock_map(), lctx.thread_id())) by { reveal(iommu_root_table_typed_lock_map_aligned); }; }
 }
 
@@ -323,7 +334,7 @@ pub fn iommu_root_table_attach(
 /// its owner owns, owners untouched, then invalidates the table's DID once and drops it. A table without a DID invalidates nothing.
 pub fn iommu_root_table_detach_all(
     irt: &mut IommuRootTableLock, iommu_tlb: &mut IommuTLB, iommu_table_map: &mut IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot,
-    Tracked(lctx): Tracked<&LocalContext>, Tracked(irt_lock_perm): Tracked<&LockPerm>, Tracked(iommu_table_lock_perm): Tracked<&LockPerm>,
+    Ghost(k): Ghost<KernelK>, Tracked(lctx): Tracked<&LocalContext>, Tracked(irt_lock_perm): Tracked<&LockPerm>, Tracked(iommu_table_lock_perm): Tracked<&LockPerm>,
 )
     requires
         old(irt).inv(),
@@ -363,8 +374,12 @@ pub fn iommu_root_table_detach_all(
         final(iommu_table_map).spec_index(iommu_table_ptr).view() == (PageTable { did: None, ..old(iommu_table_map).spec_index(iommu_table_ptr).view() }),
         final(iommu_tlb).inv(),
         old(iommu_table_map).spec_index(iommu_table_ptr).view().did matches Some(did) ==> {
-            &&& final(iommu_tlb).view() == old(iommu_tlb).view().insert(did, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
-            &&& final(iommu_tlb).context_cache() == Map::new(old(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| old(iommu_tlb).context_cache()[bdf].1 != did), |bdf: PciBdf| old(iommu_tlb).context_cache()[bdf])
+            &&& final(iommu_tlb).view() == old(iommu_tlb).view().insert(did, final(iommu_tlb).spec_index(did))
+            &&& iommu_tlb_within_may_cache(KernelK { irt: *final(irt), ..k }, did, final(iommu_tlb).spec_index(did))
+            &&& Map::new(final(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| final(iommu_tlb).context_cache()[bdf].1 != did), |bdf: PciBdf| final(iommu_tlb).context_cache()[bdf])
+                == Map::new(old(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| old(iommu_tlb).context_cache()[bdf].1 != did), |bdf: PciBdf| old(iommu_tlb).context_cache()[bdf])
+            &&& forall|bdf: PciBdf| #![trigger final(iommu_tlb).context_cache().dom().contains(bdf)] final(iommu_tlb).context_cache().dom().contains(bdf) && final(iommu_tlb).context_cache()[bdf].1 == did
+                ==> iommu_context_cache_entry_present(KernelK { irt: *final(irt), ..k }, bdf, final(iommu_tlb).context_cache()[bdf])
         },
         old(iommu_table_map).spec_index(iommu_table_ptr).view().did is None ==> *final(iommu_tlb) == *old(iommu_tlb),
 {
@@ -377,7 +392,7 @@ pub fn iommu_root_table_detach_all(
     let old_did = iommu_table.did;
     irt.borrow_mut(Tracked(lctx), Tracked(irt_lock_perm)).detach_owned_contexts(process_ptr, process_ptr);
     if let Some(did) = old_did {
-        iommu_tlb.invalidate_domain(did, Tracked(lctx));
+        iommu_tlb.invalidate_domain(did, Ghost(KernelK { irt: *irt, iommu_tlb: *iommu_tlb, ..k }), Tracked(lctx));
         iommu_table_map_set_did(iommu_table_map, iommu_table_ptr, None, Tracked(lctx), Tracked(iommu_table_lock_perm));
     }
     proof { assert(iommu_root_table_typed_lock_map_aligned(*irt, lctx.iommu_root_table_lock_map(), lctx.thread_id())) by { reveal(iommu_root_table_typed_lock_map_aligned); }; }
@@ -388,7 +403,8 @@ pub fn iommu_root_table_detach_all(
 /// invalidates nothing.
 pub fn iommu_root_table_reassign_detach_all(
     irt: &mut IommuRootTableLock, iommu_tlb: &mut IommuTLB, iommu_table_map: &mut IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot,
-    recipient: RwLockProcessPtr, Tracked(lctx): Tracked<&LocalContext>, Tracked(irt_lock_perm): Tracked<&LockPerm>, Tracked(iommu_table_lock_perm): Tracked<&LockPerm>,
+    recipient: RwLockProcessPtr, Ghost(k): Ghost<KernelK>, Tracked(lctx): Tracked<&LocalContext>, Tracked(irt_lock_perm): Tracked<&LockPerm>,
+    Tracked(iommu_table_lock_perm): Tracked<&LockPerm>,
 )
     requires
         old(irt).inv(),
@@ -428,8 +444,12 @@ pub fn iommu_root_table_reassign_detach_all(
         final(iommu_table_map).spec_index(iommu_table_ptr).view() == (PageTable { did: None, ..old(iommu_table_map).spec_index(iommu_table_ptr).view() }),
         final(iommu_tlb).inv(),
         old(iommu_table_map).spec_index(iommu_table_ptr).view().did matches Some(did) ==> {
-            &&& final(iommu_tlb).view() == old(iommu_tlb).view().insert(did, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
-            &&& final(iommu_tlb).context_cache() == Map::new(old(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| old(iommu_tlb).context_cache()[bdf].1 != did), |bdf: PciBdf| old(iommu_tlb).context_cache()[bdf])
+            &&& final(iommu_tlb).view() == old(iommu_tlb).view().insert(did, final(iommu_tlb).spec_index(did))
+            &&& iommu_tlb_within_may_cache(KernelK { irt: *final(irt), ..k }, did, final(iommu_tlb).spec_index(did))
+            &&& Map::new(final(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| final(iommu_tlb).context_cache()[bdf].1 != did), |bdf: PciBdf| final(iommu_tlb).context_cache()[bdf])
+                == Map::new(old(iommu_tlb).context_cache().dom().filter(|bdf: PciBdf| old(iommu_tlb).context_cache()[bdf].1 != did), |bdf: PciBdf| old(iommu_tlb).context_cache()[bdf])
+            &&& forall|bdf: PciBdf| #![trigger final(iommu_tlb).context_cache().dom().contains(bdf)] final(iommu_tlb).context_cache().dom().contains(bdf) && final(iommu_tlb).context_cache()[bdf].1 == did
+                ==> iommu_context_cache_entry_present(KernelK { irt: *final(irt), ..k }, bdf, final(iommu_tlb).context_cache()[bdf])
         },
         old(iommu_table_map).spec_index(iommu_table_ptr).view().did is None ==> *final(iommu_tlb) == *old(iommu_tlb),
 {
@@ -442,7 +462,7 @@ pub fn iommu_root_table_reassign_detach_all(
     let old_did = iommu_table.did;
     irt.borrow_mut(Tracked(lctx), Tracked(irt_lock_perm)).detach_owned_contexts(process_ptr, recipient);
     if let Some(did) = old_did {
-        iommu_tlb.invalidate_domain(did, Tracked(lctx));
+        iommu_tlb.invalidate_domain(did, Ghost(KernelK { irt: *irt, iommu_tlb: *iommu_tlb, ..k }), Tracked(lctx));
         iommu_table_map_set_did(iommu_table_map, iommu_table_ptr, None, Tracked(lctx), Tracked(iommu_table_lock_perm));
     }
     proof { assert(iommu_root_table_typed_lock_map_aligned(*irt, lctx.iommu_root_table_lock_map(), lctx.thread_id())) by { reveal(iommu_root_table_typed_lock_map_aligned); }; }

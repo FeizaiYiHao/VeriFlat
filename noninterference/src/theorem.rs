@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 use crate::{ni_alloc_quota::*, ni_cpu_hotplug::*, ni_ipc::*, ni_mmap_4k::*, ni_new_container::*, ni_new_endpoint::*, ni_new_process::*, ni_new_thread::*, ni_pci::*,
-    ni_rebalance::*, ni_schedule::*, ni_share_4k::*, ni_unmap_4k::*, ni_iommu_map_4k::*, ni_iommu_unmap_4k::*, ni_kill_container::*, ni_kill_process::*, ni_thread_exit::*, ni_trap::*};
+    ni_rebalance::*, ni_schedule::*, ni_share_4k::*, ni_unmap_4k::*, ni_iommu_map_4k::*, ni_iommu_unmap_4k::*, ni_kill_container::*, ni_kill_process::*, ni_thread_exit::*, ni_trap::*, ni_env::*};
 use veriflat_map_4k::*;
 use veriflat_syscall_alloc_quota::syscall_alloc_quota::syscall_alloc_quota_spec::*;
 use veriflat_syscall_cpu_hotplug::syscall_cpu_hotplug::{cpu_offline_check_spec::*, syscall_cpu_hotplug_spec::*};
@@ -19,7 +19,7 @@ use veriflat_syscall_thread_exit::syscall_thread_exit::syscall_thread_exit_spec:
 use veriflat_syscall_unmap_4k::syscall_unmap_4k::syscall_unmap_4k_spec::*;
 
 verus! {
-/// One step of a syscall, with the arguments its step specification takes.
+/// One step of a syscall or of the hardware environment, with the arguments its step specification takes.
 pub ghost enum StepLabel {
     Mmap4kHold { range: VaRange4K }, Mmap4kEnter { range: VaRange4K, phase: Mmap4kPhase }, Mmap4kDirectory, Mmap4kDowngrade, Mmap4kLeaf, Mmap4kExit, Mmap4kRelease,
     Unmap4kEnter { range: VaRange4K }, Unmap4kLeaf { va: VAddr }, Unmap4kTlbCleared { pcid: Pcid }, Unmap4kFlushed, Unmap4kRefund, Unmap4kExit,
@@ -54,6 +54,7 @@ pub ghost enum StepLabel {
     ThreadExitDrop, ThreadExitRelease, ThreadExitLockTable, ThreadExitLeaf, ThreadExitTlbCleared, ThreadExitFlushed, ThreadExitIommuLeaf,
     ThreadExitRefund, ThreadExitQuota, ThreadExitUnlockTable, ThreadExitFinish,
     TrapEnter, TrapReturn, TrapDivert,
+    CpuTlbFilled { cpu_id: CpuId, pcid: Pcid, added: SingleTLB }, IommuTlbFilled { did: VtdDomainId, added: SingleTLB }, IommuContextCacheFilled,
 }
 
 /// `new_u` follows `old_u` by the step `label` on cpu `cpu_id`.
@@ -197,6 +198,9 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
         StepLabel::TrapEnter => kernel_u_trap_enter_step_pre(old_u, cpu_id) && kernel_u_trap_enter_step(old_u, new_u, cpu_id),
         StepLabel::TrapReturn => kernel_u_trap_return_step_pre(old_u, cpu_id) && kernel_u_trap_return_step(old_u, new_u, cpu_id),
         StepLabel::TrapDivert => kernel_u_trap_divert_step_pre(old_u, cpu_id) && kernel_u_trap_divert_step(old_u, new_u, cpu_id),
+        StepLabel::CpuTlbFilled { cpu_id: filled_cpu, pcid, added } => kernel_u_cpu_tlb_filled_step(old_u, new_u, filled_cpu, pcid, added),
+        StepLabel::IommuTlbFilled { did, added } => kernel_u_iommu_tlb_filled_step(old_u, new_u, did, added),
+        StepLabel::IommuContextCacheFilled => kernel_u_iommu_context_cache_filled_step(old_u, new_u),
     }
 }
 
@@ -207,7 +211,8 @@ pub proof fn isolated_symmetric(u: KernelU, a: RwLockContainerPtr, b: RwLockCont
 {}
 
 /// Unwinding over a trace. `us[i + 1]` follows `us[i]`, both user projections of well-formed kernels, by the
-/// step `labels[i]` of cpu `cpus[i]` of domain `steppers[i]`, which is `a` or `b`. When a step receives an
+/// step `labels[i]` of cpu `cpus[i]` of domain `steppers[i]`, which is `a` or `b`; a hardware TLB or context-cache fill
+/// changes no domain view, so it may be attributed to either domain. When a step receives an
 /// endpoint or shares a page from a peer outside its domain, that peer is honest: the other domain neither
 /// holds nor waits on the endpoint, and the other domain maps no copy of the page in a page table or IOMMU table. Then `us[n]` is isolated,
 /// and steps of `a` from `us[m]` to `us[n]` leave the view of `b` unchanged.
@@ -419,6 +424,9 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
             StepLabel::TrapEnter => { trap_enter_step_lr(old_u, new_u, cpu_id, x, y); trap_enter_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::TrapReturn => { trap_return_step_lr(old_u, new_u, cpu_id, x, y); trap_return_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::TrapDivert => { trap_divert_step_lr(old_u, new_u, cpu_id, x, y); trap_divert_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::CpuTlbFilled { cpu_id: filled_cpu, pcid, added } => { cpu_tlb_filled_step_lr(old_u, new_u, filled_cpu, pcid, added, y); cpu_tlb_filled_step_iso(old_u, new_u, filled_cpu, pcid, added, x, y); },
+            StepLabel::IommuTlbFilled { did, added } => { iommu_tlb_filled_step_lr(old_u, new_u, did, added, y); iommu_tlb_filled_step_iso(old_u, new_u, did, added, x, y); },
+            StepLabel::IommuContextCacheFilled => { iommu_context_cache_filled_step_lr(old_u, new_u, y); iommu_context_cache_filled_step_iso(old_u, new_u, x, y); },
         }
         if x != a { isolated_symmetric(new_u, b, a); }
     }

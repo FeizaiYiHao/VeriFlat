@@ -254,7 +254,9 @@ impl Cpu {
         self.current_thread
     }
 
-    pub fn flush_current_tlb(&mut self, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, tlb: &mut CpuTLB, Tracked(lctx): Tracked<&LocalContext>)
+    /// Flushes this cpu's current `(cpu_id, pcid)`; the walker may refill it at once with present leaves of the table the
+    /// cpu runs, as `k` records it.
+    pub fn flush_current_tlb(&mut self, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, tlb: &mut CpuTLB, Ghost(k): Ghost<KernelK>, Tracked(lctx): Tracked<&LocalContext>)
         requires
             old(tlb).inv(),
             index_valid(NUM_CPUS, cpu_id),
@@ -264,14 +266,18 @@ impl Cpu {
             old(self).view().current_cr3 == cr3,
             old(self).view().current_pcid == pcid,
             lctx.kernel_view_locking_state() is Release,
+            old(self).view().current_pagetable matches Some(ptr) ==> k.pt_mp.dom().contains(ptr) && k.pt_mp.spec_index(ptr).view().cr3 == cr3,
         ensures
             *final(self) == *old(self),
             final(tlb).inv(),
             forall|c: CpuId, p: Pcid| #![trigger final(tlb).spec_index((c, p))] #![trigger old(tlb).spec_index((c, p))] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid) ==> final(tlb).spec_index((c, p)) == old(tlb).spec_index((c, p)),
-            final(tlb).spec_index((cpu_id, pcid)).is_empty(),
-            final(tlb).view() == old(tlb).view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
+            final(tlb).view() == old(tlb).view().insert((cpu_id, pcid), final(tlb).spec_index((cpu_id, pcid))),
+            match old(self).view().current_pagetable {
+                Some(ptr) => single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(tlb).spec_index((cpu_id, pcid)), pagetable_c(k.pt_mp, k.pt_lower.view(), ptr)),
+                None => final(tlb).spec_index((cpu_id, pcid)).is_empty(),
+            },
     {
-        self.cr3_pcid.flush_current(cpu_id, cr3, pcid, tlb, Tracked(lctx));
+        self.cr3_pcid.flush_current(cpu_id, cr3, pcid, tlb, Ghost(k), Ghost(self.view().current_pagetable), Tracked(lctx));
     }
 
     /// The cpu's exec copy of (cr3, pcid) matches the physical register whenever the cpu is unlocked.
@@ -425,7 +431,7 @@ impl CpuLockedArray {
     {
         let pending = needflush.borrow_typed(cpu_id, KERNEL_DEFAULT_PCID, Ghost(lctx.pcid_needflush_lock_map()), Tracked(&*lctx), needflush_perm).needflush;
         let cpu = self.borrow_mut_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), cpu_lock_perm);
-        cpu.cr3_pcid.write(cpu_id, default_cr3, KERNEL_DEFAULT_PCID, pending, tlb, Tracked(&mut *lctx));
+        cpu.cr3_pcid.write(cpu_id, default_cr3, KERNEL_DEFAULT_PCID, pending, tlb, Ghost(arbitrary()), Ghost(None), Tracked(&mut *lctx));
         cpu.current_process = None;
         cpu.current_thread = None;
         cpu.current_pagetable = None;
@@ -437,6 +443,8 @@ impl CpuLockedArray {
             assert(needflush.typed_lock_map_aligned(lctx.pcid_needflush_lock_map(), lctx.thread_id())) by { reveal(LockedArray2D::typed_lock_map_aligned); };
             assert(pcid_needflush_wf(*old(needflush)) ==> pcid_needflush_wf(*needflush)) by { reveal(pcid_needflush_wf); };
             assert(cpu_hw_cr3_pcid_wf(*old(hw_cr3_pcid), *old(self), *old(needflush)) ==> cpu_hw_cr3_pcid_wf(*hw_cr3_pcid, *self, *needflush)) by { reveal(cpu_hw_cr3_pcid_wf); };
+            let flushed = tlb.spec_index((cpu_id, KERNEL_DEFAULT_PCID));
+            if pending { assert(flushed.tlb_4k =~= Map::empty() && flushed.tlb_2m =~= Map::empty() && flushed.tlb_1g =~= Map::empty()); }
         }
     }
 
@@ -530,7 +538,7 @@ impl CpuLockedArray {
     /// Select a thread on this running or idle CPU without changing containers.
     pub fn switch_to_thread(
         &mut self, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, pagetable_ptr: RwLockPageTableRoot, cr3: PageTableRoot,
-        pcid: Pcid, process_depth: usize, tlb: &mut CpuTLB, needflush: &mut PcidNeedFlushArray, hw_cr3_pcid: &mut CpuHwCr3PcidArray,
+        pcid: Pcid, process_depth: usize, tlb: &mut CpuTLB, needflush: &mut PcidNeedFlushArray, hw_cr3_pcid: &mut CpuHwCr3PcidArray, Ghost(k): Ghost<KernelK>,
         needflush_perm: Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>, cpu_lock_perm: Tracked<&LockPerm>,
     )
         requires
@@ -557,6 +565,8 @@ impl CpuLockedArray {
             needflush_perm.view().thread_id() == old(lctx).thread_id(),
             needflush_perm.view().lock_id() == old(needflush).spec_index(cpu_id, pcid).locking_thread()->Write_lock_id,
             old(hw_cr3_pcid)[cpu_id as int].owner_cpu() == cpu_id,
+            k.pt_mp.dom().contains(pagetable_ptr),
+            k.pt_mp.spec_index(pagetable_ptr).view().cr3 == cr3,
         ensures
             pcid_needflush_wf(*old(needflush)) ==> pcid_needflush_wf(*final(needflush)),
             cpu_hw_cr3_pcid_wf(*old(hw_cr3_pcid), *old(self), *old(needflush)) ==> cpu_hw_cr3_pcid_wf(*final(hw_cr3_pcid), *final(self), *final(needflush)),
@@ -577,16 +587,14 @@ impl CpuLockedArray {
             forall|other_cpu: CpuId, other_pcid: Pcid|
                 #![trigger final(tlb).spec_index((other_cpu, other_pcid))]
                 #![trigger old(tlb).spec_index((other_cpu, other_pcid))]
-                index_valid(NUM_CPUS, other_cpu) && pcid_valid(other_pcid) ==> {
-                    let entry = old(self).spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
-                    let flush = old(needflush).spec_index(cpu_id, pcid).view().needflush || (entry is Some && (entry.unwrap().process_ptr != process_ptr || entry.unwrap().pagetable_ptr != pagetable_ptr));
-                    final(tlb).spec_index((other_cpu, other_pcid)) == if flush && other_cpu == cpu_id && other_pcid == pcid { SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() } } else { old(tlb).spec_index((other_cpu, other_pcid)) }
-                },
+                index_valid(NUM_CPUS, other_cpu) && pcid_valid(other_pcid) && (other_cpu != cpu_id || other_pcid != pcid)
+                    ==> final(tlb).spec_index((other_cpu, other_pcid)) == old(tlb).spec_index((other_cpu, other_pcid)),
             {
                 let entry = old(self).spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
                 let flush = old(needflush).spec_index(cpu_id, pcid).view().needflush || (entry is Some && (entry.unwrap().process_ptr != process_ptr || entry.unwrap().pagetable_ptr != pagetable_ptr));
                 &&& (!flush ==> *final(tlb) == *old(tlb))
-                &&& final(tlb).view() == if flush { old(tlb).view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }) } else { old(tlb).view() }
+                &&& final(tlb).view() == if flush { old(tlb).view().insert((cpu_id, pcid), final(tlb).spec_index((cpu_id, pcid))) } else { old(tlb).view() }
+                &&& flush ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(tlb).spec_index((cpu_id, pcid)), pagetable_c(k.pt_mp, k.pt_lower.view(), pagetable_ptr))
             },
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
@@ -616,7 +624,7 @@ impl CpuLockedArray {
             Some(entry) => entry.process_ptr != process_ptr || entry.pagetable_ptr != pagetable_ptr,
             None => false,
         };
-        cpu.cr3_pcid.write(cpu_id, cr3, pcid, flush, tlb, Tracked(&mut *lctx));
+        cpu.cr3_pcid.write(cpu_id, cr3, pcid, flush, tlb, Ghost(k), Ghost(Some(pagetable_ptr)), Tracked(&mut *lctx));
         cpu.state = CpuState::Running;
         cpu.current_process = Some(process_ptr);
         cpu.current_thread = Some(thread_ptr);

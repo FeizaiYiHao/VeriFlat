@@ -39,14 +39,18 @@ impl CpuTLB {
         let ghost pcids_for_cpu = |cpu_id: CpuId| { pcids.map_by(|pcid: Pcid| (cpu_id, pcid), |key: (CpuId, Pcid)| key.1) };
         let ghost keys = cpu_ids.map_flatten_by(pcids_for_cpu, |key: (CpuId, Pcid)| key.0);
         let ret = Self { cpu_tlbs: Ghost(Map::new(keys, |_key: (CpuId, Pcid)| SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })) };
+        assert(ret.inv()) by { reveal(CpuTLB::inv); };
         ret
     }
 
     /// PCIDE is enabled by boot. Non-default translations are non-global.
     /// The caller binds `cpu_id` to this executing CPU; kernel mappings stay
     /// accessible across the write. Bit 63 requests retention of translations.
+    /// The walker may refill a flushed `(cpu_id, pcid)` at once, but only with present leaves of `next_table`, the table of
+    /// `k` that `cr3` roots; a write naming no tracked table leaves it empty.
     #[verifier::external_body]
-    pub(super) fn write_cr3_pcid(&mut self, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, flush: bool, hardware: &mut CpuCr3Pcid, Tracked(lctx): Tracked<&LocalContext>)
+    pub(super) fn write_cr3_pcid(&mut self, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, flush: bool, hardware: &mut CpuCr3Pcid, Ghost(k): Ghost<KernelK>,
+        Ghost(next_table): Ghost<Option<RwLockPageTableRoot>>, Tracked(lctx): Tracked<&LocalContext>)
         requires
             old(self).inv(),
             index_valid(NUM_CPUS, cpu_id),
@@ -54,6 +58,7 @@ impl CpuTLB {
             page_ptr_valid(cr3),
             pcid_valid(pcid),
             lctx.kernel_view_locking_state() is Release,
+            next_table matches Some(ptr) ==> k.pt_mp.dom().contains(ptr) && k.pt_mp.spec_index(ptr).view().cr3 == cr3,
         ensures
             final(self).inv(),
             final(hardware).cr3() == cr3,
@@ -64,9 +69,13 @@ impl CpuTLB {
             forall|other_cpu: CpuId, other_pcid: Pcid|
                 #![trigger final(self).spec_index((other_cpu, other_pcid))]
                 #![trigger old(self).spec_index((other_cpu, other_pcid))]
-                index_valid(NUM_CPUS, other_cpu) && pcid_valid(other_pcid) ==>
-                    final(self).spec_index((other_cpu, other_pcid)) == if flush && other_cpu == cpu_id && other_pcid == pcid { SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() } } else { old(self).spec_index((other_cpu, other_pcid)) },
-            final(self).view() == if flush { old(self).view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }) } else { old(self).view() },
+                index_valid(NUM_CPUS, other_cpu) && pcid_valid(other_pcid) && (other_cpu != cpu_id || other_pcid != pcid)
+                    ==> final(self).spec_index((other_cpu, other_pcid)) == old(self).spec_index((other_cpu, other_pcid)),
+            final(self).view() == if flush { old(self).view().insert((cpu_id, pcid), final(self).spec_index((cpu_id, pcid))) } else { old(self).view() },
+            flush ==> match next_table {
+                Some(ptr) => single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(self).spec_index((cpu_id, pcid)), pagetable_c(k.pt_mp, k.pt_lower.view(), ptr)),
+                None => final(self).spec_index((cpu_id, pcid)).is_empty(),
+            },
     {
         let value = cr3 | pcid | if flush { 0 } else { PCID_ENABLE_MASK };
         unsafe { core::arch::asm!("mov cr3, {}", in(reg) value, options(nostack, preserves_flags)); }
@@ -84,7 +93,8 @@ impl CpuTLB {
     {
         self.view().spec_index((index.0, index.1))
     }
-    pub closed spec fn inv(&self) -> bool {
+    #[verifier::opaque]
+    pub open spec fn inv(&self) -> bool {
         &&& forall|cpu_id: CpuId, pcid: Pcid|
             #![trigger self.view().dom().contains((cpu_id, pcid))]
             self.view().dom().contains((cpu_id, pcid)) <==> index_valid(NUM_CPUS, cpu_id) && usize_in_range::<PCID_MAX>(pcid)

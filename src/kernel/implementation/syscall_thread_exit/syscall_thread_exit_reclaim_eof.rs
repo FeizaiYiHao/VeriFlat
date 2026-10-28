@@ -90,7 +90,7 @@ pub(super) proof fn thread_exit_tables_emptied_eof(pre: KernelK, post: KernelK, 
     };
     thread_exit_tables_emptied_eof_process(pre, post, process_ptr, thread_ptr);
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
-    assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
+    assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { lemma_process_pci_function_ownership_wf_preserved_for_process_invariant_fields_except_quota_forall(); };
     assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_proc_pcid_match); };
 }
@@ -133,6 +133,11 @@ pub(super) proof fn thread_exit_detach_process_functions_eof(pre: KernelK, post:
     reveal(thread_exit_detach_process_functions_eof_transition_framing);
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); reveal(process_iommu_table_match); };
     assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
+    // The DID's anchor belonged to the detached owner, so no cached context entry keeps it.
+    if let Some(did) = pre.it_mp.spec_index(iommu_table).view().did {
+        assert(post.iommu_tlb.context_cache() =~= Map::new(post.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| post.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| post.iommu_tlb.context_cache()[bdf]))
+            by { reveal(iommu_root_table_process_wf); };
+    }
     assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by {
         reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_match); reveal(IommuTLB::inv);
     };

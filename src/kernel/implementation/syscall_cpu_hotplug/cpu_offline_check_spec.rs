@@ -112,7 +112,6 @@ pub open spec fn cpu_went_off_eof_transition_framing(
     &&& post.cpu_hw_cr3_pcid[cpu_id as int].inv()
     &&& post.cpu_hw_cr3_pcid[cpu_id as int].view() == (pre.dflt_pt.view().cr3, KERNEL_DEFAULT_PCID)
     &&& (forall|c: CpuId| #![trigger pre.cpu_hw_cr3_pcid[c as int]] #![trigger post.cpu_hw_cr3_pcid[c as int]] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_hw_cr3_pcid[c as int] == pre.cpu_hw_cr3_pcid[c as int])
-    &&& post.cpu_tlb.view() == cpu_tlb_after_cpu_went_off(pre.cpu_tlb.view(), cpu_id, flush_default)
     &&& (forall|c: CpuId, p: Pcid| #![trigger pre.cpu_tlb.spec_index((c, p))] #![trigger post.cpu_tlb.spec_index((c, p))]
         index_valid(NUM_CPUS, c) && pcid_valid(p) ==> if c == cpu_id && (p != KERNEL_DEFAULT_PCID || flush_default) {
             post.cpu_tlb.spec_index((c, p)).is_empty()

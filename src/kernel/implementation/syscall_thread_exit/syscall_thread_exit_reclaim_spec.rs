@@ -23,9 +23,9 @@ pub open spec fn thread_exit_tables_emptied_eof_transition_framing(pre: KernelK,
 }
 
 /// Detaching the write-held IOMMU table `iommu_table` of the exiting process under the held root-table lock: every root-table
-/// slot its owner owns drops its IOMMU root and DID, the table drops its DID, and the IOTLB domain and cached context entries
-/// of that DID, if any, are invalidated. Owners, the table base, the root-table lock, the table's lock, and every other object
-/// stay.
+/// slot its owner owns drops its IOMMU root and DID, the table drops its DID, and the IOTLB domain of that DID, if any, is
+/// emptied; cached context entries of other DIDs stay and any left tagged with it match a present slot. Owners, the table
+/// base, the root-table lock, the table's lock, and every other object stay.
 #[verifier::opaque]
 pub open spec fn thread_exit_detach_process_functions_eof_transition_framing(pre: KernelK, post: KernelK, iommu_table: RwLockPageTableRoot) -> bool {
     let table = pre.it_mp.spec_index(iommu_table);
@@ -52,7 +52,10 @@ pub open spec fn thread_exit_detach_process_functions_eof_transition_framing(pre
     &&& post.it_mp.spec_index(iommu_table).view().proc_ptr == table.view().proc_ptr
     &&& table.view().did matches Some(did) ==> {
         &&& post.iommu_tlb.view() == pre.iommu_tlb.view().insert(did, empty_tlb)
-        &&& post.iommu_tlb.context_cache() == Map::new(pre.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf])
+        &&& Map::new(post.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| post.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| post.iommu_tlb.context_cache()[bdf])
+            == Map::new(pre.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf])
+        &&& forall|bdf: PciBdf| #![trigger post.iommu_tlb.context_cache().dom().contains(bdf)] post.iommu_tlb.context_cache().dom().contains(bdf) && post.iommu_tlb.context_cache()[bdf].1 == did
+            ==> iommu_context_cache_entry_present(post, bdf, post.iommu_tlb.context_cache()[bdf])
     }
     &&& table.view().did is None ==> post.iommu_tlb == pre.iommu_tlb
     &&& forall|did: VtdDomainId| #![trigger post.iommu_tlb.spec_index(did)]

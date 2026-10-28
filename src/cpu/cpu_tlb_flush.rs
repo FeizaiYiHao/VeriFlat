@@ -10,10 +10,12 @@ unsafe extern "C" {
 
 verus! {
 impl CpuTLB {
+    /// The remote cpu may refill `(cpu_id, pcid)` at once with what it may cache in `k`, the kernel state whose TLB this is.
     #[verifier::external_body]
-    pub fn flush_remote_pcid(&mut self, cpu_id: CpuId, pcid: Pcid, Tracked(lctx): Tracked<&LocalContext>)
+    pub fn flush_remote_pcid(&mut self, cpu_id: CpuId, pcid: Pcid, Ghost(k): Ghost<KernelK>, Tracked(lctx): Tracked<&LocalContext>)
         requires
             old(self).inv(),
+            k.cpu_tlb == *old(self),
             index_valid(NUM_CPUS, cpu_id),
             cpu_id != lctx.cpu_id(),
             pcid_valid(pcid),
@@ -21,8 +23,8 @@ impl CpuTLB {
             lctx.kernel_view_locking_state() is Release,
         ensures
             final(self).inv(),
-            final(self).view() == old(self).view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
-            final(self).spec_index((cpu_id, pcid)).is_empty(),
+            final(self).view() == old(self).view().insert((cpu_id, pcid), final(self).spec_index((cpu_id, pcid))),
+            cpu_tlb_within_may_cache(k, cpu_id, pcid, final(self).spec_index((cpu_id, pcid))),
             forall|c: CpuId, p: Pcid| #![trigger final(self).spec_index((c, p))] #![trigger old(self).spec_index((c, p))]
                 index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid) ==> final(self).spec_index((c, p)) == old(self).spec_index((c, p)),
     {
@@ -30,20 +32,22 @@ impl CpuTLB {
         self.cpu_tlbs = Ghost(self.cpu_tlbs.view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }));
     }
 
-    /// Invalidate every non-default PCID of the calling cpu before it goes Off.
+    /// Invalidate every non-default PCID of the calling cpu before it goes Off; each may hold at once what the cpu may cache
+    /// under it in `k`, the kernel state whose TLB this is.
     #[verifier::external_body]
-    pub fn flush_all_local_pcids(&mut self, cpu_id: CpuId, Tracked(lctx): Tracked<&LocalContext>)
+    pub fn flush_all_local_pcids(&mut self, cpu_id: CpuId, Ghost(k): Ghost<KernelK>, Tracked(lctx): Tracked<&LocalContext>)
         requires
             old(self).inv(),
+            k.cpu_tlb == *old(self),
             index_valid(NUM_CPUS, cpu_id),
             cpu_id == lctx.cpu_id(),
             lctx.kernel_view_locking_state() is Release,
         ensures
             final(self).inv(),
             final(self).view().dom() == old(self).view().dom(),
-            forall|p: Pcid| #![trigger final(self).spec_index((cpu_id, p))] pcid_valid(p) && p != KERNEL_DEFAULT_PCID ==> final(self).spec_index((cpu_id, p)).is_empty(),
-            forall|key: (CpuId, Pcid)| #![trigger final(self).view()[key]] old(self).view().dom().contains(key)
-                ==> final(self).view()[key] == if key.0 == cpu_id && key.1 != KERNEL_DEFAULT_PCID { SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() } } else { old(self).view()[key] },
+            forall|p: Pcid| #![trigger final(self).spec_index((cpu_id, p))] pcid_valid(p) && p != KERNEL_DEFAULT_PCID ==> cpu_tlb_within_may_cache(k, cpu_id, p, final(self).spec_index((cpu_id, p))),
+            forall|key: (CpuId, Pcid)| #![trigger final(self).view()[key]] old(self).view().dom().contains(key) && (key.0 != cpu_id || key.1 == KERNEL_DEFAULT_PCID)
+                ==> final(self).view()[key] == old(self).view()[key],
             forall|c: CpuId, p: Pcid| #![trigger final(self).spec_index((c, p))] #![trigger old(self).spec_index((c, p))]
                 index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p == KERNEL_DEFAULT_PCID) ==> final(self).spec_index((c, p)) == old(self).spec_index((c, p)),
     {

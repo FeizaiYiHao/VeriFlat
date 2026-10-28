@@ -201,8 +201,9 @@ fn flush_pcid_and_drop_stale_cpu(krnl: &mut KernelK, pagetable: RwLockPageTableR
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
         final(krnl).cpu_tlb.view() == if cpu_id == local_cpu || (hw_cr3_pcid.0 == cr3 && hw_cr3_pcid.1 == pcid) {
-            old(krnl).cpu_tlb.view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
+            old(krnl).cpu_tlb.view().insert((cpu_id, pcid), final(krnl).cpu_tlb.spec_index((cpu_id, pcid)))
         } else { old(krnl).cpu_tlb.view() },
+        cpu_id == local_cpu || (hw_cr3_pcid.0 == cr3 && hw_cr3_pcid.1 == pcid) ==> cpu_tlb_within_may_cache(*final(krnl), cpu_id, pcid, final(krnl).cpu_tlb.spec_index((cpu_id, pcid))),
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, TypedLockMode::Write) ==> {
             &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower == (PageTableLower { window_stale_cpus: pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus,
                 ..pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower })
@@ -222,10 +223,12 @@ fn flush_pcid_and_drop_stale_cpu(krnl: &mut KernelK, pagetable: RwLockPageTableR
     } else if hw_cr3_pcid.0 == cr3 && hw_cr3_pcid.1 == pcid {
         flush_remote_pcid_and_clear(krnl, cpu_id, pcid, Tracked(&*lctx), Tracked(&needflush_perm));
     }
+    let ghost flushed = *krnl;
     assert(krnl.cpu_tlb.spec_index((cpu_id, pcid)).is_empty()
         || (krnl.pcid_needflush.spec_index(cpu_id, pcid).view().needflush && krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid)
         || (krnl.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some
-            && krnl.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr != pagetable)) by {
+            && krnl.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr != pagetable)
+        || single_cpu_single_pcid_tlb_subset_of_present_pagetable(krnl.cpu_tlb.spec_index((cpu_id, pcid)), pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable))) by {
         cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
         process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap());
     };
@@ -246,6 +249,13 @@ fn flush_pcid_and_drop_stale_cpu(krnl: &mut KernelK, pagetable: RwLockPageTableR
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl) && kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by {
             broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive;
         };
+        let cpu = flushed.cpu_arr.spec_index(cpu_id).view().view().view();
+        if cpu.current_pcid == pcid && cpu.current_pagetable is Some {
+            assert(flushed.pt_mp.dom().contains(cpu.current_pagetable->Some_0)) by {
+                cpu_array_wf_at(flushed.cpu_arr, flushed.dflt_pt.view(), cpu_id); process_cpu_wf_at(flushed.prc_mp, flushed.cpu_arr, cpu_id);
+                process_pagetable_match_process_at(flushed.prc_mp, flushed.pt_mp, cpu.current_process.unwrap());
+            };
+        }
     }
     hw_cr3_pcid
 }

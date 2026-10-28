@@ -443,7 +443,8 @@ pub(super) fn cpu_offline_commit_go_off(
     let ghost idle_cpu_lock_id = krnl.cpu_arr.lock_id_by_index(cpu_id);
     let cpu = krnl.cpu_arr.borrow_mut_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
     cpu.publish_off_from_idle();
-    krnl.cpu_tlb.flush_all_local_pcids(cpu_id, Tracked(&*lctx));
+    let ghost pre_flush = *krnl;
+    krnl.cpu_tlb.flush_all_local_pcids(cpu_id, Ghost(pre_flush), Tracked(&*lctx));
     let cpu_set = krnl.cpu_set_mp.borrow_mut_typed(cpu_set_ptr, Ghost(lctx.cpu_set_lock_map()), Tracked(&*lctx), Tracked(&cpu_set_lock_perm));
     cpu_set.owned_cpus.mark_closed(cpu_id);
     krnl.cpu_offline_mp.set_flag(flags_ptr, cpu_id, false, Tracked(&*lctx), Tracked(&flag_lock_perm));
@@ -451,9 +452,6 @@ pub(super) fn cpu_offline_commit_go_off(
         lctx.update_lock_id(KernelObjId::Cpu(cpu_id), idle_cpu_lock_id, krnl.cpu_arr.lock_id_by_index(cpu_id));
         assert(cpu_went_off_eof_transition_framing(before, *krnl, cpu_id, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, *pt_regs)) by {
             reveal(cpu_went_off_eof_transition_framing); scheduler_perms_wf_at(before.sched_mp, scheduler_ptr); cpu_set_perms_wf_at(before.cpu_set_mp, cpu_set_ptr); pcid_needflush_wf_at(krnl.pcid_needflush, cpu_id, KERNEL_DEFAULT_PCID);
-            assert(krnl.cpu_tlb.view() == cpu_tlb_after_cpu_went_off(before.cpu_tlb.view(), cpu_id, cpu_offline_check_flushed_default_pcid(before, cpu_id))) by {
-                vstd::assert_maps_equal!(krnl.cpu_tlb.view(), cpu_tlb_after_cpu_went_off(before.cpu_tlb.view(), cpu_id, cpu_offline_check_flushed_default_pcid(before, cpu_id)), key => {});
-            };
         };
         assert(typed_lock_maps_aligned(&*krnl, &*lctx)) by { reveal(UnLockedMap::typed_flag_lock_map_aligned); };
         assert(!krnl.cpu_set_mp.spec_index(cpu_set_ptr).being_killed()) by { reveal(cpu_went_off_eof_transition_framing); };

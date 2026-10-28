@@ -125,6 +125,11 @@ verus! {
                 &&& iommu_table_lock_perm->Some_0.thread_id() == old(lctx).thread_id()
                 &&& iommu_table_lock_perm->Some_0.lock_id() == old(krnl).it_mp.spec_index(t).locking_thread()->Write_lock_id
             },
+            iommu_table matches Some(t) ==> {
+                let did = old(steps).snapshot_k().it_mp.spec_index(t).view().did;
+                let anchor = pci_bdf_of_did(did->Some_0);
+                did is Some && old(krnl).irt.view().spec_index_iommu_did(anchor.0, anchor.1, anchor.2) == did ==> old(krnl).irt.view().spec_index_owner(anchor.0, anchor.1, anchor.2) == pci_transfer->Some_0.1
+            },
             old(lctx).iommu_root_table_lock_map().dom() =~= set![old(krnl).irt.view().table_base()],
             old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
             old(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
@@ -381,7 +386,7 @@ verus! {
                 Some(t) => {
                     proof { krnl.it_mp.spec_index(t).view().table_pages_wf_cr3_at(); }
                     let new_anchor = iommu_root_table_reassign_detached(&mut krnl.irt, &mut krnl.iommu_tlb, &mut krnl.it_mp, t, bus as usize, dev as usize, fun as usize, receiver_proc,
-                        Tracked(&*lctx), Tracked(&irt_lock_perm), Tracked(iommu_table_lock_perm.tracked_borrow()));
+                        Ghost(*old(krnl)), Tracked(&*lctx), Tracked(&irt_lock_perm), Tracked(iommu_table_lock_perm.tracked_borrow()));
                     proof { anchor = new_anchor; }
                 },
                 None => {

@@ -234,8 +234,11 @@ pub(super) fn schedule_switch_commit(
             &&& krnl.cpu_arr.spec_index(cpu_id).view().is_init()
             &&& krnl.cpu_arr.spec_index(cpu_id).view().view().wf()
         }) by { cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
+        assert(krnl.pt_mp.dom().contains(next_pagetable) && krnl.pt_mp.spec_index(next_pagetable).view().cr3 == cr3) by { process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, next_process); };
     }
-    krnl.cpu_arr.switch_to_thread(cpu_id, next_process, next_thread, next_pagetable, cr3, pcid, depth, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_hw_cr3_pcid, Tracked(needflush_perm), Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+    let ghost pre = *krnl;
+    krnl.cpu_arr.switch_to_thread(cpu_id, next_process, next_thread, next_pagetable, cr3, pcid, depth, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_hw_cr3_pcid,
+        Ghost(pre), Tracked(needflush_perm), Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof { lctx.update_lock_id(KernelObjId::Cpu(cpu_id), old(krnl).cpu_arr.lock_id_by_index(cpu_id), krnl.cpu_arr.lock_id_by_index(cpu_id)); }
     let shard = krnl.sched_mp.borrow_mut_shard_typed(scheduler_ptr, cpu_id, Ghost(lctx.scheduler_lock_map()), Tracked(&*lctx), Tracked(scheduler_lock_perm));
     let (_, node_perm) = shard.queue.pop_head();

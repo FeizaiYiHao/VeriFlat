@@ -181,7 +181,7 @@ verus! {
         let cr3 = process.cr3;
         let pcid = process.pcid;
         let depth = process.depth;
-        assert(page_ptr_valid(cr3) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID) by {
+        assert(page_ptr_valid(cr3) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID && krnl.pt_mp.dom().contains(next_pagetable) && krnl.pt_mp.spec_index(next_pagetable).view().cr3 == cr3) by {
             process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, next_process); process_perms_wf_at(krnl.prc_mp, next_process); pagetable_perms_wf_at(krnl.pt_mp, next_pagetable); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, next_process);
             krnl.pt_mp.spec_index(next_pagetable).view().table_pages_wf_cr3_at();
         };
@@ -193,7 +193,7 @@ verus! {
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().wf()
             }) by { cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
         }
-        krnl.cpu_arr.switch_to_thread(cpu_id, next_process, callee_ptr, next_pagetable, cr3, pcid, depth, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_hw_cr3_pcid, Tracked(&needflush_perm), Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
+        krnl.cpu_arr.switch_to_thread(cpu_id, next_process, callee_ptr, next_pagetable, cr3, pcid, depth, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_hw_cr3_pcid, Ghost(before_switch), Tracked(&needflush_perm), Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
         proof { lctx.update_lock_id(KernelObjId::Cpu(cpu_id), before_switch.cpu_arr.lock_id_by_index(cpu_id), krnl.cpu_arr.lock_id_by_index(cpu_id)); }
         let (_, Tracked(endpoint_node_perm)) = ipc_dequeue_endpoint_waiter(&mut krnl.ep_mp, Tracked(&*lctx), endpoint_ptr, callee_ptr, Tracked(&endpoint_lock_perm));
         proof {
@@ -609,7 +609,7 @@ verus! {
         let cr3 = process.cr3;
         let pcid = process.pcid;
         let depth = process.depth;
-        assert(page_ptr_valid(cr3) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID) by {
+        assert(page_ptr_valid(cr3) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID && krnl.pt_mp.dom().contains(next_pagetable) && krnl.pt_mp.spec_index(next_pagetable).view().cr3 == cr3) by {
             process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, next_process); process_perms_wf_at(krnl.prc_mp, next_process); pagetable_perms_wf_at(krnl.pt_mp, next_pagetable); process_pcid_allocator_wf_process_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, next_process);
             krnl.pt_mp.spec_index(next_pagetable).view().table_pages_wf_cr3_at();
         };
@@ -621,7 +621,7 @@ verus! {
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().wf()
             }) by { cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
         }
-        krnl.cpu_arr.switch_to_thread(cpu_id, next_process, caller_ptr, next_pagetable, cr3, pcid, depth, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_hw_cr3_pcid, Tracked(&needflush_perm), Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
+        krnl.cpu_arr.switch_to_thread(cpu_id, next_process, caller_ptr, next_pagetable, cr3, pcid, depth, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_hw_cr3_pcid, Ghost(before_switch), Tracked(&needflush_perm), Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
         proof { lctx.update_lock_id(KernelObjId::Cpu(cpu_id), before_switch.cpu_arr.lock_id_by_index(cpu_id), krnl.cpu_arr.lock_id_by_index(cpu_id)); }
         let callee = krnl.thr_mp.borrow_mut_typed(callee_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&callee_lock_perm));
         callee.release_caller();

@@ -38,6 +38,7 @@ pub use kernel::kernel_u_define_spec::*;
 pub use kernel::kernel_total_define_spec::*;
 pub use kernel::kernel_step_wrappers::*;
 pub use kernel::kernel_step_spec::*;
+pub use kernel::kernel_env_step_spec::*;
 pub use kernel::kernel_step_framing::*;
 pub use kernel::held_objects_unchanged_spec::*;
 pub use kernel::process_management::*;

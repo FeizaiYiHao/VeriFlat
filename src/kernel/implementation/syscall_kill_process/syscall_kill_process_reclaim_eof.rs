@@ -47,8 +47,9 @@ proof fn kill_reassign_eof_process(pre: KernelK, post: KernelK, target: RwLockPr
     assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
 }
 
-/// The IOTLB stays well formed: the only emptied domain is the dropped DID of the target's table, and the candidate domain
-/// of every other function the target owned carried no present entry, so it was inactive and already empty.
+/// The IOTLB stays well formed: the only emptied domain is the dropped DID of the target's table, whose anchor the target
+/// owned, so no cached context keeps it, and the candidate domain of every other function the target owned carried no
+/// present entry, so it was inactive and already empty.
 proof fn kill_reassign_eof_iotlb(pre: KernelK, post: KernelK, target: RwLockProcessPtr, owner: RwLockProcessPtr, iommu_table: Option<RwLockPageTableRoot>)
     requires
         pre.inv(),
@@ -62,6 +63,11 @@ proof fn kill_reassign_eof_iotlb(pre: KernelK, post: KernelK, target: RwLockProc
 {
     reveal(kill_reassign_eof_transition_framing);
     reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_match); reveal(IommuTLB::inv);
+    if let Some(t) = iommu_table {
+        if let Some(did) = pre.it_mp.spec_index(t).view().did {
+            assert(post.iommu_tlb.context_cache() =~= Map::new(post.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| post.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| post.iommu_tlb.context_cache()[bdf]));
+        }
+    }
 }
 
 /// Reassigning the PCI functions of the empty target `target` to the killer's process `owner` keeps the kernel invariant:

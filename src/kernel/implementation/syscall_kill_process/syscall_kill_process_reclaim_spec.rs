@@ -72,7 +72,8 @@ pub open spec fn kill_reclaim_state(
 
 /// Reassigning the PCI functions of the empty target `target` to the killer's process `owner` under the root-table lock and
 /// the write lock of the target's IOMMU table `iommu_table`, if any: every function `target` owns moves to `owner`
-/// detached, the table drops its DID, whose IOTLB domain alone is emptied, and `owner`'s reverse set absorbs `target`'s.
+/// detached, the table drops its DID, whose IOTLB domain alone is emptied and whose context-cache entries stay only where
+/// still present, and `owner`'s reverse set absorbs `target`'s.
 /// Lock owners, lock ids, and every other object stay.
 #[verifier::opaque]
 pub open spec fn kill_reassign_eof_transition_framing(pre: KernelK, post: KernelK, target: RwLockProcessPtr, owner: RwLockProcessPtr, iommu_table: Option<RwLockPageTableRoot>) -> bool {
@@ -104,8 +105,10 @@ pub open spec fn kill_reassign_eof_transition_framing(pre: KernelK, post: Kernel
         &&& table.view().did matches Some(did) ==> {
             &&& post.iommu_tlb.view() == pre.iommu_tlb.view().insert(did, empty_tlb)
             &&& forall|x: VtdDomainId| #![trigger post.iommu_tlb.spec_index(x)] x != did ==> post.iommu_tlb.spec_index(x) == pre.iommu_tlb.spec_index(x)
-            &&& post.iommu_tlb.context_cache() == Map::new(pre.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf].1 != did),
-                |bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf])
+            &&& Map::new(post.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| post.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| post.iommu_tlb.context_cache()[bdf])
+                == Map::new(pre.iommu_tlb.context_cache().dom().filter(|bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf].1 != did), |bdf: PciBdf| pre.iommu_tlb.context_cache()[bdf])
+            &&& forall|bdf: PciBdf| #![trigger post.iommu_tlb.context_cache().dom().contains(bdf)] post.iommu_tlb.context_cache().dom().contains(bdf) && post.iommu_tlb.context_cache()[bdf].1 == did
+                ==> iommu_context_cache_entry_present(post, bdf, post.iommu_tlb.context_cache()[bdf])
         }
         &&& table.view().did is None ==> post.iommu_tlb == pre.iommu_tlb
     }

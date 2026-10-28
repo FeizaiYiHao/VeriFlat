@@ -331,8 +331,16 @@ fn thread_exit_reclaim_lock_table(
             let Tracked(perm) = krnl.wlock_iommu_table(it, Tracked(&mut *lctx));
             krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::ThreadExitReclaim { flushed: false })), Tracked(&*lctx), Tracked(thread_lock_perm));
             proof { locked_k = *krnl; locked_lctx = *lctx; }
-            iommu_root_table_detach_all(&mut krnl.irt, &mut krnl.iommu_tlb, &mut krnl.it_mp, it, Tracked(&*lctx), Tracked(&irt_lock_perm), Tracked(&perm));
+            iommu_root_table_detach_all(&mut krnl.irt, &mut krnl.iommu_tlb, &mut krnl.it_mp, it, Ghost(locked_k), Tracked(&*lctx), Tracked(&irt_lock_perm), Tracked(&perm));
             proof {
+                // The DID's anchor belongs to the detached owner, so nothing may stay cached for it.
+                if let Some(did) = locked_k.it_mp.spec_index(it).view().did {
+                    assert(krnl.iommu_tlb.spec_index(did) == (SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })) by {
+                        iommu_root_table_process_wf_table_at(locked_k.irt.view(), locked_k.prc_mp, locked_k.it_mp, it);
+                        assert(pci_bdf_valid(pci_bdf_of_did(did).0, pci_bdf_of_did(did).1, pci_bdf_of_did(did).2)) by (nonlinear_arith) requires vtd_domain_id_valid(did);
+                        assert(krnl.iommu_tlb.spec_index(did).tlb_4k =~= Map::empty() && krnl.iommu_tlb.spec_index(did).tlb_2m =~= Map::empty() && krnl.iommu_tlb.spec_index(did).tlb_1g =~= Map::empty());
+                    };
+                }
                 assert(thread_exit_detach_process_functions_eof_transition_framing(locked_k, *krnl, it)) by { reveal(thread_exit_detach_process_functions_eof_transition_framing); };
                 thread_exit_detach_process_functions_eof(locked_k, *krnl, it);
             }

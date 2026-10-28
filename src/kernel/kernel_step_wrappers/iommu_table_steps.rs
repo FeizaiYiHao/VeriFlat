@@ -22,18 +22,18 @@ pub proof fn kernel_iommu_tlb_flushed_implies_u_step(pre: &KernelK, post: &Kerne
     kernel_process_maps_unchanged_implies_u_process_map(pre, post); kernel_thread_map_unchanged_implies_u_thread_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
 }
 
-/// Emptying the valid IOTLB domain `did`, with the K-only context cache free to change and no other kernel field changed,
-/// empties only that domain of the IOTLB projection and keeps every other domain; the complete and lock-free projections
-/// change exactly when the IOTLB view does, i.e. when that domain was nonempty.
+/// Invalidating the valid IOTLB domain `did`, with the K-only context cache free to change and no other kernel field
+/// changed, changes only that domain of the IOTLB projection, to its new K contents, and keeps every other domain; the
+/// complete and lock-free projections change exactly when the IOTLB view does.
 pub proof fn kernel_iommu_tlb_domain_invalidated_implies_u_step(pre: &KernelK, post: &KernelK, did: VtdDomainId)
     requires
         pre.iommu_tlb.inv(),
         vtd_domain_id_valid(did),
         *post == (KernelK { iommu_tlb: post.iommu_tlb, ..*pre }),
-        post.iommu_tlb.view() == pre.iommu_tlb.view().insert(did, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }),
+        post.iommu_tlb.view() == pre.iommu_tlb.view().insert(did, post.iommu_tlb.spec_index(did)),
     ensures
         kernel_k_to_kernel_u(*post) == (KernelU {
-            iommu_tlb: kernel_k_to_kernel_u(*pre).iommu_tlb.insert(did, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }), ..kernel_k_to_kernel_u(*pre)
+            iommu_tlb: kernel_k_to_kernel_u(*pre).iommu_tlb.insert(did, post.iommu_tlb.spec_index(did)), ..kernel_k_to_kernel_u(*pre)
         }),
         kernel_k_to_kernel_u(*post).iommu_tlb.dom() == kernel_k_to_kernel_u(*pre).iommu_tlb.dom(),
         forall|d: VtdDomainId| #![trigger kernel_k_to_kernel_u(*post).iommu_tlb[d]] d != did ==> kernel_k_to_kernel_u(*post).iommu_tlb[d] == kernel_k_to_kernel_u(*pre).iommu_tlb[d],
