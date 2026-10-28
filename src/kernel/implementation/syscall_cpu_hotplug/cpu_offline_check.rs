@@ -4,8 +4,6 @@ use super::cpu_offline_check_spec::*;
 use super::cpu_offline_check_trace::*;
 use super::cpu_offline_check_locked::cpu_offline_check_locked;
 use super::cpu_offline_commit_helpers::cpu_offline_commit_go_off;
-#[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 pub enum OfflineCheckResult {
@@ -262,26 +260,9 @@ pub fn cpu_offline_check(
     }
     let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
-    let state = cpu.state();
     let container_ptr = cpu.owning_container();
     let current_process = cpu.current_process();
     let current_thread = cpu.current_thread();
-    if let CpuState::Off = state {
-        proof {
-            let ghost pre = *krnl;
-            let ghost pre_lctx = *lctx;
-            krnl.u_sys_exit(lctx);
-            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-        }
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-        proof {
-            assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
-            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, None, None, None, None, None);
-            cpu_offline_check_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), old(krnl), cpu_id, *pt_regs);
-            cpu_offline_check_result_from_k(old(krnl), cpu_id, OfflineCheckResult::Continue);
-        }
-        return (OfflineCheckResult::Continue, Ghost(entry));
-    }
     proof {
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };

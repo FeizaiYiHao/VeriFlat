@@ -170,6 +170,12 @@ pub(super) fn end_new_container_created_step(
         final(krnl).pg_arr.spec_index(page_ptr2page_index(thread_page_ptr)).view().view().owning_container == child_container_ptr,
         thread_page_lock_perm.lock_id() == final(krnl).pg_arr.spec_index(page_ptr2page_index(thread_page_ptr)).view().locking_thread()->Write_lock_id,
 {
+    proof {
+        assert(krnl.cpu_op.view().view()[transfer_cpu_id as int] is Off) by {
+            cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, transfer_cpu_id); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, parent_container_ptr);
+            cpu_set_perms_wf_at(krnl.cpu_set_mp, parent_cpu_set); container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, parent_container_ptr, transfer_cpu_id);
+        };
+    }
     transfer_new_container_cpu(krnl, Tracked(&mut *lctx), parent_container_ptr, child_container_ptr, parent_cpu_set, child_cpu_set, transfer_cpu_id, transfer_cpu_lock_perm, parent_cpu_set_lock_perm, child_cpu_set_lock_perm);
     transfer_staged_4k_page_to_child_container(krnl, Tracked(&mut *lctx), thread_page_ptr, current_thread_ptr, parent_container_ptr, child_container_ptr, Tracked(thread_page_lock_perm), Tracked(parent_container_lock_perm), Tracked(child_container_lock_perm));
     proof {

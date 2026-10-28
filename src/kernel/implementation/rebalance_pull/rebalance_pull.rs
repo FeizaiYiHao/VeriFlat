@@ -495,23 +495,7 @@ pub fn rebalance_pull(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalConte
     let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
     proof { assert(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Idle) by { cpu_op_wf_at(old(krnl).cpu_op.view().view(), old(krnl).cpu_arr, cpu_id); }; }
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
-    let idle = match cpu.state() { CpuState::Idle => true, _ => false };
     let container_ptr = cpu.owning_container();
-    if !idle {
-        proof {
-            let ghost pre = *krnl;
-            let ghost pre_lctx = *lctx;
-            krnl.u_sys_exit(lctx);
-            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-        }
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-        proof {
-            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, None, None, None, None, None);
-            rebalance_pull_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id);
-            rebalance_pull_result_from_k(old(krnl), cpu_id, RebalanceResult::Nothing);
-        }
-        return RebalanceResult::Nothing;
-    }
     proof { schedule_current_cpu_references_wf(&*krnl, cpu_id); }
     let scheduler_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().scheduler;
     proof { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, container_ptr); }

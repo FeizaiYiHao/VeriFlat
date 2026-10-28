@@ -496,13 +496,115 @@ verus! {
         }
         if !transfer { return None; }
         let transfer_perm = krnl.wlock_off_cpu(transfer_cpu_id, source_cpu_set, Tracked(&mut *lctx));
-        let source_set = krnl.cpu_set_mp.borrow_mut_typed(source_cpu_set, Ghost(lctx.cpu_set_lock_map()), Tracked(&*lctx), Tracked(source_cpu_set_lock_perm));
-        source_set.owned_cpus.remove(transfer_cpu_id);
-        let target_set = krnl.cpu_set_mp.borrow_mut_typed(target_cpu_set, Ghost(lctx.cpu_set_lock_map()), Tracked(&*lctx), Tracked(target_cpu_set_lock_perm));
-        target_set.owned_cpus.insert_closed(transfer_cpu_id);
-        let transfer_cpu = krnl.cpu_arr.borrow_mut_typed(transfer_cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&transfer_perm.borrow()));
-        transfer_cpu.transfer_off_cpu_to_container(target_container, target_container_depth);
+        proof {
+            assert(krnl.cpu_op.view().view()[transfer_cpu_id as int] is Off) by { cpu_op_wf_at(old(krnl).cpu_op.view().view(), old(krnl).cpu_arr, transfer_cpu_id); };
+        }
+        ipc_transfer_closed_cpu_commit(krnl, Tracked(&*lctx), transfer_cpu_id, source_cpu_set, target_cpu_set, target_container, target_container_depth,
+            Tracked(transfer_perm.borrow()), Tracked(source_cpu_set_lock_perm), Tracked(target_cpu_set_lock_perm));
         Some(transfer_perm)
+    }
+
+    /// Moves the write-held Off CPU `transfer_cpu_id` from the source CPU set into the target CPU set and into the target container.
+    fn ipc_transfer_closed_cpu_commit(
+        krnl: &mut KernelK, Tracked(lctx): Tracked<&LocalContext>, transfer_cpu_id: CpuId, source_cpu_set: RwLockCpuSetPtr, target_cpu_set: RwLockCpuSetPtr,
+        target_container: RwLockContainerPtr, target_container_depth: usize, Tracked(transfer_cpu_lock_perm): Tracked<&LockPerm>,
+        Tracked(source_cpu_set_lock_perm): Tracked<&LockPerm>, Tracked(target_cpu_set_lock_perm): Tracked<&LockPerm>,
+    )
+        requires
+            old(krnl).inv(),
+            typed_lock_maps_aligned(old(krnl), lctx),
+            index_valid(NUM_CPUS, transfer_cpu_id),
+            source_cpu_set != target_cpu_set,
+            old(krnl).cpu_set_mp.dom().contains(source_cpu_set),
+            typed_lock_map_contains_mode(lctx.cpu_set_lock_map(), source_cpu_set, TypedLockMode::Write),
+            source_cpu_set_lock_perm.state() is WriteLock,
+            source_cpu_set_lock_perm.thread_id() == lctx.thread_id(),
+            source_cpu_set_lock_perm.lock_id() == old(krnl).cpu_set_mp.spec_index(source_cpu_set).locking_thread()->Write_lock_id,
+            old(krnl).cpu_set_mp.dom().contains(target_cpu_set),
+            typed_lock_map_contains_mode(lctx.cpu_set_lock_map(), target_cpu_set, TypedLockMode::Write),
+            target_cpu_set_lock_perm.state() is WriteLock,
+            target_cpu_set_lock_perm.thread_id() == lctx.thread_id(),
+            target_cpu_set_lock_perm.lock_id() == old(krnl).cpu_set_mp.spec_index(target_cpu_set).locking_thread()->Write_lock_id,
+            typed_lock_map_contains_mode(lctx.cpu_lock_map(), transfer_cpu_id, TypedLockMode::Write),
+            transfer_cpu_lock_perm.state() is WriteLock,
+            transfer_cpu_lock_perm.thread_id() == lctx.thread_id(),
+            transfer_cpu_lock_perm.lock_id() == old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().locking_thread()->Write_lock_id,
+            old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().is_init(),
+            old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view().wf(),
+            old(krnl).cpu_op.view().view()[transfer_cpu_id as int] is Off,
+            old(krnl).cpu_set_mp.spec_index(source_cpu_set).view().owned_cpus.closed_view().contains(transfer_cpu_id),
+            !old(krnl).cpu_set_mp.spec_index(target_cpu_set).view().owned_cpus.view().contains(transfer_cpu_id),
+        ensures
+            *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_set_mp: final(krnl).cpu_set_mp, ..*old(krnl) }),
+            typed_lock_maps_aligned(final(krnl), lctx),
+            final(krnl).cpu_arr.lock_id_by_index(transfer_cpu_id) == old(krnl).cpu_arr.lock_id_by_index(transfer_cpu_id),
+            final(krnl).cpu_arr.inv(),
+            final(krnl).cpu_arr.view().len() == old(krnl).cpu_arr.view().len(),
+            forall|cpu_i: CpuId| #![trigger old(krnl).cpu_arr.spec_index(cpu_i)] #![trigger final(krnl).cpu_arr.spec_index(cpu_i)]
+                index_valid(NUM_CPUS, cpu_i) && cpu_i != transfer_cpu_id ==> final(krnl).cpu_arr.spec_index(cpu_i) == old(krnl).cpu_arr.spec_index(cpu_i),
+            ({
+                let before = old(krnl).cpu_arr.spec_index(transfer_cpu_id).view();
+                let after = final(krnl).cpu_arr.spec_index(transfer_cpu_id).view();
+                &&& after.is_init() == before.is_init()
+                &&& after.view_rodata() == before.view_rodata()
+                &&& after.view_ghost() == before.view_ghost()
+                &&& after.view().kernel_call_perm() == before.view().kernel_call_perm()
+                &&& after.being_killed() == before.being_killed()
+                &&& after.locking_thread() == before.locking_thread()
+                &&& after.view().view() == CpuView { owning_container: target_container, container_depth: target_container_depth, ..before.view().view() }
+                &&& after.view().wf()
+            }),
+            final(krnl).cpu_set_mp.perms_wf(),
+            final(krnl).cpu_set_mp.dom() == old(krnl).cpu_set_mp.dom(),
+            final(krnl).cpu_set_mp.spec_index(source_cpu_set).locking_thread() == old(krnl).cpu_set_mp.spec_index(source_cpu_set).locking_thread(),
+            final(krnl).cpu_set_mp.spec_index(target_cpu_set).locking_thread() == old(krnl).cpu_set_mp.spec_index(target_cpu_set).locking_thread(),
+            final(krnl).cpu_set_mp.spec_index(source_cpu_set).view().owned_cpus.wf(),
+            final(krnl).cpu_set_mp.spec_index(target_cpu_set).view().owned_cpus.wf(),
+            forall|key: RwLockCpuSetPtr| #![trigger old(krnl).cpu_set_mp.spec_index(key)] #![trigger final(krnl).cpu_set_mp.spec_index(key)]
+                old(krnl).cpu_set_mp.dom().contains(key) && key != source_cpu_set && key != target_cpu_set ==> final(krnl).cpu_set_mp.spec_index(key) == old(krnl).cpu_set_mp.spec_index(key),
+            ({
+                let before = old(krnl).cpu_set_mp.spec_index(source_cpu_set);
+                let after = final(krnl).cpu_set_mp.spec_index(source_cpu_set);
+                &&& after.is_init() == before.is_init()
+                &&& after.view_rodata() == before.view_rodata()
+                &&& after.view_ghost() == before.view_ghost()
+                &&& after.being_killed() == before.being_killed()
+                &&& after.view().owning_container == before.view().owning_container
+                &&& after.view().container_depth == before.view().container_depth
+                &&& after.view().owned_cpus.view() == before.view().owned_cpus.view().remove(transfer_cpu_id)
+                &&& after.view().owned_cpus.closed_view() == before.view().owned_cpus.closed_view().remove(transfer_cpu_id)
+                &&& after.view().owned_cpus.data.view() == before.view().owned_cpus.data.view().update(transfer_cpu_id as int, false)
+                &&& after.view().owned_cpus.closed.view() == before.view().owned_cpus.closed.view().update(transfer_cpu_id as int, false)
+                &&& after.view().owned_cpus.len as int == before.view().owned_cpus.len as int - 1
+            }),
+            ({
+                let before = old(krnl).cpu_set_mp.spec_index(target_cpu_set);
+                let after = final(krnl).cpu_set_mp.spec_index(target_cpu_set);
+                &&& after.is_init() == before.is_init()
+                &&& after.view_rodata() == before.view_rodata()
+                &&& after.view_ghost() == before.view_ghost()
+                &&& after.being_killed() == before.being_killed()
+                &&& after.view().owning_container == before.view().owning_container
+                &&& after.view().container_depth == before.view().container_depth
+                &&& after.view().owned_cpus.view() == before.view().owned_cpus.view().insert(transfer_cpu_id)
+                &&& after.view().owned_cpus.closed_view() == before.view().owned_cpus.closed_view().insert(transfer_cpu_id)
+                &&& after.view().owned_cpus.data.view() == before.view().owned_cpus.data.view().update(transfer_cpu_id as int, true)
+                &&& after.view().owned_cpus.closed.view() == before.view().owned_cpus.closed.view().update(transfer_cpu_id as int, true)
+                &&& after.view().owned_cpus.len as int == before.view().owned_cpus.len as int + 1
+            }),
+    {
+        proof {
+            assert(krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().view().state is Off) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, transfer_cpu_id); };
+            assert(krnl.cpu_arr.inv() && krnl.cpu_set_mp.perms_wf() && krnl.cpu_set_mp.spec_index(source_cpu_set).inv() && krnl.cpu_set_mp.spec_index(target_cpu_set).inv()) by {
+                cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_set_perms_wf_map(krnl.cpu_set_mp); cpu_set_perms_wf_at(krnl.cpu_set_mp, source_cpu_set); cpu_set_perms_wf_at(krnl.cpu_set_mp, target_cpu_set);
+            };
+        }
+        let source_set = krnl.cpu_set_mp.borrow_mut_typed(source_cpu_set, Ghost(lctx.cpu_set_lock_map()), Tracked(lctx), Tracked(source_cpu_set_lock_perm));
+        source_set.owned_cpus.remove(transfer_cpu_id);
+        let target_set = krnl.cpu_set_mp.borrow_mut_typed(target_cpu_set, Ghost(lctx.cpu_set_lock_map()), Tracked(lctx), Tracked(target_cpu_set_lock_perm));
+        target_set.owned_cpus.insert_closed(transfer_cpu_id);
+        let transfer_cpu = krnl.cpu_arr.borrow_mut_typed(transfer_cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(lctx), Tracked(transfer_cpu_lock_perm));
+        transfer_cpu.transfer_off_cpu_to_container(target_container, target_container_depth);
     }
 
     /// Write-locks the source and target CPU sets in address order and the peer's scheduler shard, checks that

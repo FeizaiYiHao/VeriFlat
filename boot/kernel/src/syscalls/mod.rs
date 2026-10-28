@@ -716,10 +716,6 @@ fn schedule_from_running(regs: &mut Registers) {
         }
         ScheduleResult::Continue => {}
         ScheduleResult::Idle => run_idle(regs),
-        ScheduleResult::Off => {
-            wait_until_online(cpu_id);
-            run_idle(regs);
-        }
     }
 }
 
@@ -745,10 +741,6 @@ fn run_idle(regs: &mut Registers) {
             }
             // A killed head was dropped; look again.
             ScheduleResult::Continue => continue,
-            ScheduleResult::Off => {
-                wait_until_online(cpu_id);
-                continue;
-            }
             ScheduleResult::Idle => {}
         }
         match rebalance_pull(k, Tracked::assume_new(), Tracked::assume_new(), cpu_id) {

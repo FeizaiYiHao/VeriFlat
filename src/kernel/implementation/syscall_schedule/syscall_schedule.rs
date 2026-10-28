@@ -5,12 +5,9 @@ use super::syscall_schedule_trace::*;
 use super::syscall_schedule_helpers::schedule_switch_unlock_and_record;
 use super::syscall_schedule_switch_helpers::{schedule_switch_read_target, schedule_switch_commit};
 use super::syscall_schedule_lock_helpers::{schedule_lock_current_and_shard, schedule_lock_queue_head, schedule_continue};
-#[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 pub enum ScheduleResult {
-    Off,
     Idle,
     Continue,
     /// The trap-return layer encodes this pending IPC result in the restored registers.
@@ -275,12 +272,10 @@ pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
             if ret is Switched { schedule_flushed_pcid(*old(krnl), cpu_id, ret->Switched_thread_ptr) } else { None }),
         final(steps).nonlock_view().len() == if ret is Switched { 1nat } else { 0nat },
         ret == schedule_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id),
-        (ret is Off) == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Off),
         (ret is Switched) == {
             let cpu = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view();
             let scheduler_ptr = old(krnl).ctn_mp.spec_index(cpu.owning_container).view_rodata().view().scheduler;
             let queue = scheduler_shards_of(old(krnl).sched_mp.spec_index(scheduler_ptr))[cpu_id as int];
-            &&& !(cpu.state is Off)
             &&& !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed()
             &&& (cpu.current_process is Some ==> !old(krnl).prc_mp.spec_index(cpu.current_process.unwrap()).being_killed() && !old(krnl).thr_mp.spec_index(cpu.current_thread.unwrap()).being_killed())
             &&& queue.len() > 0
@@ -347,21 +342,6 @@ pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
     let container_ptr = cpu.owning_container();
     let current_process = cpu.current_process();
     let current_thread = cpu.current_thread();
-    if let CpuState::Off = state {
-        proof {
-            let ghost pre = *krnl;
-            let ghost pre_lctx = *lctx;
-            krnl.u_sys_exit(lctx);
-            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-        }
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
-        proof {
-            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, None, None, None, None, None);
-            schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *old(pt_regs));
-            schedule_result_from_k(old(krnl), cpu_id, ScheduleResult::Off);
-        }
-        return ScheduleResult::Off;
-    }
     proof { schedule_current_cpu_references_wf(&*krnl, cpu_id); }
     let scheduler_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().scheduler;
     let locked = schedule_lock_current_and_shard(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, scheduler_ptr, current_process, current_thread, Tracked(cpu_lock_perm), Ghost(*old(pt_regs)));

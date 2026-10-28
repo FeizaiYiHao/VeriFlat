@@ -16,10 +16,10 @@ pub(super) proof fn cpu_offline_check_result_from_k(krnl: &KernelK, cpu_id: CpuI
             let requested = krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c.owning_container)).flags.spec_index(cpu_id).view().view().requested;
             let dead = c.current_process is Some && (krnl.prc_mp.spec_index(process_ptr).being_killed() || krnl.thr_mp.spec_index(thread_ptr).being_killed());
             let set_killed = krnl.cpu_set_mp.spec_index(krnl.ctn_mp.spec_index(c.owning_container).view_rodata().view().cpu_set).being_killed();
-            &&& !(c.state is Off) && !cpu.being_killed() ==> krnl.ctn_mp.dom().contains(c.owning_container)
-            &&& !(c.state is Off) && !cpu.being_killed() && requested && c.current_process is Some ==> c.current_thread is Some && krnl.prc_mp.dom().contains(process_ptr)
-            &&& !(c.state is Off) && !cpu.being_killed() && requested && c.current_process is Some && !krnl.prc_mp.spec_index(process_ptr).being_killed() ==> krnl.thr_mp.dom().contains(thread_ptr)
-            &&& (ret is Continue) == (c.state is Off || cpu.being_killed() || !requested || set_killed || dead)
+            &&& !cpu.being_killed() ==> krnl.ctn_mp.dom().contains(c.owning_container)
+            &&& !cpu.being_killed() && requested && c.current_process is Some ==> c.current_thread is Some && krnl.prc_mp.dom().contains(process_ptr)
+            &&& !cpu.being_killed() && requested && c.current_process is Some && !krnl.prc_mp.spec_index(process_ptr).being_killed() ==> krnl.thr_mp.dom().contains(thread_ptr)
+            &&& (ret is Continue) == (cpu.being_killed() || !requested || set_killed || dead)
         },
     ensures
         cpu_offline_check_result(kernel_k_to_kernel_u(*krnl), cpu_id) == ret,
@@ -147,7 +147,7 @@ pub(super) proof fn cpu_offline_check_trace_went_off_step(
     ensures cpu_offline_check_entry_trace(steps.view().subrange(start, steps.view().len() as int), entry, post, cpu_id, regs, true, flushed_default_pcid),
 { reveal(cpu_offline_check_trace_after_hold); reveal(cpu_offline_check_entry_trace); }
 
-/// A check whose entry cpu is killed, already Off, or not requested continues before holding and records no step.
+/// A check whose entry cpu is killed or not requested continues before holding and records no step.
 pub(super) proof fn cpu_offline_check_trace_stutter(trace: Seq<KernelStep>, krnl: &KernelK, cpu_id: CpuId, regs: Registers)
     requires
         index_valid(NUM_CPUS, cpu_id),
@@ -156,8 +156,8 @@ pub(super) proof fn cpu_offline_check_trace_stutter(trace: Seq<KernelStep>, krnl
             let cpu = krnl.cpu_arr.spec_index(cpu_id).view();
             let c = cpu.view().view();
             let requested = krnl.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c.owning_container)).flags.spec_index(cpu_id).view().view().requested;
-            &&& !(c.state is Off) && !cpu.being_killed() ==> krnl.ctn_mp.dom().contains(c.owning_container)
-            &&& c.state is Off || cpu.being_killed() || !requested
+            &&& !cpu.being_killed() ==> krnl.ctn_mp.dom().contains(c.owning_container)
+            &&& cpu.being_killed() || !requested
         },
     ensures cpu_offline_check_entry_trace(trace, kernel_k_to_kernel_u(*krnl), kernel_k_to_kernel_u(*krnl), cpu_id, regs, false, false),
 {

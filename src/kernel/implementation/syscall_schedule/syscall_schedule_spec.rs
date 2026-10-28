@@ -3,15 +3,14 @@ use crate::*;
 use super::syscall_schedule::ScheduleResult;
 
 verus! {
-/// The result of `syscall_schedule` from the state at entry: an Off cpu stays Off; a cpu a killer marked goes
-/// idle at once without a state change; a cpu whose running process and thread, if any, are alive switches to the live head of shard `cpu_id` of its container's
+/// The result of `syscall_schedule` from the state at entry: a cpu a killer marked goes idle at once without a state
+/// change; a cpu whose running process and thread, if any, are alive switches to the live head of shard `cpu_id` of its container's
 /// scheduler and carries that thread's pending IPC result; otherwise an Idle cpu stays Idle and a running
 /// cpu continues.
 pub open spec fn schedule_syscall_result(pre: KernelU, cpu_id: CpuId) -> ScheduleResult {
     let cpu = pre.cpu_array[cpu_id as int];
     let queue = pre.container_map[cpu.owning_container].scheduler[cpu_id as int];
-    if cpu.state is Off { ScheduleResult::Off }
-    else if cpu.killed { ScheduleResult::Idle }
+    if cpu.killed { ScheduleResult::Idle }
     else if (cpu.current_process is Some ==> !pre.process_map[cpu.current_process->Some_0].killed && !pre.thread_map[cpu.current_thread->Some_0].killed)
         && queue.len() > 0 && !pre.thread_map[queue[0]].killed {
         ScheduleResult::Switched { thread_ptr: queue[0], syscall_return: pre.thread_map[queue[0]].error_code }
