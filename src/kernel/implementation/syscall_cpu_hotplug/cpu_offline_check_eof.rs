@@ -124,6 +124,7 @@ pub(super) proof fn cpu_went_off_eof(pre: KernelK, post: KernelK, cpu_id: CpuId,
                 &&& !queue_before.map().dom().contains(pre.thr_mp.spec_index(prev).view().scheduler_linkedlist_node.addr())
             })
         }),
+        post.cpu_op.view().view()[cpu_id as int] is InStep,
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
         post.cpu_arr.spec_index(cpu_id).view().view().wf(),
@@ -144,6 +145,7 @@ pub(super) proof fn cpu_went_off_eof(pre: KernelK, post: KernelK, cpu_id: CpuId,
     reveal(cpu_went_off_eof_transition_framing);
     assert(post.subsystems_inv()) by {
         assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); };
+        assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
         assert(thread_perms_wf(post.thr_mp)) by {
             reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
             reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
@@ -151,7 +153,7 @@ pub(super) proof fn cpu_went_off_eof(pre: KernelK, post: KernelK, cpu_id: CpuId,
         assert(scheduler_perms_wf(post.sched_mp)) by { reveal(scheduler_perms_wf); };
         assert(cpu_set_perms_wf(post.cpu_set_mp)) by { reveal(cpu_set_perms_wf); };
         assert(pcid_needflush_wf(post.pcid_needflush)) by { reveal(pcid_needflush_wf); };
-        assert(cpu_published_wf(post.cpu_published, post.cpu_arr, post.pcid_needflush)) by { reveal(cpu_published_wf); reveal(KernelK::default_pagetable_wf); reveal(PageTable::table_pages_wf); };
+        assert(cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush)) by { reveal(cpu_hw_cr3_pcid_wf); reveal(KernelK::default_pagetable_wf); reveal(PageTable::table_pages_wf); };
         assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { reveal(cpu_offline_flags_wf); reveal(container_cpu_offline_flags_wf); };
         reveal(KernelK::default_pagetable_wf);
     };
@@ -174,8 +176,8 @@ pub(super) proof fn cpu_went_off_eof(pre: KernelK, post: KernelK, cpu_id: CpuId,
     assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
 }
 
-/// The committed offline, between the lock acquisitions that follow the check's start `snapshot` and the releases that end
-/// the step, gives the went-off fields from `snapshot`.
+/// The committed offline, between the lock acquisitions that follow the check's start `snapshot` and the releases and the
+/// exit from the kernel step as Off that end the step, gives the went-off fields from `snapshot`.
 pub(super) proof fn cpu_went_off_eof_fields(
     snapshot: KernelK, entry: KernelK, pre: KernelK, mid: KernelK, post: KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr,
     cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, current_process: Option<RwLockProcessPtr>, current_thread: Option<RwLockThreadPtr>, entry_regs: Registers,
@@ -236,11 +238,14 @@ pub(super) proof fn cpu_went_off_eof_fields(
         pre.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID).view() == entry.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID).view(),
         cpu_went_off_eof_transition_framing(pre, mid, cpu_id, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, entry_regs),
         post == (KernelK {
-            cpu_arr: post.cpu_arr, prc_mp: post.prc_mp, thr_mp: post.thr_mp, sched_mp: post.sched_mp, cpu_set_mp: post.cpu_set_mp, cpu_offline_mp: post.cpu_offline_mp,
-            pcid_needflush: post.pcid_needflush, ..mid
+            cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, prc_mp: post.prc_mp, thr_mp: post.thr_mp, sched_mp: post.sched_mp, cpu_set_mp: post.cpu_set_mp,
+            cpu_offline_mp: post.cpu_offline_mp, pcid_needflush: post.pcid_needflush, ..mid
         }),
-        post.cpu_arr.unchanged_except(&mid.cpu_arr, cpu_id),
-        wunlock_ensures(mid.cpu_arr.spec_index(cpu_id).view(), post.cpu_arr.spec_index(cpu_id).view()),
+        post.cpu_op.view().view() == mid.cpu_op.view().view().update(cpu_id as int, CpuOpState::Off),
+        post.cpu_arr.entries_unchanged_except(&mid.cpu_arr, cpu_id),
+        post.cpu_arr.spec_index(cpu_id).view().view().view() == mid.cpu_arr.spec_index(cpu_id).view().view().view(),
+        post.cpu_arr.spec_index(cpu_id).view().locking_thread() is None,
+        post.cpu_arr.spec_index(cpu_id).view().killer_info() == mid.cpu_arr.spec_index(cpu_id).view().killer_info(),
         current_process is Some ==> post.prc_mp.unchanged_except(&mid.prc_mp, current_process.unwrap()) && wunlock_ensures(mid.prc_mp.spec_index(current_process.unwrap()), post.prc_mp.spec_index(current_process.unwrap())),
         current_process is None ==> post.prc_mp == mid.prc_mp,
         current_thread is Some ==> post.thr_mp.unchanged_except(&mid.thr_mp, current_thread.unwrap()) && wunlock_ensures(mid.thr_mp.spec_index(current_thread.unwrap()), post.thr_mp.spec_index(current_thread.unwrap())),

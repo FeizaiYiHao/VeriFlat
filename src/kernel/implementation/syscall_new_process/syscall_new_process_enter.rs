@@ -11,9 +11,10 @@ pub(super) fn enter_new_process_commit(
     endpoint_index: EndpointIdx, source_range: &VaRange4K, Tracked(current_thread_lock_perm): Tracked<&LockPerm>, Ghost(regs): Ghost<Registers>, Ghost(with_iommu): Ghost<bool>,
 )
     requires
-        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, prc_mp: old(krnl).prc_mp,
+        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_op: old(krnl).cpu_op, prc_mp: old(krnl).prc_mp,
             thr_mp: old(krnl).thr_mp, ep_mp: old(krnl).ep_mp, pt_mp: old(krnl).pt_mp, pt_lower: old(krnl).pt_lower, pcid_allc_mp: old(krnl).pcid_allc_mp, ..old(steps).snapshot_k() }),
-        old(krnl).cpu_arr.unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
+        old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
+        old(krnl).cpu_arr.entries_unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
         old(krnl).prc_mp.unchanged_except(&old(steps).snapshot_k().prc_mp, parent_ptr),
         old(krnl).thr_mp.unchanged_except(&old(steps).snapshot_k().thr_mp, current_thread_ptr),
         old(krnl).pt_mp.unchanged_except(&old(steps).snapshot_k().pt_mp, source_pagetable_ptr),
@@ -75,7 +76,7 @@ pub(super) fn enter_new_process_commit(
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
-        final(krnl).cpu_published[cpu_id as int].view() == old(krnl).cpu_published[cpu_id as int].view(),
+        final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         containers_rodata_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp),
         final(krnl).pcid_allc_mp.dom().contains(pcid_allocator_ptr),
         final(krnl).pcid_allc_mp.spec_index(pcid_allocator_ptr) == old(krnl).pcid_allc_mp.spec_index(pcid_allocator_ptr),

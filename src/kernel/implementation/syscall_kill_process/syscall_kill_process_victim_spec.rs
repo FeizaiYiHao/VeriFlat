@@ -124,14 +124,15 @@ pub open spec fn kill_dequeue_endpoint_eof_transition_framing(pre: KernelK, post
 }
 
 /// The write-held marked thread `victim_ptr` running on the write-held remote cpu `remote` is evicted: the cpu loads the
-/// default page table with the default PCID and goes idle, and the thread becomes killed.
+/// default page table with the default PCID and goes idle, its running state becomes Idle, and the thread becomes killed.
 #[verifier::opaque]
 pub open spec fn kill_evict_eof_transition_framing(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, remote: CpuId, default_cr3: PageTableRoot) -> bool {
     let victim = pre.thr_mp.spec_index(victim_ptr);
     let after_victim = post.thr_mp.spec_index(victim_ptr);
     let before = pre.cpu_arr.spec_index(remote).view();
     let after = post.cpu_arr.spec_index(remote).view();
-    &&& post == (KernelK { cpu_arr: post.cpu_arr, cpu_published: post.cpu_published, thr_mp: post.thr_mp, ..pre })
+    &&& post == (KernelK { cpu_arr: post.cpu_arr, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, cpu_op: post.cpu_op, thr_mp: post.thr_mp, ..pre })
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view().update(remote as int, CpuOpState::Idle)
     &&& post.thr_mp.unchanged_except(&pre.thr_mp, victim_ptr)
     &&& after_victim.is_init() == victim.is_init()
     &&& after_victim.view_rodata() == victim.view_rodata()
@@ -148,13 +149,14 @@ pub open spec fn kill_evict_eof_transition_framing(pre: KernelK, post: KernelK, 
     &&& after.killer_info() == before.killer_info()
     &&& after.view_rodata() == before.view_rodata()
     &&& after.view_ghost() == before.view_ghost()
+    &&& after.view().kernel_call_perm() == before.view().kernel_call_perm()
     &&& after.view().view() == (CpuView {
         state: CpuState::Idle, current_process: None, current_thread: None, current_pagetable: None, current_cr3: default_cr3, current_pcid: KERNEL_DEFAULT_PCID,
         ..before.view().view()
     })
-    &&& post.cpu_published[remote as int].inv()
-    &&& post.cpu_published[remote as int].view() == (default_cr3, KERNEL_DEFAULT_PCID)
-    &&& post.cpu_published[remote as int].owner_cpu() == pre.cpu_published[remote as int].owner_cpu()
-    &&& forall|c: CpuId| #![trigger post.cpu_published[c as int]] index_valid(NUM_CPUS, c) && c != remote ==> post.cpu_published[c as int] == pre.cpu_published[c as int]
+    &&& post.cpu_hw_cr3_pcid[remote as int].inv()
+    &&& post.cpu_hw_cr3_pcid[remote as int].view() == (default_cr3, KERNEL_DEFAULT_PCID)
+    &&& post.cpu_hw_cr3_pcid[remote as int].owner_cpu() == pre.cpu_hw_cr3_pcid[remote as int].owner_cpu()
+    &&& forall|c: CpuId| #![trigger post.cpu_hw_cr3_pcid[c as int]] index_valid(NUM_CPUS, c) && c != remote ==> post.cpu_hw_cr3_pcid[c as int] == pre.cpu_hw_cr3_pcid[c as int]
 }
 } // verus!

@@ -221,7 +221,7 @@ pub open spec fn ipc_endpoint_transit_step(old_u: KernelU, new_u: KernelU, cpu_i
     let peer_ptr = channel.queue[0];
     let progress = SyscallProgress::IpcEndpoint { peer: peer_ptr, caller_sends: waiting_state is SENDING, payload_index };
     new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..cpu }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(progress), ..old_u.thread_map[thread_ptr] })
             .insert(peer_ptr, ThreadU { lock_state: LockStateU::WriteLocked, blocking_endpoint_ptr: None,
                 state: ThreadState::IPC_TRANSIT { partner: thread_ptr, wait: if old_u.thread_map[peer_ptr].state is SENDING { IpcWait::Send } else { IpcWait::Receive } }, ..old_u.thread_map[peer_ptr] }),
@@ -301,7 +301,7 @@ pub open spec fn ipc_endpoint_finish_step(old_u: KernelU, new_u: KernelU, cpu_id
     let container = old_u.thread_map[peer_ptr].owning_container;
     let wake_cpu = if container == old_u.thread_map[thread_ptr].owning_container { cpu_id } else { old_u.thread_map[peer_ptr].last_cpu };
     new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..cpu }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: cpu_op_after_step(cpu.state), ..cpu }),
         thread_map: threads.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..threads[thread_ptr] })
             .insert(peer_ptr, ThreadU { lock_state: LockStateU::Unlocked, state: ThreadState::SCHEDULED { cpu_id: wake_cpu },
                 blocking_endpoint_ptr: None, ipc_payload: IPCPayLoad::Empty, error_code: Some(result), ..threads[peer_ptr] }),
@@ -438,7 +438,7 @@ pub open spec fn ipc_pages_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: Cp
     let sends = waiting_state is SENDING;
     let progress = SyscallProgress::IpcPages { source_range: if sends { range } else { peer_range }, target_range: if sends { peer_range } else { range }, peer, tables: IpcPagesTables::Unlocked, released: None };
     new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..cpu }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
         thread_map: old_u.thread_map.insert(caller, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(progress), ..old_u.thread_map[caller] })
             .insert(peer, ThreadU { lock_state: LockStateU::WriteLocked, blocking_endpoint_ptr: None,
                 state: ThreadState::IPC_TRANSIT { partner: caller, wait: if old_u.thread_map[peer].state is SENDING { IpcWait::Send } else { IpcWait::Receive } }, ..old_u.thread_map[peer] }),
@@ -724,7 +724,7 @@ pub open spec fn ipc_pages_finish_step(old_u: KernelU, new_u: KernelU, cpu_id: C
     let container = old_u.thread_map[peer].owning_container;
     let wake_cpu = if container == old_u.thread_map[caller].owning_container { cpu_id } else { old_u.thread_map[peer].last_cpu };
     new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..cpu }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: cpu_op_after_step(cpu.state), ..cpu }),
         thread_map: old_u.thread_map.insert(caller, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..old_u.thread_map[caller] })
             .insert(peer, ThreadU { lock_state: LockStateU::Unlocked, state: ThreadState::SCHEDULED { cpu_id: wake_cpu },
                 blocking_endpoint_ptr: None, ipc_payload: IPCPayLoad::Empty, error_code: Some(progress->IpcPages_released->Some_0), ..old_u.thread_map[peer] }),

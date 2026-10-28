@@ -66,7 +66,7 @@ pub open spec fn thread_exit_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: 
     let process_ptr = cpu.current_process->Some_0;
     let thread_ptr = cpu.current_thread->Some_0;
     let locked = KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..cpu }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
         container_map: old_u.container_map.insert(container_ptr, ContainerU {
             lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(old_u.process_map.spec_index(process_ptr).depth)), ..old_u.container_map.spec_index(container_ptr)
         }),
@@ -453,7 +453,7 @@ pub open spec fn thread_exit_finish_step(old_u: KernelU, new_u: KernelU, cpu_id:
     let container_ptr = cpu.owning_container;
     let process_ptr = cpu.current_process->Some_0;
     let unlocked = KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..cpu }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: CpuOpState::Trap, ..cpu }),
         container_map: old_u.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..old_u.container_map.spec_index(container_ptr) }),
         process_map: old_u.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::Unlocked, ..old_u.process_map.spec_index(process_ptr) }),
         ..old_u

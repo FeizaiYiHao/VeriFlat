@@ -102,7 +102,7 @@ pub(super) fn schedule_switch_commit(
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
         !(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Off),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == current_thread,
-        old(krnl).cpu_published[cpu_id as int].owner_cpu() == cpu_id,
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].owner_cpu() == cpu_id,
         old(lctx).pcid_needflush_lock_map().dom() =~= set![(cpu_id, pcid)],
         typed_lock_map_contains_mode(old(lctx).pcid_needflush_lock_map(), (cpu_id, pcid), TypedLockMode::Write),
         old(krnl).pcid_needflush.spec_index(cpu_id, pcid).inv(),
@@ -157,10 +157,10 @@ pub(super) fn schedule_switch_commit(
         },
     ensures
         scheduler_context_switch_eof_transition_framing(*old(krnl), *final(krnl), cpu_id, scheduler_ptr, next_thread, *old(pt_regs)),
-        *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, pcid_needflush: final(krnl).pcid_needflush, cpu_published: final(krnl).cpu_published, sched_mp: final(krnl).sched_mp, thr_mp: final(krnl).thr_mp, cpu_tlb: final(krnl).cpu_tlb, ..*old(krnl) }),
+        *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, pcid_needflush: final(krnl).pcid_needflush, cpu_hw_cr3_pcid: final(krnl).cpu_hw_cr3_pcid, sched_mp: final(krnl).sched_mp, thr_mp: final(krnl).thr_mp, cpu_tlb: final(krnl).cpu_tlb, ..*old(krnl) }),
         final(krnl).cpu_arr.inv(),
         final(krnl).cpu_tlb.inv(),
-        final(krnl).cpu_published[cpu_id as int].inv(),
+        final(krnl).cpu_hw_cr3_pcid[cpu_id as int].inv(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().tlb_dirty_bitmap.inv(),
         final(krnl).sched_mp.perms_wf(),
         final(krnl).sched_mp.spec_index(scheduler_ptr).shards.inv(),
@@ -169,7 +169,7 @@ pub(super) fn schedule_switch_commit(
         final(krnl).sched_mp.dom().contains(scheduler_ptr),
         !final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid,
-        final(krnl).cpu_published[cpu_id as int].view() == (final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, pcid),
+        final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, pcid),
         !final(krnl).thr_mp.spec_index(next_thread).being_killed(),
         final(krnl).thr_mp.spec_index(next_thread).view().state == (ThreadState::RUNNING { cpu_id }),
         final(krnl).thr_mp.spec_index(next_thread).view().free_quota_pending_clean(),
@@ -235,7 +235,7 @@ pub(super) fn schedule_switch_commit(
             &&& krnl.cpu_arr.spec_index(cpu_id).view().view().wf()
         }) by { cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
     }
-    krnl.cpu_arr.switch_to_thread(cpu_id, next_process, next_thread, next_pagetable, cr3, pcid, depth, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_published, Tracked(needflush_perm), Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+    krnl.cpu_arr.switch_to_thread(cpu_id, next_process, next_thread, next_pagetable, cr3, pcid, depth, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_hw_cr3_pcid, Tracked(needflush_perm), Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof { lctx.update_lock_id(KernelObjId::Cpu(cpu_id), old(krnl).cpu_arr.lock_id_by_index(cpu_id), krnl.cpu_arr.lock_id_by_index(cpu_id)); }
     let shard = krnl.sched_mp.borrow_mut_shard_typed(scheduler_ptr, cpu_id, Ghost(lctx.scheduler_lock_map()), Tracked(&*lctx), Tracked(scheduler_lock_perm));
     let (_, node_perm) = shard.queue.pop_head();

@@ -27,6 +27,7 @@ pub(crate) open spec fn kill_container_cpus_eof_transition_framing(
         &&& after.view_ghost() == before.view_ghost()
         &&& after.being_killed() == before.being_killed()
         &&& after.locking_thread() == before.locking_thread()
+        &&& after.view().kernel_call_perm() == before.view().kernel_call_perm()
         &&& after.view().view() == (CpuView { owning_container: target, container_depth: depth, ..before.view().view() })
         &&& after.view().wf()
     }
@@ -105,7 +106,7 @@ pub(crate) proof fn kill_container_cpus_eof(
     reveal(kill_container_cpus_eof_transition_framing);
     assert(post.cpu_arr.spec_index(moved).view().view().tlb_dirty_bitmap() == pre.cpu_arr.spec_index(moved).view().view().tlb_dirty_bitmap());
     assert(post.subsystems_inv()) by {
-        reveal(cpu_set_perms_wf); reveal(cpu_array_wf); reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); reveal(container_cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf);
+        reveal(cpu_set_perms_wf); reveal(cpu_array_wf); reveal(cpu_hw_cr3_pcid_wf); reveal(cpu_offline_flags_wf); reveal(container_cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf); reveal(cpu_op_wf);
     };
     assert(post.memory_management_inv()) by { assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); }; };
     assert(post.process_management_inv()) by {

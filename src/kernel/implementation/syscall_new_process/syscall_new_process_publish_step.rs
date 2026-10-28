@@ -112,7 +112,7 @@ pub(super) fn end_new_process_publish_step(
         final(lctx).thread_id() == old(lctx).thread_id(),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
+        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
         forall|c: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(c)] old(lctx).cpu_lock_map().dom().contains(c) ==> final(krnl).cpu_arr.spec_index(c).view() == old(krnl).cpu_arr.spec_index(c).view(),
         containers_rodata_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp),
         held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),

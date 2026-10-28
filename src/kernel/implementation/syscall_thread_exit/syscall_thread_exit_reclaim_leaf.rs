@@ -70,7 +70,7 @@ pub(super) fn thread_exit_reclaim_clear_leaf(
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         thread_exit_partial_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id),
         final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
-        final(krnl).cpu_published[cpu_id as int].view() == old(krnl).cpu_published[cpu_id as int].view(),
+        final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         final(krnl).ctn_mp.dom().contains(container_ptr) && final(krnl).ctn_mp.spec_index(container_ptr) == old(krnl).ctn_mp.spec_index(container_ptr),
         final(krnl).prc_mp.dom().contains(process_ptr) && final(krnl).prc_mp.spec_index(process_ptr) == old(krnl).prc_mp.spec_index(process_ptr),
         final(krnl).thr_mp.dom().contains(thread_ptr) && final(krnl).thr_mp.spec_index(thread_ptr) == old(krnl).thr_mp.spec_index(thread_ptr),

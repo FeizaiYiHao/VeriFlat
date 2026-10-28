@@ -265,7 +265,8 @@ pub open spec fn kernel_container_nonlock_fields_and_quotas_unchanged(pre: &Kern
 
 #[verifier::opaque]
 pub open spec fn kernel_container_quota_4k_changed(pre: &KernelK, post: &KernelK, container_ptr: RwLockContainerPtr, delta: int) -> bool {
-    &&& *post == (KernelK { thr_mp: post.thr_mp, allc_4k_mp: post.allc_4k_mp, ..*pre })
+    &&& *post == (KernelK { cpu_op: post.cpu_op, thr_mp: post.thr_mp, allc_4k_mp: post.allc_4k_mp, ..*pre })
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
     &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)] pre.thr_mp.dom().contains(t) ==>
         post.thr_mp.spec_index(t).locking_thread() == pre.thr_mp.spec_index(t).locking_thread()
     &&& kernel_thread_nonlock_fields_unchanged(pre.thr_mp, post.thr_mp)
@@ -425,6 +426,8 @@ pub open spec fn kernel_context_switch_fields(pre: &KernelK, post: &KernelK, cpu
     let next_process = next.view().owning_proc;
     let run_queue = scheduler_shards_of(pre.sched_mp.spec_index(pre.ctn_mp.spec_index(cpu.owning_container).view_rodata().view().scheduler))[cpu_id as int];
     &&& index_valid(NUM_CPUS, cpu_id)
+    &&& pre.cpu_op.view().view().len() == NUM_CPUS
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view().update(cpu_id as int, CpuOpState::Trap)
     &&& forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)]
         pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).locking_thread() == pre.ctn_mp.spec_index(p).locking_thread()
     &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
@@ -592,7 +595,7 @@ pub open spec fn kernel_u_context_switch_changed(old_u: KernelU, new_u: KernelU,
     })
     &&& new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU {
-            state: CpuState::Running, current_process: Some(next.owning_proc), current_thread: Some(next_thread), ..cpu
+            state: CpuState::Running, op: CpuOpState::Trap, current_process: Some(next.owning_proc), current_thread: Some(next_thread), ..cpu
         }),
         container_map: old_u.container_map.insert(cpu.owning_container, ContainerU {
             scheduler: container.scheduler.update(cpu_id as int, match cpu.current_thread { Some(prev) => run_queue.skip(1).push(prev), None => run_queue.skip(1) }),
@@ -617,7 +620,8 @@ pub open spec fn kernel_rebalance_pull_fields(pre: &KernelK, post: &KernelK, cpu
     &&& index_valid(NUM_CPUS, cpu_id)
     &&& index_valid(NUM_CPUS, victim)
     &&& victim != cpu_id
-    &&& *post == (KernelK { cpu_arr: post.cpu_arr, thr_mp: post.thr_mp, sched_mp: post.sched_mp, ..*pre })
+    &&& *post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, thr_mp: post.thr_mp, sched_mp: post.sched_mp, ..*pre })
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
     &&& pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
     &&& cpu.state is Idle
     &&& pre.ctn_mp.dom().contains(cpu.owning_container)
@@ -696,6 +700,8 @@ pub open spec fn kernel_ipc_block_fields(
     let thread = pre.thr_mp.spec_index(thread_ptr);
     let endpoint = pre.ep_mp.spec_index(endpoint_ptr);
     &&& index_valid(NUM_CPUS, cpu_id)
+    &&& pre.cpu_op.view().view().len() == NUM_CPUS
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view().update(cpu_id as int, CpuOpState::Idle)
     &&& forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)]
         pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).locking_thread() == pre.ctn_mp.spec_index(p).locking_thread()
     &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
@@ -811,7 +817,7 @@ pub open spec fn kernel_u_ipc_block_changed(
     &&& waiting_state.is_endpoint_waiting()
     &&& endpoint.queue.len() == 0 || (endpoint.queue_state is SEND) == waiting_state.is_endpoint_send_waiting()
     &&& new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { state: CpuState::Idle, current_process: None, current_thread: None, ..cpu }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { state: CpuState::Idle, op: CpuOpState::Idle, current_process: None, current_thread: None, ..cpu }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU {
             state: waiting_state, blocking_endpoint_ptr: Some(endpoint_ptr), ipc_payload: payload, trap_frame: Some(regs), ..thread
         }),
@@ -843,6 +849,7 @@ pub open spec fn kernel_ipc_call_handoff_fields(
     let callee = pre.thr_mp.spec_index(callee_ptr);
     let endpoint = pre.ep_mp.spec_index(endpoint_ptr);
     &&& index_valid(NUM_CPUS, cpu_id)
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
     &&& forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)]
         pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).locking_thread() == pre.ctn_mp.spec_index(p).locking_thread()
     &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
@@ -1009,7 +1016,8 @@ pub open spec fn kernel_ipc_accept_call_fields(
     let caller = pre.thr_mp.spec_index(caller_ptr);
     let endpoint = pre.ep_mp.spec_index(endpoint_ptr);
     &&& index_valid(NUM_CPUS, cpu_id)
-    &&& *post == (KernelK { cpu_arr: post.cpu_arr, thr_mp: post.thr_mp, ep_mp: post.ep_mp, ..*pre })
+    &&& *post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, thr_mp: post.thr_mp, ep_mp: post.ep_mp, ..*pre })
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
     &&& forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]
         index_valid(NUM_CPUS, i) ==> post.cpu_arr.spec_index(i).value.locking_thread() == pre.cpu_arr.spec_index(i).value.locking_thread()
     &&& forall|p: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(p)]
@@ -1146,6 +1154,7 @@ pub open spec fn kernel_ipc_reply_handoff_fields(
     let caller = pre.thr_mp.spec_index(caller_ptr);
     let endpoint = pre.ep_mp.spec_index(endpoint_ptr);
     &&& index_valid(NUM_CPUS, cpu_id)
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
     &&& forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)]
         pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).locking_thread() == pre.ctn_mp.spec_index(p).locking_thread()
     &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
@@ -1660,6 +1669,7 @@ pub open spec fn kernel_process_quota_4k_changed(pre: &KernelK, post: &KernelK, 
     let container = pre.ctn_mp.spec_index(container_ptr);
     let process = pre.prc_mp.spec_index(process_ptr);
     &&& index_valid(NUM_CPUS, cpu_id)
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
     &&& pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
     &&& cpu.state is Running
     &&& cpu.current_process == Some(process_ptr)
@@ -1804,6 +1814,7 @@ pub open spec fn kernel_process_quota_2m_changed(pre: &KernelK, post: &KernelK, 
     let container = pre.ctn_mp.spec_index(container_ptr);
     let process = pre.prc_mp.spec_index(process_ptr);
     &&& index_valid(NUM_CPUS, cpu_id)
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
     &&& pre.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
     &&& cpu.state is Running
     &&& cpu.current_process == Some(process_ptr)
@@ -1959,7 +1970,8 @@ pub open spec fn kernel_process2thread_quota_4k_changed(pre: &KernelK, post: &Ke
     &&& !thread.being_killed()
     &&& thread.view().quota_4k + delta <= usize::MAX
     &&& delta > 0
-    &&& *post == (KernelK { cpu_arr: post.cpu_arr, prc_mp: post.prc_mp, thr_mp: post.thr_mp, ..*pre })
+    &&& *post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, prc_mp: post.prc_mp, thr_mp: post.thr_mp, ..*pre })
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
     &&& pre.prc_mp.dom().contains(process_ptr)
     &&& pre.thr_mp.dom().contains(thread_ptr)
     &&& forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]
@@ -2034,7 +2046,8 @@ pub open spec fn kernel_process2thread_quota_2m_changed(pre: &KernelK, post: &Ke
     &&& !thread.being_killed()
     &&& thread.view().quota_2m + delta <= usize::MAX
     &&& delta > 0
-    &&& *post == (KernelK { cpu_arr: post.cpu_arr, prc_mp: post.prc_mp, thr_mp: post.thr_mp, ..*pre })
+    &&& *post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, prc_mp: post.prc_mp, thr_mp: post.thr_mp, ..*pre })
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
     &&& pre.prc_mp.dom().contains(process_ptr)
     &&& pre.thr_mp.dom().contains(thread_ptr)
     &&& forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]
@@ -2372,7 +2385,7 @@ pub open spec fn kernel_u_cpu_online_changed(old_u: KernelU, new_u: KernelU, cpu
     &&& old_u.cpu_array.len() == NUM_CPUS
     &&& target_cpu.owning_container == container_ptr
     &&& target_cpu.state is Off
-    &&& new_u == (KernelU { cpu_array: old_u.cpu_array.update(target as int, CpuU { state: CpuState::Idle, ..target_cpu }), ..old_u })
+    &&& new_u == (KernelU { cpu_array: old_u.cpu_array.update(target as int, CpuU { state: CpuState::Idle, op: CpuOpState::Idle, ..target_cpu }), ..old_u })
 }
 
 /// The running process, a live owner of `(bus, device, function)` with an IOMMU table, attaches DMA translation
@@ -2423,8 +2436,10 @@ pub open spec fn kernel_cpu_offline_request_changed(pre: &KernelK, post: &Kernel
     &&& pre.cpu_arr.spec_index(target).value.view().view().owning_container == container_ptr
     &&& !(pre.cpu_arr.spec_index(target).value.view().view().state is Off)
     &&& !pre.cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(target).view().view().requested
-    &&& *post == (KernelK { cpu_arr: post.cpu_arr, cpu_set_mp: post.cpu_set_mp, cpu_offline_mp: post.cpu_offline_mp, ctn_mp: post.ctn_mp, ..*pre })
-    &&& post.cpu_arr.unchanged_except(&pre.cpu_arr, cpu_id)
+    &&& *post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, cpu_set_mp: post.cpu_set_mp, cpu_offline_mp: post.cpu_offline_mp, ctn_mp: post.ctn_mp, ..*pre })
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
+    &&& post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id)
+    &&& post.cpu_arr.spec_index(cpu_id).value.view().view() == pre.cpu_arr.spec_index(cpu_id).value.view().view()
     &&& post.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
     &&& post.cpu_arr.spec_index(cpu_id).value.killer_info() == pre.cpu_arr.spec_index(cpu_id).value.killer_info()
     &&& post.ctn_mp.unchanged_except(&pre.ctn_mp, cpu.owning_container)
@@ -2462,9 +2477,11 @@ pub open spec fn kernel_cpu_online_changed(pre: &KernelK, post: &KernelK, cpu_id
     &&& pre.cpu_arr.spec_index(target).value.locking_thread() is None
     &&& target_cpu.owning_container == container_ptr
     &&& target_cpu.state is Off
-    &&& *post == (KernelK { cpu_arr: post.cpu_arr, cpu_set_mp: post.cpu_set_mp, ctn_mp: post.ctn_mp, ..*pre })
+    &&& *post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, cpu_set_mp: post.cpu_set_mp, ctn_mp: post.ctn_mp, ..*pre })
+    &&& pre.cpu_op.view().view().len() == NUM_CPUS
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view().update(target as int, CpuOpState::Idle)
     &&& forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) && i != cpu_id && i != target ==> post.cpu_arr.spec_index(i) == pre.cpu_arr.spec_index(i)
-    &&& post.cpu_arr.spec_index(cpu_id).value.view() == pre.cpu_arr.spec_index(cpu_id).value.view()
+    &&& post.cpu_arr.spec_index(cpu_id).value.view().view() == pre.cpu_arr.spec_index(cpu_id).value.view().view()
     &&& post.cpu_arr.spec_index(cpu_id).value.locking_thread() is None
     &&& post.cpu_arr.spec_index(cpu_id).value.killer_info() == pre.cpu_arr.spec_index(cpu_id).value.killer_info()
     &&& post.cpu_arr.spec_index(target).value.view().view() == (CpuView { state: CpuState::Idle, ..target_cpu })
@@ -2518,7 +2535,7 @@ pub open spec fn kernel_u_cpu_went_off_changed(old_u: KernelU, new_u: KernelU, c
         &&& !old_u.process_map.spec_index(cpu.current_process.unwrap()).killed
     })
     &&& new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, state: CpuState::Off, current_process: None, current_thread: None, ..cpu }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, state: CpuState::Off, op: CpuOpState::Off, current_process: None, current_thread: None, ..cpu }),
         container_map: old_u.container_map.insert(container_ptr, ContainerU {
             scheduler: match cpu.current_thread {
                 Some(prev) => container.scheduler.update(cpu_id as int, container.scheduler[cpu_id as int].push(prev)),
@@ -2543,6 +2560,8 @@ pub open spec fn kernel_cpu_went_off_fields(pre: &KernelK, post: &KernelK, cpu_i
     let previous = cpu.current_thread;
     let container_ptr = cpu.owning_container;
     &&& index_valid(NUM_CPUS, cpu_id)
+    &&& pre.cpu_op.view().view().len() == NUM_CPUS
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view().update(cpu_id as int, CpuOpState::Off)
     &&& forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)]
         pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).locking_thread() == pre.ctn_mp.spec_index(p).locking_thread()
     &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
@@ -2795,6 +2814,8 @@ pub open spec fn kernel_thread_exit_fields(pre: &KernelK, post: &KernelK, cpu_id
     let pre_cpu = pre.cpu_arr.spec_index(cpu_id).value.view().view();
     let post_cpu = post.cpu_arr.spec_index(cpu_id).value.view().view();
     &&& index_valid(NUM_CPUS, cpu_id)
+    &&& pre.cpu_op.view().view().len() == NUM_CPUS
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view().update(cpu_id as int, CpuOpState::Idle)
     &&& pre.thr_mp.dom().contains(thread_ptr)
     &&& pre.prc_mp.dom().contains(process_ptr)
     &&& !pre_process.view().zombie
@@ -2886,7 +2907,7 @@ pub open spec fn kernel_u_thread_exit_changed(old_u: KernelU, new_u: KernelU, cp
             } else { ContainerU { quota_4k, ..container } }
         }
     &&& new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { state: CpuState::Idle, current_process: None, current_thread: None, ..old_u.cpu_array[cpu_id as int] }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { state: CpuState::Idle, op: CpuOpState::Idle, current_process: None, current_thread: None, ..old_u.cpu_array[cpu_id as int] }),
         container_map: new_u.container_map,
         process_map: old_u.process_map.insert(process_ptr, ProcessU {
             zombie, pagetable: if zombie { None } else { process.pagetable }, iommu_table: if zombie { None } else { process.iommu_table },
@@ -2913,7 +2934,8 @@ pub open spec fn kernel_thread_exit_quota_returned(pre: &KernelK, post: &KernelK
     &&& pre.thr_mp.dom().contains(thread_ptr)
     &&& pre.prc_mp.dom().contains(process_ptr)
     &&& pre.ctn_mp.dom().contains(container_ptr)
-    &&& *post == (KernelK { prc_mp: post.prc_mp, thr_mp: post.thr_mp, allc_4k_mp: post.allc_4k_mp, allc_2m_mp: post.allc_2m_mp, allc_1g_mp: post.allc_1g_mp, ..*pre })
+    &&& *post == (KernelK { cpu_op: post.cpu_op, prc_mp: post.prc_mp, thr_mp: post.thr_mp, allc_4k_mp: post.allc_4k_mp, allc_2m_mp: post.allc_2m_mp, allc_1g_mp: post.allc_1g_mp, ..*pre })
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
     &&& post.thr_mp.dom() == pre.thr_mp.dom()
     &&& forall|t: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t)] pre.thr_mp.dom().contains(t) && t != thread_ptr ==> post.thr_mp.spec_index(t) == pre.thr_mp.spec_index(t)
     &&& post.thr_mp.spec_index(thread_ptr).view() == match size {
@@ -2955,7 +2977,8 @@ pub open spec fn kernel_dangling_thread_reclaimed_fields(pre: &KernelK, post: &K
     &&& dangling.locking_thread() is Write
     &&& dangling.view().caller is None
     &&& dangling.view().callee is None
-    &&& *post == (KernelK { ctn_mp: post.ctn_mp, thr_mp: post.thr_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..*pre })
+    &&& *post == (KernelK { cpu_op: post.cpu_op, ctn_mp: post.ctn_mp, thr_mp: post.thr_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..*pre })
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view()
     &&& post.ctn_mp.dom() == pre.ctn_mp.dom()
     &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)]
         pre.ctn_mp.dom().contains(c) ==> {
@@ -3138,5 +3161,48 @@ pub open spec fn kernel_u_killed_thread_reclaim_step(old_u: KernelU, new_u: Kern
     ||| kernel_u_killed_caller_taken_over(old_u, new_u)
     ||| kernel_u_dangling_thread_reclaimed(old_u, new_u)
     ||| kernel_u_killed_endpoint_released(old_u, new_u)
+}
+
+/// Cpu `cpu_id` runs a thread in user mode, so it can enter its trap path at `syscall` or an interrupt gate.
+#[verifier::opaque]
+pub open spec fn kernel_u_trap_enter_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& old_u.cpu_array[cpu_id as int].state is Running
+    &&& old_u.cpu_array[cpu_id as int].op is User
+}
+
+/// Cpu `cpu_id` leaves user mode for its trap path.
+#[verifier::opaque]
+pub open spec fn kernel_u_trap_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    new_u == (KernelU { cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { op: CpuOpState::Trap, ..old_u.cpu_array[cpu_id as int] }), ..old_u })
+}
+
+/// Cpu `cpu_id` runs a thread on its trap path, so it can return to user mode at `sysretq` or `iretq`.
+#[verifier::opaque]
+pub open spec fn kernel_u_trap_return_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& old_u.cpu_array[cpu_id as int].state is Running
+    &&& old_u.cpu_array[cpu_id as int].op is Trap
+}
+
+/// Cpu `cpu_id` returns from its trap path to user mode.
+#[verifier::opaque]
+pub open spec fn kernel_u_trap_return_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    new_u == (KernelU { cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { op: CpuOpState::User, ..old_u.cpu_array[cpu_id as int] }), ..old_u })
+}
+
+/// Cpu `cpu_id` runs a thread on its trap path and a killer marked it, so `restore_frame` can divert it to its idle loop.
+#[verifier::opaque]
+pub open spec fn kernel_u_trap_divert_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& old_u.cpu_array[cpu_id as int].state is Running
+    &&& old_u.cpu_array[cpu_id as int].op is Trap
+    &&& old_u.cpu_array[cpu_id as int].killed
+}
+
+/// Cpu `cpu_id` leaves its trap path for its idle loop.
+#[verifier::opaque]
+pub open spec fn kernel_u_trap_divert_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    new_u == (KernelU { cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { op: CpuOpState::Idle, ..old_u.cpu_array[cpu_id as int] }), ..old_u })
 }
 } // verus!

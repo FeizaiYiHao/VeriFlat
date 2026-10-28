@@ -4,16 +4,19 @@ use super::syscall_cpu_hotplug_spec::*;
 use super::syscall_cpu_hotplug_trace::*;
 #[cfg(verus_keep_ghost)]
 use super::cpu_offline_request_eof::{cpu_offline_request_eof, cpu_offline_request_eof_transition_framing};
+#[cfg(verus_keep_ghost)]
+use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
-/// Asks `target`, a cpu of the caller's container, to go Off at its next schedule check: the caller's
-/// container table records the request under the cpu, the request cell, and the cpu-set lock, and
-/// `target` is kicked into the kernel. The check itself is a separate step of the target cpu.
+/// Asks `target`, a cpu of the caller's container, to go Off at its next schedule check: the caller's container table
+/// records the request under the cpu, the request cell, and the cpu-set lock. The target notices the request on its next
+/// pass through its idle loop or schedule check; the check itself is a separate step of the target cpu.
 pub fn syscall_cpu_offline_request(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, target: CpuId) -> (ret: RetValueType)
     requires
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -106,8 +109,15 @@ pub fn syscall_cpu_offline_request(krnl: &mut KernelK, Tracked(lctx): Tracked<&m
     if !success || pending {
         krnl.wunlock_cpu_set(cpu_set_ptr, Tracked(lctx), Tracked(cpu_set_lock_perm));
         krnl.wunlock_cpu_offline_flag(flags_ptr, target, Tracked(lctx), Tracked(flag_lock_perm));
+        proof {
+            let ghost pre = *krnl;
+            let ghost pre_lctx = *lctx;
+            krnl.u_sys_exit(lctx);
+            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+        }
         krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
         proof {
+            assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
             steps.end_kernel_step_unchanged(&*krnl, &*lctx);
@@ -124,9 +134,16 @@ pub fn syscall_cpu_offline_request(krnl: &mut KernelK, Tracked(lctx): Tracked<&m
     }
     krnl.wunlock_cpu_set(cpu_set_ptr, Tracked(lctx), Tracked(cpu_set_lock_perm));
     krnl.wunlock_cpu_offline_flag(flags_ptr, target, Tracked(lctx), Tracked(flag_lock_perm));
+    proof {
+        let ghost pre = *krnl;
+        let ghost pre_lctx = *lctx;
+        krnl.u_sys_exit(lctx);
+        u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+    }
     krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
     proof {
         let ghost request_before = steps.view();
+        assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
         assert(kernel_cpu_offline_request_changed(&steps.snapshot_k(), &*krnl, cpu_id, container_ptr, target)) by { reveal(kernel_cpu_offline_request_changed); };
         steps.end_kernel_step_cpu_offline_request_changed(&*krnl, &*lctx, cpu_id, container_ptr, target);
         assert({
@@ -139,7 +156,6 @@ pub fn syscall_cpu_offline_request(krnl: &mut KernelK, Tracked(lctx): Tracked<&m
             cpu_offline_request_trace_step(&*steps, request_before, kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*krnl), cpu_id, target);
         };
     }
-    if target != cpu_id { send_ipi(target, Tracked(&*lctx)); }
     RetValueType::Success
 }
 }

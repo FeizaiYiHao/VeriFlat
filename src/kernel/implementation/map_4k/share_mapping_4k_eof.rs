@@ -200,7 +200,7 @@ pub(super) open spec fn share_mapping_4k_build_and_share_eol_loop_framing(
             &&& post_steps.nonlock_view().last().new_u.process_map.spec_index(target_process) == kernel_k_to_nonlock_kernel_u(post).process_map.spec_index(target_process)
         }
     }
-    &&& index_valid(NUM_CPUS, pre_lctx.cpu_id()) ==> post.cpu_published[pre_lctx.cpu_id() as int].view() == pre.cpu_published[pre_lctx.cpu_id() as int].view()
+    &&& index_valid(NUM_CPUS, pre_lctx.cpu_id()) ==> post.cpu_hw_cr3_pcid[pre_lctx.cpu_id() as int].view() == pre.cpu_hw_cr3_pcid[pre_lctx.cpu_id() as int].view()
     &&& post.ctn_mp.spec_index(target_container).view_rodata() == pre.ctn_mp.spec_index(target_container).view_rodata()
     &&& held_containers_unchanged(pre.ctn_mp, post.ctn_mp, pre_lctx)
     &&& held_processes_unchanged(pre.prc_mp, post.prc_mp, pre_lctx)

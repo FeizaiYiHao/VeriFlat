@@ -52,31 +52,34 @@ pub(super) proof fn cpu_offline_check_hold_step_pre_from_k(krnl: &KernelK, cpu_i
     reveal(cpu_offline_requests_of); reveal(cpu_offline_check_hold_step_pre);
 }
 
-/// Write-locking cpu `cpu_id` and changing no other projection is the hold step from `before` to `after`.
+/// Write-locking cpu `cpu_id` inside its kernel step and changing no other projection is the hold step from `before` to
+/// `after`.
 pub(super) proof fn cpu_offline_check_hold_step_from_u(before: &KernelK, after: &KernelK, cpu_id: CpuId)
     requires
         after.cpu_arr.spec_index(cpu_id).value.locking_thread() is Write,
+        after.cpu_op.view().view()[cpu_id as int] is InStep,
         ({
             let pre_u = kernel_k_to_kernel_u(*before);
             kernel_k_to_kernel_u(*after) == (KernelU {
-                cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: after.cpu_arr.spec_index(cpu_id).value.lock_state_u(), ..pre_u.cpu_array[cpu_id as int] }),
+                cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: after.cpu_arr.spec_index(cpu_id).value.lock_state_u(), op: after.cpu_op.view().view()[cpu_id as int], ..pre_u.cpu_array[cpu_id as int] }),
                 ..pre_u
             })
         }),
     ensures cpu_offline_check_hold_step(kernel_k_to_kernel_u(*before), kernel_k_to_kernel_u(*after), cpu_id),
 { reveal(cpu_offline_check_hold_step); }
 
-/// Unlocking cpu `cpu_id`, write-held since the hold step, and changing no other projection is the release step from
-/// `before` to `after`.
+/// Unlocking cpu `cpu_id`, write-held since the hold step, as it leaves its kernel step for the resting state of its
+/// scheduling state, and changing no other projection is the release step from `before` to `after`.
 pub(super) proof fn cpu_offline_check_release_step_from_u(before: &KernelK, after: &KernelK, cpu_id: CpuId)
     requires
         index_valid(NUM_CPUS, cpu_id),
         before.cpu_arr.spec_index(cpu_id).value.locking_thread() is Write,
         after.cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
+        after.cpu_op.view().view()[cpu_id as int] == cpu_op_after_step(before.cpu_arr.spec_index(cpu_id).view().view().view().state),
         ({
             let pre_u = kernel_k_to_kernel_u(*before);
             kernel_k_to_kernel_u(*after) == (KernelU {
-                cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: after.cpu_arr.spec_index(cpu_id).value.lock_state_u(), ..pre_u.cpu_array[cpu_id as int] }),
+                cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: after.cpu_arr.spec_index(cpu_id).value.lock_state_u(), op: after.cpu_op.view().view()[cpu_id as int], ..pre_u.cpu_array[cpu_id as int] }),
                 ..pre_u
             })
         }),
@@ -164,8 +167,9 @@ pub(super) proof fn cpu_offline_check_trace_stutter(trace: Seq<KernelStep>, krnl
     reveal(cpu_offline_requests_of); reveal(cpu_offline_check_hold_step_pre); reveal(cpu_offline_check_entry_trace);
 }
 
-/// A check that reads a clear request bit and releases the cpu `cpu_id` it locked, changing nothing else from `entry`
-/// but the offline flags' lock states, records no step at the release after `before` and continues before holding.
+/// A check that reads a clear request bit and releases the cpu `cpu_id` it locked, back in the running state it entered
+/// with and changing nothing else from `entry` but the offline flags' lock states, records no step at the release after
+/// `before` and continues before holding.
 pub(super) proof fn cpu_offline_check_trace_stutter_released(
     steps: &KernelSteps, before: Seq<KernelStep>, entry: &KernelK, post: &KernelK, cpu_id: CpuId, regs: Registers,
 )
@@ -173,8 +177,9 @@ pub(super) proof fn cpu_offline_check_trace_stutter_released(
         index_valid(NUM_CPUS, cpu_id),
         steps.view() == record_user_view_change(before, kernel_k_to_kernel_u(*entry), kernel_k_to_kernel_u(*post)),
         post.inv(),
-        *post == (KernelK { cpu_arr: post.cpu_arr, cpu_offline_mp: post.cpu_offline_mp, ..*entry }),
-        post.cpu_arr.unchanged_except(&entry.cpu_arr, cpu_id),
+        *post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, cpu_offline_mp: post.cpu_offline_mp, ..*entry }),
+        post.cpu_op.view().view() == entry.cpu_op.view().view(),
+        post.cpu_arr.entries_unchanged_except(&entry.cpu_arr, cpu_id),
         entry.cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
         post.cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
         kernel_cpu_process_thread_nonlock_fields_unchanged(entry, post),

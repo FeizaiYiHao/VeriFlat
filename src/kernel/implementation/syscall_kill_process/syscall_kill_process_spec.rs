@@ -78,8 +78,8 @@ pub open spec fn kill_process_enter_step_pre(old_u: KernelU, cpu_id: CpuId, chil
     &&& !old_u.process_map[process.children[child_index as int]].killed
 }
 
-/// Entering write-locks the cpu, the process, and the thread, marks the child at `child_index` for the kill and
-/// write-locks it, and records that the kill walks the child.
+/// Entering write-locks the cpu, which enters its kernel step, the process, and the thread, marks the child at
+/// `child_index` for the kill and write-locks it, and records that the kill walks the child.
 #[verifier::opaque]
 pub open spec fn kill_process_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, child_index: usize) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -87,7 +87,7 @@ pub open spec fn kill_process_enter_step(old_u: KernelU, new_u: KernelU, cpu_id:
     let thread_ptr = cpu.current_thread->Some_0;
     let child_ptr = old_u.process_map[process_ptr].children[child_index as int];
     new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..cpu }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
         process_map: old_u.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::WriteLocked, ..old_u.process_map[process_ptr] })
             .insert(child_ptr, ProcessU { lock_state: LockStateU::WriteLocked, killed: true, ..old_u.process_map[child_ptr] }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU {
@@ -249,7 +249,7 @@ pub open spec fn kill_process_evict_step(old_u: KernelU, new_u: KernelU, cpu_id:
     &&& index_valid(NUM_CPUS, remote)
     &&& remote != cpu_id
     &&& new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(remote as int, CpuU { state: CpuState::Idle, current_process: None, current_thread: None, ..old_u.cpu_array[remote as int] }),
+        cpu_array: old_u.cpu_array.update(remote as int, CpuU { state: CpuState::Idle, op: CpuOpState::Idle, current_process: None, current_thread: None, ..old_u.cpu_array[remote as int] }),
         thread_map: old_u.thread_map.insert(victim_ptr, ThreadU { state: ThreadState::KILLED, ..victim }),
         ..old_u
     })
@@ -578,14 +578,14 @@ pub open spec fn kill_process_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -> 
     &&& old_u.thread_map[thread_ptr].syscall_progress == kill_progress(process_ptr, KillStage::Walk)
 }
 
-/// Finishing clears the kill's progress and unlocks the killer's thread, process, and cpu.
+/// Finishing clears the kill's progress and unlocks the killer's thread, process, and cpu, which leaves its kernel step.
 #[verifier::opaque]
 pub open spec fn kill_process_finish_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
     let process_ptr = cpu.current_process->Some_0;
     let thread_ptr = cpu.current_thread->Some_0;
     new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..cpu }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: cpu_op_after_step(cpu.state), ..cpu }),
         process_map: old_u.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::Unlocked, ..old_u.process_map[process_ptr] }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..old_u.thread_map[thread_ptr] }),
         ..old_u

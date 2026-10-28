@@ -132,6 +132,24 @@ verus! {
             self.array.ar[index].put(Tracked(lctx), lock_perm, v);
         }
 
+        #[verifier(external_body)]
+        pub fn set_ghost(&mut self, index: usize, Ghost(value): Ghost<GhostT>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>)
+            requires
+                old(self).inv(),
+                0 <= index < N,
+                old(self).spec_index(index).view().wlocked_by(lctx),
+                lock_perm.view().state() is WriteLock,
+                lock_perm.view().thread_id() == lctx.thread_id(),
+                lock_perm.view().lock_id() == old(self).spec_index(index).view().locking_thread() -> Write_lock_id,
+            ensures
+                final(self).inv(),
+                final(self).view().len() == old(self).view().len(),
+                final(self).entries_unchanged_except(old(self), index),
+                update_ghost_ensures(old(self).spec_index(index).view(), final(self).spec_index(index).view(), value),
+        {
+            self.array.ar[index].set_ghost(Ghost(value), Tracked(lctx), lock_perm);
+        }
+
         // @Xiangdong comeback
         #[verifier::external_body]
         pub fn borrow<'a,>(&self, index: usize, lp: Tracked<&'a LockPerm>) -> (ret: &'a T)
@@ -190,6 +208,7 @@ verus! {
                 final(self).spec_index(index).view().locking_thread() == old(self).spec_index(index).view().locking_thread(),
                 final(self).spec_index(index).view().being_killed() == old(self).spec_index(index).view().being_killed(),
                 final(self).spec_index(index).view().killer_info() == old(self).spec_index(index).view().killer_info(),
+                final(self).spec_index(index).view().control() == old(self).spec_index(index).view().control(),
                 // The `&mut T` linkage.
                 *ret == old(self).spec_index(index).view().view(),
                 final(self).spec_index(index).view().view() == *final(ret),
@@ -219,6 +238,7 @@ verus! {
                 final(self).spec_index(index).view().locking_thread() == old(self).spec_index(index).view().locking_thread(),
                 final(self).spec_index(index).view().being_killed() == old(self).spec_index(index).view().being_killed(),
                 final(self).spec_index(index).view().killer_info() == old(self).spec_index(index).view().killer_info(),
+                final(self).spec_index(index).view().control() == old(self).spec_index(index).view().control(),
                 *ret == old(self).spec_index(index).view().view(),
                 final(self).spec_index(index).view().view() == *final(ret),
                 final(self).typed_lock_map_aligned(held_locks.insert(index, TypedHeldLock { lock_id: final(self).spec_index(index).lock_id(), mode: held_locks.index(index).mode }), lctx.thread_id()),
@@ -365,7 +385,7 @@ verus! {
         }
     }
 
-    impl LockedArray<Cpu, (), (), NUM_CPUS, HAS_KILL_STATE> {
+    impl LockedArray<Cpu, (), Option<CpuId>, NUM_CPUS, HAS_KILL_STATE> {
         /// TCB: clear the mark of cpu `index` while its killer still write-holds it. Only a cpu lock can be unmarked;
         /// every other object keeps its mark until it is destroyed.
         #[verifier(external_body)]

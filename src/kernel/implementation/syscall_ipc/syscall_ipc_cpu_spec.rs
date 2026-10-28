@@ -3,7 +3,7 @@ use crate::*;
 
 verus! {
 /// Dequeues and schedules the endpoint waiter and, on success, moves the Off
-/// CPU between the source and target CPU sets, preserving PCID and published state.
+/// CPU between the source and target CPU sets, preserving PCID and hardware cr3/pcid word.
 #[verifier::opaque]
 pub open spec fn ipc_cpu_rendezvous_eof_transition_framing(
     pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr,
@@ -20,12 +20,13 @@ pub open spec fn ipc_cpu_rendezvous_eof_transition_framing(
     &&& post.ctn_mp == pre.ctn_mp
     &&& post.prc_mp == pre.prc_mp
     &&& post.pcid_needflush == pre.pcid_needflush
-    &&& post.cpu_published == pre.cpu_published
+    &&& post.cpu_hw_cr3_pcid == pre.cpu_hw_cr3_pcid
     &&& post.pcid_allc_mp == pre.pcid_allc_mp
     &&& post.allc_4k_mp == pre.allc_4k_mp
     &&& post.allc_2m_mp == pre.allc_2m_mp
     &&& post.allc_1g_mp == pre.allc_1g_mp
     &&& post.cpu_offline_mp == pre.cpu_offline_mp
+    &&& post.cpu_op == pre.cpu_op
     &&& post.cpu_tlb == pre.cpu_tlb
     &&& post.iommu_tlb == pre.iommu_tlb
     &&& post.rt_ctn == pre.rt_ctn
@@ -38,7 +39,9 @@ pub open spec fn ipc_cpu_rendezvous_eof_transition_framing(
         let after = post.cpu_arr.spec_index(transfer_cpu_id).view();
         &&& after.is_init() == before.is_init()
         &&& after.view_rodata() == before.view_rodata()
-        &&& after.view_ghost() == before.view_ghost()
+        &&& !before.locked()
+        &&& after.view_ghost() is Some
+        &&& after.view().kernel_call_perm() == before.view().kernel_call_perm()
         &&& after.being_killed() == before.being_killed() && !after.being_killed()
         &&& after.locking_thread() is Write
         &&& after.locking_thread()->Write_thread_id == thread_id

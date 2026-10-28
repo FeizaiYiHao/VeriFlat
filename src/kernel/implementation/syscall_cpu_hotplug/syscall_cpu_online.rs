@@ -4,15 +4,18 @@ use super::syscall_cpu_hotplug_spec::*;
 use super::syscall_cpu_hotplug_trace::*;
 #[cfg(verus_keep_ghost)]
 use super::cpu_online_child_eof::{cpu_online_child_eof, cpu_online_child_eof_transition_framing};
+#[cfg(verus_keep_ghost)]
+use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
-/// Brings `target`, an Off cpu of the caller's container, back to Idle under the cpu, cpu-set, and
-/// Off-cpu locks, then wakes it with an IPI. Any request bit of an Off cpu is already clear.
+/// Brings `target`, an Off cpu of the caller's container, back to Idle under the cpu, cpu-set, and Off-cpu locks and wakes
+/// it with an IPI while still holding it. Any request bit of an Off cpu is already clear.
 pub fn syscall_cpu_online(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, target: CpuId) -> (ret: RetValueType)
     requires
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -87,8 +90,15 @@ pub fn syscall_cpu_online(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalC
     let success = if let RetValueType::Success = result { true } else { false };
     if !success {
         krnl.wunlock_cpu_set(cpu_set_ptr, Tracked(lctx), Tracked(cpu_set_lock_perm));
+        proof {
+            let ghost pre = *krnl;
+            let ghost pre_lctx = *lctx;
+            krnl.u_sys_exit(lctx);
+            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+        }
         krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
         proof {
+            assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
             steps.end_kernel_step_unchanged(&*krnl, &*lctx);
@@ -105,6 +115,7 @@ pub fn syscall_cpu_online(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalC
         }) by { container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, container_ptr, target); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), target); reveal(LockedArray::typed_lock_map_aligned); };
     }
     let Tracked(target_lock_perm) = krnl.wlock_off_cpu(target, cpu_set_ptr, Tracked(lctx));
+    proof { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, target); }
     let ghost old_target_lock_id = krnl.cpu_arr.lock_id_by_index(target);
     let ghost online_pre = *krnl;
     {
@@ -113,17 +124,24 @@ pub fn syscall_cpu_online(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalC
         let target_cpu = krnl.cpu_arr.borrow_mut_typed(target, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&target_lock_perm));
         target_cpu.publish_idle_from_off();
     }
+    proof { lctx.enter_kernel_view_release(); lctx.update_lock_id(KernelObjId::Cpu(target), old_target_lock_id, krnl.cpu_arr.lock_id_by_index(target)); }
+    krnl.cpu_arr.wake_remote(target, Tracked(krnl.cpu_op.borrow_mut()), Tracked(&*lctx), Tracked(&target_lock_perm));
     proof {
-        lctx.enter_kernel_view_release();
-        lctx.update_lock_id(KernelObjId::Cpu(target), old_target_lock_id, krnl.cpu_arr.lock_id_by_index(target));
         assert(cpu_online_child_eof_transition_framing(online_pre, *krnl, cpu_set_ptr, target, container_ptr)) by { reveal(cpu_online_child_eof_transition_framing); };
         cpu_online_child_eof(online_pre, *krnl, cpu_set_ptr, target, container_ptr);
     }
     krnl.wunlock_cpu(target, Tracked(lctx), Tracked(target_lock_perm));
     krnl.wunlock_cpu_set(cpu_set_ptr, Tracked(lctx), Tracked(cpu_set_lock_perm));
+    proof {
+        let ghost pre = *krnl;
+        let ghost pre_lctx = *lctx;
+        krnl.u_sys_exit(lctx);
+        u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+    }
     krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
     proof {
         let ghost online_before = steps.view();
+        assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view().update(target as int, CpuOpState::Idle));
         assert(kernel_cpu_online_changed(&steps.snapshot_k(), &*krnl, cpu_id, container_ptr, target)) by { reveal(kernel_cpu_online_changed); };
         steps.end_kernel_step_cpu_online_changed(&*krnl, &*lctx, cpu_id, container_ptr, target);
         no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx);
@@ -137,7 +155,6 @@ pub fn syscall_cpu_online(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalC
             cpu_online_trace_step(&*steps, online_before, kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*krnl), cpu_id, target);
         };
     }
-    send_ipi(target, Tracked(&*lctx));
     RetValueType::Success
 }
 }

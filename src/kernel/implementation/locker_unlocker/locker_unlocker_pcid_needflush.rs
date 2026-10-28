@@ -25,7 +25,7 @@ impl KernelK {
             final(self).pcid_needflush.spec_index(cpu_id, pcid).wlocked_by(final(lctx)),
             final(self).pcid_needflush.spec_index(cpu_id, pcid).inv(),
             final(self).pcid_needflush.spec_index(cpu_id, pcid).view().index() == (cpu_id, pcid),
-            final(self).cpu_published[cpu_id as int].owner_cpu() == cpu_id,
+            final(self).cpu_hw_cr3_pcid[cpu_id as int].owner_cpu() == cpu_id,
             final(self).pcid_needflush.spec_index(cpu_id, pcid).view_ghost() == Some(final(lctx).cpu_id()),
             final(self).pcid_needflush.spec_index(cpu_id, pcid).locking_thread() == (RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: ret.view().lock_id() }),
             ret.view().state() is WriteLock,
@@ -70,7 +70,7 @@ impl KernelK {
             lp.view().thread_id() == old(lctx).thread_id(),
             lp.view().lock_id() == old(self).pcid_needflush.spec_index(cpu_id, pcid).locking_thread()->Write_lock_id,
             old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid
-                || old(self).cpu_published[cpu_id as int].view() == (old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, pcid),
+                || old(self).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, pcid),
         ensures
             final(self).inv(),
             kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), final(self)),

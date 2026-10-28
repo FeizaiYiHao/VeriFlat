@@ -96,7 +96,7 @@ pub open spec fn iommu_unmap_4k_enter_step(old_u: KernelU, new_u: KernelU, cpu_i
     let process = old_u.process_map.spec_index(thread.owning_proc);
     let progress = SyscallProgress::IommuUnmap4k { iova_range, unmapped: 0, flushed: false };
     new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..old_u.cpu_array[cpu_id as int] }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..old_u.cpu_array[cpu_id as int] }),
         container_map: old_u.container_map.insert(thread.owning_container, ContainerU {
             lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(process.depth)), ..old_u.container_map.spec_index(thread.owning_container)
         }),
@@ -208,7 +208,9 @@ pub open spec fn iommu_unmap_4k_exit_step(old_u: KernelU, new_u: KernelU, cpu_id
     let thread = old_u.thread_map.spec_index(thread_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
     new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..old_u.cpu_array[cpu_id as int] }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU {
+            lock_state: LockStateU::Unlocked, op: cpu_op_after_step(old_u.cpu_array[cpu_id as int].state), ..old_u.cpu_array[cpu_id as int]
+        }),
         container_map: old_u.container_map.insert(thread.owning_container, ContainerU {
             lock_state: LockStateU::Unlocked, lock_process_owner: None, ..old_u.container_map.spec_index(thread.owning_container)
         }),

@@ -2,14 +2,16 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// The online commit: the target cpu turns from Off to Idle and leaves its cpu set's closed set; nothing else changes.
+/// The online commit: the target cpu turns from Off to Idle, is woken to run Idle, and leaves its cpu set's closed set;
+/// nothing else changes.
 #[verifier::opaque]
 pub(super) open spec fn cpu_online_child_eof_transition_framing(pre: KernelK, post: KernelK, cpu_set_ptr: RwLockCpuSetPtr, target: CpuId, child_ptr: RwLockContainerPtr) -> bool {
     let old_set = pre.cpu_set_mp.spec_index(cpu_set_ptr);
     let new_set = post.cpu_set_mp.spec_index(cpu_set_ptr);
     let old_cpu = pre.cpu_arr.spec_index(target).view();
     let new_cpu = post.cpu_arr.spec_index(target).view();
-    &&& post == (KernelK { cpu_arr: post.cpu_arr, cpu_set_mp: post.cpu_set_mp, ..pre })
+    &&& post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, cpu_set_mp: post.cpu_set_mp, ..pre })
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view().update(target as int, CpuOpState::Idle)
     &&& post.cpu_set_mp.unchanged_except(&pre.cpu_set_mp, cpu_set_ptr)
     &&& new_set.is_init() == old_set.is_init()
     &&& new_set.view_rodata() == old_set.view_rodata()
@@ -25,6 +27,7 @@ pub(super) open spec fn cpu_online_child_eof_transition_framing(pre: KernelK, po
     &&& new_cpu.view_ghost() == old_cpu.view_ghost()
     &&& new_cpu.locking_thread() == old_cpu.locking_thread()
     &&& new_cpu.being_killed() == old_cpu.being_killed()
+    &&& new_cpu.view().kernel_call_perm() == old_cpu.view().kernel_call_perm()
     &&& new_cpu.view().view() == (CpuView { state: CpuState::Idle, ..old_cpu.view().view() })
 }
 
@@ -61,6 +64,7 @@ pub(super) proof fn cpu_online_child_eof(pre: KernelK, post: KernelK, cpu_set_pt
         !pre.cpu_set_mp.spec_index(cpu_set_ptr).being_killed(),
         pre.cpu_arr.spec_index(target).view().view().view().state is Off,
         pre.cpu_arr.spec_index(target).view().view().view().owning_container == child_ptr,
+        pre.cpu_op.view().view()[target as int] is Off,
         post.cpu_arr.inv(),
         post.cpu_arr.spec_index(target).view().view().wf(),
         post.cpu_set_mp.perms_wf(),
@@ -68,7 +72,9 @@ pub(super) proof fn cpu_online_child_eof(pre: KernelK, post: KernelK, cpu_set_pt
     ensures post.inv(),
 {
     reveal(cpu_online_child_eof_transition_framing);
-    assert(post.subsystems_inv()) by { reveal(cpu_array_wf); reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); reveal(cpu_set_perms_wf); reveal(KernelK::default_pagetable_wf); };
+    assert(post.subsystems_inv()) by {
+        reveal(cpu_array_wf); reveal(cpu_hw_cr3_pcid_wf); reveal(cpu_offline_flags_wf); reveal(cpu_set_perms_wf); reveal(KernelK::default_pagetable_wf); reveal(cpu_op_wf);
+    };
     assert(post.memory_management_inv()) by { reveal(cpu_set_pages_wf); };
     cpu_online_child_eof_process_management_inv(pre, post, cpu_set_ptr, target, child_ptr);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {

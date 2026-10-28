@@ -167,6 +167,7 @@ pub(super) fn thread_exit_finish_destroy_and_record(
         old(lctx).kernel_view_locking_state() is Acquire,
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
         page_ptr_valid(thread_ptr),
         0 <= start <= old(steps).view().len(),
         thread_exit_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id),

@@ -47,6 +47,7 @@ pub fn reclaim_dangling_thread(
         final(steps).nonlock_view() == old(steps).nonlock_view(),
         kernel_dangling_thread_reclaimed_fields(&final(steps).snapshot_k(), final(krnl), dangling_ptr),
         final(krnl).cpu_arr == final(steps).snapshot_k().cpu_arr,
+        final(krnl).cpu_op == final(steps).snapshot_k().cpu_op,
         final(krnl).prc_mp == final(steps).snapshot_k().prc_mp,
         final(krnl).thr_mp.dom() == final(steps).snapshot_k().thr_mp.dom().remove(dangling_ptr),
         forall|t: RwLockThreadPtr| #![trigger final(krnl).thr_mp.spec_index(t)]
@@ -68,7 +69,8 @@ pub fn reclaim_dangling_thread(
         held_cpus_unchanged(old(krnl).cpu_arr, final(steps).snapshot_k().cpu_arr, old(lctx)),
         held_threads_unchanged_except(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx), set![dangling_ptr]),
         killed_thread_reclaim_lock_context(*final(krnl), *final(lctx)),
-        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
+        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
+        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] == old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int],
 {
     proof {
         held_kernel_objects_unchanged_reflexive(&*krnl, &*lctx);

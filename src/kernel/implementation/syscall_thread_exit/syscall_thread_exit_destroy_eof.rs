@@ -10,6 +10,7 @@ proof fn thread_exit_destroy_eof_subsystems_inv(
 )
     requires
         pre.inv(),
+        pre.cpu_op.view().view()[cpu_id as int] is InStep,
         thread_exit_destroy_eof_transition_framing(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr),
         index_valid(NUM_CPUS, cpu_id),
         page_ptr_valid(thread_ptr),
@@ -48,7 +49,7 @@ proof fn thread_exit_destroy_eof_subsystems_inv(
         post.cpu_arr.spec_index(cpu_id).view().is_init(),
         post.cpu_arr.spec_index(cpu_id).view().view().wf(),
         pcid_needflush_wf(post.pcid_needflush),
-        cpu_published_wf(post.cpu_published, post.cpu_arr, post.pcid_needflush),
+        cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush),
         post.cpu_tlb.inv(),
         post.ctn_mp.perms_wf(),
         post.prc_mp.perms_wf(),
@@ -61,6 +62,7 @@ proof fn thread_exit_destroy_eof_subsystems_inv(
 {
     reveal(thread_exit_destroy_eof_transition_framing);
     assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); };
+    assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
     assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
     assert(container_perms_wf(post.ctn_mp)) by { reveal(container_perms_wf); reveal(container_tree_fields_wf); };
     assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };
@@ -450,6 +452,7 @@ pub(super) proof fn thread_exit_destroy_eof(
 )
     requires
         pre.inv(),
+        pre.cpu_op.view().view()[cpu_id as int] is InStep,
         thread_exit_destroy_eof_transition_framing(pre, post, cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr, proc_node_addr, cache_node_addr),
         index_valid(NUM_CPUS, cpu_id),
         page_ptr_valid(thread_ptr),
@@ -491,7 +494,7 @@ pub(super) proof fn thread_exit_destroy_eof(
         post.cpu_arr.spec_index(cpu_id).view().is_init(),
         post.cpu_arr.spec_index(cpu_id).view().view().wf(),
         pcid_needflush_wf(post.pcid_needflush),
-        cpu_published_wf(post.cpu_published, post.cpu_arr, post.pcid_needflush),
+        cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush),
         post.cpu_tlb.inv(),
         post.ctn_mp.perms_wf(),
         post.prc_mp.perms_wf(),
@@ -560,10 +563,12 @@ pub(super) proof fn thread_exit_destroy_eof_fields(
         !entry.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(cache_node_addr),
         entry.pcid_allc_mp.dom().contains(entry.ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator),
         post == (KernelK {
-            cpu_arr: post.cpu_arr, pcid_needflush: post.pcid_needflush, ctn_mp: post.ctn_mp, prc_mp: post.prc_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp,
-            pcid_allc_mp: post.pcid_allc_mp, ..mid
+            cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, pcid_needflush: post.pcid_needflush, ctn_mp: post.ctn_mp, prc_mp: post.prc_mp, pg_arr: post.pg_arr,
+            allc_4k_mp: post.allc_4k_mp, pcid_allc_mp: post.pcid_allc_mp, ..mid
         }),
-        post.cpu_arr.unchanged_except(&mid.cpu_arr, cpu_id),
+        post.cpu_op.view().view() == mid.cpu_op.view().view().update(cpu_id as int, cpu_op_after_step(mid.cpu_arr.spec_index(cpu_id).view().view().view().state)),
+        post.cpu_arr.entries_unchanged_except(&mid.cpu_arr, cpu_id),
+        post.cpu_arr.spec_index(cpu_id).view().view().view() == mid.cpu_arr.spec_index(cpu_id).view().view().view(),
         post.cpu_arr.spec_index(cpu_id).value.killer_info() == mid.cpu_arr.spec_index(cpu_id).value.killer_info(),
         post.ctn_mp.unchanged_except(&mid.ctn_mp, container_ptr),
         post.ctn_mp.spec_index(container_ptr).view() == mid.ctn_mp.spec_index(container_ptr).view(),

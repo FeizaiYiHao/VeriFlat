@@ -3,6 +3,10 @@ use crate::*;
 #[cfg(verus_keep_ghost)]
 use super::syscall_thread_exit_destroy_eof::thread_exit_destroy_eof_fields;
 use super::syscall_thread_exit_destroy_helpers::thread_exit_destroy_remove_thread;
+#[cfg(all(feature = "split-crates", verus_keep_ghost))]
+use veriflat_kernel_core::kernel::implementation::locker_unlocker::u_sys_exit_eof;
+#[cfg(all(not(feature = "split-crates"), verus_keep_ghost))]
+use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 /// Remove the running exiting thread and release every lock of the finish step: `cpu_id` goes idle on the default page
@@ -24,6 +28,7 @@ pub(super) fn thread_exit_destroy(
         old(lctx).kernel_view_locking_state() is Acquire,
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
         page_ptr_valid(thread_ptr),
         old(krnl).ctn_mp.dom().contains(container_ptr),
         old(krnl).prc_mp.dom().contains(process_ptr),
@@ -152,6 +157,13 @@ pub(super) fn thread_exit_destroy(
     krnl.wunlock_page(page_index, Tracked(&mut *lctx), Tracked(page_lock_perm));
     krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
     krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
+    proof {
+        cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id);
+        let ghost pre = *krnl;
+        let ghost pre_lctx = *lctx;
+        krnl.u_sys_exit(lctx);
+        u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+    }
     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive;

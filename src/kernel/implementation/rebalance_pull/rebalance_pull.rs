@@ -7,6 +7,8 @@ use super::rebalance_pull_release::rebalance_pull_release_unpulled;
 use super::rebalance_pull_eof::rebalance_pull_eof;
 #[cfg(verus_keep_ghost)]
 use super::super::syscall_schedule::syscall_schedule::schedule_current_cpu_references_wf;
+#[cfg(verus_keep_ghost)]
+use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 pub enum RebalanceResult {
@@ -274,10 +276,13 @@ fn rebalance_pull_move_head(
 )
     requires
         old(krnl).inv(),
-        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, thr_mp: old(krnl).thr_mp, sched_mp: old(krnl).sched_mp, ..old(steps).snapshot_k() }),
-        old(krnl).cpu_arr.unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
+        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_op: old(krnl).cpu_op, thr_mp: old(krnl).thr_mp, sched_mp: old(krnl).sched_mp, ..old(steps).snapshot_k() }),
+        old(krnl).cpu_arr.entries_unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view() == old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view(),
         old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
         old(krnl).cpu_arr.spec_index(cpu_id).view().killer_info() == old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.killer_info(),
+        old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
+        old(steps).snapshot_k().cpu_op.view().view()[cpu_id as int] == cpu_op_after_step(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state),
         old(krnl).thr_mp.unchanged_except(&old(steps).snapshot_k().thr_mp, thread_ptr),
         old(krnl).thr_mp.spec_index(thread_ptr).view() == old(steps).snapshot_k().thr_mp.spec_index(thread_ptr).view(),
         old(krnl).thr_mp.spec_index(thread_ptr).being_killed() == old(steps).snapshot_k().thr_mp.spec_index(thread_ptr).being_killed(),
@@ -336,7 +341,7 @@ fn rebalance_pull_move_head(
         cpu_lock_perm.view().state() is WriteLock,
         cpu_lock_perm.view().thread_id() == old(lctx).thread_id(),
         cpu_lock_perm.view().lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         {
             let cpu = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view();
             let queues = scheduler_shards_of(old(krnl).sched_mp.spec_index(scheduler_ptr));
@@ -416,9 +421,17 @@ fn rebalance_pull_move_head(
     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
     if let Some(local_perm) = local_lock_perm { krnl.wunlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx), local_perm); }
     rebalance_unlock_shard_prefix(krnl, Tracked(&mut *lctx), scheduler_ptr, count, Tracked(shard_perms));
+    proof {
+        let ghost pre = *krnl;
+        let ghost pre_lctx = *lctx;
+        assert(krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
+        krnl.u_sys_exit(lctx);
+        u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+    }
     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         let ghost pull_before = steps.view();
+        assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
         assert(kernel_rebalance_pull_fields(&steps.snapshot_k(), &*krnl, cpu_id, victim, thread_ptr)) by { reveal(kernel_rebalance_pull_fields); reveal(rebalance_pull_eof_transition_framing); };
         steps.end_kernel_step_rebalance_pull(&*krnl, &*lctx, cpu_id, victim, thread_ptr);
         no_locks_held_imply_all_objects_unlocked(krnl, lctx);
@@ -439,6 +452,7 @@ pub fn rebalance_pull(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalConte
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is Idle,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -479,10 +493,17 @@ pub fn rebalance_pull(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalConte
         return RebalanceResult::Nothing;
     }
     let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
+    proof { assert(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Idle) by { cpu_op_wf_at(old(krnl).cpu_op.view().view(), old(krnl).cpu_arr, cpu_id); }; }
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
     let idle = match cpu.state() { CpuState::Idle => true, _ => false };
     let container_ptr = cpu.owning_container();
     if !idle {
+        proof {
+            let ghost pre = *krnl;
+            let ghost pre_lctx = *lctx;
+            krnl.u_sys_exit(lctx);
+            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+        }
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, None, None, None, None, None);

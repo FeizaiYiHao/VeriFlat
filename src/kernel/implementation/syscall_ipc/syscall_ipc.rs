@@ -9,6 +9,7 @@ verus! {
         requires
             index_valid(NUM_CPUS, cpu_id),
             cpu_id == old(lctx).cpu_id(),
+            old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
             edp_idx_valid(endpoint_index),
             old(krnl).inv(),
             old(lctx).kernel_view_locking_state() is Acquire,
@@ -64,6 +65,7 @@ verus! {
         requires
             index_valid(NUM_CPUS, cpu_id),
             cpu_id == old(lctx).cpu_id(),
+            old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
             edp_idx_valid(endpoint_index),
             old(krnl).inv(),
             old(lctx).kernel_view_locking_state() is Acquire,
@@ -126,6 +128,7 @@ verus! {
         requires
             index_valid(NUM_CPUS, cpu_id),
             cpu_id == old(lctx).cpu_id(),
+            old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
             edp_idx_valid(endpoint_index),
             old(krnl).inv(),
             old(lctx).kernel_view_locking_state() is Acquire,
@@ -181,6 +184,7 @@ verus! {
         requires
             index_valid(NUM_CPUS, cpu_id),
             cpu_id == old(lctx).cpu_id(),
+            old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
             edp_idx_valid(endpoint_index),
             old(krnl).inv(),
             old(lctx).kernel_view_locking_state() is Acquire,
@@ -243,6 +247,7 @@ verus! {
         requires
             index_valid(NUM_CPUS, cpu_id),
             cpu_id == old(lctx).cpu_id(),
+            old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
             edp_idx_valid(endpoint_index),
             index_valid(NUM_CPUS, transfer_cpu_id),
             old(krnl).inv(),
@@ -300,6 +305,7 @@ verus! {
         requires
             index_valid(NUM_CPUS, cpu_id),
             cpu_id == old(lctx).cpu_id(),
+            old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
             edp_idx_valid(endpoint_index),
             old(krnl).inv(),
             old(lctx).kernel_view_locking_state() is Acquire,
@@ -360,6 +366,7 @@ verus! {
         requires
             index_valid(NUM_CPUS, cpu_id),
             cpu_id == old(lctx).cpu_id(),
+            old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
             edp_idx_valid(endpoint_index),
             pci_bdf_valid(bus as usize, dev as usize, fun as usize),
             old(krnl).inv(),
@@ -418,6 +425,7 @@ verus! {
         requires
             index_valid(NUM_CPUS, cpu_id),
             cpu_id == old(lctx).cpu_id(),
+            old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
             edp_idx_valid(endpoint_index),
             pci_bdf_valid(bus as usize, dev as usize, fun as usize),
             old(krnl).inv(),
@@ -475,6 +483,7 @@ verus! {
         requires
             index_valid(NUM_CPUS, cpu_id),
             cpu_id == old(lctx).cpu_id(),
+            old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
             edp_idx_valid(endpoint_index),
             edp_idx_valid(source_endpoint_index),
             old(krnl).inv(),
@@ -517,6 +526,7 @@ verus! {
         requires
             index_valid(NUM_CPUS, cpu_id),
             cpu_id == old(lctx).cpu_id(),
+            old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
             edp_idx_valid(endpoint_index),
             edp_idx_valid(target_endpoint_index),
             old(krnl).inv(),
@@ -559,6 +569,7 @@ verus! {
         requires
             index_valid(NUM_CPUS, cpu_id),
             cpu_id == old(lctx).cpu_id(),
+            old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
             edp_idx_valid(endpoint_index),
             old(krnl).inv(),
             old(lctx).kernel_view_locking_state() is Acquire,
@@ -600,6 +611,7 @@ verus! {
         requires
             index_valid(NUM_CPUS, cpu_id),
             cpu_id == old(lctx).cpu_id(),
+            old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
             edp_idx_valid(endpoint_index),
             old(krnl).inv(),
             old(lctx).kernel_view_locking_state() is Acquire,
@@ -641,6 +653,7 @@ verus! {
         requires
             index_valid(NUM_CPUS, cpu_id),
             cpu_id == old(lctx).cpu_id(),
+            old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
             edp_idx_valid(endpoint_index),
             waiting_state is SENDING || waiting_state is RECEIVING,
             old(krnl).inv(),

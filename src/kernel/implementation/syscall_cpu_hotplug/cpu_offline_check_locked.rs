@@ -8,8 +8,8 @@ use super::cpu_offline_check_locked_helpers::cpu_offline_check_recheck;
 verus! {
 /// With `cpu_id` write-held and not Off, owned by `container_ptr` and running `current_thread` of `current_process`, if
 /// any: reads the container's request bit for the cpu under its flag lock. A clear bit releases the cpu and continues
-/// without a step. A set bit holds the cpu across a boundary, recording the hold step, and rechecks from the snapshot after
-/// it, which the result returns as the decision state.
+/// without a step. A set bit holds the cpu across a boundary inside its kernel step, recording the hold step, and rechecks
+/// from the snapshot after it, which the result returns as the decision state.
 pub(super) fn cpu_offline_check_locked(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, pt_regs: &Registers,
     Tracked(cpu_lock_perm): Tracked<LockPerm>, container_ptr: RwLockContainerPtr, current_process: Option<RwLockProcessPtr>, current_thread: Option<RwLockThreadPtr>,
@@ -21,9 +21,20 @@ pub(super) fn cpu_offline_check_locked(
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(steps).nonlock_view().len() == 0,
-        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, ..old(steps).snapshot_k() }),
-        old(krnl).cpu_arr.unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
-        wlock_ensures(old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view(), old(krnl).cpu_arr.spec_index(cpu_id).view(), old(steps).snapshot_k().cpu_arr.lock_id_by_index(cpu_id), old(lctx), cpu_lock_perm),
+        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_op: old(krnl).cpu_op, ..old(steps).snapshot_k() }),
+        old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
+        old(steps).snapshot_k().cpu_op.view().view()[cpu_id as int] == cpu_op_after_step(old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view().state),
+        old(krnl).cpu_arr.entries_unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
+        ({
+            let pre = old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view();
+            let post = old(krnl).cpu_arr.spec_index(cpu_id).view();
+            &&& post.view().view() == pre.view().view()
+            &&& post.locking_thread() == RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: cpu_lock_perm.lock_id() }
+            &&& post.being_killed() == pre.being_killed()
+            &&& pre.locked() == false
+            &&& cpu_lock_perm.state() is WriteLock
+            &&& cpu_lock_perm.thread_id() == old(lctx).thread_id()
+        }),
         kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
@@ -53,7 +64,7 @@ pub(super) fn cpu_offline_check_locked(
             &&& cpu.owning_container == container_ptr
             &&& cpu.current_process == current_process
             &&& cpu.current_thread == current_thread
-            &&& old(krnl).cpu_published[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
+            &&& old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
         },
     ensures
         final(krnl).inv(),
@@ -102,6 +113,7 @@ pub(super) fn cpu_offline_check_locked(
     if !requested {
         release_cpu_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm));
         proof {
+            assert(krnl.cpu_op.view().view() =~= old(steps).snapshot_k().cpu_op.view().view());
             cpu_offline_check_trace_stutter_released(&*steps, old(steps).view(), &old(steps).snapshot_k(), &*krnl, cpu_id, *pt_regs);
             cpu_offline_check_result_from_k(&old(steps).snapshot_k(), cpu_id, OfflineCheckResult::Continue);
         }

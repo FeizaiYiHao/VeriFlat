@@ -117,7 +117,7 @@ pub(crate) fn kill_container_cpus(
             &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
         },
         final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
-        final(krnl).cpu_published[cpu_id as int].view() == old(krnl).cpu_published[cpu_id as int].view(),
+        final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
         final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread(),
         final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
@@ -130,7 +130,7 @@ pub(crate) fn kill_container_cpus(
     while i < NUM_CPUS
         invariant
             krnl.cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
-            krnl.cpu_published[cpu_id as int].view() == old(krnl).cpu_published[cpu_id as int].view(),
+            krnl.cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
             krnl.thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
             krnl.thr_mp.spec_index(thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread(),
             krnl.thr_mp.spec_index(thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
@@ -312,7 +312,7 @@ fn kill_container_cpus_enter(
             &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
         },
         final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
-        final(krnl).cpu_published[cpu_id as int].view() == old(krnl).cpu_published[cpu_id as int].view(),
+        final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
         final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread(),
         final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
@@ -442,7 +442,7 @@ fn kill_container_pages_enter(
             &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
         },
         final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
-        final(krnl).cpu_published[cpu_id as int].view() == old(krnl).cpu_published[cpu_id as int].view(),
+        final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
         final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread(),
         final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
@@ -569,7 +569,7 @@ fn kill_container_move_cpu(
             &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
         },
         final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
-        final(krnl).cpu_published[cpu_id as int].view() == old(krnl).cpu_published[cpu_id as int].view(),
+        final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
         final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread(),
         final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
@@ -594,6 +594,9 @@ fn kill_container_move_cpu(
     let flags_ptr = container_ptr + 4096;
     let (Tracked(moved_perm), Tracked(flag_perm), Tracked(owner_set_perm)) = kill_container_move_cpu_lock(krnl, Tracked(&mut *lctx), process_ptr, thread_ptr, set_ptr,
         owner_set, flags_ptr, cpu_i, closed);
+    proof {
+        assert(krnl.cpu_op.view().view()[cpu_i as int] is Off || krnl.cpu_op.view().view()[cpu_i as int] is Idle) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_i); };
+    }
     kill_container_move_cpu_commit(krnl, Tracked(&mut *lctx), container_ptr, owner_ptr, set_ptr, owner_set, flags_ptr, cpu_i, depth, closed, Tracked(moved_perm), Tracked(flag_perm),
         Tracked(owner_set_perm), Tracked(set_perm), Ghost(base));
     proof {
@@ -670,7 +673,8 @@ fn kill_container_move_cpu_lock(
         final(krnl).cpu_arr.unchanged_except(&old(krnl).cpu_arr, cpu_i),
         old(krnl).cpu_arr.spec_index(cpu_i).view().locking_thread() is None,
         final(krnl).cpu_arr.spec_index(cpu_i).view().being_killed() == old(krnl).cpu_arr.spec_index(cpu_i).view().being_killed(),
-        final(krnl).cpu_published[cpu_i as int].view() == (final(krnl).cpu_arr.spec_index(cpu_i).view().view().view().current_cr3, final(krnl).cpu_arr.spec_index(cpu_i).view().view().view().current_pcid),
+        final(krnl).cpu_arr.spec_index(cpu_i).view().view_ghost() == Some(old(lctx).cpu_id()),
+        final(krnl).cpu_hw_cr3_pcid[cpu_i as int].view() == (final(krnl).cpu_arr.spec_index(cpu_i).view().view().view().current_cr3, final(krnl).cpu_arr.spec_index(cpu_i).view().view().view().current_pcid),
         ret.0.view().state() is WriteLock,
         ret.0.view().thread_id() == final(lctx).thread_id(),
         ret.0.view().lock_id() == final(krnl).cpu_arr.spec_index(cpu_i).view().locking_thread()->Write_lock_id,
@@ -751,7 +755,9 @@ fn kill_container_move_cpu_commit(
         set_perm.state() is WriteLock,
         set_perm.thread_id() == old(lctx).thread_id(),
         set_perm.lock_id() == old(krnl).cpu_set_mp.spec_index(set_ptr).locking_thread()->Write_lock_id,
-        old(krnl).cpu_published[cpu_i as int].view() == (old(krnl).cpu_arr.spec_index(cpu_i).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_i).view().view().view().current_pcid),
+        old(krnl).cpu_hw_cr3_pcid[cpu_i as int].view() == (old(krnl).cpu_arr.spec_index(cpu_i).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_i).view().view().view().current_pcid),
+        old(krnl).cpu_arr.spec_index(cpu_i).view().view_ghost() == Some(old(lctx).cpu_id()),
+        old(krnl).cpu_op.view().view()[cpu_i as int] is Off || old(krnl).cpu_op.view().view()[cpu_i as int] is Idle,
         *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_set_mp: old(krnl).cpu_set_mp, cpu_offline_mp: old(krnl).cpu_offline_mp, ..base }),
         old(krnl).cpu_arr.unchanged_except(&base.cpu_arr, cpu_i),
         base.cpu_arr.spec_index(cpu_i).view().locking_thread() is None,

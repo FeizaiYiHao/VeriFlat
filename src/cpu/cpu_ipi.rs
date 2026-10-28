@@ -9,15 +9,20 @@ unsafe extern "C" {
 }
 
 verus! {
-/// Platform IPI: kicks `target` into the kernel after an offline request, or out of `halt_until_ipi`
-/// after an online. No model effect.
+/// Platform wake-up IPI: releases remote cpu `target` from `wait_until_online` into its idle loop. Sending it uses
+/// the target's kernel-call permission; the target moves to `Idle`.
 #[verifier::external_body]
-pub fn send_ipi(target: CpuId, Tracked(lctx): Tracked<&LocalContext>)
+pub fn ipi_wake(target: CpuId, Tracked(cpu_op): Tracked<&mut CpuOpArray>, perm: Tracked<&KernelCallPerm>, Tracked(lctx): Tracked<&LocalContext>)
     requires
         index_valid(NUM_CPUS, target),
         target != lctx.cpu_id(),
+        perm.view().cpu_id() == target,
+        lctx.kernel_view_locking_state() is Release,
+    ensures
+        final(cpu_op).view() == old(cpu_op).view().update(target as int, CpuOpState::Idle),
 {
     unsafe { veriflat_send_ipi(target); }
+    proof { cpu_op.woken(target); }
 }
 
 /// Platform halt: the calling cpu holds no locks and sleeps until an IPI arrives. No model effect.

@@ -13,15 +13,18 @@ pub(super) fn rebalance_pull_release_unpulled(
 )
     requires
         old(krnl).inv(),
-        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, thr_mp: old(krnl).thr_mp, sched_mp: old(krnl).sched_mp, ..old(steps).snapshot_k() }),
-        old(krnl).cpu_arr.unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
+        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_op: old(krnl).cpu_op, thr_mp: old(krnl).thr_mp, sched_mp: old(krnl).sched_mp, ..old(steps).snapshot_k() }),
+        old(krnl).cpu_arr.entries_unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
         old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
+        old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
+        old(steps).snapshot_k().cpu_op.view().view()[cpu_id as int] == cpu_op_after_step(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state),
         forall|t: RwLockThreadPtr| #![trigger old(krnl).thr_mp.spec_index(t)] old(steps).snapshot_k().thr_mp.dom().contains(t) ==> old(krnl).thr_mp.spec_index(t) == old(steps).snapshot_k().thr_mp.spec_index(t),
         old(krnl).sched_mp.unchanged_except(&old(steps).snapshot_k().sched_mp, scheduler_ptr),
         scheduler_shards_of(old(krnl).sched_mp.spec_index(scheduler_ptr)) == scheduler_shards_of(old(steps).snapshot_k().sched_mp.spec_index(scheduler_ptr)),
         kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
         index_valid(NUM_CPUS, cpu_id),
+        cpu_id == old(lctx).cpu_id(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
@@ -62,7 +65,7 @@ pub(super) fn rebalance_pull_release_unpulled(
         cpu_lock_perm.state() is WriteLock,
         cpu_lock_perm.thread_id() == old(lctx).thread_id(),
         cpu_lock_perm.lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
     ensures
         final(krnl).inv(),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -86,7 +89,10 @@ pub(super) fn rebalance_pull_release_unpulled(
     proof { assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; }; }
     release_cpu_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm));
     proof {
-        assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(old(steps).snapshot_k())) by { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&old(steps).snapshot_k(), &*krnl); };
+        assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(old(steps).snapshot_k())) by {
+            assert(krnl.cpu_op.view().view() =~= old(steps).snapshot_k().cpu_op.view().view());
+            kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&old(steps).snapshot_k(), &*krnl);
+        };
         rebalance_pull_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id);
     }
 }

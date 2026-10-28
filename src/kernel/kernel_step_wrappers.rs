@@ -157,8 +157,10 @@ impl KernelSteps {
             krnl.irt.view().iommu_roots() == old(self).snapshot_k().irt.view().iommu_roots(),
             krnl.cpu_tlb.view() == old(self).snapshot_k().cpu_tlb.view(),
             krnl.iommu_tlb.view() == old(self).snapshot_k().iommu_tlb.view(),
+            krnl.cpu_op.view().view() == old(self).snapshot_k().cpu_op.view().view(),
             krnl.dflt_pt == old(self).snapshot_k().dflt_pt,
-            krnl.cpu_arr.unchanged_except(&old(self).snapshot_k().cpu_arr, cpu),
+            krnl.cpu_arr.entries_unchanged_except(&old(self).snapshot_k().cpu_arr, cpu),
+            krnl.cpu_arr.spec_index(cpu).view().view().view() == old(self).snapshot_k().cpu_arr.spec_index(cpu).view().view().view(),
             krnl.cpu_arr.spec_index(cpu).value.killer_info() == old(self).snapshot_k().cpu_arr.spec_index(cpu).value.killer_info(),
             (krnl.cpu_arr.spec_index(cpu).value.locking_thread() is Write) == (old(self).snapshot_k().cpu_arr.spec_index(cpu).value.locking_thread() is Write),
             (krnl.cpu_arr.spec_index(cpu).value.locking_thread() is Read) == (old(self).snapshot_k().cpu_arr.spec_index(cpu).value.locking_thread() is Read),
@@ -265,8 +267,10 @@ impl KernelSteps {
             krnl.irt.view().iommu_roots() == old(self).snapshot_k().irt.view().iommu_roots(),
             krnl.cpu_tlb.view() == old(self).snapshot_k().cpu_tlb.view(),
             krnl.iommu_tlb.view() == old(self).snapshot_k().iommu_tlb.view(),
+            krnl.cpu_op.view().view() == old(self).snapshot_k().cpu_op.view().view(),
             krnl.dflt_pt == old(self).snapshot_k().dflt_pt,
-            krnl.cpu_arr.unchanged_except(&old(self).snapshot_k().cpu_arr, cpu),
+            krnl.cpu_arr.entries_unchanged_except(&old(self).snapshot_k().cpu_arr, cpu),
+            krnl.cpu_arr.spec_index(cpu).view().view().view() == old(self).snapshot_k().cpu_arr.spec_index(cpu).view().view().view(),
             krnl.cpu_arr.spec_index(cpu).value.killer_info() == old(self).snapshot_k().cpu_arr.spec_index(cpu).value.killer_info(),
             (krnl.cpu_arr.spec_index(cpu).value.locking_thread() is Write) == (old(self).snapshot_k().cpu_arr.spec_index(cpu).value.locking_thread() is Write),
             (krnl.cpu_arr.spec_index(cpu).value.locking_thread() is Read) == (old(self).snapshot_k().cpu_arr.spec_index(cpu).value.locking_thread() is Read),
@@ -384,6 +388,7 @@ impl KernelSteps {
             krnl.irt.view().iommu_roots() == old(self).snapshot_k().irt.view().iommu_roots(),
             krnl.cpu_tlb.view() == old(self).snapshot_k().cpu_tlb.view(),
             krnl.iommu_tlb.view() == old(self).snapshot_k().iommu_tlb.view(),
+            krnl.cpu_op.view().view() == old(self).snapshot_k().cpu_op.view().view(),
             kernel_container_nonlock_fields_and_quotas_unchanged(&old(self).snapshot_k(), krnl),
             forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)]
                 krnl.ctn_mp.dom().contains(p) && old(self).snapshot_k().ctn_mp.dom().contains(p) ==> {
@@ -1466,6 +1471,7 @@ impl KernelSteps {
             krnl.inv(),
             lctx.kernel_view_locking_state() is Release,
             kernel_ipc_rendezvous_fields(&old(self).snapshot_k(), krnl, cpu_id, caller_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer, pci_transfer),
+            krnl.cpu_op.view().view() == old(self).snapshot_k().cpu_op.view().view(),
             krnl.cpu_set_mp.dom() == old(self).snapshot_k().cpu_set_mp.dom(),
             forall|p: RwLockCpuSetPtr| #![trigger krnl.cpu_set_mp.spec_index(p)]
                 old(self).snapshot_k().cpu_set_mp.dom().contains(p) ==> krnl.cpu_set_mp.spec_index(p).locking_thread() == old(self).snapshot_k().cpu_set_mp.spec_index(p).locking_thread()
@@ -2165,6 +2171,7 @@ impl KernelSteps {
             krnl.cpu_tlb.view() == old(self).snapshot_k().cpu_tlb.view(),
             krnl.iommu_tlb.view() == old(self).snapshot_k().iommu_tlb.view(),
             kernel_container_nonlock_fields_and_quotas_unchanged(&old(self).snapshot_k(), krnl),
+            krnl.cpu_op.view().view() == old(self).snapshot_k().cpu_op.view().view(),
             forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)]
                 krnl.ctn_mp.dom().contains(p) && old(self).snapshot_k().ctn_mp.dom().contains(p) ==> {
                     let before = old(self).snapshot_k().ctn_mp.spec_index(p).locking_thread();

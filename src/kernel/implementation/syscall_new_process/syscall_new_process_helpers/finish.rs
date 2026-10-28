@@ -34,7 +34,8 @@ pub(in super::super) fn create_initial_thread_and_finish_new_process(
         old(krnl).prc_mp.spec_index(child_ptr).view().state.view() is Creating,
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
-        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         old(krnl).inv(),
         old(lctx).kernel_view_locking_state() is Acquire,
         kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
@@ -203,7 +204,10 @@ pub(in super::super) fn create_initial_thread_and_finish_new_process(
         iommu_table is Some ==> final(krnl).it_mp.dom().contains(iommu_table->Some_0) && final(krnl).it_mp.spec_index(iommu_table->Some_0).view().is_empty(),
 {
     hide(Seq::contains);
-    proof { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl); steps.rebase_snapshot_k_if_unchanged(&*krnl); }
+    proof {
+        kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl); steps.rebase_snapshot_k_if_unchanged(&*krnl);
+        assert(krnl.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
+    }
     let tracked cpu_lock_perm = cpu_lock_perm.get();
     let tracked child_lock_perm = child_lock_perm.get();
     let tracked current_thread_lock_perm = current_thread_lock_perm.get();
@@ -235,6 +239,7 @@ pub(in super::super) fn create_initial_thread_and_finish_new_process(
                 ||| krnl.ctn_mp.spec_index(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container).view_ghost().subtree_set.view().contains(container_ptr)
             }) by { container_endpoint_wf_at(krnl.ctn_mp, krnl.ep_mp, endpoint_ptr); container_thread_endpoint_wf_at(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp, current_thread_ptr, endpoint_index); };
         }
+        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
     }
     release_new_process_locks_and_attach_endpoint(
         krnl, Tracked(&mut *lctx), cpu_id, container_ptr, child_ptr, current_thread_ptr, new_thread_ptr, scheduler_ptr, endpoint, source_pagetable_ptr, target_pagetable_ptr,

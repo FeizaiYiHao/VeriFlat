@@ -365,7 +365,7 @@ pub(crate) fn kill_reclaim_flush(
 }
 
 /// Flush `pcid` on cpu `c` under its needflush lock and drop `c` from every stale-CPU record of the write-held page table
-/// `pagetable` with `cr3` and `pcid`, deleting the records after the last cpu; returns whether `c` published the table.
+/// `pagetable` with `cr3` and `pcid`, deleting the records after the last cpu; returns whether the hardware cr3/pcid word of `c` names the table.
 pub(crate) fn kill_reclaim_flush_cpu_tlb(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, c: usize, cpu_id: CpuId, pagetable: RwLockPageTableRoot, cr3: PageTableRoot, pcid: Pcid,
     Tracked(cpu_perm): Tracked<&LockPerm>,
@@ -383,7 +383,7 @@ pub(crate) fn kill_reclaim_flush_cpu_tlb(
         cpu_perm.state() is WriteLock,
         cpu_perm.thread_id() == old(lctx).thread_id(),
         cpu_perm.lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         old(krnl).pt_mp.dom().contains(pagetable),
         old(krnl).pt_mp.spec_index(pagetable).view().cr3 == cr3,
         old(krnl).pt_mp.spec_index(pagetable).view().pcid == Some(pcid),
@@ -423,8 +423,8 @@ pub(crate) fn kill_reclaim_flush_cpu_tlb(
                 ==> c + 1 < NUM_CPUS && pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus.spec_index(k) == Set::range((c + 1) as usize, NUM_CPUS),
 {
     let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(c, pcid, Tracked(&mut *lctx));
-    let published = mark_pcid_needflush_and_load(krnl, c, pcid, Tracked(&mut *lctx), Tracked(&needflush_perm));
-    let flushed = published.0 == cr3 && published.1 == pcid;
+    let hw_cr3_pcid = mark_pcid_needflush_and_load(krnl, c, pcid, Tracked(&mut *lctx), Tracked(&needflush_perm));
+    let flushed = hw_cr3_pcid.0 == cr3 && hw_cr3_pcid.1 == pcid;
     if flushed {
         if c == cpu_id {
             flush_local_pcid_and_clear(krnl, c, pcid, cr3, Tracked(&*lctx), Tracked(&needflush_perm), Tracked(cpu_perm));

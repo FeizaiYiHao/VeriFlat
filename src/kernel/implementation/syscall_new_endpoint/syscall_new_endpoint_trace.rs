@@ -40,7 +40,7 @@ pub proof fn new_endpoint_enter_step_from_u(
             &&& thread.quota_4k >= 1
         },
         locked == (KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre.cpu_array[cpu_id as int] }),
+            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
             container_map: pre.container_map.insert(container_ptr, ContainerU {
                 lock_state: LockStateU::WriteLocked, lock_process_owner: locked_k.ctn_mp.spec_index(container_ptr).lock_process_owner_u(), ..pre.container_map[container_ptr]
             }),
@@ -120,6 +120,7 @@ pub(super) proof fn new_endpoint_finish_step_pre_from_k(
             &&& u.cpu_array[cpu_id as int].current_process == Some(process_ptr)
             &&& u.cpu_array[cpu_id as int].current_thread == Some(thread_ptr)
             &&& u.cpu_array[cpu_id as int].owning_container == container_ptr
+            &&& u.cpu_array[cpu_id as int].state == krnl.cpu_arr.spec_index(cpu_id).view().view().view().state
             &&& u.thread_map.spec_index(thread_ptr).syscall_progress == Some(SyscallProgress::NewEndpoint { slot: endpoint_index })
         }),
 { kernel_write_held_context_projection(krnl, lctx, cpu_id, process_ptr, thread_ptr, None); kernel_cpu_thread_projection_at(krnl, cpu_id, process_ptr, thread_ptr, None); reveal(new_endpoint_finish_step_pre); }
@@ -136,7 +137,7 @@ pub(super) proof fn new_endpoint_finish_step_from_u(
         pre.thread_map.spec_index(thread_ptr).syscall_progress == Some(SyscallProgress::NewEndpoint { slot: endpoint_index }),
         post.thread_map.spec_index(thread_ptr).endpoint_descriptors[endpoint_index as int] == Some(new_endpoint_ptr),
         kernel_u_new_endpoint_changed(KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre.cpu_array[cpu_id as int] }),
+            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: cpu_op_after_step(pre.cpu_array[cpu_id as int].state), ..pre.cpu_array[cpu_id as int] }),
             container_map: pre.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..pre.container_map[container_ptr] }),
             process_map: pre.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::Unlocked, ..pre.process_map[process_ptr] }),
             thread_map: pre.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..pre.thread_map.spec_index(thread_ptr) }),

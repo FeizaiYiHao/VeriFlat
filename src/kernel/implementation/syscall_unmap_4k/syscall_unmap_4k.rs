@@ -15,6 +15,7 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),

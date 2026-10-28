@@ -3,6 +3,8 @@ use crate::*;
 use super::mmap_4k_map_one_leaf::map_one_mmap_4k_page;
 use super::syscall_mmap_4k_spec::*;
 use super::syscall_mmap_4k_trace::*;
+#[cfg(verus_keep_ghost)]
+use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 /// Under the pagetable's big read lock, holding exactly the 2M windows of `range`, publish a present, writable, executable
@@ -82,7 +84,7 @@ pub(super) fn mmap_4k_map_leaf_range(
         forall|j: int| #![trigger final(steps).view()[j]] 0 <= j < old(steps).view().len() ==> final(steps).view()[j] == old(steps).view()[j],
         forall|j: int| #![trigger final(steps).view()[j]] old(steps).view().len() <= j < final(steps).view().len() ==> mmap_4k_range_step(final(steps).view()[j], cpu_id),
         final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
-        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
+        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
         final(krnl).prc_mp.dom().contains(process_ptr),
         final(krnl).prc_mp.spec_index(process_ptr).view_rodata().view().pagetable == pagetable_ptr,
         final(krnl).thr_mp.dom().contains(thread_ptr),
@@ -137,7 +139,7 @@ pub(super) fn mmap_4k_map_leaf_range(
             !krnl.cpu_arr.spec_index(cpu_id).view().being_killed(),
             krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
             krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
-            index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> krnl.cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
+            index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> krnl.cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
             krnl.ctn_mp.dom().contains(container_ptr),
             krnl.ctn_mp.spec_index(container_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(container_ptr).view_rodata(),
             krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
@@ -239,6 +241,7 @@ pub(super) fn mmap_4k_map_leaves_and_finish(
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(steps).snapshot_k() == *old(krnl),
@@ -260,7 +263,7 @@ pub(super) fn mmap_4k_map_leaves_and_finish(
         cpu_lock_perm.state() is WriteLock,
         cpu_lock_perm.thread_id() == old(lctx).thread_id(),
         cpu_lock_perm.lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         old(krnl).ctn_mp.dom().contains(container_ptr),
         old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
         old(krnl).allc_4k_mp.dom().contains(alloc_ptr_4k),
@@ -360,6 +363,13 @@ pub(super) fn mmap_4k_map_leaves_and_finish(
     proof { krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr); }
     krnl.runlock_pagetable(pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
+    proof {
+        cpu_op_wf_at(old(krnl).cpu_op.view().view(), old(krnl).cpu_arr, cpu_id); cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id);
+        let ghost pre = *krnl;
+        let ghost pre_lctx = *lctx;
+        krnl.u_sys_exit(lctx);
+        u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+    }
     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     let ghost exit_k = *krnl;
     proof {

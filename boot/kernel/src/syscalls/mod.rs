@@ -125,6 +125,21 @@ pub unsafe fn init_cpu() {
 // r14      | Arg #8         |
 //
 // rcx and r11 are taken by `syscall` (user rip and rflags); r10 is clobbered.
+
+/// cpu_op states (model of this TCB). The verified model keeps each CPU in one of five states, and
+/// this file makes the transitions:
+/// - Off: halted in [`wait_until_online`].
+/// - Idle: the [`run_idle`] loop, its `sti; hlt; cli` included.
+/// - User: ring 3.
+/// - Trap: the trampoline, interrupts off, without this CPU's own lock. User to Trap at `sys_entry`
+///   and the interrupt gates; Trap to User at the `sysretq`/`iretq` of [`restore_frame`]; Trap to
+///   Idle when [`restore_frame`] diverts on `evicted`, or when a syscall returns CpuIdle into
+///   [`run_idle`].
+/// - InStep: the verified kernel holds this CPU's own lock, from its `wlock_cpu` of this CPU until
+///   `u_sys_exit` leaves the state before the own unlock.
+///
+/// The eviction IPI moves a CPU whose lock the killer holds from User to Idle; the wake IPI moves
+/// an Off CPU to Idle after `cpu_online` published it Idle.
 #[unsafe(naked)]
 unsafe extern "C" fn sys_entry() -> ! {
     naked_asm!(
@@ -321,17 +336,11 @@ pub fn timer_interrupt(regs: &mut Registers) {
     }
 }
 
-/// Wake-up IPI. From user mode the CPU runs its offline check (an offline request kicks it); in the
-/// kernel it only ends a `hlt`.
-pub fn wake_interrupt(regs: &mut Registers) {
+/// Wake-up IPI (`platform::veriflat_send_ipi`, sent by `cpu_online`). It only ends a `hlt`, the
+/// one of [`wait_until_online`] or of the idle loop; taken in ring 3 it does nothing. An offline
+/// request sends no IPI: its target notices the request at its next timer tick or syscall.
+pub fn wake_interrupt(_regs: &mut Registers) {
     interrupt::end_of_interrupt();
-    if from_user(regs) {
-        let cpu_id = cpu::get_cpu_id();
-        if let OfflineCheckResult::Off = cpu_offline_check(kernel(), Tracked::assume_new(), Tracked::assume_new(), cpu_id, regs).0 {
-            wait_until_online(cpu_id);
-            run_idle(regs);
-        }
-    }
 }
 
 fn from_user(regs: &Registers) -> bool {

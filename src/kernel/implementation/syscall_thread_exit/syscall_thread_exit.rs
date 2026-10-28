@@ -21,6 +21,7 @@ pub fn syscall_thread_exit(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Local
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -53,6 +54,7 @@ pub fn syscall_thread_exit(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Local
     let Tracked(thread_lock_perm) = thread_lock_perm;
     let ghost start = old(steps).view().len() as int;
     let ghost pre = kernel_k_to_kernel_u(*old(krnl));
+    proof { assert(krnl.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
     thread_exit_drop_descriptors(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, thread_ptr, Tracked(&thread_lock_perm), Ghost(start), Ghost(pre));
     proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, process_ptr); krnl.prc_mp.spec_index(process_ptr).view().owned_threads.lemma_len_view(); }
     let last = krnl.prc_mp.borrow_typed(process_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(&process_lock_perm)).owned_threads.len() == 1;
@@ -60,6 +62,7 @@ pub fn syscall_thread_exit(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Local
         thread_exit_reclaim(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, thread_ptr, Tracked(&cpu_lock_perm), Tracked(&process_lock_perm),
             Tracked(&thread_lock_perm), Ghost(start), Ghost(pre));
     }
+    proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
     thread_exit_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, thread_ptr, last, Tracked(cpu_lock_perm), Tracked(container_lock_perm),
         Tracked(process_lock_perm), Tracked(thread_lock_perm), Ghost(start), Ghost(pre));
     proof { no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); }

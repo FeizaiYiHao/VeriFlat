@@ -44,6 +44,7 @@ pub(super) proof fn killed_thread_reclaim_step_pre_from_k(krnl: &KernelK, entry:
     requires
         index_valid(NUM_CPUS, cpu_id),
         krnl.cpu_arr.spec_index(cpu_id).view() == entry.cpu_arr.spec_index(cpu_id).view(),
+        krnl.cpu_op.view().view()[cpu_id as int] == entry.cpu_op.view().view()[cpu_id as int],
         entry.thr_mp.dom().contains(entry.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0),
         krnl.thr_mp.dom().contains(entry.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0),
         krnl.thr_mp.spec_index(entry.cpu_arr.spec_index(cpu_id).view().view().view().current_thread->Some_0)

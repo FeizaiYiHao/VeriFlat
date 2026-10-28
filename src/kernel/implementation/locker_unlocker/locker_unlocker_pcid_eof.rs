@@ -45,21 +45,21 @@ pub(super) proof fn wlock_pcid_needflush_eof(pre: KernelK, post: KernelK, cpu_id
         },
     ensures
         post.inv(),
-        post.cpu_published[cpu_id as int].owner_cpu() == cpu_id,
+        post.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu() == cpu_id,
 {
-    assert(post.subsystems_inv()) by { reveal(pcid_needflush_wf); reveal(cpu_published_wf); reveal(KernelK::default_pagetable_wf); };
+    assert(post.subsystems_inv()) by { reveal(pcid_needflush_wf); reveal(cpu_hw_cr3_pcid_wf); reveal(KernelK::default_pagetable_wf); };
     assert(post.inv()) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(tlb_wf_spec); };
-    assert(post.cpu_published[cpu_id as int].owner_cpu() == cpu_id) by { reveal(cpu_published_wf); };
+    assert(post.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu() == cpu_id) by { reveal(cpu_hw_cr3_pcid_wf); };
 }
 
 /// Closes `inv()` after `wunlock_pcid_needflush`: the released entry names no holder, and a released active PCID is
-/// published with the cpu's current CR3.
+/// stored in the hardware cr3/pcid word with the cpu's current CR3.
 pub(super) proof fn wunlock_pcid_needflush_eof(pre: KernelK, post: KernelK, cpu_id: CpuId, pcid: Pcid)
     requires
         pre.inv(),
         index_valid(NUM_CPUS, cpu_id),
         pcid_valid(pcid),
-        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid || pre.cpu_published[cpu_id as int].view() == (pre.cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, pcid),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid || pre.cpu_hw_cr3_pcid[cpu_id as int].view() == (pre.cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, pcid),
         post == (KernelK { pcid_needflush: post.pcid_needflush, ..pre }),
         post.pcid_needflush.spec_index(cpu_id, pcid).inv(),
         !post.pcid_needflush.spec_index(cpu_id, pcid).locked(),
@@ -71,7 +71,7 @@ pub(super) proof fn wunlock_pcid_needflush_eof(pre: KernelK, post: KernelK, cpu_
     ensures
         post.inv(),
 {
-    assert(post.subsystems_inv()) by { reveal(pcid_needflush_wf); reveal(cpu_published_wf); reveal(KernelK::default_pagetable_wf); };
+    assert(post.subsystems_inv()) by { reveal(pcid_needflush_wf); reveal(cpu_hw_cr3_pcid_wf); reveal(KernelK::default_pagetable_wf); };
     assert(post.inv()) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(tlb_wf_spec); };
 }
 
@@ -97,7 +97,7 @@ pub(super) proof fn mark_pcid_needflush_eof(pre: KernelK, post: KernelK, lctx: L
     ensures
         post.inv(),
 {
-    assert(post.subsystems_inv()) by { reveal(pcid_needflush_wf); reveal(cpu_published_wf); reveal(KernelK::default_pagetable_wf); };
+    assert(post.subsystems_inv()) by { reveal(pcid_needflush_wf); reveal(cpu_hw_cr3_pcid_wf); reveal(KernelK::default_pagetable_wf); };
     assert(post.inv()) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(tlb_wf_spec); };
 }
 } // verus!

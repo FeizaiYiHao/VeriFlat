@@ -5,6 +5,8 @@ use super::mmap_4k_map_range::mmap_4k_map_leaves_and_finish;
 use super::mmap_4k_precheck::{mmap_4k_precheck, Mmap4kPrecheck};
 use super::syscall_mmap_4k_spec::*;
 use super::syscall_mmap_4k_trace::*;
+#[cfg(verus_keep_ghost)]
+use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 /// At the start of the fill section, with `cpu_id` and its current `thread_ptr` write-held since the recorded hold step and
@@ -20,6 +22,7 @@ pub(super) fn mmap_4k_fill_enter(
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(steps).snapshot_k() == *old(krnl),
@@ -37,7 +40,7 @@ pub(super) fn mmap_4k_fill_enter(
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
-        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         old(krnl).ctn_mp.dom().contains(container_ptr),
         old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
         old(krnl).allc_4k_mp.dom().contains(alloc_ptr_4k),
@@ -115,6 +118,13 @@ pub(super) fn mmap_4k_fill_enter(
         proof { mmap_4k_result_from_k(&old(steps).snapshot_k(), cpu_id, va, range, ret, if invalid { None } else { Some(checked) }, found); }
         krnl.wunlock_pagetable(pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
         krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
+        proof {
+            cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id);
+            let ghost pre = *krnl;
+            let ghost pre_lctx = *lctx;
+            krnl.u_sys_exit(lctx);
+            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+        }
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
@@ -148,10 +158,10 @@ pub(super) fn mmap_4k_fill_enter(
     }
     let ghost entered = steps.view();
     let Tracked(existing_perms) = krnl.lock_pagetable_range_existing_windows(pagetable_ptr, va_range, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx));
-    proof { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl); steps.rebase_snapshot_k_if_unchanged(&*krnl); }
+    proof { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl); steps.rebase_snapshot_k_if_unchanged(&*krnl); cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }
     let Tracked(window_perms) = mmap_4k_fill_range_structure(krnl, va_range, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, Tracked(&mut *lctx),
         Tracked(&mut *steps), Tracked(&thread_lock_perm), Tracked(&pagetable_lock_perm), Tracked(existing_perms));
-    proof { krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr); }
+    proof { krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr); cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }
     let ghost filled_k = *krnl;
     let ghost filled_lctx = *lctx;
     let ghost filled_steps = steps.view();

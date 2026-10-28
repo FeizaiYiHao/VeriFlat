@@ -68,8 +68,8 @@ pub open spec fn kill_container_enter_step_pre(old_u: KernelU, cpu_id: CpuId, ch
     &&& !old_u.container_map[container.children[child_index as int]].killed
 }
 
-/// Entering write-locks the cpu, its container, the process, and the thread, marks the child container at
-/// `child_index` for the kill and write-locks it, and records that the kill walks the child.
+/// Entering write-locks the cpu, which enters its kernel step, its container, the process, and the thread, marks the
+/// child container at `child_index` for the kill and write-locks it, and records that the kill walks the child.
 #[verifier::opaque]
 pub open spec fn kill_container_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, child_index: usize) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -78,7 +78,7 @@ pub open spec fn kill_container_enter_step(old_u: KernelU, new_u: KernelU, cpu_i
     let thread_ptr = cpu.current_thread->Some_0;
     let child_ptr = old_u.container_map[owner_ptr].children[child_index as int];
     new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..cpu }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
         container_map: old_u.container_map.insert(owner_ptr, ContainerU {
             lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(old_u.process_map[process_ptr].depth)), ..old_u.container_map[owner_ptr]
         }).insert(child_ptr, ContainerU { lock_state: LockStateU::WriteLocked, killed: true, ..old_u.container_map[child_ptr] }),
@@ -352,7 +352,8 @@ pub open spec fn kill_container_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -
     &&& old_u.thread_map[thread_ptr].syscall_progress == kill_container_progress(cpu.owning_container, ContainerKillStage::Walk)
 }
 
-/// Finishing clears the kill's progress and unlocks the killer's thread, process, container, and cpu.
+/// Finishing clears the kill's progress and unlocks the killer's thread, process, container, and cpu, which leaves its
+/// kernel step.
 #[verifier::opaque]
 pub open spec fn kill_container_finish_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -360,7 +361,7 @@ pub open spec fn kill_container_finish_step(old_u: KernelU, new_u: KernelU, cpu_
     let process_ptr = cpu.current_process->Some_0;
     let thread_ptr = cpu.current_thread->Some_0;
     new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..cpu }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: cpu_op_after_step(cpu.state), ..cpu }),
         container_map: old_u.container_map.insert(owner_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..old_u.container_map[owner_ptr] }),
         process_map: old_u.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::Unlocked, ..old_u.process_map[process_ptr] }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..old_u.thread_map[thread_ptr] }),

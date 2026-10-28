@@ -1,5 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
+#[cfg(verus_keep_ghost)]
+use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 use super::syscall_ipc_call_spec::*;
 use super::syscall_ipc_call_trace::*;
 
@@ -15,8 +17,8 @@ pub(super) fn ipc_reply_handoff_release_and_end_step(
     Tracked(caller_lock_perm): Tracked<LockPerm>, Tracked(needflush_perm): Tracked<LockPerm>,
 )
     requires
-        entry_k == (KernelK { cpu_arr: entry_k.cpu_arr, thr_mp: entry_k.thr_mp, ep_mp: entry_k.ep_mp, ..old(steps).snapshot_k() }),
-        entry_k.cpu_arr.spec_index(cpu_id).view().view() == old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view(),
+        entry_k == (KernelK { cpu_arr: entry_k.cpu_arr, cpu_op: entry_k.cpu_op, thr_mp: entry_k.thr_mp, ep_mp: entry_k.ep_mp, ..old(steps).snapshot_k() }),
+        entry_k.cpu_arr.spec_index(cpu_id).view().view().view() == old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view(),
         forall|p: RwLockContainerPtr| #![trigger entry_k.ctn_mp.spec_index(p)] #![trigger old(steps).snapshot_k().ctn_mp.spec_index(p)]
             old(steps).snapshot_k().ctn_mp.dom().contains(p) && entry_k.ctn_mp.dom().contains(p) ==> if entry_lctx.container_lock_map().dom().contains(p) {
                 old(steps).snapshot_k().ctn_mp.spec_index(p).locking_thread() is None
@@ -96,13 +98,15 @@ pub(super) fn ipc_reply_handoff_release_and_end_step(
         old(krnl).inv(),
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
+        entry_k.cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
+        old(steps).snapshot_k().cpu_op.view().view()[cpu_id as int] is Trap,
         edp_idx_valid(endpoint_index),
         old(lctx).kernel_view_locking_state() is Release,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid,
-        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         old(krnl).thr_mp.dom().contains(callee_ptr),
         old(krnl).thr_mp.spec_index(callee_ptr).being_killed() == false,
         !old(krnl).thr_mp.spec_index(callee_ptr).view_ghost().exited,
@@ -187,8 +191,17 @@ pub(super) fn ipc_reply_handoff_release_and_end_step(
     krnl.wunlock_thread(caller_ptr, Tracked(&mut *lctx), Tracked(caller_lock_perm));
     krnl.wunlock_thread(callee_ptr, Tracked(&mut *lctx), Tracked(callee_lock_perm));
     krnl.wunlock_endpoint(endpoint_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
+    proof {
+        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { reveal(ipc_reply_handoff_eof_transition_framing); };
+        let ghost pre = *krnl;
+        let ghost pre_lctx = *lctx;
+        assert(krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
+        krnl.u_sys_exit(lctx);
+        u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+    }
     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
+        assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view()) by { reveal(ipc_reply_handoff_eof_transition_framing); };
         let ghost flushed_pcid = ipc_handoff_flushed_pcid(old(steps).snapshot_k(), cpu_id, caller_ptr);
         assert(kernel_ipc_reply_handoff_fields(&steps.snapshot_k(), &*krnl, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, entry_regs, flushed_pcid) && krnl.ctn_mp == steps.snapshot_k().ctn_mp) by {
             broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive;

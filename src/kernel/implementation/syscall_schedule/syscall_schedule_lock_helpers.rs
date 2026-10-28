@@ -4,6 +4,8 @@ use super::syscall_schedule_spec::*;
 use super::syscall_schedule_trace::*;
 #[cfg(verus_keep_ghost)]
 use super::syscall_schedule::schedule_current_cpu_references_wf;
+#[cfg(verus_keep_ghost)]
+use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 /// With `cpu_id`, its shard of `scheduler_ptr`, and the live `current_process` and `current_thread`, if any, write-held since
@@ -15,12 +17,16 @@ pub(super) fn schedule_continue(
 )
     requires
         index_valid(NUM_CPUS, cpu_id),
+        cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(steps).nonlock_view().len() == 0,
-        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, prc_mp: old(krnl).prc_mp, thr_mp: old(krnl).thr_mp, sched_mp: old(krnl).sched_mp, ..old(steps).snapshot_k() }),
-        old(krnl).cpu_arr.unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
+        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_op: old(krnl).cpu_op, prc_mp: old(krnl).prc_mp, thr_mp: old(krnl).thr_mp, sched_mp: old(krnl).sched_mp, ..old(steps).snapshot_k() }),
+        old(krnl).cpu_arr.entries_unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view() == old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view(),
         old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
+        old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
+        old(steps).snapshot_k().cpu_op.view().view()[cpu_id as int] == cpu_op_after_step(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state),
         forall|p: RwLockProcessPtr| #![trigger old(krnl).prc_mp.spec_index(p)]
             old(steps).snapshot_k().prc_mp.dom().contains(p) ==> if current_process == Some(p) {
                 old(steps).snapshot_k().prc_mp.spec_index(p).locking_thread() is None
@@ -32,7 +38,7 @@ pub(super) fn schedule_continue(
         kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
-        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         old(krnl).sched_mp.dom().contains(scheduler_ptr),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         cpu_lock_perm.state() is WriteLock,
@@ -125,7 +131,10 @@ pub(super) fn schedule_continue(
         release_cpu_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm));
     }
     proof {
-        assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(old(steps).snapshot_k())) by { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&old(steps).snapshot_k(), &*krnl); };
+        assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(old(steps).snapshot_k())) by {
+            assert(krnl.cpu_op.view().view() =~= old(steps).snapshot_k().cpu_op.view().view());
+            kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&old(steps).snapshot_k(), &*krnl);
+        };
         schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, entry_regs);
     }
 }
@@ -144,15 +153,18 @@ pub(super) fn schedule_lock_current_and_shard(
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(steps).nonlock_view().len() == 0,
-        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, ..old(steps).snapshot_k() }),
-        old(krnl).cpu_arr.unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
+        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_op: old(krnl).cpu_op, ..old(steps).snapshot_k() }),
+        old(krnl).cpu_arr.entries_unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view() == old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view(),
         old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
         old(krnl).cpu_arr.spec_index(cpu_id).value.killer_info() == old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.killer_info(),
+        old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
+        old(steps).snapshot_k().cpu_op.view().view()[cpu_id as int] == cpu_op_after_step(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state),
         kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
-        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         {
             let cpu = old(krnl).cpu_arr.spec_index(cpu_id).view().view().view();
             &&& !(cpu.state is Off)
@@ -303,8 +315,16 @@ pub(super) fn schedule_lock_current_and_shard(
     if let Some(process_ptr) = current_process {
         let res = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
         if res.is_none() {
+            proof {
+                let ghost pre = *krnl;
+                let ghost pre_lctx = *lctx;
+                assert(krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
+                krnl.u_sys_exit(lctx);
+                u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+            }
             krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
             proof {
+                assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
                 steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(process_ptr), None, None, None, None);
                 schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, entry_regs);
             }
@@ -315,8 +335,16 @@ pub(super) fn schedule_lock_current_and_shard(
         let res = krnl.wlock_current_running_thread_unless_killed(thread_ptr, Tracked(&mut *lctx));
         if res.is_none() {
             krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), process_lock_perm.unwrap());
+            proof {
+                let ghost pre = *krnl;
+                let ghost pre_lctx = *lctx;
+                assert(krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
+                krnl.u_sys_exit(lctx);
+                u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+            }
             krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
             proof {
+                assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
                 steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(process_ptr), Some(thread_ptr), None, None, None);
                 schedule_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, entry_regs);
             }

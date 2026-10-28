@@ -26,6 +26,7 @@ pub open spec fn new_container_cpu_transfer_eof_transition_framing(
         &&& after.locking_thread()->Write_thread_id == thread_id
         &&& after.view().view() == CpuView { owning_container: child_container, container_depth: pre.ctn_mp.spec_index(child_container).view_rodata().view().depth, ..before.view().view() }
         &&& after.view().wf()
+        &&& after.view().kernel_call_perm() == before.view().kernel_call_perm()
     }
     &&& post.cpu_set_mp.dom() == pre.cpu_set_mp.dom()
     &&& forall|key: RwLockCpuSetPtr|

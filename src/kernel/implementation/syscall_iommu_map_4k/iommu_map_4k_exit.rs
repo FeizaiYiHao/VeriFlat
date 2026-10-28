@@ -3,6 +3,8 @@ use crate::*;
 use super::syscall_iommu_map_4k_spec::*;
 #[cfg(verus_keep_ghost)]
 use super::syscall_iommu_map_4k_trace::*;
+#[cfg(verus_keep_ghost)]
+use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 /// After the whole range is mapped, clear progress, release the windows and every IOMMU-map lock, and record the exit step;
@@ -49,11 +51,13 @@ pub(super) fn iommu_map_4k_exit(
         k0.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
         k0.thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
         !k0.cpu_arr.spec_index(cpu_id).view().being_killed(),
+        k0.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id),
+        k0.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
         !k0.prc_mp.spec_index(process_ptr).being_killed() && !k0.thr_mp.spec_index(thread_ptr).view_ghost().exited,
         k0.prc_mp.spec_index(process_ptr).view().state.view() is Running || k0.prc_mp.spec_index(process_ptr).view().state.view() is Zombie,
         !(k0.thr_mp.spec_index(thread_ptr).view().state is IPC_TRANSIT) && !(k0.thr_mp.spec_index(thread_ptr).view().state is KILLED),
-        k0.cpu_published[cpu_id as int].view() == (k0.cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, k0.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
-        old(krnl).cpu_published[cpu_id as int].view() == k0.cpu_published[cpu_id as int].view(),
+        k0.cpu_hw_cr3_pcid[cpu_id as int].view() == (k0.cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, k0.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == k0.cpu_hw_cr3_pcid[cpu_id as int].view(),
         k0.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr,
         k0.prc_mp.spec_index(process_ptr).view().iommu_table == Some(iommu_table_ptr),
         cpu_lock_perm.state() is WriteLock && cpu_lock_perm.thread_id() == lctx0.thread_id(),
@@ -122,6 +126,13 @@ pub(super) fn iommu_map_4k_exit(
     krnl.runlock_pagetable(pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
     krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
+    proof {
+        let ghost pre = *krnl;
+        let ghost pre_lctx = *lctx;
+        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
+        krnl.u_sys_exit(lctx);
+        u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+    }
     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         process_thread_wf_at(exit_start.prc_mp, exit_start.thr_mp, thread_ptr);

@@ -3,9 +3,11 @@ use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_seqs_equal, ass
 use crate::*;
 
 verus! {
-/// An unchanged cpu array projects to an unchanged cpu array.
+/// An unchanged cpu array and running state project to an unchanged cpu array.
 pub proof fn kernel_cpu_array_unchanged_implies_u_cpu_array(pre: &KernelK, post: &KernelK)
-    requires post.cpu_arr == pre.cpu_arr,
+    requires
+        post.cpu_arr == pre.cpu_arr,
+        post.cpu_op.view().view() == pre.cpu_op.view().view(),
     ensures kernel_k_to_kernel_u(*post).cpu_array == kernel_k_to_kernel_u(*pre).cpu_array,
 {
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);

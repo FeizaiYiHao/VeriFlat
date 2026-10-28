@@ -11,6 +11,7 @@ pub proof fn kernel_u_cpu_array_projection(krnl: &KernelK)
             lock_state: krnl.cpu_arr.spec_index(c).value.lock_state_u(), owning_container: krnl.cpu_arr.spec_index(c).value.view().view().owning_container,
             state: krnl.cpu_arr.spec_index(c).value.view().view().state, current_process: krnl.cpu_arr.spec_index(c).value.view().view().current_process,
             current_thread: krnl.cpu_arr.spec_index(c).value.view().view().current_thread, killed: krnl.cpu_arr.spec_index(c).value.being_killed(),
+            op: krnl.cpu_op.view().view()[c as int],
         }),
 { reveal(kernel_k_to_kernel_u); }
 
@@ -37,6 +38,7 @@ pub proof fn kernel_snapshot_nonlock_fields_and_lock_states_unchanged_implies_u_
         krnl.irt.view().owners() == steps.snapshot_k().irt.view().owners(),
         krnl.irt.view().iommu_roots() == steps.snapshot_k().irt.view().iommu_roots(),
         krnl.cpu_tlb.view() == steps.snapshot_k().cpu_tlb.view(),
+        krnl.cpu_op.view().view() == steps.snapshot_k().cpu_op.view().view(),
         krnl.iommu_tlb.view() == steps.snapshot_k().iommu_tlb.view(),
         kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), krnl),
         forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)]

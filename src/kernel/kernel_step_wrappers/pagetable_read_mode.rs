@@ -62,8 +62,10 @@ pub proof fn kernel_cpu_thread_wlocked_pagetable_rlocked_and_progress_changed_im
         process_pagetable_match(pre.prc_mp, pre.pt_mp),
         typed_lock_maps_aligned(pre, lctx),
         index_valid(NUM_CPUS, cpu_id),
-        *post == (KernelK { cpu_arr: post.cpu_arr, thr_mp: post.thr_mp, pt_mp: post.pt_mp, pt_lower: post.pt_lower, ..*pre }),
-        post.cpu_arr.unchanged_except(&pre.cpu_arr, cpu_id),
+        *post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, thr_mp: post.thr_mp, pt_mp: post.pt_mp, pt_lower: post.pt_lower, ..*pre }),
+        post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id),
+        post.cpu_arr.spec_index(cpu_id).view().view().view() == pre.cpu_arr.spec_index(cpu_id).view().view().view(),
+        forall|i: CpuId| #![trigger post.cpu_op.view().view()[i as int]] index_valid(NUM_CPUS, i) && i != cpu_id ==> post.cpu_op.view().view()[i as int] == pre.cpu_op.view().view()[i as int],
         post.cpu_arr.spec_index(cpu_id).value.being_killed() == pre.cpu_arr.spec_index(cpu_id).value.being_killed(),
         post.cpu_arr.spec_index(cpu_id).value.locking_thread() is Write,
         pre.thr_mp.dom().contains(thread_ptr),
@@ -106,7 +108,7 @@ pub proof fn kernel_cpu_thread_wlocked_pagetable_rlocked_and_progress_changed_im
             let pre_u = kernel_k_to_kernel_u(*pre);
             let process = pre_u.process_map.spec_index(process_ptr);
             kernel_k_to_kernel_u(*post) == (KernelU {
-                cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre_u.cpu_array[cpu_id as int] }),
+                cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: post.cpu_op.view().view()[cpu_id as int], ..pre_u.cpu_array[cpu_id as int] }),
                 thread_map: pre_u.thread_map.insert(thread_ptr, ThreadU {
                     lock_state: LockStateU::WriteLocked, syscall_progress: post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view(), ..pre_u.thread_map.spec_index(thread_ptr)
                 }),
@@ -125,7 +127,7 @@ pub proof fn kernel_cpu_thread_wlocked_pagetable_rlocked_and_progress_changed_im
     kernel_process_projection_at(pre, process_ptr); kernel_process_projection_at(post, process_ptr);
     assert(typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write) ==> pre.cpu_arr.spec_index(cpu_id).view().wlocked_by_thread(lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
     if typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write) { pre.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr); }
-    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre_u.cpu_array[cpu_id as int] }), i => {
+    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: post.cpu_op.view().view()[cpu_id as int], ..pre_u.cpu_array[cpu_id as int] }), i => {
         if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); }
     });
     assert_maps_equal!(post_u.process_map, pre_u.process_map.insert(process_ptr, ProcessU { pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..process.pagetable->Some_0 }), ..process }), p => {
@@ -151,8 +153,10 @@ pub proof fn kernel_cpu_thread_unlocked_pagetable_runlocked_and_progress_changed
         process_pagetable_match(pre.prc_mp, pre.pt_mp),
         typed_lock_maps_aligned(pre, lctx),
         index_valid(NUM_CPUS, cpu_id),
-        *post == (KernelK { cpu_arr: post.cpu_arr, thr_mp: post.thr_mp, pt_mp: post.pt_mp, pt_lower: post.pt_lower, ..*pre }),
-        post.cpu_arr.unchanged_except(&pre.cpu_arr, cpu_id),
+        *post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, thr_mp: post.thr_mp, pt_mp: post.pt_mp, pt_lower: post.pt_lower, ..*pre }),
+        post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id),
+        post.cpu_arr.spec_index(cpu_id).view().view().view() == pre.cpu_arr.spec_index(cpu_id).view().view().view(),
+        forall|i: CpuId| #![trigger post.cpu_op.view().view()[i as int]] index_valid(NUM_CPUS, i) && i != cpu_id ==> post.cpu_op.view().view()[i as int] == pre.cpu_op.view().view()[i as int],
         post.cpu_arr.spec_index(cpu_id).value.being_killed() == pre.cpu_arr.spec_index(cpu_id).value.being_killed(),
         post.cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
         pre.thr_mp.dom().contains(thread_ptr),
@@ -191,7 +195,7 @@ pub proof fn kernel_cpu_thread_unlocked_pagetable_runlocked_and_progress_changed
             let pre_u = kernel_k_to_kernel_u(*pre);
             let process = pre_u.process_map.spec_index(process_ptr);
             kernel_k_to_kernel_u(*post) == (KernelU {
-                cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre_u.cpu_array[cpu_id as int] }),
+                cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: post.cpu_op.view().view()[cpu_id as int], ..pre_u.cpu_array[cpu_id as int] }),
                 thread_map: pre_u.thread_map.insert(thread_ptr, ThreadU {
                     lock_state: LockStateU::Unlocked, syscall_progress: post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view(), ..pre_u.thread_map.spec_index(thread_ptr)
                 }),
@@ -214,7 +218,7 @@ pub proof fn kernel_cpu_thread_unlocked_pagetable_runlocked_and_progress_changed
     assert(typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write) ==> pre.cpu_arr.spec_index(cpu_id).view().wlocked_by_thread(lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
     if typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write) { pre.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr); }
     if typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Read) { pre.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr); }
-    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre_u.cpu_array[cpu_id as int] }), i => {
+    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: post.cpu_op.view().view()[cpu_id as int], ..pre_u.cpu_array[cpu_id as int] }), i => {
         if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); }
     });
     assert_maps_equal!(post_u.process_map, pre_u.process_map.insert(process_ptr, ProcessU { pagetable: Some(PageTableU { lock_state: table_lock_state, ..process.pagetable->Some_0 }), ..process }), p => {
@@ -524,8 +528,10 @@ pub proof fn kernel_thread_context_wlocked_pagetable_rlocked_and_progress_change
         process_pagetable_match(pre.prc_mp, pre.pt_mp),
         typed_lock_maps_aligned(pre, lctx),
         index_valid(NUM_CPUS, cpu_id),
-        *post == (KernelK { cpu_arr: post.cpu_arr, ctn_mp: post.ctn_mp, prc_mp: post.prc_mp, thr_mp: post.thr_mp, pt_mp: post.pt_mp, pt_lower: post.pt_lower, ..*pre }),
-        post.cpu_arr.unchanged_except(&pre.cpu_arr, cpu_id),
+        *post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, ctn_mp: post.ctn_mp, prc_mp: post.prc_mp, thr_mp: post.thr_mp, pt_mp: post.pt_mp, pt_lower: post.pt_lower, ..*pre }),
+        post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id),
+        post.cpu_arr.spec_index(cpu_id).view().view().view() == pre.cpu_arr.spec_index(cpu_id).view().view().view(),
+        forall|i: CpuId| #![trigger post.cpu_op.view().view()[i as int]] index_valid(NUM_CPUS, i) && i != cpu_id ==> post.cpu_op.view().view()[i as int] == pre.cpu_op.view().view()[i as int],
         post.cpu_arr.spec_index(cpu_id).value.being_killed() == pre.cpu_arr.spec_index(cpu_id).value.being_killed(),
         post.cpu_arr.spec_index(cpu_id).value.locking_thread() is Write,
         post.ctn_mp.unchanged_except(&pre.ctn_mp, container_ptr),
@@ -590,7 +596,7 @@ pub proof fn kernel_thread_context_wlocked_pagetable_rlocked_and_progress_change
             let pre_u = kernel_k_to_kernel_u(*pre);
             let process = pre_u.process_map.spec_index(process_ptr);
             kernel_k_to_kernel_u(*post) == (KernelU {
-                cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre_u.cpu_array[cpu_id as int] }),
+                cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: post.cpu_op.view().view()[cpu_id as int], ..pre_u.cpu_array[cpu_id as int] }),
                 container_map: pre_u.container_map.insert(container_ptr, ContainerU {
                     lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(process.depth)), ..pre_u.container_map.spec_index(container_ptr)
                 }),
@@ -617,7 +623,7 @@ pub proof fn kernel_thread_context_wlocked_pagetable_rlocked_and_progress_change
     if typed_lock_map_contains_mode(lctx.container_lock_map(), container_ptr, TypedLockMode::Write) { pre.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), container_ptr); }
     if typed_lock_map_contains_mode(lctx.process_lock_map(), process_ptr, TypedLockMode::Write) { pre.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), process_ptr); }
     if typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write) { pre.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr); }
-    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre_u.cpu_array[cpu_id as int] }), i => {
+    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: post.cpu_op.view().view()[cpu_id as int], ..pre_u.cpu_array[cpu_id as int] }), i => {
         if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); }
     });
     assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(container_ptr, ContainerU {
@@ -650,8 +656,10 @@ pub proof fn kernel_thread_context_unlocked_pagetable_runlocked_and_progress_cha
         process_pagetable_match(pre.prc_mp, pre.pt_mp),
         typed_lock_maps_aligned(pre, lctx),
         index_valid(NUM_CPUS, cpu_id),
-        *post == (KernelK { cpu_arr: post.cpu_arr, ctn_mp: post.ctn_mp, prc_mp: post.prc_mp, thr_mp: post.thr_mp, pt_mp: post.pt_mp, pt_lower: post.pt_lower, ..*pre }),
-        post.cpu_arr.unchanged_except(&pre.cpu_arr, cpu_id),
+        *post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, ctn_mp: post.ctn_mp, prc_mp: post.prc_mp, thr_mp: post.thr_mp, pt_mp: post.pt_mp, pt_lower: post.pt_lower, ..*pre }),
+        post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id),
+        post.cpu_arr.spec_index(cpu_id).view().view().view() == pre.cpu_arr.spec_index(cpu_id).view().view().view(),
+        forall|i: CpuId| #![trigger post.cpu_op.view().view()[i as int]] index_valid(NUM_CPUS, i) && i != cpu_id ==> post.cpu_op.view().view()[i as int] == pre.cpu_op.view().view()[i as int],
         post.cpu_arr.spec_index(cpu_id).value.being_killed() == pre.cpu_arr.spec_index(cpu_id).value.being_killed(),
         post.cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
         post.ctn_mp.unchanged_except(&pre.ctn_mp, container_ptr),
@@ -709,7 +717,7 @@ pub proof fn kernel_thread_context_unlocked_pagetable_runlocked_and_progress_cha
             let pre_u = kernel_k_to_kernel_u(*pre);
             let process = pre_u.process_map.spec_index(process_ptr);
             kernel_k_to_kernel_u(*post) == (KernelU {
-                cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre_u.cpu_array[cpu_id as int] }),
+                cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: post.cpu_op.view().view()[cpu_id as int], ..pre_u.cpu_array[cpu_id as int] }),
                 container_map: pre_u.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..pre_u.container_map.spec_index(container_ptr) }),
                 process_map: pre_u.process_map.insert(process_ptr, ProcessU {
                     lock_state: LockStateU::Unlocked, pagetable: Some(PageTableU { lock_state: post.pt_mp.spec_index(pagetable_ptr).lock_state_u(), ..process.pagetable->Some_0 }), ..process
@@ -736,7 +744,7 @@ pub proof fn kernel_thread_context_unlocked_pagetable_runlocked_and_progress_cha
     if typed_lock_map_contains_mode(lctx.process_lock_map(), process_ptr, TypedLockMode::Write) { pre.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), process_ptr); }
     if typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write) { pre.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr); }
     if typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Read) { pre.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr); }
-    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre_u.cpu_array[cpu_id as int] }), i => {
+    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: post.cpu_op.view().view()[cpu_id as int], ..pre_u.cpu_array[cpu_id as int] }), i => {
         if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); }
     });
     assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..pre_u.container_map.spec_index(container_ptr) }), c => {

@@ -326,12 +326,12 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
     }
     let pcid_needflush: PcidNeedFlushArray = ptr::read(needflush_base as *const PcidNeedFlushArray);
 
-    // 5. Default page table and the published per-cpu contexts.
+    // 5. Default page table and the per-cpu hardware cr3/pcid words.
     let default_pagetable = ReadOnlyNode::new(
         PageTable::new(Some(KERNEL_DEFAULT_PCID), Ghost::assume_new(), kernel_pml4, Tracked::assume_new(), KERNEL_MEM_END_L4INDEX, 0),
         Ghost::assume_new(),
     );
-    let cpu_published: CpuPublishedArray =
+    let cpu_hw_cr3_pcid: CpuHwCr3PcidArray =
         core::array::from_fn(|_| AtomicPcidCr3::new(kernel_pml4, KERNEL_DEFAULT_PCID, Ghost::assume_new()));
 
     // 6. The root thread's first frame.
@@ -349,7 +349,7 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
 
     let free_1g_pool: FreePool = LinkedList::new(Some(0), Some(root_container));
     let _ = finish_init_from_boot(
-        layout, KERNEL_MEM_END_L4INDEX, &initial_regs, page_array, pcid_needflush, cpu_published, default_pagetable,
+        layout, KERNEL_MEM_END_L4INDEX, &initial_regs, page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
         free_4k_pool, free_2m_pool, free_1g_pool,
         Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(), Ghost::assume_new(),
         Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(),

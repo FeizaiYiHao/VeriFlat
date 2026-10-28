@@ -46,7 +46,7 @@ pub fn reclaim_unmapped_iommu_4k_page(
     ensures
         final(steps).view() == old(steps).view(),
         final(steps).snapshot_k() == *final(krnl),
-        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
+        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
         final(krnl).inv(),
         iommu_table_tlb_entries_present(final(krnl).iommu_tlb, final(krnl).irt.view(), final(krnl).it_mp, iommu_table),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -158,7 +158,7 @@ pub fn reclaim_detached_iommu_4k_page(
         kernel_cpu_process_thread_nonlock_fields_unchanged(&final(steps).snapshot_k(), &KernelK { it_mp: final(steps).snapshot_k().it_mp, ..*final(krnl) }),
         kernel_endpoint_nonlock_fields_unchanged(final(steps).snapshot_k().ep_mp, final(krnl).ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(&final(steps).snapshot_k(), final(krnl)),
-        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
+        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),

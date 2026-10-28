@@ -25,7 +25,7 @@ pub fn mark_pcid_needflush_and_load(krnl: &mut KernelK, cpu_id: CpuId, pcid: Pci
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Release,
         *final(krnl) == (KernelK { pcid_needflush: final(krnl).pcid_needflush, ..*old(krnl) }),
-        ret == final(krnl).cpu_published[cpu_id as int].view(),
+        ret == final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         page_ptr_valid(ret.0),
         pcid_valid(ret.1),
         cpu_id != final(lctx).cpu_id() && final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid ==> ret == (final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, pcid),
@@ -38,7 +38,7 @@ pub fn mark_pcid_needflush_and_load(krnl: &mut KernelK, cpu_id: CpuId, pcid: Pci
 {
     krnl.mark_pcid_needflush(cpu_id, pcid, Tracked(&*lctx), needflush_perm);
     assert(krnl.pcid_needflush.lock_id_by_index(cpu_id, pcid) == old(krnl).pcid_needflush.lock_id_by_index(cpu_id, pcid)) by { pcid_needflush_wf_at(old(krnl).pcid_needflush, cpu_id, pcid); pcid_needflush_wf_at(krnl.pcid_needflush, cpu_id, pcid); };
-    krnl.load_published_pcid_cr3(cpu_id, Tracked(&mut *lctx))
+    krnl.load_hw_cr3_pcid(cpu_id, Tracked(&mut *lctx))
 }
 
 pub fn flush_remote_pcid_and_clear(krnl: &mut KernelK, cpu_id: CpuId, pcid: Pcid, Tracked(lctx): Tracked<&LocalContext>, needflush_perm: Tracked<&LockPerm>)

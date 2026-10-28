@@ -110,7 +110,7 @@ pub(super) proof fn thread_exit_enter_step_from_u(
         pre.thread_map[thread_ptr].caller == caller,
         caller matches Some(caller_ptr) ==> (pre.thread_map[caller_ptr].state is DANGLING) == dangling,
         locked == (KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre.cpu_array[cpu_id as int] }),
+            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
             container_map: pre.container_map.insert(container_ptr, ContainerU {
                 lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(pre.process_map[process_ptr].depth)), ..pre.container_map[container_ptr]
             }),
@@ -281,7 +281,7 @@ pub(super) proof fn thread_exit_finish_step_from_u(
         pre.cpu_array[cpu_id as int].current_process == Some(process_ptr),
         pre.cpu_array[cpu_id as int].owning_container == container_ptr,
         kernel_u_thread_exit_changed(KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre.cpu_array[cpu_id as int] }),
+            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: CpuOpState::Trap, ..pre.cpu_array[cpu_id as int] }),
             container_map: pre.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..pre.container_map[container_ptr] }),
             process_map: pre.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::Unlocked, ..pre.process_map[process_ptr] }),
             ..pre

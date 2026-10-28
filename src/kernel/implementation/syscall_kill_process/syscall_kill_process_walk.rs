@@ -35,15 +35,16 @@ pub open spec fn kill_walk_state(
 }
 
 /// The killer `thread_ptr` of process `process_ptr`, running on `cpu_id`, works at `stage` on `chain`, the marked
-/// processes of `scope` from its first marked process down to the target. It write-holds its cpu, its process, and
-/// itself with `cpu_perm`, `process_perm`, and `thread_perm`, and every process on the chain with `chain_perms`, and no cpu
-/// set. A held process other than the killer's sits on the chain at its depth below the chain's base depth: the depth
-/// below the subtree's process, or the root depth of the victim container. The killer's process is running; every chain process
-/// lies in the subtree of the scope's process or is owned by the victim container, is being killed or a zombie, and the
-/// target may also have emptied tables at stage `Zombie`. The chain starts at a child of the scope's process or at the
-/// victim container's root process. A subtree hangs below the killer's process, which lies in its cpu's container; a
-/// victim container is marked, write-held, and below the killer's cpu's container, which the killer write-holds too, and
-/// every other container the killer holds is marked, by the killer's process.
+/// processes of `scope` from its first marked process down to the target. It write-holds its cpu, inside its kernel
+/// step, its process, and itself with `cpu_perm`, `process_perm`, and `thread_perm`, and every process on the chain
+/// with `chain_perms`, and no cpu set. A held process other than the killer's sits on the chain at its depth below the
+/// chain's base depth: the depth below the subtree's process, or the root depth of the victim container. The killer's
+/// process is running; every chain process lies in the subtree of the scope's process or is owned by the victim
+/// container, is being killed or a zombie, and the target may also have emptied tables at stage `Zombie`. The chain
+/// starts at a child of the scope's process or at the victim container's root process. A subtree hangs below the
+/// killer's process, which lies in its cpu's container; a victim container is marked, write-held, and below the
+/// killer's cpu's container, which the killer write-holds too, and every other container the killer holds is marked, by
+/// the killer's process.
 pub open spec fn kill_chain_state(
     k: KernelK, lctx: LocalContext, cpu_id: CpuId, scope: KillScope, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, chain: Seq<RwLockProcessPtr>,
     stage: KillStage, cpu_perm: LockPerm, process_perm: LockPerm, thread_perm: LockPerm, chain_perms: Map<RwLockProcessPtr, LockPerm>,
@@ -58,7 +59,8 @@ pub open spec fn kill_chain_state(
     &&& lctx.cpu_set_lock_map().dom().is_empty()
     &&& k.prc_mp.dom().contains(process_ptr)
     &&& k.thr_mp.dom().contains(thread_ptr)
-    &&& k.cpu_published[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
+    &&& k.cpu_hw_cr3_pcid[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
+    &&& k.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None
     &&& cpu.process_depth == depth
     &&& cpu.container_depth == process.view_rodata().view().container_depth
     &&& !k.cpu_arr.spec_index(cpu_id).view().being_killed()

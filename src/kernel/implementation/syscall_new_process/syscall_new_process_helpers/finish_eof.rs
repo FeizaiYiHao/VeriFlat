@@ -13,7 +13,7 @@ pub(super) open spec fn create_initial_thread_and_finish_new_process_eof_transit
     &&& kernel_new_thread_fields(&pre, &mid, child_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, None,
         pre.thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view())
     &&& post == (KernelK { it_mp: post.it_mp, prc_mp: post.prc_mp, pt_mp: post.pt_mp, pt_lower: post.pt_lower, pg_arr: post.pg_arr, sched_mp: post.sched_mp, thr_mp: post.thr_mp, ep_mp: post.ep_mp,
-        cpu_arr: post.cpu_arr, ..mid })
+        cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, ..mid })
     &&& post.pt_mp.dom() == mid.pt_mp.dom()
     &&& kernel_pagetable_nonlock_fields_unchanged(mid.pt_mp, mid.pt_lower.view(), post.pt_mp, post.pt_lower.view())
     &&& post.it_mp.dom() == mid.it_mp.dom()

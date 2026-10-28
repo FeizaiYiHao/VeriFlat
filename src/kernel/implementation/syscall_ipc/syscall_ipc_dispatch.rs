@@ -59,14 +59,16 @@ verus! {
             old(lctx).kernel_view_locking_state() is Acquire,
             old(steps).nonlock_view().len() == 0,
             typed_lock_maps_aligned(old(krnl), old(lctx)),
-            *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, thr_mp: old(krnl).thr_mp, ..old(steps).snapshot_k() }),
-            old(krnl).cpu_arr.unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
+            *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_op: old(krnl).cpu_op, thr_mp: old(krnl).thr_mp, ..old(steps).snapshot_k() }),
+            old(krnl).cpu_arr.entries_unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
+            old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
+            old(steps).snapshot_k().cpu_op.view().view()[cpu_id as int] is Trap,
             old(krnl).thr_mp.unchanged_except(&old(steps).snapshot_k().thr_mp, current_thread_ptr),
             old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
             old(steps).snapshot_k().thr_mp.spec_index(current_thread_ptr).locking_thread() is None,
             old(steps).snapshot_k().thr_mp.dom().contains(current_thread_ptr) && !old(steps).snapshot_k().thr_mp.spec_index(current_thread_ptr).being_killed(),
             !old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().being_killed() && !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
-            old(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view(),
+            old(krnl).cpu_arr.spec_index(cpu_id).view().view().view() == old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view(),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view() == old(steps).snapshot_k().thr_mp.spec_index(current_thread_ptr).view(),
             kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
             kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
@@ -92,7 +94,7 @@ verus! {
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is None,
             !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
             waiting_state is RECEIVING_CALL ==> (old(krnl).thr_mp.spec_index(current_thread_ptr).view().caller is Some) == expect_caller,
-            old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+            old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
             old(lctx).page_lock_map().dom().is_empty(),
             old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
             old(lctx).container_lock_map().dom().is_empty(),
@@ -162,8 +164,9 @@ verus! {
                 let endpoint = final(krnl).ep_mp.spec_index(e.endpoint_ptr).view();
                 &&& *final(steps) == *old(steps)
                 &&& final(lctx).kernel_view_locking_state() is Acquire
-                &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, thr_mp: final(krnl).thr_mp, ep_mp: final(krnl).ep_mp, ..old(steps).snapshot_k() })
-                &&& final(krnl).cpu_arr.unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id)
+                &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, thr_mp: final(krnl).thr_mp, ep_mp: final(krnl).ep_mp, ..old(steps).snapshot_k() })
+                &&& final(krnl).cpu_arr.entries_unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id)
+                &&& final(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep)
                 &&& final(krnl).thr_mp.unchanged_except(&old(steps).snapshot_k().thr_mp, e.current_thread_ptr)
                 &&& final(krnl).ep_mp.unchanged_except(&old(steps).snapshot_k().ep_mp, e.endpoint_ptr)
                 &&& old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.locking_thread() is None
@@ -218,8 +221,8 @@ verus! {
                 &&& thread.endpoint_descriptors.wf() && thread.endpoint_descriptors.spec_index(endpoint_index) == Some(e.endpoint_ptr)
                 &&& thread.free_quota_pending_clean() && thread.temp_alloc_clean() && thread.syscall_progress.view() is None
                 &&& !final(krnl).thr_mp.spec_index(e.current_thread_ptr).view_ghost().exited
-                &&& final(krnl).cpu_published[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
-                &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view()
+                &&& final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
+                &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view() == old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view()
                 &&& !endpoint.queue.view().contains(e.current_thread_ptr)
                 &&& e.queue_len == endpoint.queue.len() && e.queue_is_send == (endpoint.queue_state is SEND)
                 &&& (e.queue_len == 0 || e.queue_is_send == waiting_state.is_endpoint_send_waiting()) ==> blocking
@@ -288,6 +291,7 @@ verus! {
             }
             release_cpu_and_thread_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, current_thread_ptr, Tracked(current_thread_lock_perm), Tracked(cpu_lock_perm));
             proof {
+                assert(krnl.cpu_op.view().view() =~= old(steps).snapshot_k().cpu_op.view().view());
                 assert(kernel_k_to_kernel_u(old(steps).snapshot_k()) == kernel_k_to_kernel_u(*krnl)) by {
                     kernel_restored_locks_implies_u_eq(&old(steps).snapshot_k(), &*krnl, cpu_id, None, None, Some(current_thread_ptr), Some(endpoint_ptr), None);
                 };
@@ -350,6 +354,7 @@ verus! {
             },
             old(krnl).inv(),
             old(lctx).kernel_view_locking_state() is Acquire,
+            old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
             old(lctx).no_locks_held(),
             old(steps).nonlock_view().len() == 0,
             old(steps).snapshot_k() == *old(krnl),
@@ -411,8 +416,9 @@ verus! {
                 let endpoint = final(krnl).ep_mp.spec_index(e.endpoint_ptr).view();
                 &&& *final(steps) == *old(steps)
                 &&& final(lctx).kernel_view_locking_state() is Acquire
-                &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, thr_mp: final(krnl).thr_mp, ep_mp: final(krnl).ep_mp, ..*old(krnl) })
-                &&& final(krnl).cpu_arr.unchanged_except(&old(krnl).cpu_arr, cpu_id)
+                &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, thr_mp: final(krnl).thr_mp, ep_mp: final(krnl).ep_mp, ..*old(krnl) })
+                &&& final(krnl).cpu_arr.entries_unchanged_except(&old(krnl).cpu_arr, cpu_id)
+                &&& final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep)
                 &&& final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, e.current_thread_ptr)
                 &&& final(krnl).ep_mp.unchanged_except(&old(krnl).ep_mp, e.endpoint_ptr)
                 &&& old(krnl).cpu_arr.spec_index(cpu_id).value.locking_thread() is None
@@ -467,8 +473,8 @@ verus! {
                 &&& thread.endpoint_descriptors.wf() && thread.endpoint_descriptors.spec_index(endpoint_index) == Some(e.endpoint_ptr)
                 &&& thread.free_quota_pending_clean() && thread.temp_alloc_clean() && thread.syscall_progress.view() is None
                 &&& !final(krnl).thr_mp.spec_index(e.current_thread_ptr).view_ghost().exited
-                &&& final(krnl).cpu_published[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
-                &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view()
+                &&& final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
+                &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view()
                 &&& !endpoint.queue.view().contains(e.current_thread_ptr)
                 &&& e.queue_len == endpoint.queue.len() && e.queue_is_send == (endpoint.queue_state is SEND)
                 &&& (e.queue_len == 0 || e.queue_is_send == waiting_state.is_endpoint_send_waiting()) ==> blocking
@@ -557,6 +563,7 @@ verus! {
             proof { assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; }; }
             release_cpu_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm));
             proof {
+                assert(krnl.cpu_op.view().view() =~= old(steps).snapshot_k().cpu_op.view().view());
                 assert(kernel_k_to_kernel_u(old(steps).snapshot_k()) == kernel_k_to_kernel_u(*krnl)) by { kernel_restored_locks_implies_u_eq(&old(steps).snapshot_k(), &*krnl, cpu_id, None, None, Some(current_thread_ptr), None, None); };
             }
             proof {
@@ -580,6 +587,7 @@ verus! {
         if receives_call && current_thread_ref.caller.is_some() != expect_caller {
             release_cpu_and_thread_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, current_thread_ptr, Tracked(current_thread_lock_perm), Tracked(cpu_lock_perm));
             proof {
+                assert(krnl.cpu_op.view().view() =~= old(steps).snapshot_k().cpu_op.view().view());
                 assert(kernel_k_to_kernel_u(old(steps).snapshot_k()) == kernel_k_to_kernel_u(*krnl)) by { kernel_restored_locks_implies_u_eq(&old(steps).snapshot_k(), &*krnl, cpu_id, None, None, Some(current_thread_ptr), None, None); };
                 ipc_syscall_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, endpoint_index,
                     waiting_state, payload, *pt_regs, ipc_block_flushes_default_pcid(*old(krnl), cpu_id), RetValueType::ErrorReplyOutOfPhase);
@@ -593,6 +601,7 @@ verus! {
             None => {
                 release_cpu_and_thread_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, current_thread_ptr, Tracked(current_thread_lock_perm), Tracked(cpu_lock_perm));
                 proof {
+                    assert(krnl.cpu_op.view().view() =~= old(steps).snapshot_k().cpu_op.view().view());
                     assert(kernel_k_to_kernel_u(old(steps).snapshot_k()) == kernel_k_to_kernel_u(*krnl)) by { kernel_restored_locks_implies_u_eq(&old(steps).snapshot_k(), &*krnl, cpu_id, None, None, Some(current_thread_ptr), None, None); };
                 }
                 proof {
@@ -618,6 +627,7 @@ verus! {
         requires
             index_valid(NUM_CPUS, cpu_id),
             cpu_id == old(lctx).cpu_id(),
+            old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
             edp_idx_valid(endpoint_index),
             waiting_state is SENDING || waiting_state is RECEIVING,
             blocking || payload is Empty,
@@ -788,6 +798,8 @@ verus! {
                 } else { old(krnl).cpu_arr.spec_index(i).value.locking_thread() == old(steps).snapshot_k().cpu_arr.spec_index(i).value.locking_thread() },
             index_valid(NUM_CPUS, cpu_id),
             cpu_id == old(lctx).cpu_id(),
+            old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
+            old(steps).snapshot_k().cpu_op.view().view()[cpu_id as int] is Trap,
             edp_idx_valid(endpoint_index),
             old(lctx).kernel_view_locking_state() is Acquire,
             kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
@@ -821,7 +833,7 @@ verus! {
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_proc == process_ptr,
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_container == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
-            old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+            old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.wf(),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
@@ -1084,6 +1096,8 @@ verus! {
                 } else { old(krnl).cpu_arr.spec_index(i).value.locking_thread() == old(steps).snapshot_k().cpu_arr.spec_index(i).value.locking_thread() },
             index_valid(NUM_CPUS, cpu_id),
             cpu_id == old(lctx).cpu_id(),
+            old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
+            old(steps).snapshot_k().cpu_op.view().view()[cpu_id as int] is Trap,
             edp_idx_valid(endpoint_index),
             old(lctx).kernel_view_locking_state() is Acquire,
             kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
@@ -1117,7 +1131,7 @@ verus! {
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_proc == process_ptr,
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().owning_container == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
-            old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+            old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.wf(),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == Some(endpoint_ptr),
             old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
@@ -1258,6 +1272,7 @@ verus! {
             }
             release_cpu_and_thread_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, current_thread_ptr, Tracked(current_thread_lock_perm), Tracked(cpu_lock_perm));
             proof {
+                assert(krnl.cpu_op.view().view() =~= old(steps).snapshot_k().cpu_op.view().view());
                 assert(kernel_k_to_kernel_u(old(steps).snapshot_k()) == kernel_k_to_kernel_u(*krnl)) by {
                     broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive, group_kernel_endpoint_nonlock_fields_unchanged_transitive;
                     kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&old(steps).snapshot_k(), &*krnl);

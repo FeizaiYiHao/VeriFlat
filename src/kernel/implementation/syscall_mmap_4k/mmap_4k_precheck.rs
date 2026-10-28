@@ -63,6 +63,7 @@ pub(super) enum Mmap4kPrecheck {
             },
             ret.0 is InUse && ret.1@ is None ==> pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).spec_mapping_4k_range_empty(spec_va2index(range.start),
                 spec_va2index(range.view().spec_index((range.len - 1) as int))),
+            ret.0 is InUse && ret.1@ is None ==> pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).spec_mapping_4k_va_range_empty(range.start, range.view().spec_index((range.len - 1) as int)),
     {
         let range_len = range.len;
         let range_start = range.start;

@@ -1,5 +1,9 @@
 use vstd::prelude::*;
 use crate::*;
+#[cfg(all(feature = "split-crates", verus_keep_ghost))]
+use veriflat_kernel_core::kernel::implementation::locker_unlocker::u_sys_exit_eof;
+#[cfg(all(not(feature = "split-crates"), verus_keep_ghost))]
+use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 use super::syscall_new_thread_spec::*;
 use super::syscall_new_thread_trace::*;
 #[cfg(feature = "split-crates")]
@@ -25,8 +29,9 @@ pub(super) fn finish_new_thread_commit(
         cpu_id == old(lctx).cpu_id(),
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state == CpuState::Running,
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
@@ -112,6 +117,13 @@ pub(super) fn finish_new_thread_commit(
     krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(None), Tracked(&*lctx), Tracked(&current_thread_lock_perm));
     krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
     krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
+    proof {
+        let ghost pre = *krnl;
+        let ghost pre_lctx = *lctx;
+        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep && krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
+        krnl.u_sys_exit(lctx);
+        u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+    }
     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         let ghost finish_k = steps.snapshot_k();

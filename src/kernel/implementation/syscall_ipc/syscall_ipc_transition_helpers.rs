@@ -4,6 +4,8 @@ use super::syscall_ipc_spec::*;
 use super::syscall_ipc_trace::*;
 use super::syscall_ipc_queue::{ipc_dequeue_endpoint_waiter, ipc_schedule_endpoint_waiter};
 #[cfg(verus_keep_ghost)]
+use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
+#[cfg(verus_keep_ghost)]
 use super::syscall_ipc_transition_spec::{ipc_block_current_eof_transition_framing, ipc_schedule_waiting_peer_eof_transition_framing};
 #[cfg(verus_keep_ghost)]
 use super::syscall_ipc_transition_eof::ipc_schedule_waiting_peer_eof;
@@ -158,8 +160,9 @@ pub(super) fn ipc_block_current_release_and_end_step(
     Tracked(needflush_perm): Tracked<LockPerm>,
 )
     requires
-        entry_k == (KernelK { cpu_arr: entry_k.cpu_arr, thr_mp: entry_k.thr_mp, ep_mp: entry_k.ep_mp, ..old(steps).snapshot_k() }),
-        entry_k.cpu_arr.unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
+        entry_k == (KernelK { cpu_arr: entry_k.cpu_arr, cpu_op: entry_k.cpu_op, thr_mp: entry_k.thr_mp, ep_mp: entry_k.ep_mp, ..old(steps).snapshot_k() }),
+        entry_k.cpu_arr.entries_unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
+        entry_k.cpu_arr.spec_index(cpu_id).view().view().view() == old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view(),
         entry_k.thr_mp.unchanged_except(&old(steps).snapshot_k().thr_mp, current_thread_ptr),
         entry_k.ep_mp.unchanged_except(&old(steps).snapshot_k().ep_mp, endpoint_ptr),
         old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
@@ -198,13 +201,15 @@ pub(super) fn ipc_block_current_release_and_end_step(
         old(krnl).inv(),
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
+        old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Idle,
         edp_idx_valid(endpoint_index),
         waiting_state.is_endpoint_waiting(),
         old(lctx).kernel_view_locking_state() is Release,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == KERNEL_DEFAULT_PCID,
-        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         old(krnl).thr_mp.dom().contains(current_thread_ptr),
         old(krnl).thr_mp.spec_index(current_thread_ptr).being_killed() == false,
         !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
@@ -278,8 +283,16 @@ pub(super) fn ipc_block_current_release_and_end_step(
     krnl.wunlock_pcid_needflush(cpu_id, KERNEL_DEFAULT_PCID, Tracked(&mut *lctx), Tracked(needflush_perm));
     krnl.wunlock_endpoint(endpoint_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
     krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
+    proof {
+        let ghost pre = *krnl;
+        let ghost pre_lctx = *lctx;
+        assert(krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
+        krnl.u_sys_exit(lctx);
+        u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+    }
     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
+        assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::Idle));
         let ghost flushed = ipc_block_flushes_default_pcid(entry_k, cpu_id);
         assert(kernel_ipc_block_fields(&steps.snapshot_k(), &*krnl, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, payload, *pt_regs, flushed) && krnl.ctn_mp == steps.snapshot_k().ctn_mp) by {
             reveal(kernel_ipc_block_fields); reveal(ipc_block_current_eof_transition_framing);

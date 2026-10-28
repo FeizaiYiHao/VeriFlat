@@ -18,7 +18,7 @@ pub open spec fn ipc_block_current_eof_transition_framing(
     let cpu_after = post.cpu_arr.spec_index(cpu_id).view();
     let flush_before = pre.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID);
     let flush_after = post.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID);
-    &&& post == (KernelK { cpu_arr: post.cpu_arr, thr_mp: post.thr_mp, ep_mp: post.ep_mp, cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, cpu_published: post.cpu_published, ..pre })
+    &&& post == (KernelK { cpu_arr: post.cpu_arr, thr_mp: post.thr_mp, ep_mp: post.ep_mp, cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, ..pre })
     &&& post.thr_mp.unchanged_except(&pre.thr_mp, current_thread_ptr)
     &&& thread_after.locking_thread() == thread_before.locking_thread()
     &&& thread_after.being_killed() == thread_before.being_killed()
@@ -63,6 +63,7 @@ pub open spec fn ipc_block_current_eof_transition_framing(
     &&& cpu_after.killer_info() == cpu_before.killer_info()
     &&& cpu_after.view_rodata() == cpu_before.view_rodata()
     &&& cpu_after.view_ghost() == cpu_before.view_ghost()
+    &&& cpu_after.view().kernel_call_perm() == cpu_before.view().kernel_call_perm()
     &&& cpu_after.view().view() == (CpuView { state: CpuState::Idle, current_process: None, current_thread: None, current_pagetable: None, current_cr3: default_cr3, current_pcid: KERNEL_DEFAULT_PCID, ..cpu_before.view().view() })
     &&& post.cpu_tlb.view() == if flush_before.view().needflush { pre.cpu_tlb.view().insert((cpu_id, KERNEL_DEFAULT_PCID), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }) } else { pre.cpu_tlb.view() }
     &&& forall|c: CpuId, p: Pcid| #![trigger post.cpu_tlb.spec_index((c, p))] #![trigger pre.cpu_tlb.spec_index((c, p))]
@@ -77,10 +78,10 @@ pub open spec fn ipc_block_current_eof_transition_framing(
     &&& flush_after.being_killed() == flush_before.being_killed()
     &&& forall|c: CpuId, p: Pcid| #![trigger post.pcid_needflush.spec_index(c, p)] #![trigger pre.pcid_needflush.spec_index(c, p)]
         index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != KERNEL_DEFAULT_PCID) ==> post.pcid_needflush.spec_index(c, p) == pre.pcid_needflush.spec_index(c, p)
-    &&& post.cpu_published[cpu_id as int].view() == (default_cr3, KERNEL_DEFAULT_PCID)
-    &&& post.cpu_published[cpu_id as int].owner_cpu() == pre.cpu_published[cpu_id as int].owner_cpu()
-    &&& forall|c: CpuId| #![trigger post.cpu_published[c as int]] #![trigger pre.cpu_published[c as int]]
-        index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_published[c as int] == pre.cpu_published[c as int]
+    &&& post.cpu_hw_cr3_pcid[cpu_id as int].view() == (default_cr3, KERNEL_DEFAULT_PCID)
+    &&& post.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu() == pre.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu()
+    &&& forall|c: CpuId| #![trigger post.cpu_hw_cr3_pcid[c as int]] #![trigger pre.cpu_hw_cr3_pcid[c as int]]
+        index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_hw_cr3_pcid[c as int] == pre.cpu_hw_cr3_pcid[c as int]
 }
 
 /// Dequeues the endpoint waiter and schedules it on `wake_cpu`; no other object changes.
@@ -99,12 +100,13 @@ pub open spec fn ipc_schedule_waiting_peer_eof_transition_framing(
     &&& post.cpu_arr == pre.cpu_arr
     &&& post.cpu_set_mp == pre.cpu_set_mp
     &&& post.pcid_needflush == pre.pcid_needflush
-    &&& post.cpu_published == pre.cpu_published
+    &&& post.cpu_hw_cr3_pcid == pre.cpu_hw_cr3_pcid
     &&& post.pcid_allc_mp == pre.pcid_allc_mp
     &&& post.allc_4k_mp == pre.allc_4k_mp
     &&& post.allc_2m_mp == pre.allc_2m_mp
     &&& post.allc_1g_mp == pre.allc_1g_mp
     &&& post.cpu_offline_mp == pre.cpu_offline_mp
+    &&& post.cpu_op == pre.cpu_op
     &&& post.cpu_tlb == pre.cpu_tlb
     &&& post.iommu_tlb == pre.iommu_tlb
     &&& post.rt_ctn == pre.rt_ctn

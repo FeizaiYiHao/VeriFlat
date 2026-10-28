@@ -1,5 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
+#[cfg(verus_keep_ghost)]
+use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 /// With the `(cpu_id, pcid)` needflush cell, `next_thread`, shard `cpu_id` of `scheduler_ptr`, the live `current_thread` and
@@ -13,12 +15,14 @@ pub(super) fn schedule_switch_release_locks(
     requires
         old(krnl).inv(),
         index_valid(NUM_CPUS, cpu_id),
+        cpu_id == old(lctx).cpu_id(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
         pcid_valid(pcid),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(krnl).sched_mp.dom().contains(scheduler_ptr),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid,
-        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, pcid),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, pcid),
         old(krnl).thr_mp.dom().contains(next_thread),
         !old(krnl).thr_mp.spec_index(next_thread).being_killed(),
         old(krnl).thr_mp.spec_index(next_thread).view().state == (ThreadState::RUNNING { cpu_id }),
@@ -115,10 +119,17 @@ pub(super) fn schedule_switch_release_locks(
         final(lctx).no_locks_held(),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, pcid_needflush: final(krnl).pcid_needflush, sched_mp: final(krnl).sched_mp, thr_mp: final(krnl).thr_mp, prc_mp: final(krnl).prc_mp, ..*old(krnl) }),
+        *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, pcid_needflush: final(krnl).pcid_needflush, sched_mp: final(krnl).sched_mp, thr_mp: final(krnl).thr_mp, prc_mp: final(krnl).prc_mp, ..*old(krnl) }),
+        final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view().update(cpu_id as int, cpu_op_after_step(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state)),
         kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
-        final(krnl).cpu_arr.unchanged_except(&old(krnl).cpu_arr, cpu_id),
-        wunlock_ensures(old(krnl).cpu_arr.spec_index(cpu_id).view(), final(krnl).cpu_arr.spec_index(cpu_id).view()),
+        final(krnl).cpu_arr.entries_unchanged_except(&old(krnl).cpu_arr, cpu_id),
+        ({
+            let pre = old(krnl).cpu_arr.spec_index(cpu_id).view();
+            let post = final(krnl).cpu_arr.spec_index(cpu_id).view();
+            &&& post.locking_thread() == RwLockState::None
+            &&& post.view().view() == pre.view().view()
+            &&& post.killer_info() == pre.killer_info()
+        }),
         final(krnl).prc_mp.dom() == old(krnl).prc_mp.dom(),
         forall|p: RwLockProcessPtr| #![trigger final(krnl).prc_mp.spec_index(p)]
             old(krnl).prc_mp.dom().contains(p) ==> if current_process == Some(p) {
@@ -138,6 +149,13 @@ pub(super) fn schedule_switch_release_locks(
     krnl.wunlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));
     if let Some(perm) = current_thread_lock_perm { krnl.wunlock_thread(current_thread.unwrap(), Tracked(&mut *lctx), perm); }
     if let Some(perm) = process_lock_perm { krnl.wunlock_process(current_process.unwrap(), Tracked(&mut *lctx), perm); }
+    proof {
+        let ghost pre = *krnl;
+        let ghost pre_lctx = *lctx;
+        assert(krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
+        krnl.u_sys_exit(lctx);
+        u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+    }
     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
 }

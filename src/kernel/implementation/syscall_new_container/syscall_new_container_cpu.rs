@@ -16,7 +16,7 @@ pub(super) fn transfer_new_container_cpu(
     requires
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        old(krnl).cpu_published[transfer_cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_hw_cr3_pcid[transfer_cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view().view().current_pcid),
         parent_container_ptr != child_container_ptr,
         old(krnl).ctn_mp.dom().contains(parent_container_ptr),
         old(krnl).ctn_mp.dom().contains(child_container_ptr),
@@ -27,6 +27,8 @@ pub(super) fn transfer_new_container_cpu(
         typed_lock_map_contains_mode(old(lctx).cpu_set_lock_map(), parent_cpu_set, TypedLockMode::Write),
         typed_lock_map_contains_mode(old(lctx).cpu_set_lock_map(), child_cpu_set, TypedLockMode::Write),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), transfer_cpu_id, TypedLockMode::Write),
+        old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view_ghost() == Some(old(lctx).cpu_id()),
+        transfer_cpu_id != old(lctx).cpu_id(),
         transfer_cpu_lock_perm.state() is WriteLock,
         transfer_cpu_lock_perm.thread_id() == old(lctx).thread_id(),
         transfer_cpu_lock_perm.lock_id() == old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().locking_thread()->Write_lock_id,

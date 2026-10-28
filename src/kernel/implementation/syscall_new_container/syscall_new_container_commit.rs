@@ -22,11 +22,12 @@ pub(super) fn commit_new_container(
 ) -> (ret: (RwLockContainerPtr, RwLockProcessPtr, RwLockThreadPtr))
     requires
         index_valid(NUM_CPUS, caller_cpu_id),
-        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, ctn_mp: old(krnl).ctn_mp, prc_mp: old(krnl).prc_mp,
+        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_op: old(krnl).cpu_op, ctn_mp: old(krnl).ctn_mp, prc_mp: old(krnl).prc_mp,
             thr_mp: old(krnl).thr_mp, ep_mp: old(krnl).ep_mp, pt_mp: old(krnl).pt_mp, pt_lower: old(krnl).pt_lower, cpu_set_mp: old(krnl).cpu_set_mp, ..old(steps).snapshot_k() }),
         match endpoint { Some(e) => old(krnl).ep_mp.unchanged_except(&old(steps).snapshot_k().ep_mp, e), None => old(krnl).ep_mp == old(steps).snapshot_k().ep_mp },
         endpoint is Some ==> old(steps).snapshot_k().ep_mp.spec_index(endpoint->Some_0).locking_thread() is None,
-        old(krnl).cpu_arr.unchanged_except(&old(steps).snapshot_k().cpu_arr, caller_cpu_id),
+        old(krnl).cpu_arr.entries_unchanged_except(&old(steps).snapshot_k().cpu_arr, caller_cpu_id),
+        old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(caller_cpu_id as int, CpuOpState::InStep),
         old(krnl).ctn_mp.unchanged_except(&old(steps).snapshot_k().ctn_mp, parent_container_ptr),
         old(krnl).prc_mp.unchanged_except(&old(steps).snapshot_k().prc_mp, parent_process_ptr),
         old(krnl).thr_mp.unchanged_except(&old(steps).snapshot_k().thr_mp, current_thread_ptr),
@@ -47,7 +48,7 @@ pub(super) fn commit_new_container(
         old(steps).snapshot_k().cpu_set_mp.spec_index(parent_cpu_set).locking_thread() is None,
         !old(steps).snapshot_k().cpu_set_mp.spec_index(parent_cpu_set).being_killed() && !old(krnl).cpu_set_mp.spec_index(parent_cpu_set).being_killed(),
         caller_cpu_id == old(lctx).cpu_id(),
-        old(krnl).cpu_published[caller_cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_hw_cr3_pcid[caller_cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_pcid),
         process_quota_4k <= funding_page_count,
         funding_page_count <= usize::MAX - 9 - 3 * source_range.len,
         source_range.wf(),
@@ -222,11 +223,12 @@ fn commit_new_container_publish(
     Tracked<LockPerm>, Tracked<LockPerm>))
     requires
         index_valid(NUM_CPUS, caller_cpu_id),
-        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, ctn_mp: old(krnl).ctn_mp, prc_mp: old(krnl).prc_mp,
+        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_op: old(krnl).cpu_op, ctn_mp: old(krnl).ctn_mp, prc_mp: old(krnl).prc_mp,
             thr_mp: old(krnl).thr_mp, ep_mp: old(krnl).ep_mp, pt_mp: old(krnl).pt_mp, pt_lower: old(krnl).pt_lower, cpu_set_mp: old(krnl).cpu_set_mp, ..old(steps).snapshot_k() }),
         match endpoint { Some(e) => old(krnl).ep_mp.unchanged_except(&old(steps).snapshot_k().ep_mp, e), None => old(krnl).ep_mp == old(steps).snapshot_k().ep_mp },
         endpoint is Some ==> old(steps).snapshot_k().ep_mp.spec_index(endpoint->Some_0).locking_thread() is None,
-        old(krnl).cpu_arr.unchanged_except(&old(steps).snapshot_k().cpu_arr, caller_cpu_id),
+        old(krnl).cpu_arr.entries_unchanged_except(&old(steps).snapshot_k().cpu_arr, caller_cpu_id),
+        old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(caller_cpu_id as int, CpuOpState::InStep),
         old(krnl).ctn_mp.unchanged_except(&old(steps).snapshot_k().ctn_mp, parent_container_ptr),
         old(krnl).prc_mp.unchanged_except(&old(steps).snapshot_k().prc_mp, parent_process_ptr),
         old(krnl).thr_mp.unchanged_except(&old(steps).snapshot_k().thr_mp, current_thread_ptr),
@@ -247,7 +249,7 @@ fn commit_new_container_publish(
         old(steps).snapshot_k().cpu_set_mp.spec_index(parent_cpu_set).locking_thread() is None,
         !old(steps).snapshot_k().cpu_set_mp.spec_index(parent_cpu_set).being_killed() && !old(krnl).cpu_set_mp.spec_index(parent_cpu_set).being_killed(),
         caller_cpu_id == old(lctx).cpu_id(),
-        old(krnl).cpu_published[caller_cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_hw_cr3_pcid[caller_cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_pcid),
         process_quota_4k <= funding_page_count,
         funding_page_count <= usize::MAX - 9 - 3 * source_range.len,
         source_range.wf(),
@@ -357,7 +359,8 @@ fn commit_new_container_publish(
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         index_valid(NUM_CPUS, caller_cpu_id),
         caller_cpu_id == final(lctx).cpu_id(),
-        final(krnl).cpu_published[caller_cpu_id as int].view() == (final(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_cr3, final(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_pcid),
+        final(krnl).cpu_op.view().view()[caller_cpu_id as int] is InStep,
+        final(krnl).cpu_hw_cr3_pcid[caller_cpu_id as int].view() == (final(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_cr3, final(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_pcid),
         page_ptr_valid(ret.4),
         parent_container_ptr != ret.0,
         source_pagetable_ptr != ret.2,
@@ -494,14 +497,16 @@ fn commit_new_container_publish(
     proof {
         page_ptr_sets_disjoint_from_index_disjoint(funding_pages, pages_4k.view());
     }
-    commit_new_container_publish_staged(
+    let ret = commit_new_container_publish_staged(
         krnl, Tracked(&mut *lctx), Tracked(&mut *steps), caller_cpu_id, parent_container_ptr, parent_process_ptr, current_thread_ptr, source_pagetable_ptr,
         source_range, funding_page_count, process_quota_4k, transfer_cpu_id, parent_cpu_set, endpoint, endpoint_index, &pages_4k, container_page,
         pcid_allocator_page, funding_page_head, Ghost(funding_pages), Tracked(page_4k_lock_perms), Tracked(funding_page_lock_perms),
         Tracked(container_page_lock_perm), Tracked(pcid_allocator_page_lock_perm), Tracked(caller_cpu_lock_perm), Tracked(parent_container_lock_perm),
         Tracked(parent_process_lock_perm), Tracked(current_thread_lock_perm), Tracked(source_pagetable_lock_perm), parent_cpu_set_lock_perm,
         Tracked(endpoint_lock_perm), Ghost(regs), Ghost(old(steps).view().len() as int), Ghost(kernel_k_to_kernel_u(old(steps).snapshot_k())),
-    )
+    );
+    proof { assert(krnl.cpu_op.view().view()[caller_cpu_id as int] is InStep) by { cpu_op_wf_at(old(krnl).cpu_op.view().view(), old(krnl).cpu_arr, caller_cpu_id); cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, caller_cpu_id); }; }
+    ret
 }
 
 /// Checks the staged pages are fresh objects, publishes the child container, and ends the publish step after the enter step from `start`.
@@ -528,7 +533,7 @@ fn commit_new_container_publish_staged(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         index_valid(NUM_CPUS, caller_cpu_id),
         caller_cpu_id == old(lctx).cpu_id(),
-        old(krnl).cpu_published[caller_cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_hw_cr3_pcid[caller_cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_pcid),
         old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(source_range.start),
         process_quota_4k <= funding_page_count,
         funding_page_count <= usize::MAX - 9 - 3 * source_range.len,
@@ -670,7 +675,7 @@ fn commit_new_container_publish_staged(
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         index_valid(NUM_CPUS, caller_cpu_id),
         caller_cpu_id == final(lctx).cpu_id(),
-        final(krnl).cpu_published[caller_cpu_id as int].view() == (final(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_cr3, final(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_pcid),
+        final(krnl).cpu_hw_cr3_pcid[caller_cpu_id as int].view() == (final(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_cr3, final(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_pcid),
         page_ptr_valid(ret.4),
         parent_container_ptr != ret.0,
         source_pagetable_ptr != ret.2,
@@ -710,6 +715,7 @@ fn commit_new_container_publish_staged(
         !final(krnl).cpu_arr.spec_index(caller_cpu_id).view().being_killed(),
         final(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().state is Running,
         final(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_thread == Some(current_thread_ptr),
+        final(krnl).cpu_arr.spec_index(caller_cpu_id).view() == old(krnl).cpu_arr.spec_index(caller_cpu_id).view(),
         caller_cpu_lock_perm.state() is WriteLock,
         caller_cpu_lock_perm.thread_id() == final(lctx).thread_id(),
         caller_cpu_lock_perm.lock_id() == final(krnl).cpu_arr.spec_index(caller_cpu_id).view().locking_thread()->Write_lock_id,

@@ -94,7 +94,7 @@ pub open spec fn iommu_map_4k_enter_step(old_u: KernelU, new_u: KernelU, cpu_id:
     let process = old_u.process_map.spec_index(thread.owning_proc);
     let progress = SyscallProgress::IommuMap4k { va_range, iova_range, mapped: 0, directory: Mmap4kDirectory::None };
     new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..old_u.cpu_array[cpu_id as int] }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..old_u.cpu_array[cpu_id as int] }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(progress), ..thread }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
             lock_state: LockStateU::WriteLocked, pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..process.pagetable->Some_0 }),
@@ -194,7 +194,9 @@ pub open spec fn iommu_map_4k_exit_step(old_u: KernelU, new_u: KernelU, cpu_id: 
     let table_lock = new_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.lock_state;
     &&& table_lock is Unlocked || table_lock is ReadLocked
     &&& new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..old_u.cpu_array[cpu_id as int] }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU {
+            lock_state: LockStateU::Unlocked, op: cpu_op_after_step(old_u.cpu_array[cpu_id as int].state), ..old_u.cpu_array[cpu_id as int]
+        }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..thread }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
             lock_state: LockStateU::Unlocked, pagetable: Some(PageTableU { lock_state: table_lock, ..process.pagetable->Some_0 }),

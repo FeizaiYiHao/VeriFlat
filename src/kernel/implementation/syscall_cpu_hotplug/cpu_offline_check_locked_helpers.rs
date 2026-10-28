@@ -16,6 +16,8 @@ pub(super) fn cpu_offline_check_continue(
 )
     requires
         index_valid(NUM_CPUS, cpu_id),
+        cpu_id == old(lctx).cpu_id(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(steps).nonlock_view().len() == 0,
@@ -35,7 +37,7 @@ pub(super) fn cpu_offline_check_continue(
         kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
-        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         old(krnl).cpu_offline_mp.dom().contains(flags_ptr),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == (RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: cpu_lock_perm.lock_id() }),
@@ -149,6 +151,7 @@ pub(super) fn cpu_offline_check_recheck(
     requires
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
         old(krnl).inv(),
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
@@ -185,7 +188,7 @@ pub(super) fn cpu_offline_check_recheck(
             &&& cpu.owning_container == container_ptr
             &&& cpu.current_process == current_process
             &&& cpu.current_thread == current_thread
-            &&& old(krnl).cpu_published[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
+            &&& old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
         },
     ensures
         final(krnl).inv(),
@@ -322,6 +325,7 @@ pub(super) fn cpu_offline_check_lock_and_commit(
         cpu_offline_requests_of(old(krnl).cpu_offline_mp.spec_index(flags_ptr)) == cpu_offline_requests_of(old(steps).snapshot_k().cpu_offline_mp.spec_index(flags_ptr)),
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(steps).nonlock_view().len() == 0,
@@ -366,7 +370,7 @@ pub(super) fn cpu_offline_check_lock_and_commit(
             &&& cpu.owning_container == container_ptr
             &&& old(krnl).ctn_mp.dom().contains(container_ptr)
             &&& flags_ptr == cpu_offline_flags_ptr(container_ptr)
-            &&& old(krnl).cpu_published[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
+            &&& old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
         },
         current_process is Some == current_thread is Some,
         current_process is Some == process_lock_perm is Some,

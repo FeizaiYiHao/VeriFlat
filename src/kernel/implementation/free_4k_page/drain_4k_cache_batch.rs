@@ -33,7 +33,8 @@ pub fn drain_4k_cache_batch(krnl: &mut KernelK, allocator: RwLockPageAllocatorPt
     ensures
         final(steps).view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*old(krnl))),
         old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
-        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
+        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
+        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] == old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int],
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
@@ -78,7 +79,8 @@ pub fn drain_4k_cache_batch(krnl: &mut KernelK, allocator: RwLockPageAllocatorPt
         invariant
             moved == 0 ==> steps.view() == old(steps).view() && *krnl == *old(krnl) && steps.snapshot_u() == old(steps).snapshot_u(),
             moved > 0 ==> steps.view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*old(krnl))),
-            index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> krnl.cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
+            index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> krnl.cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
+            index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> krnl.cpu_op.view().view()[old(lctx).cpu_id() as int] == old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int],
             0 <= moved <= ALLOCATOR_BATCH,
             krnl.inv(),
             typed_lock_maps_aligned(krnl, lctx),

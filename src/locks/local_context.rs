@@ -60,6 +60,9 @@ pub tracked struct LocalContext {
     ghost allocator_2m_lock_maps: AllocatorLockMaps,
     ghost allocator_1g_lock_maps: AllocatorLockMaps,
     state: LCtxtState,
+    /// This cpu's kernel-call permission while its thread is inside a kernel step; moved in by `KernelK::wlock_cpu` on the
+    /// own cpu and back to the cpu object by `KernelK::u_sys_exit`.
+    kernel_call_perm: Option<KernelCallPerm>,
 }
 
 impl LocalContext {
@@ -72,6 +75,7 @@ impl LocalContext {
             ret.kernel_view_locking_state() is Acquire,
             ret.no_locks_held(),
             ret.pagetable_window_lock_map().dom().is_empty(),
+            ret.kernel_call_perm() is None,
     {
         let tracked state = LCtxtState { kernel_view_locking_state: LCtxtLockState::Acquire };
         let tracked ret = LocalContext {
@@ -82,7 +86,7 @@ impl LocalContext {
             allocator_4k_lock_maps: AllocatorLockMaps { quota: Map::empty(), cache: Map::empty(), global_pool: Map::empty() },
             allocator_2m_lock_maps: AllocatorLockMaps { quota: Map::empty(), cache: Map::empty(), global_pool: Map::empty() },
             allocator_1g_lock_maps: AllocatorLockMaps { quota: Map::empty(), cache: Map::empty(), global_pool: Map::empty() },
-            state,
+            state, kernel_call_perm: None,
         };
         ret
     }
@@ -118,6 +122,42 @@ impl LocalContext {
     pub open spec fn allocator_global_pool_2m_lock_map(&self) -> Map<RwLockPageAllocatorPtr, TypedHeldLock> { self.allocator_2m_lock_maps().global_pool }
     pub open spec fn allocator_global_pool_1g_lock_map(&self) -> Map<RwLockPageAllocatorPtr, TypedHeldLock> { self.allocator_1g_lock_maps().global_pool }
     pub closed spec fn kernel_view_locking_state(&self) -> LCtxtLockState { self.state.kernel_view_locking_state }
+    /// The cpu whose kernel-call permission this context holds; `Some` only inside a kernel step of the own cpu.
+    pub closed spec fn kernel_call_perm(&self) -> Option<CpuId> { match self.kernel_call_perm { Some(perm) => Some(perm.cpu_id()), None => None } }
+
+    #[verifier::type_invariant]
+    pub open spec fn kernel_call_perm_wf(&self) -> bool { self.kernel_call_perm() is Some ==> self.kernel_call_perm() == Some(self.cpu_id()) }
+
+    /// Remove the kernel-call permission slot, leaving it empty.
+    pub proof fn take_kernel_call_perm(tracked &mut self) -> (tracked ret: Option<KernelCallPerm>)
+        ensures
+            ret is Some ==> ret->Some_0.cpu_id() == old(self).cpu_id(),
+            old(self).kernel_call_perm() == (if ret is Some { Some(ret->Some_0.cpu_id()) } else { None::<CpuId> }),
+            final(self).kernel_call_perm() is None,
+            final(self).cpu_id() == old(self).cpu_id(),
+            final(self).thread_id() == old(self).thread_id(),
+            final(self).kernel_view_locking_state() == old(self).kernel_view_locking_state(),
+            typed_lock_maps_unchanged(old(self), final(self)),
+    {
+        use_type_invariant(&*self);
+        let tracked mut slot = None;
+        vstd::modes::tracked_swap(&mut self.kernel_call_perm, &mut slot);
+        slot
+    }
+
+    /// Fill the kernel-call permission slot with `perm`, which belongs to this cpu.
+    pub proof fn put_kernel_call_perm(tracked &mut self, tracked perm: Option<KernelCallPerm>)
+        requires
+            perm is Some ==> perm->Some_0.cpu_id() == old(self).cpu_id(),
+        ensures
+            final(self).kernel_call_perm() == (if perm is Some { Some(perm->Some_0.cpu_id()) } else { None::<CpuId> }),
+            final(self).cpu_id() == old(self).cpu_id(),
+            final(self).thread_id() == old(self).thread_id(),
+            final(self).kernel_view_locking_state() == old(self).kernel_view_locking_state(),
+            typed_lock_maps_unchanged(old(self), final(self)),
+    {
+        self.kernel_call_perm = perm;
+    }
 
     pub open spec fn typed_lock_entry(&self, obj_id: KernelObjId) -> Option<TypedHeldLock> {
         match obj_id {

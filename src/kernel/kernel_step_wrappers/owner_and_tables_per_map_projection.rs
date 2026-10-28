@@ -8,6 +8,7 @@ pub proof fn kernel_cpu_owner_changed_implies_u_cpu_array(before: &KernelK, afte
     requires
         index_valid(NUM_CPUS, cpu),
         after.cpu_arr.entries_unchanged_except(&before.cpu_arr, cpu),
+        after.cpu_op.view().view() == before.cpu_op.view().view(),
         after.cpu_arr.spec_index(cpu).value.view().view().owning_container == target,
         after.cpu_arr.spec_index(cpu).value.view().view().state == before.cpu_arr.spec_index(cpu).value.view().view().state,
         after.cpu_arr.spec_index(cpu).value.view().view().current_process == before.cpu_arr.spec_index(cpu).value.view().view().current_process,

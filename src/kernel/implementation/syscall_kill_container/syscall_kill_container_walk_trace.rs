@@ -162,7 +162,7 @@ pub(crate) proof fn kill_container_enter_step_from_u(
             &&& !pre.container_map[child_ptr].killed
         }),
         locked == (KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre.cpu_array[cpu_id as int] }),
+            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
             container_map: pre.container_map.insert(container_ptr, ContainerU {
                 lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(pre.process_map[process_ptr].depth)), ..pre.container_map[container_ptr]
             }),
@@ -318,7 +318,7 @@ pub(crate) proof fn kill_container_finish_step_from_u(
         pre.thread_map[thread_ptr].syscall_progress == kill_container_progress(container_ptr, ContainerKillStage::Walk),
         cleared == (KernelU { thread_map: pre.thread_map.insert(thread_ptr, ThreadU { syscall_progress: None, ..pre.thread_map[thread_ptr] }), ..pre }),
         post == (KernelU {
-            cpu_array: cleared.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..cleared.cpu_array[cpu_id as int] }),
+            cpu_array: cleared.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: cpu_op_after_step(cleared.cpu_array[cpu_id as int].state), ..cleared.cpu_array[cpu_id as int] }),
             container_map: cleared.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..cleared.container_map[container_ptr] }),
             process_map: cleared.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::Unlocked, ..cleared.process_map[process_ptr] }),
             thread_map: cleared.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..cleared.thread_map[thread_ptr] }),

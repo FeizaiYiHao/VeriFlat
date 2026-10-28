@@ -4,11 +4,13 @@ use super::cpu_offline_check_spec::*;
 use super::cpu_offline_check_trace::*;
 #[cfg(verus_keep_ghost)]
 use super::cpu_offline_check_eof::{cpu_went_off_eof, cpu_went_off_eof_fields};
+#[cfg(verus_keep_ghost)]
+use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 /// Finish of the offline of `cpu_id` committed from `before_k`, which is `entry_k` with the `(cpu_id, KERNEL_DEFAULT_PCID)`
-/// needflush cell write-locked: close the kernel invariant, release every lock, and record the went-off step that starts
-/// at the snapshot of `steps`.
+/// needflush cell write-locked: close the kernel invariant, release every lock, leaving the kernel step as Off before the
+/// own cpu lock, and record the went-off step that starts at the snapshot of `steps`.
 pub(super) fn cpu_offline_commit_unlock_and_record(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, pt_regs: &Registers,
     container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr,
@@ -97,7 +99,7 @@ pub(super) fn cpu_offline_commit_unlock_and_record(
         old(krnl).cpu_offline_mp.spec_index(flags_ptr).inv(),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
         !old(krnl).cpu_set_mp.spec_index(cpu_set_ptr).being_killed(),
-        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         old(krnl).sched_mp.dom().contains(scheduler_ptr),
         old(krnl).cpu_set_mp.dom().contains(cpu_set_ptr),
         old(krnl).cpu_offline_mp.dom().contains(flags_ptr),
@@ -128,6 +130,7 @@ pub(super) fn cpu_offline_commit_unlock_and_record(
             &&& perm.lock_id() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id
         },
         cpu_id == old(lctx).cpu_id(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).page_lock_map().dom().is_empty(),
         old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
@@ -209,6 +212,13 @@ pub(super) fn cpu_offline_commit_unlock_and_record(
         krnl.wunlock_process(current_process.unwrap(), Tracked(&mut *lctx), perm);
     }
     krnl.wunlock_cpu_offline_flag(flags_ptr, cpu_id, Tracked(&mut *lctx), Tracked(flag_lock_perm));
+    proof {
+        let ghost pre = *krnl;
+        let ghost pre_lctx = *lctx;
+        cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id);
+        krnl.u_sys_exit(lctx);
+        u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+    }
     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         let flushed = cpu_offline_check_flushed_default_pcid(entry_k, cpu_id);
@@ -254,6 +264,7 @@ pub(super) fn cpu_offline_commit_go_off(
         old(steps).snapshot_k().cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_id).view().locking_thread() is None,
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(steps).nonlock_view().len() == 0,
@@ -310,7 +321,7 @@ pub(super) fn cpu_offline_commit_go_off(
             &&& old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().scheduler == scheduler_ptr
             &&& old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set == cpu_set_ptr
             &&& flags_ptr == cpu_offline_flags_ptr(container_ptr)
-            &&& old(krnl).cpu_published[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
+            &&& old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
         },
         current_process is Some == current_thread is Some,
         current_process is Some == process_lock_perm is Some,
@@ -417,16 +428,16 @@ pub(super) fn cpu_offline_commit_go_off(
         let (addr, perm) = previous.running_to_scheduled(prev, cpu_id, pt_regs);
         let shard = krnl.sched_mp.borrow_mut_shard_typed(scheduler_ptr, cpu_id, Ghost(lctx.scheduler_lock_map()), Tracked(&*lctx), Tracked(&scheduler_lock_perm));
         shard.queue.push_tail(addr, perm);
-        krnl.cpu_arr.block_current(cpu_id, default_cr3, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_published, Tracked(&needflush_perm), Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
+        krnl.cpu_arr.block_current(cpu_id, default_cr3, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_hw_cr3_pcid, Tracked(&needflush_perm), Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
         proof { lctx.update_lock_id(KernelObjId::Cpu(cpu_id), old_cpu_lock_id, krnl.cpu_arr.lock_id_by_index(cpu_id)); lctx.update_lock_id(KernelObjId::Thread(prev), old_prev_lock_id, krnl.thr_mp.lock_id_by_key(prev)); }
     } else {
         proof {
             lctx.enter_kernel_view_release();
             assert({
-                &&& krnl.cpu_published[cpu_id as int].inv()
+                &&& krnl.cpu_hw_cr3_pcid[cpu_id as int].inv()
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_cr3 == default_cr3
                 &&& krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == KERNEL_DEFAULT_PCID
-            }) by { cpu_published_wf_at(krnl.cpu_published, krnl.cpu_arr, krnl.pcid_needflush, cpu_id); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
+            }) by { cpu_hw_cr3_pcid_wf_at(krnl.cpu_hw_cr3_pcid, krnl.cpu_arr, krnl.pcid_needflush, cpu_id); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
         }
     }
     let ghost idle_cpu_lock_id = krnl.cpu_arr.lock_id_by_index(cpu_id);

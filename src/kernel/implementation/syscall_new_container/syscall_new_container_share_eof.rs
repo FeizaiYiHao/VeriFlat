@@ -13,7 +13,7 @@ pub(super) open spec fn create_new_container_root_thread_and_unlock_eof_transiti
     &&& kernel_new_thread_fields(&pre, &mid, child_process_ptr, current_thread_ptr, child_container_ptr, caller_cpu_id, new_thread_ptr, initial_regs, None,
         pre.thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view())
     &&& post == (KernelK { ctn_mp: post.ctn_mp, prc_mp: post.prc_mp, pt_mp: post.pt_mp, pt_lower: post.pt_lower, pg_arr: post.pg_arr, sched_mp: post.sched_mp, thr_mp: post.thr_mp,
-        ep_mp: post.ep_mp, cpu_arr: post.cpu_arr, ..mid })
+        ep_mp: post.ep_mp, cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, ..mid })
     &&& post.ctn_mp.dom() == mid.ctn_mp.dom()
     &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)]
         mid.ctn_mp.dom().contains(c) ==> {

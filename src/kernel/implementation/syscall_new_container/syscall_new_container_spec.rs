@@ -108,7 +108,7 @@ pub open spec fn new_container_enter_step(
     let process = old_u.process_map[thread.owning_proc];
     let progress = SyscallProgress::NewContainer(NewContainerProgress { range, funding, process_quota, transfer_cpu, regs, endpoint_index, child_container: None });
     new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..cpu }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
         container_map: old_u.container_map.insert(thread.owning_container, ContainerU {
             lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(process.depth)), cpu_set_lock: LockStateU::WriteLocked, ..old_u.container_map[thread.owning_container]
         }),
@@ -229,7 +229,7 @@ pub open spec fn new_container_finish_step(old_u: KernelU, new_u: KernelU, cpu_i
     let table_lock = new_u.process_map[parent].pagetable->Some_0.lock_state;
     &&& table_lock is Unlocked || table_lock is ReadLocked
     &&& kernel_u_new_thread_changed(KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..cpu }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: cpu_op_after_step(cpu.state), ..cpu }),
         container_map: old_u.container_map.insert(container, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..old_u.container_map[container] })
             .insert(child, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..old_u.container_map[child] }),
         process_map: old_u.process_map.insert(parent, ProcessU { lock_state: LockStateU::Unlocked,

@@ -24,6 +24,7 @@ pub(super) fn thread_exit_destroy_remove_thread(
         old(lctx).kernel_view_locking_state() is Acquire,
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
         page_ptr_valid(thread_ptr),
         old(krnl).ctn_mp.dom().contains(container_ptr),
         old(krnl).prc_mp.dom().contains(process_ptr),
@@ -122,6 +123,7 @@ pub(super) fn thread_exit_destroy_remove_thread(
         final(lctx).kernel_view_locking_state() is Release,
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
+        final(krnl).cpu_op == old(krnl).cpu_op,
         thread_exit_destroy_eof_transition_framing(*old(krnl), *final(krnl), cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr,
             old(krnl).thr_mp.spec_index(thread_ptr).view().proc_linkedlist_node.addr(), old(krnl).pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().free_list_node_storage.addr()),
         zombie == (old(krnl).prc_mp.spec_index(process_ptr).view().owned_threads.view().len() == 1),
@@ -156,7 +158,7 @@ pub(super) fn thread_exit_destroy_remove_thread(
         final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
         !final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == KERNEL_DEFAULT_PCID,
-        final(krnl).cpu_published[cpu_id as int].view() == (final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, KERNEL_DEFAULT_PCID),
+        final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, KERNEL_DEFAULT_PCID),
         final(krnl).pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID).locking_thread() == old(krnl).pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID).locking_thread(),
         final(krnl).ctn_mp.dom() == old(krnl).ctn_mp.dom(),
         forall|c: RwLockContainerPtr| #![trigger final(krnl).ctn_mp.spec_index(c)] old(krnl).ctn_mp.dom().contains(c)
@@ -210,7 +212,7 @@ pub(super) fn thread_exit_destroy_remove_thread(
         };
         assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.dom().contains(proc_node_addr)) by { krnl.prc_mp.spec_index(process_ptr).view().owned_threads.wf_map_at(proc_node_addr); };
         assert(krnl.cpu_arr.inv() && krnl.cpu_arr.spec_index(cpu_id).view().is_init() && krnl.cpu_arr.spec_index(cpu_id).view().view().wf()) by { cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
-        assert(krnl.cpu_published[cpu_id as int].owner_cpu() == cpu_id) by { cpu_published_wf_at(krnl.cpu_published, krnl.cpu_arr, krnl.pcid_needflush, cpu_id); };
+        assert(krnl.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu() == cpu_id) by { cpu_hw_cr3_pcid_wf_at(krnl.cpu_hw_cr3_pcid, krnl.cpu_arr, krnl.pcid_needflush, cpu_id); };
         assert(krnl.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID).inv()) by { pcid_needflush_wf_at(krnl.pcid_needflush, cpu_id, KERNEL_DEFAULT_PCID); };
         assert(krnl.pcid_allc_mp.dom().contains(pcid_allocator_ptr)) by { container_pcid_allocator_wf_container_at(krnl.ctn_mp, krnl.pcid_allc_mp, container_ptr); };
         assert({
@@ -225,7 +227,7 @@ pub(super) fn thread_exit_destroy_remove_thread(
     let default_cr3 = krnl.dflt_pt.borrow().cr3;
     assert(page_ptr_valid(default_cr3)) by { krnl.default_pagetable_view_inv(); };
     let ghost old_cpu_lock_id = krnl.cpu_arr.lock_id_by_index(cpu_id);
-    krnl.cpu_arr.block_current(cpu_id, default_cr3, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_published, Tracked(needflush_lock_perm), Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+    krnl.cpu_arr.block_current(cpu_id, default_cr3, &mut krnl.cpu_tlb, &mut krnl.pcid_needflush, &mut krnl.cpu_hw_cr3_pcid, Tracked(needflush_lock_perm), Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof { lctx.update_lock_id(KernelObjId::Cpu(cpu_id), old_cpu_lock_id, krnl.cpu_arr.lock_id_by_index(cpu_id)); }
     let (proc_node, quota_4k, quota_2m, quota_1g) = {
         let thread = krnl.thr_mp.borrow_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&thread_lock_perm));

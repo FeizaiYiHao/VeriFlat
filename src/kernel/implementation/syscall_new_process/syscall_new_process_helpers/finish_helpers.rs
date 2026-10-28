@@ -56,6 +56,8 @@ pub(super) fn release_new_process_locks_and_attach_endpoint(
     requires
         old(krnl).inv(),
         index_valid(NUM_CPUS, cpu_id),
+        cpu_id == old(lctx).cpu_id(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
         old(lctx).kernel_view_locking_state() is Release,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).page_lock_map().dom() =~= set![page_ptr2page_index(new_thread_ptr)],
@@ -77,7 +79,7 @@ pub(super) fn release_new_process_locks_and_attach_endpoint(
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
-        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         cpu_lock_perm.state() is WriteLock && cpu_lock_perm.thread_id() == old(lctx).thread_id(),
         cpu_lock_perm.lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
         old(krnl).prc_mp.dom().contains(child_ptr),
@@ -208,7 +210,8 @@ pub(super) fn release_new_process_locks_and_attach_endpoint(
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         *final(krnl) == (KernelK { it_mp: final(krnl).it_mp, prc_mp: final(krnl).prc_mp, pt_mp: final(krnl).pt_mp, pt_lower: final(krnl).pt_lower, pg_arr: final(krnl).pg_arr, sched_mp: final(krnl).sched_mp,
-            thr_mp: final(krnl).thr_mp, ep_mp: final(krnl).ep_mp, cpu_arr: final(krnl).cpu_arr, ..*old(krnl) }),
+            thr_mp: final(krnl).thr_mp, ep_mp: final(krnl).ep_mp, cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, ..*old(krnl) }),
+        final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view().update(cpu_id as int, cpu_op_after_step(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state)),
         forall|p: RwLockProcessPtr| #![trigger final(krnl).prc_mp.spec_index(p)]
             old(krnl).prc_mp.dom().contains(p) ==> if p == child_ptr { final(krnl).prc_mp.spec_index(p).locking_thread() is None } else { final(krnl).prc_mp.spec_index(p).locking_thread() == old(krnl).prc_mp.spec_index(p).locking_thread() },
         forall|p: RwLockThreadPtr| #![trigger final(krnl).thr_mp.spec_index(p)]

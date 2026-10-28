@@ -4,11 +4,13 @@ use super::syscall_cpu_hotplug_spec::*;
 use super::syscall_cpu_hotplug_trace::*;
 #[cfg(verus_keep_ghost)]
 use super::cpu_offline_request_child_eof::{cpu_offline_request_child_eof, cpu_offline_request_child_eof_transition_framing};
+#[cfg(verus_keep_ghost)]
+use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 /// With `cpu_id` and the caller's live, non-zombie container `caller_ptr` write-held since the step's start, asks `target`, a
-/// cpu of the `child`-th child, to go Off under the child's request cell and cpu-set locks, releases every lock, and kicks
-/// `target` into the kernel.
+/// cpu of the `child`-th child, to go Off under the child's request cell and cpu-set locks and releases every lock; the
+/// target notices the request on its next pass through its idle loop or schedule check.
 pub(super) fn cpu_offline_request_child_locked(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, child: usize, target: CpuId,
     caller_ptr: RwLockContainerPtr, Tracked(cpu_lock_perm): Tracked<LockPerm>, Tracked(container_lock_perm): Tracked<LockPerm>,
@@ -22,12 +24,25 @@ pub(super) fn cpu_offline_request_child_locked(
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(steps).nonlock_view().len() == 0,
-        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, ctn_mp: old(krnl).ctn_mp, ..old(steps).snapshot_k() }),
-        old(krnl).cpu_arr.unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
+        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_op: old(krnl).cpu_op, ctn_mp: old(krnl).ctn_mp, ..old(steps).snapshot_k() }),
+        old(steps).snapshot_k().cpu_op.view().view()[cpu_id as int] is Trap,
+        old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
+        old(krnl).cpu_arr.entries_unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
         old(krnl).ctn_mp.unchanged_except(&old(steps).snapshot_k().ctn_mp, caller_ptr),
         old(krnl).ctn_mp.perms_wf(),
         !old(krnl).ctn_mp.spec_index(caller_ptr).view_ghost().owned_processes.view().is_empty(),
-        wlock_ensures(old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view(), old(krnl).cpu_arr.spec_index(cpu_id).view(), old(steps).snapshot_k().cpu_arr.lock_id_by_index(cpu_id), old(lctx), cpu_lock_perm),
+        ({
+            let pre = old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view();
+            let post = old(krnl).cpu_arr.spec_index(cpu_id).view();
+            &&& post.view().view() == pre.view().view()
+            &&& post.locking_thread() == RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: cpu_lock_perm.lock_id() }
+            &&& post.view_ghost() == Some(cpu_id)
+            &&& post.being_killed() == pre.being_killed()
+            &&& post.killer_info() == pre.killer_info()
+            &&& pre.locked() == false
+            &&& cpu_lock_perm.state() is WriteLock
+            &&& cpu_lock_perm.thread_id() == old(lctx).thread_id()
+        }),
         !old(steps).snapshot_k().ctn_mp.spec_index(caller_ptr).locked(),
         ({
             let pre_c = old(steps).snapshot_k().ctn_mp.spec_index(caller_ptr);
@@ -64,7 +79,7 @@ pub(super) fn cpu_offline_request_child_locked(
         old(lctx).holds_no_allocator_locks(PageSize::SZ4k),
         old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
-        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
         !old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().being_killed(),
         old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view().owning_container == caller_ptr,
@@ -159,8 +174,15 @@ pub(super) fn cpu_offline_request_child_locked(
         krnl.wunlock_cpu_set(cpu_set_ptr, Tracked(lctx), Tracked(cpu_set_lock_perm));
         krnl.wunlock_cpu_offline_flag(flags_ptr, target, Tracked(lctx), Tracked(flag_lock_perm));
         krnl.wunlock_container(caller_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
+        proof {
+            let ghost pre = *krnl;
+            let ghost pre_lctx = *lctx;
+            krnl.u_sys_exit(lctx);
+            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+        }
         krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
         proof {
+            assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
             steps.end_kernel_step_unchanged(&*krnl, &*lctx);
@@ -178,9 +200,16 @@ pub(super) fn cpu_offline_request_child_locked(
     krnl.wunlock_cpu_set(cpu_set_ptr, Tracked(lctx), Tracked(cpu_set_lock_perm));
     krnl.wunlock_cpu_offline_flag(flags_ptr, target, Tracked(lctx), Tracked(flag_lock_perm));
     krnl.wunlock_container(caller_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
+    proof {
+        let ghost pre = *krnl;
+        let ghost pre_lctx = *lctx;
+        krnl.u_sys_exit(lctx);
+        u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+    }
     krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
     proof {
         let ghost request_before = steps.view();
+        assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
         assert(kernel_cpu_offline_request_changed(&steps.snapshot_k(), &*krnl, cpu_id, child_ptr, target)) by { reveal(kernel_cpu_offline_request_changed); };
         steps.end_kernel_step_cpu_offline_request_changed(&*krnl, &*lctx, cpu_id, child_ptr, target);
         no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx);
@@ -194,7 +223,6 @@ pub(super) fn cpu_offline_request_child_locked(
             cpu_offline_request_child_trace_step(&*steps, request_before, kernel_k_to_kernel_u(entry), kernel_k_to_kernel_u(*krnl), cpu_id, target);
         };
     }
-    send_ipi(target, Tracked(&*lctx));
     RetValueType::Success
 }
 }

@@ -5,6 +5,8 @@ use super::syscall_schedule_trace::*;
 use super::syscall_schedule_helpers::schedule_switch_unlock_and_record;
 use super::syscall_schedule_switch_helpers::{schedule_switch_read_target, schedule_switch_commit};
 use super::syscall_schedule_lock_helpers::{schedule_lock_current_and_shard, schedule_lock_queue_head, schedule_continue};
+#[cfg(verus_keep_ghost)]
+use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 pub enum ScheduleResult {
@@ -65,8 +67,9 @@ fn schedule_switch_to_queue_head(
 ) -> (syscall_return: Option<RetValueType>)
     requires
         old(krnl).inv(),
-        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, prc_mp: old(krnl).prc_mp, thr_mp: old(krnl).thr_mp, sched_mp: old(krnl).sched_mp, ..old(steps).snapshot_k() }),
-        old(krnl).cpu_arr.unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
+        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_op: old(krnl).cpu_op, prc_mp: old(krnl).prc_mp, thr_mp: old(krnl).thr_mp, sched_mp: old(krnl).sched_mp, ..old(steps).snapshot_k() }),
+        old(krnl).cpu_arr.entries_unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
+        old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
         old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
         old(krnl).sched_mp.unchanged_except(&old(steps).snapshot_k().sched_mp, scheduler_ptr),
         scheduler_shards_of(old(krnl).sched_mp.spec_index(scheduler_ptr)) == scheduler_shards_of(old(steps).snapshot_k().sched_mp.spec_index(scheduler_ptr)),
@@ -249,6 +252,7 @@ pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is Trap || old(krnl).cpu_op.view().view()[cpu_id as int] is Idle,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -333,12 +337,23 @@ pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         return ScheduleResult::Idle;
     }
     let Tracked(cpu_lock_perm) = cpu_lock_res.unwrap();
+    proof {
+        assert(old(krnl).cpu_op.view().view()[cpu_id as int] == cpu_op_after_step(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state)) by {
+            cpu_op_wf_at(old(krnl).cpu_op.view().view(), old(krnl).cpu_arr, cpu_id);
+        };
+    }
     let cpu = krnl.cpu_arr.borrow_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), Tracked(&cpu_lock_perm));
     let state = cpu.state();
     let container_ptr = cpu.owning_container();
     let current_process = cpu.current_process();
     let current_thread = cpu.current_thread();
     if let CpuState::Off = state {
+        proof {
+            let ghost pre = *krnl;
+            let ghost pre_lctx = *lctx;
+            krnl.u_sys_exit(lctx);
+            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+        }
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, None, None, None, None, None);

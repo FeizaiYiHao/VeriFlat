@@ -17,7 +17,8 @@ pub open spec fn create_process_from_staged_pages_eof_transition_framing(
     &&& post.irt == pre.irt
     &&& post.cpu_arr == pre.cpu_arr
     &&& post.pcid_needflush == pre.pcid_needflush
-    &&& post.cpu_published == pre.cpu_published
+    &&& post.cpu_hw_cr3_pcid == pre.cpu_hw_cr3_pcid
+    &&& post.cpu_op == pre.cpu_op
     &&& post.sched_mp == pre.sched_mp
     &&& post.cpu_set_mp == pre.cpu_set_mp
     &&& post.ep_mp == pre.ep_mp

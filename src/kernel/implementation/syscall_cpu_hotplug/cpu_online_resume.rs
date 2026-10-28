@@ -18,6 +18,7 @@ pub fn cpu_online_resume(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCo
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is Off || old(krnl).cpu_op.view().view()[cpu_id as int] is Idle,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -46,7 +47,7 @@ pub fn cpu_online_resume(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCo
             index_valid(NUM_CPUS, other_cpu) && other_cpu != cpu_id ==> final(krnl).cpu_arr.spec_index(other_cpu).view().view().view() == old(krnl).cpu_arr.spec_index(other_cpu).view().view().view(),
 {
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
-    proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
+    proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }
     let cpu_lock_res = krnl.wlock_cpu(cpu_id, Tracked(&mut *lctx));
     if cpu_lock_res.is_none() {
         proof { no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); enter_kernel_view_release_preserving_lock_alignments(&*krnl, lctx); }
@@ -58,7 +59,11 @@ pub fn cpu_online_resume(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCo
     let state = cpu.state();
     if let CpuState::Off = state {
         release_cpu_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm));
-        proof { assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl); }; }
+        proof {
+            assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {
+                assert(krnl.cpu_op.view().view() =~= old(krnl).cpu_op.view().view()); kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl);
+            };
+        }
         halt_until_ipi(Tracked(&*lctx));
         return OnlineResumeResult::StillOff;
     }
@@ -82,7 +87,11 @@ pub fn cpu_online_resume(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCo
         }) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive, kernel_endpoint_nonlock_fields_unchanged_transitive; };
     }
     release_cpu_and_finish_syscall(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, Tracked(cpu_lock_perm));
-    proof { assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl); }; }
+    proof {
+        assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(*old(krnl))) by {
+            assert(krnl.cpu_op.view().view() =~= old(krnl).cpu_op.view().view()); kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(old(krnl), &*krnl);
+        };
+    }
     OnlineResumeResult::Resumed
 }
 }

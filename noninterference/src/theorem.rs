@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 use crate::{ni_alloc_quota::*, ni_cpu_hotplug::*, ni_ipc::*, ni_mmap_4k::*, ni_new_container::*, ni_new_endpoint::*, ni_new_process::*, ni_new_thread::*, ni_pci::*,
-    ni_rebalance::*, ni_schedule::*, ni_share_4k::*, ni_unmap_4k::*, ni_iommu_map_4k::*, ni_iommu_unmap_4k::*, ni_kill_container::*, ni_kill_process::*, ni_thread_exit::*};
+    ni_rebalance::*, ni_schedule::*, ni_share_4k::*, ni_unmap_4k::*, ni_iommu_map_4k::*, ni_iommu_unmap_4k::*, ni_kill_container::*, ni_kill_process::*, ni_thread_exit::*, ni_trap::*};
 use veriflat_map_4k::*;
 use veriflat_syscall_alloc_quota::syscall_alloc_quota::syscall_alloc_quota_spec::*;
 use veriflat_syscall_cpu_hotplug::syscall_cpu_hotplug::{cpu_offline_check_spec::*, syscall_cpu_hotplug_spec::*};
@@ -53,6 +53,7 @@ pub ghost enum StepLabel {
     ThreadExitEnter, ThreadExitDescriptorDropped, ThreadExitCallerWoken, ThreadExitCallerTakenOver, ThreadExitDanglingReclaimed, ThreadExitEndpointReleased,
     ThreadExitDrop, ThreadExitRelease, ThreadExitLockTable, ThreadExitLeaf, ThreadExitTlbCleared, ThreadExitFlushed, ThreadExitIommuLeaf,
     ThreadExitRefund, ThreadExitQuota, ThreadExitUnlockTable, ThreadExitFinish,
+    TrapEnter, TrapReturn, TrapDivert,
 }
 
 /// `new_u` follows `old_u` by the step `label` on cpu `cpu_id`.
@@ -193,6 +194,9 @@ pub open spec fn labeled_step(label: StepLabel, old_u: KernelU, new_u: KernelU, 
         StepLabel::ThreadExitQuota => thread_exit_quota_step_pre(old_u, cpu_id) && thread_exit_quota_step(old_u, new_u, cpu_id),
         StepLabel::ThreadExitUnlockTable => thread_exit_unlock_table_step_pre(old_u, cpu_id) && thread_exit_unlock_table_step(old_u, new_u, cpu_id),
         StepLabel::ThreadExitFinish => thread_exit_finish_step_pre(old_u, cpu_id) && thread_exit_finish_step(old_u, new_u, cpu_id),
+        StepLabel::TrapEnter => kernel_u_trap_enter_step_pre(old_u, cpu_id) && kernel_u_trap_enter_step(old_u, new_u, cpu_id),
+        StepLabel::TrapReturn => kernel_u_trap_return_step_pre(old_u, cpu_id) && kernel_u_trap_return_step(old_u, new_u, cpu_id),
+        StepLabel::TrapDivert => kernel_u_trap_divert_step_pre(old_u, cpu_id) && kernel_u_trap_divert_step(old_u, new_u, cpu_id),
     }
 }
 
@@ -412,6 +416,9 @@ pub proof fn trace_ni_at(us: Seq<KernelU>, labels: Seq<StepLabel>, cpus: Seq<Cpu
             StepLabel::ThreadExitQuota => { thread_exit_quota_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_quota_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::ThreadExitUnlockTable => { thread_exit_unlock_table_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_unlock_table_step_iso(old_u, new_u, cpu_id, x, y); },
             StepLabel::ThreadExitFinish => { thread_exit_finish_step_lr(old_u, new_u, cpu_id, x, y); thread_exit_finish_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::TrapEnter => { trap_enter_step_lr(old_u, new_u, cpu_id, x, y); trap_enter_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::TrapReturn => { trap_return_step_lr(old_u, new_u, cpu_id, x, y); trap_return_step_iso(old_u, new_u, cpu_id, x, y); },
+            StepLabel::TrapDivert => { trap_divert_step_lr(old_u, new_u, cpu_id, x, y); trap_divert_step_iso(old_u, new_u, cpu_id, x, y); },
         }
         if x != a { isolated_symmetric(new_u, b, a); }
     }

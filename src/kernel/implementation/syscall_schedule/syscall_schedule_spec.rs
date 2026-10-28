@@ -43,7 +43,7 @@ pub open spec fn scheduler_context_switch_eof_transition_framing(pre: KernelK, p
     let next_node = pre.thr_mp.spec_index(next_thread).view().scheduler_linkedlist_node.addr();
     let needflush_before = pre.pcid_needflush.spec_index(cpu_id, pcid);
     let needflush_after = post.pcid_needflush.spec_index(cpu_id, pcid);
-    &&& post == (KernelK { cpu_arr: post.cpu_arr, pcid_needflush: post.pcid_needflush, cpu_published: post.cpu_published, sched_mp: post.sched_mp, thr_mp: post.thr_mp, cpu_tlb: post.cpu_tlb, ..pre })
+    &&& post == (KernelK { cpu_arr: post.cpu_arr, pcid_needflush: post.pcid_needflush, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, sched_mp: post.sched_mp, thr_mp: post.thr_mp, cpu_tlb: post.cpu_tlb, ..pre })
     &&& post.cpu_arr.view().len() == pre.cpu_arr.view().len()
     &&& (forall|c: CpuId| #![trigger pre.cpu_arr.spec_index(c)] #![trigger post.cpu_arr.spec_index(c)] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_arr.spec_index(c) == pre.cpu_arr.spec_index(c))
     &&& cpu_after.is_init() == cpu_before.is_init()
@@ -59,6 +59,7 @@ pub open spec fn scheduler_context_switch_eof_transition_framing(pre: KernelK, p
         tlb_dirty_bitmap: new_cpu.tlb_dirty_bitmap, ..old_cpu
     })
     &&& cpu_after.view().wf()
+    &&& cpu_after.view().kernel_call_perm() == cpu_before.view().kernel_call_perm()
     &&& cpu_after.view().tlb_dirty_bitmap() == cpu_before.view().tlb_dirty_bitmap().insert(pcid, Some(ProcessPageTablePair { process_ptr: next_process, pagetable_ptr: target.pagetable }))
     &&& post.thr_mp.dom() == pre.thr_mp.dom()
     &&& (forall|ptr: RwLockThreadPtr| #![trigger pre.thr_mp.spec_index(ptr)] #![trigger post.thr_mp.spec_index(ptr)] pre.thr_mp.dom().contains(ptr) ==> {
@@ -113,9 +114,9 @@ pub open spec fn scheduler_context_switch_eof_transition_framing(pre: KernelK, p
     &&& needflush_after.view() == (PcidNeedFlush { needflush: false, ..needflush_before.view() })
     &&& (forall|c: CpuId, p: Pcid| #![trigger pre.pcid_needflush.spec_index(c, p)] #![trigger post.pcid_needflush.spec_index(c, p)]
         index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid) ==> post.pcid_needflush.spec_index(c, p) == pre.pcid_needflush.spec_index(c, p))
-    &&& post.cpu_published[cpu_id as int].owner_cpu() == pre.cpu_published[cpu_id as int].owner_cpu()
-    &&& post.cpu_published[cpu_id as int].view() == (target.cr3, pcid)
-    &&& (forall|c: CpuId| #![trigger pre.cpu_published[c as int]] #![trigger post.cpu_published[c as int]] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_published[c as int] == pre.cpu_published[c as int])
+    &&& post.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu() == pre.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu()
+    &&& post.cpu_hw_cr3_pcid[cpu_id as int].view() == (target.cr3, pcid)
+    &&& (forall|c: CpuId| #![trigger pre.cpu_hw_cr3_pcid[c as int]] #![trigger post.cpu_hw_cr3_pcid[c as int]] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_hw_cr3_pcid[c as int] == pre.cpu_hw_cr3_pcid[c as int])
     &&& post.cpu_tlb.view() == if flush { pre.cpu_tlb.view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }) } else { pre.cpu_tlb.view() }
     &&& (forall|c: CpuId, p: Pcid| #![trigger pre.cpu_tlb.spec_index((c, p))] #![trigger post.cpu_tlb.spec_index((c, p))]
         index_valid(NUM_CPUS, c) && pcid_valid(p) ==> post.cpu_tlb.spec_index((c, p)) == if flush && c == cpu_id && p == pcid {

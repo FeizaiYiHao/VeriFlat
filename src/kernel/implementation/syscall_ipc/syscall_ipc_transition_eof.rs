@@ -18,6 +18,7 @@ proof fn ipc_block_current_eof_subsystems(
         pre.thr_mp.dom().contains(current_thread_ptr),
         pre.ep_mp.dom().contains(endpoint_ptr),
         pre.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
+        pre.cpu_op.view().view()[cpu_id as int] is InStep,
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(current_thread_ptr),
         pre.thr_mp.spec_index(current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
@@ -43,7 +44,7 @@ proof fn ipc_block_current_eof_subsystems(
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
         pcid_needflush_wf(post.pcid_needflush),
-        cpu_published_wf(post.cpu_published, post.cpu_arr, post.pcid_needflush),
+        cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush),
     ensures post.subsystems_inv(),
 {
     reveal(ipc_block_current_eof_transition_framing);
@@ -53,7 +54,7 @@ proof fn ipc_block_current_eof_subsystems(
             &&& thread_perms_wf(post.thr_mp)
             &&& endpoint_perms_wf(post.ep_mp)
         }) by { reveal(cpu_array_wf); reveal(thread_perms_wf); };
-        reveal(KernelK::default_pagetable_wf); reveal(cpu_offline_flags_wf);
+        reveal(KernelK::default_pagetable_wf); reveal(cpu_offline_flags_wf); reveal(cpu_op_wf);
     };
 }
 
@@ -94,7 +95,7 @@ proof fn ipc_block_current_eof_memory(
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
         pcid_needflush_wf(post.pcid_needflush),
-        cpu_published_wf(post.cpu_published, post.cpu_arr, post.pcid_needflush),
+        cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush),
     ensures post.memory_management_inv(),
 {
     reveal(ipc_block_current_eof_transition_framing);
@@ -139,7 +140,7 @@ proof fn ipc_block_current_eof_cpu_wf(
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
         pcid_needflush_wf(post.pcid_needflush),
-        cpu_published_wf(post.cpu_published, post.cpu_arr, post.pcid_needflush),
+        cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush),
         post.subsystems_inv(),
     ensures
         container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr),
@@ -191,7 +192,7 @@ proof fn ipc_block_current_eof_process_management_inv(
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
         pcid_needflush_wf(post.pcid_needflush),
-        cpu_published_wf(post.cpu_published, post.cpu_arr, post.pcid_needflush),
+        cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush),
         post.subsystems_inv(),
     ensures post.process_management_inv(),
 {
@@ -228,6 +229,7 @@ pub(super) proof fn ipc_block_current_eof(
         pre.thr_mp.dom().contains(current_thread_ptr),
         pre.ep_mp.dom().contains(endpoint_ptr),
         pre.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
+        pre.cpu_op.view().view()[cpu_id as int] is InStep,
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(current_thread_ptr),
         pre.thr_mp.spec_index(current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
@@ -253,7 +255,7 @@ pub(super) proof fn ipc_block_current_eof(
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
         pcid_needflush_wf(post.pcid_needflush),
-        cpu_published_wf(post.cpu_published, post.cpu_arr, post.pcid_needflush),
+        cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush),
     ensures post.inv(),
 {
     reveal(ipc_block_current_eof_transition_framing);

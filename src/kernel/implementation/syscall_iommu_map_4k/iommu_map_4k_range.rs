@@ -70,9 +70,11 @@ pub(super) fn iommu_map_4k_map_range_and_exit(
         forall|held_thread: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(held_thread)] old(lctx).thread_lock_map().dom().contains(held_thread)
             ==> old(krnl).thr_mp.spec_index(held_thread).being_killed() || !(old(krnl).thr_mp.spec_index(held_thread).view().state is SCHEDULED),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
         !old(krnl).prc_mp.spec_index(process_ptr).being_killed(),
         old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Running || old(krnl).prc_mp.spec_index(process_ptr).view().state.view() is Zombie,
-        old(krnl).cpu_published[cpu_id as int].view()
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view()
             == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         cpu_lock_perm.state() is WriteLock && cpu_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -138,7 +140,7 @@ pub(super) fn iommu_map_4k_map_range_and_exit(
             forall|j: int| #![trigger steps.view()[j]] 0 < j < steps.view().len() ==> iommu_map_4k_range_step(steps.view()[j], cpu_id),
             held_locks_order_below(krnl, lctx, ALLOCATOR_CACHE_4K_MAJOR),
             krnl.cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
-            krnl.cpu_published[cpu_id as int].view() == old(krnl).cpu_published[cpu_id as int].view(),
+            krnl.cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
             krnl.prc_mp.dom().contains(process_ptr),
             krnl.prc_mp.spec_index(process_ptr) == old(krnl).prc_mp.spec_index(process_ptr),
             held_pagetables_unchanged(old(krnl).pt_mp, krnl.pt_mp, old(lctx)),

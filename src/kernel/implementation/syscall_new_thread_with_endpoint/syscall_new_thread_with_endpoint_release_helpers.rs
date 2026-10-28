@@ -1,6 +1,10 @@
 use vstd::prelude::*;
 use vstd::assert_seqs_equal;
 use crate::*;
+#[cfg(all(feature = "split-crates", verus_keep_ghost))]
+use veriflat_kernel_core::kernel::implementation::locker_unlocker::u_sys_exit_eof;
+#[cfg(all(not(feature = "split-crates"), verus_keep_ghost))]
+use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 #[cfg(feature = "split-crates")]
 use veriflat_kernel_core::attach_endpoint_reference_and_unlock;
 #[cfg(not(feature = "split-crates"))]
@@ -20,6 +24,7 @@ pub(super) fn attach_endpoint_and_release_new_thread_locks(
     requires
         old(krnl).inv(),
         index_valid(NUM_CPUS, cpu_id),
+        cpu_id == old(lctx).cpu_id(),
         page_ptr_valid(new_thread_ptr),
         old(lctx).kernel_view_locking_state() is Release,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
@@ -42,8 +47,9 @@ pub(super) fn attach_endpoint_and_release_new_thread_locks(
         old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
-        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         cpu_lock_perm.state() is WriteLock && cpu_lock_perm.thread_id() == old(lctx).thread_id(),
         cpu_lock_perm.lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
         old(krnl).prc_mp.dom().contains(process_ptr),
@@ -121,6 +127,7 @@ pub(super) fn attach_endpoint_and_release_new_thread_locks(
         forall|i: CpuId| #![trigger final(krnl).cpu_arr.spec_index(i)]
             index_valid(NUM_CPUS, i) ==> if i == cpu_id { final(krnl).cpu_arr.spec_index(i).value.locking_thread() is None } else { final(krnl).cpu_arr.spec_index(i).value.locking_thread() == finish_k.cpu_arr.spec_index(i).value.locking_thread() },
         final(krnl).thr_mp.spec_index(new_thread_ptr).locking_thread() is None,
+        final(krnl).cpu_op.view().view() == finish_k.cpu_op.view().view().update(cpu_id as int, cpu_op_after_step(finish_k.cpu_arr.spec_index(cpu_id).view().view().view().state)),
 {
     proof { assert(old(krnl).prc_mp.dom() == finish_k.prc_mp.dom() && old(krnl).thr_mp.dom() == finish_k.thr_mp.dom().insert(new_thread_ptr) && !finish_k.thr_mp.dom().contains(new_thread_ptr)) by { reveal(kernel_new_thread_fields); }; }
     attach_endpoint_reference_and_unlock(krnl, new_thread_ptr, endpoint_ptr, current_thread_ptr, Tracked(&mut *lctx), Tracked(new_thread_lock_perm), Tracked(endpoint_lock_perm));
@@ -129,6 +136,13 @@ pub(super) fn attach_endpoint_and_release_new_thread_locks(
     krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(None), Tracked(&*lctx), Tracked(&current_thread_lock_perm));
     krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
     krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
+    proof {
+        let ghost pre = *krnl;
+        let ghost pre_lctx = *lctx;
+        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep && krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
+        krnl.u_sys_exit(lctx);
+        u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+    }
     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         assert(kernel_new_thread_fields(&finish_k, krnl, process_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, regs, Some(endpoint_ptr), None)) by {

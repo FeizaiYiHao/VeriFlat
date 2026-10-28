@@ -51,7 +51,10 @@ verus! {
                     old(steps).snapshot_k().cpu_arr.spec_index(i).value.locking_thread() is None
                 } else { old(krnl).cpu_arr.spec_index(i).value.locking_thread() == old(steps).snapshot_k().cpu_arr.spec_index(i).value.locking_thread() },
             index_valid(NUM_CPUS, cpu_id),
-            old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+            cpu_id == old(lctx).cpu_id(),
+            old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
+            old(steps).snapshot_k().cpu_op.view().view()[cpu_id as int] is Trap,
+            old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
             is_send == (waiting_state is SENDING),
             payload == (IPCPayLoad::Pci { bus, dev, fun }),
             pci_bdf_valid(bus as usize, dev as usize, fun as usize),

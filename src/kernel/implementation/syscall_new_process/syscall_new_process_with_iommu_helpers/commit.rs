@@ -24,9 +24,10 @@ pub(in super::super) fn commit_new_process_with_iommu_and_endpoint(
     initial_regs: &Registers,
 ) -> (ret: (RwLockProcessPtr, RwLockPageTableRoot, RwLockThreadPtr))
     requires
-        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, prc_mp: old(krnl).prc_mp, thr_mp: old(krnl).thr_mp, ep_mp: old(krnl).ep_mp, pt_mp: old(krnl).pt_mp,
-            pt_lower: old(krnl).pt_lower, pcid_allc_mp: old(krnl).pcid_allc_mp, ..old(steps).snapshot_k() }),
-        old(krnl).cpu_arr.unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
+        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_op: old(krnl).cpu_op, prc_mp: old(krnl).prc_mp, thr_mp: old(krnl).thr_mp, ep_mp: old(krnl).ep_mp,
+            pt_mp: old(krnl).pt_mp, pt_lower: old(krnl).pt_lower, pcid_allc_mp: old(krnl).pcid_allc_mp, ..old(steps).snapshot_k() }),
+        old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
+        old(krnl).cpu_arr.entries_unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
         old(krnl).prc_mp.unchanged_except(&old(steps).snapshot_k().prc_mp, parent_ptr),
         old(krnl).thr_mp.unchanged_except(&old(steps).snapshot_k().thr_mp, current_thread_ptr),
         old(krnl).pt_mp.unchanged_except(&old(steps).snapshot_k().pt_mp, source_pagetable_ptr),
@@ -39,7 +40,7 @@ pub(in super::super) fn commit_new_process_with_iommu_and_endpoint(
         old(krnl).ep_mp.unchanged_except(&old(steps).snapshot_k().ep_mp, endpoint_ptr),
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
-        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         edp_idx_valid(endpoint_index),
         source_range.wf(),
         source_range.len > 0,
@@ -186,6 +187,7 @@ pub(in super::super) fn commit_new_process_with_iommu_and_endpoint(
     let tracked endpoint_lock_perm = endpoint_lock_perm.get();
     let tracked source_window_perms = source_window_perms.get();
     let ghost entry_u = kernel_k_to_kernel_u(old(steps).snapshot_k());
+    proof { assert(krnl.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
     enter_new_process_commit(
         krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, parent_ptr, current_thread_ptr, pcid_allocator_ptr, source_pagetable_ptr, Some(endpoint_ptr), endpoint_index,
         source_range, Tracked(&current_thread_lock_perm), Ghost(*initial_regs), Ghost(true),
@@ -215,6 +217,7 @@ pub(in super::super) fn commit_new_process_with_iommu_and_endpoint(
             new_process_trace_publish_step(&*steps, publish_before, old(steps).view().len() as int, entry_u, cpu_id, *source_range, *initial_regs, Some(endpoint_index), true);
         };
         assert(held_pagetable_windows_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), krnl.pt_mp, krnl.pt_lower.view(), old(lctx)));
+        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
     }
     let new_thread_ptr = share_and_finish_new_process(
         krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, source_range, container_ptr, parent_ptr, child_ptr, current_thread_ptr, scheduler_ptr, allocator_ptr,

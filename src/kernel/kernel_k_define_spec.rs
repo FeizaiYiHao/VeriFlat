@@ -9,7 +9,7 @@ verus! {
     pub type PageTableLowerMap = Map<RwLockPageTableRoot, PageTableLower<PT_TYPE>>;
     pub type IommuTableLockedMap = LockedMap<RwLockPageTableRoot, PageTable<IOMMU_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE>;
     pub type PageLockedArray = LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE>;
-    pub type CpuLockedArray = LockedArray<Cpu, (), (), NUM_CPUS, CPU_HAS_KILL_STATE>;
+    pub type CpuLockedArray = LockedArray<Cpu, (), Option<CpuId>, NUM_CPUS, CPU_HAS_KILL_STATE>;
     pub type ContainerLockedMap = LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhost, CONTAINER_HAS_KILL_STATE>;
     pub type CpuSetLockedMap = LockedMap<RwLockCpuSetPtr, CpuSet, (), (), CPU_SET_HAS_KILL_STATE>;
     pub type PcidAllocatorLockedMap = LockedMap<RwLockPcidAllocatorPtr, PcidAllocator, (), (), PCID_ALLOCATOR_HAS_KILL_STATE>;
@@ -27,7 +27,8 @@ verus! {
         pub cpu_arr: CpuLockedArray,
         pub pcid_needflush: PcidNeedFlushArray,
         pub cpu_offline_mp: CpuOfflineFlagsUnLockedMap,
-        pub cpu_published: CpuPublishedArray,
+        pub cpu_hw_cr3_pcid: CpuHwCr3PcidArray,
+        pub cpu_op: Tracked<CpuOpArray>,
         pub ctn_mp: ContainerLockedMap,
         pub sched_mp: SchedulerUnLockedMap,
         pub pcid_allc_mp: PcidAllocatorLockedMap,
@@ -62,7 +63,9 @@ verus! {
             &&& cpu_array_wf(self.cpu_arr, self.dflt_pt.view())
             &&& pcid_needflush_wf(self.pcid_needflush)
             &&& cpu_offline_flags_wf(self.cpu_offline_mp, self.cpu_arr)
-            &&& cpu_published_wf(self.cpu_published, self.cpu_arr, self.pcid_needflush)
+            &&& cpu_hw_cr3_pcid_wf(self.cpu_hw_cr3_pcid, self.cpu_arr, self.pcid_needflush)
+            &&& self.cpu_op.view().view().len() == NUM_CPUS
+            &&& cpu_op_wf(self.cpu_op.view().view(), self.cpu_arr)
             &&& self.cpu_tlb.inv()
             &&& self.iommu_tlb.inv()
             &&& container_perms_wf(self.ctn_mp)
@@ -206,7 +209,7 @@ verus! {
         ///   - each held 2M window keeps its L2 entry, lock owner, linked L1 page,
         ///     and leaves; nothing is said about the window half of a page table
         ///     beyond its held windows;
-        ///   - the local CPU's hardware CR3/PCID and published atomic value stay
+        ///   - the local CPU's hardware CR3/PCID and hardware cr3/pcid word stay
         ///     unchanged even without its CPU lock;
         ///   - needflush entries are independent of the CPU lock: only entries
         ///     held in the typed needflush map are preserved;
@@ -245,7 +248,8 @@ verus! {
                 index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> {
                     &&& final(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view().current_cr3 == old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view().current_cr3
                     &&& final(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view().current_pcid == old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view().current_pcid
-                    &&& final(self).cpu_published[old(lctx).cpu_id() as int].view() == old(self).cpu_published[old(lctx).cpu_id() as int].view()
+                    &&& final(self).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(self).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view()
+                    &&& final(self).cpu_op.view().view()[old(lctx).cpu_id() as int] == old(self).cpu_op.view().view()[old(lctx).cpu_id() as int]
                 },
                 final(self).inv(),
                 final(lctx).kernel_view_locking_state() is Acquire,
@@ -267,6 +271,18 @@ verus! {
                 forall|cpu_id: CpuId|
                     #![trigger old(lctx).cpu_lock_map().dom().contains(cpu_id)]
                     old(lctx).cpu_lock_map().dom().contains(cpu_id) ==> final(self).cpu_arr.spec_index(cpu_id).view() == old(self).cpu_arr.spec_index(cpu_id).view(),
+                // A held remote cpu that runs a thread may still trap, return to user mode, or divert to its idle loop once
+                // marked; every other held cpu keeps its running state.
+                forall|cpu_id: CpuId|
+                    #![trigger old(lctx).cpu_lock_map().dom().contains(cpu_id)]
+                    old(lctx).cpu_lock_map().dom().contains(cpu_id) ==> {
+                        let op = final(self).cpu_op.view().view()[cpu_id as int];
+                        if cpu_id != old(lctx).cpu_id() && old(self).cpu_arr.spec_index(cpu_id).view().view().view().state is Running {
+                            op is User || op is Trap || (op is Idle && old(self).cpu_arr.spec_index(cpu_id).view().being_killed())
+                        } else {
+                            op == old(self).cpu_op.view().view()[cpu_id as int]
+                        }
+                    },
                 forall|container_ptr: RwLockContainerPtr|
                     #![trigger old(lctx).container_lock_map().dom().contains(container_ptr)]
                     old(lctx).container_lock_map().dom().contains(container_ptr) ==> {

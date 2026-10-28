@@ -33,7 +33,8 @@ pub(super) fn share_and_finish_new_process(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
-        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         source_range.wf(),
         source_range.len > 0,
         old(lctx).page_lock_map().dom().is_empty(),
@@ -195,6 +196,7 @@ pub(super) fn share_and_finish_new_process(
     let tracked endpoint_lock_perm = endpoint_lock_perm.get();
     let ghost endpoint_index_opt: Option<EndpointIdx> = if endpoint is Some { Some(endpoint_index) } else { None };
     proof {
+        assert(krnl.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         assert(krnl.allc_4k_mp.dom().contains(allocator_ptr)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); };
         assert({
             &&& share_4k_objects_k(*krnl, cpu_id).source_thread == current_thread_ptr && share_4k_objects_k(*krnl, cpu_id).quota_thread == current_thread_ptr
@@ -212,6 +214,7 @@ pub(super) fn share_and_finish_new_process(
             process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, parent_ptr);
             share_mapping_4k_range_owner_compatible_own_container(krnl, source_pagetable_ptr, container_ptr, source_range);
         };
+        assert(held_pagetable_windows_unchanged(entry_k.pt_mp, entry_k.pt_lower.view(), krnl.pt_mp, krnl.pt_lower.view(), &entry_lctx));
     }
     share_mapping_4k_build_and_share(
         krnl, source_range, source_range, allocator_ptr, current_thread_ptr, current_thread_ptr, current_thread_ptr, child_ptr, container_ptr, cpu_id,
@@ -222,6 +225,7 @@ pub(super) fn share_and_finish_new_process(
         assert(new_process_trace_after_share(steps.view(), start, pre, cpu_id, *source_range, *initial_regs, endpoint_index_opt, iommu_table is Some)) by {
             new_process_trace_share_steps(&*steps, old(steps).view(), start, pre, cpu_id, *source_range, *initial_regs, endpoint_index_opt, iommu_table is Some);
         };
+        assert(held_pagetable_windows_unchanged(entry_k.pt_mp, entry_k.pt_lower.view(), krnl.pt_mp, krnl.pt_lower.view(), &entry_lctx));
         assert(krnl.sched_mp.dom().contains(scheduler_ptr) && krnl.sched_mp.spec_index(scheduler_ptr).shards.lock_id_by_index(cpu_id).major == SCHEDULER_LOCK_MAJOR) by { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, container_ptr); };
     }
     let Tracked(scheduler_lock_perm) = krnl.wlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx));
@@ -234,6 +238,7 @@ pub(super) fn share_and_finish_new_process(
             };
         }
         assert(krnl.prc_mp.spec_index(child_ptr).view().pagetable == target_pagetable_ptr) by { process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, child_ptr); };
+        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
     }
     let ghost finish_before = steps.view();
     let new_thread_ptr = create_initial_thread_and_finish_new_process(

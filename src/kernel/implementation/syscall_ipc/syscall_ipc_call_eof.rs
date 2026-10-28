@@ -182,7 +182,7 @@ pub(super) proof fn ipc_call_handoff_eof_subsystems(pre: KernelK, post: KernelK,
         ipc_call_handoff_eof_transition_framing(pre, post, cpu_id, caller_ptr, endpoint_ptr, endpoint_index, callee_ptr, entry_regs),
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
-        post.cpu_published[cpu_id as int].inv(),
+        post.cpu_hw_cr3_pcid[cpu_id as int].inv(),
         post.cpu_arr.spec_index(cpu_id).view().view().view().tlb_dirty_bitmap.inv(),
         endpoint_perms_wf(post.ep_mp),
     ensures
@@ -197,8 +197,9 @@ pub(super) proof fn ipc_call_handoff_eof_subsystems(pre: KernelK, post: KernelK,
             reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
         };
         assert(pcid_needflush_wf(post.pcid_needflush)) by { reveal(pcid_needflush_wf); };
-        assert(cpu_published_wf(post.cpu_published, post.cpu_arr, post.pcid_needflush)) by { reveal(process_thread_wf); reveal(process_pagetable_match); reveal(pagetable_perms_wf); reveal(PageTableHigher::table_pages_wf); reveal(cpu_published_wf); };
+        assert(cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush)) by { reveal(process_thread_wf); reveal(process_pagetable_match); reveal(pagetable_perms_wf); reveal(PageTableHigher::table_pages_wf); reveal(cpu_hw_cr3_pcid_wf); };
         assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
+        assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
         reveal(KernelK::default_pagetable_wf);
     };
 }
@@ -277,7 +278,7 @@ pub(super) proof fn ipc_call_handoff_eof(pre: KernelK, post: KernelK, cpu_id: Cp
         ipc_call_handoff_eof_transition_framing(pre, post, cpu_id, caller_ptr, endpoint_ptr, endpoint_index, callee_ptr, entry_regs),
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
-        post.cpu_published[cpu_id as int].inv(),
+        post.cpu_hw_cr3_pcid[cpu_id as int].inv(),
         post.cpu_arr.spec_index(cpu_id).view().view().view().tlb_dirty_bitmap.inv(),
         endpoint_perms_wf(post.ep_mp),
     ensures post.inv(),
@@ -504,7 +505,7 @@ pub(super) proof fn ipc_accept_call_eof(pre: KernelK, post: KernelK, cpu_id: Cpu
             reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked);
             reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
         };
-        reveal(cpu_array_wf); reveal(cpu_published_wf); reveal(cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf);
+        reveal(cpu_array_wf); reveal(cpu_hw_cr3_pcid_wf); reveal(cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf);
     };
     assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_thread_endpoint_memory_fields(pre, post); };
     ipc_accept_call_eof_process_management_inv(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr);
@@ -671,7 +672,7 @@ pub(super) proof fn ipc_reply_handoff_eof_subsystems(pre: KernelK, post: KernelK
         ipc_reply_handoff_eof_transition_framing(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, entry_regs),
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
-        post.cpu_published[cpu_id as int].inv(),
+        post.cpu_hw_cr3_pcid[cpu_id as int].inv(),
         post.cpu_arr.spec_index(cpu_id).view().view().view().tlb_dirty_bitmap.inv(),
         endpoint_perms_wf(post.ep_mp),
     ensures
@@ -686,8 +687,9 @@ pub(super) proof fn ipc_reply_handoff_eof_subsystems(pre: KernelK, post: KernelK
             reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
         };
         assert(pcid_needflush_wf(post.pcid_needflush)) by { reveal(pcid_needflush_wf); };
-        assert(cpu_published_wf(post.cpu_published, post.cpu_arr, post.pcid_needflush)) by { reveal(process_thread_wf); reveal(process_pagetable_match); reveal(pagetable_perms_wf); reveal(PageTableHigher::table_pages_wf); reveal(cpu_published_wf); };
+        assert(cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush)) by { reveal(process_thread_wf); reveal(process_pagetable_match); reveal(pagetable_perms_wf); reveal(PageTableHigher::table_pages_wf); reveal(cpu_hw_cr3_pcid_wf); };
         assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
+        assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
         reveal(KernelK::default_pagetable_wf);
     };
 }
@@ -757,7 +759,7 @@ pub(super) proof fn ipc_reply_handoff_eof(pre: KernelK, post: KernelK, cpu_id: C
         ipc_reply_handoff_eof_transition_framing(pre, post, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, entry_regs),
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
-        post.cpu_published[cpu_id as int].inv(),
+        post.cpu_hw_cr3_pcid[cpu_id as int].inv(),
         post.cpu_arr.spec_index(cpu_id).view().view().view().tlb_dirty_bitmap.inv(),
         endpoint_perms_wf(post.ep_mp),
     ensures post.inv(),

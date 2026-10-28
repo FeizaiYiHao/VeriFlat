@@ -20,12 +20,13 @@ pub open spec fn ipc_pci_rendezvous_eof_transition_framing(
     &&& post.cpu_arr == pre.cpu_arr
     &&& post.cpu_set_mp == pre.cpu_set_mp
     &&& post.pcid_needflush == pre.pcid_needflush
-    &&& post.cpu_published == pre.cpu_published
+    &&& post.cpu_hw_cr3_pcid == pre.cpu_hw_cr3_pcid
     &&& post.pcid_allc_mp == pre.pcid_allc_mp
     &&& post.allc_4k_mp == pre.allc_4k_mp
     &&& post.allc_2m_mp == pre.allc_2m_mp
     &&& post.allc_1g_mp == pre.allc_1g_mp
     &&& post.cpu_offline_mp == pre.cpu_offline_mp
+    &&& post.cpu_op == pre.cpu_op
     &&& post.cpu_tlb == pre.cpu_tlb
     &&& post.rt_ctn == pre.rt_ctn
     &&& post.dflt_pt == pre.dflt_pt

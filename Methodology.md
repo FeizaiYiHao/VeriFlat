@@ -208,8 +208,11 @@ For tracked maps that index kernel objects (e.g., the container map):
 The global invariants, by contrast, are *not* wiped — they are exactly the
 facts we are allowed to keep, because they hold across all threads and all
 sections by construction. The boundary also keeps the fixed-size array
-domains, the local CPU's CR3/PCID, container and process read-only data, and
-the default page table.
+domains, the local CPU's CR3/PCID and running state (`cpu_op`), container and
+process read-only data, and the default page table. A held remote CPU that was
+running a thread keeps its object but may end in `User` or `Trap`, or in
+`Idle` once a killer marked it; every other held CPU keeps its `cpu_op`, and
+unlocked CPUs change it only within `cpu_op_wf` (`SystemCalls.md` §15).
 
 ### Mechanism
 
@@ -493,7 +496,7 @@ Batch 3 (workspace run #34166, noninterference run #34165, monolith run
 ## Open items
 
 - The `evict_remote_cpu` IPI wait is `external_body`; TODO at
-  `src/cpu/atomic_pcid_cr3.rs:61` to model it as a virtual lock in the lock
+  `src/cpu/atomic_pcid_cr3.rs:62` to model it as a virtual lock in the lock
   order.
 - 2M/1G user mappings are not modeled; kill and thread_exit reclaim remove
   only 4K leaves (`src/kernel/memory_management/process_emptied_tables_spec.rs:6`).

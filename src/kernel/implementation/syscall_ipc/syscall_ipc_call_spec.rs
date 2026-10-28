@@ -245,7 +245,7 @@ pub open spec fn ipc_reply_dangling_caller_taken_over_step(old_u: KernelU, new_u
     let callee_ptr = cpu.current_thread.unwrap();
     let dangling_ptr = old_u.thread_map.spec_index(callee_ptr).caller.unwrap();
     new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..cpu }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
         thread_map: old_u.thread_map.insert(callee_ptr, ThreadU { lock_state: LockStateU::WriteLocked, caller: None, ..old_u.thread_map.spec_index(callee_ptr) })
             .insert(dangling_ptr, ThreadU { state: ThreadState::KILLED, callee: None, lock_state: LockStateU::WriteLocked, ..old_u.thread_map.spec_index(dangling_ptr) }),
         ..old_u
@@ -268,7 +268,7 @@ pub open spec fn ipc_reply_dangling_caller_released_step(old_u: KernelU, new_u: 
     let cpu = old_u.cpu_array[cpu_id as int];
     let callee_ptr = cpu.current_thread.unwrap();
     new_u == (KernelU {
-        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..cpu }),
+        cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: cpu_op_after_step(cpu.state), ..cpu }),
         thread_map: old_u.thread_map.insert(callee_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..old_u.thread_map.spec_index(callee_ptr) }),
         ..old_u
     })
@@ -325,12 +325,13 @@ pub open spec fn ipc_call_handoff_eof_transition_framing(pre: KernelK, post: Ker
     let needflush_after = post.pcid_needflush.spec_index(cpu_id, pcid);
     let endpoint_before = pre.ep_mp.spec_index(endpoint_ptr);
     let endpoint_after = post.ep_mp.spec_index(endpoint_ptr);
-    &&& post == (KernelK { cpu_arr: post.cpu_arr, pcid_needflush: post.pcid_needflush, cpu_published: post.cpu_published, thr_mp: post.thr_mp, ep_mp: post.ep_mp, cpu_tlb: post.cpu_tlb, ..pre })
+    &&& post == (KernelK { cpu_arr: post.cpu_arr, pcid_needflush: post.pcid_needflush, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, thr_mp: post.thr_mp, ep_mp: post.ep_mp, cpu_tlb: post.cpu_tlb, ..pre })
     &&& post.cpu_arr.view().len() == pre.cpu_arr.view().len()
     &&& (forall|c: CpuId| #![trigger pre.cpu_arr.spec_index(c)] #![trigger post.cpu_arr.spec_index(c)] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_arr.spec_index(c) == pre.cpu_arr.spec_index(c))
     &&& cpu_after.is_init() == cpu_before.is_init()
     &&& cpu_after.view_rodata() == cpu_before.view_rodata()
     &&& cpu_after.view_ghost() == cpu_before.view_ghost()
+    &&& cpu_after.view().kernel_call_perm() == cpu_before.view().kernel_call_perm()
     &&& cpu_after.being_killed() == cpu_before.being_killed()
     &&& cpu_after.killer_info() == cpu_before.killer_info()
     &&& cpu_after.locking_thread() == cpu_before.locking_thread()
@@ -404,9 +405,9 @@ pub open spec fn ipc_call_handoff_eof_transition_framing(pre: KernelK, post: Ker
     &&& needflush_after.view() == (PcidNeedFlush { needflush: false, ..needflush_before.view() })
     &&& (forall|c: CpuId, p: Pcid| #![trigger pre.pcid_needflush.spec_index(c, p)] #![trigger post.pcid_needflush.spec_index(c, p)]
         index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid) ==> post.pcid_needflush.spec_index(c, p) == pre.pcid_needflush.spec_index(c, p))
-    &&& post.cpu_published[cpu_id as int].owner_cpu() == pre.cpu_published[cpu_id as int].owner_cpu()
-    &&& post.cpu_published[cpu_id as int].view() == (target.cr3, pcid)
-    &&& (forall|c: CpuId| #![trigger pre.cpu_published[c as int]] #![trigger post.cpu_published[c as int]] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_published[c as int] == pre.cpu_published[c as int])
+    &&& post.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu() == pre.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu()
+    &&& post.cpu_hw_cr3_pcid[cpu_id as int].view() == (target.cr3, pcid)
+    &&& (forall|c: CpuId| #![trigger pre.cpu_hw_cr3_pcid[c as int]] #![trigger post.cpu_hw_cr3_pcid[c as int]] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_hw_cr3_pcid[c as int] == pre.cpu_hw_cr3_pcid[c as int])
     &&& post.cpu_tlb.view() == if flush { pre.cpu_tlb.view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }) } else { pre.cpu_tlb.view() }
     &&& (forall|c: CpuId, p: Pcid| #![trigger pre.cpu_tlb.spec_index((c, p))] #![trigger post.cpu_tlb.spec_index((c, p))]
         index_valid(NUM_CPUS, c) && pcid_valid(p) ==> post.cpu_tlb.spec_index((c, p)) == if flush && c == cpu_id && p == pcid {
@@ -494,12 +495,13 @@ pub open spec fn ipc_reply_handoff_eof_transition_framing(pre: KernelK, post: Ke
     let needflush_after = post.pcid_needflush.spec_index(cpu_id, pcid);
     let endpoint_before = pre.ep_mp.spec_index(endpoint_ptr);
     let endpoint_after = post.ep_mp.spec_index(endpoint_ptr);
-    &&& post == (KernelK { cpu_arr: post.cpu_arr, pcid_needflush: post.pcid_needflush, cpu_published: post.cpu_published, thr_mp: post.thr_mp, ep_mp: post.ep_mp, cpu_tlb: post.cpu_tlb, ..pre })
+    &&& post == (KernelK { cpu_arr: post.cpu_arr, pcid_needflush: post.pcid_needflush, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, thr_mp: post.thr_mp, ep_mp: post.ep_mp, cpu_tlb: post.cpu_tlb, ..pre })
     &&& post.cpu_arr.view().len() == pre.cpu_arr.view().len()
     &&& (forall|c: CpuId| #![trigger pre.cpu_arr.spec_index(c)] #![trigger post.cpu_arr.spec_index(c)] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_arr.spec_index(c) == pre.cpu_arr.spec_index(c))
     &&& cpu_after.is_init() == cpu_before.is_init()
     &&& cpu_after.view_rodata() == cpu_before.view_rodata()
     &&& cpu_after.view_ghost() == cpu_before.view_ghost()
+    &&& cpu_after.view().kernel_call_perm() == cpu_before.view().kernel_call_perm()
     &&& cpu_after.being_killed() == cpu_before.being_killed()
     &&& cpu_after.killer_info() == cpu_before.killer_info()
     &&& cpu_after.locking_thread() == cpu_before.locking_thread()
@@ -574,9 +576,9 @@ pub open spec fn ipc_reply_handoff_eof_transition_framing(pre: KernelK, post: Ke
     &&& needflush_after.view() == (PcidNeedFlush { needflush: false, ..needflush_before.view() })
     &&& (forall|c: CpuId, p: Pcid| #![trigger pre.pcid_needflush.spec_index(c, p)] #![trigger post.pcid_needflush.spec_index(c, p)]
         index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid) ==> post.pcid_needflush.spec_index(c, p) == pre.pcid_needflush.spec_index(c, p))
-    &&& post.cpu_published[cpu_id as int].owner_cpu() == pre.cpu_published[cpu_id as int].owner_cpu()
-    &&& post.cpu_published[cpu_id as int].view() == (target.cr3, pcid)
-    &&& (forall|c: CpuId| #![trigger pre.cpu_published[c as int]] #![trigger post.cpu_published[c as int]] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_published[c as int] == pre.cpu_published[c as int])
+    &&& post.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu() == pre.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu()
+    &&& post.cpu_hw_cr3_pcid[cpu_id as int].view() == (target.cr3, pcid)
+    &&& (forall|c: CpuId| #![trigger pre.cpu_hw_cr3_pcid[c as int]] #![trigger post.cpu_hw_cr3_pcid[c as int]] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_hw_cr3_pcid[c as int] == pre.cpu_hw_cr3_pcid[c as int])
     &&& post.cpu_tlb.view() == if flush { pre.cpu_tlb.view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }) } else { pre.cpu_tlb.view() }
     &&& (forall|c: CpuId, p: Pcid| #![trigger pre.cpu_tlb.spec_index((c, p))] #![trigger post.cpu_tlb.spec_index((c, p))]
         index_valid(NUM_CPUS, c) && pcid_valid(p) ==> post.cpu_tlb.spec_index((c, p)) == if flush && c == cpu_id && p == pcid {

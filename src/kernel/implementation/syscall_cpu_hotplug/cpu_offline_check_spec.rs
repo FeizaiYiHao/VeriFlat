@@ -50,7 +50,7 @@ pub open spec fn cpu_went_off_eof_transition_framing(
     let cell_before = table_before.flags.spec_index(cpu_id).view();
     let cell_after = table_after.flags.spec_index(cpu_id).view();
     &&& post == (KernelK {
-        cpu_arr: post.cpu_arr, pcid_needflush: post.pcid_needflush, cpu_published: post.cpu_published, cpu_tlb: post.cpu_tlb,
+        cpu_arr: post.cpu_arr, pcid_needflush: post.pcid_needflush, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, cpu_tlb: post.cpu_tlb,
         sched_mp: post.sched_mp, thr_mp: post.thr_mp, cpu_set_mp: post.cpu_set_mp, cpu_offline_mp: post.cpu_offline_mp, ..pre
     })
     &&& post.cpu_arr.view().len() == pre.cpu_arr.view().len()
@@ -61,6 +61,7 @@ pub open spec fn cpu_went_off_eof_transition_framing(
     &&& cpu_after.being_killed() == cpu_before.being_killed()
     &&& cpu_after.killer_info() == cpu_before.killer_info()
     &&& cpu_after.locking_thread() == cpu_before.locking_thread()
+    &&& cpu_after.view().kernel_call_perm() == cpu_before.view().kernel_call_perm()
     &&& new_cpu == (CpuView {
         state: CpuState::Off, current_process: None, current_thread: None, current_pagetable: None, current_cr3: pre.dflt_pt.view().cr3,
         current_pcid: KERNEL_DEFAULT_PCID, tlb_dirty_bitmap: new_cpu.tlb_dirty_bitmap, hw_halted: true, ..old_cpu
@@ -107,10 +108,10 @@ pub open spec fn cpu_went_off_eof_transition_framing(
     &&& needflush_after.view() == (PcidNeedFlush { needflush: !(old_cpu.state is Running) && needflush_before.view().needflush, ..needflush_before.view() })
     &&& (forall|c: CpuId, p: Pcid| #![trigger pre.pcid_needflush.spec_index(c, p)] #![trigger post.pcid_needflush.spec_index(c, p)]
         index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != KERNEL_DEFAULT_PCID) ==> post.pcid_needflush.spec_index(c, p) == pre.pcid_needflush.spec_index(c, p))
-    &&& post.cpu_published[cpu_id as int].owner_cpu() == pre.cpu_published[cpu_id as int].owner_cpu()
-    &&& post.cpu_published[cpu_id as int].inv()
-    &&& post.cpu_published[cpu_id as int].view() == (pre.dflt_pt.view().cr3, KERNEL_DEFAULT_PCID)
-    &&& (forall|c: CpuId| #![trigger pre.cpu_published[c as int]] #![trigger post.cpu_published[c as int]] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_published[c as int] == pre.cpu_published[c as int])
+    &&& post.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu() == pre.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu()
+    &&& post.cpu_hw_cr3_pcid[cpu_id as int].inv()
+    &&& post.cpu_hw_cr3_pcid[cpu_id as int].view() == (pre.dflt_pt.view().cr3, KERNEL_DEFAULT_PCID)
+    &&& (forall|c: CpuId| #![trigger pre.cpu_hw_cr3_pcid[c as int]] #![trigger post.cpu_hw_cr3_pcid[c as int]] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_hw_cr3_pcid[c as int] == pre.cpu_hw_cr3_pcid[c as int])
     &&& post.cpu_tlb.view() == cpu_tlb_after_cpu_went_off(pre.cpu_tlb.view(), cpu_id, flush_default)
     &&& (forall|c: CpuId, p: Pcid| #![trigger pre.cpu_tlb.spec_index((c, p))] #![trigger post.cpu_tlb.spec_index((c, p))]
         index_valid(NUM_CPUS, c) && pcid_valid(p) ==> if c == cpu_id && (p != KERNEL_DEFAULT_PCID || flush_default) {
@@ -156,10 +157,11 @@ pub open spec fn cpu_offline_check_hold_step_pre(old_u: KernelU, cpu_id: CpuId) 
     &&& old_u.container_map.spec_index(cpu.owning_container).cpu_offline_requests[cpu_id as int]
 }
 
-/// Holding write-locks cpu `cpu_id` across the boundary before the recheck and changes nothing else.
+/// Holding write-locks cpu `cpu_id` across the boundary before the recheck, inside its kernel step, and changes nothing
+/// else.
 #[verifier::opaque]
 pub open spec fn cpu_offline_check_hold_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    new_u == (KernelU { cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..old_u.cpu_array[cpu_id as int] }), ..old_u })
+    new_u == (KernelU { cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..old_u.cpu_array[cpu_id as int] }), ..old_u })
 }
 
 /// Releasing happens with cpu `cpu_id` write-locked since the hold step.
@@ -170,10 +172,12 @@ pub open spec fn cpu_offline_check_release_step_pre(old_u: KernelU, cpu_id: CpuI
     &&& old_u.cpu_array[cpu_id as int].lock_state is WriteLocked
 }
 
-/// Releasing unlocks cpu `cpu_id` and changes nothing else, when the recheck continues to the scheduler.
+/// Releasing unlocks cpu `cpu_id`, which leaves its kernel step for the resting state of its scheduling state, and changes
+/// nothing else, when the recheck continues to the scheduler.
 #[verifier::opaque]
 pub open spec fn cpu_offline_check_release_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
-    new_u == (KernelU { cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..old_u.cpu_array[cpu_id as int] }), ..old_u })
+    let cpu = old_u.cpu_array[cpu_id as int];
+    new_u == (KernelU { cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: cpu_op_after_step(cpu.state), ..cpu }), ..old_u })
 }
 
 /// User-visible precondition of the offline step on `cpu_id`: the non-Off cpu is write-locked since the hold step, its

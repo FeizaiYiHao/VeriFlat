@@ -16,7 +16,7 @@ pub(super) fn ipc_endpoint_lock_and_copy(
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         index_valid(NUM_CPUS, cpu_id),
-        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         current_thread_ptr != peer_thread_ptr,
         receiver_thread_ptr == current_thread_ptr || receiver_thread_ptr == peer_thread_ptr,
         edp_idx_valid(source_endpoint_index),

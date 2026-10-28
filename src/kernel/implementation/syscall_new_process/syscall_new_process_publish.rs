@@ -109,7 +109,7 @@ pub(super) fn publish_staged_process(
         new_process_publish_step(final(steps).view().last().old_u, final(steps).view().last().new_u, cpu_id),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
-        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
+        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
         final(krnl).inv(),
         final(lctx).kernel_view_locking_state() is Acquire,
         final(lctx).thread_id() == old(lctx).thread_id(),

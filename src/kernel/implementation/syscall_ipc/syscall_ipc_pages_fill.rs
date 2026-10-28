@@ -110,7 +110,7 @@ pub(super) fn ipc_pages_fill_target_page(
             ==> share_4k_range_step(final(steps).view()[j], cpu_id) || ipc_pages_downgrade_step_pre(final(steps).view()[j].old_u, cpu_id) && ipc_pages_downgrade_step(final(steps).view()[j].old_u, final(steps).view()[j].new_u, cpu_id),
         share_4k_objects_k(*final(krnl), cpu_id) == share_4k_objects_k(*old(krnl), cpu_id),
         final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
-        final(krnl).cpu_published[cpu_id as int].view() == old(krnl).cpu_published[cpu_id as int].view(),
+        final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         final(krnl).ctn_mp.dom().contains(target_container),
         final(krnl).ctn_mp.spec_index(target_container).view_rodata() == old(krnl).ctn_mp.spec_index(target_container).view_rodata(),
         final(krnl).allc_4k_mp.dom().contains(target_allocator),

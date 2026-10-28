@@ -1,5 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
+#[cfg(verus_keep_ghost)]
+use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 #[cfg(not(feature = "split-crates"))]
 use crate::kernel::implementation::attach_endpoint_reference_and_unlock::attach_endpoint_reference_and_unlock;
 
@@ -22,6 +24,8 @@ pub(super) fn release_new_container_root_thread_locks_and_attach_endpoint(
     requires
         old(krnl).inv(),
         index_valid(NUM_CPUS, cpu_id),
+        cpu_id == old(lctx).cpu_id(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
         old(lctx).kernel_view_locking_state() is Release,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).page_lock_map().dom() =~= set![page_ptr2page_index(new_thread_ptr)],
@@ -43,7 +47,7 @@ pub(super) fn release_new_container_root_thread_locks_and_attach_endpoint(
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
-        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         cpu_lock_perm.state() is WriteLock && cpu_lock_perm.thread_id() == old(lctx).thread_id(),
         cpu_lock_perm.lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
         parent_container_ptr != child_container_ptr,
@@ -180,7 +184,8 @@ pub(super) fn release_new_container_root_thread_locks_and_attach_endpoint(
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         *final(krnl) == (KernelK { ctn_mp: final(krnl).ctn_mp, prc_mp: final(krnl).prc_mp, pt_mp: final(krnl).pt_mp, pt_lower: final(krnl).pt_lower, pg_arr: final(krnl).pg_arr, sched_mp: final(krnl).sched_mp,
-            thr_mp: final(krnl).thr_mp, ep_mp: final(krnl).ep_mp, cpu_arr: final(krnl).cpu_arr, ..*old(krnl) }),
+            thr_mp: final(krnl).thr_mp, ep_mp: final(krnl).ep_mp, cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, ..*old(krnl) }),
+        final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view().update(cpu_id as int, cpu_op_after_step(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state)),
         forall|p: RwLockContainerPtr| #![trigger final(krnl).ctn_mp.spec_index(p)]
             old(krnl).ctn_mp.dom().contains(p) ==> if p == child_container_ptr || p == parent_container_ptr { final(krnl).ctn_mp.spec_index(p).locking_thread() is None }
                 else {
@@ -493,6 +498,8 @@ fn release_new_container_caller_side_locks(
     requires
         old(krnl).inv(),
         index_valid(NUM_CPUS, cpu_id),
+        cpu_id == old(lctx).cpu_id(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
         old(lctx).kernel_view_locking_state() is Release,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).page_lock_map().dom().is_empty(),
@@ -515,7 +522,7 @@ fn release_new_container_caller_side_locks(
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
-        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         cpu_lock_perm.state() is WriteLock && cpu_lock_perm.thread_id() == old(lctx).thread_id(),
         cpu_lock_perm.lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
         parent_container_ptr != child_container_ptr,
@@ -554,7 +561,8 @@ fn release_new_container_caller_side_locks(
         final(lctx).no_locks_held(),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        *final(krnl) == (KernelK { ctn_mp: final(krnl).ctn_mp, prc_mp: final(krnl).prc_mp, thr_mp: final(krnl).thr_mp, cpu_arr: final(krnl).cpu_arr, ..*old(krnl) }),
+        *final(krnl) == (KernelK { ctn_mp: final(krnl).ctn_mp, prc_mp: final(krnl).prc_mp, thr_mp: final(krnl).thr_mp, cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, ..*old(krnl) }),
+        final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view().update(cpu_id as int, cpu_op_after_step(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state)),
         forall|p: RwLockContainerPtr| #![trigger final(krnl).ctn_mp.spec_index(p)]
             old(krnl).ctn_mp.dom().contains(p) ==> if p == child_container_ptr || p == parent_container_ptr { final(krnl).ctn_mp.spec_index(p).locking_thread() is None }
                 else {
@@ -587,9 +595,18 @@ fn release_new_container_caller_side_locks(
     krnl.wunlock_process(parent_process_ptr, Tracked(&mut *lctx), Tracked(parent_process_lock_perm));
     krnl.wunlock_container(child_container_ptr, Tracked(&mut *lctx), Tracked(child_container_lock_perm));
     krnl.wunlock_container(parent_container_ptr, Tracked(&mut *lctx), Tracked(parent_container_lock_perm));
+    proof {
+        let ghost pre = *krnl;
+        let ghost pre_lctx = *lctx;
+        assert(krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
+        krnl.u_sys_exit(lctx);
+        u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+    }
     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
-        assert(kernel_cpu_nonlock_fields_unchanged(old(krnl).cpu_arr, krnl.cpu_arr) && kernel_process_nonlock_fields_unchanged(old(krnl).prc_mp, krnl.prc_mp)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
+        assert(kernel_cpu_nonlock_fields_unchanged(old(krnl).cpu_arr, krnl.cpu_arr) && kernel_process_nonlock_fields_unchanged(old(krnl).prc_mp, krnl.prc_mp)) by {
+            broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);
+        };
     }
 }
 }

@@ -205,9 +205,10 @@ pub(super) proof fn scheduler_context_switch_eof_subsystems(pre: KernelK, post: 
                 &&& !queue_before.map().remove(pre.thr_mp.spec_index(next_thread).view().scheduler_linkedlist_node.addr()).dom().contains(pre.thr_mp.spec_index(prev).view().scheduler_linkedlist_node.addr())
             })
         }),
+        pre.cpu_op.view().view()[cpu_id as int] is InStep,
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
-        post.cpu_published[cpu_id as int].inv(),
+        post.cpu_hw_cr3_pcid[cpu_id as int].inv(),
         post.cpu_arr.spec_index(cpu_id).view().view().view().tlb_dirty_bitmap.inv(),
         post.sched_mp.perms_wf(),
         post.sched_mp.spec_index(scheduler_ptr).shards.inv(),
@@ -219,13 +220,14 @@ pub(super) proof fn scheduler_context_switch_eof_subsystems(pre: KernelK, post: 
     reveal(scheduler_context_switch_eof_transition_framing);
     assert(post.subsystems_inv()) by {
         assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); };
+        assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
         assert(thread_perms_wf(post.thr_mp)) by {
             reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
             reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
         };
         assert(scheduler_perms_wf(post.sched_mp)) by { reveal(scheduler_perms_wf); };
         assert(pcid_needflush_wf(post.pcid_needflush)) by { reveal(pcid_needflush_wf); };
-        assert(cpu_published_wf(post.cpu_published, post.cpu_arr, post.pcid_needflush)) by { reveal(process_thread_wf); reveal(process_pagetable_match); reveal(pagetable_perms_wf); reveal(PageTableHigher::table_pages_wf); reveal(cpu_published_wf); };
+        assert(cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush)) by { reveal(process_thread_wf); reveal(process_pagetable_match); reveal(pagetable_perms_wf); reveal(PageTableHigher::table_pages_wf); reveal(cpu_hw_cr3_pcid_wf); };
         assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { cpu_offline_flags_wf_preserved_for_cpu_owner_eq(post.cpu_offline_mp, pre.cpu_arr, post.cpu_arr); };
         reveal(KernelK::default_pagetable_wf);
     };
@@ -237,7 +239,7 @@ pub(super) proof fn scheduler_context_switch_eof_memory(pre: KernelK, post: Kern
         scheduler_context_switch_eof_transition_framing(pre, post, cpu_id, scheduler_ptr, next_thread, entry_regs),
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
-        post.cpu_published[cpu_id as int].inv(),
+        post.cpu_hw_cr3_pcid[cpu_id as int].inv(),
         post.cpu_arr.spec_index(cpu_id).view().view().view().tlb_dirty_bitmap.inv(),
         post.sched_mp.perms_wf(),
         post.sched_mp.spec_index(scheduler_ptr).shards.inv(),
@@ -291,9 +293,10 @@ pub(super) proof fn scheduler_context_switch_eof(pre: KernelK, post: KernelK, cp
                 &&& !queue_before.map().remove(pre.thr_mp.spec_index(next_thread).view().scheduler_linkedlist_node.addr()).dom().contains(pre.thr_mp.spec_index(prev).view().scheduler_linkedlist_node.addr())
             })
         }),
+        pre.cpu_op.view().view()[cpu_id as int] is InStep,
         post.cpu_arr.inv(),
         post.cpu_tlb.inv(),
-        post.cpu_published[cpu_id as int].inv(),
+        post.cpu_hw_cr3_pcid[cpu_id as int].inv(),
         post.cpu_arr.spec_index(cpu_id).view().view().view().tlb_dirty_bitmap.inv(),
         post.sched_mp.perms_wf(),
         post.sched_mp.spec_index(scheduler_ptr).shards.inv(),

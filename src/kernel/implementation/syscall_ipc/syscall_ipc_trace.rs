@@ -151,6 +151,7 @@ pub(super) proof fn ipc_pages_finish_step_pre_from_k(
             &&& ipc_pages_held(pre, cpu_id, endpoint_index)
             &&& pre.cpu_array[cpu_id as int].current_process == Some(process_ptr)
             &&& pre.cpu_array[cpu_id as int].current_thread == Some(thread_ptr)
+            &&& pre.cpu_array[cpu_id as int].state == krnl.cpu_arr.spec_index(cpu_id).view().view().view().state
             &&& progress->Some_0->IpcPages_peer == peer_ptr
             &&& progress->Some_0->IpcPages_released == Some(result)
             &&& progress->Some_0->IpcPages_tables is Unlocked
@@ -688,6 +689,7 @@ pub(super) proof fn ipc_endpoint_finish_step_pre_from_k(
             let pre = kernel_k_to_kernel_u(*krnl);
             &&& pre.cpu_array[cpu_id as int].current_process == Some(process_ptr)
             &&& pre.cpu_array[cpu_id as int].current_thread == Some(thread_ptr)
+            &&& pre.cpu_array[cpu_id as int].state == krnl.cpu_arr.spec_index(cpu_id).view().view().view().state
             &&& pre.thread_map[thread_ptr].syscall_progress == Some(SyscallProgress::IpcEndpoint {
                 peer: peer_ptr, caller_sends: receiver == peer_ptr, payload_index: if receiver == peer_ptr { source_index } else { target_index },
             })
@@ -763,7 +765,7 @@ pub(super) proof fn ipc_endpoint_transit_step_from_u(
         pre.thread_map[thread_ptr].endpoint_descriptors[endpoint_index as int] == Some(channel_ptr),
         pre.endpoint_map[channel_ptr].queue[0] == peer_ptr,
         post == (KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre.cpu_array[cpu_id as int] }),
+            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
             thread_map: pre.thread_map.insert(thread_ptr, ThreadU {
                 lock_state: LockStateU::WriteLocked,
                 syscall_progress: Some(SyscallProgress::IpcEndpoint { peer: peer_ptr, caller_sends: waiting_state is SENDING, payload_index }),
@@ -833,7 +835,7 @@ pub(super) proof fn ipc_endpoint_finish_step_from_u(
             };
             let container = pre.thread_map[peer_ptr].owning_container;
             post == (KernelU {
-                cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre.cpu_array[cpu_id as int] }),
+                cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: cpu_op_after_step(pre.cpu_array[cpu_id as int].state), ..pre.cpu_array[cpu_id as int] }),
                 container_map: pre.container_map.insert(container, ContainerU {
                     scheduler: pre.container_map[container].scheduler.update(wake_cpu as int, pre.container_map[container].scheduler[wake_cpu as int].push(peer_ptr)), ..pre.container_map[container]
                 }),
@@ -915,7 +917,7 @@ pub(super) proof fn ipc_pages_enter_step_from_u(
         pre.endpoint_map[channel_ptr].queue[0] == peer_ptr,
         pre.thread_map[peer_ptr].ipc_payload == (IPCPayLoad::Pages { va_range: if waiting_state is SENDING { target_range } else { source_range } }),
         post == (KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre.cpu_array[cpu_id as int] }),
+            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
             thread_map: pre.thread_map.insert(thread_ptr, ThreadU {
                 lock_state: LockStateU::WriteLocked,
                 syscall_progress: Some(SyscallProgress::IpcPages { source_range, target_range, peer: peer_ptr, tables: IpcPagesTables::Unlocked, released: None }),
@@ -1133,7 +1135,7 @@ pub(super) proof fn ipc_pages_finish_step_from_u(
         {
             let container = pre.thread_map[peer_ptr].owning_container;
             post == (KernelU {
-                cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre.cpu_array[cpu_id as int] }),
+                cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: cpu_op_after_step(pre.cpu_array[cpu_id as int].state), ..pre.cpu_array[cpu_id as int] }),
                 container_map: pre.container_map.insert(container, ContainerU {
                     scheduler: pre.container_map[container].scheduler.update(wake_cpu as int, pre.container_map[container].scheduler[wake_cpu as int].push(peer_ptr)), ..pre.container_map[container]
                 }),

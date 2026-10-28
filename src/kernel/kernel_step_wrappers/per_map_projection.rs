@@ -61,11 +61,13 @@ pub proof fn kernel_endpoint_nonlock_fields_and_locks_unchanged_implies_u_endpoi
     assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => { if pre.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(pre, include_lock_state, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(post, include_lock_state, e); } });
 }
 
-/// Cpu `cpu_id` entering `state` with no current process or thread, every other cpu and every cpu lock owner unchanged,
-/// projects to that cpu-array update.
+/// Cpu `cpu_id` entering `state` with no current process or thread and resting in the running state `state` implies,
+/// every other cpu and every cpu lock owner unchanged, projects to that cpu-array update.
 pub proof fn kernel_cpu_state_set_and_current_cleared_implies_u_cpu_array(pre: &KernelK, post: &KernelK, cpu_id: CpuId, state: CpuState, include_lock_state: bool)
     requires
         index_valid(NUM_CPUS, cpu_id),
+        pre.cpu_op.view().view().len() == NUM_CPUS,
+        post.cpu_op.view().view() == pre.cpu_op.view().view().update(cpu_id as int, cpu_op_after_step(state)),
         forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]
             index_valid(NUM_CPUS, i) ==> post.cpu_arr.spec_index(i).value.locking_thread() == pre.cpu_arr.spec_index(i).value.locking_thread(),
         forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]
@@ -82,14 +84,14 @@ pub proof fn kernel_cpu_state_set_and_current_cleared_implies_u_cpu_array(pre: &
         ({
             let pre_u = kernel_k_user_projection(*pre, include_lock_state);
             let post_u = kernel_k_user_projection(*post, include_lock_state);
-            post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { state, current_process: None, current_thread: None, ..pre_u.cpu_array[cpu_id as int] })
+            post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { state, op: cpu_op_after_step(state), current_process: None, current_thread: None, ..pre_u.cpu_array[cpu_id as int] })
         }),
 {
     hide(kernel_k_user_projection);
     kernel_u_user_domains_projection(pre, include_lock_state); kernel_u_user_domains_projection(post, include_lock_state);
     let pre_u = kernel_k_user_projection(*pre, include_lock_state);
     let post_u = kernel_k_user_projection(*post, include_lock_state);
-    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { state, current_process: None, current_thread: None, ..pre_u.cpu_array[cpu_id as int] }), i => {
+    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { state, op: cpu_op_after_step(state), current_process: None, current_thread: None, ..pre_u.cpu_array[cpu_id as int] }), i => {
         if 0 <= i < NUM_CPUS { kernel_cpu_user_projection_at(pre, include_lock_state, i as usize); kernel_cpu_user_projection_at(post, include_lock_state, i as usize); }
     });
 }
@@ -402,19 +404,23 @@ pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_container_map(
     });
 }
 
-/// Only the lock mode of cpu `cpu_id` changing, to `mode`, projects to that cpu-array update.
+/// Only the lock mode of cpu `cpu_id` changing, to `mode`, and its running state projects to that cpu-array update.
 pub proof fn kernel_cpu_lock_mode_changed_implies_u_cpu_array(pre: &KernelK, post: &KernelK, cpu_id: CpuId, mode: LockStateU)
     requires
         index_valid(NUM_CPUS, cpu_id),
-        post.cpu_arr.unchanged_except(&pre.cpu_arr, cpu_id),
+        forall|i: CpuId| #![trigger post.cpu_op.view().view()[i as int]] index_valid(NUM_CPUS, i) && i != cpu_id ==> post.cpu_op.view().view()[i as int] == pre.cpu_op.view().view()[i as int],
+        post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id),
         kernel_cpu_nonlock_fields_unchanged(pre.cpu_arr, post.cpu_arr),
         post.cpu_arr.spec_index(cpu_id).value.lock_state_u() == mode,
-    ensures kernel_k_to_kernel_u(*post).cpu_array == kernel_k_to_kernel_u(*pre).cpu_array.update(cpu_id as int, CpuU { lock_state: mode, ..kernel_k_to_kernel_u(*pre).cpu_array[cpu_id as int] }),
+    ensures
+        kernel_k_to_kernel_u(*post).cpu_array == kernel_k_to_kernel_u(*pre).cpu_array.update(cpu_id as int, CpuU {
+            lock_state: mode, op: post.cpu_op.view().view()[cpu_id as int], ..kernel_k_to_kernel_u(*pre).cpu_array[cpu_id as int]
+        }),
 {
     reveal(kernel_cpu_nonlock_fields_unchanged); kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
-    assert_seqs_equal!(b.cpu_array == a.cpu_array.update(cpu_id as int, CpuU { lock_state: mode, ..a.cpu_array[cpu_id as int] }), i => {
+    assert_seqs_equal!(b.cpu_array == a.cpu_array.update(cpu_id as int, CpuU { lock_state: mode, op: post.cpu_op.view().view()[cpu_id as int], ..a.cpu_array[cpu_id as int] }), i => {
         if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); }
     });
 }

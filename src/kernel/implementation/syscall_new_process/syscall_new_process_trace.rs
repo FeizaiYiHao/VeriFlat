@@ -124,7 +124,7 @@ pub(super) proof fn new_process_enter_step_from_u(
             &&& (endpoint_index is None ==> endpoint_ptr is None)
         },
         locked == (KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre.cpu_array[cpu_id as int] }),
+            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
             process_map: pre.process_map.insert(process_ptr, ProcessU {
                 lock_state: LockStateU::WriteLocked, pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..pre.process_map[process_ptr].pagetable->Some_0 }),
                 ..pre.process_map[process_ptr]
@@ -304,7 +304,7 @@ pub(super) proof fn new_process_finish_step_from_u(
         post.process_map.spec_index(child_ptr).owned_threads.last() == new_thread_ptr,
         post.process_map[parent_ptr].pagetable->Some_0.lock_state is Unlocked || post.process_map[parent_ptr].pagetable->Some_0.lock_state is ReadLocked,
         kernel_u_new_thread_changed(KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre.cpu_array[cpu_id as int] }),
+            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: cpu_op_after_step(pre.cpu_array[cpu_id as int].state), ..pre.cpu_array[cpu_id as int] }),
             process_map: pre.process_map.insert(parent_ptr, ProcessU {
                 pagetable: Some(PageTableU { lock_state: post.process_map[parent_ptr].pagetable->Some_0.lock_state, ..pre.process_map[parent_ptr].pagetable->Some_0 }),
                 ..pre.process_map[parent_ptr]

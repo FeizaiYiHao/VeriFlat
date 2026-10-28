@@ -108,7 +108,7 @@ pub(super) proof fn ipc_reply_dangling_caller_taken_over_step_from_u(
 )
     requires
         locked_u == (KernelU {
-            cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre_u.cpu_array[cpu_id as int] }),
+            cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..pre_u.cpu_array[cpu_id as int] }),
             thread_map: pre_u.thread_map.insert(callee_ptr, ThreadU { lock_state: LockStateU::WriteLocked, ..pre_u.thread_map[callee_ptr] })
                 .insert(caller_ptr, ThreadU { lock_state: LockStateU::WriteLocked, ..pre_u.thread_map[caller_ptr] }),
             endpoint_map: pre_u.endpoint_map.insert(endpoint_ptr, EndpointU { lock_state: LockStateU::WriteLocked, ..pre_u.endpoint_map[endpoint_ptr] }),

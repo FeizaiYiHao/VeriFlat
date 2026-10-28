@@ -85,7 +85,7 @@ pub(super) proof fn unmap_4k_enter_step_from_u(pre: KernelU, post: KernelU, cpu_
             &&& forall|i: int| #![trigger pagetable.mapping_4k.dom().contains(range.view()[i])] 0 <= i < range.len ==> pagetable.mapping_4k.dom().contains(range.view()[i])
         },
         post == (KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre.cpu_array[cpu_id as int] }),
+            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
             container_map: pre.container_map.insert(container_ptr, ContainerU {
                 lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(pre.process_map.spec_index(process_ptr).depth)), ..pre.container_map.spec_index(container_ptr)
             }),
@@ -132,7 +132,7 @@ pub(super) proof fn unmap_4k_exit_step_from_u(
         },
         table_lock is Unlocked || table_lock is ReadLocked,
         post == (KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre.cpu_array[cpu_id as int] }),
+            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: CpuOpState::Trap, ..pre.cpu_array[cpu_id as int] }),
             container_map: pre.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..pre.container_map.spec_index(container_ptr) }),
             process_map: pre.process_map.insert(process_ptr, ProcessU {
                 lock_state: LockStateU::Unlocked,

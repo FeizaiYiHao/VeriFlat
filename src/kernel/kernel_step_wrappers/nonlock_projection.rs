@@ -27,6 +27,7 @@ pub proof fn kernel_cpu_nonlock_projection_at(krnl: &KernelK, cpu_id: CpuId)
             kernel_k_to_nonlock_kernel_u(*krnl).cpu_array[cpu_id as int] == (CpuU {
                 lock_state: LockStateU::Unlocked, owning_container: c.owning_container, state: c.state,
                 current_process: c.current_process, current_thread: c.current_thread, killed: krnl.cpu_arr.spec_index(cpu_id).value.being_killed(),
+                op: cpu_op_after_step(c.state),
             })
         }),
 { reveal(kernel_k_to_nonlock_kernel_u); }
@@ -97,6 +98,7 @@ pub proof fn kernel_cpu_user_projection_at(krnl: &KernelK, include_lock_state: b
                 lock_state: if include_lock_state { krnl.cpu_arr.spec_index(cpu_id).value.lock_state_u() } else { LockStateU::Unlocked },
                 owning_container: c.owning_container, state: c.state, current_process: c.current_process, current_thread: c.current_thread,
                 killed: krnl.cpu_arr.spec_index(cpu_id).value.being_killed(),
+                op: if include_lock_state { krnl.cpu_op.view().view()[cpu_id as int] } else { cpu_op_after_step(c.state) },
             })
         }),
 {}

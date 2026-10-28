@@ -4,6 +4,8 @@ use super::cpu_offline_check_spec::*;
 use super::cpu_offline_check_trace::*;
 use super::cpu_offline_check_locked::cpu_offline_check_locked;
 use super::cpu_offline_commit_helpers::cpu_offline_commit_go_off;
+#[cfg(verus_keep_ghost)]
+use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 pub enum OfflineCheckResult {
@@ -48,6 +50,7 @@ pub(super) fn cpu_offline_commit(
         old(steps).snapshot_k().cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_id).view().locking_thread() is None,
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(steps).nonlock_view().len() == 0,
@@ -104,7 +107,7 @@ pub(super) fn cpu_offline_commit(
             &&& old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().scheduler == scheduler_ptr
             &&& old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set == cpu_set_ptr
             &&& flags_ptr == cpu_offline_flags_ptr(container_ptr)
-            &&& old(krnl).cpu_published[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
+            &&& old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
         },
         current_process is Some == current_thread is Some,
         current_process is Some == process_lock_perm is Some,
@@ -213,6 +216,7 @@ pub fn cpu_offline_check(
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is Trap || old(krnl).cpu_op.view().view()[cpu_id as int] is Idle,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -246,7 +250,7 @@ pub fn cpu_offline_check(
         },
 {
     let ghost entry = *krnl;
-    proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
+    proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }
     let cpu_lock_res = krnl.wlock_cpu(cpu_id, Tracked(&mut *lctx));
     if cpu_lock_res.is_none() {
         proof {
@@ -263,8 +267,15 @@ pub fn cpu_offline_check(
     let current_process = cpu.current_process();
     let current_thread = cpu.current_thread();
     if let CpuState::Off = state {
+        proof {
+            let ghost pre = *krnl;
+            let ghost pre_lctx = *lctx;
+            krnl.u_sys_exit(lctx);
+            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+        }
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
+            assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, None, None, None, None, None);
             cpu_offline_check_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), old(krnl), cpu_id, *pt_regs);
             cpu_offline_check_result_from_k(old(krnl), cpu_id, OfflineCheckResult::Continue);

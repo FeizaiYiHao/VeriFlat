@@ -6,11 +6,11 @@ use super::syscall_kill_container_spec::kill_container_progress;
 verus! {
 /// The killer `thread_ptr` of process `process_ptr`, running on `cpu_id` in its container `owner_ptr`, walks `chain`,
 /// the containers it marked with `killer_info` from a child of its container down to the target, and works on the
-/// target, or on its own container once the chain is empty, at stage `Walk`. It write-holds its cpu, its process,
-/// itself, and its container with `cpu_perm`, `process_perm`, `thread_perm`, and `owner_perm`, every container on the
-/// chain with `chain_perms`, and no other lock. A held container other than its own sits on the chain at its depth
-/// below its own container; every chain container is the child of the one before it, lies below the killer's
-/// container, and, except the target, still owns processes.
+/// target, or on its own container once the chain is empty, at stage `Walk`. It write-holds its cpu, inside its kernel
+/// step, its process, itself, and its container with `cpu_perm`, `process_perm`, `thread_perm`, and `owner_perm`, every
+/// container on the chain with `chain_perms`, and no other lock. A held container other than its own sits on the chain
+/// at its depth below its own container; every chain container is the child of the one before it, lies below the
+/// killer's container, and, except the target, still owns processes.
 pub open spec fn kill_container_walk_state(
     k: KernelK, lctx: LocalContext, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, owner_ptr: RwLockContainerPtr, killer_info: KillerInfo,
     chain: Seq<RwLockContainerPtr>, cpu_perm: LockPerm, process_perm: LockPerm, thread_perm: LockPerm, owner_perm: LockPerm, chain_perms: Map<RwLockContainerPtr, LockPerm>,
@@ -27,7 +27,8 @@ pub open spec fn kill_container_walk_state(
     &&& lctx.cpu_set_lock_map().dom().is_empty()
     &&& k.prc_mp.dom().contains(process_ptr)
     &&& k.thr_mp.dom().contains(thread_ptr)
-    &&& k.cpu_published[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
+    &&& k.cpu_hw_cr3_pcid[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
+    &&& k.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None
     &&& cpu.owning_container == owner_ptr
     &&& cpu.process_depth == process.view_rodata().view().depth
     &&& cpu.container_depth == process.view_rodata().view().container_depth

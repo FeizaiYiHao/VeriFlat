@@ -27,7 +27,7 @@ pub(super) fn flush_pagetable_tlb_on_cpu(krnl: &mut KernelK, pagetable: RwLockPa
         cpu_perm.view().lock_id() == old(krnl).cpu_arr.spec_index(local_cpu).view().locking_thread()->Write_lock_id,
         old(krnl).cpu_arr.spec_index(local_cpu).view().view().view().current_cr3 == cr3,
         old(krnl).cpu_arr.spec_index(local_cpu).view().view().view().current_pcid == pcid,
-        old(krnl).cpu_published[local_cpu as int].view() == (cr3, pcid),
+        old(krnl).cpu_hw_cr3_pcid[local_cpu as int].view() == (cr3, pcid),
         old(krnl).cpu_arr.spec_index(local_cpu).view().view().view().current_thread == Some(thread_ptr),
         old(krnl).pt_mp.dom().contains(pagetable),
         old(krnl).pt_mp.spec_index(pagetable).view().pcid == Some(pcid),
@@ -93,7 +93,7 @@ pub(super) fn flush_pagetable_tlb_on_cpu(krnl: &mut KernelK, pagetable: RwLockPa
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Acquire,
-        final(krnl).cpu_published[local_cpu as int].view() == old(krnl).cpu_published[local_cpu as int].view(),
+        final(krnl).cpu_hw_cr3_pcid[local_cpu as int].view() == old(krnl).cpu_hw_cr3_pcid[local_cpu as int].view(),
         forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> final(krnl).cpu_arr.spec_index(held_cpu_id).view().view() == old(krnl).cpu_arr.spec_index(held_cpu_id).view().view(),
         final(krnl).cpu_arr.spec_index(local_cpu).view().view() == old(krnl).cpu_arr.spec_index(local_cpu).view().view(),
         final(krnl).cpu_arr.spec_index(local_cpu).view().locking_thread() == old(krnl).cpu_arr.spec_index(local_cpu).view().locking_thread(),
@@ -134,15 +134,15 @@ pub(super) fn flush_pagetable_tlb_on_cpu(krnl: &mut KernelK, pagetable: RwLockPa
             },
 {
     proof { unmap_4k_tlb_flush_step_pre_from_k(&*krnl, &entry, &*lctx, &held, local_cpu, thread_ptr, pagetable); }
-    let published = flush_pcid_and_drop_stale_cpu(krnl, pagetable, cr3, pcid, cpu_id, local_cpu, Tracked(&mut *lctx), cpu_perm);
-    proof { krnl.kernel_step_boundary_cpu_tlb_updated(&mut *lctx, &mut *steps, cpu_id, pcid, cpu_id == local_cpu || (published.0 == cr3 && published.1 == pcid)); }
+    let hw_cr3_pcid = flush_pcid_and_drop_stale_cpu(krnl, pagetable, cr3, pcid, cpu_id, local_cpu, Tracked(&mut *lctx), cpu_perm);
+    proof { krnl.kernel_step_boundary_cpu_tlb_updated(&mut *lctx, &mut *steps, cpu_id, pcid, cpu_id == local_cpu || (hw_cr3_pcid.0 == cr3 && hw_cr3_pcid.1 == pcid)); }
 }
 
 /// Flushes `pcid` on cpu `cpu_id` under its needflush lock and drops `cpu_id` from the stale-CPU records of `pagetable` the
-/// thread may change, deleting those records after the last cpu; returns the pair `cpu_id` published. Every such record
+/// thread may change, deleting those records after the last cpu; returns the hardware cr3/pcid word of `cpu_id`. Every such record
 /// lists exactly the cpus from `cpu_id` up on entry and from `cpu_id + 1` up on return.
 fn flush_pcid_and_drop_stale_cpu(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, cr3: PageTableRoot, pcid: Pcid, cpu_id: usize, local_cpu: CpuId,
-    Tracked(lctx): Tracked<&mut LocalContext>, cpu_perm: Tracked<&LockPerm>) -> (published: (PageTableRoot, Pcid))
+    Tracked(lctx): Tracked<&mut LocalContext>, cpu_perm: Tracked<&LockPerm>) -> (hw_cr3_pcid: (PageTableRoot, Pcid))
     requires
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
@@ -156,7 +156,7 @@ fn flush_pcid_and_drop_stale_cpu(krnl: &mut KernelK, pagetable: RwLockPageTableR
         cpu_perm.view().lock_id() == old(krnl).cpu_arr.spec_index(local_cpu).view().locking_thread()->Write_lock_id,
         old(krnl).cpu_arr.spec_index(local_cpu).view().view().view().current_cr3 == cr3,
         old(krnl).cpu_arr.spec_index(local_cpu).view().view().view().current_pcid == pcid,
-        old(krnl).cpu_published[local_cpu as int].view() == (cr3, pcid),
+        old(krnl).cpu_hw_cr3_pcid[local_cpu as int].view() == (cr3, pcid),
         old(krnl).pt_mp.dom().contains(pagetable),
         old(krnl).pt_mp.spec_index(pagetable).view().pcid == Some(pcid),
         old(krnl).pt_mp.spec_index(pagetable).view().cr3 == cr3,
@@ -200,7 +200,7 @@ fn flush_pcid_and_drop_stale_cpu(krnl: &mut KernelK, pagetable: RwLockPageTableR
         kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
-        final(krnl).cpu_tlb.view() == if cpu_id == local_cpu || (published.0 == cr3 && published.1 == pcid) {
+        final(krnl).cpu_tlb.view() == if cpu_id == local_cpu || (hw_cr3_pcid.0 == cr3 && hw_cr3_pcid.1 == pcid) {
             old(krnl).cpu_tlb.view().insert((cpu_id, pcid), SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() })
         } else { old(krnl).cpu_tlb.view() },
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, TypedLockMode::Write) ==> {
@@ -216,10 +216,10 @@ fn flush_pcid_and_drop_stale_cpu(krnl: &mut KernelK, pagetable: RwLockPageTableR
         },
 {
     let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx));
-    let published = mark_pcid_needflush_and_load(krnl, cpu_id, pcid, Tracked(&mut *lctx), Tracked(&needflush_perm));
+    let hw_cr3_pcid = mark_pcid_needflush_and_load(krnl, cpu_id, pcid, Tracked(&mut *lctx), Tracked(&needflush_perm));
     if cpu_id == local_cpu {
         flush_local_pcid_and_clear(krnl, cpu_id, pcid, cr3, Tracked(&*lctx), Tracked(&needflush_perm), cpu_perm);
-    } else if published.0 == cr3 && published.1 == pcid {
+    } else if hw_cr3_pcid.0 == cr3 && hw_cr3_pcid.1 == pcid {
         flush_remote_pcid_and_clear(krnl, cpu_id, pcid, Tracked(&*lctx), Tracked(&needflush_perm));
     }
     assert(krnl.cpu_tlb.spec_index((cpu_id, pcid)).is_empty()
@@ -247,6 +247,6 @@ fn flush_pcid_and_drop_stale_cpu(krnl: &mut KernelK, pagetable: RwLockPageTableR
             broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive;
         };
     }
-    published
+    hw_cr3_pcid
 }
 }

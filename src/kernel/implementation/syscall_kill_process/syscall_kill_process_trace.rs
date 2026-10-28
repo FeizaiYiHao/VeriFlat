@@ -465,7 +465,7 @@ pub(crate) proof fn kill_enter_step_from_u(
             &&& !pre.process_map[child_ptr].killed
         },
         locked == (KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre.cpu_array[cpu_id as int] }),
+            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
             process_map: pre.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::WriteLocked, ..pre.process_map[process_ptr] }),
             thread_map: pre.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, ..pre.thread_map[thread_ptr] }),
             ..pre
@@ -595,7 +595,7 @@ pub(crate) proof fn kill_evict_step_from_u(pre: KernelU, post: KernelU, cpu_id: 
         index_valid(NUM_CPUS, remote),
         remote != cpu_id,
         post == (KernelU {
-            cpu_array: pre.cpu_array.update(remote as int, CpuU { state: CpuState::Idle, current_process: None, current_thread: None, ..pre.cpu_array[remote as int] }),
+            cpu_array: pre.cpu_array.update(remote as int, CpuU { state: CpuState::Idle, op: CpuOpState::Idle, current_process: None, current_thread: None, ..pre.cpu_array[remote as int] }),
             thread_map: pre.thread_map.insert(victim_ptr, ThreadU { state: ThreadState::KILLED, ..pre.thread_map[victim_ptr] }),
             ..pre
         }),
@@ -644,7 +644,7 @@ pub(crate) proof fn kill_finish_step_from_u(pre: KernelU, cleared: KernelU, post
         pre.thread_map[thread_ptr].syscall_progress == kill_progress(process_ptr, KillStage::Walk),
         cleared == (KernelU { thread_map: pre.thread_map.insert(thread_ptr, ThreadU { syscall_progress: None, ..pre.thread_map[thread_ptr] }), ..pre }),
         post == (KernelU {
-            cpu_array: cleared.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..cleared.cpu_array[cpu_id as int] }),
+            cpu_array: cleared.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: cpu_op_after_step(cleared.cpu_array[cpu_id as int].state), ..cleared.cpu_array[cpu_id as int] }),
             process_map: cleared.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::Unlocked, ..cleared.process_map[process_ptr] }),
             thread_map: cleared.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..cleared.thread_map[thread_ptr] }),
             ..cleared

@@ -40,7 +40,7 @@ verus! {
             final(steps).view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*old(krnl))),
             old(steps).snapshot_k() == *old(krnl) ==> final(steps).view() == old(steps).view(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
-            index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
+            index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
             final(krnl).inv(),
             final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == false,
             final(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc == old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc,
@@ -143,7 +143,7 @@ verus! {
         ensures
             final(steps).view() == old(steps).view(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
-            index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_published[old(lctx).cpu_id() as int].view() == old(krnl).cpu_published[old(lctx).cpu_id() as int].view(),
+            index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
             final(krnl).inv(),
             final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == false,
             final(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc == old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc,

@@ -55,6 +55,7 @@ pub(super) proof fn mmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAd
                     &&& checked.mapping_4k().dom().contains(spec_index2va(f))
                 }
                 &&& found is None ==> checked.spec_mapping_4k_range_empty(start, end)
+                &&& found is None ==> checked.spec_mapping_4k_va_range_empty(va, va_range.view()[range - 1])
             }
             &&& ret is Error ==> spec_v2l4index(va) < table.kernel_l4_end()
             &&& cur is Some && ret is Success ==> clear
@@ -86,9 +87,7 @@ pub(super) proof fn mmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAd
                 spec_va_4k_index_roundtrip_at(fv, f.0, f.1, f.2, f.3);
                 assert(checked.mapping_4k().spec_index(fv).present);
                 assert(u_table.mapping_4k.dom().contains(fv));
-            } else {
-                broadcast use PageTableC::mapping_4k_index_range_empty_implies_va_empty_at, spec_va_4k_valid_index_roundtrip;
-            }
+            } else { reveal(PageTableC::spec_mapping_4k_va_range_empty); }
         }
     }
 }
@@ -104,8 +103,8 @@ pub(super) proof fn mmap_4k_enter_step_pre_from_k(krnl: &KernelK, cpu_id: CpuId,
         kernel_k_to_kernel_u(*krnl).container_map.dom().contains(kernel_k_to_kernel_u(*krnl).thread_map.spec_index(thread_ptr).owning_container),
 { kernel_cpu_thread_projection_at(krnl, cpu_id, process_ptr, thread_ptr, None); }
 
-/// Write-locking the caller's cpu and thread, which entering to fill already holds, locking its pagetable for `phase`, and
-/// recording the first page is the enter step on `pre`/`post` when the syscall succeeds on `pre`.
+/// Write-locking the caller's cpu and thread, which entering to fill already holds, with the cpu inside its kernel step, locking
+/// its pagetable for `phase`, and recording the first page is the enter step on `pre`/`post` when the syscall succeeds on `pre`.
 pub(super) proof fn mmap_4k_enter_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, va: VAddr, len: usize,
     range: VaRange4K, phase: Mmap4kPhase)
     requires
@@ -130,7 +129,7 @@ pub(super) proof fn mmap_4k_enter_step_from_u(pre: KernelU, post: KernelU, cpu_i
             &&& phase is Fill ==> cpu.lock_state is WriteLocked && thread.lock_state is WriteLocked && pagetable.lock_state is Unlocked
         },
         post == (KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre.cpu_array[cpu_id as int] }),
+            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
             thread_map: pre.thread_map.insert(thread_ptr, ThreadU {
                 lock_state: LockStateU::WriteLocked, syscall_progress: Some(SyscallProgress::Mmap4k { range, mapped: 0, directory: Mmap4kDirectory::None, phase }), ..pre.thread_map.spec_index(thread_ptr)
             }),
@@ -165,21 +164,21 @@ pub(super) proof fn mmap_4k_hold_step_pre_from_k(krnl: &KernelK, cpu_id: CpuId, 
     ensures mmap_4k_hold_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id, mmap_4k_syscall_va_range(va, len)),
 { kernel_cpu_thread_projection_at(krnl, cpu_id, process_ptr, thread_ptr, None); kernel_process_projection_at(krnl, process_ptr); reveal(mmap_4k_hold_step_pre); }
 
-/// Write-locking the caller's cpu and its current thread `thread_ptr` and changing nothing else is the hold step on
-/// `pre`/`post`.
+/// Write-locking the caller's cpu and its current thread `thread_ptr` with the cpu inside its kernel step and changing nothing
+/// else is the hold step on `pre`/`post`.
 pub(super) proof fn mmap_4k_hold_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr)
     requires
         pre.cpu_array[cpu_id as int].current_thread == Some(thread_ptr),
         post == (KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre.cpu_array[cpu_id as int] }),
+            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
             thread_map: pre.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, ..pre.thread_map.spec_index(thread_ptr) }),
             ..pre
         }),
     ensures mmap_4k_hold_step(pre, post, cpu_id),
 { reveal(mmap_4k_hold_step); }
 
-/// Unlocking the caller's write-locked cpu and its current thread `thread_ptr` with no progress recorded and changing nothing
-/// else is the release step on `pre`/`post`.
+/// Unlocking the caller's write-locked cpu and its current thread `thread_ptr` with no progress recorded, returning the cpu to
+/// its trap path, and changing nothing else is the release step on `pre`/`post`.
 pub(super) proof fn mmap_4k_release_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr)
     requires
         index_valid(NUM_CPUS, cpu_id),
@@ -189,7 +188,7 @@ pub(super) proof fn mmap_4k_release_step_from_u(pre: KernelU, post: KernelU, cpu
         pre.thread_map.spec_index(thread_ptr).lock_state is WriteLocked,
         pre.thread_map.spec_index(thread_ptr).syscall_progress is None,
         post == (KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre.cpu_array[cpu_id as int] }),
+            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: CpuOpState::Trap, ..pre.cpu_array[cpu_id as int] }),
             thread_map: pre.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..pre.thread_map.spec_index(thread_ptr) }),
             ..pre
         }),
@@ -282,8 +281,8 @@ pub(super) proof fn mmap_4k_leaf_step_from_u(krnl: &KernelK, post: KernelU, cpu_
     reveal(mmap_4k_leaf_step_pre); reveal(mmap_4k_leaf_step);
 }
 
-/// Clearing the progress and releasing the mmap locks after the whole range is mapped, leaving the pagetable in `table_lock`, is
-/// the exit step on `pre`/`post`.
+/// Clearing the progress and releasing the mmap locks after the whole range is mapped, returning the cpu to its trap path and
+/// leaving the pagetable in `table_lock`, is the exit step on `pre`/`post`.
 pub(super) proof fn mmap_4k_exit_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, table_lock: LockStateU)
     requires
         index_valid(NUM_CPUS, cpu_id),
@@ -307,7 +306,7 @@ pub(super) proof fn mmap_4k_exit_step_from_u(pre: KernelU, post: KernelU, cpu_id
         },
         table_lock is Unlocked || table_lock is ReadLocked,
         post == (KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, ..pre.cpu_array[cpu_id as int] }),
+            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: CpuOpState::Trap, ..pre.cpu_array[cpu_id as int] }),
             thread_map: pre.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..pre.thread_map.spec_index(thread_ptr) }),
             process_map: pre.process_map.insert(process_ptr, ProcessU {
                 pagetable: Some(PageTableU { lock_state: table_lock, ..pre.process_map.spec_index(process_ptr).pagetable->Some_0 }),

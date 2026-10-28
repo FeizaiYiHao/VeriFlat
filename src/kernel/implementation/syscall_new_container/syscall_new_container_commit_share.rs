@@ -32,7 +32,8 @@ pub(super) fn commit_new_container_share_and_finish(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         index_valid(NUM_CPUS, caller_cpu_id),
         caller_cpu_id == old(lctx).cpu_id(),
-        old(krnl).cpu_published[caller_cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_op.view().view()[caller_cpu_id as int] is InStep,
+        old(krnl).cpu_hw_cr3_pcid[caller_cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_pcid),
         page_ptr_valid(thread_page_ptr),
         parent_container_ptr != child_container_ptr,
         source_pagetable_ptr != child_pagetable_ptr,
@@ -212,6 +213,7 @@ pub(super) fn commit_new_container_share_and_finish(
             new_container_trace_share_steps(&*steps, share_before, start, pre, caller_cpu_id, *source_range, record.funding, record.process_quota,
                 record.transfer_cpu, *initial_regs, record.endpoint_index);
         };
+        assert(krnl.cpu_op.view().view()[caller_cpu_id as int] is InStep) by { cpu_op_wf_at(old(krnl).cpu_op.view().view(), old(krnl).cpu_arr, caller_cpu_id); cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, caller_cpu_id); };
         if let Some(endpoint_ptr) = endpoint {
             assert({
                 &&& krnl.ep_mp.dom().contains(endpoint_ptr)

@@ -32,7 +32,7 @@ verus! {
     #[verifier::opaque]
     pub open spec fn kernel_u_nonlock_fields(u: KernelU) -> KernelU {
         KernelU {
-            cpu_array: u.cpu_array.map_values(|c: CpuU| CpuU { lock_state: LockStateU::Unlocked, ..c }),
+            cpu_array: u.cpu_array.map_values(|c: CpuU| CpuU { lock_state: LockStateU::Unlocked, op: cpu_op_after_step(c.state), ..c }),
             container_map: Map::new(u.container_map.dom(), |k: RwLockContainerPtr|
                 ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, cpu_set_lock: LockStateU::Unlocked, ..u.container_map.spec_index(k) }),
             process_map: Map::new(u.process_map.dom(), |k: RwLockProcessPtr| {
@@ -79,6 +79,7 @@ verus! {
                     lock_state: if include_lock_state { krnl.cpu_arr.spec_index(i as usize).value.lock_state_u() } else { LockStateU::Unlocked },
                     owning_container: c.owning_container, state: c.state, current_process: c.current_process, current_thread: c.current_thread,
                     killed: krnl.cpu_arr.spec_index(i as usize).value.being_killed(),
+                    op: if include_lock_state { krnl.cpu_op.view().view()[i] } else { cpu_op_after_step(c.state) },
                 }
             }),
             container_map: Map::new(krnl.ctn_mp.dom(), |ptr: RwLockContainerPtr| {

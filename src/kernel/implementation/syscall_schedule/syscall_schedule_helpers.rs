@@ -18,8 +18,9 @@ pub(super) fn schedule_switch_unlock_and_record(
     Ghost(entry_k): Ghost<KernelK>, Ghost(switch_k): Ghost<KernelK>, Ghost(entry_regs): Ghost<Registers>,
 )
     requires
-        entry_k == (KernelK { cpu_arr: entry_k.cpu_arr, prc_mp: entry_k.prc_mp, thr_mp: entry_k.thr_mp, sched_mp: entry_k.sched_mp, ..old(steps).snapshot_k() }),
-        entry_k.cpu_arr.unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
+        entry_k == (KernelK { cpu_arr: entry_k.cpu_arr, cpu_op: entry_k.cpu_op, prc_mp: entry_k.prc_mp, thr_mp: entry_k.thr_mp, sched_mp: entry_k.sched_mp, ..old(steps).snapshot_k() }),
+        entry_k.cpu_arr.entries_unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
+        entry_k.cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
         old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
         entry_k.sched_mp.unchanged_except(&old(steps).snapshot_k().sched_mp, scheduler_ptr),
         scheduler_shards_of(entry_k.sched_mp.spec_index(scheduler_ptr)) == scheduler_shards_of(old(steps).snapshot_k().sched_mp.spec_index(scheduler_ptr)),
@@ -91,17 +92,17 @@ pub(super) fn schedule_switch_unlock_and_record(
         scheduler_context_switch_eof_transition_framing(switch_k, *old(krnl), cpu_id, scheduler_ptr, next_thread, entry_regs),
         old(krnl).cpu_arr.inv(),
         old(krnl).cpu_tlb.inv(),
-        old(krnl).cpu_published[cpu_id as int].inv(),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].inv(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().tlb_dirty_bitmap.inv(),
         old(krnl).sched_mp.perms_wf(),
         old(krnl).sched_mp.spec_index(scheduler_ptr).shards.inv(),
         old(krnl).sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.wf(),
-        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, pcid_needflush: old(krnl).pcid_needflush, cpu_published: old(krnl).cpu_published, sched_mp: old(krnl).sched_mp, thr_mp: old(krnl).thr_mp, cpu_tlb: old(krnl).cpu_tlb, ..switch_k }),
+        *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, pcid_needflush: old(krnl).pcid_needflush, cpu_hw_cr3_pcid: old(krnl).cpu_hw_cr3_pcid, sched_mp: old(krnl).sched_mp, thr_mp: old(krnl).thr_mp, cpu_tlb: old(krnl).cpu_tlb, ..switch_k }),
         old(krnl).thr_mp.dom() == entry_k.thr_mp.dom(),
         old(krnl).sched_mp.dom().contains(scheduler_ptr),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid,
-        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, pcid),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, pcid),
         !old(krnl).thr_mp.spec_index(next_thread).being_killed(),
         old(krnl).thr_mp.spec_index(next_thread).view().state == (ThreadState::RUNNING { cpu_id }),
         old(krnl).thr_mp.spec_index(next_thread).view().free_quota_pending_clean(),
@@ -231,6 +232,7 @@ pub(super) fn schedule_switch_unlock_and_record(
         let ghost flushed_pcid = schedule_flushed_pcid(entry_k, cpu_id, next_thread);
         let ghost switch_before = steps.view();
         assert(kernel_context_switch_fields(&steps.snapshot_k(), &*krnl, cpu_id, next_thread, entry_regs, flushed_pcid)) by {
+            assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::Trap));
             reveal(kernel_context_switch_fields); reveal(scheduler_context_switch_eof_transition_framing);
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
             broadcast use kernel_process_nonlock_fields_unchanged_transitive;

@@ -24,7 +24,34 @@ pub proof fn ipc_block_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, e
         ipc_block_step_pre(old_u, cpu_id, endpoint_index, waiting_state),
         ipc_block_step(old_u, new_u, cpu_id, endpoint_index, waiting_state, payload, regs, flushed_default_pcid),
     ensures isolated(new_u, a, b),
-{ reveal(kernel_u_ipc_block_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }
+{
+    reveal(kernel_u_ipc_block_changed);
+    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread.unwrap();
+    let endpoint_ptr = old_u.thread_map[thread_ptr].endpoint_descriptors[endpoint_index as int].unwrap();
+    let container = old_u.thread_map[thread_ptr].owning_container;
+    assert(in_domain(old_u, a, container) && !in_domain(old_u, b, container)) by { reveal(kernel_u_cpu_ownership_wf); };
+    assert(old_u.endpoint_map[endpoint_ptr].owning_threads.contains((thread_ptr, endpoint_index))) by { reveal(kernel_u_endpoint_ownership_wf); };
+    assert(new_u.thread_map.dom() =~= old_u.thread_map.dom());
+    assert(forall|t: RwLockThreadPtr| #![trigger new_u.thread_map[t]] new_u.thread_map[t].owning_container == old_u.thread_map[t].owning_container);
+    assert(forall|t: RwLockThreadPtr| #![trigger new_u.thread_map[t]] t != thread_ptr ==> new_u.thread_map[t].state == old_u.thread_map[t].state);
+    assert(!(new_u.thread_map[thread_ptr].state is IPC_TRANSIT));
+    assert(new_u.endpoint_map.dom() =~= old_u.endpoint_map.dom());
+    assert(forall|e: RwLockEndpointPtr| #![trigger new_u.endpoint_map[e]] new_u.endpoint_map[e].owning_threads == old_u.endpoint_map[e].owning_threads);
+    assert forall|e: RwLockEndpointPtr, t: RwLockThreadPtr, i: EndpointIdx, j: int| #![trigger new_u.endpoint_map[e].owning_threads.contains((t, i)), new_u.endpoint_map[e].queue[j]]
+        new_u.endpoint_map.dom().contains(e) && new_u.endpoint_map[e].owning_threads.contains((t, i)) && 0 <= j < new_u.endpoint_map[e].queue.len() implies {
+            &&& in_domain(new_u, a, new_u.thread_map[t].owning_container) ==> !in_domain(new_u, b, new_u.thread_map[new_u.endpoint_map[e].queue[j]].owning_container)
+            &&& in_domain(new_u, b, new_u.thread_map[t].owning_container) ==> !in_domain(new_u, a, new_u.thread_map[new_u.endpoint_map[e].queue[j]].owning_container)
+        } by {
+        if e == endpoint_ptr && j == old_u.endpoint_map[e].queue.len() {
+            assert(new_u.endpoint_map[e].queue[j] == thread_ptr);
+            assert(old_u.endpoint_map[e].owning_threads.contains((t, i)));
+        } else {
+            assert(new_u.endpoint_map[e].queue[j] == old_u.endpoint_map[e].queue[j]);
+        }
+    };
+    assert(endpoint_iso(new_u, a, b));
+    assert(inflight_iso(new_u, a, b) && inflight_iso(new_u, b, a));
+}
 
 /// A rendezvous of a running thread of `a` with the queue head of an endpoint it holds touches only that
 /// endpoint, the head, which is outside `b`, a cpu moving between the head's container and `a`, and a PCI
@@ -50,7 +77,39 @@ pub proof fn ipc_rendezvous_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: Cpu
         ipc_rendezvous_step_pre(old_u, cpu_id, endpoint_index, waiting_state, payload),
         ipc_rendezvous_step(old_u, new_u, cpu_id, endpoint_index, waiting_state, payload),
     ensures isolated(new_u, a, b),
-{ reveal(kernel_u_ipc_rendezvous_changed); reveal(kernel_u_endpoint_ownership_wf); }
+{
+    reveal(kernel_u_ipc_rendezvous_changed);
+    let caller_ptr = old_u.cpu_array[cpu_id as int].current_thread.unwrap();
+    let endpoint_ptr = old_u.thread_map[caller_ptr].endpoint_descriptors[endpoint_index as int].unwrap();
+    let peer_ptr = old_u.endpoint_map[endpoint_ptr].queue[0];
+    assert(new_u.container_map.dom() =~= old_u.container_map.dom());
+    assert(forall|c: RwLockContainerPtr| #![trigger new_u.container_map[c]] new_u.container_map[c].subtree_set == old_u.container_map[c].subtree_set);
+    assert(new_u.process_map.dom() =~= old_u.process_map.dom());
+    assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] old_u.process_map.dom().contains(p) ==> {
+        &&& new_u.process_map[p].owning_container == old_u.process_map[p].owning_container
+        &&& new_u.process_map[p].pagetable == old_u.process_map[p].pagetable
+        &&& (new_u.process_map[p].iommu_table is Some) == (old_u.process_map[p].iommu_table is Some)
+        &&& new_u.process_map[p].iommu_table->Some_0.mapping_4k == old_u.process_map[p].iommu_table->Some_0.mapping_4k
+        &&& new_u.process_map[p].iommu_table->Some_0.mapping_2m == old_u.process_map[p].iommu_table->Some_0.mapping_2m
+        &&& new_u.process_map[p].iommu_table->Some_0.mapping_1g == old_u.process_map[p].iommu_table->Some_0.mapping_1g
+    });
+    assert(new_u.thread_map.dom() =~= old_u.thread_map.dom());
+    assert(forall|t: RwLockThreadPtr| #![trigger new_u.thread_map[t]] new_u.thread_map[t].owning_container == old_u.thread_map[t].owning_container);
+    assert(forall|t: RwLockThreadPtr| #![trigger new_u.thread_map[t]] t != peer_ptr ==> new_u.thread_map[t].state == old_u.thread_map[t].state);
+    assert(!(new_u.thread_map[peer_ptr].state is IPC_TRANSIT));
+    assert(new_u.endpoint_map.dom() =~= old_u.endpoint_map.dom());
+    assert(forall|e: RwLockEndpointPtr| #![trigger new_u.endpoint_map[e]] new_u.endpoint_map[e].owning_threads == old_u.endpoint_map[e].owning_threads);
+    assert(forall|e: RwLockEndpointPtr, j: int| #![trigger new_u.endpoint_map[e].queue[j]] e != endpoint_ptr ==> new_u.endpoint_map[e].queue[j] == old_u.endpoint_map[e].queue[j]);
+    assert(forall|j: int| #![trigger new_u.endpoint_map[endpoint_ptr].queue[j]]
+        0 <= j < new_u.endpoint_map[endpoint_ptr].queue.len() ==> new_u.endpoint_map[endpoint_ptr].queue[j] == old_u.endpoint_map[endpoint_ptr].queue[j + 1]);
+    assert(forall|e: RwLockEndpointPtr| #![trigger new_u.endpoint_map[e]] e != endpoint_ptr ==> new_u.endpoint_map[e].queue.len() == old_u.endpoint_map[e].queue.len());
+    assert(new_u.endpoint_map[endpoint_ptr].queue.len() + 1 == old_u.endpoint_map[endpoint_ptr].queue.len());
+    assert(domains_disjoint(new_u, a, b));
+    assert(domain_4k_only(new_u, a) && domain_4k_only(new_u, b));
+    assert(memory_iso(new_u, a, b));
+    assert(endpoint_iso(new_u, a, b));
+    assert(inflight_iso(new_u, a, b) && inflight_iso(new_u, b, a));
+}
 
 /// A call handoff from a running thread of `a` touches only its cpu, itself, the endpoint it holds, and the
 /// receive-call head, which is of its container, so it leaves the view of `b` unchanged.
@@ -146,7 +205,31 @@ pub proof fn ipc_endpoint_transit_step_iso(old_u: KernelU, new_u: KernelU, cpu_i
         ipc_endpoint_transit_step_pre(old_u, cpu_id, endpoint_index, waiting_state, payload_index),
         ipc_endpoint_transit_step(old_u, new_u, cpu_id, endpoint_index, waiting_state, payload_index),
     ensures isolated(new_u, a, b),
-{ reveal(ipc_endpoint_transit_step_pre); reveal(ipc_rendezvous_step_pre); reveal(ipc_step_pre); reveal(ipc_endpoint_transit_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }
+{
+    reveal(ipc_endpoint_transit_step_pre); reveal(ipc_rendezvous_step_pre); reveal(ipc_step_pre); reveal(ipc_endpoint_transit_step);
+    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread.unwrap();
+    let channel_ptr = old_u.thread_map[thread_ptr].endpoint_descriptors[endpoint_index as int].unwrap();
+    let peer_ptr = old_u.endpoint_map[channel_ptr].queue[0];
+    let container = old_u.thread_map[thread_ptr].owning_container;
+    assert(in_domain(old_u, a, container) && !in_domain(old_u, b, container)) by { reveal(kernel_u_cpu_ownership_wf); };
+    assert(!in_domain(old_u, b, old_u.thread_map[peer_ptr].owning_container)) by {
+        reveal(kernel_u_endpoint_ownership_wf);
+        assert(old_u.endpoint_map[channel_ptr].owning_threads.contains((thread_ptr, endpoint_index)));
+    };
+    assert(new_u.thread_map.dom() =~= old_u.thread_map.dom());
+    assert(forall|t: RwLockThreadPtr| #![trigger new_u.thread_map[t]] new_u.thread_map[t].owning_container == old_u.thread_map[t].owning_container);
+    assert(forall|t: RwLockThreadPtr| #![trigger new_u.thread_map[t]] t != peer_ptr ==> new_u.thread_map[t].state == old_u.thread_map[t].state);
+    assert(new_u.thread_map[peer_ptr].state->IPC_TRANSIT_partner == thread_ptr);
+    assert(new_u.endpoint_map.dom() =~= old_u.endpoint_map.dom());
+    assert(forall|e: RwLockEndpointPtr| #![trigger new_u.endpoint_map[e]] new_u.endpoint_map[e].owning_threads == old_u.endpoint_map[e].owning_threads);
+    assert(forall|e: RwLockEndpointPtr, j: int| #![trigger new_u.endpoint_map[e].queue[j]] e != channel_ptr ==> new_u.endpoint_map[e].queue[j] == old_u.endpoint_map[e].queue[j]);
+    assert(forall|j: int| #![trigger new_u.endpoint_map[channel_ptr].queue[j]]
+        0 <= j < new_u.endpoint_map[channel_ptr].queue.len() ==> new_u.endpoint_map[channel_ptr].queue[j] == old_u.endpoint_map[channel_ptr].queue[j + 1]);
+    assert(forall|e: RwLockEndpointPtr| #![trigger new_u.endpoint_map[e]] e != channel_ptr ==> new_u.endpoint_map[e].queue.len() == old_u.endpoint_map[e].queue.len());
+    assert(new_u.endpoint_map[channel_ptr].queue.len() + 1 == old_u.endpoint_map[channel_ptr].queue.len());
+    assert(endpoint_iso(new_u, a, b));
+    assert(inflight_iso(new_u, a, b) && inflight_iso(new_u, b, a));
+}
 
 /// Finishing an endpoint transfer on a cpu of `a` hands an endpoint between its running thread and its
 /// `peer` in transit with it, which is outside `b`. `payload` is the endpoint at the peer's payload descriptor; when the
@@ -382,7 +465,23 @@ pub proof fn ipc_pages_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: C
         ipc_pages_finish_step_pre(old_u, cpu_id, endpoint_index),
         ipc_pages_finish_step(old_u, new_u, cpu_id, endpoint_index),
     ensures isolated(new_u, a, b),
-{ reveal(ipc_pages_finish_step_pre); reveal(ipc_pages_finish_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_endpoint_ownership_wf); }
+{
+    reveal(ipc_pages_finish_step_pre); reveal(ipc_pages_finish_step);
+    let caller = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let peer = old_u.thread_map[caller].syscall_progress->Some_0->IpcPages_peer;
+    assert(forall|c: RwLockContainerPtr| #![trigger new_u.container_map[c]] new_u.container_map[c].subtree_set == old_u.container_map[c].subtree_set);
+    assert(new_u.container_map.dom() =~= old_u.container_map.dom());
+    assert(new_u.thread_map.dom() =~= old_u.thread_map.dom());
+    assert(forall|t: RwLockThreadPtr| #![trigger new_u.thread_map[t]] new_u.thread_map[t].owning_container == old_u.thread_map[t].owning_container);
+    assert(forall|t: RwLockThreadPtr| #![trigger new_u.thread_map[t]] t != peer ==> new_u.thread_map[t].state == old_u.thread_map[t].state);
+    assert(!(new_u.thread_map[peer].state is IPC_TRANSIT));
+    assert(new_u.endpoint_map.dom() =~= old_u.endpoint_map.dom());
+    assert(forall|e: RwLockEndpointPtr| #![trigger new_u.endpoint_map[e]]
+        new_u.endpoint_map[e].owning_threads == old_u.endpoint_map[e].owning_threads && new_u.endpoint_map[e].queue == old_u.endpoint_map[e].queue);
+    assert(domains_disjoint(new_u, a, b));
+    assert(endpoint_iso(new_u, a, b));
+    assert(inflight_iso(new_u, a, b) && inflight_iso(new_u, b, a));
+}
 
 /// The IPC entry rejection of a running cpu of `b` reads only the view of `b` and whether the head of the
 /// endpoint queue, the peer, is killed.

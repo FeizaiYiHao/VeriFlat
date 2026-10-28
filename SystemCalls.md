@@ -118,17 +118,20 @@ empty and `post == pre`. A rejection with a visible effect is an explicit step
 **R7 Traces.** A `*_syscall_trace` is the first step, the phase steps with
 exact length bounds, and the exit step, each with its pre and transition.
 
-**R8 Idle cpu.** Every syscall entry write-locks its cpu first and returns
-`CpuIdle` with an empty trace and `post == pre` when the cpu is no longer
-Running or is `killed`: a kill evicted its thread between the trap and the
-lock, or a killer holds the cpu marked while it evicts the thread (§18). A
-marked cpu is never waited for: `wlock_cpu` returns at once, so the cpu
-reaches user mode or the idle `hlt` and takes the eviction IPI. Entries
-that check their arguments before locking (mmap_4k, unmap_4k, new_process,
-new_container, the hotplug `target` index, the IPC pages range) report
-argument errors first. The result specs and traces state this as their first
-branch (after the argument checks); IPC traces that classify `CpuIdle` as a
-block step take that branch only when the cpu is Running at entry.
+**R8 Idle cpu.** Every syscall entry starts on its cpu's trap path
+(`cpu.op is Trap`, so the cpu is Running), write-locks its cpu first
+(`wlock_cpu_if_running`, which enters the kernel call, §15), and returns
+`CpuIdle` with an empty trace and `post == pre` when the cpu is `killed`: a
+killer holds the cpu marked while it evicts the thread (§18). The result
+specs keep the disjunct `!(cpu.state is Running)`, which the Trap entry rules
+out. A marked cpu is never waited for: the lock returns at once, so the cpu
+leaves its trap path for the idle loop and takes the eviction IPI at the
+idle `hlt`. Entries that check their arguments before locking (mmap_4k,
+unmap_4k, new_process, new_container, the hotplug `target` index, the IPC
+pages range) report argument errors first. The result specs and traces
+state this as their first branch (after the argument checks); IPC traces that
+classify `CpuIdle` as a block step take that branch only when the cpu is
+Running at entry.
 
 **R9 Dynamic container lock.** A syscall that write-locks the caller's
 container (`P` on the hotplug child variants, `C` elsewhere) requests the
@@ -261,8 +264,8 @@ progress, so their pres name `cpu.owning_container` directly (R3).
   `P` present, `Unlocked(P)`, `!P.killed`, `!P.zombie`, and `C.parent == Some(P)`.
 - Effect: `C.cpu_offline_requests[target] = true`
   (`kernel_u_cpu_offline_request_changed`). On the child variant, the lock of
-  `P` is released inside the step, so `P` is unchanged in U. The requester then sends an IPI to
-  `target` (no U effect); the target's own check step (§4b) consumes the bit.
+  `P` is released inside the step, so `P` is unchanged in U. No IPI is sent: `target` finds
+  the bit at its next `cpu_offline_check` (§4b), whose step consumes it.
 
 Stutters:
 - CpuOwnerMismatch: an invalid or foreign `target`; on the child variant also
@@ -281,9 +284,12 @@ Stutters:
   present, `Unlocked(cpu)`, `Unlocked(CS(C))`, `Unlocked(cpu_array[target])`;
   `cpu_array[target].owning_container == C`; `cpu_array[target].state is Off`.
   The child pre adds the same `P` conditions as the child request.
-- Effect: `cpu_array[target].state = Idle` (`kernel_u_cpu_online_changed`);
-  the request bit of an Off cpu is already clear. The caller then sends an IPI
-  to `target` (no U effect).
+- Effect: `cpu_array[target].state = Idle` and `op = Idle`
+  (`kernel_u_cpu_online_changed`); the request bit of an Off cpu is already
+  clear. In K the caller, still holding `cpu_array[target]`, wakes `target`
+  out of `wait_until_online` with the wake-up IPI (`CpuLockedArray::wake_remote`
+  borrows `target`'s `KernelCallPerm` from the cpu object and moves its `op`
+  from Off to Idle), then releases it inside the step.
 
 Stutters (in this order, `cpu_online_syscall_result` and `cpu_online_child_syscall_result`):
 CpuOwnerMismatch for an invalid `target` index; CpuIdle (cpu not Running or killed); child variant
@@ -296,8 +302,9 @@ that `P.children[i]` does not own; CpuNotOff.
 Status: conforms, including the Hold/Release protocol (Batch 2 validation, §2).
 
 Entry `cpu_offline_check(cpu_id, pt_regs) -> OfflineCheckResult { Continue, Off }`
-is run by the trap layer on every cpu right before `syscall_schedule` and on
-IPI entry of a non-Off cpu. It is not a syscall: no `Caller`, and `C` is
+is run by the trap layer on every cpu right before each `syscall_schedule`:
+from a running thread (timer tick, `sys_schedule`) and on each pass of the
+idle loop. It is not a syscall: no `Caller`, and `C` is
 `cpu.owning_container` (R3). The cpu that goes Off is the one running the
 entry (`cpu_id == lctx.cpu_id()`); the trap layer halts it afterwards.
 
@@ -353,7 +360,8 @@ bit is kept and `syscall_schedule` handles the kill), or a killer marked
 **cpu_online_resume** (`cpu_online_resume(cpu_id) -> OnlineResumeResult
 { StillOff, Resumed }`, no U step)
 
-IPI entry of a cpu that halted after going Off. Under `cpu` it re-reads its
+Loop entry of a cpu that went Off (the trap layer's `wait_until_online`), run
+again each time an interrupt ends its halt. Under `cpu` it re-reads its
 state: while still Off it unlocks and halts again (`StillOff`, also returned at once for a `killed` cpu); once
 `syscall_cpu_online` has published Idle it clears the ghost `Cpu.hw_halted`
 and returns to the idle loop (`Resumed`), where the trap layer runs
@@ -1276,7 +1284,7 @@ specifications.
 | `syscall_schedule` | §4 |
 | `syscall_cpu_offline_request`, `syscall_cpu_online`, `syscall_cpu_offline_request_child`, `syscall_cpu_online_child` | §4a |
 | `cpu_offline_check` (trap-layer entry, before every `syscall_schedule`) | §4b |
-| `cpu_online_resume` (trap-layer IPI entry of a halted cpu) | §4b |
+| `cpu_online_resume` (trap-layer loop entry of an Off cpu, `wait_until_online`) | §4b |
 | `rebalance_pull` (trap-layer entry of an Idle cpu after `syscall_schedule` returns Idle) | §4c |
 | `syscall_new_thread`, `syscall_new_thread_with_endpoint` | §5 |
 | `syscall_new_endpoint` | §5a |
@@ -1347,7 +1355,48 @@ container's PCID allocator while holding that container's cells.
 publishes Off (§4b), cleared by `cpu_online_resume`; it is not U-visible and
 no invariant depends on it. Trusted primitives: `CpuTLB::flush_all_local_pcids`
 (external_body; empties every TLB entry of the calling cpu except
-`KERNEL_DEFAULT_PCID`), `send_ipi`, `halt_until_ipi` (empty stubs).
+`KERNEL_DEFAULT_PCID`), `ipi_wake` (external_body; the wake-up IPI, FFI
+`veriflat_send_ipi`, called only through `CpuLockedArray::wake_remote`), and
+`halt_until_ipi` (external_body; FFI `veriflat_halt_until_ipi`, no model
+effect).
+
+Cpu running state and kernel-call permission (Batch 4, 2026-10-28, applied):
+`KernelK.cpu_op: Tracked<CpuOpArray>` (`src/cpu/cpu_op.rs`) holds one
+`CpuOpState` per cpu: `Off` (halted in `wait_until_online`), `Idle` (the idle
+loop), `User` (ring 3), `Trap` (the entry and return path, interrupts off,
+without the own cpu lock), and `InStep` (inside a kernel call, holding the own
+cpu lock). Only TCB code writes it: `wlock_cpu` of the own cpu (to `InStep`),
+`KernelK::u_sys_exit` (to `cpu_op_after_step(state)`: Running to Trap, Idle to
+Idle, Off to Off), `evict_remote_cpu` and `ipi_wake` (a remote cpu to Idle),
+init (cpu 0 Idle, the others Off), and the step boundary. Each cpu has one
+`KernelCallPerm`, created at boot. It sits in `Cpu.kernel_call_perm` while the
+cpu is outside a kernel call, and in `LocalContext.kernel_call_perm` from the
+own-cpu `wlock_cpu` at entry (syscalls through `wlock_cpu_if_running`) until
+`u_sys_exit`, which runs before the own `wunlock_cpu` (the
+`release_cpu_and_*finish_syscall` helpers call it); `wunlock_cpu` of the own
+cpu requires that it is not `InStep`. The cpu lock's ghost records the
+locker's cpu id: `Some(c)` while write-held (`wlock_cpu`, `wlock_off_cpu`),
+`None` after `wunlock_cpu`. `cpu_op_wf` (in `KernelK::inv`; point lemma
+`cpu_op_wf_at`) states for each cpu `c`: `InStep` implies `c` is write-locked
+with ghost `Some(c)`; `c` is `InStep` exactly when its permission is not in the
+cpu object, and a permission there is `c`'s own; `User` or `Trap` implies
+Running; `Idle` implies Idle, or Running and marked by a killer; `Off` implies
+Off; conversely Running allows `User`, `Trap`, `InStep`, or a marked `Idle`,
+Idle allows `Idle` or `InStep`, and Off allows `Off` or `InStep`. A cpu that
+another cpu write-holds is therefore never `InStep`, and its permission can be
+borrowed for an IPI. The step boundary keeps the own cpu's `op`; a held remote
+cpu that was Running may end at `User` or `Trap`, or at `Idle` if marked; every
+other held cpu keeps its `op`; unlocked cpus change only within `cpu_op_wf`.
+`CpuU.op` (next to `killed`) projects `cpu_op` in `kernel_k_to_kernel_u` and
+`cpu_op_after_step(state)` in the nonlock projection, so a cpu's own entry and
+exit are lock-only stutters in `nonlock_view()`; step specs set `op` wherever
+they set `state`. Three TCB U steps model the trap path:
+`kernel_u_trap_enter_step` (User to Trap), `kernel_u_trap_return_step` (Trap
+to User), and `kernel_u_trap_divert_step` (a marked Trap cpu to Idle). The
+offline kick IPI and `send_ipi` are removed; the NMI remote TLB flush is
+unchanged. `KernelK.cpu_published` is renamed `cpu_hw_cr3_pcid`
+(`CpuHwCr3PcidArray`, `cpu_hw_cr3_pcid_wf`, `load_hw_cr3_pcid`,
+`src/cpu/hw_cr3_pcid.rs`).
 
 Per-cpu scheduler shards (approved 2026-10-07, applied):
 `ContainerU.scheduler: Seq<Seq<RwLockThreadPtr>>` has one run queue per cpu id
@@ -1474,9 +1523,11 @@ The boot-side checks of this boundary are listed in `Methodology.md`.
    (Hold), locks its running process and thread, then reacquires the cell and
    rechecks the bit before going Off (§4b), requeueing its running
    thread and deferring to `syscall_schedule` when that thread or its process
-   is killed; `syscall_cpu_online` publishes Idle and sends the IPI, and the
-   woken cpu only clears `hw_halted` (re-halting while still Off); there is no
-   `Offlining` state.
+   is killed; an offline request sends no IPI, the target finds it at its next
+   check; `syscall_cpu_online` publishes Idle and wakes the target with the
+   wake-up IPI while it still holds the target's lock, and the woken cpu only
+   clears `hw_halted` (re-halting while still Off); there is no `Offlining`
+   state.
 5. Scheduler shards (2026-10-07): every enqueue goes to the acting cpu's shard
    (schedule requeue, new_thread, cpu_offline_check, same-container IPC wake,
    new_container's root thread); a cross-container IPC wake goes to the peer's
@@ -1826,13 +1877,15 @@ present, `W(V)`, `V.killed`)
   `killer_info` (`V` carries the same mark, `thread_cpu_wf`), sends the
   maskable eviction IPI and waits for its acknowledgement, unmarks `R`
   (`unkill`), and sets it Idle with no current process or thread
-  (`evict_remote`). `R` takes the IPI only in user mode or at its idle `hlt`:
-  it loads the default page table with the default PCID, acknowledges, and,
-  from user mode, abandons `V` for `run_idle`. Every own-cpu lock of `R`
-  returns at once on the mark, so `R` cannot spin while the killer waits.
-  `update_lock_id` moves `R` to the idle major (2), and `R` is released inside
-  the step. The mark is U-visible as `cpu.killed` but cleared within the
-  step.
+  (`evict_remote`). The IPI borrows `R`'s `KernelCallPerm` from the cpu object,
+  where it stays because the killer's lock keeps `R` out of `InStep`
+  (`cpu_op_wf`, §15), and leaves `R` at `op` Idle. `R` takes the IPI only in
+  user mode or at its idle `hlt`: it loads the default page table with the
+  default PCID, acknowledges, and, from user mode, abandons `V` for
+  `run_idle`. Every own-cpu lock of `R` returns at once on the mark, so `R`
+  cannot spin while the killer waits. `update_lock_id` moves `R` to the idle
+  major (2), and `R` is released inside the step. The mark is U-visible as
+  `cpu.killed` but cleared within the step.
 - Unlink (`kill_process_unlink_step`): `V.state is KILLED`; `V` leaves
   `L.owned_threads`, `L` absorbs its quota of every size, `V` keeps none, and
   `prog = { L, Walk }`. `V` stays write-held.
@@ -1967,7 +2020,8 @@ unmarked), the kill-aware `CpuLockedArray` lock operations
 (`wlock_unless_killed`, `wunlock`, `mark_kill`), `evict_remote_cpu` under
 `CpuLockedArray::evict_remote` (a maskable IPI, taken only in user mode or at
 the idle `hlt`, makes the remote cpu load the default page table and
-acknowledge; the killer spins for the acknowledgement; TODO: model this wait
+acknowledge; it borrows the target's `KernelCallPerm` and leaves its `op` at
+Idle; the killer spins for the acknowledgement; TODO: model this wait
 as a virtual lock in the lock order), `page_map_to_page_perm` (an
 unlinked table page is a 4K page again),
 `retype_pagetable_rwlock_to_4k_page_perms` (a page table whose only table

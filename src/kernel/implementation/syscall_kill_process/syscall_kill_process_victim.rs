@@ -283,8 +283,9 @@ pub(crate) fn kill_evict_running_victim(krnl: &mut KernelK, Tracked(lctx): Track
             let after_cpu = final(krnl).cpu_arr.spec_index(remote).value.view().view();
             &&& index_valid(NUM_CPUS, remote)
             &&& remote != old(lctx).cpu_id()
-            &&& final(krnl).cpu_published[old(lctx).cpu_id() as int] == old(krnl).cpu_published[old(lctx).cpu_id() as int]
-            &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_published: final(krnl).cpu_published, thr_mp: final(krnl).thr_mp, ..*old(krnl) })
+            &&& final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int] == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int]
+            &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_hw_cr3_pcid: final(krnl).cpu_hw_cr3_pcid, cpu_op: final(krnl).cpu_op, thr_mp: final(krnl).thr_mp, ..*old(krnl) })
+            &&& final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view().update(remote as int, CpuOpState::Idle)
             &&& forall|c: CpuId| #![trigger final(krnl).cpu_arr.spec_index(c)] index_valid(NUM_CPUS, c) && c != remote ==> final(krnl).cpu_arr.spec_index(c) == old(krnl).cpu_arr.spec_index(c)
             &&& final(krnl).cpu_arr.spec_index(remote).value.lock_state_u() == old(krnl).cpu_arr.spec_index(remote).value.lock_state_u()
             &&& final(krnl).cpu_arr.spec_index(remote).value.being_killed() == old(krnl).cpu_arr.spec_index(remote).value.being_killed()
@@ -337,11 +338,12 @@ pub(crate) fn kill_evict_running_victim(krnl: &mut KernelK, Tracked(lctx): Track
         assert(krnl.cpu_arr.inv() && krnl.cpu_arr.spec_index(remote).view().is_init() && krnl.cpu_arr.spec_index(remote).view().view().wf()) by {
             cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), remote);
         };
-        assert(krnl.cpu_published[remote as int].owner_cpu() == remote) by { cpu_published_wf_at(krnl.cpu_published, krnl.cpu_arr, krnl.pcid_needflush, remote); };
+        assert(krnl.cpu_hw_cr3_pcid[remote as int].owner_cpu() == remote) by { cpu_hw_cr3_pcid_wf_at(krnl.cpu_hw_cr3_pcid, krnl.cpu_arr, krnl.pcid_needflush, remote); };
+        assert(krnl.cpu_arr.spec_index(remote).view().view().kernel_call_perm() == Some(remote)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, remote); };
     }
     let default_cr3 = krnl.dflt_pt.borrow().cr3;
     assert(page_ptr_valid(default_cr3)) by { krnl.default_pagetable_view_inv(); };
-    krnl.cpu_arr.evict_remote(remote, default_cr3, killer_info, &mut krnl.cpu_published, Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
+    krnl.cpu_arr.evict_remote(remote, default_cr3, killer_info, &mut krnl.cpu_hw_cr3_pcid, Tracked(krnl.cpu_op.borrow_mut()), Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
     proof { lctx.update_lock_id(KernelObjId::Cpu(remote), old_cpu_lock_id, krnl.cpu_arr.lock_id_by_index(remote)); }
     {
         let victim = krnl.thr_mp.borrow_mut_typed(victim_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(victim_lock_perm));

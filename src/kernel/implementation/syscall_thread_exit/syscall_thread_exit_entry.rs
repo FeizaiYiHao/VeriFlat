@@ -3,6 +3,10 @@ use crate::*;
 use super::syscall_thread_exit_spec::*;
 use super::syscall_thread_exit_trace::*;
 use super::syscall_thread_exit_entry_helpers::{thread_exit_lock_running_thread, thread_exit_enter_with_caller};
+#[cfg(all(feature = "split-crates", verus_keep_ghost))]
+use veriflat_kernel_core::kernel::implementation::locker_unlocker::u_sys_exit_eof;
+#[cfg(all(not(feature = "split-crates"), verus_keep_ghost))]
+use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 pub(super) struct ThreadExitEntered {
@@ -20,6 +24,7 @@ pub(super) fn thread_exit_lock_entry(krnl: &mut KernelK, Tracked(lctx): Tracked<
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -87,7 +92,7 @@ pub(super) fn thread_exit_lock_entry(krnl: &mut KernelK, Tracked(lctx): Tracked<
             &&& e.thread_lock_perm.view().lock_id() == final(krnl).thr_mp.spec_index(e.thread_ptr).locking_thread()->Write_lock_id
             &&& cpu.state is Running && cpu.current_process == Some(e.process_ptr) && cpu.current_thread == Some(e.thread_ptr) && cpu.owning_container == e.container_ptr
             &&& !final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed()
-            &&& final(krnl).cpu_published[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
+            &&& final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (cpu.current_cr3, cpu.current_pcid)
             &&& final(krnl).ctn_mp.dom().contains(e.container_ptr) && !final(krnl).ctn_mp.spec_index(e.container_ptr).being_killed()
             &&& final(krnl).prc_mp.dom().contains(e.process_ptr) && !final(krnl).prc_mp.spec_index(e.process_ptr).being_killed()
             &&& final(krnl).prc_mp.spec_index(e.process_ptr).view().state.view() is Running
@@ -95,6 +100,7 @@ pub(super) fn thread_exit_lock_entry(krnl: &mut KernelK, Tracked(lctx): Tracked<
             &&& thread.state == (ThreadState::RUNNING { cpu_id }) && thread.owning_proc == e.process_ptr && thread.owning_container == e.container_ptr
             &&& thread.caller is None && thread.callee is None && thread.temp_alloc_clean() && thread.free_quota_pending_clean()
             &&& thread.syscall_progress.view() == Some(SyscallProgress::ThreadExit { next: 0 })
+            &&& final(krnl).cpu_op.view().view()[cpu_id as int] is InStep
         }),
 {
     let locked = match thread_exit_lock_running_thread(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id) {
@@ -108,14 +114,23 @@ pub(super) fn thread_exit_lock_entry(krnl: &mut KernelK, Tracked(lctx): Tracked<
     let Tracked(container_lock_perm) = locked.container_lock_perm;
     let Tracked(process_lock_perm) = locked.process_lock_perm;
     let Tracked(thread_lock_perm) = locked.thread_lock_perm;
+    proof { assert(krnl.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
     let entered = thread_exit_enter_with_caller(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, thread_ptr, Tracked(&thread_lock_perm),
         Ghost(*old(krnl)));
     if entered.is_none() {
         krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
         krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
+        proof {
+            cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id);
+            let ghost pre = *krnl;
+            let ghost pre_lctx = *lctx;
+            krnl.u_sys_exit(lctx);
+            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+        }
         krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
+            assert(krnl.cpu_op.view().view() =~= old(krnl).cpu_op.view().view());
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), Some(process_ptr), Some(thread_ptr), None, None, None);
             thread_exit_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id);
         }
@@ -128,6 +143,7 @@ pub(super) fn thread_exit_lock_entry(krnl: &mut KernelK, Tracked(lctx): Tracked<
         thread_exit_reclaim_dangling_caller(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, thread_ptr, dangling_ptr, Tracked(dangling_perm),
             Ghost(old(steps).view().len() as int), Ghost(kernel_k_to_kernel_u(*old(krnl))));
     }
+    proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
     Ok(ThreadExitEntered {
         container_ptr, process_ptr, thread_ptr, cpu_lock_perm: Tracked(cpu_lock_perm), container_lock_perm: Tracked(container_lock_perm),
         process_lock_perm: Tracked(process_lock_perm), thread_lock_perm: Tracked(thread_lock_perm),
@@ -187,7 +203,7 @@ fn thread_exit_reclaim_dangling_caller(
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() < final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
-        final(krnl).cpu_published[cpu_id as int].view() == old(krnl).cpu_published[cpu_id as int].view(),
+        final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] #![trigger final(krnl).ctn_mp.spec_index(c)] old(lctx).container_lock_map().dom().contains(c) ==> {

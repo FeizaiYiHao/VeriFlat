@@ -35,7 +35,7 @@ pub open spec fn thread_exit_destroy_eof_transition_framing(
     let pre_pcid_allocator = pre.pcid_allc_mp.spec_index(pcid_allocator_ptr);
     let post_pcid_allocator = post.pcid_allc_mp.spec_index(pcid_allocator_ptr);
     &&& post == (KernelK {
-        cpu_arr: post.cpu_arr, cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, cpu_published: post.cpu_published, ctn_mp: post.ctn_mp, prc_mp: post.prc_mp,
+        cpu_arr: post.cpu_arr, cpu_tlb: post.cpu_tlb, pcid_needflush: post.pcid_needflush, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, ctn_mp: post.ctn_mp, prc_mp: post.prc_mp,
         thr_mp: post.thr_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, pcid_allc_mp: post.pcid_allc_mp, ..pre
     })
     &&& post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id)
@@ -44,6 +44,7 @@ pub open spec fn thread_exit_destroy_eof_transition_framing(
     &&& post_cpu.killer_info() == pre_cpu.killer_info()
     &&& post_cpu.view_rodata() == pre_cpu.view_rodata()
     &&& post_cpu.view_ghost() == pre_cpu.view_ghost()
+    &&& post_cpu.view().kernel_call_perm() == pre_cpu.view().kernel_call_perm()
     &&& post_cpu.view().view() == (CpuView {
         state: CpuState::Idle, current_process: None, current_thread: None, current_pagetable: None, current_cr3: pre.dflt_pt.view().cr3, current_pcid: KERNEL_DEFAULT_PCID,
         ..pre_cpu.view().view()
@@ -59,9 +60,9 @@ pub open spec fn thread_exit_destroy_eof_transition_framing(
     &&& post_needflush.being_killed() == pre_needflush.being_killed()
     &&& forall|c: CpuId, p: Pcid| #![trigger post.pcid_needflush.spec_index(c, p)]
         index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != KERNEL_DEFAULT_PCID) ==> post.pcid_needflush.spec_index(c, p) == pre.pcid_needflush.spec_index(c, p)
-    &&& post.cpu_published[cpu_id as int].view() == (pre.dflt_pt.view().cr3, KERNEL_DEFAULT_PCID)
-    &&& post.cpu_published[cpu_id as int].owner_cpu() == pre.cpu_published[cpu_id as int].owner_cpu()
-    &&& forall|c: CpuId| #![trigger post.cpu_published[c as int]] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_published[c as int] == pre.cpu_published[c as int]
+    &&& post.cpu_hw_cr3_pcid[cpu_id as int].view() == (pre.dflt_pt.view().cr3, KERNEL_DEFAULT_PCID)
+    &&& post.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu() == pre.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu()
+    &&& forall|c: CpuId| #![trigger post.cpu_hw_cr3_pcid[c as int]] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_hw_cr3_pcid[c as int] == pre.cpu_hw_cr3_pcid[c as int]
     &&& post.ctn_mp.dom() == pre.ctn_mp.dom()
     &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)]
         pre.ctn_mp.dom().contains(c) ==> {

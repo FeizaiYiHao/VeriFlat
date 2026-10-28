@@ -166,7 +166,7 @@ pub proof fn kernel_iommu_table_4k_mapping_added_implies_u_step(pre: &KernelK, p
 }
 /// Setting the lock modes of the cpu, the live process `process_ptr`, the thread `thread_ptr`, the process's page table, and
 /// its IOMMU table and replacing the thread's progress changes only those lock states and that progress in the complete
-/// projection; the page table may rewrite its lower half without changing its mappings.
+/// projection, apart from the cpu's running state; the page table may rewrite its lower half without changing its mappings.
 pub proof fn kernel_cpu_process_thread_pagetable_iommu_table_lock_states_and_progress_changed_implies_u_step(
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, pagetable_ptr: RwLockPageTableRoot, iommu_table_ptr: RwLockPageTableRoot,
 )
@@ -174,9 +174,10 @@ pub proof fn kernel_cpu_process_thread_pagetable_iommu_table_lock_states_and_pro
         process_pagetable_match(pre.prc_mp, pre.pt_mp),
         process_iommu_table_match(pre.prc_mp, pre.it_mp),
         index_valid(NUM_CPUS, cpu_id),
-        *post == (KernelK { cpu_arr: post.cpu_arr, prc_mp: post.prc_mp, thr_mp: post.thr_mp, pt_mp: post.pt_mp, pt_lower: post.pt_lower, it_mp: post.it_mp, ..*pre }),
-        post.cpu_arr.unchanged_except(&pre.cpu_arr, cpu_id),
-        post.cpu_arr.spec_index(cpu_id).view().view() == pre.cpu_arr.spec_index(cpu_id).view().view(),
+        *post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, prc_mp: post.prc_mp, thr_mp: post.thr_mp, pt_mp: post.pt_mp, pt_lower: post.pt_lower, it_mp: post.it_mp, ..*pre }),
+        post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id),
+        post.cpu_arr.spec_index(cpu_id).view().view().view() == pre.cpu_arr.spec_index(cpu_id).view().view().view(),
+        forall|i: CpuId| #![trigger post.cpu_op.view().view()[i as int]] index_valid(NUM_CPUS, i) && i != cpu_id ==> post.cpu_op.view().view()[i as int] == pre.cpu_op.view().view()[i as int],
         post.cpu_arr.spec_index(cpu_id).value.being_killed() == pre.cpu_arr.spec_index(cpu_id).value.being_killed(),
         pre.prc_mp.dom().contains(process_ptr),
         !pre.prc_mp.spec_index(process_ptr).view().zombie,
@@ -212,7 +213,7 @@ pub proof fn kernel_cpu_process_thread_pagetable_iommu_table_lock_states_and_pro
             let pre_u = kernel_k_to_kernel_u(*pre);
             let process = pre_u.process_map.spec_index(process_ptr);
             kernel_k_to_kernel_u(*post) == (KernelU {
-                cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: post.cpu_arr.spec_index(cpu_id).value.lock_state_u(), ..pre_u.cpu_array[cpu_id as int] }),
+                cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: post.cpu_arr.spec_index(cpu_id).value.lock_state_u(), op: post.cpu_op.view().view()[cpu_id as int], ..pre_u.cpu_array[cpu_id as int] }),
                 process_map: pre_u.process_map.insert(process_ptr, ProcessU {
                     lock_state: post.prc_mp.spec_index(process_ptr).lock_state_u(),
                     pagetable: Some(PageTableU { lock_state: post.pt_mp.spec_index(pagetable_ptr).lock_state_u(), ..process.pagetable->Some_0 }),
@@ -233,7 +234,7 @@ pub proof fn kernel_cpu_process_thread_pagetable_iommu_table_lock_states_and_pro
     assert(pre.pt_mp.dom().contains(pagetable_ptr) && pre.it_mp.dom().contains(iommu_table_ptr)) by { reveal(process_pagetable_match); reveal(process_iommu_table_match); };
     kernel_thread_projection_at(pre, thread_ptr); kernel_thread_projection_at(post, thread_ptr);
     kernel_process_projection_at(pre, process_ptr); kernel_process_projection_at(post, process_ptr);
-    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: post.cpu_arr.spec_index(cpu_id).value.lock_state_u(), ..pre_u.cpu_array[cpu_id as int] }), i => {
+    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: post.cpu_arr.spec_index(cpu_id).value.lock_state_u(), op: post.cpu_op.view().view()[cpu_id as int], ..pre_u.cpu_array[cpu_id as int] }), i => {
         if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); }
     });
     assert_maps_equal!(post_u.container_map, pre_u.container_map, c => {
@@ -257,16 +258,17 @@ pub proof fn kernel_cpu_process_thread_pagetable_iommu_table_lock_states_and_pro
 
 /// Setting the lock modes of the cpu, the container `container_ptr`, the live process `process_ptr`, the thread
 /// `thread_ptr`, and the process's IOMMU table and replacing the thread's progress changes only those lock states and that
-/// progress in the complete projection.
+/// progress in the complete projection, apart from the cpu's running state.
 pub proof fn kernel_cpu_container_process_thread_iommu_table_lock_states_and_progress_changed_implies_u_step(
     pre: &KernelK, post: &KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, iommu_table_ptr: RwLockPageTableRoot,
 )
     requires
         process_iommu_table_match(pre.prc_mp, pre.it_mp),
         index_valid(NUM_CPUS, cpu_id),
-        *post == (KernelK { cpu_arr: post.cpu_arr, ctn_mp: post.ctn_mp, prc_mp: post.prc_mp, thr_mp: post.thr_mp, it_mp: post.it_mp, ..*pre }),
-        post.cpu_arr.unchanged_except(&pre.cpu_arr, cpu_id),
-        post.cpu_arr.spec_index(cpu_id).view().view() == pre.cpu_arr.spec_index(cpu_id).view().view(),
+        *post == (KernelK { cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, ctn_mp: post.ctn_mp, prc_mp: post.prc_mp, thr_mp: post.thr_mp, it_mp: post.it_mp, ..*pre }),
+        post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id),
+        post.cpu_arr.spec_index(cpu_id).view().view().view() == pre.cpu_arr.spec_index(cpu_id).view().view().view(),
+        forall|i: CpuId| #![trigger post.cpu_op.view().view()[i as int]] index_valid(NUM_CPUS, i) && i != cpu_id ==> post.cpu_op.view().view()[i as int] == pre.cpu_op.view().view()[i as int],
         post.cpu_arr.spec_index(cpu_id).value.being_killed() == pre.cpu_arr.spec_index(cpu_id).value.being_killed(),
         pre.ctn_mp.dom().contains(container_ptr),
         post.ctn_mp.unchanged_except(&pre.ctn_mp, container_ptr),
@@ -300,7 +302,7 @@ pub proof fn kernel_cpu_container_process_thread_iommu_table_lock_states_and_pro
             let pre_u = kernel_k_to_kernel_u(*pre);
             let process = pre_u.process_map.spec_index(process_ptr);
             kernel_k_to_kernel_u(*post) == (KernelU {
-                cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: post.cpu_arr.spec_index(cpu_id).value.lock_state_u(), ..pre_u.cpu_array[cpu_id as int] }),
+                cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: post.cpu_arr.spec_index(cpu_id).value.lock_state_u(), op: post.cpu_op.view().view()[cpu_id as int], ..pre_u.cpu_array[cpu_id as int] }),
                 container_map: pre_u.container_map.insert(container_ptr, ContainerU {
                     lock_state: post.ctn_mp.spec_index(container_ptr).lock_state_u(), lock_process_owner: post.ctn_mp.spec_index(container_ptr).lock_process_owner_u(),
                     ..pre_u.container_map.spec_index(container_ptr)
@@ -325,7 +327,7 @@ pub proof fn kernel_cpu_container_process_thread_iommu_table_lock_states_and_pro
     kernel_thread_projection_at(pre, thread_ptr); kernel_thread_projection_at(post, thread_ptr);
     kernel_process_projection_at(pre, process_ptr); kernel_process_projection_at(post, process_ptr);
     kernel_container_projection_at(pre, container_ptr); kernel_container_projection_at(post, container_ptr);
-    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: post.cpu_arr.spec_index(cpu_id).value.lock_state_u(), ..pre_u.cpu_array[cpu_id as int] }), i => {
+    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: post.cpu_arr.spec_index(cpu_id).value.lock_state_u(), op: post.cpu_op.view().view()[cpu_id as int], ..pre_u.cpu_array[cpu_id as int] }), i => {
         if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); }
     });
     assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(container_ptr, ContainerU {

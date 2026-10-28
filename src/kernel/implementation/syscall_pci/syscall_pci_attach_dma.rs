@@ -3,6 +3,8 @@ use crate::*;
 use super::syscall_pci_attach_dma_eof::*;
 use super::syscall_pci_spec::*;
 use super::syscall_pci_trace::*;
+#[cfg(verus_keep_ghost)]
+use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 /// Attaches DMA translation of `(bus, device, function)`, a PCI function owned by the running process,
@@ -18,6 +20,7 @@ pub fn syscall_pci_attach_dma(
         cpu_id == old(lctx).cpu_id(),
         pci_bdf_valid(bus, device, function),
         old(krnl).inv(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -76,8 +79,15 @@ pub fn syscall_pci_attach_dma(
     };
     let process_res = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(lctx));
     if process_res.is_none() {
+        proof {
+            let ghost pre = *krnl;
+            let ghost pre_lctx = *lctx;
+            krnl.u_sys_exit(lctx);
+            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+        }
         krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
         proof {
+            assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(process_ptr), None, None, None, None);
             pci_attach_dma_trace_stutter(
                 steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, bus, device, function,
@@ -108,10 +118,17 @@ pub fn syscall_pci_attach_dma(
     if owner != process_ptr || iommu_table.is_none() || attached {
         krnl.wunlock_iommu_root_table(Tracked(lctx), Tracked(irt_lock_perm));
         krnl.wunlock_process(process_ptr, Tracked(lctx), Tracked(process_lock_perm));
+        proof {
+            let ghost pre = *krnl;
+            let ghost pre_lctx = *lctx;
+            krnl.u_sys_exit(lctx);
+            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+        }
         krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
         proof {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+            assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
             steps.end_kernel_step_unchanged(&*krnl, &*lctx);
             pci_attach_dma_trace_stutter(
                 steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, bus, device, function, result,
@@ -139,6 +156,12 @@ pub fn syscall_pci_attach_dma(
     krnl.wunlock_iommu_table(iommu_table_ptr, Tracked(lctx), Tracked(iommu_table_lock_perm));
     krnl.wunlock_iommu_root_table(Tracked(lctx), Tracked(irt_lock_perm));
     krnl.wunlock_process(process_ptr, Tracked(lctx), Tracked(process_lock_perm));
+    proof {
+        let ghost pre = *krnl;
+        let ghost pre_lctx = *lctx;
+        krnl.u_sys_exit(lctx);
+        u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
+    }
     krnl.wunlock_cpu(cpu_id, Tracked(lctx), Tracked(cpu_lock_perm));
     proof {
         let attach_before = steps.view();
@@ -152,6 +175,7 @@ pub fn syscall_pci_attach_dma(
             &&& krnl.dflt_pt == steps.snapshot_k().dflt_pt
         }) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+        assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
         steps.end_kernel_step_pci_attach(&*krnl, &*lctx, cpu_id, process_ptr, bus, device, function, locked.it_mp.spec_index(iommu_table_ptr).view().cr3);
         assert({
             &&& pci_attach_dma_syscall_trace(

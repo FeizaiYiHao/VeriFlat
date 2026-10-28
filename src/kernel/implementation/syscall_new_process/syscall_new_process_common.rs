@@ -37,6 +37,7 @@ fn new_process_lock_entry(
         endpoint_index is Some ==> edp_idx_valid(endpoint_index->Some_0),
         with_iommu ==> endpoint_index is Some,
         old(krnl).inv(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
@@ -74,9 +75,10 @@ fn new_process_lock_entry(
             &&& old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container == x.container_ptr
             &&& endpoint_index is Some ==> old(krnl).thr_mp.spec_index(x.current_thread_ptr).view().endpoint_descriptors.wf()
             &&& endpoint_index is Some ==> x.endpoint == old(krnl).thr_mp.spec_index(x.current_thread_ptr).view().endpoint_descriptors.spec_index(endpoint_index->Some_0)
-            &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, prc_mp: final(krnl).prc_mp, thr_mp: final(krnl).thr_mp,
+            &&& *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, prc_mp: final(krnl).prc_mp, thr_mp: final(krnl).thr_mp,
                 ep_mp: final(krnl).ep_mp, pt_mp: final(krnl).pt_mp, pt_lower: final(krnl).pt_lower, pcid_allc_mp: final(krnl).pcid_allc_mp, ..*old(krnl) })
-            &&& final(krnl).cpu_arr.unchanged_except(&old(krnl).cpu_arr, cpu_id)
+            &&& final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep)
+            &&& final(krnl).cpu_arr.entries_unchanged_except(&old(krnl).cpu_arr, cpu_id)
             &&& final(krnl).prc_mp.unchanged_except(&old(krnl).prc_mp, x.parent_ptr)
             &&& final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, x.current_thread_ptr)
             &&& final(krnl).pt_mp.unchanged_except(&old(krnl).pt_mp, x.source_pagetable_ptr)
@@ -88,7 +90,7 @@ fn new_process_lock_entry(
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(x.current_thread_ptr)
             &&& !final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed()
             &&& match x.endpoint { Some(e) => final(krnl).ep_mp.unchanged_except(&old(krnl).ep_mp, e), None => final(krnl).ep_mp == old(krnl).ep_mp }
-            &&& final(krnl).cpu_published[cpu_id as int].view() == (final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid)
+            &&& final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid)
             &&& x.source_range.wf()
             &&& x.source_range.len > 0
             &&& x.source_range.len <= (usize::MAX - if with_iommu { 6int } else { 4int }) / 3
@@ -297,6 +299,7 @@ pub(super) fn syscall_new_process_common(krnl: &mut KernelK, Tracked(lctx): Trac
         endpoint_index is Some ==> edp_idx_valid(endpoint_index->Some_0),
         with_iommu ==> endpoint_index is Some,
         old(krnl).inv(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),

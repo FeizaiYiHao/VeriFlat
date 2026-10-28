@@ -288,7 +288,9 @@ pub proof fn kernel_endpoint_waiter_killed_implies_u_step(before: &KernelK, afte
 pub proof fn kernel_running_thread_evicted_implies_u_step(before: &KernelK, after: &KernelK, thread_ptr: RwLockThreadPtr, remote: CpuId)
     requires
         index_valid(NUM_CPUS, remote),
-        *after == (KernelK { cpu_arr: after.cpu_arr, cpu_published: after.cpu_published, thr_mp: after.thr_mp, ..*before }),
+        *after == (KernelK { cpu_arr: after.cpu_arr, cpu_hw_cr3_pcid: after.cpu_hw_cr3_pcid, cpu_op: after.cpu_op, thr_mp: after.thr_mp, ..*before }),
+        before.cpu_op.view().view().len() == NUM_CPUS,
+        after.cpu_op.view().view() == before.cpu_op.view().view().update(remote as int, CpuOpState::Idle),
         forall|c: CpuId| #![trigger after.cpu_arr.spec_index(c)] index_valid(NUM_CPUS, c) && c != remote ==> after.cpu_arr.spec_index(c) == before.cpu_arr.spec_index(c),
         after.cpu_arr.spec_index(remote).value.lock_state_u() == before.cpu_arr.spec_index(remote).value.lock_state_u(),
         after.cpu_arr.spec_index(remote).value.being_killed() == before.cpu_arr.spec_index(remote).value.being_killed(),
@@ -307,7 +309,7 @@ pub proof fn kernel_running_thread_evicted_implies_u_step(before: &KernelK, afte
         ({
             let pre = kernel_k_to_kernel_u(*before);
             kernel_k_to_kernel_u(*after) == (KernelU {
-                cpu_array: pre.cpu_array.update(remote as int, CpuU { state: CpuState::Idle, current_process: None, current_thread: None, ..pre.cpu_array[remote as int] }),
+                cpu_array: pre.cpu_array.update(remote as int, CpuU { state: CpuState::Idle, op: CpuOpState::Idle, current_process: None, current_thread: None, ..pre.cpu_array[remote as int] }),
                 thread_map: pre.thread_map.insert(thread_ptr, ThreadU { state: ThreadState::KILLED, ..pre.thread_map[thread_ptr] }),
                 ..pre
             })
@@ -320,7 +322,7 @@ pub proof fn kernel_running_thread_evicted_implies_u_step(before: &KernelK, afte
     let post = kernel_k_to_kernel_u(*after);
     kernel_thread_projection_at(before, thread_ptr); kernel_thread_projection_at(after, thread_ptr);
     kernel_thread_nonlock_projection_at(before, thread_ptr); kernel_thread_nonlock_projection_at(after, thread_ptr);
-    assert_seqs_equal!(post.cpu_array == pre.cpu_array.update(remote as int, CpuU { state: CpuState::Idle, current_process: None, current_thread: None, ..pre.cpu_array[remote as int] }), i => {
+    assert_seqs_equal!(post.cpu_array == pre.cpu_array.update(remote as int, CpuU { state: CpuState::Idle, op: CpuOpState::Idle, current_process: None, current_thread: None, ..pre.cpu_array[remote as int] }), i => {
         if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(before, i as usize); kernel_cpu_projection_at(after, i as usize); }
     });
     assert_maps_equal!(post.thread_map, pre.thread_map.insert(thread_ptr, ThreadU { state: ThreadState::KILLED, ..pre.thread_map[thread_ptr] }), t => {

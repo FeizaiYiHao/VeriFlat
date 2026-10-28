@@ -20,6 +20,7 @@ pub proof fn refund_unmap_4k_step_pre_from_k(krnl: &KernelK, entry: &KernelK, lc
             indirect_free_quota_pending_4k: krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k, ..entry.thr_mp.spec_index(thread_ptr).view() }),
         held_processes_unchanged(entry.prc_mp, krnl.prc_mp, held),
         held_cpus_unchanged(entry.cpu_arr, krnl.cpu_arr, held),
+        krnl.cpu_op.view().view()[held.cpu_id() as int] == entry.cpu_op.view().view()[held.cpu_id() as int],
     ensures
         ({
             let u = kernel_k_to_kernel_u(*krnl);

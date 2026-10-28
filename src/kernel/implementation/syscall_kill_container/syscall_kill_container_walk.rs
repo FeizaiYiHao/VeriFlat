@@ -15,6 +15,8 @@ use super::syscall_kill_container_cpus_trace::kill_container_cpus_pre_from_k;
 use super::syscall_kill_container_walk_spec::*;
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_container_walk_trace::*;
+#[cfg(verus_keep_ghost)]
+use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 /// Walk the marked child container `child_ptr` of the killer's container `owner_ptr` until every container below it is
@@ -113,6 +115,13 @@ pub(crate) fn kill_container_walk_and_finish(
     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_perm));
     krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_perm));
     krnl.wunlock_container(owner_ptr, Tracked(&mut *lctx), Tracked(owner_perm));
+    proof {
+        let exit_k = *krnl;
+        let exit_lctx = *lctx;
+        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep && krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
+        krnl.u_sys_exit(lctx);
+        u_sys_exit_eof(exit_k, *krnl, exit_lctx, *lctx);
+    }
     krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
     proof {
         steps.end_kernel_step_thread_syscall_progress_changed(&*krnl, &*lctx, thread_ptr);

@@ -131,7 +131,7 @@ fn ipc_lock_tables_and_share_pages(
         ipc_pages_mapping_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, cpu_id,
             channel_index, waiting_state, if waiting_state is SENDING { *source_range } else { *target_range }, ret),
         final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
-        final(krnl).cpu_published[cpu_id as int].view() == old(krnl).cpu_published[cpu_id as int].view(),
+        final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         final(krnl).prc_mp.dom().contains(process_ptr),
         final(krnl).ep_mp.dom().contains(endpoint_ptr),
         final(krnl).ep_mp.spec_index(endpoint_ptr) == old(krnl).ep_mp.spec_index(endpoint_ptr),
@@ -234,7 +234,8 @@ fn ipc_map_pages_and_release_tables(
         old(lctx).kernel_view_locking_state() is Acquire,
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
-        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         current_thread_ptr != peer_thread_ptr,
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
@@ -360,7 +361,7 @@ fn ipc_map_pages_and_release_tables(
         ipc_pages_mapping_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id,
             channel_index, waiting_state, if waiting_state is SENDING { *source_range } else { *target_range }, ret),
         final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
-        final(krnl).cpu_published[cpu_id as int].view() == old(krnl).cpu_published[cpu_id as int].view(),
+        final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
         final(krnl).prc_mp.dom().contains(process_ptr),
         final(krnl).ep_mp.dom().contains(endpoint_ptr),
         final(krnl).ep_mp.spec_index(endpoint_ptr).locking_thread() == old(krnl).ep_mp.spec_index(endpoint_ptr).locking_thread(),
@@ -538,7 +539,9 @@ pub(super) fn ipc_rendezvous_pages(
         old(lctx).kernel_view_locking_state() is Acquire,
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
-        old(krnl).cpu_published[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+        old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
+        old(steps).snapshot_k().cpu_op.view().view()[cpu_id as int] is Trap,
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         current_thread_ptr != peer_thread_ptr,
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
@@ -691,6 +694,7 @@ pub(super) fn ipc_rendezvous_pages(
             Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&current_thread_lock_perm), Tracked(&peer_thread_lock_perm), Tracked(&endpoint_lock_perm),
             source_process, source_container, source_pagetable, target_process, target_container, target_pagetable, Ghost(channel_index), Ghost(waiting_state),
         );
+        proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(old(krnl).cpu_op.view().view(), old(krnl).cpu_arr, cpu_id); cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
         let ghost finish_before = steps.view();
         let ghost finish_pre_u = kernel_k_to_kernel_u(*krnl);
         let ret = ipc_finish_pages_transit(
