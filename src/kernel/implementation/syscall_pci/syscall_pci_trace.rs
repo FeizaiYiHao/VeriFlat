@@ -39,6 +39,7 @@ pub(super) proof fn pci_attach_dma_step_from_u(pre: KernelU, post: KernelU, cpu_
         pre.cpu_array[cpu_id as int].lock_state is Unlocked,
         pre.cpu_array[cpu_id as int].current_process == Some(process_ptr),
         pre.process_map[process_ptr].lock_state is Unlocked,
+        pre.process_map[process_ptr].iommu_table->Some_0.lock_state is Unlocked,
     ensures
         pci_attach_dma_step_pre(pre, cpu_id, bus, device, function),
         pci_attach_dma_step(pre, post, cpu_id, bus, device, function),

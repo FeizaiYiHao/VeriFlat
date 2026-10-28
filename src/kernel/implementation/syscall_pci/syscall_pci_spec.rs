@@ -15,7 +15,7 @@ pub open spec fn pci_attach_dma_syscall_result(pre: KernelU, cpu_id: CpuId, bus:
     else { RetValueType::Success }
 }
 
-/// The cpu and the running process are unlocked; the process is alive, owns `(bus, device, function)`,
+/// The cpu, the running process, and its IOMMU table are unlocked; the process is alive, owns `(bus, device, function)`,
 /// and has an IOMMU table, and the function is not attached.
 #[verifier::opaque]
 pub open spec fn pci_attach_dma_step_pre(old_u: KernelU, cpu_id: CpuId, bus: usize, device: usize, function: usize) -> bool {
@@ -31,6 +31,7 @@ pub open spec fn pci_attach_dma_step_pre(old_u: KernelU, cpu_id: CpuId, bus: usi
     &&& pci_bdf_valid(bus, device, function)
     &&& process.owned_pci_functions.contains((bus, device, function))
     &&& process.iommu_table is Some
+    &&& process.iommu_table->Some_0.lock_state is Unlocked
     &&& !old_u.iommu_root_table.attached[bus as int][device as int][function as int]
 }
 

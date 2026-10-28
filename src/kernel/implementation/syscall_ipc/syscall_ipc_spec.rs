@@ -124,8 +124,8 @@ pub open spec fn ipc_block_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, e
 }
 
 /// The unlocked endpoint queue head waits in the opposite direction, so the caller rendezvous with it; a CPU
-/// rendezvous between different containers also needs both containers' cpu sets unlocked, and a handover
-/// needs the handed-over CPU unlocked.
+/// rendezvous between different containers also needs both containers' cpu sets unlocked, a handover
+/// needs the handed-over CPU unlocked, and a PCI handover of an attached function needs the sender's IOMMU table unlocked.
 #[verifier::opaque]
 pub open spec fn ipc_rendezvous_step_pre(old_u: KernelU, cpu_id: CpuId, endpoint_index: EndpointIdx, waiting_state: ThreadState, payload: IPCPayLoad) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -150,6 +150,8 @@ pub open spec fn ipc_rendezvous_step_pre(old_u: KernelU, cpu_id: CpuId, endpoint
         &&& old_u.container_map[peer.owning_container].cpu_set_lock is Unlocked
     }
     &&& ipc_cpu_transfer(old_u, cpu_id, endpoint_index, payload, result) matches Some((transfer, _)) ==> old_u.cpu_array[transfer as int].lock_state is Unlocked
+    &&& ipc_pci_transfer(old_u, cpu_id, endpoint_index, waiting_state, payload, result) matches Some((bdf, sender, _)) ==> old_u.iommu_root_table.attached[bdf.0 as int][bdf.1 as int][bdf.2 as int]
+        && old_u.process_map[sender].iommu_table is Some ==> old_u.process_map[sender].iommu_table->Some_0.lock_state is Unlocked
 }
 
 /// User-visible rendezvous step: the queue head is scheduled with the peer's side of the rendezvous result,

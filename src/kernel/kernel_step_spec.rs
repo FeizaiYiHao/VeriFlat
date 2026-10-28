@@ -1300,7 +1300,7 @@ pub open spec fn kernel_u_ipc_reply_handoff_changed(
 /// running on `cpu_id`, is dequeued and scheduled with `peer_result`; with `cpu_transfer == Some((cpu, receiver))`
 /// that Off CPU also moves to the receiver's container, and with `pci_transfer == Some((bdf, sender, receiver))`
 /// that PCI function moves from the sender to the receiver process, detached, while every other function stays attached
-/// exactly when it was. Detaching an attached function empties
+/// exactly when it was; the sender's IOMMU table is unlocked at the start when the function is attached. Detaching an attached function empties
 /// the sender table's old DID domain; detaching its anchor re-anchors the table as `pci_handoff_table_did` states.
 /// Only that table's DID changes; every IOMMU table keeps its present mappings.
 pub open spec fn kernel_ipc_rendezvous_fields(
@@ -1361,6 +1361,7 @@ pub open spec fn kernel_ipc_rendezvous_fields(
         &&& pre.prc_mp.dom().contains(receiver)
         &&& sender != receiver
         &&& !pre.prc_mp.spec_index(sender).view().zombie
+        &&& sender_table matches Some(t) ==> attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] ==> pre.it_mp.dom().contains(t) && pre.it_mp.spec_index(t).locking_thread() is None
         &&& post.irt.view().owners() == seq3_update(pre.irt.view().owners(), bdf.0 as int, bdf.1 as int, bdf.2 as int, receiver)
         &&& forall|b: usize, d: usize, f: usize| #![trigger post.irt.view().spec_index_iommu_root(b, d, f)] pci_bdf_valid(b, d, f)
             ==> (post.irt.view().spec_index_iommu_root(b, d, f) is Some) == ((b, d, f) != bdf && pre.irt.view().spec_index_iommu_root(b, d, f) is Some)

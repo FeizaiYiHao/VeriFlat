@@ -409,7 +409,8 @@ detaches.
 - Pre: `index_valid(cpu_id)`, `cpu.state is Running`, `P` present,
   `Unlocked(cpu)`, `Unlocked(P)`, `!P.killed`,
   `P.owned_pci_functions.contains((bus, device, function))`,
-  `P.iommu_table is Some`, `!iommu_root_table.attached[bus][device][function]`.
+  `P.iommu_table is Some`, `Unlocked(IT(P))`,
+  `!iommu_root_table.attached[bus][device][function]`.
 - Effect: `iommu_root_table.attached[bus][device][function] = true`, and
   `IT(P).did` keeps its value or, when `None` (first attach), becomes the
   function's candidate DID `pci_bdf_did(bus, device, function)`, which makes
@@ -421,11 +422,6 @@ detaches.
 
 Stutters (in this order): CpuIdle (cpu not Running or killed), ProcessKilled, PciOwnerMismatch, PciNoIommuTable,
 PciAlreadyAttached.
-
-Differences:
-
-1. The pre does not state `Unlocked(IT(P))` for the table the step
-   write-locks (R3).
 
 ## 5. new_thread, new_thread_with_endpoint — enter, finish
 
@@ -962,8 +958,9 @@ The Pci payload uses anchor DIDs (§15; Batch 3, workspace run #34166, noninterf
   opposite direction, differs from `T`, is present, `!peer.killed`, blocks on
   `E(i)`, and its container is present; `Unlocked(peer)`. A Cpu payload whose
   result is neither TypeMismatch nor SameContainer also needs `Unlocked(CS)`
-  for the caller's and the peer's containers, and a successful CPU transfer
-  needs `Unlocked` for the transferred Off CPU.
+  for the caller's and the peer's containers, a successful CPU transfer
+  needs `Unlocked` for the transferred Off CPU, and a successful PCI transfer
+  of an attached B/D/F needs `Unlocked` for the sender's IOMMU table.
 - Result (`ipc_rendezvous_result`): TypeMismatch unless `peer` waits in the
   opposite direction with a matching payload kind; for Cpu, SameContainer,
   CpuOwnerMismatch (the CPU is not the sender container's), CpuNotOff, then
@@ -999,8 +996,6 @@ The Pci payload uses anchor DIDs (§15; Batch 3, workspace run #34166, noninterf
   table in `d` to the new DID (clear, invalidate `d`, republish), with `d`
   invalidated before and after (`iommu_root_table_migrate_did`). Every lock
   is released in the step.
-- Difference: the rendezvous pre does not state `Unlocked` for the sender's
-  IOMMU table that a transfer of an attached B/D/F write-locks (R3).
 
 ## 11a. IPC call: call, call_usize, receive_call, reply_and_receive, reply_and_receive_usize — one step
 

@@ -577,6 +577,8 @@ pub(super) proof fn ipc_rendezvous_step_from_u(
             &&& pre.container_map.dom().contains(caller.owning_container)
             &&& cpu_sets_locked ==> pre.container_map[caller.owning_container].cpu_set_lock is Unlocked && pre.container_map[peer.owning_container].cpu_set_lock is Unlocked
             &&& cpu_transfer matches Some((transfer, _)) ==> pre.cpu_array[transfer as int].lock_state is Unlocked
+            &&& pci_transfer matches Some((bdf, sender, _)) ==> pre.iommu_root_table.attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] && pre.process_map[sender].iommu_table is Some
+                ==> pre.process_map[sender].iommu_table->Some_0.lock_state is Unlocked
         },
     ensures
         ipc_rendezvous_step_pre(pre, cpu_id, endpoint_index, waiting_state, payload),

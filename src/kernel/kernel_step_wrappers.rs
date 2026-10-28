@@ -1536,6 +1536,8 @@ impl KernelSteps {
                 &&& old_u.container_map.dom().contains(caller.owning_container)
                 &&& cpu_sets_locked ==> old_u.container_map[caller.owning_container].cpu_set_lock is Unlocked && old_u.container_map[peer.owning_container].cpu_set_lock is Unlocked
                 &&& cpu_transfer matches Some((transfer, _)) ==> old_u.cpu_array[transfer as int].lock_state is Unlocked
+                &&& pci_transfer matches Some((bdf, sender, _)) ==> old_u.iommu_root_table.attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] && old_u.process_map[sender].iommu_table is Some
+                    ==> old_u.process_map[sender].iommu_table->Some_0.lock_state is Unlocked
             },
             {
                 let old_u = kernel_k_to_kernel_u(old(self).snapshot_k());
@@ -1573,6 +1575,8 @@ impl KernelSteps {
                 &&& old_u.container_map.dom().contains(caller.owning_container)
                 &&& cpu_sets_locked ==> old_u.container_map[caller.owning_container].cpu_set_lock is Unlocked && old_u.container_map[peer.owning_container].cpu_set_lock is Unlocked
                 &&& cpu_transfer matches Some((transfer, _)) ==> old_u.cpu_array[transfer as int].lock_state is Unlocked
+                &&& pci_transfer matches Some((bdf, sender, _)) ==> old_u.iommu_root_table.attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] && old_u.process_map[sender].iommu_table is Some
+                    ==> old_u.process_map[sender].iommu_table->Some_0.lock_state is Unlocked
             },
             ipc_rendezvous_result(final(self).nonlock_view().last().old_u, cpu_id, endpoint_index, waiting_state, payload) == ipc_rendezvous_result(old(self).snapshot_u(), cpu_id, endpoint_index, waiting_state, payload),
             final(self).nonlock_view().last().old_u.thread_map[caller_thread_ptr].owning_proc == old(self).snapshot_u().thread_map[caller_thread_ptr].owning_proc,
@@ -1592,6 +1596,8 @@ impl KernelSteps {
             &&& pre_u.container_map[caller.owning_container].cpu_set_lock is Unlocked
             &&& pre_u.container_map[pre_u.thread_map.spec_index(peer_thread_ptr).owning_container].cpu_set_lock is Unlocked
             &&& cpu_transfer matches Some((transfer, _)) ==> pre_u.cpu_array[transfer as int].lock_state is Unlocked
+            &&& pci_transfer matches Some((bdf, sender, _)) ==> pre_u.iommu_root_table.attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] && pre_u.process_map[sender].iommu_table is Some
+                ==> pre_u.process_map[sender].iommu_table->Some_0.lock_state is Unlocked
         }) by { reveal(kernel_k_to_nonlock_kernel_u); reveal(kernel_ipc_rendezvous_fields); };
         assert({
             let pre_u = kernel_k_to_kernel_u(self.snapshot_k());
@@ -1605,7 +1611,9 @@ impl KernelSteps {
             &&& cpu_sets_locked ==> pre_u.container_map[caller.owning_container].cpu_set_lock is Unlocked
                 && pre_u.container_map[pre_u.thread_map.spec_index(peer_thread_ptr).owning_container].cpu_set_lock is Unlocked
             &&& cpu_transfer matches Some((transfer, _)) ==> pre_u.cpu_array[transfer as int].lock_state is Unlocked
-        }) by { reveal(kernel_k_to_kernel_u); reveal(kernel_ipc_rendezvous_fields); };
+            &&& pci_transfer matches Some((bdf, sender, _)) ==> pre_u.iommu_root_table.attached[bdf.0 as int][bdf.1 as int][bdf.2 as int] && pre_u.process_map[sender].iommu_table is Some
+                ==> pre_u.process_map[sender].iommu_table->Some_0.lock_state is Unlocked
+        }) by { reveal(kernel_k_to_kernel_u); reveal(kernel_ipc_rendezvous_fields); reveal(IommuRootTable::user_view); };
         assert(self.snapshot_k().prc_mp.dom().contains(self.snapshot_k().thr_mp.spec_index(peer_thread_ptr).view().owning_proc)) by {
             reveal(kernel_ipc_rendezvous_fields); reveal(kernel_process_nonlock_fields_unchanged); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, peer_thread_ptr);
         };
@@ -2131,6 +2139,7 @@ impl KernelSteps {
             !old(self).snapshot_k().prc_mp.spec_index(process_ptr).being_killed(),
             !old(self).snapshot_k().prc_mp.spec_index(process_ptr).view().zombie,
             old(self).snapshot_k().prc_mp.spec_index(process_ptr).view().iommu_table is Some,
+            old(self).snapshot_k().it_mp.spec_index(old(self).snapshot_k().prc_mp.spec_index(process_ptr).view().iommu_table->Some_0).locking_thread() is None,
             old(self).snapshot_k().prc_mp.spec_index(process_ptr).view_ghost().owned_pci_functions.view().contains((bus, device, function)),
             pci_bdf_valid(bus, device, function),
             old(self).snapshot_k().irt.view().spec_index_iommu_root(bus, device, function) is None,
@@ -2218,9 +2227,11 @@ impl KernelSteps {
             kernel_k_to_kernel_u(old(self).snapshot_k()).cpu_array[cpu_id as int].lock_state is Unlocked,
             kernel_k_to_kernel_u(old(self).snapshot_k()).cpu_array[cpu_id as int].current_process == Some(process_ptr),
             kernel_k_to_kernel_u(old(self).snapshot_k()).process_map[process_ptr].lock_state is Unlocked,
+            kernel_k_to_kernel_u(old(self).snapshot_k()).process_map[process_ptr].iommu_table->Some_0.lock_state is Unlocked,
             final(self).nonlock_view().last().old_u.cpu_array[cpu_id as int].lock_state is Unlocked,
             final(self).nonlock_view().last().old_u.cpu_array[cpu_id as int].current_process == Some(process_ptr),
             final(self).nonlock_view().last().old_u.process_map[process_ptr].lock_state is Unlocked,
+            final(self).nonlock_view().last().old_u.process_map[process_ptr].iommu_table->Some_0.lock_state is Unlocked,
     {
         reveal(kernel_u_pci_attach_changed);
         use_type_invariant(&*self);
@@ -2248,6 +2259,7 @@ impl KernelSteps {
             &&& !pre_u.process_map[process_ptr].killed
             &&& pre_u.process_map[process_ptr].owned_pci_functions.contains((bus, device, function))
             &&& pre_u.process_map[process_ptr].iommu_table is Some
+            &&& pre_u.process_map[process_ptr].iommu_table->Some_0.lock_state is Unlocked
             &&& !pre_u.iommu_root_table.attached[bus as int][device as int][function as int]
         }) by {
             reveal(IommuRootTable::user_view); kernel_u_domains_projection(&snap); kernel_u_domains_projection(&mid);
@@ -2290,6 +2302,7 @@ impl KernelSteps {
             &&& !pre_u.process_map[process_ptr].killed
             &&& pre_u.process_map[process_ptr].owned_pci_functions.contains((bus, device, function))
             &&& pre_u.process_map[process_ptr].iommu_table is Some
+            &&& pre_u.process_map[process_ptr].iommu_table->Some_0.lock_state is Unlocked
             &&& !pre_u.iommu_root_table.attached[bus as int][device as int][function as int]
         }) by {
             reveal(IommuRootTable::user_view); kernel_u_nonlock_domains_projection(&snap); kernel_u_nonlock_domains_projection(&mid);

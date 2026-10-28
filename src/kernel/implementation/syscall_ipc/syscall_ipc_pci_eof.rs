@@ -323,6 +323,7 @@ pub(super) proof fn ipc_pci_rendezvous_eof(
         snapshot.thr_mp.dom().contains(current_thread_ptr) ==> snapshot.thr_mp.spec_index(current_thread_ptr).locking_thread() is None,
         snapshot.ep_mp.dom().contains(endpoint_ptr) ==> snapshot.ep_mp.spec_index(endpoint_ptr).locking_thread() is None,
         snapshot.thr_mp.dom().contains(peer_thread_ptr) ==> snapshot.thr_mp.spec_index(peer_thread_ptr).locking_thread() is None,
+        iommu_table matches Some(t) ==> snapshot.it_mp.dom().contains(t) && pre.it_mp.dom().contains(t) ==> snapshot.it_mp.spec_index(t).locking_thread() is None,
         pre.thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is None,
         index_valid(NUM_CPUS, cpu_id),
         pre.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
@@ -377,7 +378,7 @@ pub(super) proof fn ipc_pci_rendezvous_eof(
         process_iommu_table_match_process_at(pre.prc_mp, pre.it_mp, sender_proc);
     };
     assert(kernel_ipc_rendezvous_fields(&snapshot, &post, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, None, if transferred { Some((bdf, sender_proc, receiver_proc)) } else { None })) by {
-        running_thread_not_in_endpoint_queue(&pre, endpoint_ptr, current_thread_ptr);
+        running_thread_not_in_endpoint_queue(&pre, endpoint_ptr, current_thread_ptr); process_iommu_table_match_process_at(pre.prc_mp, pre.it_mp, sender_proc);
         reveal(kernel_ipc_rendezvous_fields); reveal(container_scheduler_wf);
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
         reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
