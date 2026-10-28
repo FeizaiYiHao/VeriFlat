@@ -283,9 +283,9 @@ pub proof fn kernel_endpoint_waiter_killed_implies_u_step(before: &KernelK, afte
     });
 }
 
-/// Evicting the thread `thread_ptr` running on the remote cpu `remote` leaves that cpu idle without a process or thread
-/// and kills the thread, and changes both projections.
-pub proof fn kernel_running_thread_evicted_implies_u_step(before: &KernelK, after: &KernelK, thread_ptr: RwLockThreadPtr, remote: CpuId)
+/// Forcing the remote cpu `remote` running the thread `thread_ptr` from running to idle leaves it without a process or
+/// thread and kills the thread, and changes both projections.
+pub proof fn kernel_running_thread_cpu_to_idle_implies_u_step(before: &KernelK, after: &KernelK, thread_ptr: RwLockThreadPtr, remote: CpuId)
     requires
         index_valid(NUM_CPUS, remote),
         *after == (KernelK { cpu_arr: after.cpu_arr, cpu_hw_cr3_pcid: after.cpu_hw_cr3_pcid, cpu_op: after.cpu_op, thr_mp: after.thr_mp, ..*before }),

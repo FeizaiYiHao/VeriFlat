@@ -237,10 +237,10 @@ pub open spec fn kill_process_dequeue_endpoint_step(old_u: KernelU, new_u: Kerne
     })
 }
 
-/// The marked victim running on another cpu is evicted: that cpu goes idle without a process or thread, and the victim
+/// Another cpu running the marked victim is forced from running to idle without a process or thread, and the victim
 /// becomes killed.
 #[verifier::opaque]
-pub open spec fn kill_process_evict_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+pub open spec fn kill_process_cpu_to_idle_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let victim_ptr = kill_stage(old_u, cpu_id)->Thread_thread;
     let victim = old_u.thread_map[victim_ptr];
     let remote = victim.state->RUNNING_cpu_id;
@@ -527,9 +527,9 @@ pub open spec fn kill_process_retire_step(old_u: KernelU, new_u: KernelU, cpu_id
 }
 
 /// A step between entering and finishing: descending into a child, turning a thread waiting for a reply into a dangling thread,
-/// marking, dequeuing, evicting, or unlinking a thread, reclaiming killed threads of the target's container, and, for an empty target,
-/// reassigning its PCI functions, locking its tables, clearing one 4K leaf, flushing one cpu's TLB for its PCID,
-/// recording the flush, removing one IOMMU 4K leaf, returning quota of freed pages to the target's container chain,
+/// marking, dequeuing, or unlinking a thread, forcing the cpu running a thread to idle, reclaiming killed threads of the target's
+/// container, and, for an empty target, reassigning its PCI functions, locking its tables, clearing one 4K leaf, flushing one cpu's
+/// TLB for its PCID, recording the flush, removing one IOMMU 4K leaf, returning quota of freed pages to the target's container chain,
 /// returning one size of its quota, unlocking its tables, making it a zombie, or retiring it.
 pub open spec fn kill_process_middle_step(step: KernelStep, cpu_id: CpuId) -> bool {
     let old_u = step.old_u;
@@ -541,7 +541,7 @@ pub open spec fn kill_process_middle_step(step: KernelStep, cpu_id: CpuId) -> bo
         ||| kill_process_mark_thread_step(old_u, new_u, cpu_id)
         ||| kill_process_dequeue_scheduled_step(old_u, new_u, cpu_id)
         ||| kill_process_dequeue_endpoint_step(old_u, new_u, cpu_id)
-        ||| kill_process_evict_step(old_u, new_u, cpu_id)
+        ||| kill_process_cpu_to_idle_step(old_u, new_u, cpu_id)
         ||| kill_process_unlink_step(old_u, new_u, cpu_id)
         ||| kernel_u_killed_thread_reclaim_step(old_u, new_u, cpu_id) && (forall|t: RwLockThreadPtr| #![trigger old_u.thread_map[t]]
             old_u.thread_map.dom().contains(t) && (!new_u.thread_map.dom().contains(t) || new_u.thread_map[t] != old_u.thread_map[t]) ==> old_u.thread_map[t].owning_container == old_u.process_map[kill_target(old_u, cpu_id)].owning_container)

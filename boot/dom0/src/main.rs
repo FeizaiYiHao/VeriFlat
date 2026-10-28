@@ -452,7 +452,7 @@ const VICTIM_PAGES: usize = 4;
 const GRANDCHILD_PAGES: usize = 3;
 const ZOMBIE_PAGES: usize = 2;
 /// Kills of a child spinning on the other CPU of dom0's container.
-const EVICT_ROUNDS: usize = 8;
+const RUNNING_TO_IDLE_ROUNDS: usize = 8;
 /// Rounds of the kill loop. Each round kills two live processes and reaps a zombie, so a reclaim that
 /// leaked the PCIDs of the live ones would exhaust the container's `PCID_MAX` (4096) before the end.
 const KILL_ROUNDS: usize = 2100;
@@ -717,9 +717,10 @@ extern "C" fn kill_driver() -> ! {
 
 /// Phase 9. (a) dom0's three children: the IOMMU child's DMA function comes back to dom0 detached;
 /// a zombie child is reaped. (b) The helper threads exit, so dom0's other CPU idles. (c) Children
-/// spinning on that CPU are killed through eviction. (d) The kill loop: each round a fresh driver
-/// thread kills a victim subtree with every thread state, a zombie, and a grandchild, and the free
-/// 4K quota of dom0's container and process must grow by exactly the driver's thread page.
+/// spinning on that CPU are killed through running-to-idle IPIs. (d) The kill loop: each round a
+/// fresh driver thread kills a victim subtree with every thread state, a zombie, and a grandchild,
+/// and the free 4K quota of dom0's container and process must grow by exactly the driver's thread
+/// page.
 fn test_kill_process(image: usize, pages: usize) {
     let (bus, dev, fun) = dma_bdf();
     expect_error("kill_process past the children", unsafe { sys_kill_process(3) }, "ErrorInvalidChild");
@@ -750,7 +751,7 @@ fn test_kill_process(image: usize, pages: usize) {
     expect_error("call to retire the endpoint thread", unsafe { sys_call(NEW_ENDPOINT) }, "ErrorIpcCalleeExited");
 
     let sp = stack_top(&raw const SPIN_CHILD_STACK);
-    for _ in 0..EVICT_ROUNDS {
+    for _ in 0..RUNNING_TO_IDLE_ROUNDS {
         fund("alloc_quota_4k (spinning child)", cost);
         SPIN_CPU.store(usize::MAX, Ordering::SeqCst);
         SPIN_BEAT.store(0, Ordering::SeqCst);
@@ -762,8 +763,8 @@ fn test_kill_process(image: usize, pages: usize) {
         quiet("kill_process (spinning child)", unsafe { sys_kill_process(0) });
         expect_frozen("the spinning child", &SPIN_BEAT);
     }
-    expect_error("kill_process(0) after the evictions", unsafe { sys_kill_process(0) }, "ErrorInvalidChild");
-    log::info!("killed a child running on the other CPU {} times", EVICT_ROUNDS);
+    expect_error("kill_process(0) after the running-to-idle IPIs", unsafe { sys_kill_process(0) }, "ErrorInvalidChild");
+    log::info!("killed a child running on the other CPU {} times", RUNNING_TO_IDLE_ROUNDS);
 
     check("alloc_quota_4k", unsafe { sys_alloc_quota_4k(KILL_ROUNDS) });
     check("alloc_thread_quota_4k", unsafe { sys_alloc_thread_quota_4k(KILL_ROUNDS) });
@@ -1019,8 +1020,8 @@ pub extern "C" fn _start() -> ! {
     }
     log::info!("the register spinner kept rcx, r11, and rflags across its preemptions");
 
-    // 9. kill_process: dom0's children and a zombie, eviction of a running child, and the leak
-    // loop over victim subtrees; the helper threads exit on the way.
+    // 9. kill_process: dom0's children and a zombie, a running child killed through running-to-idle
+    // IPIs, and the leak loop over victim subtrees; the helper threads exit on the way.
     test_kill_process(image, pages);
 
     // 10. new_thread cost, last because the threads it creates keep yielding on this CPU.

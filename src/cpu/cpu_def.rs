@@ -440,11 +440,11 @@ impl CpuLockedArray {
         }
     }
 
-    /// Evict the thread running on the remote cpu `cpu_id`, which this thread write-holds: mark the cpu for `killer_info`,
+    /// Force the remote cpu `cpu_id`, which this thread write-holds, from running to idle: mark the cpu for `killer_info`,
     /// make it load the default page table with the default PCID, unmark it, and leave it idle. Its TLB entries, PCID flush
-    /// flags, and dirty bitmap stay as they are. The eviction IPI uses the target's kernel-call permission, which stays in
-    /// the cpu object because the target is outside a kernel step while this thread holds its lock.
-    pub fn evict_remote(
+    /// flags, and dirty bitmap stay as they are. The running-to-idle IPI uses the target's kernel-call permission, which
+    /// stays in the cpu object because the target is outside a kernel step while this thread holds its lock.
+    pub fn ipi_remote_running_to_idle(
         &mut self, cpu_id: CpuId, default_cr3: PageTableRoot, killer_info: KillerInfo, hw_cr3_pcid: &mut CpuHwCr3PcidArray, Tracked(cpu_op): Tracked<&mut CpuOpArray>,
         Tracked(lctx): Tracked<&mut LocalContext>, cpu_lock_perm: Tracked<&LockPerm>,
     )
@@ -493,7 +493,7 @@ impl CpuLockedArray {
         self.mark_kill(cpu_id, Tracked(&*lctx), killer_info);
         assert(self.typed_lock_map_aligned(lctx.cpu_lock_map(), lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
         let cpu = self.borrow_mut_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), cpu_lock_perm);
-        hw_cr3_pcid[cpu_id].evict_remote_cpu(&mut cpu.cr3_pcid, cpu_id, default_cr3, Tracked(&mut *cpu_op), Tracked(cpu.kernel_call_perm.borrow().tracked_borrow()), Tracked(&*lctx));
+        hw_cr3_pcid[cpu_id].ipi_remote_running_to_idle_raw(&mut cpu.cr3_pcid, cpu_id, default_cr3, Tracked(&mut *cpu_op), Tracked(cpu.kernel_call_perm.borrow().tracked_borrow()), Tracked(&*lctx));
         self.unkill(cpu_id, Tracked(&*lctx));
         assert(self.typed_lock_map_aligned(lctx.cpu_lock_map(), lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
         let cpu = self.borrow_mut_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), cpu_lock_perm);

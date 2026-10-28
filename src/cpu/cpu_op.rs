@@ -3,10 +3,10 @@
 //! TCB model of `CpuOpState`. `Off` is a cpu halted in `wait_until_online`; `Idle` is the idle loop, including its
 //! `sti; hlt; cli`; `User` is ring 3; `Trap` is the IF=0 entry/return trampoline running without the own cpu lock
 //! (User to Trap at `syscall` and the interrupt gates, Trap to User at `sysretq`/`iretq`, Trap to Idle when
-//! `restore_frame` diverts on `evicted` or CpuIdle); `InStep` is a cpu that write-holds its own cpu lock with its own
-//! `KernelCallPerm` in its `LocalContext` (entered in `KernelK::wlock_cpu`, left by `KernelK::u_sys_exit`). The only
-//! writers are that enter and exit, `evict_remote_cpu` (to Idle), `ipi_wake` (to Idle), and the boot trampolines, which
-//! the trap U steps and the step-boundary havoc model.
+//! `restore_frame` diverts on `running_to_idle_pending` or CpuIdle); `InStep` is a cpu that write-holds its own cpu
+//! lock with its own `KernelCallPerm` in its `LocalContext` (entered in `KernelK::wlock_cpu`, left by
+//! `KernelK::u_sys_exit`). The only writers are that enter and exit, `ipi_remote_running_to_idle_raw` (to Idle),
+//! `ipi_wake` (to Idle), and the boot trampolines, which the trap U steps and the step-boundary havoc model.
 use vstd::prelude::*;
 use crate::*;
 
@@ -61,9 +61,9 @@ impl CpuOpArray {
             final(self).view() == old(self).view().update(cpu_id as int, cpu_op_after_step(state)),
     { unimplemented!() }
 
-    /// TCB: the eviction IPI of `evict_remote_cpu` moves remote cpu `cpu_id` into its idle loop; called only there.
+    /// TCB: the IPI of `ipi_remote_running_to_idle_raw` moves remote cpu `cpu_id` to its idle loop; called only there.
     #[verifier::external_body]
-    pub(crate) proof fn evicted(tracked &mut self, cpu_id: CpuId)
+    pub(crate) proof fn ipi_running_to_idle(tracked &mut self, cpu_id: CpuId)
         requires
             index_valid(NUM_CPUS, cpu_id),
         ensures

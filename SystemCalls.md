@@ -122,10 +122,10 @@ exact length bounds, and the exit step, each with its pre and transition.
 (`cpu.op is Trap`, so the cpu is Running), write-locks its cpu first
 (`wlock_cpu_if_running`, which enters the kernel call, §15), and returns
 `CpuIdle` with an empty trace and `post == pre` when the cpu is `killed`: a
-killer holds the cpu marked while it evicts the thread (§18). The result
+killer holds the cpu marked while it forces the cpu to idle (§18). The result
 specs keep the disjunct `!(cpu.state is Running)`, which the Trap entry rules
 out. A marked cpu is never waited for: the lock returns at once, so the cpu
-leaves its trap path for the idle loop and takes the eviction IPI at the
+leaves its trap path for the idle loop and takes the running-to-idle IPI at the
 idle `hlt`. Entries that check their arguments before locking (mmap_4k,
 unmap_4k, new_process, new_container, the hotplug `target` index, the IPC
 pages range) report argument errors first. The result specs and traces
@@ -1367,8 +1367,9 @@ loop), `User` (ring 3), `Trap` (the entry and return path, interrupts off,
 without the own cpu lock), and `InStep` (inside a kernel call, holding the own
 cpu lock). Only TCB code writes it: `wlock_cpu` of the own cpu (to `InStep`),
 `KernelK::u_sys_exit` (to `cpu_op_after_step(state)`: Running to Trap, Idle to
-Idle, Off to Off), `evict_remote_cpu` and `ipi_wake` (a remote cpu to Idle),
-init (cpu 0 Idle, the others Off), and the step boundary. Each cpu has one
+Idle, Off to Off), `ipi_remote_running_to_idle_raw` and `ipi_wake` (a remote
+cpu to Idle), init (cpu 0 Idle, the others Off), and the step boundary. Each
+cpu has one
 `KernelCallPerm`, created at boot. It sits in `Cpu.kernel_call_perm` while the
 cpu is outside a kernel call, and in `LocalContext.kernel_call_perm` from the
 own-cpu `wlock_cpu` at entry (syscalls through `wlock_cpu_if_running`) until
@@ -1769,9 +1770,9 @@ its page as a raw 4K page permission, and drops `T`'s lock from `lctx`.
 
 ## 18. kill_process — enter, walk, thread, reclaim, retire steps, finish
 
-Status: implemented, including the thread kill (dangling, mark, dequeue, evict,
-unlink, killed-thread reclaim), PCI reassignment, live reclaim, zombie reap,
-and table-structure retirement.
+Status: implemented, including the thread kill (dangling, mark, dequeue, cpu to
+idle, unlink, killed-thread reclaim), PCI reassignment, live reclaim, zombie
+reap, and table-structure retirement.
 Verified with anchor DIDs (§15; Batch 3): workspace run #34166, noninterference run #34165, monolith run #34167; the reassign and IOMMU leaf
 steps use anchor DIDs.
 
@@ -1871,17 +1872,17 @@ present, `W(V)`, `V.killed`)
   `V.state.is_endpoint_waiting()` on `E = V.blocking_endpoint_ptr->Some_0`;
   `V` leaves `E.queue` and becomes `KILLED` with no blocking endpoint. `E`
   (10001) is locked and released inside the step.
-- Evict (`kill_process_evict_step`): `V.state == RUNNING { R }`,
+- Cpu to idle (`kill_process_cpu_to_idle_step`): `V.state == RUNNING { R }`,
   `R != cpu_id`; `R` becomes Idle with no current process or thread, and `V`
   becomes `KILLED`. In K the killer write-locks `R`, marks it with its own
   `killer_info` (`V` carries the same mark, `thread_cpu_wf`), sends the
-  maskable eviction IPI and waits for its acknowledgement, unmarks `R`
+  maskable running-to-idle IPI and waits for its acknowledgement, unmarks `R`
   (`unkill`), and sets it Idle with no current process or thread
-  (`evict_remote`). The IPI borrows `R`'s `KernelCallPerm` from the cpu object,
-  where it stays because the killer's lock keeps `R` out of `InStep`
-  (`cpu_op_wf`, §15), and leaves `R` at `op` Idle. `R` takes the IPI only in
-  user mode or at its idle `hlt`: it loads the default page table with the
-  default PCID, acknowledges, and, from user mode, abandons `V` for
+  (`ipi_remote_running_to_idle`). The IPI borrows `R`'s `KernelCallPerm` from
+  the cpu object, where it stays because the killer's lock keeps `R` out of
+  `InStep` (`cpu_op_wf`, §15), and leaves `R` at `op` Idle. `R` takes the IPI
+  only in user mode or at its idle `hlt`: it loads the default page table with
+  the default PCID, acknowledges, and, from user mode, abandons `V` for
   `run_idle`. Every own-cpu lock of `R` returns at once on the mark, so `R`
   cannot spin while the killer waits. `update_lock_id` moves `R` to the idle
   major (2), and `R` is released inside the step. The mark is U-visible as
@@ -2017,13 +2018,14 @@ Trusted primitives (external_body; authorized TCB): `RwLock::mark_kill`
 (marks a write-held object for its killer), `CpuLockedArray::unkill` (clears
 the mark of a cpu the killer still write-holds; no other object type is ever
 unmarked), the kill-aware `CpuLockedArray` lock operations
-(`wlock_unless_killed`, `wunlock`, `mark_kill`), `evict_remote_cpu` under
-`CpuLockedArray::evict_remote` (a maskable IPI, taken only in user mode or at
-the idle `hlt`, makes the remote cpu load the default page table and
-acknowledge; it borrows the target's `KernelCallPerm` and leaves its `op` at
-Idle; the killer spins for the acknowledgement; TODO: model this wait
-as a virtual lock in the lock order), `page_map_to_page_perm` (an
-unlinked table page is a 4K page again),
+(`wlock_unless_killed`, `wunlock`, `mark_kill`),
+`ipi_remote_running_to_idle_raw` under
+`CpuLockedArray::ipi_remote_running_to_idle` (a maskable IPI, taken only in
+user mode or at the idle `hlt`, makes the remote cpu load the default page
+table and acknowledge; it borrows the target's `KernelCallPerm` and leaves its
+`op` at Idle; the killer spins for the acknowledgement; TODO: model this wait
+as a virtual lock in the lock order), `page_map_to_page_perm` (an unlinked
+table page is a 4K page again),
 `retype_pagetable_rwlock_to_4k_page_perms` (a page table whose only table
 page is its root becomes its object page and root page), and
 `retype_process_rwlock_to_4k_page_perm` (a killed, empty process becomes its
@@ -2033,8 +2035,8 @@ Differences:
 
 1. Steps that acquire a U-visible object do not state `Unlocked` for it
    (R3, R4): enter and mark child for the marked process, mark thread for
-   `V`, dequeue endpoint for `E`, evict for `R`, reassign for `IT(L)`, and
-   lock table for `PT(L)` and `IT(L)`. The dangling step and the
+   `V`, dequeue endpoint for `E`, cpu to idle for `R`, reassign for `IT(L)`,
+   and lock table for `PT(L)` and `IT(L)`. The dangling step and the
    killed-thread reclaim steps do.
 2. Liveness: a blocked retire stage retries forever. No invariant states
    that a zombie's tables map nothing, although reclaim removes every 4K
@@ -2147,7 +2149,7 @@ noninterference coverage of those reused steps.
   `kill_process_quota_step` and `kill_process_zombify_step` return quota and
   the PCID to `L`, and `kill_process_retire_step` retires a non-root process
   into `L.quota_4k`. The reassign step moves `L`'s PCI functions to the
-  killer's process `P`. Dangling callers, marked threads, evictions, and the
+  killer's process `P`. Dangling callers, marked threads, cpus to idle, and the
   killed-thread reclaim (including the take-over of a `DANGLING` caller)
   are those of §18; a call never crosses containers (`thread_caller_callee_wf`
   states `caller.owning_container == callee.owning_container`), so every
@@ -2294,5 +2296,5 @@ Differences:
    page count.
 3. `kill_container_middle_step` admits a 1G move-page step that the code
    never takes.
-4. The killer's wait for an evicted cpu's acknowledgement is not modeled as
-   a lock (the §18 TODO).
+4. The killer's wait for the acknowledgement of a cpu forced to idle is not
+   modeled as a lock (the §18 TODO).

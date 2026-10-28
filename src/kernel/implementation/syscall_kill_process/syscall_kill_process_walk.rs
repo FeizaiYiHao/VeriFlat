@@ -424,7 +424,7 @@ pub(crate) fn kill_finish_marked_victim(
 }
 
 /// Take the marked first thread `victim_ptr` of the target off the scheduler shard or endpoint queue it waits in, or
-/// evict it from the remote cpu it runs on, and kill it.
+/// force the remote cpu it runs on from running to idle, and kill it.
 pub(crate) fn kill_victim_off_cpu_or_queue(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
     thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, victim_ptr: RwLockThreadPtr, killer_info: KillerInfo, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>,
@@ -521,13 +521,13 @@ pub(crate) fn kill_victim_off_cpu_or_queue(
         }
     } else if running {
         proof { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr); }
-        kill_evict_running_victim(krnl, Tracked(&mut *lctx), victim_ptr, killer_info, Tracked(victim_perm));
+        kill_running_victim_cpu_to_idle(krnl, Tracked(&mut *lctx), victim_ptr, killer_info, Tracked(victim_perm));
         let ghost killed_k = *krnl;
         proof {
             let remote = before.thr_mp.spec_index(victim_ptr).view().state->RUNNING_cpu_id;
-            kernel_running_thread_evicted_implies_u_step(&before, &killed_k, victim_ptr, remote);
+            kernel_running_thread_cpu_to_idle_implies_u_step(&before, &killed_k, victim_ptr, remote);
             krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
-            kill_evict_step_from_u(kernel_k_to_kernel_u(before), kernel_k_to_kernel_u(killed_k), cpu_id, victim_ptr, remote);
+            kill_cpu_to_idle_step_from_u(kernel_k_to_kernel_u(before), kernel_k_to_kernel_u(killed_k), cpu_id, victim_ptr, remote);
             kill_trace_push(&*steps, before_steps, start, pre, kernel_k_to_kernel_u(before), kernel_k_to_kernel_u(killed_k), cpu_id, ctx);
         }
     } else {

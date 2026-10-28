@@ -123,10 +123,11 @@ pub open spec fn kill_dequeue_endpoint_eof_transition_framing(pre: KernelK, post
     &&& after.view() == (Endpoint { queue: after.view().queue, ..before.view() })
 }
 
-/// The write-held marked thread `victim_ptr` running on the write-held remote cpu `remote` is evicted: the cpu loads the
-/// default page table with the default PCID and goes idle, its running state becomes Idle, and the thread becomes killed.
+/// The write-held remote cpu `remote` running the write-held marked thread `victim_ptr` is forced from running to idle:
+/// the cpu loads the default page table with the default PCID and goes idle, its running state becomes Idle, and the
+/// thread becomes killed.
 #[verifier::opaque]
-pub open spec fn kill_evict_eof_transition_framing(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, remote: CpuId, default_cr3: PageTableRoot) -> bool {
+pub open spec fn kill_cpu_to_idle_eof_transition_framing(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, remote: CpuId, default_cr3: PageTableRoot) -> bool {
     let victim = pre.thr_mp.spec_index(victim_ptr);
     let after_victim = post.thr_mp.spec_index(victim_ptr);
     let before = pre.cpu_arr.spec_index(remote).view();

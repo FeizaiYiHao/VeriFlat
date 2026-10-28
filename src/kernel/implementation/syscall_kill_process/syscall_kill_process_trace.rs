@@ -585,8 +585,8 @@ pub(crate) proof fn kill_dequeue_endpoint_step_from_u(pre: KernelU, post: Kernel
     ensures kill_process_middle_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
 { reveal(kill_process_dequeue_endpoint_step); }
 
-/// Evicting the recorded victim from the remote cpu `remote` it runs on is a middle step.
-pub(crate) proof fn kill_evict_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, victim_ptr: RwLockThreadPtr, remote: CpuId)
+/// Forcing the remote cpu `remote` that runs the recorded victim from running to idle is a middle step.
+pub(crate) proof fn kill_cpu_to_idle_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, victim_ptr: RwLockThreadPtr, remote: CpuId)
     requires
         kill_process_step_pre(pre, cpu_id),
         kill_process_victim_step_pre(pre, cpu_id),
@@ -600,7 +600,7 @@ pub(crate) proof fn kill_evict_step_from_u(pre: KernelU, post: KernelU, cpu_id: 
             ..pre
         }),
     ensures kill_process_middle_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
-{ reveal(kill_process_evict_step); }
+{ reveal(kill_process_cpu_to_idle_step); }
 
 /// The killed recorded victim leaving the target, which absorbs its quota, and the kill walking the target again is a
 /// middle step.

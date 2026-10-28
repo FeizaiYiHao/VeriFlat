@@ -340,7 +340,7 @@ specific runtime check.
 ### Once marked, the object cannot be revived
 
 `killer_info.is_some()` is one-way except on CPU locks: only
-`LockedArray::unkill` on a CPU clears a mark (remote eviction); every other
+`LockedArray::unkill` on a CPU clears a mark (remote cpu to idle); every other
 object keeps its mark until it is destroyed (`src/locks/lock_array.rs`).
 `wunlock` does not require an unmarked object and preserves the mark; the
 kill paths keep each marked process or thread write-held until its retire or
@@ -495,7 +495,7 @@ Batch 3 (workspace run #34166, noninterference run #34165, monolith run
 
 ## Open items
 
-- The `evict_remote_cpu` IPI wait is `external_body`; TODO at
+- The `ipi_remote_running_to_idle_raw` IPI wait is `external_body`; TODO at
   `src/cpu/atomic_pcid_cr3.rs:62` to model it as a virtual lock in the lock
   order.
 - 2M/1G user mappings are not modeled; kill and thread_exit reclaim remove

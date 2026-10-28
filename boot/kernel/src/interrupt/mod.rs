@@ -36,9 +36,9 @@ pub const IRQ_TIMER: usize = 0;
 pub const IRQ_WAKE: usize = 32;
 pub const VECTOR_WAKE: u8 = (IRQ_OFFSET + IRQ_WAKE) as u8;
 
-/// The maskable eviction IPI of `veriflat_evict_ipi`.
-pub const IRQ_EVICT: usize = 33;
-pub const VECTOR_EVICT: u8 = (IRQ_OFFSET + IRQ_EVICT) as u8;
+/// The maskable running-to-idle IPI of `veriflat_ipi_running_to_idle`.
+pub const IRQ_RUNNING_TO_IDLE: usize = 33;
+pub const VECTOR_RUNNING_TO_IDLE: u8 = (IRQ_OFFSET + IRQ_RUNNING_TO_IDLE) as u8;
 
 pub const IST_EXCEPTION: usize = 1;
 pub const IST_IRQ: usize = 2;
@@ -129,8 +129,8 @@ macro_rules! trampoline {
 
 /// Wraps a `Registers` handler for a vector whose frame carries a CPU error code. A frame from
 /// ring 3 (`cs` at `[rsp + 16]` has RPL 3) needs `swapgs` on the way in, and leaves through
-/// `restore_frame`, the only exit to ring 3 (an eviction relies on it); a frame from the kernel
-/// already has the kernel GS base.
+/// `restore_frame`, the only exit to ring 3 (a running-to-idle IPI relies on it); a frame from the
+/// kernel already has the kernel GS base.
 macro_rules! wrap_interrupt_with_error_code {
     ($handler:path) => {
         // Here rsp is at [error_code][rip][cs][rflags][rsp][ss]
@@ -233,9 +233,9 @@ unsafe extern "C" fn non_maskable_interrupt(regs: &mut Registers) {
     crate::platform::handle_nmi(regs);
 }
 
-/// Eviction IPI handler.
-unsafe extern "C" fn evict(regs: &mut Registers) {
-    crate::platform::handle_evict_ipi(regs);
+/// Running-to-idle IPI handler.
+unsafe extern "C" fn running_to_idle(regs: &mut Registers) {
+    crate::platform::handle_running_to_idle_ipi(regs);
 }
 
 /// Timer handler.
@@ -325,7 +325,7 @@ pub unsafe fn init() {
     }
     idt.interrupts[IRQ_TIMER].set_handler_fn(wrap_interrupt!(timer));
     idt.interrupts[IRQ_WAKE].set_handler_fn(wrap_interrupt!(wake));
-    idt.interrupts[IRQ_EVICT].set_handler_fn(wrap_interrupt!(evict));
+    idt.interrupts[IRQ_RUNNING_TO_IDLE].set_handler_fn(wrap_interrupt!(running_to_idle));
 }
 
 /// Initializes per-CPU interrupt controllers.

@@ -831,7 +831,7 @@ impl Thread {
         self.state = ThreadState::KILLED;
     }
 
-    /// A killer evicted this thread from its CPU.
+    /// A killer forced the CPU running this thread to idle.
     pub fn running_to_killed(&mut self)
         requires
             old(self).inv(),

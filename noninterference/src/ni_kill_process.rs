@@ -258,18 +258,18 @@ pub proof fn kill_process_dequeue_endpoint_step_iso(old_u: KernelU, new_u: Kerne
     queue.index_of_first_ensures(victim_ptr);
 }
 
-/// Evicting the marked victim of a process kill on a cpu of `a` from the cpu it runs on changes only the victim, a thread
+/// Forcing the cpu running the marked victim of a process kill on a cpu of `a` to idle changes only the victim, a thread
 /// of the target in `a`, and that cpu, which shares the victim's container, so it leaves the view of `b` unchanged.
-pub proof fn kill_process_evict_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+pub proof fn kill_process_cpu_to_idle_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         kill_process_step_pre(old_u, cpu_id),
-        kill_process_evict_step(old_u, new_u, cpu_id),
+        kill_process_cpu_to_idle_step(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 {
-    reveal(kill_process_step_pre); reveal(kill_process_evict_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_process_threads_wf); reveal(kernel_u_running_thread_cpu_wf);
+    reveal(kill_process_step_pre); reveal(kill_process_cpu_to_idle_step); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_process_threads_wf); reveal(kernel_u_running_thread_cpu_wf);
     let owner = old_u.cpu_array[cpu_id as int].owning_container;
     let target = old_u.process_map[kill_target(old_u, cpu_id)];
     assert(in_domain(old_u, a, target.owning_container)) by {
@@ -281,16 +281,16 @@ pub proof fn kill_process_evict_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: 
     };
 }
 
-/// The step of `kill_process_evict_step_lr` preserves isolation.
-pub proof fn kill_process_evict_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+/// The step of `kill_process_cpu_to_idle_step_lr` preserves isolation.
+pub proof fn kill_process_cpu_to_idle_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         kill_process_step_pre(old_u, cpu_id),
-        kill_process_evict_step(old_u, new_u, cpu_id),
+        kill_process_cpu_to_idle_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kill_process_evict_step); }
+{ reveal(kill_process_cpu_to_idle_step); }
 
 /// Unlinking the killed victim of a process kill on a cpu of `a` from the target, which lies in `a`, changes only the
 /// target, the victim, which shares its container, and the killer, so it leaves the view of `b` unchanged.

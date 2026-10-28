@@ -455,10 +455,10 @@ pub(crate) proof fn kill_dequeue_endpoint_eof(pre: KernelK, post: KernelK, victi
     };
 }
 
-proof fn kill_evict_eof_cpu_relations(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, remote: CpuId, default_cr3: PageTableRoot)
+proof fn kill_cpu_to_idle_eof_cpu_relations(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, remote: CpuId, default_cr3: PageTableRoot)
     requires
         pre.inv(),
-        kill_evict_eof_transition_framing(pre, post, victim_ptr, remote, default_cr3),
+        kill_cpu_to_idle_eof_transition_framing(pre, post, victim_ptr, remote, default_cr3),
         index_valid(NUM_CPUS, remote),
         pre.thr_mp.dom().contains(victim_ptr),
         pre.thr_mp.spec_index(victim_ptr).locking_thread() is Write,
@@ -470,17 +470,17 @@ proof fn kill_evict_eof_cpu_relations(pre: KernelK, post: KernelK, victim_ptr: R
         process_cpu_wf(post.prc_mp, post.cpu_arr),
         thread_cpu_wf(post.thr_mp, post.cpu_arr),
 {
-    reveal(kill_evict_eof_transition_framing);
+    reveal(kill_cpu_to_idle_eof_transition_framing);
     reveal(cpu_array_wf); reveal(thread_cpu_wf);
     assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); };
     assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); };
 }
 
-/// The killed thread evicted from its remote cpu, which went idle on the default page table, keeps the kernel invariant.
-pub(crate) proof fn kill_evict_eof(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, remote: CpuId, default_cr3: PageTableRoot)
+/// The killed thread whose remote cpu was forced to idle on the default page table keeps the kernel invariant.
+pub(crate) proof fn kill_cpu_to_idle_eof(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, remote: CpuId, default_cr3: PageTableRoot)
     requires
         pre.inv(),
-        kill_evict_eof_transition_framing(pre, post, victim_ptr, remote, default_cr3),
+        kill_cpu_to_idle_eof_transition_framing(pre, post, victim_ptr, remote, default_cr3),
         index_valid(NUM_CPUS, remote),
         pre.thr_mp.dom().contains(victim_ptr),
         pre.thr_mp.spec_index(victim_ptr).locking_thread() is Write,
@@ -493,7 +493,7 @@ pub(crate) proof fn kill_evict_eof(pre: KernelK, post: KernelK, victim_ptr: RwLo
         post.thr_mp.spec_index(victim_ptr).view().inv(),
     ensures post.inv(),
 {
-    reveal(kill_evict_eof_transition_framing);
+    reveal(kill_cpu_to_idle_eof_transition_framing);
     assert(post.subsystems_inv()) by {
         assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); reveal(KernelK::default_pagetable_wf); };
         assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { reveal(cpu_offline_flags_wf); };
@@ -507,7 +507,7 @@ pub(crate) proof fn kill_evict_eof(pre: KernelK, post: KernelK, victim_ptr: RwLo
     };
     kill_victim_killed_eof_memory(pre, post);
     assert(post.process_management_inv()) by {
-        kill_evict_eof_cpu_relations(pre, post, victim_ptr, remote, default_cr3);
+        kill_cpu_to_idle_eof_cpu_relations(pre, post, victim_ptr, remote, default_cr3);
         assert(container_cpu_offline_flags_wf(post.ctn_mp, post.cpu_offline_mp)) by { reveal(container_cpu_offline_flags_wf); };
         assert(thread_caller_callee_wf(post.thr_mp)) by { thread_caller_callee_wf_preserved_for_call_link_eq(pre.thr_mp, post.thr_mp); };
         assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_descriptor_eq(pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
