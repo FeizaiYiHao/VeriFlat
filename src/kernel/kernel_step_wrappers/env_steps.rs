@@ -89,4 +89,55 @@ pub proof fn kernel_k_iommu_context_cache_filled_implies_u_step(pre: &KernelK, p
 {
     reveal(kernel_u_iommu_context_cache_filled_step); reveal(kernel_k_to_kernel_u); reveal(kernel_k_to_nonlock_kernel_u);
 }
+
+/// A trap entry under the kernel invariant is the user trap entry; the nonlock projection does not see it.
+pub proof fn kernel_k_trap_enter_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId)
+    requires
+        pre.inv(),
+        kernel_k_trap_enter(*pre, *post, cpu_id),
+    ensures
+        kernel_u_trap_enter_step_pre(kernel_k_to_kernel_u(*pre), cpu_id),
+        kernel_u_trap_enter_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id),
+        kernel_k_to_nonlock_kernel_u(*post) == kernel_k_to_nonlock_kernel_u(*pre),
+{
+    let pre_u = kernel_k_to_kernel_u(*pre);
+    reveal(kernel_u_trap_enter_step_pre); reveal(kernel_u_trap_enter_step); reveal(kernel_k_to_kernel_u); reveal(kernel_k_to_nonlock_kernel_u);
+    cpu_op_wf_at(pre.cpu_op.view().view(), pre.cpu_arr, cpu_id);
+    assert(kernel_k_to_kernel_u(*post).cpu_array =~= pre_u.cpu_array.update(cpu_id as int, CpuU { op: CpuOpState::Trap, ..pre_u.cpu_array[cpu_id as int] }));
+    assert(kernel_k_to_nonlock_kernel_u(*post).cpu_array =~= kernel_k_to_nonlock_kernel_u(*pre).cpu_array);
+}
+
+/// A trap return under the kernel invariant is the user trap return; the nonlock projection does not see it.
+pub proof fn kernel_k_trap_return_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId)
+    requires
+        pre.inv(),
+        kernel_k_trap_return(*pre, *post, cpu_id),
+    ensures
+        kernel_u_trap_return_step_pre(kernel_k_to_kernel_u(*pre), cpu_id),
+        kernel_u_trap_return_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id),
+        kernel_k_to_nonlock_kernel_u(*post) == kernel_k_to_nonlock_kernel_u(*pre),
+{
+    let pre_u = kernel_k_to_kernel_u(*pre);
+    reveal(kernel_u_trap_return_step_pre); reveal(kernel_u_trap_return_step); reveal(kernel_k_to_kernel_u); reveal(kernel_k_to_nonlock_kernel_u);
+    cpu_op_wf_at(pre.cpu_op.view().view(), pre.cpu_arr, cpu_id);
+    assert(kernel_k_to_kernel_u(*post).cpu_array =~= pre_u.cpu_array.update(cpu_id as int, CpuU { op: CpuOpState::User, ..pre_u.cpu_array[cpu_id as int] }));
+    assert(kernel_k_to_nonlock_kernel_u(*post).cpu_array =~= kernel_k_to_nonlock_kernel_u(*pre).cpu_array);
+}
+
+/// A trap divert under the kernel invariant is the user trap divert; the nonlock projection does not see it.
+pub proof fn kernel_k_trap_divert_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId)
+    requires
+        pre.inv(),
+        kernel_k_trap_divert(*pre, *post, cpu_id),
+    ensures
+        kernel_u_trap_divert_step_pre(kernel_k_to_kernel_u(*pre), cpu_id),
+        kernel_u_trap_divert_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id),
+        kernel_k_to_nonlock_kernel_u(*post) == kernel_k_to_nonlock_kernel_u(*pre),
+{
+    let pre_u = kernel_k_to_kernel_u(*pre);
+    reveal(kernel_u_trap_divert_step_pre); reveal(kernel_u_trap_divert_step); reveal(kernel_k_to_kernel_u); reveal(kernel_k_to_nonlock_kernel_u);
+    cpu_op_wf_at(pre.cpu_op.view().view(), pre.cpu_arr, cpu_id);
+    assert(kernel_k_to_kernel_u(*post).cpu_array =~= pre_u.cpu_array.update(cpu_id as int, CpuU { op: CpuOpState::Idle, ..pre_u.cpu_array[cpu_id as int] }));
+    assert(kernel_k_to_nonlock_kernel_u(*post).cpu_array =~= kernel_k_to_nonlock_kernel_u(*pre).cpu_array);
+}
 }

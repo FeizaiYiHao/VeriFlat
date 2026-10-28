@@ -109,6 +109,31 @@ pub open spec fn kernel_k_iommu_context_cache_filled(pre: KernelK, post: KernelK
     &&& post.iommu_tlb.context_cache() == pre.iommu_tlb.context_cache().insert(bdf, entry)
 }
 
+/// Cpu `cpu_id` leaves user mode for its trap path at `syscall` or an interrupt gate; nothing else changes.
+pub open spec fn kernel_k_trap_enter(pre: KernelK, post: KernelK, cpu_id: CpuId) -> bool {
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& pre.cpu_op.view().view()[cpu_id as int] is User
+    &&& post == (KernelK { cpu_op: post.cpu_op, ..pre })
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view().update(cpu_id as int, CpuOpState::Trap)
+}
+
+/// Cpu `cpu_id` returns from its trap path to user mode at `sysretq` or `iretq`; nothing else changes.
+pub open spec fn kernel_k_trap_return(pre: KernelK, post: KernelK, cpu_id: CpuId) -> bool {
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& pre.cpu_op.view().view()[cpu_id as int] is Trap
+    &&& post == (KernelK { cpu_op: post.cpu_op, ..pre })
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view().update(cpu_id as int, CpuOpState::User)
+}
+
+/// Cpu `cpu_id`, marked by a killer, leaves its trap path for its idle loop at `restore_frame`; nothing else changes.
+pub open spec fn kernel_k_trap_divert(pre: KernelK, post: KernelK, cpu_id: CpuId) -> bool {
+    &&& index_valid(NUM_CPUS, cpu_id)
+    &&& pre.cpu_op.view().view()[cpu_id as int] is Trap
+    &&& pre.cpu_arr.spec_index(cpu_id).view().being_killed()
+    &&& post == (KernelK { cpu_op: post.cpu_op, ..pre })
+    &&& post.cpu_op.view().view() == pre.cpu_op.view().view().update(cpu_id as int, CpuOpState::Idle)
+}
+
 /// U step of `kernel_k_cpu_tlb_filled`: CPU `cpu_id` caches `added` under `pcid`.
 #[verifier::opaque]
 pub open spec fn kernel_u_cpu_tlb_filled_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, pcid: Pcid, added: SingleTLB) -> bool {
@@ -181,5 +206,35 @@ pub proof fn kernel_k_iommu_context_cache_filled_preserves_inv(pre: KernelK, pos
     assert(post.iommu_tlb.inv()) by { reveal(IommuTLB::inv); reveal(iommu_root_table_process_wf); pre.irt.view().context_wf_at(bdf.0, bdf.1, bdf.2); };
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(IommuTLB::inv); reveal(iommu_tlb_wf_spec); };
+}
+
+pub proof fn kernel_k_trap_enter_preserves_inv(pre: KernelK, post: KernelK, cpu_id: CpuId)
+    requires
+        pre.inv(),
+        kernel_k_trap_enter(pre, post, cpu_id),
+    ensures post.inv(),
+{
+    assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
+    assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
+}
+
+pub proof fn kernel_k_trap_return_preserves_inv(pre: KernelK, post: KernelK, cpu_id: CpuId)
+    requires
+        pre.inv(),
+        kernel_k_trap_return(pre, post, cpu_id),
+    ensures post.inv(),
+{
+    assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
+    assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
+}
+
+pub proof fn kernel_k_trap_divert_preserves_inv(pre: KernelK, post: KernelK, cpu_id: CpuId)
+    requires
+        pre.inv(),
+        kernel_k_trap_divert(pre, post, cpu_id),
+    ensures post.inv(),
+{
+    assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
+    assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
 }
 }
