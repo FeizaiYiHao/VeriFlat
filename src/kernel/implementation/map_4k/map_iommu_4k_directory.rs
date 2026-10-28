@@ -114,6 +114,7 @@ pub fn install_staged_4k_iommu_table_page(
         final(krnl).it_mp.spec_index(iommu_table_ptr).locking_thread() == old(krnl).it_mp.spec_index(iommu_table_ptr).locking_thread(),
         final(krnl).it_mp.spec_index(iommu_table_ptr).view().kernel_l4_end == old(krnl).it_mp.spec_index(iommu_table_ptr).view().kernel_l4_end,
         final(krnl).it_mp.spec_index(iommu_table_ptr).view().proc_ptr == old(krnl).it_mp.spec_index(iommu_table_ptr).view().proc_ptr,
+        final(krnl).it_mp.spec_index(iommu_table_ptr).view().did == old(krnl).it_mp.spec_index(iommu_table_ptr).view().did,
         final(krnl).it_mp.spec_index(iommu_table_ptr).view().page_closure() == old(krnl).it_mp.spec_index(iommu_table_ptr).view().page_closure().insert(page_ptr),
         final(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_4k() == old(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_4k(),
         final(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_2m() == old(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_2m(),

@@ -29,7 +29,9 @@ Ordinary container-locking syscalls request the caller's current process
 depth and stutter with `ErrorContainerLockOrderConflict` (ABI index 49) on a
 conflict. Marking a deeper container requests `High`. A newly created child
 container is published write-held with `Some(0)`. `ContainerU` projects the
-recorded owner as `lock_process_owner`.
+recorded owner as `lock_process_owner`. Container locks have no read-lock
+path: `rlock`, `runlock`, and `downgrade` refuse read-only data whose owner
+source is `Dynamic`.
 
 ## Owners by object
 | Object | Container | Process | Major | Minor |
@@ -50,5 +52,7 @@ Any of these objects that a killer has marked reports
 `(High, High, KILLED_LOCK_MAJOR, minor)` instead.
 
 The IOMMU table write lock is also the IOTLB dirty marker: while it is held,
-attached domains may cache hidden leaves; the holder flushes the IOTLB before
-unlocking.
+the table's DID domain may cache hidden leaves; the holder empties that
+domain before it removes them, and a table without a DID needs no flush.
+Every change of a table's DID holds the root-table lock (10005) and then the
+table's write lock (10006).

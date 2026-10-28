@@ -1181,14 +1181,10 @@ pub fn iommu_table_map_set_did(
     let iommu_table = iommu_table_map.borrow_mut_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(lctx), Tracked(iommu_table_lock_perm));
     iommu_table.did = did;
     proof {
-        assert(iommu_table_perms_wf(*iommu_table_map)) by {
-            reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked);
-            reveal(PageTable::wf_l4); reveal(PageTable::wf_l3); reveal(PageTable::wf_l2); reveal(PageTable::wf_l1);
-            reveal(PageTable::disjoint_l4); reveal(PageTable::disjoint_l3); reveal(PageTable::disjoint_l2);
-            reveal(PageTable::wf_mapping_4k); reveal(PageTable::wf_mapping_2m); reveal(PageTable::wf_mapping_1g);
-            reveal(PageTable::user_only); reveal(PageTable::rwx_upper_level_entries); reveal(PageTable::table_pages_wf);
-            reveal(PageTable::tables_reachable_wf); reveal(PageTable::kernel_entries_wf);
+        assert(iommu_table_map_set_did_eof_transition_framing(*old(iommu_table_map), *iommu_table_map, iommu_table_ptr, did)) by {
+            reveal(iommu_table_map_set_did_eof_transition_framing);
         };
+        iommu_table_map_set_did_eof(*old(iommu_table_map), *iommu_table_map, iommu_table_ptr, did);
     }
 }
 

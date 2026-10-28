@@ -28,8 +28,9 @@ use crate::boot;
 /// Register bases of the remapping units, valid up to `UNIT_COUNT`; 0 while translation is off.
 static UNITS: [AtomicU64; MAX_IOMMU_UNITS] = [const { AtomicU64::new(0) }; MAX_IOMMU_UNITS];
 static UNIT_COUNT: AtomicUsize = AtomicUsize::new(0);
-/// Serializes the invalidation registers: domain invalidations run under the verified root-table
-/// lock, but a global IOTLB flush needs no kernel lock, so the two may race on a unit.
+/// Serializes the invalidation registers: a domain-selective context-cache and IOTLB invalidation
+/// runs under the verified root-table lock, but an IOTLB-only domain invalidation runs under one
+/// IOMMU table's lock, so invalidations of different domains may race on a unit.
 static INVALIDATION_LOCK: AtomicBool = AtomicBool::new(false);
 
 /// The interrupt remapping table every unit uses: 256 entries, all not present, never written.
@@ -256,18 +257,6 @@ pub extern "C" fn veriflat_iommu_invalidate_iotlb_domain(did: usize) {
     acquire_invalidation_lock();
     for base in units() {
         invalidate_iotlb(base, IOTLB_DOMAIN | (did << 32));
-    }
-    release_invalidation_lock();
-}
-
-/// Empties the whole IOTLB on every unit and waits; the context cache is untouched. The verified
-/// kernel calls it without a kernel lock (the model's `IommuTLB::flush_all_iotlb`), so it takes
-/// the invalidation lock itself.
-#[unsafe(no_mangle)]
-pub extern "C" fn veriflat_iommu_flush_all_iotlb() {
-    acquire_invalidation_lock();
-    for base in units() {
-        invalidate_iotlb(base, IOTLB_GLOBAL);
     }
     release_invalidation_lock();
 }

@@ -6,8 +6,6 @@ unsafe extern "C" {
     fn veriflat_iommu_invalidate_domain(did: usize);
     // Domain-selective IOTLB invalidation for `did` on every unit, awaited; the context cache is untouched.
     fn veriflat_iommu_invalidate_iotlb_domain(did: usize);
-    // Global IOTLB invalidation on every unit, awaited; the platform serializes register access with its own spinlock.
-    fn veriflat_iommu_flush_all_iotlb();
 }
 
 verus! {
@@ -78,20 +76,6 @@ impl IommuTLB {
     {
         unsafe { veriflat_iommu_invalidate_iotlb_domain(did); }
         self.domain_tlbs = Ghost(self.domain_tlbs.view().insert(did, SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }));
-    }
-
-    /// Empties every IOTLB domain; the context cache is untouched. Needs no kernel lock: the platform serializes the registers.
-    #[verifier::external_body]
-    pub fn flush_all_iotlb(&mut self)
-        requires old(self).inv(),
-        ensures
-            final(self).inv(),
-            final(self).view().dom() == old(self).view().dom(),
-            forall|did: VtdDomainId| #![trigger final(self).spec_index(did)] vtd_domain_id_valid(did) ==> final(self).spec_index(did).is_empty(),
-            final(self).context_cache() == old(self).context_cache(),
-    {
-        unsafe { veriflat_iommu_flush_all_iotlb(); }
-        self.domain_tlbs = Ghost(Map::new(self.domain_tlbs.view().dom(), |_did: VtdDomainId| SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() }));
     }
 
     pub open spec fn view(&self) -> Map<VtdDomainId, SingleTLB> { self.domain_tlbs.view() }

@@ -451,6 +451,45 @@ Do NOT use opaque on:
   inside their module).
 
 
+## Trusted IOMMU boundary
+
+The verified model treats the VT-d hardware through a few trusted
+(`external_body`) operations and boot checks; everything else about DIDs,
+anchors, and caches is proved. The anchor-DID items below come from
+Batch 3 (workspace run #34166, noninterference run #34165, monolith run
+#34167).
+
+- Context-entry stores (`src/iommu/root_table.rs`):
+  `IommuRootTable::publish_context_entry` writes a context entry as two
+  aligned volatile 64-bit stores, the upper word (DID, address width) first
+  and the P-carrying lower word last, so a remapping unit never sees P with a
+  stale upper word; `clear_context_entry` clears the lower word first. The
+  compile-time layout assertions pin the word offsets.
+- Cache model (`src/iommu/iotlb.rs`): `IommuTLB` is ghost state, one IOTLB
+  per DID and one context cache keyed by B/D/F with the cached `(root, DID)`;
+  `IommuTLB::inv` requires exactly the valid DIDs as domains and only valid
+  B/D/F keys with valid DIDs in the cache.
+- `IommuTLB::invalidate_domain(did)` (FFI `veriflat_iommu_invalidate_domain`,
+  root-table lock held): drops every cached B/D/F tagged `did`, then empties
+  domain `did`; the hook issues a domain-selective context-cache
+  invalidation, then a domain-selective IOTLB invalidation, on every unit,
+  each awaited.
+- `IommuTLB::invalidate_iotlb_domain(did)` (new; FFI
+  `veriflat_iommu_invalidate_iotlb_domain`, an IOMMU-table lock held):
+  empties domain `did` only and keeps the context cache. A platform spinlock
+  serializes the two hooks. The global IOTLB flush primitive is gone.
+- The step boundary keeps `iommu_table_tlb_entries_present` for write-held
+  IOMMU tables: hidden leaves are never re-cached (`CAP.CM = 0`).
+- Boot (`boot/kernel/src/iommu.rs`, unverified Rust) fails closed: each unit
+  must report `CAP.CM = 0`, `CAP.RWBF = 0`, `CAP.ND >= 6` (16-bit DIDs),
+  4-level SAGAW, `ECAP.C` (or a hypervisor), and `ECAP.IR`, keep its
+  registers inside the mapped page, and start with translation and
+  interrupt remapping off; the root table address must be 4 KiB-aligned
+  below 48 bits (RTADDR, legacy mode). Every invalidation checks that
+  CCMD.CAIG / IOTLB.IAIG report a granularity covering the request
+  (`granularity_covers`), and `domain_id` panics on a DID at or above 2^16
+  instead of masking it.
+
 ## Open items
 
 - The `evict_remote_cpu` IPI wait is `external_body`; TODO at

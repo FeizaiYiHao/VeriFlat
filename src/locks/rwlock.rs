@@ -538,7 +538,10 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL
 impl<T: LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, GhostT> RwLock<T, ROT, GhostT, NO_KILL_STATE> {
     #[verifier::external_body]
     pub fn rlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>) -> (ret: Tracked<LockPerm>)
+        where ROT: LockOwnerIdTrait,
         requires
+            !(old(self).view_rodata().container_source() is Dynamic),
+            !(old(self).view_rodata().process_source() is Dynamic),
             old(self).view().container_depth() == lock_id.view().container,
             old(self).view().process_depth() == lock_id.view().process,
             old(self).view().lock_major_sat(lock_id.view().major),
@@ -555,7 +558,10 @@ impl<T: LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, 
 
     #[verifier::external_body]
     pub fn runlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>, obj_id: Ghost<KernelObjId>)
+        where ROT: LockOwnerIdTrait,
         requires
+            !(old(self).view_rodata().container_source() is Dynamic),
+            !(old(self).view_rodata().process_source() is Dynamic),
             old(self).rlocked_by(old(lctx)),
             old(self).inv(),
             lp.view().state() is ReadLock,
@@ -608,7 +614,10 @@ impl<T: LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, 
     /// its id and changes only its mode.
     #[verifier::external_body]
     pub fn downgrade(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>, obj_id: Ghost<KernelObjId>) -> (ret: Tracked<LockPerm>)
+        where ROT: LockOwnerIdTrait,
         requires
+            !(old(self).view_rodata().container_source() is Dynamic),
+            !(old(self).view_rodata().process_source() is Dynamic),
             old(self).wlocked_by(old(lctx)),
             old(self).inv(),
             lp.view().state() is WriteLock,

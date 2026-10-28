@@ -587,3 +587,23 @@ Cargo 默认并发，Verus 32 线程，`VERUS_PIPELINE_SMT=1`。vstd 和普通�
 新增：无证明引理（mmap 的 U/trace spec 与 K→U 引理属 hold/release 已批准实现）。无 assume、spinoff 或 rlimit 属性。
 
 验证：workspace #34689 17 个结果 3172 / 0，无 warning；NI #34690 262 / 0；单体 #34691 3172 / 0（`--num-threads 32 --time --time-expanded --output-json`，无并行任务），wall 66.1 s（#34650 66.3 s），SMT 547.0 s（544.9 s），rlimit-run 1,138,176,482（+0.23%，含 mmap hold/release）。无 >5 s 函数。单体中 refund 三层 0.48 / 0.28 / 0.59 s，`thread_exit_reclaim_iommu_leaves` 2.48 s / 4.31M（#34650 4.27M）。单样本。
+
+### Batch 3 收尾（锚点 DID）
+
+新增证明函数（均属免批准类别）：
+
+- `IommuRootTable::wf_len_at`（`src/iommu/root_table.rs`）：`*_wf_at` 点引理，由 `wf()` 给出 `context_entries.wf()`；替换根表 exec 中三处 `reveal(IommuRootTable::wf)`。
+- `iommu_table_map_set_did_eof` 及其 S `iommu_table_map_set_did_eof_transition_framing`（`memory_management/subsystem_mutation_eof.rs`）：EOF 闭合，`iommu_table_map_set_did` 中重的 `PageTable` wf reveal 全部移入其中。
+- `kill_container_move_free_page_4k_eof_free_page_ptrs`、`kill_container_move_free_page_4k_eof_global_free_pages`、`kill_container_move_free_page_4k_eof_cpu_cache_free_pages`（`free_4k_page/kill_container_move_free_page_4k_eof.rs`）：EOF 闭合，拆分 `kill_container_move_free_page_4k_eof_free_pages`；后者的 requires 由 `pre.inv()` 收窄为两个分配器 wf。
+
+触发器与契约变更：
+
+- `kill_container_retire_unlock`（`syscall_kill_container_retire_commit.rs`）requires 的页权限 forall 加 `#![trigger page_perms[p]]`。
+- 新 ensures：`clear_iommu_4k_mapping_present`（`did is None` 时给出 `iommu_table_tlb_entries_present`，同时加到其 EOF `clear_iommu_4k_mapping_present_eof`）；`reclaim_last_iommu_4k_mapping`（`process_iommu_table_match` 于 snapshot）；`map_shared_page_into_iommu_4k`、`install_staged_4k_iommu_table_page`（IOMMU 表 `did` 不变）。由此删去 `reclaim_detached_iommu_4k_page` 与 `kill_reclaim_iommu_leaves` 路径中的 exec reveal。
+- kill_process 三个 S 各加一条 `new_table.view().did == old_table.view().did`：`kill_retire_table_page_eof_transition_framing`、`kill_reclaim_unmapped_iommu_4k_page_scoped_eof_transition_framing`、`kill_retire_table_page_scoped_eof_transition_framing`。
+- iommu_map_4k trace：`iommu_map_4k_leaf_step_from_k` / `iommu_map_4k_directory_step_from_k` requires 加 DID 不变。
+- rlock / runlock / downgrade requires 锁 owner 来源非 `Dynamic`（`src/locks/`）。
+
+无新 framing spec（S 除外）、invariant、assume、spinoff 或 rlimit 属性。
+
+验证：workspace #34166 3214 / 0，无 warning；NI #34165 262 / 0；单体 #34167 3214 / 0（`--num-threads 32 --time --time-expanded --output-json`，无并行任务），total 75.5 s，SMT 1060.6 s，rlimit-run 1,227,399,824（Batch 2 #34946 +4.44%，Batch 1 #34691 +7.84%，红检查点 ed869c7 −2.24%）。本次 SMT / rlimit 比 Batch 1 / 2 高约 1.8 倍，属环境性放大；>5 s 函数清单见 `HANDOFF.md`。单样本。

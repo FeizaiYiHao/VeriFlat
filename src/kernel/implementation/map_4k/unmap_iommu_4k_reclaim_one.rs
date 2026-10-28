@@ -227,7 +227,6 @@ pub fn reclaim_detached_iommu_4k_page(
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive;
         };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-        assert(process_iommu_table_match(steps.snapshot_k().prc_mp, steps.snapshot_k().it_mp)) by { reveal(process_iommu_table_match); };
     }
 }
 }

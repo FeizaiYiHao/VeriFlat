@@ -431,6 +431,8 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
 
     pub fn rlock(&mut self, key: usize, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>) -> (ret: Tracked<LockPerm>)
         requires
+            !(old(self).spec_index(key).view_rodata().container_source() is Dynamic),
+            !(old(self).spec_index(key).view_rodata().process_source() is Dynamic),
             old(self).perms_wf(),
             old(self).dom().contains(key),
             wlock_requires(old(self).spec_index(key), old(lctx)),
@@ -451,6 +453,8 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
 
     pub fn runlock(&mut self, key: usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, obj_id: Ghost<KernelObjId>)
         requires
+            !(old(self).spec_index(key).view_rodata().container_source() is Dynamic),
+            !(old(self).spec_index(key).view_rodata().process_source() is Dynamic),
             old(self).perms_wf(),
             old(self).dom().contains(key),
             old(self).spec_index(key).rlocked_by(old(lctx)),

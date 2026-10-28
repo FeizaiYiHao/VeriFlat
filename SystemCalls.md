@@ -393,7 +393,7 @@ non-empty; every other shard is empty; the head `Q[v][0]` is killed.
 
 ## 4d. pci_attach_dma — one step
 
-Status: conforms (workspace run #28638).
+Status: conforms with anchor DIDs (§15; Batch 3, workspace run #34166, noninterference run #34165, monolith run #34167).
 
 Issued by a running thread for its process `P` (`cpu.current_process`);
 the B/D/F `(bus, device, function)` must name a PCI function `P` owns, and
@@ -402,21 +402,30 @@ detaches.
 
 - Arguments: `bus`, `device`, `function`; the trap layer guarantees
   `pci_bdf_valid`.
-- U locks acquired and released in the step: `cpu`, `P`. Non-U: the root
-  table lock (major `IOMMU_ROOT_TABLE_LOCK_MAJOR`), taken after `P` and held
-  across the checks and the attach.
+- U locks acquired and released in the step: `cpu`, `P`, and, after the
+  checks pass, `IT(P)` (10006). Non-U: the root table lock (10005), taken
+  after `P` and held across the checks and the attach; `IT(P)` is
+  write-locked under it.
 - Pre: `index_valid(cpu_id)`, `cpu.state is Running`, `P` present,
   `Unlocked(cpu)`, `Unlocked(P)`, `!P.killed`,
   `P.owned_pci_functions.contains((bus, device, function))`,
   `P.iommu_table is Some`, `!iommu_root_table.attached[bus][device][function]`.
-- Effect: `iommu_root_table.attached[bus][device][function] = true`
-  (`kernel_u_pci_attach_changed`). In K the context entry points at the root
-  of `P`'s IOMMU table (`ProcessRO.iommu_cr3`), in the BDF-encoded VT-d
-  domain `pci_bdf_did`; that IOTLB domain is already empty, because a
-  detached function's domain is empty.
+- Effect: `iommu_root_table.attached[bus][device][function] = true`, and
+  `IT(P).did` keeps its value or, when `None` (first attach), becomes the
+  function's candidate DID `pci_bdf_did(bus, device, function)`, which makes
+  the function the table's anchor (`kernel_u_pci_attach_changed`). The IOTLB
+  is unchanged. In K `iommu_root_table_attach` publishes the context entry
+  with `IT(P)`'s root and DID (`publish_context_entry`: upper word first, P
+  last). No invalidation is needed: `CAP.CM = 0` caches no not-present
+  entry, and an adopted candidate DID is inactive, so its domain is empty.
 
 Stutters (in this order): CpuIdle (cpu not Running or killed), ProcessKilled, PciOwnerMismatch, PciNoIommuTable,
 PciAlreadyAttached.
+
+Differences:
+
+1. The pre does not state `Unlocked(IT(P))` for the table the step
+   write-locks (R3).
 
 ## 5. new_thread, new_thread_with_endpoint — enter, finish
 
@@ -624,7 +633,8 @@ kernel-range VA.
 Status: implemented (crate `veriflat_syscall_iommu_map_4k`;
 `syscall_iommu_map_4k.rs`, `iommu_map_4k_range.rs`,
 `iommu_map_4k_directory_step.rs`, spec `syscall_iommu_map_4k_spec.rs`);
-verified, package run #34486, workspace run #34649, monolith run #34650. Boot
+verified with anchor DIDs (§15; Batch 3, workspace run #34166, noninterference run #34165, monolith run #34167); every step keeps
+`IT(P).did`. Boot
 `NR_IOMMU_MAP_4K = 45`. Noninterference labels `IommuMap4kEnter`,
 `IommuMap4kDirectory`, `IommuMap4kLeaf`, `IommuMap4kExit`
 (`ni_iommu_map_4k.rs`, run #34648). `domain_4k_only`
@@ -695,7 +705,8 @@ IommuVaNotMapped, IommuIovaAlreadyMapped.
 
 Status: implemented (crate `veriflat_syscall_iommu_unmap_4k`;
 `syscall_iommu_unmap_4k.rs`, `_check.rs`, `_lock.rs`, `_range.rs`); verified,
-including R9 (Batch 2 validation, §2). Boot
+including R9 (Batch 2 validation, §2), and re-verified after the anchor-DID
+migration (§15) changed the flush step (Batch 3, workspace run #34166, noninterference run #34165, monolith run #34167). Boot
 `NR_IOMMU_UNMAP_4K = 46`. Noninterference labels `IommuUnmap4kEnter`,
 `IommuUnmap4kLeaf`, `IommuUnmap4kFlush`, `IommuUnmap4kRefund`,
 `IommuUnmap4kExit` (`ni_iommu_unmap_4k.rs`, run #34648).
@@ -704,7 +715,7 @@ including R9 (Batch 2 validation, §2). Boot
 - U locks retained from enter to exit: `cpu`, `C`, `P`, `T`, `IT(P)`.
   Non-U: per removed page the page, cache, and pool locks as in §17 reclaim,
   and the allocator quota of `C` and its ancestors. The IOTLB flush takes no
-  kernel lock.
+  further kernel lock; it runs under `W(IT(P))`.
 - Lock order: `cpu`, `C`, `P`, `T`, `IT(P)`.
 - Progress: `IommuUnmap4k { iova_range: IR, unmapped, flushed }`.
 - `iommu_unmap_4k_locked(u, cpu_id)`: `W` for `cpu`, `T`, `P`, and `C`;
@@ -723,17 +734,21 @@ including R9 (Batch 2 validation, §2). Boot
 - Pre: `iommu_unmap_4k_table_locked`, `prog is IommuUnmap4k`,
   `unmapped < IR.len`, `!flushed`, `IR[unmapped]` mapped in `IT(P)`.
 - Effect: removes `IR[unmapped]` from `IT(P).mapping_4k`; `unmapped + 1`. In
-  K the leaf is only marked not present; `W(IT(P))` marks its attached
-  domains dirty (§15).
+  K the leaf is only marked not present; while `W(IT(P))` holds, the
+  table's DID domain may still cache it (§15).
 
 **Flush** (`iommu_unmap_4k_flush_step_pre`, `iommu_unmap_4k_flush_step`)
 
 - Pre: `iommu_unmap_4k_table_locked`, `prog is IommuUnmap4k`,
   `unmapped == IR.len`, `!flushed`.
-- Effect: every `iommu_tlb` domain becomes empty and `flushed = true`;
-  nothing else changes. K calls `flush_iommu_tlb_for_table`, then removes
-  each hidden leaf and returns its page to its owner's 4K allocator cache in
-  atomic sections that change no U state and stutter.
+- Effect: the IOTLB domain `IT(P).did` becomes empty, every other domain is
+  kept, and `iommu_tlb` is unchanged when `IT(P).did is None`;
+  `flushed = true`; nothing else changes. K calls
+  `flush_iommu_tlb_for_table`, which issues the IOTLB-only
+  `IommuTLB::invalidate_iotlb_domain` for that DID (the context cache is
+  untouched), then removes each hidden leaf and returns its page to its
+  owner's 4K allocator cache in atomic sections that change no U state and
+  stutter.
 
 **Refund** (`iommu_unmap_4k_refund_step_pre`)
 
@@ -922,6 +937,7 @@ a bad source range, IpcCpuOwnerMismatch, IpcCpuNotOff.
 ## 11. IPC ordinary: send/receive empty, no_block, cpu, pci — one step
 
 Status: conforms (workspace run #27751; Pci payload workspace run #28638).
+The Pci payload uses anchor DIDs (§15; Batch 3, workspace run #34166, noninterference run #34165, monolith run #34167).
 
 - Arguments: `endpoint_index`, the payload, the waiting direction fixed by the
   entry point, `regs`; K-internal label `flushed_default_pcid`.
@@ -966,11 +982,25 @@ Status: conforms (workspace run #27751; Pci payload workspace run #28638).
   applies to the §12 and §13 finish steps. For a CPU payload whose checks pass, the Off CPU
   moves to the receiver's container. For a Pci payload whose checks pass, the
   B/D/F moves from the sender process's `owned_pci_functions` to the
-  receiver process's, its root-table owner becomes the receiver process, its
-  `attached` bit is cleared, and its IOTLB domain `pci_bdf_did(bdf)` is
-  emptied, whether or not it was attached. The root table lock (non-U) is
-  taken after the peer thread once SameProcess has passed and is released in
-  the step.
+  receiver process's and its root-table owner becomes the receiver process;
+  every other function stays attached exactly when it was, and every IOMMU
+  table keeps its present mappings. An unattached B/D/F changes nothing
+  else. An attached one is detached and the IOTLB domain of the sender
+  table's DID `d` is emptied; when the B/D/F was the table's anchor
+  (`d == pci_bdf_did(bdf)`), the table re-anchors as `pci_handoff_table_did`
+  states: at the candidate DID of the lexicographically smallest remaining
+  attached B/D/F of the sender, or without a DID when none remains. No other
+  table's DID changes. The root table lock (non-U) is taken after the peer
+  thread once SameProcess has passed; for an attached B/D/F the sender's
+  IOMMU table (10006), named by `ProcessRO.iommu_table_ptr` so the sender
+  process stays unlocked, is write-locked under it before the peer's shard.
+  `iommu_root_table_reassign_detached` clears the entry and runs
+  `invalidate_domain(d)`; a re-anchor moves each remaining entry of the
+  table in `d` to the new DID (clear, invalidate `d`, republish), with `d`
+  invalidated before and after (`iommu_root_table_migrate_did`). Every lock
+  is released in the step.
+- Difference: the rendezvous pre does not state `Unlocked` for the sender's
+  IOMMU table that a transfer of an attached B/D/F write-locks (R3).
 
 ## 11a. IPC call: call, call_usize, receive_call, reply_and_receive, reply_and_receive_usize — one step
 
@@ -1367,10 +1397,10 @@ the exec `pci_function_ref_counter` is gone) is aligned with the root table's
 owners by `process_pci_function_ownership_wf` (its zombie clause was dropped
 on 2026-10-12: a zombie keeps its PCI functions until kill or reap, §16 item
 10). `ProcessRO.iommu_cr3` mirrors the root of the process's IOMMU table
-(`process_iommu_table_match`), so attach never locks that table. New exec
-root-table operations: `set_owner`, `attach`, `detach`, `is_attached`.
-Trusted primitive: `IommuTLB::invalidate_domain` (external_body; empties one
-VT-d domain under the root table lock). New results: `ErrorIpcPciOwnerMismatch`,
+(`process_iommu_table_match`). New exec root-table operations: `set_owner`,
+`attach`, `detach`, `is_attached` (anchor DIDs add more, below). Trusted
+primitive: `IommuTLB::invalidate_domain` (external_body; its current
+contract is under anchor DIDs below). New results: `ErrorIpcPciOwnerMismatch`,
 `ErrorPciOwnerMismatch`, `ErrorPciNoIommuTable`, `ErrorPciAlreadyAttached`.
 
 IOTLB dirty marker (applied; `iommu_table_lock_wf` is deleted): the IOMMU
@@ -1381,16 +1411,60 @@ leaves when that table is not write-locked
 an attached table; `iommu_table_tlb_entries_present(iommu_tlb, root_table,
 it_mp, it)` is the per-table flushed fact, and `kernel_step_boundary_raw` and
 the step-boundary wrappers keep it for write-held IOMMU tables (TCB: a write
-holder's hidden leaves are never re-cached, `CAP.CM = 0`). Approved trusted
-primitive: `IommuTLB::flush_all_iotlb` (external_body; empties every domain,
-keeps the context cache, takes no kernel lock; the boot hook
-`veriflat_iommu_flush_all_iotlb` shares a platform spinlock with
-`veriflat_iommu_invalidate_domain`), wrapped by the K helper
-`flush_iommu_tlb_for_table`. `wlock_iommu_table` no longer needs the process
-lock or detached functions, `wunlock_process` no longer needs the IOMMU table
-released, and `syscall_pci_attach_dma` does not reason about the table lock.
-New results: `ErrorIommuVaNotMapped`, `ErrorIommuIovaAlreadyMapped`,
-`ErrorIommuIovaNotMapped`.
+holder's hidden leaves are never re-cached, `CAP.CM = 0`).
+`flush_iommu_tlb_for_table` invalidates only the table's anchor-DID domain
+with `IommuTLB::invalidate_domain` (anchor DIDs below); there is no flush-all
+primitive or boot hook. `wlock_iommu_table` no longer needs the process
+lock or detached functions, and `wunlock_process` no longer needs the IOMMU
+table released. New results: `ErrorIommuVaNotMapped`,
+`ErrorIommuIovaAlreadyMapped`, `ErrorIommuIovaNotMapped`.
+
+Anchor DIDs (Batch 3, 2026-10-27; workspace run #34166, noninterference run #34165, monolith run #34167):
+the VT-d DID is a per-IOMMU-table identity instead of the BDF encoding.
+`PageTable.did: Option<VtdDomainId>` (`None` for every CPU table,
+`did_wf`) is projected as `PageTableU.did`; a new table starts with `None`.
+`pci_bdf_did(bdf)` is only a function's candidate DID, `pci_bdf_of_did` its
+inverse, and `pci_bdf_lt` the lexicographic B/D/F order. A context entry
+carries any valid DID in its upper word (`IommuRootTable::iommu_dids`,
+`spec_index_iommu_did`, exec `iommu_did`; `attach` takes the DID).
+`iommu_root_table_process_wf`: every present entry carries its owner
+table's root and `Some` DID, so all attached functions of a table share its
+DID and a table without one has no attached function; a table DID `d` is
+anchored at `pci_bdf_of_did(d)`, which the table's process owns, is attached
+to the table, and carries `d`, so distinct tables never share a DID. First
+attach adopts the attaching function's candidate DID (§4d). Detaching a
+non-anchor function in an IPC transfer invalidates the DID; detaching the
+anchor re-anchors deterministically at the lexicographically smallest
+remaining attached B/D/F of the same owner and DID
+(`IommuRootTable::first_attached_owned`), migrating every such entry to its
+candidate DID (`iommu_root_table_migrate_did`), or drops the DID when none
+remains (U: `pci_handoff_table_did`, §11). Thread exit
+(`iommu_root_table_detach_all`) and kill (`iommu_root_table_reassign_detach_all`,
+or `iommu_root_table_reassign_owned` for a table-less owner) clear every
+entry the owner owns (`detach_owned_contexts`), invalidate the table's DID
+once, and drop it (§17, §18). Every DID change (`iommu_table_map_set_did`)
+happens in one of these `iommu_subsystem_mutation.rs` helpers, with the
+root-table lock and the table's write lock held. `ProcessRO.iommu_table_ptr`
+(K-only) mirrors `Process::iommu_table` (`process_iommu_table_match`), so
+IPC locks the sender's table without the sender process.
+`IommuTLB.context_cache: Map<PciBdf, (PageTableRoot, VtdDomainId)>` is keyed
+by B/D/F; `IommuTLB::inv` requires valid B/D/F keys and valid DIDs.
+`iommu_tlb_wf_spec`: a cached entry equals the current present root and DID;
+a present entry's domain is its owner table's DID domain; a candidate DID
+whose anchor does not carry it is inactive and its domain is empty. Trusted
+(external_body): `invalidate_domain(did)` (root-table lock held) now drops
+every cached B/D/F tagged `did`, then empties domain `did`; the new
+`invalidate_iotlb_domain(did)` (an IOMMU-table lock held; FFI
+`veriflat_iommu_invalidate_iotlb_domain`) empties only domain `did` and is
+what `flush_iommu_tlb_for_table` issues for a write-held table's DID (none
+for a table without one); `publish_context_entry` writes the upper word
+before the P-carrying lower word and `clear_context_entry` clears the lower
+word first, each as aligned volatile 64-bit stores. A detached table has no
+DID, so no domain caches its leaves: exit and kill_process remove its
+present leaves directly (`reclaim_detached_iommu_4k_page`), and a
+kill_container scope hides each leaf and then unmaps it, all without a
+flush; the `ThreadExitIommuFlush` and `KillProcessIommuFlush` steps are gone.
+The boot-side checks of this boundary are listed in `Methodology.md`.
 
 ## 16. Decisions
 
@@ -1418,10 +1492,12 @@ New results: `ErrorIommuVaNotMapped`, `ErrorIommuIovaAlreadyMapped`,
 6. PCI devices (2026-10-08): the root table is one lock that also guards the
    per-process PCI sets; it never crosses a step boundary, so it is not
    U-visible. The IOTLB is guarded by no kernel lock: a write-locked IOMMU
-   table marks its attached domains dirty, and its holder flushes the IOTLB
-   before unlocking (§15). An IPC Pci transfer needs both sides to name the same
+   table marks its DID domain dirty, and its holder empties that domain
+   before it removes hidden leaves (§15). An IPC Pci transfer needs both sides to name the same
    B/D/F, is not restricted to one container (the endpoint is the
-   authority), and always detaches the function and empties its IOTLB domain.
+   authority), and always detaches the function; under anchor DIDs (§15) an
+   attached function's transfer invalidates its table's DID and re-anchors
+   the table when the function was its anchor.
    `syscall_pci_attach_dma` attaches a function to its owner's IOMMU table;
    there is no detach syscall.
 7. Parent cpu hotplug (2026-10-10): a container may offline or online a cpu of
@@ -1454,9 +1530,10 @@ New results: `ErrorIommuVaNotMapped`, `ErrorIommuIovaAlreadyMapped`,
     flushes the process's PCID from every cpu once, returns the thread's and
     the process's quota of every size to their container, and releases the
     process's PCID to its container's PCID allocator. It also detaches every
-    attached function the process owns, emptying each one's IOTLB domain, and
-    unmaps every 4K mapping of the process's IOMMU table: it hides every leaf,
-    flushes the whole IOTLB once, then removes the leaves. The zombie keeps its page
+    attached function the process owns and unmaps every 4K mapping of the process's
+    IOMMU table; under anchor DIDs (§15) the table's DID is invalidated once
+    and dropped, so its present leaves are then removed directly, with no
+    hide and no flush. The zombie keeps its page
     table and IOMMU table structures and owns its PCI functions for kill or
     reap; it holds no quota and no PCID, so its PCID and CR3 never enter a
     cpu's dirty map again. A zombie root process makes its container a zombie.
@@ -1478,7 +1555,8 @@ New results: `ErrorIommuVaNotMapped`, `ErrorIommuIovaAlreadyMapped`,
 
 Status: implemented, including zombie reclaim of 4K mappings, quota, and the
 PCID (stage A) and of PCI attachments and IOMMU 4K mappings (stage B).
-Conforms, including R9 (Batch 2 validation, §2).
+Conforms, including R9 (Batch 2 validation, §2). The lock-table and IOMMU
+leaf steps use anchor DIDs (§15; Batch 3, workspace run #34166, noninterference run #34165, monolith run #34167).
 
 
 - Arguments: none; the running thread `T` of `cpu_id` exits. The trap layer
@@ -1494,8 +1572,9 @@ Conforms, including R9 (Batch 2 validation, §2).
   releases the caller `R` (blocked-thread major 10003), and each drop step
   acquires and releases `E(index)` (10001).
 - Non-U: in enter, when `R` exists, shard `cpu_id` of `C`'s scheduler
-  (10011). In the lock-table step, the root table (10005), released inside
-  the step once `IT(P)` is locked. In reclaim, per unmapped CPU or IOMMU
+  (10011). In the lock-table step, when `P` has an IOMMU table, the root
+  table (10005), taken after `PT(P)`, held while `IT(P)` is write-locked and
+  detached, and released inside the step. In reclaim, per unmapped CPU or IOMMU
   page: the page (mapped-page major
   10009, moved to the free-page major once it is `Free4k`), shard `cpu_id`
   of its owner's 4K allocator cache (10012), and that allocator's pool
@@ -1559,11 +1638,13 @@ Conforms, including R9 (Batch 2 validation, §2).
   pre `prog is ThreadExit`, `thr.caller is None`, every descriptor `None`,
   `W` for `cpu`, `C`, `P`, and `T`, `P.owned_threads.len() == 1`, and
   `PT(P)` and, when present, `IT(P)` `Unlocked`; effect: write-locks `PT(P)`
-  and `IT(P)`, clears `iommu_root_table.attached` of every function that `P`
-  owns (owners are unchanged), empties the IOTLB domain `pci_bdf_did` of each
-  function it detached, and sets `prog = ThreadExitReclaim { flushed: false }`.
-  K scans all 65,536 B/D/Fs under the root table lock. The root table lock is
-  taken after `PT(P)` and released after `IT(P)` is locked, inside the step.
+  and sets `prog = ThreadExitReclaim { flushed: false }`; when `P` has an
+  IOMMU table, also write-locks `IT(P)`, clears `iommu_root_table.attached`
+  of every function that `P` owns (owners are unchanged), sets `IT(P).did`
+  to `None`, and empties the IOTLB domain of the old DID, if any. K
+  (`iommu_root_table_detach_all`) scans all 65,536 B/D/Fs once under the
+  root table lock and `W(IT(P))`, then runs `invalidate_domain` once for the
+  old DID; the root table lock is released inside the step.
 - Leaf (`thread_exit_leaf_step`): pre `unmap_4k_locked` and
   `prog == ThreadExitReclaim { flushed: false }`; effect: exactly one valid
   user 4K mapping (the kernel chooses the VA, R1) leaves `PT(P)`. In K the
@@ -1581,19 +1662,14 @@ Conforms, including R9 (Batch 2 validation, §2).
   each cleared entry and returns its page to its owner's 4K allocator cache
   in atomic sections that change no U state and stutter, accumulating the
   refund in the thread's pending quota. The IOMMU leaf steps follow the CPU
-  refunds, then one IOMMU flush step, then their own refunds.
+  refunds, then their own refund; there is no IOMMU flush step.
 - IOMMU leaf (`thread_exit_iommu_leaf_step`): pre `unmap_4k_locked`,
   `prog == ThreadExitReclaim { flushed: true }`, and `IT(P)` write-locked;
   effect: exactly one 4K mapping (the kernel chooses the IOVA) leaves `IT(P)`.
-  In K the leaf is only marked not present; `IT(P)`'s write lock marks its
-  attached domains dirty (§15).
-- IOMMU flush (`thread_exit_iommu_flush_step`, NI label
-  `ThreadExitIommuFlush`): pre as for an IOMMU leaf;
-  effect: every `iommu_tlb` domain becomes empty and nothing else changes. K
-  runs it once, after every IOMMU leaf is hidden
-  (`flush_iommu_tlb_for_table`), then removes each hidden leaf and returns
-  its page in atomic sections that change no U state and stutter, as for a
-  CPU leaf.
+  The detached `IT(P)` has no DID, so no IOTLB domain caches its leaves: in
+  K the present leaf is removed directly and its page returned to its
+  owner's 4K allocator cache, accumulating the refund in the thread's pending
+  quota (`reclaim_detached_iommu_4k_page`), with no hide and no flush.
 - Quota (`thread_exit_quota_step_pre`, `thread_exit_quota_step`): pre
   `unmap_4k_locked` and `prog` is `ThreadExitReclaim { flushed: true }`,
   `ThreadExitQuota { returned: 4K }`, or `ThreadExitQuota { returned: 2M }`;
@@ -1650,8 +1726,8 @@ its page as a raw 4K page permission, and drops `T`'s lock from `lctx`.
 Status: implemented, including the thread kill (dangling, mark, dequeue, evict,
 unlink, killed-thread reclaim), PCI reassignment, live reclaim, zombie reap,
 and table-structure retirement.
-Verified: kill focused run #TBD, workspace run #TBD, monolith run #TBD,
-noninterference run #TBD.
+Verified with anchor DIDs (§15; Batch 3): workspace run #34166, noninterference run #34165, monolith run #34167; the reassign and IOMMU leaf
+steps use anchor DIDs.
 
 - Arguments: `child_index`. The running thread `T` of `cpu_id` kills
   `D = P.children[child_index]` and every process below it, one subtree at a
@@ -1672,7 +1748,8 @@ noninterference run #TBD.
   step (R5).
 - Non-U, each taken and released inside one atomic section: the locks of the
   killed-thread reclaim and of the leaf reclaim as in §17; the root table
-  (10005) in the reassign step; `C`'s PCID allocator (107) in the zombify
+  (10005) and, under it, `IT(L)` (10006) when `L` has one, in the reassign
+  step; `C`'s PCID allocator (107) in the zombify
   step; and the structure-page, root-page, cache, pool, and quota locks of
   the retire stage. Across the retire stage's sections the killer holds `L`'s
   process page, the object pages of `PT(L)` and `IT(L)`, and both tables
@@ -1680,8 +1757,9 @@ noninterference run #TBD.
 - Lock order: `cpu`, `P`, `T`, then the marked chain and `V` at the sunk id;
   inside a step, `V` at the major of its state, then its shard, endpoint,
   or remote cpu `R`; in the killed-thread reclaim, the endpoint, the caller,
-  the shard, the page, cache, pool, and quota; in reclaim, the root table,
-  `PT(L)`, `IT(L)`, the per-page, needflush, and quota locks, and the PCID
+  the shard, the page, cache, pool, and quota; in reclaim, the root table and
+  `IT(L)` in the reassign step, then `PT(L)`, `IT(L)`, the per-page,
+  needflush, and quota locks, and the PCID
   allocator; in retire, the process and table object pages (1000), `PT(L)`,
   `IT(L)`, then in each section a structure page or the root pages (10008),
   the cache, pool, and quota. `R` (major 1) is above `T` because it runs a process deeper than
@@ -1786,10 +1864,16 @@ present, `W(V)`, `V.killed`)
 children and no threads)
 
 - Reassign (`kill_process_reassign_functions_step`): every PCI function `L`
-  owns is detached, gets `P` as its root-table owner, and has its IOTLB
-  domain `pci_bdf_did` emptied; `L.owned_pci_functions` moves to `P`. K
-  scans all 65,536 B/D/Fs under the root table lock (10005), taken and
-  released inside the step. A target owning no function takes no step.
+  owns is detached and gets `P` as its root-table owner;
+  `L.owned_pci_functions` moves to `P`; `L`'s IOMMU table, if any, loses its
+  DID; the only IOTLB domain that may change is the candidate domain of an
+  attached function `L` owned (the table's anchor), which becomes empty. K
+  takes the root table lock (10005) and, for an `L` with an IOMMU table,
+  write-locks `IT(L)` under it: `iommu_root_table_reassign_detach_all` scans
+  all 65,536 B/D/Fs once and runs `invalidate_domain` once for the old DID;
+  a table-less `L` uses `iommu_root_table_reassign_owned`, which invalidates
+  nothing. Both locks are released inside the step. A target owning no
+  function takes no step.
 - Zombie retire (`kill_process_zombie_retire_step`): an `L` that is already a
   zombie (§17) and owns no function moves to `Retire`.
 - Lock table (`kill_process_lock_table_step`): a live `L` owning no function
@@ -1811,15 +1895,14 @@ children and no threads)
     to drain a full cache) in atomic sections that change no U state and
     stutter, accumulating the refund in `T`'s pending quota; each refund
     step takes one allocator quota lock (20002). The IOMMU leaf steps follow
-    the CPU refunds, then one IOMMU flush step, then their own refunds.
+    the CPU refunds, then their own refund; there is no IOMMU flush step.
   - IOMMU leaf (`kill_process_iommu_leaf_step`): `Reclaim { flushed: true }`;
-    one 4K mapping (the kernel chooses the IOVA) leaves `IT(L)`. In K the
-    leaf is only marked not present.
-  - IOMMU flush (`kill_process_iommu_flush_step`, NI label
-    `KillProcessIommuFlush`): `Reclaim { flushed: true }`;
-    every `iommu_tlb` domain becomes empty and nothing else changes. K runs
-    it once, after every IOMMU leaf is hidden, then removes the hidden leaves
-    and refunds their pages as for a CPU leaf.
+    one 4K mapping (the kernel chooses the IOVA) leaves `IT(L)`. `IT(L)` has
+    no DID (the reassign step dropped it, or it had no attached function), so no
+    IOTLB domain caches its leaves: in K the present leaf is removed directly
+    and its page freed (`reclaim_detached_iommu_4k_page`); in a container
+    scope (§19) the leaf is hidden in this step and unmapped afterwards,
+    still without a flush.
   - Quota (`kill_process_quota_step`): the next size `S` (4K, then 2M, then
     1G) moves the whole `L.quota_S` to `C`, zeroes it, and sets
     `prog = Quota { returned: S }`. Non-U: `C`'s allocator quota of size `S`
@@ -1901,8 +1984,9 @@ Differences:
 
 1. Steps that acquire a U-visible object do not state `Unlocked` for it
    (R3, R4): enter and mark child for the marked process, mark thread for
-   `V`, dequeue endpoint for `E`, evict for `R`, and lock table for `PT(L)`
-   and `IT(L)`. The dangling step and the killed-thread reclaim steps do.
+   `V`, dequeue endpoint for `E`, evict for `R`, reassign for `IT(L)`, and
+   lock table for `PT(L)` and `IT(L)`. The dangling step and the
+   killed-thread reclaim steps do.
 2. Liveness: a blocked retire stage retries forever. No invariant states
    that a zombie's tables map nothing, although reclaim removes every 4K
    leaf and no syscall creates 2M or 1G leaves.
@@ -2145,8 +2229,10 @@ Finish) have `StepLabel`s in `noninterference/src/theorem.rs` and are proved
 in `noninterference/src/ni_kill_container.rs` (run #33949, 145 verified, 0
 errors). Not covered: the §18 process kill steps (`kill_process_middle_step`)
 that the Process stage reuses. kill_process and thread_exit have their own
-`StepLabel`s, including `KillProcessIommuFlush` and `ThreadExitIommuFlush`,
-proved in `ni_kill_process.rs` and `ni_thread_exit.rs` (run #34469).
+`StepLabel`s, proved in `ni_kill_process.rs` and `ni_thread_exit.rs` (run
+#34469, before anchor DIDs). The anchor-DID migration (§15) removed
+`KillProcessIommuFlush` and `ThreadExitIommuFlush`, kept the IOMMU leaf
+labels, and re-proved them (Batch 3, noninterference run #34165).
 
 Differences:
 

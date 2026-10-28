@@ -152,6 +152,7 @@ pub open spec fn kill_reclaim_unmapped_iommu_4k_page_scoped_eof_transition_frami
     &&& new_table.view().cr3 == old_table.view().cr3
     &&& new_table.view().proc_ptr == old_table.view().proc_ptr
     &&& new_table.view().pcid == old_table.view().pcid
+    &&& new_table.view().did == old_table.view().did
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, page_index)
     &&& forall|i: PageIndex| #![trigger pre.pg_arr.spec_index(i).view().view().state] #![trigger post.pg_arr.spec_index(i).view().view().state]
         index_valid(NUM_PAGES, i) ==> {
@@ -222,6 +223,7 @@ pub open spec fn kill_retire_table_page_scoped_eof_transition_framing(
         &&& new_table.view().cr3 == old_table.view().cr3
         &&& new_table.view().pcid == old_table.view().pcid
         &&& new_table.view().proc_ptr == old_table.view().proc_ptr
+        &&& new_table.view().did == old_table.view().did
     } else {
         let old_table = pre.pt_mp.spec_index(table);
         let new_table = post.pt_mp.spec_index(table);

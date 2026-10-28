@@ -304,7 +304,9 @@ pub proof fn kernel_new_thread_fields_and_parent_unlocks_source_runlocked_implie
         index_valid(NUM_CPUS, cpu_id),
         kernel_new_thread_fields(pre, post, process_ptr, thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, endpoint_ptr, None),
         forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)]
-            pre.ctn_mp.dom().contains(p) ==> if p == container_ptr || source_container == p { post.ctn_mp.spec_index(p).locking_thread() is None } else { post.ctn_mp.spec_index(p).locking_thread() == pre.ctn_mp.spec_index(p).locking_thread() && post.ctn_mp.spec_index(p).lock_process_owner_u() == pre.ctn_mp.spec_index(p).lock_process_owner_u() },
+            pre.ctn_mp.dom().contains(p) ==> if p == container_ptr || source_container == p { post.ctn_mp.spec_index(p).locking_thread() is None } else {
+                post.ctn_mp.spec_index(p).locking_thread() == pre.ctn_mp.spec_index(p).locking_thread() && post.ctn_mp.spec_index(p).lock_process_owner_u() == pre.ctn_mp.spec_index(p).lock_process_owner_u()
+            },
         forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
             pre.prc_mp.dom().contains(p) ==> if p == process_ptr || source == p { post.prc_mp.spec_index(p).locking_thread() is None } else { post.prc_mp.spec_index(p).locking_thread() == pre.prc_mp.spec_index(p).locking_thread() },
         forall|p: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(p)]

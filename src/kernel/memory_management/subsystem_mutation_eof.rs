@@ -779,4 +779,35 @@ pub proof fn pagetable_l2_windows_unlocked_when_wlocker_holds_no_windows(
     reveal(pagetable_window_holders_hold_pagetable);
     reveal(pagetable_window_typed_lock_map_aligned);
 }
+
+/// S of `iommu_table_map_set_did`: only the DID of the write-held IOMMU table `iommu_table_ptr` changes; its lock state stays.
+#[verifier::opaque]
+pub open spec fn iommu_table_map_set_did_eof_transition_framing(
+    pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot, did: Option<VtdDomainId>,
+) -> bool {
+    &&& post.perms_wf()
+    &&& post.unchanged_except(&pre, iommu_table_ptr)
+    &&& post.spec_index(iommu_table_ptr).is_init()
+    &&& post.spec_index(iommu_table_ptr).locking_thread() == pre.spec_index(iommu_table_ptr).locking_thread()
+    &&& post.spec_index(iommu_table_ptr).view() == (PageTable { did, ..pre.spec_index(iommu_table_ptr).view() })
+}
+
+/// EOF closure of `iommu_table_map_set_did`: neither a table's well-formedness nor the hidden-leaf lock rule reads its DID.
+pub proof fn iommu_table_map_set_did_eof(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot, did: Option<VtdDomainId>)
+    requires
+        iommu_table_perms_wf(pre),
+        pre.dom().contains(iommu_table_ptr),
+        pre.spec_index(iommu_table_ptr).locking_thread() is Write,
+        did matches Some(d) ==> vtd_domain_id_valid(d),
+        iommu_table_map_set_did_eof_transition_framing(pre, post, iommu_table_ptr, did),
+    ensures iommu_table_perms_wf(post),
+{
+    reveal(iommu_table_map_set_did_eof_transition_framing);
+    reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked);
+    reveal(PageTable::wf_l4); reveal(PageTable::wf_l3); reveal(PageTable::wf_l2); reveal(PageTable::wf_l1);
+    reveal(PageTable::disjoint_l4); reveal(PageTable::disjoint_l3); reveal(PageTable::disjoint_l2);
+    reveal(PageTable::wf_mapping_4k); reveal(PageTable::wf_mapping_2m); reveal(PageTable::wf_mapping_1g);
+    reveal(PageTable::user_only); reveal(PageTable::rwx_upper_level_entries); reveal(PageTable::table_pages_wf);
+    reveal(PageTable::tables_reachable_wf); reveal(PageTable::kernel_entries_wf);
+}
 }

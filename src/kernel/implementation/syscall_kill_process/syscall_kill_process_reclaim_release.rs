@@ -831,7 +831,6 @@ pub(crate) fn kill_reclaim_iommu_leaves(
                 kill_step_pre_from_k(&leaf_post, &*lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Reclaim { flushed: true }, scope);
                 kill_reclaim_pre_from_k(&leaf_post, &*lctx, cpu_id, thread_ptr, target, KillStage::Reclaim { flushed: true }, pagetable, Some(iommu_table));
                 kill_iommu_leaf_step_from_u(kernel_k_to_kernel_u(leaf_k), kernel_k_to_kernel_u(leaf_post), cpu_id, target, iova);
-                assert(iommu_table_tlb_entries_present(krnl.iommu_tlb, krnl.irt.view(), krnl.it_mp, iommu_table)) by { reveal(iommu_table_tlb_entries_present); };
                 krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
                 kill_trace_push(&*steps, leaf_before, start, pre, kernel_k_to_kernel_u(leaf_k), kernel_k_to_kernel_u(leaf_post), cpu_id, ctx);
                 iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table);

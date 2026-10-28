@@ -351,6 +351,7 @@ pub fn reclaim_last_iommu_4k_mapping(
         final(krnl).it_mp.spec_index(iommu_table).view().cr3 == old(krnl).it_mp.spec_index(iommu_table).view().cr3,
         final(krnl).it_mp.spec_index(iommu_table).view().proc_ptr == old(krnl).it_mp.spec_index(iommu_table).view().proc_ptr,
         final(steps).snapshot_k().it_mp.spec_index(iommu_table) == old(krnl).it_mp.spec_index(iommu_table),
+        process_iommu_table_match(final(steps).snapshot_k().prc_mp, final(steps).snapshot_k().it_mp),
         was_present ==> final(krnl).it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k
             == old(krnl).it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k.remove(spec_index2va(indices)),
 {

@@ -659,7 +659,7 @@ fn kill_container_retire_unlock(
         container_head != pcid_head,
         !pages.view().contains(container_head) && !pages.view().contains(pcid_head),
         page_perms.dom() == pages.view().to_set().insert(container_head).insert(pcid_head),
-        forall|p: PageIndex| #![trigger page_perms.dom().contains(p)] page_perms.dom().contains(p) ==> {
+        forall|p: PageIndex| #![trigger page_perms.dom().contains(p)] #![trigger page_perms[p]] page_perms.dom().contains(p) ==> {
             &&& typed_lock_map_contains_mode(old(lctx).page_lock_map(), p, TypedLockMode::Write)
             &&& page_perms[p].state() is WriteLock && page_perms[p].thread_id() == old(lctx).thread_id()
             &&& page_perms[p].lock_id() == old(krnl).pg_arr.spec_index(p).view().locking_thread()->Write_lock_id

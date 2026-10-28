@@ -275,6 +275,7 @@ pub(super) proof fn iommu_map_4k_leaf_step_from_k(
         mid.it_mp.spec_index(iommu_table_ptr).view().proc_ptr == pre.it_mp.spec_index(iommu_table_ptr).view().proc_ptr,
         mid.it_mp.spec_index(iommu_table_ptr).view().mapping_2m() == pre.it_mp.spec_index(iommu_table_ptr).view().mapping_2m(),
         mid.it_mp.spec_index(iommu_table_ptr).view().mapping_1g() == pre.it_mp.spec_index(iommu_table_ptr).view().mapping_1g(),
+        mid.it_mp.spec_index(iommu_table_ptr).view().did == pre.it_mp.spec_index(iommu_table_ptr).view().did,
         *post == (KernelK { thr_mp: post.thr_mp, ..*mid }),
         post.thr_mp.unchanged_except(&mid.thr_mp, thread_ptr),
         post.thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: post.thr_mp.spec_index(thread_ptr).view().syscall_progress, ..mid.thr_mp.spec_index(thread_ptr).view() }),
@@ -327,6 +328,7 @@ pub(super) proof fn iommu_map_4k_directory_step_from_k(
         post.it_mp.spec_index(iommu_table_ptr).view().mapping_4k() == pre.it_mp.spec_index(iommu_table_ptr).view().mapping_4k(),
         post.it_mp.spec_index(iommu_table_ptr).view().mapping_2m() == pre.it_mp.spec_index(iommu_table_ptr).view().mapping_2m(),
         post.it_mp.spec_index(iommu_table_ptr).view().mapping_1g() == pre.it_mp.spec_index(iommu_table_ptr).view().mapping_1g(),
+        post.it_mp.spec_index(iommu_table_ptr).view().did == pre.it_mp.spec_index(iommu_table_ptr).view().did,
         ({
             let progress = pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view();
             &&& progress is Some && progress->Some_0 is IommuMap4k

@@ -34,7 +34,9 @@ pub(super) proof fn clear_iommu_4k_mapping_present_eof(pre: KernelK, post: Kerne
         post.it_mp.spec_index(iommu_table).inv(),
         // Produced by `iommu_table_map_clear_4k_present`.
         iommu_table_perms_wf(post.it_mp),
-    ensures post.inv(),
+    ensures
+        post.inv(),
+        pre.it_mp.spec_index(iommu_table).view().did is None ==> iommu_table_tlb_entries_present(post.iommu_tlb, post.irt.view(), post.it_mp, iommu_table),
 {
     reveal(clear_iommu_4k_mapping_present_eof_transition_framing);
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
@@ -48,5 +50,8 @@ pub(super) proof fn clear_iommu_4k_mapping_present_eof(pre: KernelK, post: Kerne
     };
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
     assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
+    assert(pre.it_mp.spec_index(iommu_table).view().did is None ==> iommu_table_tlb_entries_present(post.iommu_tlb, post.irt.view(), post.it_mp, iommu_table)) by {
+        reveal(iommu_table_tlb_entries_present);
+    };
 }
 }

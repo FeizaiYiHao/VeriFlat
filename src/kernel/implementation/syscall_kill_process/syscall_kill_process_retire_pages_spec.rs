@@ -38,6 +38,7 @@ pub open spec fn kill_retire_table_page_eof_transition_framing(
         &&& new_table.view().cr3 == old_table.view().cr3
         &&& new_table.view().pcid == old_table.view().pcid
         &&& new_table.view().proc_ptr == old_table.view().proc_ptr
+        &&& new_table.view().did == old_table.view().did
     } else {
         let old_table = pre.pt_mp.spec_index(table);
         let new_table = post.pt_mp.spec_index(table);

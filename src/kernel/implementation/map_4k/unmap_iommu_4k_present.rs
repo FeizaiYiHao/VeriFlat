@@ -47,6 +47,7 @@ pub fn clear_iommu_4k_mapping_present(
         final(krnl).it_mp.spec_index(iommu_table).view().pcid == old(krnl).it_mp.spec_index(iommu_table).view().pcid,
         final(krnl).it_mp.spec_index(iommu_table).view().proc_ptr == old(krnl).it_mp.spec_index(iommu_table).view().proc_ptr,
         final(krnl).it_mp.spec_index(iommu_table).view().did == old(krnl).it_mp.spec_index(iommu_table).view().did,
+        old(krnl).it_mp.spec_index(iommu_table).view().did is None ==> iommu_table_tlb_entries_present(final(krnl).iommu_tlb, final(krnl).irt.view(), final(krnl).it_mp, iommu_table),
 {
     proof {
         iommu_table_perms_wf_map(krnl.it_mp);

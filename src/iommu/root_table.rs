@@ -300,6 +300,12 @@ impl IommuRootTable {
         assert((upper >> 8) & VTD_CONTEXT_DID_MASK < 65536) by (bit_vector);
     }
 
+    /// The context-entry array of `wf` has one entry per B/D/F.
+    proof fn wf_len_at(&self)
+        requires self.wf()
+        ensures self.context_entries.wf()
+    { reveal(IommuRootTable::wf); }
+
     /// Trusted store boundary: publishes context entry `slot` with two aligned
     /// volatile 64-bit stores, `upper` (DID/AW) first and `lower` (root|P) last,
     /// so a remapping unit never observes P with a stale upper word.
@@ -393,7 +399,7 @@ impl IommuRootTable {
             ret == self.spec_index_iommu_did(bus, device, function),
             ret is Some ==> vtd_domain_id_valid(ret->0),
     {
-        proof { reveal(IommuRootTable::wf); }
+        proof { assert(self.context_entries.wf()) by { self.wf_len_at(); }; }
         let context = self.context_entries.get(Self::pci_bdf_slot(bus, device, function));
         proof {
             let upper = context.upper;
@@ -543,7 +549,7 @@ impl IommuRootTable {
             forall|b: usize, d: usize, f: usize| #![trigger self.spec_index_iommu_did(b, d, f)]
                 pci_bdf_valid(b, d, f) ==> (self.spec_index_iommu_did(b, d, f) is Some) == (self.spec_index_iommu_root(b, d, f) is Some),
     {
-        proof { assert(self.context_entries.view().len() == PCI_BDF_COUNT) by { reveal(IommuRootTable::wf); }; }
+        proof { assert(self.context_entries.view().len() == PCI_BDF_COUNT) by { self.wf_len_at(); }; }
         let mut bus: usize = 0;
         let mut device: usize = 0;
         let mut function: usize = 0;
@@ -633,7 +639,7 @@ impl IommuRootTable {
                 bus = bus + 1;
             }
         }
-        proof { assert(old(self).context_entries.view().len() == PCI_BDF_COUNT) by { reveal(IommuRootTable::wf); }; }
+        proof { assert(old(self).context_entries.view().len() == PCI_BDF_COUNT) by { old(self).wf_len_at(); }; }
     }
 }
 

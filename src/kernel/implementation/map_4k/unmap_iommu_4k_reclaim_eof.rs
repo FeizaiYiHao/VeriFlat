@@ -344,14 +344,16 @@ pub(super) proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof(
     };
     if was_present {
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &KernelK { it_mp: pre.it_mp, ..post })) by {
-            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); kernel_pagetable_nonlock_fields_unchanged_for_equal(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view()); reveal(kernel_iommu_table_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
+            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); kernel_pagetable_nonlock_fields_unchanged_for_equal(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view());
+            reveal(kernel_iommu_table_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
             kernel_cpu_nonlock_fields_unchanged_for_equal(pre.cpu_arr, post.cpu_arr);
             kernel_process_nonlock_fields_unchanged_for_equal(pre.prc_mp, post.prc_mp);
         };
     } else {
         assert(post.it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k =~= pre.it_mp.spec_index(iommu_table).view().user_view(LockStateU::Unlocked).mapping_4k);
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post)) by {
-            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); kernel_pagetable_nonlock_fields_unchanged_for_equal(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view()); reveal(kernel_iommu_table_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
+            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); kernel_pagetable_nonlock_fields_unchanged_for_equal(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view());
+            reveal(kernel_iommu_table_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
             kernel_cpu_nonlock_fields_unchanged_for_equal(pre.cpu_arr, post.cpu_arr);
             kernel_process_nonlock_fields_unchanged_for_equal(pre.prc_mp, post.prc_mp);
         };
