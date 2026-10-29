@@ -37,7 +37,6 @@ pub(super) fn new_container_lock_process_and_thread(
         old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
         old(steps).snapshot_k().ctn_mp.spec_index(parent_container_ptr).locking_thread() is None,
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view() == old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id),
         old(krnl).cpu_arr.spec_index(cpu_id).value.killer_info() == old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).value.killer_info(),
         old(krnl).ctn_mp.spec_index(parent_container_ptr).view() == old(steps).snapshot_k().ctn_mp.spec_index(parent_container_ptr).view(),
         old(krnl).ctn_mp.spec_index(parent_container_ptr).view_rodata() == old(steps).snapshot_k().ctn_mp.spec_index(parent_container_ptr).view_rodata(),
@@ -121,7 +120,6 @@ pub(super) fn new_container_lock_process_and_thread(
             &&& old(steps).snapshot_k().prc_mp.spec_index(e.parent_process_ptr).locking_thread() is None
             &&& old(steps).snapshot_k().thr_mp.spec_index(e.current_thread_ptr).locking_thread() is None
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view() == old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view()
-            &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)
             &&& final(krnl).ctn_mp.spec_index(e.parent_container_ptr).view() == old(steps).snapshot_k().ctn_mp.spec_index(e.parent_container_ptr).view()
             &&& final(krnl).ctn_mp.spec_index(e.parent_container_ptr).view_rodata() == old(steps).snapshot_k().ctn_mp.spec_index(e.parent_container_ptr).view_rodata()
             &&& final(krnl).ctn_mp.spec_index(e.parent_container_ptr).view_ghost() == old(steps).snapshot_k().ctn_mp.spec_index(e.parent_container_ptr).view_ghost()

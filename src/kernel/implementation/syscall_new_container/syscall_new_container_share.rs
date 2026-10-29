@@ -32,7 +32,6 @@ pub(super) fn end_new_container_created_step(
         old(krnl).cpu_op.view().view()[caller_cpu_id as int] is InStep,
         index_valid(NUM_CPUS, transfer_cpu_id),
         transfer_cpu_id != caller_cpu_id,
-        old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view_ghost() == Some(old(lctx).cpu_id()),
         old(krnl).cpu_hw_cr3_pcid[transfer_cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view().view().current_pcid),
         page_ptr_valid(thread_page_ptr),
         parent_container_ptr != child_container_ptr,

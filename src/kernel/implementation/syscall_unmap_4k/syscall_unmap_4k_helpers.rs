@@ -72,7 +72,7 @@ pub(super) fn unmap_4k_lock_running_thread(krnl: &mut KernelK, Tracked(lctx): Tr
             &&& typed_lock_map_contains_mode(final(lctx).thread_lock_map(), e.thread_ptr, TypedLockMode::Write)
             &&& !old_cpu.locked()
             &&& cpu_lock.locking_thread() == (RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: e.cpu_lock_perm.view().lock_id() })
-            &&& cpu == old_cpu.view().view() && cpu_lock.view().kernel_call_perm() is None && cpu_lock.view_ghost() == Some(cpu_id)
+            &&& cpu == old_cpu.view().view() && cpu_lock.view().kernel_call_perm() is None
             &&& cpu_lock.being_killed() == old_cpu.being_killed() && cpu_lock.killer_info() == old_cpu.killer_info()
             &&& e.cpu_lock_perm.view().state() is WriteLock && e.cpu_lock_perm.view().thread_id() == final(lctx).thread_id()
             &&& !old(krnl).ctn_mp.spec_index(e.container_ptr).locked()
@@ -416,7 +416,7 @@ pub(super) fn unmap_4k_unmap_and_finish(
     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_perm));
     krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_perm));
     krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_perm));
-    assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep && krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
+    assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
     krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
     proof {
         let ghost exit_k = *krnl;

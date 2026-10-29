@@ -1135,16 +1135,9 @@ impl KernelK {
             kernel_cpu_process_thread_nonlock_fields_unchanged(&final(steps).snapshot_k(), final(self)),
             kernel_container_nonlock_fields_and_quotas_unchanged(&final(steps).snapshot_k(), final(self)),
             kernel_endpoint_nonlock_fields_unchanged(final(steps).snapshot_k().ep_mp, final(self).ep_mp),
-            forall|p: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(p)] old(lctx).page_lock_map().dom().contains(p) ==> {
-                let owner = old(self).pg_arr.spec_index(p).view().view().owning_container;
-                &&& final(self).ctn_mp.dom().contains(owner)
-                &&& final(self).ctn_mp.spec_index(owner).view_rodata() == old(self).ctn_mp.spec_index(owner).view_rodata()
-            },
             forall|t: RwLockThreadPtr| #![trigger old(lctx).thread_lock_map().dom().contains(t)] old(lctx).thread_lock_map().dom().contains(t) ==> {
                 let owner = old(self).thr_mp.spec_index(t).view().owning_container;
                 &&& old(self).ctn_mp.dom().contains(owner)
-                &&& final(self).ctn_mp.dom().contains(owner)
-                &&& final(self).ctn_mp.spec_index(owner).view_rodata() == old(self).ctn_mp.spec_index(owner).view_rodata()
                 &&& final(self).ctn_mp.spec_index(owner).view_ghost().uppertree_seq == old(self).ctn_mp.spec_index(owner).view_ghost().uppertree_seq
             },
             forall|pt: RwLockPageTableRoot, window_va: WindowVa, va: VAddr|

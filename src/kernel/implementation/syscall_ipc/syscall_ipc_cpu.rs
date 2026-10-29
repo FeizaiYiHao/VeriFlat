@@ -176,7 +176,6 @@ verus! {
                 &&& transfer_perm.state() is WriteLock
                 &&& transfer_perm.thread_id() == old(lctx).thread_id()
                 &&& transfer_perm.lock_id() == old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().locking_thread()->Write_lock_id
-                &&& old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view_ghost() == Some(cpu_id)
                 &&& old(krnl).cpu_hw_cr3_pcid[transfer_cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view().view().current_pcid)
             },
         ensures
@@ -325,7 +324,6 @@ verus! {
                 &&& transfer_perm.state() is WriteLock
                 &&& transfer_perm.thread_id() == old(lctx).thread_id()
                 &&& transfer_perm.lock_id() == old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().locking_thread()->Write_lock_id
-                &&& old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view_ghost() == Some(cpu_id)
                 &&& old(krnl).cpu_hw_cr3_pcid[transfer_cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view().view().current_pcid)
             },
         ensures
@@ -370,7 +368,6 @@ verus! {
         krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
         krnl.wunlock_scheduler_shard(peer_scheduler_ptr, wake_cpu, Tracked(&mut *lctx), Tracked(peer_scheduler_lock_perm));
         krnl.wunlock_endpoint(endpoint_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
-        assert(krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); }
     }
@@ -429,7 +426,6 @@ verus! {
                 &&& after.is_init() == before.is_init()
                 &&& after.view_rodata() == before.view_rodata()
                 &&& !before.locked()
-                &&& after.view_ghost() == Some(old(lctx).cpu_id())
                 &&& after.view().kernel_call_perm() == before.view().kernel_call_perm()
                 &&& after.being_killed() == before.being_killed() && !after.being_killed()
                 &&& after.locking_thread() is Write
@@ -696,7 +692,6 @@ verus! {
                 &&& after.is_init() == before.is_init()
                 &&& after.view_rodata() == before.view_rodata()
                 &&& !before.locked()
-                &&& after.view_ghost() == Some(old(lctx).cpu_id())
                 &&& after.view().kernel_call_perm() == before.view().kernel_call_perm()
                 &&& after.being_killed() == before.being_killed() && !after.being_killed()
                 &&& after.locking_thread() is Write

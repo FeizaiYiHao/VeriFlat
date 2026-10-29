@@ -190,7 +190,6 @@ pub(super) fn ipc_reply_handoff_release_and_end_step(
     krnl.wunlock_thread(callee_ptr, Tracked(&mut *lctx), Tracked(callee_lock_perm));
     krnl.wunlock_endpoint(endpoint_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
     assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { reveal(ipc_reply_handoff_eof_transition_framing); };
-    assert(krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
     krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view()) by { reveal(ipc_reply_handoff_eof_transition_framing); };

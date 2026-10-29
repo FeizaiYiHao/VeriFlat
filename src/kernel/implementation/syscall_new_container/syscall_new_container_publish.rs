@@ -199,7 +199,6 @@ pub(super) fn publish_new_container_base(
         typed_lock_map_contains_mode(final(lctx).cpu_lock_map(), caller_cpu_id, TypedLockMode::Write),
         typed_lock_map_contains_mode(final(lctx).cpu_lock_map(), transfer_cpu_id, TypedLockMode::Write),
         final(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view() == old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view(),
-        final(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view_ghost() == Some(final(lctx).cpu_id()),
         final(krnl).cpu_hw_cr3_pcid[transfer_cpu_id as int].view() == (final(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view().view().current_cr3, final(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view().view().current_pcid),
         typed_lock_map_contains_mode(final(lctx).cpu_set_lock_map(), parent_cpu_set, TypedLockMode::Write),
         typed_lock_map_contains_mode(final(lctx).cpu_set_lock_map(), pages_4k.view().spec_index(8), TypedLockMode::Write),

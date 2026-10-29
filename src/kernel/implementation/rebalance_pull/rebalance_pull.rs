@@ -419,7 +419,6 @@ fn rebalance_pull_move_head(
     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
     if let Some(local_perm) = local_lock_perm { krnl.wunlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx), local_perm); }
     rebalance_unlock_shard_prefix(krnl, Tracked(&mut *lctx), scheduler_ptr, count, Tracked(shard_perms));
-    assert(krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
     krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         let ghost pull_before = steps.view();

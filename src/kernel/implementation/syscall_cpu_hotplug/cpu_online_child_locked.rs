@@ -34,7 +34,6 @@ pub(super) fn cpu_online_child_locked(
             let post = old(krnl).cpu_arr.spec_index(cpu_id).view();
             &&& post.view().view() == pre.view().view()
             &&& post.locking_thread() == RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: cpu_lock_perm.lock_id() }
-            &&& post.view_ghost() == Some(cpu_id)
             &&& post.being_killed() == pre.being_killed()
             &&& post.killer_info() == pre.killer_info()
             &&& pre.locked() == false

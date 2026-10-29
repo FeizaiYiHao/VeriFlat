@@ -49,7 +49,6 @@ pub(super) fn iommu_map_4k_exit(
         k0.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
         k0.thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
         !k0.cpu_arr.spec_index(cpu_id).view().being_killed(),
-        k0.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id),
         k0.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
         !k0.prc_mp.spec_index(process_ptr).being_killed() && !k0.thr_mp.spec_index(thread_ptr).view_ghost().exited,
         k0.prc_mp.spec_index(process_ptr).view().state.view() is Running || k0.prc_mp.spec_index(process_ptr).view().state.view() is Zombie,

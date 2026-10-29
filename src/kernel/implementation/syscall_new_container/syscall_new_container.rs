@@ -82,7 +82,6 @@ fn new_container_release_entry_locks(
         held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
         old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
         cpu_lock_perm.state() is WriteLock && cpu_lock_perm.thread_id() == old(lctx).thread_id() && cpu_lock_perm.lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
@@ -241,7 +240,6 @@ fn new_container_lock_owners(
             &&& old(krnl).prc_mp.spec_index(e.parent_process_ptr).locking_thread() is None
             &&& old(krnl).thr_mp.spec_index(e.current_thread_ptr).locking_thread() is None
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view()
-            &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)
             &&& final(krnl).ctn_mp.spec_index(e.parent_container_ptr).view() == old(krnl).ctn_mp.spec_index(e.parent_container_ptr).view()
             &&& final(krnl).ctn_mp.spec_index(e.parent_container_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(e.parent_container_ptr).view_rodata()
             &&& final(krnl).ctn_mp.spec_index(e.parent_container_ptr).view_ghost() == old(krnl).ctn_mp.spec_index(e.parent_container_ptr).view_ghost()

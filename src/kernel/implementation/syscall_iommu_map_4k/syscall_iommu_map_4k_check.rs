@@ -35,7 +35,6 @@ fn iommu_map_4k_unlock_rejected(
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view() == old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
         old(krnl).cpu_arr.spec_index(cpu_id).view().killer_info() == old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().killer_info(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id),
         old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == (RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: cpu_lock_perm.lock_id() }),
         cpu_lock_perm.state() is WriteLock && cpu_lock_perm.thread_id() == old(lctx).thread_id(),
         old(steps).snapshot_k().cpu_op.view().view()[cpu_id as int] is Trap,
@@ -132,7 +131,6 @@ fn iommu_map_4k_unlock_thread_rejected(
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view() == old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
         old(krnl).cpu_arr.spec_index(cpu_id).view().killer_info() == old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().killer_info(),
-        old(krnl).cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id),
         old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == (RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: cpu_lock_perm.lock_id() }),
         cpu_lock_perm.state() is WriteLock && cpu_lock_perm.thread_id() == old(lctx).thread_id(),
         old(steps).snapshot_k().cpu_op.view().view()[cpu_id as int] is Trap,
@@ -293,7 +291,6 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
             &&& final(krnl).cpu_arr.entries_unchanged_except(&old(krnl).cpu_arr, cpu_id)
             &&& cpu == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view()
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None
-            &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)
             &&& final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep)
             &&& final(krnl).cpu_arr.spec_index(cpu_id).value.killer_info() == old(krnl).cpu_arr.spec_index(cpu_id).value.killer_info()
             &&& final(krnl).cpu_arr.spec_index(cpu_id).value.being_killed() == old(krnl).cpu_arr.spec_index(cpu_id).value.being_killed()

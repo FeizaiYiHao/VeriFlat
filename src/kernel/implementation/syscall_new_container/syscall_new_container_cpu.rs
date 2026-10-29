@@ -27,7 +27,6 @@ pub(super) fn transfer_new_container_cpu(
         typed_lock_map_contains_mode(old(lctx).cpu_set_lock_map(), parent_cpu_set, TypedLockMode::Write),
         typed_lock_map_contains_mode(old(lctx).cpu_set_lock_map(), child_cpu_set, TypedLockMode::Write),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), transfer_cpu_id, TypedLockMode::Write),
-        old(krnl).cpu_arr.spec_index(transfer_cpu_id).view().view_ghost() == Some(old(lctx).cpu_id()),
         transfer_cpu_id != old(lctx).cpu_id(),
         old(krnl).cpu_op.view().view()[transfer_cpu_id as int] is Off,
         transfer_cpu_lock_perm.state() is WriteLock,

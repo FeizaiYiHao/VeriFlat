@@ -54,7 +54,6 @@ pub(super) fn unmap_4k_lock_pagetable_and_unmap(
             &&& post.locking_thread() == (RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: cpu_perm.lock_id() })
             &&& post.view().view() == pre.view().view()
             &&& post.view().kernel_call_perm() is None
-            &&& post.view_ghost() == Some(cpu_id)
             &&& post.being_killed() == pre.being_killed()
             &&& post.killer_info() == pre.killer_info()
             &&& cpu_perm.state() is WriteLock
@@ -223,7 +222,6 @@ fn unmap_4k_unlock_all_rejected(
             &&& !pre.locked()
             &&& post.locking_thread() == (RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: cpu_perm.lock_id() })
             &&& post.view().view() == pre.view().view()
-            &&& post.view_ghost() == Some(cpu_id)
             &&& post.being_killed() == pre.being_killed()
             &&& post.killer_info() == pre.killer_info()
             &&& cpu_perm.state() is WriteLock

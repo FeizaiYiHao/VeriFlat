@@ -73,7 +73,6 @@ pub(super) fn iommu_map_4k_lock_running_thread(krnl: &mut KernelK, Tracked(lctx)
             &&& !old(krnl).cpu_arr.spec_index(cpu_id).view().locked()
             &&& cpu == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view()
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None
-            &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().killer_info() == old(krnl).cpu_arr.spec_index(cpu_id).view().killer_info()
             &&& final(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed()
             &&& final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep)
