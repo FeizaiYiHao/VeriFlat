@@ -21,7 +21,6 @@ pub(super) fn cpu_online_child_locked(
         old(steps).snapshot_k().inv(),
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        old(steps).nonlock_view().len() == 0,
         *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_op: old(krnl).cpu_op, ctn_mp: old(krnl).ctn_mp, ..old(steps).snapshot_k() }),
         old(steps).snapshot_k().cpu_op.view().view()[cpu_id as int] is Trap,
         old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
@@ -86,7 +85,6 @@ pub(super) fn cpu_online_child_locked(
         child < old(steps).snapshot_k().ctn_mp.spec_index(caller_ptr).view().children.view().len(),
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
@@ -96,15 +94,6 @@ pub(super) fn cpu_online_child_locked(
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).no_locks_held(),
         ret == cpu_online_child_syscall_result(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, child, target),
-        !(ret is Success) ==> final(steps).nonlock_view().len() == 0,
-        ret is Success ==> {
-            let step = final(steps).nonlock_view()[0];
-            &&& final(steps).nonlock_view().len() == 1
-            &&& step.old_u == kernel_k_to_nonlock_kernel_u(old(steps).snapshot_k())
-            &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
-            &&& cpu_online_child_step_pre(step.old_u, cpu_id, target)
-            &&& cpu_online_child_step(step.old_u, step.new_u, cpu_id, target)
-        },
 {
     let ghost entry = steps.snapshot_k();
     let caller = krnl.ctn_mp.borrow_typed(caller_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(&container_lock_perm));
@@ -192,11 +181,8 @@ pub(super) fn cpu_online_child_locked(
         steps.end_kernel_step_cpu_online_changed(&*krnl, &*lctx, cpu_id, child_ptr, target);
         assert({
             &&& cpu_online_child_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(entry), kernel_k_to_kernel_u(*krnl), cpu_id, target, RetValueType::Success)
-            &&& cpu_online_child_step_pre(steps.nonlock_view().last().old_u, cpu_id, target)
-            &&& cpu_online_child_step(steps.nonlock_view().last().old_u, steps.nonlock_view().last().new_u, cpu_id, target)
         }) by {
             cpu_online_child_step_from_u(kernel_k_to_kernel_u(entry), kernel_k_to_kernel_u(*krnl), cpu_id, child_ptr, target);
-            cpu_online_child_step_from_u(steps.nonlock_view().last().old_u, steps.nonlock_view().last().new_u, cpu_id, child_ptr, target);
             cpu_online_child_trace_step(&*steps, online_before, kernel_k_to_kernel_u(entry), kernel_k_to_kernel_u(*krnl), cpu_id, target);
         };
     }

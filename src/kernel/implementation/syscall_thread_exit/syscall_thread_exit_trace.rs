@@ -515,7 +515,7 @@ pub(super) proof fn thread_exit_iommu_leaf_step_from_u(pre: KernelU, post: Kerne
 /// Removing the present 4K leaf `iova` of the write-held, detached IOMMU table `iommu_table` of `process_ptr` from `pre` to
 /// `post`, with page, 4K-allocator, and `thread_ptr` bookkeeping, where `post` holds the cpu, `container_ptr`, `process_ptr`
 /// with its page table `pagetable`, and the running `thread_ptr` that records flushed reclaim progress, is an IOMMU leaf step
-/// after its reclaim precondition, and changes both projections.
+/// after its reclaim precondition, and changes the projection.
 pub(super) proof fn thread_exit_iommu_leaf_step_from_k(
     pre: &KernelK, post: &KernelK, lctx: &LocalContext, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
     pagetable: RwLockPageTableRoot, iommu_table: RwLockPageTableRoot, iova: VAddr,
@@ -558,7 +558,6 @@ pub(super) proof fn thread_exit_iommu_leaf_step_from_k(
         thread_exit_reclaim_step_pre(kernel_k_to_kernel_u(*pre), cpu_id, true),
         thread_exit_iommu_leaf_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id),
         kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
-        kernel_k_to_nonlock_kernel_u(*pre) != kernel_k_to_nonlock_kernel_u(*post),
 {
     thread_exit_iommu_leaf_step_pre_from_k(post, lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, iommu_table);
     kernel_iommu_table_4k_mapping_removed_implies_u_step(pre, post, iommu_table, iova, thread_ptr);

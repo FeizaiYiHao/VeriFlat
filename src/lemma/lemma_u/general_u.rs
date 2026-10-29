@@ -1,18 +1,5 @@
 use vstd::prelude::*;
 verus! {
-pub proof fn seq_filter_map_push_lemma<A, B>(s: Seq<A>, value: A, f: spec_fn(A) -> Option<B>)
-    ensures
-        s.push(value).filter_map(f) == match f(value) {
-            Some(v) => s.filter_map(f).push(v),
-            None => s.filter_map(f),
-        },
-{
-    vstd::assert_seqs_equal!(s.push(value).drop_last() == s);
-    if let Some(v) = f(value) {
-        vstd::assert_seqs_equal!(s.filter_map(f) + seq![v] == s.filter_map(f).push(v));
-    }
-}
-
 pub proof fn map_insert_remove_absent_lemma<K, V>(m: Map<K, V>, key: K, value: V)
     requires
         !m.dom().contains(key),

@@ -127,7 +127,6 @@ fn clear_4k_range_present(
         final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Unmap4k { range: *range, unmapped: range.len, flushed: false }),
         final(krnl).thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
         final(steps).view().len() == old(steps).view().len() + range.len,
-        final(steps).nonlock_view().len() == old(steps).nonlock_view().len() + range.len,
         forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w))] old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w)) ==> {
             &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).window_view(w).lock_state == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_view(w).lock_state
             &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).window_view(w).stale_cpus is None || pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).window_view(w).stale_cpus == Some(Set::range(0usize, NUM_CPUS))
@@ -239,7 +238,6 @@ fn clear_4k_range_present(
             krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Unmap4k { range: *range, unmapped: i, flushed: false }),
             krnl.thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
             steps.view().len() == old(steps).view().len() + i,
-            steps.nonlock_view().len() == old(steps).nonlock_view().len() + i,
             forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w))] old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w)) ==> {
                 &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).window_view(w).lock_state == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_view(w).lock_state
                 &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).window_view(w).stale_cpus is None || pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).window_view(w).stale_cpus == Some(Set::range(0usize, NUM_CPUS))
@@ -366,8 +364,6 @@ pub fn unmap_4k_range(
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Acquire,
-        old(steps).nonlock_view().len() + range.len + 1 <= final(steps).nonlock_view().len(),
-        final(steps).nonlock_view().len() <= old(steps).nonlock_view().len() + range.len + NUM_CPUS + MAX_CONTAINER_TREE_DEPTH + 2,
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
         final(krnl).cpu_arr.spec_index(cpu_id).view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view(),
@@ -494,7 +490,6 @@ pub fn unmap_4k_range(
             !thread_is_dangling(old(krnl).thr_mp.spec_index(thread_ptr)),
             i <= range.len,
             old(steps).view().len() + range.len + 1 <= steps.view().len() <= old(steps).view().len() + range.len + NUM_CPUS + 1,
-            old(steps).nonlock_view().len() + range.len + 1 <= steps.nonlock_view().len() <= old(steps).nonlock_view().len() + range.len + NUM_CPUS + 1,
             krnl.thr_mp.spec_index(thread_ptr).view() == (Thread {
                 direct_free_quota_pending_4k: krnl.thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k, indirect_free_quota_pending_4k: krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k,
                 syscall_progress: krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress, ..old(krnl).thr_mp.spec_index(thread_ptr).view()

@@ -26,7 +26,6 @@ pub(super) fn mmap_4k_fill_enter(
         old(steps).snapshot_k() == *old(krnl),
         mmap_4k_trace_after_hold(old(steps).view(), cpu_id, *va_range),
         old(steps).view().len() == 1,
-        old(steps).nonlock_view().len() == 0,
         !(range == 0 || range > usize::MAX / 4096 || !spec_va_4k_valid(va) || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range)),
         *va_range == mmap_4k_syscall_va_range(va, range),
         va_range.wf(),
@@ -99,11 +98,9 @@ pub(super) fn mmap_4k_fill_enter(
         final(steps).snapshot_k() == *final(krnl),
         ret == mmap_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range),
         ret is Success ==> range + 3 <= final(steps).view().len() <= 4 * range + 4,
-        ret is Success ==> final(steps).nonlock_view().len() + 1 == final(steps).view().len(),
         ret is Success ==> final(steps).view()[1].old_u == kernel_k_to_kernel_u(*old(krnl)),
         ret is Success ==> mmap_4k_syscall_trace(final(steps).view(), cpu_id, va, range, Mmap4kPhase::Fill),
         ret is Success ==> mmap_4k_syscall_success_mapped(final(krnl), cpu_id, va, range),
-        !(ret is Success) ==> final(steps).nonlock_view().len() == 0,
         !(ret is Success) ==> mmap_4k_syscall_failure_trace(final(steps).view(), cpu_id, va, range) && final(steps).view()[1].old_u == kernel_k_to_kernel_u(*old(krnl)),
 {
     let ghost entry_lctx = *lctx;

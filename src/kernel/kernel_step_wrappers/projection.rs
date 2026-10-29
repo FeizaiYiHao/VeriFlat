@@ -3,50 +3,6 @@ use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_seqs_equal, ass
 use crate::*;
 
 verus! {
-/// The lock-free projection of a kernel state is the nonlock-field view of its full projection.
-pub proof fn kernel_nonlock_projection_is_u_nonlock_fields(krnl: KernelK)
-    ensures kernel_k_to_nonlock_kernel_u(krnl) == kernel_u_nonlock_fields(kernel_k_to_kernel_u(krnl)),
-{
-    reveal(kernel_k_to_kernel_u); reveal(kernel_k_to_nonlock_kernel_u); reveal(kernel_u_nonlock_fields);
-    assert_seqs_equal!(kernel_k_to_nonlock_kernel_u(krnl).cpu_array == kernel_u_nonlock_fields(kernel_k_to_kernel_u(krnl)).cpu_array);
-    assert_maps_equal!(kernel_k_to_nonlock_kernel_u(krnl).container_map, kernel_u_nonlock_fields(kernel_k_to_kernel_u(krnl)).container_map, p => {});
-    assert_maps_equal!(kernel_k_to_nonlock_kernel_u(krnl).process_map, kernel_u_nonlock_fields(kernel_k_to_kernel_u(krnl)).process_map, p => {});
-    assert_maps_equal!(kernel_k_to_nonlock_kernel_u(krnl).thread_map, kernel_u_nonlock_fields(kernel_k_to_kernel_u(krnl)).thread_map, p => {});
-    assert_maps_equal!(kernel_k_to_nonlock_kernel_u(krnl).endpoint_map, kernel_u_nonlock_fields(kernel_k_to_kernel_u(krnl)).endpoint_map, p => {});
-}
-
-#[verifier::spinoff_prover]
-pub proof fn kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(pre: &KernelK, post: &KernelK)
-    requires
-        kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp),
-        post.irt.view().owners() == pre.irt.view().owners(),
-        post.irt.view().iommu_roots() == pre.irt.view().iommu_roots(),
-        post.cpu_tlb.view() == pre.cpu_tlb.view(),
-        post.iommu_tlb.view() == pre.iommu_tlb.view(),
-        process_pagetable_match(post.prc_mp, post.pt_mp),
-        process_iommu_table_match(post.prc_mp, post.it_mp),
-        kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
-        kernel_container_nonlock_fields_and_quotas_unchanged(pre, post),
-    ensures
-        kernel_k_to_nonlock_kernel_u(*pre) == kernel_k_to_nonlock_kernel_u(*post),
-{
-    reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged);
-    reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
-    reveal(kernel_cpu_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
-    kernel_u_nonlock_domains_projection(pre); kernel_u_nonlock_domains_projection(post);
-    let pre_u = kernel_k_to_nonlock_kernel_u(*pre);
-    let post_u = kernel_k_to_nonlock_kernel_u(*post);
-    assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { reveal(IommuRootTable::user_view); };
-    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_nonlock_projection_at(pre, i as usize); kernel_cpu_nonlock_projection_at(post, i as usize); } });
-    assert_maps_equal!(post_u.container_map, pre_u.container_map, c => { if pre.ctn_mp.dom().contains(c) { kernel_container_nonlock_projection_at(pre, c); } if post.ctn_mp.dom().contains(c) { kernel_container_nonlock_projection_at(post, c); } });
-    assert_maps_equal!(post_u.process_map, pre_u.process_map, p => {
-        if pre.prc_mp.dom().contains(p) { kernel_process_nonlock_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_nonlock_projection_at(post, p); }
-        reveal(process_pagetable_match); reveal(process_iommu_table_match);
-    });
-    assert_maps_equal!(post_u.thread_map, pre_u.thread_map, t => { if pre.thr_mp.dom().contains(t) { kernel_thread_nonlock_projection_at(pre, t); } if post.thr_mp.dom().contains(t) { kernel_thread_nonlock_projection_at(post, t); } });
-    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => { if pre.ep_mp.dom().contains(e) { kernel_endpoint_nonlock_projection_at(pre, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_nonlock_projection_at(post, e); } });
-}
-
 /// A section that write-holds one thread throughout, changes no non-lock field, and moves
 /// lock modes only on pages and allocator objects leaves the complete projection unchanged.
 pub proof fn kernel_thread_write_held_section_implies_u_eq(pre: &KernelK, post: &KernelK, pre_lctx: &LocalContext, post_lctx: &LocalContext, thread_ptr: RwLockThreadPtr)
@@ -352,18 +308,18 @@ proof fn kernel_lock_states_unchanged_implies_u_endpoint_map(pre: &KernelK, post
 }
 
 #[verifier::spinoff_prover]
-pub(super) proof fn kernel_context_switch_fields_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr, entry_regs: Registers, flushed_pcid: Option<Pcid>, include_lock_state: bool)
+pub(super) proof fn kernel_context_switch_fields_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr, entry_regs: Registers, flushed_pcid: Option<Pcid>)
     requires
         post.inv(),
         kernel_context_switch_fields(pre, post, cpu_id, next_thread, entry_regs, flushed_pcid),
         forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)] pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).lock_process_owner_u() == pre.ctn_mp.spec_index(p).lock_process_owner_u(),
     ensures
-        kernel_u_context_switch_changed(kernel_k_user_projection(*pre, include_lock_state), kernel_k_user_projection(*post, include_lock_state), cpu_id, next_thread, entry_regs, flushed_pcid),
+        kernel_u_context_switch_changed(kernel_k_user_projection(*pre), kernel_k_user_projection(*post), cpu_id, next_thread, entry_regs, flushed_pcid),
 {
     hide(kernel_k_user_projection);
-    reveal(kernel_u_context_switch_changed); kernel_u_user_domains_projection(pre, include_lock_state); kernel_u_user_domains_projection(post, include_lock_state);
-    let pre_u = kernel_k_user_projection(*pre, include_lock_state);
-    let post_u = kernel_k_user_projection(*post, include_lock_state);
+    reveal(kernel_u_context_switch_changed); kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    let pre_u = kernel_k_user_projection(*pre);
+    let post_u = kernel_k_user_projection(*post);
     let cpu = pre_u.cpu_array[cpu_id as int];
     let container = pre_u.container_map.spec_index(cpu.owning_container);
     let next = pre_u.thread_map.spec_index(next_thread);
@@ -397,17 +353,17 @@ pub(super) proof fn kernel_context_switch_fields_implies_u_step(pre: &KernelK, p
             &&& !pre_u.process_map.spec_index(cpu.current_process.unwrap()).killed
         })
     }) by {
-        reveal(kernel_context_switch_fields); kernel_cpu_user_projection_at(pre, include_lock_state, cpu_id);
-        if pre.ctn_mp.dom().contains(pre.cpu_arr.spec_index(cpu_id).value.view().view().owning_container) { kernel_container_user_projection_at(pre, include_lock_state, pre.cpu_arr.spec_index(cpu_id).value.view().view().owning_container); }
-        if pre.thr_mp.dom().contains(next_thread) { kernel_thread_user_projection_at(pre, include_lock_state, next_thread); }
-        if pre.prc_mp.dom().contains(pre.thr_mp.spec_index(next_thread).view().owning_proc) { kernel_process_user_projection_at(pre, include_lock_state, pre.thr_mp.spec_index(next_thread).view().owning_proc); }
-        if let Some(t) = pre.cpu_arr.spec_index(cpu_id).value.view().view().current_thread { if pre.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, include_lock_state, t); } }
-        if let Some(p) = pre.cpu_arr.spec_index(cpu_id).value.view().view().current_process { if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, include_lock_state, p); } }
+        reveal(kernel_context_switch_fields); kernel_cpu_user_projection_at(pre, cpu_id);
+        if pre.ctn_mp.dom().contains(pre.cpu_arr.spec_index(cpu_id).value.view().view().owning_container) { kernel_container_user_projection_at(pre, pre.cpu_arr.spec_index(cpu_id).value.view().view().owning_container); }
+        if pre.thr_mp.dom().contains(next_thread) { kernel_thread_user_projection_at(pre, next_thread); }
+        if pre.prc_mp.dom().contains(pre.thr_mp.spec_index(next_thread).view().owning_proc) { kernel_process_user_projection_at(pre, pre.thr_mp.spec_index(next_thread).view().owning_proc); }
+        if let Some(t) = pre.cpu_arr.spec_index(cpu_id).value.view().view().current_thread { if pre.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, t); } }
+        if let Some(p) = pre.cpu_arr.spec_index(cpu_id).value.view().view().current_process { if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, p); } }
     };
-    kernel_context_switch_fields_implies_u_cpu_array(pre, post, cpu_id, next_thread, entry_regs, flushed_pcid, include_lock_state);
-    kernel_context_switch_fields_implies_u_thread_map(pre, post, cpu_id, next_thread, entry_regs, flushed_pcid, include_lock_state);
-    kernel_context_switch_fields_implies_u_process_map(pre, post, cpu_id, next_thread, entry_regs, flushed_pcid, include_lock_state);
-    kernel_context_switch_fields_implies_u_container_map(pre, post, cpu_id, next_thread, entry_regs, flushed_pcid, include_lock_state);
+    kernel_context_switch_fields_implies_u_cpu_array(pre, post, cpu_id, next_thread, entry_regs, flushed_pcid);
+    kernel_context_switch_fields_implies_u_thread_map(pre, post, cpu_id, next_thread, entry_regs, flushed_pcid);
+    kernel_context_switch_fields_implies_u_process_map(pre, post, cpu_id, next_thread, entry_regs, flushed_pcid);
+    kernel_context_switch_fields_implies_u_container_map(pre, post, cpu_id, next_thread, entry_regs, flushed_pcid);
     assert(post_u == (KernelU {
         cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU {
             state: CpuState::Running, op: CpuOpState::Trap, current_process: Some(next.owning_proc), current_thread: Some(next_thread), ..cpu
@@ -425,21 +381,21 @@ pub(super) proof fn kernel_context_switch_fields_implies_u_step(pre: &KernelK, p
     })) by {
         reveal(kernel_context_switch_fields); reveal(kernel_endpoint_nonlock_fields_unchanged);
         assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { reveal(IommuRootTable::user_view); };
-        assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => { if pre.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(pre, include_lock_state, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(post, include_lock_state, e); } });
+        assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => { if pre.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(pre, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(post, e); } });
     };
     if let Some(pcid) = flushed_pcid {
         assert(cpu_tlb_within_may_cache(*post, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)))) by { reveal(kernel_context_switch_fields); };
-        kernel_cpu_tlb_within_may_cache_projection(post, include_lock_state, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)));
+        kernel_cpu_tlb_within_may_cache_projection(post, cpu_id, pcid, post.cpu_tlb.spec_index((cpu_id, pcid)));
     }
 }
 
 /// The context-switch fields project to the cpu array with only `cpu_id` running `next_thread`.
-proof fn kernel_context_switch_fields_implies_u_cpu_array(pre: &KernelK, post: &KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr, entry_regs: Registers, flushed_pcid: Option<Pcid>, include_lock_state: bool)
+proof fn kernel_context_switch_fields_implies_u_cpu_array(pre: &KernelK, post: &KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr, entry_regs: Registers, flushed_pcid: Option<Pcid>)
     requires kernel_context_switch_fields(pre, post, cpu_id, next_thread, entry_regs, flushed_pcid),
     ensures
         ({
-            let pre_u = kernel_k_user_projection(*pre, include_lock_state);
-            let post_u = kernel_k_user_projection(*post, include_lock_state);
+            let pre_u = kernel_k_user_projection(*pre);
+            let post_u = kernel_k_user_projection(*post);
             let cpu = pre_u.cpu_array[cpu_id as int];
             post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU {
                 state: CpuState::Running, op: CpuOpState::Trap, current_process: Some(pre_u.thread_map.spec_index(next_thread).owning_proc), current_thread: Some(next_thread), ..cpu
@@ -448,23 +404,23 @@ proof fn kernel_context_switch_fields_implies_u_cpu_array(pre: &KernelK, post: &
 {
     hide(kernel_k_user_projection);
     reveal(kernel_context_switch_fields);
-    kernel_u_user_domains_projection(pre, include_lock_state); kernel_u_user_domains_projection(post, include_lock_state);
-    if pre.thr_mp.dom().contains(next_thread) { kernel_thread_user_projection_at(pre, include_lock_state, next_thread); } if index_valid(NUM_CPUS, cpu_id) { kernel_cpu_user_projection_at(pre, include_lock_state, cpu_id); }
-    let pre_u = kernel_k_user_projection(*pre, include_lock_state);
-    let post_u = kernel_k_user_projection(*post, include_lock_state);
+    kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    if pre.thr_mp.dom().contains(next_thread) { kernel_thread_user_projection_at(pre, next_thread); } if index_valid(NUM_CPUS, cpu_id) { kernel_cpu_user_projection_at(pre, cpu_id); }
+    let pre_u = kernel_k_user_projection(*pre);
+    let post_u = kernel_k_user_projection(*post);
     let cpu = pre_u.cpu_array[cpu_id as int];
     assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU {
         state: CpuState::Running, op: CpuOpState::Trap, current_process: Some(pre_u.thread_map.spec_index(next_thread).owning_proc), current_thread: Some(next_thread), ..cpu
-    }), i => { if 0 <= i < NUM_CPUS { kernel_cpu_user_projection_at(pre, include_lock_state, i as usize); kernel_cpu_user_projection_at(post, include_lock_state, i as usize); } });
+    }), i => { if 0 <= i < NUM_CPUS { kernel_cpu_user_projection_at(pre, i as usize); kernel_cpu_user_projection_at(post, i as usize); } });
 }
 
 /// The context-switch fields project to the thread map with the previous thread requeued and `next_thread` running.
-proof fn kernel_context_switch_fields_implies_u_thread_map(pre: &KernelK, post: &KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr, entry_regs: Registers, flushed_pcid: Option<Pcid>, include_lock_state: bool)
+proof fn kernel_context_switch_fields_implies_u_thread_map(pre: &KernelK, post: &KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr, entry_regs: Registers, flushed_pcid: Option<Pcid>)
     requires kernel_context_switch_fields(pre, post, cpu_id, next_thread, entry_regs, flushed_pcid),
     ensures
         ({
-            let pre_u = kernel_k_user_projection(*pre, include_lock_state);
-            let post_u = kernel_k_user_projection(*post, include_lock_state);
+            let pre_u = kernel_k_user_projection(*pre);
+            let post_u = kernel_k_user_projection(*post);
             let next = pre_u.thread_map.spec_index(next_thread);
             let requeued = match pre_u.cpu_array[cpu_id as int].current_thread {
                 Some(prev) => pre_u.thread_map.insert(prev, ThreadU {
@@ -476,11 +432,11 @@ proof fn kernel_context_switch_fields_implies_u_thread_map(pre: &KernelK, post: 
         }),
 {
     hide(kernel_k_user_projection);
-    reveal(kernel_context_switch_fields); kernel_u_user_domains_projection(pre, include_lock_state); kernel_u_user_domains_projection(post, include_lock_state);
-    kernel_cpu_user_projection_at(pre, include_lock_state, cpu_id); if pre.thr_mp.dom().contains(next_thread) { kernel_thread_user_projection_at(pre, include_lock_state, next_thread); }
-    if let Some(prev) = pre.cpu_arr.spec_index(cpu_id).value.view().view().current_thread { if pre.thr_mp.dom().contains(prev) { kernel_thread_user_projection_at(pre, include_lock_state, prev); } }
-    let pre_u = kernel_k_user_projection(*pre, include_lock_state);
-    let post_u = kernel_k_user_projection(*post, include_lock_state);
+    reveal(kernel_context_switch_fields); kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    kernel_cpu_user_projection_at(pre, cpu_id); if pre.thr_mp.dom().contains(next_thread) { kernel_thread_user_projection_at(pre, next_thread); }
+    if let Some(prev) = pre.cpu_arr.spec_index(cpu_id).value.view().view().current_thread { if pre.thr_mp.dom().contains(prev) { kernel_thread_user_projection_at(pre, prev); } }
+    let pre_u = kernel_k_user_projection(*pre);
+    let post_u = kernel_k_user_projection(*post);
     let next = pre_u.thread_map.spec_index(next_thread);
     let requeued = match pre_u.cpu_array[cpu_id as int].current_thread {
         Some(prev) => pre_u.thread_map.insert(prev, ThreadU {
@@ -490,37 +446,37 @@ proof fn kernel_context_switch_fields_implies_u_thread_map(pre: &KernelK, post: 
     };
     assert_maps_equal!(post_u.thread_map, requeued.insert(next_thread, ThreadU {
         state: ThreadState::RUNNING { cpu_id }, last_cpu: cpu_id, error_code: None, trap_frame: None, ..next
-    }), t => { if pre.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, include_lock_state, t); } if post.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(post, include_lock_state, t); } });
+    }), t => { if pre.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, t); } if post.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(post, t); } });
 }
 
 /// The context-switch fields leave the process map projection unchanged.
-proof fn kernel_context_switch_fields_implies_u_process_map(pre: &KernelK, post: &KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr, entry_regs: Registers, flushed_pcid: Option<Pcid>, include_lock_state: bool)
+proof fn kernel_context_switch_fields_implies_u_process_map(pre: &KernelK, post: &KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr, entry_regs: Registers, flushed_pcid: Option<Pcid>)
     requires
         process_pagetable_match(post.prc_mp, post.pt_mp),
         process_iommu_table_match(post.prc_mp, post.it_mp),
         kernel_context_switch_fields(pre, post, cpu_id, next_thread, entry_regs, flushed_pcid),
-    ensures kernel_k_user_projection(*post, include_lock_state).process_map == kernel_k_user_projection(*pre, include_lock_state).process_map,
+    ensures kernel_k_user_projection(*post).process_map == kernel_k_user_projection(*pre).process_map,
 {
     hide(kernel_k_user_projection);
-    reveal(kernel_context_switch_fields); reveal(kernel_process_nonlock_fields_unchanged); kernel_u_user_domains_projection(pre, include_lock_state); kernel_u_user_domains_projection(post, include_lock_state);
-    let pre_u = kernel_k_user_projection(*pre, include_lock_state);
-    let post_u = kernel_k_user_projection(*post, include_lock_state);
+    reveal(kernel_context_switch_fields); reveal(kernel_process_nonlock_fields_unchanged); kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    let pre_u = kernel_k_user_projection(*pre);
+    let post_u = kernel_k_user_projection(*post);
     assert_maps_equal!(post_u.process_map, pre_u.process_map, p => {
-        if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, include_lock_state, p); } if post.prc_mp.dom().contains(p) { kernel_process_user_projection_at(post, include_lock_state, p); }
+        if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_user_projection_at(post, p); }
         reveal(process_pagetable_match); reveal(process_iommu_table_match); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
     });
 }
 
 /// The context-switch fields project to the container map with only the cpu's own shard rotated.
-proof fn kernel_context_switch_fields_implies_u_container_map(pre: &KernelK, post: &KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr, entry_regs: Registers, flushed_pcid: Option<Pcid>, include_lock_state: bool)
+proof fn kernel_context_switch_fields_implies_u_container_map(pre: &KernelK, post: &KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr, entry_regs: Registers, flushed_pcid: Option<Pcid>)
     requires
         container_scheduler_wf(post.ctn_mp, post.sched_mp),
         kernel_context_switch_fields(pre, post, cpu_id, next_thread, entry_regs, flushed_pcid),
         forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)] pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).lock_process_owner_u() == pre.ctn_mp.spec_index(p).lock_process_owner_u(),
     ensures
         ({
-            let pre_u = kernel_k_user_projection(*pre, include_lock_state);
-            let post_u = kernel_k_user_projection(*post, include_lock_state);
+            let pre_u = kernel_k_user_projection(*pre);
+            let post_u = kernel_k_user_projection(*post);
             let cpu = pre_u.cpu_array[cpu_id as int];
             let container = pre_u.container_map.spec_index(cpu.owning_container);
             let run_queue = container.scheduler[cpu_id as int];
@@ -531,11 +487,11 @@ proof fn kernel_context_switch_fields_implies_u_container_map(pre: &KernelK, pos
         }),
 {
     hide(kernel_k_user_projection);
-    reveal(kernel_context_switch_fields); kernel_u_user_domains_projection(pre, include_lock_state); kernel_u_user_domains_projection(post, include_lock_state);
-    kernel_cpu_user_projection_at(pre, include_lock_state, cpu_id);
-    if pre.ctn_mp.dom().contains(pre.cpu_arr.spec_index(cpu_id).value.view().view().owning_container) { kernel_container_user_projection_at(pre, include_lock_state, pre.cpu_arr.spec_index(cpu_id).value.view().view().owning_container); }
-    let pre_u = kernel_k_user_projection(*pre, include_lock_state);
-    let post_u = kernel_k_user_projection(*post, include_lock_state);
+    reveal(kernel_context_switch_fields); kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    kernel_cpu_user_projection_at(pre, cpu_id);
+    if pre.ctn_mp.dom().contains(pre.cpu_arr.spec_index(cpu_id).value.view().view().owning_container) { kernel_container_user_projection_at(pre, pre.cpu_arr.spec_index(cpu_id).value.view().view().owning_container); }
+    let pre_u = kernel_k_user_projection(*pre);
+    let post_u = kernel_k_user_projection(*post);
     let cpu = pre_u.cpu_array[cpu_id as int];
     let container = pre_u.container_map.spec_index(cpu.owning_container);
     let run_queue = container.scheduler[cpu_id as int];
@@ -543,42 +499,42 @@ proof fn kernel_context_switch_fields_implies_u_container_map(pre: &KernelK, pos
         scheduler: container.scheduler.update(cpu_id as int, match cpu.current_thread { Some(prev) => run_queue.skip(1).push(prev), None => run_queue.skip(1) }),
         ..container
     };
-    assert(post_u.container_map[cpu.owning_container] == new_c) by { kernel_container_user_projection_at(post, include_lock_state, cpu.owning_container); reveal(container_scheduler_wf); };
+    assert(post_u.container_map[cpu.owning_container] == new_c) by { kernel_container_user_projection_at(post, cpu.owning_container); reveal(container_scheduler_wf); };
     assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(cpu.owning_container, new_c), c => {
         if pre.ctn_mp.dom().contains(c) && c != cpu.owning_container {
-            kernel_container_user_projection_at(pre, include_lock_state, c); kernel_container_user_projection_at(post, include_lock_state, c); reveal(container_scheduler_wf);
+            kernel_container_user_projection_at(pre, c); kernel_container_user_projection_at(post, c); reveal(container_scheduler_wf);
         }
     });
 }
 
 #[verifier::spinoff_prover]
-pub(super) proof fn kernel_rebalance_pull_fields_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId, victim: CpuId, thread: RwLockThreadPtr, include_lock_state: bool)
+pub(super) proof fn kernel_rebalance_pull_fields_implies_u_step(pre: &KernelK, post: &KernelK, cpu_id: CpuId, victim: CpuId, thread: RwLockThreadPtr)
     requires
         container_scheduler_wf(post.ctn_mp, post.sched_mp),
         kernel_rebalance_pull_fields(pre, post, cpu_id, victim, thread),
     ensures
-        kernel_u_rebalance_pull_changed(kernel_k_user_projection(*pre, include_lock_state), kernel_k_user_projection(*post, include_lock_state), cpu_id, victim, thread),
+        kernel_u_rebalance_pull_changed(kernel_k_user_projection(*pre), kernel_k_user_projection(*post), cpu_id, victim, thread),
 {
     hide(kernel_k_user_projection);
-    reveal(kernel_u_rebalance_pull_changed); kernel_u_user_domains_projection(pre, include_lock_state); kernel_u_user_domains_projection(post, include_lock_state);
-    let pre_u = kernel_k_user_projection(*pre, include_lock_state);
-    let post_u = kernel_k_user_projection(*post, include_lock_state);
+    reveal(kernel_u_rebalance_pull_changed); kernel_u_user_domains_projection(pre); kernel_u_user_domains_projection(post);
+    let pre_u = kernel_k_user_projection(*pre);
+    let post_u = kernel_k_user_projection(*post);
     assert(kernel_u_rebalance_pull_changed(pre_u, post_u, cpu_id, victim, thread)) by {
-        reveal(kernel_rebalance_pull_fields); kernel_cpu_user_projection_at(pre, include_lock_state, cpu_id); kernel_cpu_user_projection_at(pre, include_lock_state, victim);
-        if pre.ctn_mp.dom().contains(pre.cpu_arr.spec_index(cpu_id).value.view().view().owning_container) { kernel_container_user_projection_at(pre, include_lock_state, pre.cpu_arr.spec_index(cpu_id).value.view().view().owning_container); }
-        if pre.thr_mp.dom().contains(thread) { kernel_thread_user_projection_at(pre, include_lock_state, thread); }
+        reveal(kernel_rebalance_pull_fields); kernel_cpu_user_projection_at(pre, cpu_id); kernel_cpu_user_projection_at(pre, victim);
+        if pre.ctn_mp.dom().contains(pre.cpu_arr.spec_index(cpu_id).value.view().view().owning_container) { kernel_container_user_projection_at(pre, pre.cpu_arr.spec_index(cpu_id).value.view().view().owning_container); }
+        if pre.thr_mp.dom().contains(thread) { kernel_thread_user_projection_at(pre, thread); }
         let cpu = pre_u.cpu_array[cpu_id as int];
         let container = pre_u.container_map.spec_index(cpu.owning_container);
         let queues = container.scheduler;
-        assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_user_projection_at(pre, include_lock_state, i as usize); kernel_cpu_user_projection_at(post, include_lock_state, i as usize); } });
-        assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => { if pre.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(pre, include_lock_state, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(post, include_lock_state, e); } });
-        assert_maps_equal!(post_u.process_map, pre_u.process_map, p => { if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, include_lock_state, p); } if post.prc_mp.dom().contains(p) { kernel_process_user_projection_at(post, include_lock_state, p); } });
+        assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_user_projection_at(pre, i as usize); kernel_cpu_user_projection_at(post, i as usize); } });
+        assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => { if pre.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(pre, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(post, e); } });
+        assert_maps_equal!(post_u.process_map, pre_u.process_map, p => { if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_user_projection_at(post, p); } });
         assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(cpu.owning_container, ContainerU {
             scheduler: queues.update(victim as int, queues[victim as int].skip(1)).update(cpu_id as int, queues[cpu_id as int].push(thread)), ..container
-        }), c => { if pre.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(pre, include_lock_state, c); } if post.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(post, include_lock_state, c); } reveal(container_scheduler_wf); });
+        }), c => { if pre.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(pre, c); } if post.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(post, c); } reveal(container_scheduler_wf); });
         assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thread, ThreadU {
             state: ThreadState::SCHEDULED { cpu_id }, ..pre_u.thread_map.spec_index(thread)
-        }), t => { if pre.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, include_lock_state, t); } if post.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(post, include_lock_state, t); } });
+        }), t => { if pre.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, t); } if post.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(post, t); } });
     };
 }
 

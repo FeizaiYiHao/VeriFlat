@@ -96,7 +96,6 @@ fn mmap_4k_unlock_read_rejected(
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(steps).snapshot_k() == *final(krnl),
         final(steps).view() == old(steps).view(),
-        final(steps).nonlock_view() == old(steps).nonlock_view(),
 {
     proof {
         if old(steps).snapshot_k().pt_mp.spec_index(pagetable_ptr).locking_thread() is Read {
@@ -133,7 +132,6 @@ pub(super) fn mmap_4k_try_read_enter(
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(steps).view().len() == 0,
-        old(steps).nonlock_view().len() == 0,
         old(steps).snapshot_k().inv(),
         typed_lock_maps_aligned(&old(steps).snapshot_k(), &entry_lctx),
         kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
@@ -219,11 +217,9 @@ pub(super) fn mmap_4k_try_read_enter(
         ret.0 == mmap_4k_syscall_result(ret.1.view(), cpu_id, va, range),
         !(mmap_4k_syscall_result(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, va, range) is Success)
             && !(mmap_4k_syscall_result(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, va, range) is ErrorVaInUse) ==> ret.1.view() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
-        ret.0 is Success ==> range + 2 <= final(steps).nonlock_view().len() <= 4 * range + 3,
         ret.0 is Success ==> mmap_4k_syscall_trace(final(steps).view(), cpu_id, va, range, Mmap4kPhase::Read) && ret.1.view() == final(steps).view()[0].old_u
             || mmap_4k_syscall_trace(final(steps).view(), cpu_id, va, range, Mmap4kPhase::Fill) && ret.1.view() == final(steps).view()[1].old_u,
         ret.0 is Success ==> mmap_4k_syscall_success_mapped(final(krnl), cpu_id, va, range),
-        !(ret.0 is Success) ==> final(steps).nonlock_view().len() == 0,
         !(ret.0 is Success) ==> final(steps).view().len() == 0 || mmap_4k_syscall_failure_trace(final(steps).view(), cpu_id, va, range) && ret.1.view() == final(steps).view()[1].old_u,
 {
     proof { krnl.pt_mp.typed_lock_map_aligned_locked_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr); pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); }

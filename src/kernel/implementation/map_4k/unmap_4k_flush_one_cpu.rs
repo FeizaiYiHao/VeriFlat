@@ -87,7 +87,6 @@ pub(super) fn flush_pagetable_tlb_on_cpu(krnl: &mut KernelK, pagetable: RwLockPa
             &&& old_u.container_map[container_ptr].lock_state is WriteLocked
             &&& old_u.kernel_l4_end == entry_u.kernel_l4_end
         },
-        old(steps).nonlock_view().len() <= final(steps).nonlock_view().len() <= old(steps).nonlock_view().len() + 1,
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         typed_lock_maps_unchanged(old(lctx), final(lctx)),

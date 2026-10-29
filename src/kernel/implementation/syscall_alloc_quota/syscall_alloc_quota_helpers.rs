@@ -89,18 +89,9 @@ verus! {
             final(krnl).inv(),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             final(lctx).no_locks_held(),
-            final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
             final(steps).view() == if alloc_amount > 0 { old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(old(steps).snapshot_k()), new_u: kernel_k_to_kernel_u(*final(krnl)) }) } else { old(steps).view() },
             alloc_quota_4k_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, alloc_amount, RetValueType::Success),
-            final(steps).nonlock_view() == if alloc_amount > 0 {
-                old(steps).nonlock_view().push(KernelStep {
-                    old_u: old(steps).nonlock_snapshot_u(), new_u: kernel_k_to_nonlock_kernel_u(*final(krnl)),
-                })
-            } else { old(steps).nonlock_view() },
-            alloc_amount == 0 ==> final(steps).nonlock_view() == old(steps).nonlock_view(),
-            alloc_amount > 0 ==> alloc_quota_4k_step_pre(final(steps).nonlock_view().last().old_u, cpu_id, alloc_amount),
-            alloc_amount > 0 ==> alloc_quota_4k_step(final(steps).nonlock_view().last().old_u, final(steps).nonlock_view().last().new_u, cpu_id, alloc_amount),
     {
         proof {
             assert(
@@ -139,11 +130,8 @@ verus! {
                     broadcast use kernel_endpoint_nonlock_fields_unchanged_transitive;
                 };
                 steps.end_kernel_step_process_quota_4k_changed(&*krnl, &*lctx, cpu_id, process_ptr, container_ptr, alloc_amount as int);
-                assert(alloc_quota_4k_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, alloc_amount, RetValueType::Success)
-                    && alloc_quota_4k_step_pre(steps.nonlock_view().last().old_u, cpu_id, alloc_amount)
-                    && alloc_quota_4k_step(steps.nonlock_view().last().old_u, steps.nonlock_view().last().new_u, cpu_id, alloc_amount)) by {
+                assert(alloc_quota_4k_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, alloc_amount, RetValueType::Success)) by {
                     alloc_quota_4k_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, process_ptr, container_ptr, alloc_amount);
-                    alloc_quota_4k_step_from_u(steps.nonlock_view().last().old_u, steps.nonlock_view().last().new_u, cpu_id, process_ptr, container_ptr, alloc_amount);
                     alloc_quota_4k_trace_step(&*steps, quota_before, kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, alloc_amount);
                 };
             }
@@ -244,13 +232,9 @@ verus! {
             final(krnl).inv(),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             final(lctx).no_locks_held(),
-            final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
             final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(old(steps).snapshot_k()), new_u: kernel_k_to_kernel_u(*final(krnl)) }),
             alloc_thread_quota_4k_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, alloc_amount, RetValueType::Success),
-            final(steps).nonlock_view() == old(steps).nonlock_view().push(KernelStep { old_u: old(steps).nonlock_snapshot_u(), new_u: kernel_k_to_nonlock_kernel_u(*final(krnl)) }),
-            alloc_thread_quota_4k_step_pre(final(steps).nonlock_view().last().old_u, cpu_id, alloc_amount),
-            alloc_thread_quota_4k_step(final(steps).nonlock_view().last().old_u, final(steps).nonlock_view().last().new_u, cpu_id, alloc_amount),
     {
         proof {
             assert(
@@ -281,11 +265,8 @@ verus! {
                 reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
             };
             steps.end_kernel_step_process2thread_quota_4k_changed(&*krnl, &*lctx, cpu_id, process_ptr, thread_ptr, alloc_amount as int);
-            assert(alloc_thread_quota_4k_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, alloc_amount, RetValueType::Success)
-                && alloc_thread_quota_4k_step_pre(steps.nonlock_view().last().old_u, cpu_id, alloc_amount)
-                && alloc_thread_quota_4k_step(steps.nonlock_view().last().old_u, steps.nonlock_view().last().new_u, cpu_id, alloc_amount)) by {
+            assert(alloc_thread_quota_4k_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, alloc_amount, RetValueType::Success)) by {
                 alloc_thread_quota_4k_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, process_ptr, thread_ptr, alloc_amount);
-                alloc_thread_quota_4k_step_from_u(steps.nonlock_view().last().old_u, steps.nonlock_view().last().new_u, cpu_id, process_ptr, thread_ptr, alloc_amount);
                 alloc_thread_quota_4k_trace_step(&*steps, quota_before, kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, alloc_amount);
             };
         }
@@ -376,18 +357,9 @@ verus! {
             final(krnl).inv(),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             final(lctx).no_locks_held(),
-            final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
             final(steps).view() == if alloc_amount > 0 { old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(old(steps).snapshot_k()), new_u: kernel_k_to_kernel_u(*final(krnl)) }) } else { old(steps).view() },
             alloc_quota_2m_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, alloc_amount, RetValueType::Success),
-            final(steps).nonlock_view() == if alloc_amount > 0 {
-                old(steps).nonlock_view().push(KernelStep {
-                    old_u: old(steps).nonlock_snapshot_u(), new_u: kernel_k_to_nonlock_kernel_u(*final(krnl)),
-                })
-            } else { old(steps).nonlock_view() },
-            alloc_amount == 0 ==> final(steps).nonlock_view() == old(steps).nonlock_view(),
-            alloc_amount > 0 ==> alloc_quota_2m_step_pre(final(steps).nonlock_view().last().old_u, cpu_id, alloc_amount),
-            alloc_amount > 0 ==> alloc_quota_2m_step(final(steps).nonlock_view().last().old_u, final(steps).nonlock_view().last().new_u, cpu_id, alloc_amount),
     {
         proof {
             assert(krnl.prc_mp.perms_wf() && krnl.allc_2m_mp.perms_wf() && krnl.prc_mp.spec_index(process_ptr).is_init()) by {
@@ -424,11 +396,8 @@ verus! {
                     broadcast use kernel_endpoint_nonlock_fields_unchanged_transitive;
                 };
                 steps.end_kernel_step_process_quota_2m_changed(&*krnl, &*lctx, cpu_id, process_ptr, container_ptr, alloc_amount as int);
-                assert(alloc_quota_2m_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, alloc_amount, RetValueType::Success)
-                    && alloc_quota_2m_step_pre(steps.nonlock_view().last().old_u, cpu_id, alloc_amount)
-                    && alloc_quota_2m_step(steps.nonlock_view().last().old_u, steps.nonlock_view().last().new_u, cpu_id, alloc_amount)) by {
+                assert(alloc_quota_2m_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, alloc_amount, RetValueType::Success)) by {
                     alloc_quota_2m_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, process_ptr, container_ptr, alloc_amount);
-                    alloc_quota_2m_step_from_u(steps.nonlock_view().last().old_u, steps.nonlock_view().last().new_u, cpu_id, process_ptr, container_ptr, alloc_amount);
                     alloc_quota_2m_trace_step(&*steps, quota_before, kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, alloc_amount);
                 };
             }
@@ -529,13 +498,9 @@ verus! {
             final(krnl).inv(),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             final(lctx).no_locks_held(),
-            final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
             final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(old(steps).snapshot_k()), new_u: kernel_k_to_kernel_u(*final(krnl)) }),
             alloc_thread_quota_2m_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, alloc_amount, RetValueType::Success),
-            final(steps).nonlock_view() == old(steps).nonlock_view().push(KernelStep { old_u: old(steps).nonlock_snapshot_u(), new_u: kernel_k_to_nonlock_kernel_u(*final(krnl)) }),
-            alloc_thread_quota_2m_step_pre(final(steps).nonlock_view().last().old_u, cpu_id, alloc_amount),
-            alloc_thread_quota_2m_step(final(steps).nonlock_view().last().old_u, final(steps).nonlock_view().last().new_u, cpu_id, alloc_amount),
     {
         proof {
             assert(
@@ -566,11 +531,8 @@ verus! {
                 reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
             };
             steps.end_kernel_step_process2thread_quota_2m_changed(&*krnl, &*lctx, cpu_id, process_ptr, thread_ptr, alloc_amount as int);
-            assert(alloc_thread_quota_2m_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, alloc_amount, RetValueType::Success)
-                && alloc_thread_quota_2m_step_pre(steps.nonlock_view().last().old_u, cpu_id, alloc_amount)
-                && alloc_thread_quota_2m_step(steps.nonlock_view().last().old_u, steps.nonlock_view().last().new_u, cpu_id, alloc_amount)) by {
+            assert(alloc_thread_quota_2m_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, alloc_amount, RetValueType::Success)) by {
                 alloc_thread_quota_2m_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, process_ptr, thread_ptr, alloc_amount);
-                alloc_thread_quota_2m_step_from_u(steps.nonlock_view().last().old_u, steps.nonlock_view().last().new_u, cpu_id, process_ptr, thread_ptr, alloc_amount);
                 alloc_thread_quota_2m_trace_step(&*steps, quota_before, kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, alloc_amount);
             };
         }

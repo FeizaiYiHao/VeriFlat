@@ -99,7 +99,6 @@ pub(super) fn thread_exit_finish(
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(steps).snapshot_k() == *final(krnl),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         thread_exit_syscall_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, kernel_k_to_kernel_u(*final(krnl)), cpu_id, true),

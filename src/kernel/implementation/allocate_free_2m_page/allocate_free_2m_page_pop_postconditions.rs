@@ -21,7 +21,6 @@ pub(super) proof fn pop_stage_2m_page_eof_postconditions(pre: KernelK, post: Ker
         post == (KernelK { pg_arr: post.pg_arr, thr_mp: post.thr_mp, allc_2m_mp: post.allc_2m_mp, ..pre }),
         post.pg_arr.entries_unchanged_except(&pre.pg_arr, page_ptr2page_index(page)),
         held_pages_unchanged_except(pre.pg_arr, post.pg_arr, &pre_lctx, set![page_ptr2page_index(page)]),
-        kernel_k_to_nonlock_kernel_u(post) == kernel_k_to_nonlock_kernel_u(pre),
         kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post),
         kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
@@ -46,6 +45,5 @@ pub(super) proof fn pop_stage_2m_page_eof_postconditions(pre: KernelK, post: Ker
     };
     kernel_endpoint_nonlock_fields_unchanged_for_equal(pre.ep_mp, post.ep_mp);
     assert(kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(container_allocator_wf); };
-    kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(&pre, &post);
 }
 }

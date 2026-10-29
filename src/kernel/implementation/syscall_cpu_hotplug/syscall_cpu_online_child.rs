@@ -17,12 +17,10 @@ pub fn syscall_cpu_online_child(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut 
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
-        old(steps).nonlock_view().len() == 0,
         old(steps).snapshot_k() == *old(krnl),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
@@ -31,15 +29,6 @@ pub fn syscall_cpu_online_child(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut 
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).no_locks_held(),
         ret == cpu_online_child_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, child, target),
-        !(ret is Success) ==> final(steps).nonlock_view().len() == 0,
-        ret is Success ==> {
-            let step = final(steps).nonlock_view()[0];
-            &&& final(steps).nonlock_view().len() == 1
-            &&& step.old_u == kernel_k_to_nonlock_kernel_u(*old(krnl))
-            &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
-            &&& cpu_online_child_step_pre(step.old_u, cpu_id, target)
-            &&& cpu_online_child_step(step.old_u, step.new_u, cpu_id, target)
-        },
 {
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
     if target >= NUM_CPUS {

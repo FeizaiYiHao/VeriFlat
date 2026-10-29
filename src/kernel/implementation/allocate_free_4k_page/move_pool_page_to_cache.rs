@@ -49,7 +49,6 @@ pub fn move_pool_page_to_cache(krnl: &mut KernelK, allocator: RwLockPageAllocato
         kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
-        kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
 {
     let page_index = page_ptr2page_index(page_ptr);
     assert(index_valid(NUM_PAGES, page_index) && krnl.pg_arr.inv() && krnl.pg_arr.spec_index(page_index).view().inv() && krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.spec_index(allocator).wf()) by {
@@ -76,7 +75,6 @@ pub fn move_pool_page_to_cache(krnl: &mut KernelK, allocator: RwLockPageAllocato
         lctx.enter_kernel_view_release();
         assert(move_pool_page_to_cache_eof_transition_framing(*old(krnl), *krnl, allocator, cpu_id, page_ptr, node_addr)) by { reveal(move_pool_page_to_cache_eof_transition_framing); };
         move_pool_page_to_cache_eof(*old(krnl), *krnl, allocator, cpu_id, page_ptr, node_addr);
-        assert(kernel_k_to_nonlock_kernel_u(*krnl) == kernel_k_to_nonlock_kernel_u(*old(krnl))) by { kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(old(krnl), krnl); };
     }
 }
 }

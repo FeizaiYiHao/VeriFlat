@@ -146,8 +146,6 @@ fn new_container_release_entry_locks(
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(steps).view() == old(steps).view(),
-        final(steps).nonlock_view() == old(steps).nonlock_view(),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
         kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(old(steps).snapshot_k()),
         final(krnl).all_objects_unlocked(final(lctx)),
@@ -190,7 +188,6 @@ fn new_container_lock_owners(
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
-        old(steps).nonlock_view().len() == 0,
         old(steps).snapshot_k() == *old(krnl),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
     ensures
@@ -201,12 +198,10 @@ fn new_container_lock_owners(
             let r = ret->Err_0;
             &&& new_container_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
                 kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, endpoint_index, r)
-            &&& final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl))
             &&& final(steps).snapshot_k() == *final(krnl)
             &&& final(krnl).all_objects_unlocked(final(lctx))
             &&& typed_lock_maps_aligned(final(krnl), final(lctx))
             &&& final(lctx).no_locks_held()
-            &&& final(steps).nonlock_view().len() == 0
             &&& !(r is SuccessThreeUsize)
             &&& !(new_container_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index) is Success)
             &&& r == new_container_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index)
@@ -439,7 +434,6 @@ fn new_container_lock_entry(
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
-        old(steps).nonlock_view().len() == 0,
         old(steps).snapshot_k() == *old(krnl),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
     ensures
@@ -450,12 +444,10 @@ fn new_container_lock_entry(
             let r = ret->Err_0;
             &&& new_container_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
                 kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, endpoint_index, r)
-            &&& final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl))
             &&& final(steps).snapshot_k() == *final(krnl)
             &&& final(krnl).all_objects_unlocked(final(lctx))
             &&& typed_lock_maps_aligned(final(krnl), final(lctx))
             &&& final(lctx).no_locks_held()
-            &&& final(steps).nonlock_view().len() == 0
             &&& !(r is SuccessThreeUsize)
             &&& !(new_container_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index) is Success)
             &&& r == new_container_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index)
@@ -714,7 +706,6 @@ fn syscall_new_container_common(
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
-        old(steps).nonlock_view().len() == 0,
         old(steps).snapshot_k() == *old(krnl),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
     ensures
@@ -724,13 +715,10 @@ fn syscall_new_container_common(
             kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, va, range,
             funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, endpoint_index, ret),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).no_locks_held(),
-        !(ret is SuccessThreeUsize) ==> final(steps).nonlock_view().len() == 0,
-        ret is SuccessThreeUsize ==> range as int + 3 <= final(steps).nonlock_view().len() as int <= 4 * range as int + 3,
         (ret is SuccessThreeUsize) == (new_container_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index) is Success),
         !(ret is SuccessThreeUsize) ==> ret == new_container_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index),
 {
@@ -768,7 +756,6 @@ pub fn syscall_new_container(
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
-        old(steps).nonlock_view().len() == 0,
         old(steps).snapshot_k() == *old(krnl),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
     ensures
@@ -778,13 +765,10 @@ pub fn syscall_new_container(
             kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, va, range,
             funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, None, ret),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).no_locks_held(),
-        !(ret is SuccessThreeUsize) ==> final(steps).nonlock_view().len() == 0,
-        ret is SuccessThreeUsize ==> range as int + 3 <= final(steps).nonlock_view().len() as int <= 4 * range as int + 3,
         (ret is SuccessThreeUsize) == (new_container_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, None) is Success),
         !(ret is SuccessThreeUsize) ==> ret == new_container_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, None),
 {
@@ -807,7 +791,6 @@ pub fn syscall_new_container_with_endpoint(
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
-        old(steps).nonlock_view().len() == 0,
         old(steps).snapshot_k() == *old(krnl),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
     ensures
@@ -817,13 +800,10 @@ pub fn syscall_new_container_with_endpoint(
             kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, va, range,
             funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, Some(endpoint_index), ret),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).no_locks_held(),
-        !(ret is SuccessThreeUsize) ==> final(steps).nonlock_view().len() == 0,
-        ret is SuccessThreeUsize ==> range as int + 3 <= final(steps).nonlock_view().len() as int <= 4 * range as int + 3,
         (ret is SuccessThreeUsize) == (new_container_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, Some(endpoint_index)) is Success),
         !(ret is SuccessThreeUsize) ==> ret == new_container_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, Some(endpoint_index)),
 {

@@ -41,8 +41,8 @@ pub proof fn kernel_process_locked_and_marked_implies_u_step(before: &KernelK, a
     });
 }
 
-/// Write-locking and marking the unmarked thread `thread_ptr` changes only its lock mode and kill mark, and changes both
-/// projections.
+/// Write-locking and marking the unmarked thread `thread_ptr` changes only its lock mode and kill mark, and changes the
+/// projection.
 pub proof fn kernel_thread_locked_and_marked_implies_u_step(before: &KernelK, after: &KernelK, thread_ptr: RwLockThreadPtr)
     requires
         *after == (KernelK { thr_mp: after.thr_mp, ..*before }),
@@ -61,13 +61,11 @@ pub proof fn kernel_thread_locked_and_marked_implies_u_step(before: &KernelK, af
             })
         }),
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
-        kernel_k_to_nonlock_kernel_u(*before) != kernel_k_to_nonlock_kernel_u(*after),
 {
     kernel_u_domains_projection(before); kernel_u_domains_projection(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     kernel_thread_projection_at(before, thread_ptr); kernel_thread_projection_at(after, thread_ptr);
-    kernel_thread_nonlock_projection_at(before, thread_ptr); kernel_thread_nonlock_projection_at(after, thread_ptr);
     assert_maps_equal!(post.thread_map, pre.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, killed: true, ..pre.thread_map[thread_ptr] }), t => {
         if before.thr_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); }
     });
@@ -85,7 +83,7 @@ pub proof fn kernel_thread_locked_and_marked_implies_u_step(before: &KernelK, af
 
 /// The thread `thread_ptr` leaving the process `process_ptr`, which absorbs its quota, changes only that process's
 /// threads and quota and that thread's state and quota, whatever proof-only state other threads carry; a changed state changes
-/// both projections.
+/// the projection.
 pub proof fn kernel_thread_left_process_implies_u_step(before: &KernelK, after: &KernelK, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr)
     requires
         *after == (KernelK { prc_mp: after.prc_mp, thr_mp: after.thr_mp, ..*before }),
@@ -133,14 +131,12 @@ pub proof fn kernel_thread_left_process_implies_u_step(before: &KernelK, after: 
         }),
         after.thr_mp.spec_index(thread_ptr).view().state != before.thr_mp.spec_index(thread_ptr).view().state ==> {
             &&& kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after)
-            &&& kernel_k_to_nonlock_kernel_u(*before) != kernel_k_to_nonlock_kernel_u(*after)
         },
 {
     kernel_u_domains_projection(before); kernel_u_domains_projection(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     kernel_process_projection_at(before, process_ptr); kernel_thread_projection_at(before, thread_ptr); kernel_thread_projection_at(after, thread_ptr);
-    kernel_thread_nonlock_projection_at(before, thread_ptr); kernel_thread_nonlock_projection_at(after, thread_ptr);
     let process = pre.process_map[process_ptr];
     let thread = pre.thread_map[thread_ptr];
     assert_maps_equal!(post.process_map, pre.process_map.insert(process_ptr, ProcessU {
@@ -162,7 +158,7 @@ pub proof fn kernel_thread_left_process_implies_u_step(before: &KernelK, after: 
 }
 
 /// The scheduled thread `thread_ptr` leaving shard `shard` of its container's scheduler `scheduler_ptr` and becoming
-/// killed changes only that shard and the thread's state and error code, and changes both projections.
+/// killed changes only that shard and the thread's state and error code, and changes the projection.
 pub proof fn kernel_scheduled_thread_killed_implies_u_step(
     before: &KernelK, after: &KernelK, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr, shard: CpuId,
 )
@@ -197,13 +193,11 @@ pub proof fn kernel_scheduled_thread_killed_implies_u_step(
             })
         }),
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
-        kernel_k_to_nonlock_kernel_u(*before) != kernel_k_to_nonlock_kernel_u(*after),
 {
     kernel_u_domains_projection(before); kernel_u_domains_projection(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     kernel_container_projection_at(before, container_ptr); kernel_thread_projection_at(before, thread_ptr); kernel_thread_projection_at(after, thread_ptr);
-    kernel_thread_nonlock_projection_at(before, thread_ptr); kernel_thread_nonlock_projection_at(after, thread_ptr);
     let container = pre.container_map[container_ptr];
     assert_maps_equal!(post.container_map, pre.container_map.insert(container_ptr, ContainerU {
         scheduler: container.scheduler.update(shard as int, container.scheduler[shard as int].remove_value(thread_ptr)), ..container
@@ -226,7 +220,7 @@ pub proof fn kernel_scheduled_thread_killed_implies_u_step(
 }
 
 /// The thread `thread_ptr` leaving the queue of the endpoint `endpoint_ptr` it waits on and becoming killed changes only
-/// that queue and the thread's state and blocking endpoint, and changes both projections.
+/// that queue and the thread's state and blocking endpoint, and changes the projection.
 pub proof fn kernel_endpoint_waiter_killed_implies_u_step(before: &KernelK, after: &KernelK, thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr)
     requires
         *after == (KernelK { ep_mp: after.ep_mp, thr_mp: after.thr_mp, ..*before }),
@@ -259,13 +253,11 @@ pub proof fn kernel_endpoint_waiter_killed_implies_u_step(before: &KernelK, afte
             })
         }),
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
-        kernel_k_to_nonlock_kernel_u(*before) != kernel_k_to_nonlock_kernel_u(*after),
 {
     kernel_u_domains_projection(before); kernel_u_domains_projection(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     kernel_endpoint_projection_at(before, endpoint_ptr); kernel_thread_projection_at(before, thread_ptr); kernel_thread_projection_at(after, thread_ptr);
-    kernel_thread_nonlock_projection_at(before, thread_ptr); kernel_thread_nonlock_projection_at(after, thread_ptr);
     assert_maps_equal!(post.endpoint_map, pre.endpoint_map.insert(endpoint_ptr, EndpointU { queue: pre.endpoint_map[endpoint_ptr].queue.remove_value(thread_ptr), ..pre.endpoint_map[endpoint_ptr] }), e => {
         if before.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(before, e); kernel_endpoint_projection_at(after, e); }
     });
@@ -282,7 +274,7 @@ pub proof fn kernel_endpoint_waiter_killed_implies_u_step(before: &KernelK, afte
 }
 
 /// Forcing the remote cpu `remote` running the thread `thread_ptr` from running to idle leaves it without a process or
-/// thread and kills the thread, and changes both projections.
+/// thread and kills the thread, and changes the projection.
 pub proof fn kernel_running_thread_cpu_to_idle_implies_u_step(before: &KernelK, after: &KernelK, thread_ptr: RwLockThreadPtr, remote: CpuId)
     requires
         index_valid(NUM_CPUS, remote),
@@ -313,13 +305,11 @@ pub proof fn kernel_running_thread_cpu_to_idle_implies_u_step(before: &KernelK, 
             })
         }),
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
-        kernel_k_to_nonlock_kernel_u(*before) != kernel_k_to_nonlock_kernel_u(*after),
 {
     kernel_u_domains_projection(before); kernel_u_domains_projection(after);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     kernel_thread_projection_at(before, thread_ptr); kernel_thread_projection_at(after, thread_ptr);
-    kernel_thread_nonlock_projection_at(before, thread_ptr); kernel_thread_nonlock_projection_at(after, thread_ptr);
     assert_seqs_equal!(post.cpu_array == pre.cpu_array.update(remote as int, CpuU { state: CpuState::Idle, op: CpuOpState::Idle, current_process: None, current_thread: None, ..pre.cpu_array[remote as int] }), i => {
         if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(before, i as usize); kernel_cpu_projection_at(after, i as usize); }
     });

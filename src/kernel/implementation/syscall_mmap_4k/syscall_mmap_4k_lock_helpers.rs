@@ -75,7 +75,6 @@ pub(super) fn mmap_4k_lock_current_thread(
             &&& final(lctx).no_locks_held()
             &&& final(krnl).all_objects_unlocked(final(lctx))
             &&& final(steps).view() == old(steps).view()
-            &&& final(steps).nonlock_view() == old(steps).nonlock_view()
             &&& final(steps).snapshot_k() == *final(krnl)
             &&& RetValueType::ErrorThreadKilled == mmap_4k_syscall_result(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, va, range)
         },
@@ -273,7 +272,6 @@ fn mmap_4k_unlock_and_finish(
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(steps).view() == old(steps).view(),
-        final(steps).nonlock_view() == old(steps).nonlock_view(),
         final(steps).snapshot_k() == *final(krnl),
 {
     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
@@ -299,7 +297,6 @@ pub(super) fn mmap_4k_attempt(
         old(lctx).no_locks_held(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(steps).view().len() == 0,
-        old(steps).nonlock_view().len() == 0,
         old(steps).snapshot_k() == *old(krnl),
         !(range == 0 || range > usize::MAX / 4096 || !spec_va_4k_valid(va) || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range)),
         *va_range == mmap_4k_syscall_va_range(va, range),
@@ -317,11 +314,9 @@ pub(super) fn mmap_4k_attempt(
         ret.0 == mmap_4k_syscall_result(ret.1.view(), cpu_id, va, range),
         !(mmap_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range) is Success)
             && !(mmap_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range) is ErrorVaInUse) ==> ret.1.view() == kernel_k_to_kernel_u(*old(krnl)),
-        ret.0 is Success ==> range + 2 <= final(steps).nonlock_view().len() <= 4 * range + 3,
         ret.0 is Success ==> mmap_4k_syscall_trace(final(steps).view(), cpu_id, va, range, Mmap4kPhase::Read) && ret.1.view() == final(steps).view()[0].old_u
             || mmap_4k_syscall_trace(final(steps).view(), cpu_id, va, range, Mmap4kPhase::Fill) && ret.1.view() == final(steps).view()[1].old_u,
         ret.0 is Success ==> mmap_4k_syscall_success_mapped(final(krnl), cpu_id, va, range),
-        !(ret.0 is Success) ==> final(steps).nonlock_view().len() == 0,
         !(ret.0 is Success) ==> final(steps).view().len() == 0 || mmap_4k_syscall_failure_trace(final(steps).view(), cpu_id, va, range) && ret.1.view() == final(steps).view()[1].old_u,
 {
     let ghost entry_lctx = *lctx;

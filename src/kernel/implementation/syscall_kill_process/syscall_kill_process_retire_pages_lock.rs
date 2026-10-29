@@ -140,7 +140,6 @@ pub(crate) fn wlock_kill_retire_pages<const N: usize>(
         kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
-        kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
         forall|i: PageIndex| #![trigger final(krnl).pg_arr.spec_index(i)] index_valid(NUM_PAGES, i) && !sorted.view().to_set().contains(i) ==> final(krnl).pg_arr.spec_index(i) == old(krnl).pg_arr.spec_index(i),
         forall|i: PageIndex| #![trigger final(krnl).pg_arr.spec_index(i).view()] index_valid(NUM_PAGES, i) ==> {
             &&& final(krnl).pg_arr.spec_index(i).view().view() == old(krnl).pg_arr.spec_index(i).view().view()
@@ -287,7 +286,6 @@ pub(crate) fn wlock_kill_retire_pages<const N: usize>(
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
         assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use kernel_endpoint_nonlock_fields_unchanged_for_equal; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-        assert(kernel_k_to_nonlock_kernel_u(*krnl) == kernel_k_to_nonlock_kernel_u(*old(krnl))) by { kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(old(krnl), krnl); };
     }
     Tracked(perms)
 }
@@ -320,7 +318,6 @@ pub(crate) fn wunlock_kill_retire_pages(krnl: &mut KernelK, pages: &ArrayVec<Pag
         kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
-        kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
         forall|i: PageIndex| #![trigger final(krnl).pg_arr.spec_index(i)] #![trigger old(krnl).pg_arr.spec_index(i)] index_valid(NUM_PAGES, i) && !pages.view().to_set().contains(i) ==> final(krnl).pg_arr.spec_index(i) == old(krnl).pg_arr.spec_index(i),
         forall|i: PageIndex| #![trigger final(krnl).pg_arr.spec_index(i).view()] index_valid(NUM_PAGES, i) ==> {
             &&& final(krnl).pg_arr.spec_index(i).view().view() == old(krnl).pg_arr.spec_index(i).view().view()
@@ -413,7 +410,6 @@ pub(crate) fn wunlock_kill_retire_pages(krnl: &mut KernelK, pages: &ArrayVec<Pag
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
         assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use kernel_endpoint_nonlock_fields_unchanged_for_equal; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-        assert(kernel_k_to_nonlock_kernel_u(*krnl) == kernel_k_to_nonlock_kernel_u(*old(krnl))) by { kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(old(krnl), krnl); };
     }
 }
 

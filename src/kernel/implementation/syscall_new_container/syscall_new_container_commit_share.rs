@@ -189,10 +189,7 @@ pub(super) fn commit_new_container_share_and_finish(
         final(lctx).no_locks_held(),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
-        old(steps).nonlock_view().len() as int + source_range.len as int + 1 <= final(steps).nonlock_view().len() as int,
-        final(steps).nonlock_view().len() as int <= old(steps).nonlock_view().len() as int + 4 * source_range.len as int + 1,
 {
     let tracked parent_container_lock_perm = parent_container_lock_perm.get();
     let tracked child_container_lock_perm = child_container_lock_perm.get();

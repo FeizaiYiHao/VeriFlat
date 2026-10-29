@@ -25,7 +25,6 @@ pub fn syscall_kill_container(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        old(steps).nonlock_view().len() == 0,
         old(steps).snapshot_k() == *old(krnl),
     ensures
         final(krnl).inv(),
@@ -35,14 +34,12 @@ pub fn syscall_kill_container(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
         final(lctx).no_locks_held(),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         ret == kill_container_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, child_index),
         kill_container_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(*old(krnl)),
             kernel_k_to_kernel_u(*final(krnl)), cpu_id, child_index, ret is Success),
-        !(ret is Success) ==> final(steps).nonlock_view().len() == 0 && kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
 {
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
     let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);

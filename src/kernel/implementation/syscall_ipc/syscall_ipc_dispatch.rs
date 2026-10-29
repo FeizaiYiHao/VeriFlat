@@ -57,7 +57,6 @@ verus! {
             old(krnl).inv(),
             old(steps).snapshot_k().inv(),
             old(lctx).kernel_view_locking_state() is Acquire,
-            old(steps).nonlock_view().len() == 0,
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_op: old(krnl).cpu_op, thr_mp: old(krnl).thr_mp, ..old(steps).snapshot_k() }),
             old(krnl).cpu_arr.entries_unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
@@ -131,8 +130,6 @@ verus! {
                 &&& final(lctx).no_locks_held()
                 &&& final(krnl).all_objects_unlocked(final(lctx))
                 &&& typed_lock_maps_aligned(final(krnl), final(lctx))
-                &&& final(steps).nonlock_view().len() == 0
-                &&& final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl))
                 &&& final(steps).snapshot_k() == *final(krnl)
                 &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running
                 &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view().current_thread
@@ -356,7 +353,6 @@ verus! {
             old(lctx).kernel_view_locking_state() is Acquire,
             old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
             old(lctx).no_locks_held(),
-            old(steps).nonlock_view().len() == 0,
             old(steps).snapshot_k() == *old(krnl),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
         ensures
@@ -381,8 +377,6 @@ verus! {
                 &&& final(lctx).no_locks_held()
                 &&& final(krnl).all_objects_unlocked(final(lctx))
                 &&& typed_lock_maps_aligned(final(krnl), final(lctx))
-                &&& final(steps).nonlock_view().len() == 0
-                &&& final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl))
                 &&& final(steps).snapshot_k() == *final(krnl)
                 &&& !(r is CpuIdle) ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running
                 &&& !(r is CpuIdle) ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread
@@ -645,7 +639,6 @@ verus! {
             old(krnl).inv(),
             old(lctx).kernel_view_locking_state() is Acquire,
             old(lctx).no_locks_held(),
-            old(steps).nonlock_view().len() == 0,
             old(steps).snapshot_k() == *old(krnl),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
         ensures
@@ -661,7 +654,6 @@ verus! {
             final(krnl).inv(),
             final(lctx).kernel_view_locking_state() is Release,
             final(lctx).no_locks_held(),
-            final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
             (payload is Empty || payload is Cpu || payload is ReceiveCpu || payload is Pci) ==> ipc_ordinary_syscall_trace(
                 final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()),
@@ -692,39 +684,13 @@ verus! {
                 && final(krnl).cpu_arr.spec_index(payload->Cpu_cpu_id).view().view().view().owning_container != old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
             ret is SuccessUsize ==> final(krnl).cpu_arr.spec_index(ret->SuccessUsize_value).view().view().view().state is Off
                 && final(krnl).cpu_arr.spec_index(ret->SuccessUsize_value).view().view().view().owning_container == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
-            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running && !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() ==> final(steps).nonlock_view().len() == 1,
             ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running && !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() ==> {
                 &&& final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(*old(krnl)), new_u: kernel_k_to_kernel_u(*final(krnl)) })
                 &&& ipc_block_step_pre(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, waiting_state)
                 &&& ipc_block_step(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index,
                     waiting_state, payload, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id))
             },
-            ret is Success ==> match payload {
-                IPCPayLoad::Pages { va_range } => va_range.len + 5 <= final(steps).nonlock_view().len() <= 4 * va_range.len + 5,
-                IPCPayLoad::Endpoint { .. } => final(steps).nonlock_view().len() == 2,
-                _ => final(steps).nonlock_view().len() == 1,
-            },
-            ret is SuccessUsize ==> payload is ReceiveCpu && index_valid(NUM_CPUS, ret->SuccessUsize_value) && final(steps).nonlock_view().len() == 1,
-            !(payload is Pages) && !(ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running && !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed()) && !(ret is Success) && !(ret is SuccessUsize) ==> final(steps).nonlock_view().len() <= 2,
-            payload is Empty || payload is Cpu || payload is ReceiveCpu || payload is Pci ==> final(steps).nonlock_view().len() <= 1,
-            ret is CpuIdle && old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running && !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() ==> {
-                let step = final(steps).nonlock_view()[0];
-                &&& final(steps).nonlock_view().len() == 1
-                &&& step.old_u == kernel_k_to_nonlock_kernel_u(old(steps).snapshot_k())
-                &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
-                &&& ipc_block_step_pre(step.old_u, cpu_id, endpoint_index, waiting_state)
-                &&& ipc_block_step(step.old_u, step.new_u, cpu_id, endpoint_index, waiting_state, payload, *old(pt_regs), ipc_block_flushes_default_pcid(*old(krnl), cpu_id))
-            },
-            (payload is Empty || payload is Cpu || payload is ReceiveCpu || payload is Pci) && ipc_rendezvous_ret(ret) ==> {
-                let step = final(steps).nonlock_view()[0];
-                &&& final(steps).nonlock_view().len() == 1
-                &&& step.old_u == kernel_k_to_nonlock_kernel_u(old(steps).snapshot_k())
-                &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
-                &&& ret == ipc_rendezvous_result(step.old_u, cpu_id, endpoint_index, waiting_state, payload)
-                &&& ipc_rendezvous_step_pre(step.old_u, cpu_id, endpoint_index, waiting_state, payload)
-                &&& ipc_rendezvous_step(step.old_u, step.new_u, cpu_id, endpoint_index, waiting_state, payload)
-            },
-            payload is Pages && !(ret is Success) ==> final(steps).nonlock_view().len() <= 4,
+            ret is SuccessUsize ==> payload is ReceiveCpu && index_valid(NUM_CPUS, ret->SuccessUsize_value),
             payload is Empty ==> (ret is Success || ret is CpuIdle || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch || ret is ErrorIpcNoPeer || ret is ErrorIpcSameDirection),
             payload is Pages ==> (ret is Success || ret is CpuIdle || ret is Error || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled
                 || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameProcess || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse),
@@ -864,7 +830,6 @@ verus! {
             old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
             old(lctx).pcid_needflush_lock_map().dom().is_empty(),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
-            old(steps).nonlock_view().len() == 0,
             waiting_state is SENDING || waiting_state is RECEIVING,
             waiting_is_send == (waiting_state is SENDING),
             old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.len() > 0,
@@ -924,24 +889,7 @@ verus! {
                 && final(krnl).cpu_arr.spec_index(payload->Cpu_cpu_id).view().view().view().owning_container != old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
             ret is SuccessUsize ==> final(krnl).cpu_arr.spec_index(ret->SuccessUsize_value).view().view().view().state is Off
                 && final(krnl).cpu_arr.spec_index(ret->SuccessUsize_value).view().view().view().owning_container == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
-            ret is Success ==> match payload {
-                IPCPayLoad::Pages { va_range } => va_range.len + 5 <= final(steps).nonlock_view().len() <= 4 * va_range.len + 5,
-                IPCPayLoad::Endpoint { .. } => final(steps).nonlock_view().len() == 2,
-                _ => final(steps).nonlock_view().len() == 1,
-            },
-            ret is SuccessUsize ==> payload is ReceiveCpu && index_valid(NUM_CPUS, ret->SuccessUsize_value) && final(steps).nonlock_view().len() == 1,
-            !(payload is Pages) && !(ret is Success) && !(ret is SuccessUsize) ==> final(steps).nonlock_view().len() <= 2,
-            payload is Empty || payload is Cpu || payload is ReceiveCpu || payload is Pci ==> final(steps).nonlock_view().len() <= 1,
-            (payload is Empty || payload is Cpu || payload is ReceiveCpu || payload is Pci) && ipc_rendezvous_ret(ret) ==> {
-                let step = final(steps).nonlock_view()[0];
-                &&& final(steps).nonlock_view().len() == 1
-                &&& step.old_u == kernel_k_to_nonlock_kernel_u(old(steps).snapshot_k())
-                &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
-                &&& ret == ipc_rendezvous_result(step.old_u, cpu_id, endpoint_index, waiting_state, payload)
-                &&& ipc_rendezvous_step_pre(step.old_u, cpu_id, endpoint_index, waiting_state, payload)
-                &&& ipc_rendezvous_step(step.old_u, step.new_u, cpu_id, endpoint_index, waiting_state, payload)
-            },
-            payload is Pages && !(ret is Success) ==> final(steps).nonlock_view().len() <= 4,
+            ret is SuccessUsize ==> payload is ReceiveCpu && index_valid(NUM_CPUS, ret->SuccessUsize_value),
             payload is Empty ==> (ret is Success || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch),
             payload is Pages ==> (ret is Success || ret is Error || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled
                 || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameProcess || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse),
@@ -1155,7 +1103,6 @@ verus! {
             old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
             old(lctx).pcid_needflush_lock_map().dom().is_empty(),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
-            old(steps).nonlock_view().len() == 0,
             waiting_state is SENDING || waiting_state is RECEIVING,
             waiting_is_send == (waiting_state is SENDING),
             old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.len() > 0,
@@ -1202,24 +1149,7 @@ verus! {
                 && final(krnl).cpu_arr.spec_index(payload->Cpu_cpu_id).view().view().view().owning_container != old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
             ret is SuccessUsize ==> final(krnl).cpu_arr.spec_index(ret->SuccessUsize_value).view().view().view().state is Off
                 && final(krnl).cpu_arr.spec_index(ret->SuccessUsize_value).view().view().view().owning_container == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().owning_container,
-            ret is Success ==> match payload {
-                IPCPayLoad::Pages { va_range } => va_range.len + 5 <= final(steps).nonlock_view().len() <= 4 * va_range.len + 5,
-                IPCPayLoad::Endpoint { .. } => final(steps).nonlock_view().len() == 2,
-                _ => final(steps).nonlock_view().len() == 1,
-            },
-            ret is SuccessUsize ==> payload is ReceiveCpu && index_valid(NUM_CPUS, ret->SuccessUsize_value) && final(steps).nonlock_view().len() == 1,
-            !(payload is Pages) && !(ret is Success) && !(ret is SuccessUsize) ==> final(steps).nonlock_view().len() <= 2,
-            payload is Empty || payload is Cpu || payload is ReceiveCpu || payload is Pci ==> final(steps).nonlock_view().len() <= 1,
-            (payload is Empty || payload is Cpu || payload is ReceiveCpu || payload is Pci) && ipc_rendezvous_ret(ret) ==> {
-                let step = final(steps).nonlock_view()[0];
-                &&& final(steps).nonlock_view().len() == 1
-                &&& step.old_u == kernel_k_to_nonlock_kernel_u(old(steps).snapshot_k())
-                &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
-                &&& ret == ipc_rendezvous_result(step.old_u, cpu_id, endpoint_index, waiting_state, payload)
-                &&& ipc_rendezvous_step_pre(step.old_u, cpu_id, endpoint_index, waiting_state, payload)
-                &&& ipc_rendezvous_step(step.old_u, step.new_u, cpu_id, endpoint_index, waiting_state, payload)
-            },
-            payload is Pages && !(ret is Success) ==> final(steps).nonlock_view().len() <= 4,
+            ret is SuccessUsize ==> payload is ReceiveCpu && index_valid(NUM_CPUS, ret->SuccessUsize_value),
             payload is Empty ==> (ret is Success || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled || ret is ErrorIpcTypeMismatch),
             payload is Pages ==> (ret is Success || ret is Error || ret is ErrorThreadKilled || ret is ErrorInvalidEndpoint || ret is ErrorIpcPeerKilled
                 || ret is ErrorIpcTypeMismatch || ret is ErrorIpcSameProcess || ret is ErrorIpcSourceUnmapped || ret is ErrorIpcPageOwnerMismatch || ret is ErrorNoQuota || ret is ErrorVaInUse),

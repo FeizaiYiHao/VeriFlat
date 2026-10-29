@@ -39,7 +39,6 @@ pub(super) fn iommu_map_4k_lock_running_thread(krnl: &mut KernelK, Tracked(lctx)
             &&& final(krnl).all_objects_unlocked(final(lctx))
             &&& final(steps).snapshot_k() == *final(krnl)
             &&& final(steps).view() == old(steps).view()
-            &&& final(steps).nonlock_view() == old(steps).nonlock_view()
         }),
         ret is Ok ==> ({
             let e = ret->Ok_0;

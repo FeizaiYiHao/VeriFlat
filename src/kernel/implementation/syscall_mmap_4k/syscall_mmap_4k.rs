@@ -25,7 +25,6 @@ verus! {
             old(lctx).no_locks_held(),
             old(krnl).all_objects_unlocked(old(lctx)),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
-            old(steps).nonlock_view().len() == 0,
             old(steps).view().len() == 0,
             old(steps).snapshot_k() == *old(krnl),
         ensures
@@ -39,11 +38,9 @@ verus! {
             ret.0 == mmap_4k_syscall_result(ret.1.view(), cpu_id, va, range),
             !(mmap_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range) is Success)
                 && !(mmap_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range) is ErrorVaInUse) ==> ret.1.view() == kernel_k_to_kernel_u(*old(krnl)),
-            ret.0 is Success ==> range + 2 <= final(steps).nonlock_view().len() <= 4 * range + 3,
             ret.0 is Success ==> mmap_4k_syscall_trace(final(steps).view(), cpu_id, va, range, Mmap4kPhase::Read) && ret.1.view() == final(steps).view()[0].old_u
                 || mmap_4k_syscall_trace(final(steps).view(), cpu_id, va, range, Mmap4kPhase::Fill) && ret.1.view() == final(steps).view()[1].old_u,
             ret.0 is Success ==> mmap_4k_syscall_success_mapped(final(krnl), cpu_id, va, range),
-            !(ret.0 is Success) ==> final(steps).nonlock_view().len() == 0,
             !(ret.0 is Success) ==> final(steps).view().len() == 0 || mmap_4k_syscall_failure_trace(final(steps).view(), cpu_id, va, range) && ret.1.view() == final(steps).view()[1].old_u,
     {
         proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }

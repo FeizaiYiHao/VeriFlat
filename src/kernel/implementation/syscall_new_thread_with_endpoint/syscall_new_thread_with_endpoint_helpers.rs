@@ -99,9 +99,6 @@ verus! {
                 final(lctx).cpu_id() == old(lctx).cpu_id(),
                 typed_lock_maps_aligned(final(krnl), final(lctx)),
                 final(lctx).no_locks_held(),
-                final(steps).nonlock_view().len() == old(steps).nonlock_view().len() + 2,
-                final(steps).nonlock_view().last().new_u == kernel_k_to_nonlock_kernel_u(*final(krnl)),
-                final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
                 final(steps).snapshot_k() == *final(krnl),
                 new_thread_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, *initial_regs, Some(endpoint_index), true),
                 forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
@@ -148,7 +145,7 @@ verus! {
             proof {
                 let ghost finish_k = steps.snapshot_k();
                 let ghost finish_before = steps.view();
-                steps.end_kernel_step_new_thread_on_cpu(&*krnl, &*lctx, cpu_id, process_ptr, current_thread_ptr, container_ptr, new_thread_ptr, *initial_regs, Some(endpoint_ptr), endpoint_index, None);
+                steps.end_kernel_step_new_thread(&*krnl, &*lctx, process_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, *initial_regs, Some(endpoint_ptr), None);
                 assert(new_thread_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()),
                     kernel_k_to_kernel_u(*krnl), cpu_id, *initial_regs, Some(endpoint_index), true)) by {
                     kernel_new_thread_fields_and_unlocks_implies_u_step(&finish_k, &*krnl, cpu_id, process_ptr, current_thread_ptr, container_ptr, new_thread_ptr, *initial_regs, Some(endpoint_ptr), None, None);

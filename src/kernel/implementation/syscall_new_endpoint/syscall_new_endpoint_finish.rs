@@ -85,9 +85,6 @@ pub(super) fn finish_new_endpoint_commit(
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
     ensures
         final(steps).view().len() == old(steps).view().len() + 1,
-        final(steps).nonlock_view().len() == old(steps).nonlock_view().len() + 1,
-        final(steps).nonlock_view().last().new_u == kernel_k_to_nonlock_kernel_u(*final(krnl)),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),

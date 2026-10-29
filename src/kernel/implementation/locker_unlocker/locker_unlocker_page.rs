@@ -111,7 +111,6 @@ impl KernelK {
             kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), final(self)),
             kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, final(self).ep_mp),
             kernel_container_nonlock_fields_and_quotas_unchanged(old(self), final(self)),
-            kernel_k_to_nonlock_kernel_u(*final(self)) == kernel_k_to_nonlock_kernel_u(*old(self)),
             // ---- Every held lock still matches lctx (page slot now released) ----
             typed_lock_maps_aligned(final(self), final(lctx)),
             *final(self) == (KernelK { pg_arr: final(self).pg_arr, ..*old(self) }),
@@ -134,7 +133,6 @@ impl KernelK {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
             page_lock_op_eof(*old(self), *self, page_index);
-            assert(kernel_k_to_nonlock_kernel_u(*self) == kernel_k_to_nonlock_kernel_u(*old(self))) by { kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(old(self), self); };
         }
     }
 }

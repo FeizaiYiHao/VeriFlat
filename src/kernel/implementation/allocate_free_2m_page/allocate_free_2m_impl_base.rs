@@ -60,8 +60,6 @@ verus! {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Page(page_ptr2page_index(ret.0)), TypedHeldLock { lock_id: final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(ret.0)), mode: TypedLockMode::Write }),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             held_threads_unchanged_except(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx), set![thread_ptr]),
-            final(steps).nonlock_view() == old(steps).nonlock_view(),
-            final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
             page_ptr_valid(ret.0),
             final(krnl).pg_arr.spec_index(page_ptr2page_index(ret.0)).view().being_killed() == false,
@@ -166,8 +164,6 @@ verus! {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Page(page_ptr2page_index(ret.0)), TypedHeldLock { lock_id: final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(ret.0)), mode: TypedLockMode::Write }),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             held_threads_unchanged_except(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx), set![thread_ptr]),
-            final(steps).nonlock_view() == old(steps).nonlock_view(),
-            final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
             page_ptr_valid(ret.0),
             final(krnl).pg_arr.spec_index(page_ptr2page_index(ret.0)).view().being_killed() == false,
@@ -275,7 +271,6 @@ verus! {
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(krnl).inv(),
-            kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
             kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
             kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
             kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
@@ -389,7 +384,6 @@ verus! {
             assert(cache_perms_match_lctx(krnl.allc_2m_mp, alloc_ptr_2m, &*lctx, &cache_perms)) by { reveal(cache_perms_match_lctx); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-            assert(kernel_k_to_nonlock_kernel_u(*krnl) == kernel_k_to_nonlock_kernel_u(*old(krnl))) by { kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(old(krnl), krnl); };
         }
         (Tracked(cache_perms), Tracked(pool_perm))
     }
@@ -404,7 +398,6 @@ verus! {
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(krnl).inv(),
-            kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
             kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
             kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
             kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
@@ -512,7 +505,6 @@ verus! {
             assert(allocator_caches_unlocked(krnl.allc_2m_mp, alloc_ptr_2m)) by { reveal(allocator_caches_unlocked); };
             assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-            assert(kernel_k_to_nonlock_kernel_u(*krnl) == kernel_k_to_nonlock_kernel_u(*old(krnl))) by { kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(old(krnl), krnl); };
         }
     }
 
@@ -584,7 +576,6 @@ verus! {
             final(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).quota == old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).quota,
             final(lctx).thread_id() == old(lctx).thread_id(),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
-            kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
             kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
             kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
             kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),

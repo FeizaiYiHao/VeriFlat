@@ -21,7 +21,6 @@ pub(super) fn unmap_4k_lock_pagetable_and_unmap(
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(steps).view().len() == 0,
-        old(steps).nonlock_view().len() == 0,
         old(steps).snapshot_k().inv(),
         typed_lock_maps_aligned(&old(steps).snapshot_k(), &entry_lctx),
         !(range == 0 || range > usize::MAX / 4096 || !spec_va_4k_valid(va) || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range)),
@@ -115,8 +114,6 @@ pub(super) fn unmap_4k_lock_pagetable_and_unmap(
         final(steps).snapshot_k() == *final(krnl),
         ret is Success || ret is Error,
         ret == unmap_4k_syscall_result(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, va, range),
-        ret is Success ==> range + 3 <= final(steps).nonlock_view().len() <= range + NUM_CPUS + MAX_CONTAINER_TREE_DEPTH + 4,
-        !(ret is Success) ==> final(steps).nonlock_view().len() == 0 && kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(old(steps).snapshot_k()),
         !(ret is Success) ==> final(steps).view().len() == 0,
         ret is Success ==> unmap_4k_syscall_trace(final(steps).view(), cpu_id, va, range),
         ret is Success ==> {
@@ -307,8 +304,6 @@ fn unmap_4k_unlock_all_rejected(
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(steps).snapshot_k() == *final(krnl),
         final(steps).view() == old(steps).view(),
-        final(steps).nonlock_view() == old(steps).nonlock_view(),
-        kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(old(steps).snapshot_k()),
 {
     proof {
         if old(steps).snapshot_k().pt_mp.spec_index(pagetable).locking_thread() is Read {

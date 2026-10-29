@@ -10,53 +10,6 @@ pub proof fn kernel_container_ancestry_projection_at(krnl: &KernelK, container: 
         kernel_k_to_kernel_u(*krnl).container_map[container].uppertree_seq == krnl.ctn_mp.spec_index(container).view_ghost().uppertree_seq.view(),
 { reveal(kernel_k_to_kernel_u); }
 
-pub proof fn kernel_thread_nonlock_projection_at(krnl: &KernelK, thread_ptr: RwLockThreadPtr)
-    requires krnl.thr_mp.dom().contains(thread_ptr),
-    ensures
-        kernel_k_to_nonlock_kernel_u(*krnl).thread_map.dom().contains(thread_ptr),
-        ({
-            let thread = krnl.thr_mp.spec_index(thread_ptr);
-            let t = thread.view();
-            kernel_k_to_nonlock_kernel_u(*krnl).thread_map.spec_index(thread_ptr) == (ThreadU {
-                lock_state: LockStateU::Unlocked, state: t.state, caller: t.caller, callee: t.callee,
-                owning_container: t.owning_container, owning_proc: t.owning_proc, last_cpu: t.last_cpu,
-                quota_4k: t.quota_4k, quota_2m: t.quota_2m, quota_1g: t.quota_1g,
-                endpoint_descriptors: t.endpoint_descriptors.view(), blocking_endpoint_ptr: t.blocking_endpoint_ptr,
-                ipc_payload: t.ipc_payload, error_code: t.error_code,
-                trap_frame: if t.trap_frame.is_some() { Some(*t.trap_frame.get_some_0()) } else { None },
-                syscall_progress: t.syscall_progress.view(), killed: thread.being_killed(),
-            })
-        }),
-{ reveal(kernel_k_to_nonlock_kernel_u); }
-
-pub proof fn kernel_process_nonlock_projection_at(krnl: &KernelK, ptr: RwLockProcessPtr)
-    requires krnl.prc_mp.dom().contains(ptr),
-    ensures
-        kernel_k_to_nonlock_kernel_u(*krnl).process_map.dom().contains(ptr),
-        ({
-            let p = krnl.prc_mp.spec_index(ptr).view();
-            let p_ghost = krnl.prc_mp.spec_index(ptr).view_ghost();
-            let p_ro = krnl.prc_mp.spec_index(ptr).view_rodata().view();
-            kernel_k_to_nonlock_kernel_u(*krnl).process_map[ptr] == (ProcessU {
-                lock_state: LockStateU::Unlocked, zombie: p.zombie,
-                pagetable: if p.zombie { None } else {
-                    let t = pagetable_map_user_view(krnl.pt_mp, krnl.pt_lower.view()).spec_index(p.pagetable);
-                    Some(PageTableU { lock_state: LockStateU::Unlocked, ..t })
-                },
-                iommu_table: match (p.zombie, p.iommu_table) {
-                    (false, Some(iommu_table)) => {
-                        let t = iommu_table_map_user_view(krnl.it_mp).spec_index(iommu_table);
-                        Some(PageTableU { lock_state: LockStateU::Unlocked, ..t })
-                    },
-                    _ => None,
-                },
-                pcid: p_ro.pcid, owning_container: p_ro.owning_container, owned_pci_functions: p_ghost.owned_pci_functions.view(), quota_4k: p.quota_4k, quota_2m: p.quota_2m, quota_1g: p.quota_1g,
-                parent: p_ro.parent, children: p.children.view(), depth: p_ro.depth, uppertree_seq: p_ghost.uppertree_seq.view(),
-                subtree_set: p_ghost.subtree_set.view(), owned_threads: p.owned_threads.view(), killed: krnl.prc_mp.spec_index(ptr).being_killed(),
-            })
-        }),
-{ reveal(kernel_k_to_nonlock_kernel_u); }
-
 /// The projected map domains and scalar fields of the user projection, without unfolding any projected entry.
 pub proof fn kernel_u_domains_projection(krnl: &KernelK)
     ensures

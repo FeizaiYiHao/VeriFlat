@@ -18,12 +18,10 @@ pub fn syscall_cpu_offline_request(krnl: &mut KernelK, Tracked(lctx): Tracked<&m
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
-        old(steps).nonlock_view().len() == 0,
         old(steps).snapshot_k() == *old(krnl),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
@@ -32,15 +30,6 @@ pub fn syscall_cpu_offline_request(krnl: &mut KernelK, Tracked(lctx): Tracked<&m
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).no_locks_held(),
         ret == cpu_offline_request_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, target),
-        !(ret is Success && !cpu_offline_request_pending(kernel_k_to_kernel_u(*old(krnl)), cpu_id, target)) ==> final(steps).nonlock_view().len() == 0,
-        ret is Success && !cpu_offline_request_pending(kernel_k_to_kernel_u(*old(krnl)), cpu_id, target) ==> {
-            let step = final(steps).nonlock_view()[0];
-            &&& final(steps).nonlock_view().len() == 1
-            &&& step.old_u == kernel_k_to_nonlock_kernel_u(*old(krnl))
-            &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
-            &&& cpu_offline_request_step_pre(step.old_u, cpu_id, target)
-            &&& cpu_offline_request_step(step.old_u, step.new_u, cpu_id, target)
-        },
 {
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
     if target >= NUM_CPUS {
@@ -133,11 +122,8 @@ pub fn syscall_cpu_offline_request(krnl: &mut KernelK, Tracked(lctx): Tracked<&m
         steps.end_kernel_step_cpu_offline_request_changed(&*krnl, &*lctx, cpu_id, container_ptr, target);
         assert({
             &&& cpu_offline_request_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*krnl), cpu_id, target, RetValueType::Success)
-            &&& cpu_offline_request_step_pre(steps.nonlock_view().last().old_u, cpu_id, target)
-            &&& cpu_offline_request_step(steps.nonlock_view().last().old_u, steps.nonlock_view().last().new_u, cpu_id, target)
         }) by {
             cpu_offline_request_step_from_u(kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*krnl), cpu_id, container_ptr, target);
-            cpu_offline_request_step_from_u(steps.nonlock_view().last().old_u, steps.nonlock_view().last().new_u, cpu_id, container_ptr, target);
             cpu_offline_request_trace_step(&*steps, request_before, kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*krnl), cpu_id, target);
         };
     }

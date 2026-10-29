@@ -231,7 +231,6 @@ pub(super) fn wlock_new_container_2m_page_tails(krnl: &mut KernelK, Tracked(lctx
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Acquire,
         final(krnl).inv(),
-        kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).page_lock_map().remove_keys(page_2m_tail_indices(left).union(page_2m_tail_indices(right))) == old(lctx).page_lock_map(),
         final(lctx).page_lock_map().dom() == old(lctx).page_lock_map().dom().union(page_2m_tail_indices(left)).union(page_2m_tail_indices(right)),

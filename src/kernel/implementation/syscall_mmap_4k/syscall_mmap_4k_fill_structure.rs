@@ -87,7 +87,6 @@ fn mmap_4k_fill_page_directories(
         held_locks_order_below(final(krnl), final(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() <= final(steps).view().len() <= old(steps).view().len() + 2,
-        final(steps).nonlock_view().len() - old(steps).nonlock_view().len() == final(steps).view().len() - old(steps).view().len(),
         forall|j: int| #![trigger final(steps).view()[j]] 0 <= j < old(steps).view().len() ==> final(steps).view()[j] == old(steps).view()[j],
         forall|j: int| #![trigger final(steps).view()[j]] old(steps).view().len() <= j < final(steps).view().len() ==> mmap_4k_range_step(final(steps).view()[j], cpu_id),
         final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
@@ -286,7 +285,6 @@ pub(super) fn mmap_4k_fill_range_structure(
         held_locks_order_below(final(krnl), final(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() <= final(steps).view().len() <= old(steps).view().len() + 2 * range.len,
-        final(steps).nonlock_view().len() - old(steps).nonlock_view().len() == final(steps).view().len() - old(steps).view().len(),
         forall|j: int| #![trigger final(steps).view()[j]] 0 <= j < old(steps).view().len() ==> final(steps).view()[j] == old(steps).view()[j],
         forall|j: int| #![trigger final(steps).view()[j]] old(steps).view().len() <= j < final(steps).view().len() ==> mmap_4k_range_step(final(steps).view()[j], cpu_id),
         final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
@@ -430,7 +428,6 @@ pub(super) fn mmap_4k_fill_range_structure(
                     && (l4i < spec_v2l4index(range.view()[i - 1]) || (l4i == spec_v2l4index(range.view()[i - 1]) && l3i <= spec_v2l3index(range.view()[i - 1])))
                     ==> pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4i, l3i) is Some,
             old(steps).view().len() <= steps.view().len() <= old(steps).view().len() + 2 * i,
-            steps.nonlock_view().len() - old(steps).nonlock_view().len() == steps.view().len() - old(steps).view().len(),
             forall|j: int| #![trigger steps.view()[j]] 0 <= j < old(steps).view().len() ==> steps.view()[j] == old(steps).view()[j],
             forall|j: int| #![trigger steps.view()[j]] old(steps).view().len() <= j < steps.view().len() ==> mmap_4k_range_step(steps.view()[j], cpu_id),
         decreases range_len - i,

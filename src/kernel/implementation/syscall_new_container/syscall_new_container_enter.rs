@@ -121,7 +121,6 @@ pub(super) fn enter_new_container_commit(
     ensures
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         final(steps).view().len() == old(steps).view().len() + 1,
-        final(steps).nonlock_view().len() == old(steps).nonlock_view().len() + 1,
         new_container_trace_after_enter(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), caller_cpu_id,
             *source_range, funding_page_count, process_quota_4k, transfer_cpu_id, regs, if endpoint is Some { Some(endpoint_index) } else { None }),
         final(steps).snapshot_k() == *final(krnl),

@@ -251,7 +251,6 @@ impl KernelK {
             kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), final(self)),
             kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, final(self).ep_mp),
             kernel_container_nonlock_fields_and_quotas_unchanged(old(self), final(self)),
-            kernel_k_to_nonlock_kernel_u(*final(self)) == kernel_k_to_nonlock_kernel_u(*old(self)),
             // ---- Every held lock still matches lctx (process now released) ----
             // ---- Dynamic lock ids remain aligned ----
             typed_lock_maps_aligned(final(self), final(lctx)),
@@ -283,7 +282,6 @@ impl KernelK {
             };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
             wunlock_process_eof(*old(self), *self, *old(lctx), process_ptr);
-            assert(kernel_k_to_nonlock_kernel_u(*self) == kernel_k_to_nonlock_kernel_u(*old(self))) by { kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(old(self), self); };
         }
     }
 }

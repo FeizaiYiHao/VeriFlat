@@ -18,7 +18,6 @@ pub(super) fn schedule_continue(
         cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        old(steps).nonlock_view().len() == 0,
         *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_op: old(krnl).cpu_op, prc_mp: old(krnl).prc_mp, thr_mp: old(krnl).thr_mp, sched_mp: old(krnl).sched_mp, ..old(steps).snapshot_k() }),
         old(krnl).cpu_arr.entries_unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view() == old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view(),
@@ -107,9 +106,6 @@ pub(super) fn schedule_continue(
         final(lctx).no_locks_held(),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        final(steps).nonlock_view() == old(steps).nonlock_view(),
-        final(steps).nonlock_snapshot_u() == old(steps).nonlock_snapshot_u(),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
@@ -150,7 +146,6 @@ pub(super) fn schedule_lock_current_and_shard(
         old(krnl).inv(),
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        old(steps).nonlock_view().len() == 0,
         *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_op: old(krnl).cpu_op, ..old(steps).snapshot_k() }),
         old(krnl).cpu_arr.entries_unchanged_except(&old(steps).snapshot_k().cpu_arr, cpu_id),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view() == old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view(),
@@ -211,9 +206,6 @@ pub(super) fn schedule_lock_current_and_shard(
             &&& final(lctx).no_locks_held()
             &&& final(krnl).all_objects_unlocked(final(lctx))
             &&& final(steps).view() == old(steps).view()
-            &&& final(steps).nonlock_view() == old(steps).nonlock_view()
-            &&& kernel_k_to_nonlock_kernel_u(*final(krnl)) == old(steps).nonlock_snapshot_u()
-            &&& final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl))
             &&& final(steps).snapshot_k() == *final(krnl)
             &&& schedule_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()),
                 kernel_k_to_kernel_u(*final(krnl)), cpu_id, entry_regs, false, None)

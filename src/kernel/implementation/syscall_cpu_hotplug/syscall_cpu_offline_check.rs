@@ -51,7 +51,6 @@ pub(super) fn cpu_offline_commit(
         old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        old(steps).nonlock_view().len() == 0,
         kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
         old(krnl).irt.view().owners() == old(steps).snapshot_k().irt.view().owners(),
@@ -164,13 +163,10 @@ pub(super) fn cpu_offline_commit(
         final(lctx).no_locks_held(),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
         final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(old(steps).snapshot_k()), new_u: kernel_k_to_kernel_u(*final(krnl)) }),
         cpu_offline_check_step_pre(final(steps).view().last().old_u, cpu_id),
         cpu_offline_check_step(final(steps).view().last().old_u, final(steps).view().last().new_u, cpu_id, *pt_regs, cpu_offline_check_flushed_default_pcid(*old(krnl), cpu_id)),
-        final(steps).nonlock_view() == old(steps).nonlock_view().push(KernelStep { old_u: old(steps).nonlock_snapshot_u(), new_u: kernel_k_to_nonlock_kernel_u(*final(krnl)) }),
-        cpu_offline_check_step(final(steps).nonlock_view().last().old_u, final(steps).nonlock_view().last().new_u, cpu_id, *pt_regs, cpu_offline_check_flushed_default_pcid(*old(krnl), cpu_id)),
         final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Off,
         forall|other_cpu: CpuId| #![trigger final(krnl).cpu_arr.spec_index(other_cpu)]
             index_valid(NUM_CPUS, other_cpu) && other_cpu != cpu_id ==> final(krnl).cpu_arr.spec_index(other_cpu).view().view().view() == old(krnl).cpu_arr.spec_index(other_cpu).view().view().view(),
@@ -219,7 +215,6 @@ pub fn cpu_offline_check(
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        old(steps).nonlock_view().len() == 0,
         old(steps).snapshot_k() == *old(krnl),
     ensures
         final(krnl).inv(),
@@ -229,7 +224,6 @@ pub fn cpu_offline_check(
         final(lctx).no_locks_held(),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
@@ -237,15 +231,8 @@ pub fn cpu_offline_check(
             final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)),
             cpu_id, *pt_regs, ret.0 is Off, if ret.0 is Off { cpu_offline_check_flushed_default_pcid(ret.1.view(), cpu_id) } else { false },
         ),
-        final(steps).nonlock_view().len() == if ret.0 is Off { 1nat } else { 0nat },
         ret.0 == cpu_offline_check_result(kernel_k_to_kernel_u(ret.1.view()), cpu_id),
-        ret.0 is Off ==> {
-            let step = final(steps).nonlock_view()[0];
-            &&& step.old_u == kernel_k_to_nonlock_kernel_u(ret.1.view())
-            &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
-            &&& cpu_offline_check_step(step.old_u, step.new_u, cpu_id, *pt_regs, cpu_offline_check_flushed_default_pcid(ret.1.view(), cpu_id))
-            &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Off
-        },
+        ret.0 is Off ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Off,
 {
     let ghost entry = *krnl;
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }

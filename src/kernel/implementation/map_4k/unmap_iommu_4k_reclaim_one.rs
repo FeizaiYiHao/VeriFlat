@@ -58,7 +58,6 @@ pub fn reclaim_unmapped_iommu_4k_page(
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Acquire,
         held_threads_unchanged_except(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx), set![thread_ptr]),
-        final(steps).nonlock_view() == old(steps).nonlock_view(),
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
         held_pagetables_unchanged(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx)),
@@ -157,7 +156,6 @@ pub fn reclaim_detached_iommu_4k_page(
         iommu_table_perm.view().lock_id() == old(krnl).it_mp.spec_index(iommu_table).locking_thread()->Write_lock_id,
     ensures
         final(steps).view() == old(steps).view(),
-        final(steps).nonlock_view() == old(steps).nonlock_view(),
         *final(krnl) == (KernelK { it_mp: final(krnl).it_mp, pg_arr: final(krnl).pg_arr, thr_mp: final(krnl).thr_mp, allc_4k_mp: final(krnl).allc_4k_mp, ..final(steps).snapshot_k() }),
         final(krnl).it_mp.unchanged_except(&final(steps).snapshot_k().it_mp, iommu_table),
         kernel_cpu_process_thread_nonlock_fields_unchanged(&final(steps).snapshot_k(), &KernelK { it_mp: final(steps).snapshot_k().it_mp, ..*final(krnl) }),

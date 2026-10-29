@@ -21,7 +21,6 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        old(steps).nonlock_view().len() == 0,
         old(steps).view().len() == 0,
         old(steps).snapshot_k() == *old(krnl),
     ensures
@@ -34,8 +33,6 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(steps).snapshot_k() == *final(krnl),
         ret == unmap_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range),
-        ret is Success ==> range + 3 <= final(steps).nonlock_view().len() <= range + NUM_CPUS + MAX_CONTAINER_TREE_DEPTH + 4,
-        !(ret is Success) ==> final(steps).nonlock_view().len() == 0 && kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
         !(ret is Success) ==> final(steps).view().len() == 0,
         ret is Success ==> unmap_4k_syscall_trace(final(steps).view(), cpu_id, va, range),
         ret is Success ==> {

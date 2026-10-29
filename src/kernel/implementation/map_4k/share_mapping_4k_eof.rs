@@ -171,36 +171,10 @@ pub(super) open spec fn share_mapping_4k_build_and_share_eol_loop_framing(
     &&& post_steps.view().len() == pre_steps.view().len() + i
     &&& forall|j: int| #![trigger post_steps.view()[j]] 0 <= j < pre_steps.view().len() ==> post_steps.view()[j] == pre_steps.view()[j]
     &&& forall|j: int| #![trigger post_steps.view()[j]] pre_steps.view().len() <= j < post_steps.view().len() ==> share_4k_range_step(post_steps.view()[j], cpu_id)
-    &&& post_steps.nonlock_view().len() == pre_steps.nonlock_view().len() + i
-    &&& post_steps.nonlock_view().subrange(0, pre_steps.nonlock_view().len() as int) =~= pre_steps.nonlock_view()
     &&& i > 0 ==> {
-        &&& post_steps.nonlock_view().last().new_u.process_map.dom().contains(source_process)
-        &&& kernel_k_to_nonlock_kernel_u(post).process_map.dom().contains(source_process)
         &&& post_steps.view().last().new_u.process_map.dom().contains(source_process) && post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable is Some
         &&& kernel_k_to_kernel_u(post).process_map.dom().contains(source_process) && kernel_k_to_kernel_u(post).process_map.spec_index(source_process).pagetable is Some
         &&& post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state == kernel_k_to_kernel_u(post).process_map.spec_index(source_process).pagetable->Some_0.lock_state
-        &&& forall|wva: WindowVa, v: VAddr|
-            #![trigger pre_lctx.pagetable_window_lock_map().dom().contains((source_pagetable, wva)), kernel_k_to_nonlock_kernel_u(post).process_map.spec_index(source_process).pagetable->Some_0.mapping_4k.dom().contains(v)]
-            #![trigger pre_lctx.pagetable_window_lock_map().dom().contains((source_pagetable, wva)), post_steps.nonlock_view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.mapping_4k.dom().contains(v)]
-            pre_lctx.pagetable_window_lock_map().dom().contains((source_pagetable, wva)) && spec_v2l4index(v) == spec_v2l4index(wva.va) && spec_v2l3index(v) == spec_v2l3index(wva.va)
-                && spec_v2l2index(v) == spec_v2l2index(wva.va) ==> {
-                let pre_t = post_steps.nonlock_view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0;
-                let post_t = kernel_k_to_nonlock_kernel_u(post).process_map.spec_index(source_process).pagetable->Some_0;
-                &&& post_t.mapping_4k.dom().contains(v) == pre_t.mapping_4k.dom().contains(v)
-                &&& pre_t.mapping_4k.dom().contains(v) ==> post_t.mapping_4k.spec_index(v) == pre_t.mapping_4k.spec_index(v)
-            }
-        &&& post_steps.nonlock_view().last().new_u.process_map.dom().contains(target_process)
-        &&& post_steps.nonlock_view().last().new_u.thread_map.dom().contains(quota_thread)
-        &&& kernel_k_to_nonlock_kernel_u(post).thread_map.dom().contains(quota_thread)
-        &&& post_steps.nonlock_view().last().new_u.thread_map.spec_index(quota_thread) == kernel_k_to_nonlock_kernel_u(post).thread_map.spec_index(quota_thread)
-        &&& target_write_held && typed_lock_map_contains_mode(pre_lctx.process_lock_map(), target_process, TypedLockMode::Write) && ({
-            let iommu_table = pre.prc_mp.spec_index(target_process).view().iommu_table;
-            ||| iommu_table is None
-            ||| iommu_table is Some && pre_lctx.iommu_table_lock_map().dom().contains(iommu_table.unwrap())
-        }) ==> {
-            &&& kernel_k_to_nonlock_kernel_u(post).process_map.dom().contains(target_process)
-            &&& post_steps.nonlock_view().last().new_u.process_map.spec_index(target_process) == kernel_k_to_nonlock_kernel_u(post).process_map.spec_index(target_process)
-        }
     }
     &&& index_valid(NUM_CPUS, pre_lctx.cpu_id()) ==> post.cpu_hw_cr3_pcid[pre_lctx.cpu_id() as int].view() == pre.cpu_hw_cr3_pcid[pre_lctx.cpu_id() as int].view()
     &&& post.ctn_mp.spec_index(target_container).view_rodata() == pre.ctn_mp.spec_index(target_container).view_rodata()
@@ -298,37 +272,11 @@ pub(super) proof fn share_mapping_4k_build_and_share_eol_step(
         share_4k_leaf_step_pre(post_steps.view().last().old_u, cpu_id),
         share_4k_leaf_step(post_steps.view().last().old_u, post_steps.view().last().new_u, cpu_id),
         index_valid(NUM_CPUS, mid_lctx.cpu_id()) ==> post.cpu_hw_cr3_pcid[mid_lctx.cpu_id() as int].view() == mid.cpu_hw_cr3_pcid[mid_lctx.cpu_id() as int].view(),
-        post_steps.nonlock_view().len() == mid_steps.nonlock_view().len() + 1,
-        post_steps.nonlock_view().subrange(0, mid_steps.nonlock_view().len() as int) == mid_steps.nonlock_view(),
         {
             let source_process = mid.pt_mp.spec_index(source_pagetable).view().proc_ptr;
-            &&& post_steps.nonlock_view().last().new_u.process_map.dom().contains(source_process)
-            &&& kernel_k_to_nonlock_kernel_u(post).process_map.dom().contains(source_process)
             &&& post_steps.view().last().new_u.process_map.dom().contains(source_process) && post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable is Some
             &&& kernel_k_to_kernel_u(post).process_map.dom().contains(source_process) && kernel_k_to_kernel_u(post).process_map.spec_index(source_process).pagetable is Some
             &&& post_steps.view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.lock_state == kernel_k_to_kernel_u(post).process_map.spec_index(source_process).pagetable->Some_0.lock_state
-            &&& forall|wva: WindowVa, v: VAddr|
-                #![trigger mid_lctx.pagetable_window_lock_map().dom().contains((source_pagetable, wva)), kernel_k_to_nonlock_kernel_u(post).process_map.spec_index(source_process).pagetable->Some_0.mapping_4k.dom().contains(v)]
-                #![trigger mid_lctx.pagetable_window_lock_map().dom().contains((source_pagetable, wva)), post_steps.nonlock_view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0.mapping_4k.dom().contains(v)]
-                mid_lctx.pagetable_window_lock_map().dom().contains((source_pagetable, wva)) && spec_v2l4index(v) == spec_v2l4index(wva.va) && spec_v2l3index(v) == spec_v2l3index(wva.va)
-                    && spec_v2l2index(v) == spec_v2l2index(wva.va) ==> {
-                    let pre_t = post_steps.nonlock_view().last().new_u.process_map.spec_index(source_process).pagetable->Some_0;
-                    let post_t = kernel_k_to_nonlock_kernel_u(post).process_map.spec_index(source_process).pagetable->Some_0;
-                    &&& post_t.mapping_4k.dom().contains(v) == pre_t.mapping_4k.dom().contains(v)
-                    &&& pre_t.mapping_4k.dom().contains(v) ==> post_t.mapping_4k.spec_index(v) == pre_t.mapping_4k.spec_index(v)
-                }
-            &&& post_steps.nonlock_view().last().new_u.process_map.dom().contains(target_process)
-            &&& post_steps.nonlock_view().last().new_u.thread_map.dom().contains(quota_thread)
-            &&& kernel_k_to_nonlock_kernel_u(post).thread_map.dom().contains(quota_thread)
-            &&& post_steps.nonlock_view().last().new_u.thread_map.spec_index(quota_thread) == kernel_k_to_nonlock_kernel_u(post).thread_map.spec_index(quota_thread)
-            &&& target_write_held && typed_lock_map_contains_mode(mid_lctx.process_lock_map(), target_process, TypedLockMode::Write) && ({
-                let iommu_table = mid.prc_mp.spec_index(target_process).view().iommu_table;
-                ||| iommu_table is None
-                ||| iommu_table is Some && mid_lctx.iommu_table_lock_map().dom().contains(iommu_table.unwrap())
-            }) ==> {
-                &&& kernel_k_to_nonlock_kernel_u(post).process_map.dom().contains(target_process)
-                &&& post_steps.nonlock_view().last().new_u.process_map.spec_index(target_process) == kernel_k_to_nonlock_kernel_u(post).process_map.spec_index(target_process)
-            }
         },
         held_pages_unchanged(mid.pg_arr, post.pg_arr, mid_lctx),
         held_containers_unchanged(mid.ctn_mp, post.ctn_mp, mid_lctx),

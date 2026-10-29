@@ -5,7 +5,7 @@ use crate::*;
 verus! {
 /// Freeing a page of the container `owner`, `origin` or one of its ancestors, to the 4K allocator `allocator_ptr` of
 /// `owner` while crediting that allocator's quota by one grows only the 4K quota of `owner` in the complete projection,
-/// so both projections change: the hidden leaf or table page that leaves `table` and the freed page are not projected.
+/// so the projection changes: the hidden leaf or table page that leaves `table` and the freed page are not projected.
 pub proof fn kernel_page_freed_to_owner_quota_implies_u_step(
     pre: &KernelK, post: &KernelK, iommu: bool, table: RwLockPageTableRoot, owner: RwLockContainerPtr, allocator_ptr: RwLockPageAllocatorPtr, origin: RwLockContainerPtr,
 )
@@ -29,7 +29,6 @@ pub proof fn kernel_page_freed_to_owner_quota_implies_u_step(
     ensures
         kernel_u_container_quota_4k_increased(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), origin),
         kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
-        kernel_k_to_nonlock_kernel_u(*pre) != kernel_k_to_nonlock_kernel_u(*post),
 {
     let mid = KernelK { allc_4k_mp: pre.allc_4k_mp, ..*post };
     assert(kernel_container_nonlock_fields_and_quotas_unchanged(pre, &mid)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
@@ -50,8 +49,6 @@ pub proof fn kernel_page_freed_to_owner_quota_implies_u_step(
     assert(b.container_map[owner].quota_4k > a.container_map[owner].quota_4k);
     assert(owner == origin || a.container_map[origin].uppertree_seq.contains(owner));
     assert(kernel_u_container_quota_4k_increased(a, b, origin)) by { reveal(kernel_u_container_quota_4k_increased); };
-    kernel_nonlock_projection_is_u_nonlock_fields(*pre); kernel_nonlock_projection_is_u_nonlock_fields(*post);
-    assert(kernel_u_nonlock_fields(b).container_map[owner].quota_4k != kernel_u_nonlock_fields(a).container_map[owner].quota_4k) by { reveal(kernel_u_nonlock_fields); };
 }
 
 /// Retiring the zombie root process `process_ptr` of the container `container_ptr` drops it from the process projection and

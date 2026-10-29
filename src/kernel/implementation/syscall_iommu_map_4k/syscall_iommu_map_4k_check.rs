@@ -93,7 +93,6 @@ fn iommu_map_4k_unlock_rejected(
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(steps).snapshot_k() == *final(krnl),
         final(steps).view() == old(steps).view(),
-        final(steps).nonlock_view() == old(steps).nonlock_view(),
 {
     proof {
         if old(steps).snapshot_k().pt_mp.spec_index(pagetable_ptr).locking_thread() is Read {
@@ -167,7 +166,6 @@ fn iommu_map_4k_unlock_thread_rejected(
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(steps).snapshot_k() == *final(krnl),
         final(steps).view() == old(steps).view(),
-        final(steps).nonlock_view() == old(steps).nonlock_view(),
 {
     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
     krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
@@ -192,7 +190,6 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        old(steps).nonlock_view().len() == 0,
         old(steps).view().len() == 0,
         old(steps).snapshot_k() == *old(krnl),
         old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
@@ -209,7 +206,6 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
             &&& final(krnl).all_objects_unlocked(final(lctx))
             &&& final(steps).snapshot_k() == *final(krnl)
             &&& final(steps).view().len() == 0
-            &&& final(steps).nonlock_view().len() == 0
         }),
         ret is Ok ==> ({
             let e = ret->Ok_0.0;

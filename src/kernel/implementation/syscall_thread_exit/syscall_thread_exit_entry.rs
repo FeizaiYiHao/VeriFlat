@@ -25,7 +25,6 @@ pub(super) fn thread_exit_lock_entry(krnl: &mut KernelK, Tracked(lctx): Tracked<
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        old(steps).nonlock_view().len() == 0,
         old(steps).snapshot_k() == *old(krnl),
     ensures
         final(krnl).inv(),
@@ -42,9 +41,6 @@ pub(super) fn thread_exit_lock_entry(krnl: &mut KernelK, Tracked(lctx): Tracked<
             &&& final(lctx).kernel_view_locking_state() is Release
             &&& final(lctx).no_locks_held()
             &&& final(krnl).all_objects_unlocked(final(lctx))
-            &&& final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl))
-            &&& final(steps).nonlock_view().len() == 0
-            &&& kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl))
             &&& thread_exit_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(*old(krnl)),
                 kernel_k_to_kernel_u(*final(krnl)), cpu_id, false)
         }),

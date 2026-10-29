@@ -19,12 +19,10 @@ pub fn syscall_new_endpoint(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loca
         old(krnl).cpu_op.view().view()[cpu_id as int] is Trap,
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
-        old(steps).nonlock_view().len() == 0,
         old(steps).snapshot_k() == *old(krnl),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
@@ -32,8 +30,6 @@ pub fn syscall_new_endpoint(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loca
             kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index, ret is Success),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).no_locks_held(),
-        !(ret is Success) ==> final(steps).nonlock_view().len() == 0,
-        ret is Success ==> final(steps).nonlock_view().len() == 2,
         ret == new_endpoint_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index),
 {
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }

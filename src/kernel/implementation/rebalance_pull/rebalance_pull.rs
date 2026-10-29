@@ -287,7 +287,6 @@ fn rebalance_pull_move_head(
         old(steps).snapshot_k().thr_mp.spec_index(thread_ptr).locking_thread() is None,
         old(krnl).sched_mp.unchanged_except(&old(steps).snapshot_k().sched_mp, scheduler_ptr),
         scheduler_shards_of(old(krnl).sched_mp.spec_index(scheduler_ptr)) == scheduler_shards_of(old(steps).snapshot_k().sched_mp.spec_index(scheduler_ptr)),
-        old(steps).nonlock_view().len() == 0,
         index_valid(NUM_CPUS, cpu_id),
         index_valid(NUM_CPUS, victim),
         victim != cpu_id,
@@ -370,14 +369,10 @@ fn rebalance_pull_move_head(
         final(lctx).no_locks_held(),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
         final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(old(steps).snapshot_k()), new_u: kernel_k_to_kernel_u(*final(krnl)) }),
         rebalance_pull_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()),
             kernel_k_to_kernel_u(*final(krnl)), cpu_id, true),
-        final(steps).nonlock_view() == old(steps).nonlock_view().push(KernelStep { old_u: old(steps).nonlock_snapshot_u(), new_u: kernel_k_to_nonlock_kernel_u(*final(krnl)) }),
-        rebalance_pull_step_pre(final(steps).nonlock_view().last().old_u, cpu_id),
-        rebalance_pull_step(final(steps).nonlock_view().last().old_u, final(steps).nonlock_view().last().new_u, cpu_id),
 {
     let tracked shard_perms = shard_perms.get();
     let tracked thread_lock_perm = thread_lock_perm.get();
@@ -425,10 +420,8 @@ fn rebalance_pull_move_head(
         assert(kernel_rebalance_pull_fields(&steps.snapshot_k(), &*krnl, cpu_id, victim, thread_ptr)) by { reveal(kernel_rebalance_pull_fields); reveal(rebalance_pull_eof_transition_framing); };
         steps.end_kernel_step_rebalance_pull(&*krnl, &*lctx, cpu_id, victim, thread_ptr);
         no_locks_held_imply_all_objects_unlocked(krnl, lctx);
-        assert(rebalance_pull_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()),
-            kernel_k_to_kernel_u(*krnl), cpu_id, true) && rebalance_pull_step_pre(steps.nonlock_view().last().old_u, cpu_id) && rebalance_pull_step(steps.nonlock_view().last().old_u, steps.nonlock_view().last().new_u, cpu_id)) by {
+        assert(rebalance_pull_syscall_trace(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, true)) by {
             rebalance_pull_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, victim, thread_ptr);
-            rebalance_pull_step_from_u(steps.nonlock_view().last().old_u, steps.nonlock_view().last().new_u, cpu_id, victim, thread_ptr);
             rebalance_pull_trace_pull_step(&*steps, pull_before, kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id);
         };
     }
@@ -447,7 +440,6 @@ pub fn rebalance_pull(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalConte
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        old(steps).nonlock_view().len() == 0,
         old(steps).snapshot_k() == *old(krnl),
     ensures
         final(krnl).inv(),
@@ -457,17 +449,12 @@ pub fn rebalance_pull(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalConte
         final(lctx).no_locks_held(),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         rebalance_pull_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(*old(krnl)),
             kernel_k_to_kernel_u(*final(krnl)), cpu_id, ret is Pulled),
-        final(steps).nonlock_view().len() == if ret is Pulled { 1nat } else { 0nat },
         ret == rebalance_pull_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id),
-        !(ret is Pulled) ==> kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
-        ret is Pulled ==> final(steps).nonlock_view()[0].old_u == kernel_k_to_nonlock_kernel_u(*old(krnl)) && final(steps).nonlock_view()[0].new_u == kernel_k_to_nonlock_kernel_u(*final(krnl)),
-        ret is Pulled ==> rebalance_pull_step_pre(final(steps).nonlock_view()[0].old_u, cpu_id) && rebalance_pull_step(final(steps).nonlock_view()[0].old_u, final(steps).nonlock_view()[0].new_u, cpu_id),
 {
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
     proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }

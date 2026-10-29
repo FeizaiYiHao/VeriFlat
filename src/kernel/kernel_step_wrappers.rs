@@ -52,8 +52,8 @@ pub mod per_map_projection;
 pub mod kill_per_map_projection;
 /// Per-map K->U lemmas of the cpu-and-page-owner step and the process-table lock-state-and-progress step.
 pub mod owner_and_tables_per_map_projection;
-/// Per-entry and domain K->U lemmas of the nonlock and lock-selectable user projections.
-pub mod nonlock_projection;
+/// Per-entry and domain K->U lemmas of the unwrapped user projection `kernel_k_user_projection`.
+pub mod user_projection_at;
 /// K->U lemmas of read-mode page-table steps: held-window mappings, read-mode entry and exit, and downgrade.
 pub mod pagetable_read_mode;
 pub mod new_process_read_mode;
@@ -85,7 +85,7 @@ pub use endpoint_release::*;
 pub use per_map_projection::*;
 pub use kill_per_map_projection::*;
 pub use owner_and_tables_per_map_projection::*;
-pub use nonlock_projection::*;
+pub use user_projection_at::*;
 pub use pagetable_read_mode::*;
 pub use new_process_read_mode::*;
 pub use ipc_pages_tables::*;
@@ -103,11 +103,6 @@ pub tracked struct KernelSteps {
 
 impl KernelSteps {
     pub closed spec fn view(&self) -> Seq<KernelStep> { self.steps }
-    #[verifier::opaque]
-    pub open spec fn nonlock_view(&self) -> Seq<KernelStep> {
-        self.view().filter_map(|step: KernelStep| step.nonlock_step())
-    }
-    pub open spec fn nonlock_snapshot_u(&self) -> KernelU { kernel_k_to_nonlock_kernel_u(self.snapshot_k()) }
     pub closed spec fn snapshot_k(&self) -> KernelK { self.snapshot_k }
     pub closed spec fn snapshot_u(&self) -> KernelU { self.snapshot_u }
 
@@ -119,11 +114,9 @@ impl KernelSteps {
     pub proof fn new(krnl: &KernelK) -> (tracked ret: Self)
         ensures
             ret.view() == Seq::<KernelStep>::empty(),
-            ret.nonlock_view() == Seq::<KernelStep>::empty(),
             ret.snapshot_k() == *krnl,
             ret.snapshot_u() == kernel_k_to_kernel_u(*krnl),
     {
-        reveal(KernelSteps::nonlock_view);
         KernelSteps { steps: Seq::empty(), snapshot_k: *krnl, snapshot_u: kernel_k_to_kernel_u(*krnl) }
     }
 
@@ -143,22 +136,18 @@ impl KernelSteps {
             final(self).view() == old(self).view(),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
-            final(self).nonlock_view() == old(self).nonlock_view(),
             final(self).snapshot_u() == old(self).snapshot_u(),
             final(self).snapshot_u() == kernel_k_to_kernel_u(final(self).snapshot_k()),
             krnl.irt.view().owners() == final(self).snapshot_k().irt.view().owners(),
             krnl.irt.view().iommu_roots() == final(self).snapshot_k().irt.view().iommu_roots(),
             krnl.cpu_tlb.view() == final(self).snapshot_k().cpu_tlb.view(),
             krnl.iommu_tlb.view() == final(self).snapshot_k().iommu_tlb.view(),
-            final(self).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*krnl),
             final(self).snapshot_k() == if old(self).snapshot_u() == kernel_k_to_kernel_u(*krnl) { *krnl } else { old(self).snapshot_k() },
             kernel_cpu_process_thread_nonlock_fields_unchanged(&final(self).snapshot_k(), krnl),
             kernel_endpoint_nonlock_fields_unchanged(final(self).snapshot_k().ep_mp, krnl.ep_mp),
             kernel_container_nonlock_fields_and_quotas_unchanged(&final(self).snapshot_k(), krnl),
     {
-        reveal(KernelSteps::nonlock_view);
         use_type_invariant(&*self);
-        assert(self.nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*krnl)) by { kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(&self.snapshot_k(), krnl); };
         if self.snapshot_u() == kernel_k_to_kernel_u(*krnl) {
             *self = KernelSteps { steps: self.steps, snapshot_k: *krnl, snapshot_u: self.snapshot_u };
             kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*self, krnl);
@@ -261,11 +250,9 @@ impl KernelSteps {
                 },
             },
         ensures
-            kernel_k_to_nonlock_kernel_u(*krnl) == old(self).nonlock_snapshot_u(),
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view(),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
-            final(self).nonlock_view() == old(self).nonlock_view(),
             final(self).snapshot_u() == old(self).snapshot_u(),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
             final(self).snapshot_k() == *krnl,
@@ -379,11 +366,9 @@ impl KernelSteps {
                 },
             },
         ensures
-            kernel_k_to_nonlock_kernel_u(*krnl) == old(self).nonlock_snapshot_u(),
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view(),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
-            final(self).nonlock_view() == old(self).nonlock_view(),
             final(self).snapshot_u() == old(self).snapshot_u(),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
             final(self).snapshot_k() == *krnl,
@@ -462,11 +447,9 @@ impl KernelSteps {
                     &&& (after is Read) == (before is Read)
                 },
         ensures
-            kernel_k_to_nonlock_kernel_u(*krnl) == old(self).nonlock_snapshot_u(),
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).view() == old(self).view(),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
-            final(self).nonlock_view() == old(self).nonlock_view(),
             final(self).snapshot_u() == old(self).snapshot_u(),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
             final(self).snapshot_k() == *krnl,
@@ -474,10 +457,8 @@ impl KernelSteps {
             kernel_endpoint_nonlock_fields_unchanged(final(self).snapshot_k().ep_mp, krnl.ep_mp),
             kernel_container_nonlock_fields_and_quotas_unchanged(&final(self).snapshot_k(), krnl),
     {
-        reveal(KernelSteps::nonlock_view);
         use_type_invariant(&*self);
         assert(self.snapshot_u() == kernel_k_to_kernel_u(*krnl)) by { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&self.snapshot_k(), krnl); };
-        assert(kernel_k_to_nonlock_kernel_u(*krnl) == self.nonlock_snapshot_u()) by { kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(&self.snapshot_k(), krnl); };
         *self = KernelSteps { steps: self.steps, snapshot_k: *krnl, snapshot_u: self.snapshot_u };
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*self, krnl);
     }
@@ -493,17 +474,8 @@ impl KernelSteps {
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
             final(self).snapshot_k() == *krnl,
-            final(self).nonlock_view() == record_user_view_change(old(self).nonlock_view(), old(self).nonlock_snapshot_u(), kernel_k_to_nonlock_kernel_u(*krnl)),
     {
         use_type_invariant(&*self);
-        assert(self.nonlock_snapshot_u() == kernel_u_nonlock_fields(self.snapshot_u()) && kernel_k_to_nonlock_kernel_u(*krnl) == kernel_u_nonlock_fields(kernel_k_to_kernel_u(*krnl))) by {
-            kernel_nonlock_projection_is_u_nonlock_fields(self.snapshot_k()); kernel_nonlock_projection_is_u_nonlock_fields(*krnl);
-        };
-        reveal(KernelSteps::nonlock_view);
-        assert(record_user_view_change(self.view(), self.snapshot_u(), kernel_k_to_kernel_u(*krnl)).filter_map(|step: KernelStep| step.nonlock_step())
-            == record_user_view_change(self.nonlock_view(), self.nonlock_snapshot_u(), kernel_k_to_nonlock_kernel_u(*krnl))) by {
-            seq_filter_map_push_lemma(self.view(), KernelStep { old_u: self.snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }, |step: KernelStep| step.nonlock_step());
-        };
         *self = KernelSteps {
             steps: record_user_view_change(self.steps, self.snapshot_u, kernel_k_to_kernel_u(*krnl)),
             snapshot_k: *krnl, snapshot_u: kernel_k_to_kernel_u(*krnl),
@@ -529,12 +501,9 @@ impl KernelSteps {
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
-            final(self).nonlock_view() == old(self).nonlock_view(),
             final(self).snapshot_k() == *krnl,
-            final(self).nonlock_snapshot_u() == old(self).nonlock_snapshot_u(),
     {
         use_type_invariant(&*self);
-        assert(self.nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*krnl)) by { kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(&self.snapshot_k(), krnl); };
         self.end_kernel_step_raw(krnl, lctx);
     }
 
@@ -551,106 +520,11 @@ impl KernelSteps {
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
-            final(self).nonlock_view() == old(self).nonlock_view().push(KernelStep { old_u: old(self).nonlock_snapshot_u(), new_u: kernel_k_to_nonlock_kernel_u(*krnl) }),
             final(self).snapshot_k() == *krnl,
-            final(self).nonlock_view().last().new_u.process_map.spec_index(process_ptr).owned_threads.last() == new_thread_ptr,
-            kernel_u_new_thread_changed(final(self).nonlock_view().last().old_u, final(self).nonlock_view().last().new_u,
-                process_ptr, staging_thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, initial_endpoint, staging_progress),
     {
         use_type_invariant(&*self);
-        assert(kernel_u_new_thread_changed(self.nonlock_snapshot_u(), kernel_k_to_nonlock_kernel_u(*krnl),
-            process_ptr, staging_thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, initial_endpoint, staging_progress)) by {
-            kernel_new_thread_fields_implies_u_step(&self.snapshot_k(), krnl, process_ptr, staging_thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, initial_endpoint, staging_progress);
-        };
-        assert(self.nonlock_snapshot_u() != kernel_k_to_nonlock_kernel_u(*krnl)
-            && kernel_k_to_nonlock_kernel_u(*krnl).process_map.spec_index(process_ptr).owned_threads.last() == new_thread_ptr) by { reveal(kernel_u_new_thread_changed); };
         assert(self.snapshot_u() != kernel_k_to_kernel_u(*krnl)) by { reveal(kernel_new_thread_fields); kernel_u_domains_projection(&self.snapshot_k()); kernel_u_domains_projection(krnl); };
         self.end_kernel_step_raw(krnl, lctx);
-    }
-
-    /// `end_kernel_step_new_thread` for a thread funded by the live thread running on `cpu_id` inside its own live
-    /// process and container, whose descriptor at `endpoint_index` names the optional initial endpoint.
-    pub proof fn end_kernel_step_new_thread_on_cpu(
-        tracked &mut self, krnl: &KernelK, tracked lctx: &LocalContext, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
-        staging_thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, new_thread_ptr: RwLockThreadPtr, initial_regs: Registers,
-        initial_endpoint: Option<RwLockEndpointPtr>, endpoint_index: EndpointIdx, staging_progress: Option<SyscallProgress>,
-    )
-        requires
-            krnl.inv(),
-            lctx.kernel_view_locking_state() is Release,
-            kernel_new_thread_fields(&old(self).snapshot_k(), krnl, process_ptr, staging_thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, initial_endpoint, staging_progress),
-            index_valid(NUM_CPUS, cpu_id),
-            {
-                let pre = old(self).snapshot_k();
-                let cpu = pre.cpu_arr.spec_index(cpu_id).value.view().view();
-                let thread = pre.thr_mp.spec_index(staging_thread_ptr).view();
-                &&& cpu.state is Running
-                &&& cpu.current_process == Some(process_ptr)
-                &&& cpu.current_thread == Some(staging_thread_ptr)
-                &&& cpu.owning_container == container_ptr
-                &&& !pre.prc_mp.spec_index(process_ptr).being_killed()
-                &&& !pre.thr_mp.spec_index(staging_thread_ptr).being_killed()
-                &&& thread.state == (ThreadState::RUNNING { cpu_id })
-                &&& thread.owning_proc == process_ptr
-                &&& thread.owning_container == container_ptr
-                &&& (initial_endpoint is Some ==> edp_idx_valid(endpoint_index) && thread.endpoint_descriptors.view()[endpoint_index as int] == initial_endpoint)
-            },
-        ensures
-            old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
-            final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
-            forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
-            final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
-            final(self).nonlock_view() == old(self).nonlock_view().push(KernelStep { old_u: old(self).nonlock_snapshot_u(), new_u: kernel_k_to_nonlock_kernel_u(*krnl) }),
-            final(self).snapshot_k() == *krnl,
-            final(self).nonlock_view().last().new_u.process_map.spec_index(process_ptr).owned_threads.last() == new_thread_ptr,
-            kernel_u_new_thread_changed(final(self).nonlock_view().last().old_u, final(self).nonlock_view().last().new_u,
-                process_ptr, staging_thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, initial_endpoint, staging_progress),
-            {
-                let old_u = final(self).nonlock_view().last().old_u;
-                let cpu = old_u.cpu_array[cpu_id as int];
-                let thread = old_u.thread_map.spec_index(staging_thread_ptr);
-                &&& cpu.state is Running
-                &&& cpu.current_process == Some(process_ptr)
-                &&& cpu.current_thread == Some(staging_thread_ptr)
-                &&& cpu.owning_container == container_ptr
-                &&& !old_u.process_map.spec_index(process_ptr).killed
-                &&& !thread.killed
-                &&& thread.state == (ThreadState::RUNNING { cpu_id })
-                &&& thread.owning_proc == process_ptr
-                &&& thread.owning_container == container_ptr
-                &&& old_u.container_map.dom().contains(container_ptr)
-                &&& old_u.process_map.dom().contains(process_ptr)
-                &&& old_u.thread_map.dom().contains(staging_thread_ptr)
-                &&& thread.quota_4k >= 1
-                &&& (initial_endpoint is Some ==> edp_idx_valid(endpoint_index) && thread.endpoint_descriptors[endpoint_index as int] == initial_endpoint)
-                &&& (initial_endpoint is Some ==> old_u.endpoint_map.dom().contains(initial_endpoint->Some_0))
-            },
-    {
-        let pre_u = self.nonlock_snapshot_u();
-        let pre_k = self.snapshot_k();
-        self.end_kernel_step_new_thread(krnl, lctx, process_ptr, staging_thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, initial_endpoint, staging_progress);
-        assert({
-            let cpu = pre_u.cpu_array[cpu_id as int];
-            let thread = pre_u.thread_map.spec_index(staging_thread_ptr);
-            &&& cpu.state is Running
-            &&& cpu.current_process == Some(process_ptr)
-            &&& cpu.current_thread == Some(staging_thread_ptr)
-            &&& cpu.owning_container == container_ptr
-            &&& !pre_u.process_map.spec_index(process_ptr).killed
-            &&& !thread.killed
-            &&& thread.state == (ThreadState::RUNNING { cpu_id })
-            &&& thread.owning_proc == process_ptr
-            &&& thread.owning_container == container_ptr
-            &&& pre_u.container_map.dom().contains(container_ptr)
-            &&& pre_u.process_map.dom().contains(process_ptr)
-            &&& pre_u.thread_map.dom().contains(staging_thread_ptr)
-            &&& thread.quota_4k >= 1
-            &&& (initial_endpoint is Some ==> edp_idx_valid(endpoint_index) && thread.endpoint_descriptors[endpoint_index as int] == initial_endpoint)
-            &&& (initial_endpoint is Some ==> pre_u.endpoint_map.dom().contains(initial_endpoint->Some_0))
-        }) by {
-            reveal(kernel_new_thread_fields); kernel_u_nonlock_domains_projection(&pre_k); kernel_cpu_nonlock_projection_at(&pre_k, cpu_id);
-            kernel_process_nonlock_projection_at(&pre_k, process_ptr); kernel_thread_nonlock_projection_at(&pre_k, staging_thread_ptr);
-        };
     }
 
     /// Finish an endpoint creation: one quota of `staging_thread_ptr` funds `new_endpoint_ptr`, installed at its
@@ -668,11 +542,9 @@ impl KernelSteps {
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
-            final(self).nonlock_view() == old(self).nonlock_view().push(KernelStep { old_u: old(self).nonlock_snapshot_u(), new_u: kernel_k_to_nonlock_kernel_u(*krnl) }),
             final(self).snapshot_k() == *krnl,
     {
         use_type_invariant(&*self);
-        assert(self.nonlock_snapshot_u() != kernel_k_to_nonlock_kernel_u(*krnl)) by { reveal(kernel_new_endpoint_fields); reveal(kernel_k_to_nonlock_kernel_u); };
         assert(self.snapshot_u() != kernel_k_to_kernel_u(*krnl)) by { reveal(kernel_new_endpoint_fields); reveal(kernel_k_to_kernel_u); };
         self.end_kernel_step_raw(krnl, lctx);
     }
@@ -688,11 +560,9 @@ impl KernelSteps {
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
-            final(self).nonlock_view() == old(self).nonlock_view().push(KernelStep { old_u: old(self).nonlock_snapshot_u(), new_u: kernel_k_to_nonlock_kernel_u(*krnl) }),
             final(self).snapshot_k() == *krnl,
     {
         use_type_invariant(&*self);
-        assert(self.nonlock_snapshot_u() != kernel_k_to_nonlock_kernel_u(*krnl)) by { reveal(kernel_thread_exit_fields); reveal(kernel_k_to_nonlock_kernel_u); };
         assert(self.snapshot_u() != kernel_k_to_kernel_u(*krnl)) by { reveal(kernel_thread_exit_fields); kernel_u_domains_projection(&self.snapshot_k()); kernel_u_domains_projection(krnl); };
         self.end_kernel_step_raw(krnl, lctx);
     }
@@ -712,19 +582,9 @@ impl KernelSteps {
             final(self).view() == record_user_view_change(old(self).view(), old(self).snapshot_u(), kernel_k_to_kernel_u(*krnl)),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
-            final(self).nonlock_view() == old(self).nonlock_view().push(KernelStep { old_u: old(self).nonlock_snapshot_u(), new_u: kernel_k_to_nonlock_kernel_u(*krnl) }),
             final(self).snapshot_k() == *krnl,
-            final(self).nonlock_view().last().old_u.thread_map.dom().contains(thread_ptr),
-            final(self).nonlock_view().last().old_u.thread_map.spec_index(thread_ptr).state == old_state,
-            final(self).nonlock_view().last().new_u.thread_map.dom().contains(thread_ptr),
-            final(self).nonlock_view().last().new_u.thread_map.spec_index(thread_ptr).state == new_state,
     {
         use_type_invariant(&*self);
-        kernel_thread_state_changed_implies_u_neq(&self.snapshot_k(), krnl, thread_ptr);
-        assert(self.nonlock_snapshot_u().thread_map.dom().contains(thread_ptr)
-            && self.nonlock_snapshot_u().thread_map.spec_index(thread_ptr).state == old_state) by { kernel_thread_nonlock_projection_at(&self.snapshot_k(), thread_ptr); };
-        assert(kernel_k_to_nonlock_kernel_u(*krnl).thread_map.dom().contains(thread_ptr)
-            && kernel_k_to_nonlock_kernel_u(*krnl).thread_map.spec_index(thread_ptr).state == new_state) by { kernel_thread_nonlock_projection_at(krnl, thread_ptr); };
         self.end_kernel_step_raw(krnl, lctx);
     }
 
@@ -741,13 +601,9 @@ impl KernelSteps {
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
             old(self).snapshot_u() == kernel_k_to_kernel_u(old(self).snapshot_k()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
-            final(self).nonlock_view() == old(self).nonlock_view().push(KernelStep { old_u: old(self).nonlock_snapshot_u(), new_u: kernel_k_to_nonlock_kernel_u(*krnl) }),
             final(self).snapshot_k() == *krnl,
     {
         use_type_invariant(&*self);
-        assert(self.nonlock_snapshot_u().thread_map.spec_index(thread_ptr).syscall_progress != kernel_k_to_nonlock_kernel_u(*krnl).thread_map.spec_index(thread_ptr).syscall_progress) by {
-            kernel_thread_nonlock_projection_at(&self.snapshot_k(), thread_ptr); kernel_thread_nonlock_projection_at(krnl, thread_ptr);
-        };
         assert(self.snapshot_u().thread_map.spec_index(thread_ptr).syscall_progress != kernel_k_to_kernel_u(*krnl).thread_map.spec_index(thread_ptr).syscall_progress) by {
             kernel_thread_projection_at(&self.snapshot_k(), thread_ptr); kernel_thread_projection_at(krnl, thread_ptr);
         };
@@ -766,41 +622,8 @@ impl KernelSteps {
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
-            final(self).nonlock_view() == old(self).nonlock_view().push(KernelStep { old_u: old(self).nonlock_snapshot_u(), new_u: kernel_k_to_nonlock_kernel_u(*krnl) }),
             final(self).snapshot_k() == *krnl,
-            kernel_u_context_switch_changed(final(self).nonlock_view().last().old_u, final(self).nonlock_view().last().new_u, cpu_id, next_thread, entry_regs, flushed_pcid),
             kernel_u_context_switch_changed(kernel_k_to_kernel_u(old(self).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, next_thread, entry_regs, flushed_pcid),
-            {
-                let old_u = final(self).nonlock_view().last().old_u;
-                let cpu = old_u.cpu_array[cpu_id as int];
-                let container = old_u.container_map.spec_index(cpu.owning_container);
-                let next = old_u.thread_map.spec_index(next_thread);
-                &&& index_valid(NUM_CPUS, cpu_id)
-                &&& cpu.lock_state is Unlocked
-                &&& !(cpu.state is Off)
-                &&& old_u.container_map.dom().contains(cpu.owning_container)
-                &&& container.scheduler[cpu_id as int].len() > 0
-                &&& container.scheduler[cpu_id as int][0] == next_thread
-                &&& old_u.thread_map.dom().contains(next_thread)
-                &&& next.lock_state is Unlocked
-                &&& !next.killed
-                &&& next.state is SCHEDULED
-                &&& next.owning_container == cpu.owning_container
-                &&& old_u.process_map.dom().contains(next.owning_proc)
-                &&& cpu.current_thread != Some(next_thread)
-                &&& cpu.current_process is Some == cpu.current_thread is Some
-                &&& (cpu.current_thread is Some ==> {
-                    let prev = old_u.thread_map.spec_index(cpu.current_thread.unwrap());
-                    &&& old_u.thread_map.dom().contains(cpu.current_thread.unwrap())
-                    &&& prev.lock_state is Unlocked
-                    &&& !prev.killed
-                    &&& prev.state == (ThreadState::RUNNING { cpu_id })
-                    &&& prev.owning_proc == cpu.current_process.unwrap()
-                    &&& old_u.process_map.dom().contains(cpu.current_process.unwrap())
-                    &&& old_u.process_map.spec_index(cpu.current_process.unwrap()).lock_state is Unlocked
-                    &&& !old_u.process_map.spec_index(cpu.current_process.unwrap()).killed
-                })
-            },
             {
                 let old_u = kernel_k_to_kernel_u(old(self).snapshot_k());
                 let cpu = old_u.cpu_array[cpu_id as int];
@@ -837,18 +660,6 @@ impl KernelSteps {
         reveal(kernel_u_context_switch_changed);
         use_type_invariant(&*self);
         assert({
-            let pre_u = kernel_k_to_nonlock_kernel_u(self.snapshot_k());
-            let cpu = pre_u.cpu_array[cpu_id as int];
-            &&& cpu.lock_state is Unlocked
-            &&& pre_u.thread_map.spec_index(next_thread).lock_state is Unlocked
-            &&& cpu.current_thread is Some ==> pre_u.thread_map.spec_index(cpu.current_thread.unwrap()).lock_state is Unlocked
-            &&& cpu.current_process is Some ==> pre_u.process_map.spec_index(cpu.current_process.unwrap()).lock_state is Unlocked
-        }) by {
-            reveal(kernel_context_switch_fields); kernel_cpu_nonlock_projection_at(&self.snapshot_k(), cpu_id); kernel_thread_nonlock_projection_at(&self.snapshot_k(), next_thread);
-            if let Some(t) = self.snapshot_k().cpu_arr.spec_index(cpu_id).value.view().view().current_thread { if self.snapshot_k().thr_mp.dom().contains(t) { kernel_thread_nonlock_projection_at(&self.snapshot_k(), t); } }
-            if let Some(p) = self.snapshot_k().cpu_arr.spec_index(cpu_id).value.view().view().current_process { if self.snapshot_k().prc_mp.dom().contains(p) { kernel_process_nonlock_projection_at(&self.snapshot_k(), p); } }
-        };
-        assert({
             let pre_u = kernel_k_to_kernel_u(self.snapshot_k());
             let cpu = pre_u.cpu_array[cpu_id as int];
             &&& cpu.lock_state is Unlocked
@@ -860,12 +671,8 @@ impl KernelSteps {
             if let Some(t) = self.snapshot_k().cpu_arr.spec_index(cpu_id).value.view().view().current_thread { if self.snapshot_k().thr_mp.dom().contains(t) { kernel_thread_projection_at(&self.snapshot_k(), t); } }
             if let Some(p) = self.snapshot_k().cpu_arr.spec_index(cpu_id).value.view().view().current_process { if self.snapshot_k().prc_mp.dom().contains(p) { kernel_process_projection_at(&self.snapshot_k(), p); } }
         };
-        assert(kernel_u_context_switch_changed(self.nonlock_snapshot_u(), kernel_k_to_nonlock_kernel_u(*krnl), cpu_id, next_thread, entry_regs, flushed_pcid)) by {
-            kernel_context_switch_fields_implies_u_step(&self.snapshot_k(), krnl, cpu_id, next_thread, entry_regs, flushed_pcid, false);
-            reveal(kernel_k_to_nonlock_kernel_u);
-        };
         assert(kernel_u_context_switch_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, next_thread, entry_regs, flushed_pcid)) by {
-            kernel_context_switch_fields_implies_u_step(&self.snapshot_k(), krnl, cpu_id, next_thread, entry_regs, flushed_pcid, true);
+            kernel_context_switch_fields_implies_u_step(&self.snapshot_k(), krnl, cpu_id, next_thread, entry_regs, flushed_pcid);
             reveal(kernel_k_to_kernel_u);
         };
         self.end_kernel_step_raw(krnl, lctx);
@@ -882,31 +689,8 @@ impl KernelSteps {
             final(self).view() == old(self).view().push(KernelStep { old_u: old(self).snapshot_u(), new_u: kernel_k_to_kernel_u(*krnl) }),
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(self).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(self).view()),
             final(self).snapshot_u() == kernel_k_to_kernel_u(*krnl),
-            final(self).nonlock_view() == old(self).nonlock_view().push(KernelStep { old_u: old(self).nonlock_snapshot_u(), new_u: kernel_k_to_nonlock_kernel_u(*krnl) }),
             final(self).snapshot_k() == *krnl,
-            kernel_u_rebalance_pull_changed(final(self).nonlock_view().last().old_u, final(self).nonlock_view().last().new_u, cpu_id, victim, thread),
             kernel_u_rebalance_pull_changed(kernel_k_to_kernel_u(old(self).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, victim, thread),
-            {
-                let old_u = final(self).nonlock_view().last().old_u;
-                let cpu = old_u.cpu_array[cpu_id as int];
-                let queues = old_u.container_map.spec_index(cpu.owning_container).scheduler;
-                let t = old_u.thread_map.spec_index(thread);
-                &&& index_valid(NUM_CPUS, cpu_id)
-                &&& index_valid(NUM_CPUS, victim)
-                &&& victim != cpu_id
-                &&& cpu.lock_state is Unlocked
-                &&& cpu.state is Idle
-                &&& old_u.container_map.dom().contains(cpu.owning_container)
-                &&& queues[cpu_id as int].len() == 0
-                &&& first_nonempty_shard(queues, 0, cpu_id) == Some(victim)
-                &&& queues[victim as int].len() > 0
-                &&& queues[victim as int][0] == thread
-                &&& old_u.thread_map.dom().contains(thread)
-                &&& t.lock_state is Unlocked
-                &&& !t.killed
-                &&& t.state == (ThreadState::SCHEDULED { cpu_id: victim })
-                &&& t.owning_container == cpu.owning_container
-            },
             {
                 let old_u = kernel_k_to_kernel_u(old(self).snapshot_k());
                 let cpu = old_u.cpu_array[cpu_id as int];
@@ -933,25 +717,14 @@ impl KernelSteps {
         reveal(kernel_u_rebalance_pull_changed);
         use_type_invariant(&*self);
         assert({
-            let pre_u = kernel_k_to_nonlock_kernel_u(self.snapshot_k());
-            &&& pre_u.cpu_array[cpu_id as int].lock_state is Unlocked
-            &&& pre_u.thread_map.spec_index(thread).lock_state is Unlocked
-        }) by {
-            reveal(kernel_rebalance_pull_fields); kernel_cpu_nonlock_projection_at(&self.snapshot_k(), cpu_id); kernel_thread_nonlock_projection_at(&self.snapshot_k(), thread);
-        };
-        assert({
             let pre_u = kernel_k_to_kernel_u(self.snapshot_k());
             &&& pre_u.cpu_array[cpu_id as int].lock_state is Unlocked
             &&& pre_u.thread_map.spec_index(thread).lock_state is Unlocked
         }) by {
             reveal(kernel_rebalance_pull_fields); kernel_cpu_projection_at(&self.snapshot_k(), cpu_id); kernel_thread_projection_at(&self.snapshot_k(), thread);
         };
-        assert(kernel_u_rebalance_pull_changed(self.nonlock_snapshot_u(), kernel_k_to_nonlock_kernel_u(*krnl), cpu_id, victim, thread)) by {
-            kernel_rebalance_pull_fields_implies_u_step(&self.snapshot_k(), krnl, cpu_id, victim, thread, false);
-            reveal(kernel_k_to_nonlock_kernel_u);
-        };
         assert(kernel_u_rebalance_pull_changed(self.snapshot_u(), kernel_k_to_kernel_u(*krnl), cpu_id, victim, thread)) by {
-            kernel_rebalance_pull_fields_implies_u_step(&self.snapshot_k(), krnl, cpu_id, victim, thread, true);
+            kernel_rebalance_pull_fields_implies_u_step(&self.snapshot_k(), krnl, cpu_id, victim, thread);
             reveal(kernel_k_to_kernel_u);
         };
         self.end_kernel_step_raw(krnl, lctx);

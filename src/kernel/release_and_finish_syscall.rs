@@ -54,10 +54,8 @@ verus! {
                 &&& final(lctx).no_locks_held()
                 &&& final(krnl).all_objects_unlocked(final(lctx))
                 &&& final(steps).view() == old(steps).view()
-                &&& final(steps).nonlock_view() == old(steps).nonlock_view()
                 &&& final(steps).snapshot_k() == *final(krnl)
                 &&& kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(*old(krnl))
-                &&& kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl))
             },
             ret is Some ==> {
                 let pre = old(krnl).cpu_arr.spec_index(cpu_id).view();
@@ -151,7 +149,6 @@ verus! {
             final(krnl).cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             final(steps).view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*final(krnl))),
-            kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
             forall|i: CpuId| #![trigger final(krnl).cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) ==> final(krnl).cpu_arr.spec_index(i).view().view().view() == old(krnl).cpu_arr.spec_index(i).view().view().view(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
@@ -160,8 +157,6 @@ verus! {
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             final(lctx).no_locks_held(),
             final(krnl).all_objects_unlocked(final(lctx)),
-            final(steps).nonlock_view() == old(steps).nonlock_view(),
-            final(steps).nonlock_snapshot_u() == old(steps).nonlock_snapshot_u(),
             final(steps).snapshot_k() == *final(krnl),
             final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view().update(cpu_id as int, cpu_op_after_step(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state)),
             final(lctx).kernel_call_perm() is None,
@@ -177,7 +172,6 @@ verus! {
         proof {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-            assert(kernel_k_to_nonlock_kernel_u(*krnl) == kernel_k_to_nonlock_kernel_u(*old(krnl))) by { kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(old(krnl), krnl); };
             steps.end_kernel_step_nonlock_fields_unchanged(&*krnl, &*lctx);
         }
     }
@@ -238,7 +232,6 @@ verus! {
             final(krnl).prc_mp.spec_index(process_ptr).locking_thread() is None,
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             final(steps).view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*final(krnl))),
-            kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
             forall|i: CpuId| #![trigger final(krnl).cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) ==> final(krnl).cpu_arr.spec_index(i).view().view().view() == old(krnl).cpu_arr.spec_index(i).view().view().view(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
@@ -247,8 +240,6 @@ verus! {
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             final(lctx).no_locks_held(),
             final(krnl).all_objects_unlocked(final(lctx)),
-            final(steps).nonlock_view() == old(steps).nonlock_view(),
-            final(steps).nonlock_snapshot_u() == old(steps).nonlock_snapshot_u(),
             final(steps).snapshot_k() == *final(krnl),
             final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view().update(cpu_id as int, cpu_op_after_step(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state)),
             final(lctx).kernel_call_perm() is None,
@@ -266,10 +257,6 @@ verus! {
         proof {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-            assert(kernel_k_to_nonlock_kernel_u(*krnl) == kernel_k_to_nonlock_kernel_u(*old(krnl))) by {
-                broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive;
-                kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(old(krnl), krnl);
-            };
             steps.end_kernel_step_nonlock_fields_unchanged(&*krnl, &*lctx);
         }
     }
@@ -338,7 +325,6 @@ verus! {
             final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() is None,
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             final(steps).view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*final(krnl))),
-            kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
             forall|i: CpuId| #![trigger final(krnl).cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) ==> final(krnl).cpu_arr.spec_index(i).view().view().view() == old(krnl).cpu_arr.spec_index(i).view().view().view(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
@@ -348,8 +334,6 @@ verus! {
             final(krnl).ep_mp == old(krnl).ep_mp,
             final(lctx).no_locks_held(),
             final(krnl).all_objects_unlocked(final(lctx)),
-            final(steps).nonlock_view() == old(steps).nonlock_view(),
-            final(steps).nonlock_snapshot_u() == old(steps).nonlock_snapshot_u(),
             final(steps).snapshot_k() == *final(krnl),
             final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view().update(cpu_id as int, cpu_op_after_step(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state)),
             final(lctx).kernel_call_perm() is None,
@@ -367,10 +351,6 @@ verus! {
         proof {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-            assert(kernel_k_to_nonlock_kernel_u(*krnl) == kernel_k_to_nonlock_kernel_u(*old(krnl))) by {
-                broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive;
-                kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(old(krnl), krnl);
-            };
             steps.end_kernel_step_nonlock_fields_unchanged(&*krnl, &*lctx);
         }
     }
@@ -447,7 +427,6 @@ verus! {
             final(krnl).thr_mp.spec_index(thread_ptr).locking_thread() is None,
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             final(steps).view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*final(krnl))),
-            kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
             forall|i: CpuId| #![trigger final(krnl).cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) ==> final(krnl).cpu_arr.spec_index(i).view().view().view() == old(krnl).cpu_arr.spec_index(i).view().view().view(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
@@ -457,8 +436,6 @@ verus! {
             final(krnl).ep_mp == old(krnl).ep_mp,
             final(lctx).no_locks_held(),
             final(krnl).all_objects_unlocked(final(lctx)),
-            final(steps).nonlock_view() == old(steps).nonlock_view(),
-            final(steps).nonlock_snapshot_u() == old(steps).nonlock_snapshot_u(),
             final(steps).snapshot_k() == *final(krnl),
             final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view().update(cpu_id as int, cpu_op_after_step(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state)),
             final(lctx).kernel_call_perm() is None,
@@ -478,10 +455,6 @@ verus! {
         proof {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-            assert(kernel_k_to_nonlock_kernel_u(*krnl) == kernel_k_to_nonlock_kernel_u(*old(krnl))) by {
-                broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive;
-                kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(old(krnl), krnl);
-            };
             steps.end_kernel_step_nonlock_fields_unchanged(&*krnl, &*lctx);
         }
     }

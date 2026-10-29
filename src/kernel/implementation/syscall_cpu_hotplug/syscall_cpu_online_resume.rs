@@ -20,7 +20,6 @@ pub fn cpu_online_resume(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCo
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        old(steps).nonlock_view().len() == 0,
         old(steps).snapshot_k() == *old(krnl),
     ensures
         final(krnl).inv(),
@@ -30,10 +29,8 @@ pub fn cpu_online_resume(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCo
         final(lctx).no_locks_held(),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
         final(steps).view() == old(steps).view(),
-        final(steps).nonlock_view().len() == 0,
         kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(*old(krnl)),
         ret is StillOff == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Off || old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed()),
         forall|c: CpuId| #![trigger final(krnl).cpu_arr.spec_index(c)]

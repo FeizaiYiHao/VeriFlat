@@ -51,7 +51,6 @@ pub proof fn kernel_container_free_4k_page_moved_implies_u_step(pre: &KernelK, p
             })
         }),
         kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
-        kernel_k_to_nonlock_kernel_u(*pre) != kernel_k_to_nonlock_kernel_u(*post),
 {
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     let a = kernel_k_to_kernel_u(*pre);
@@ -75,8 +74,6 @@ pub proof fn kernel_container_free_4k_page_moved_implies_u_step(pre: &KernelK, p
     assert_maps_equal!(b.thread_map, a.thread_map, x => { if pre.thr_mp.dom().contains(x) { kernel_thread_projection_at(pre, x); kernel_thread_projection_at(post, x); } });
     assert_maps_equal!(b.endpoint_map, a.endpoint_map, e => { if pre.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(pre, e); kernel_endpoint_projection_at(post, e); } });
     assert(b.container_map[src].quota_4k != a.container_map[src].quota_4k);
-    kernel_nonlock_projection_is_u_nonlock_fields(*pre); kernel_nonlock_projection_is_u_nonlock_fields(*post);
-    assert(kernel_u_nonlock_fields(b).container_map[src].quota_4k != kernel_u_nonlock_fields(a).container_map[src].quota_4k) by { reveal(kernel_u_nonlock_fields); };
 }
 
 /// Moving a free 2M page, which spans the pages `moved` of the container `src`, from `src` to the container `dst`
@@ -127,7 +124,6 @@ pub proof fn kernel_container_free_2m_page_moved_implies_u_step(pre: &KernelK, p
             })
         }),
         kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
-        kernel_k_to_nonlock_kernel_u(*pre) != kernel_k_to_nonlock_kernel_u(*post),
 {
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     let a = kernel_k_to_kernel_u(*pre);
@@ -151,8 +147,6 @@ pub proof fn kernel_container_free_2m_page_moved_implies_u_step(pre: &KernelK, p
     assert_maps_equal!(b.thread_map, a.thread_map, x => { if pre.thr_mp.dom().contains(x) { kernel_thread_projection_at(pre, x); kernel_thread_projection_at(post, x); } });
     assert_maps_equal!(b.endpoint_map, a.endpoint_map, e => { if pre.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(pre, e); kernel_endpoint_projection_at(post, e); } });
     assert(b.container_map[src].quota_2m != a.container_map[src].quota_2m);
-    kernel_nonlock_projection_is_u_nonlock_fields(*pre); kernel_nonlock_projection_is_u_nonlock_fields(*post);
-    assert(kernel_u_nonlock_fields(b).container_map[src].quota_2m != kernel_u_nonlock_fields(a).container_map[src].quota_2m) by { reveal(kernel_u_nonlock_fields); };
 }
 
 /// A container whose 4K and 2M allocators hold no quota and whose 1G allocator holds exactly its free pages as quota has

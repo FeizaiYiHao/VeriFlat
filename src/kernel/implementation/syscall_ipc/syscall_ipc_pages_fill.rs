@@ -105,7 +105,6 @@ pub(super) fn ipc_pages_fill_target_page(
         final(steps).snapshot_k() == *final(krnl),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         old(steps).view().len() <= final(steps).view().len() <= old(steps).view().len() + 3,
-        old(steps).nonlock_view().len() <= final(steps).nonlock_view().len() <= old(steps).nonlock_view().len() + 3,
         forall|j: int| #![trigger final(steps).view()[j]] 0 <= j < old(steps).view().len() ==> final(steps).view()[j] == old(steps).view()[j],
         forall|j: int| #![trigger final(steps).view()[j]] start <= j < final(steps).view().len()
             ==> share_4k_range_step(final(steps).view()[j], cpu_id) || ipc_pages_downgrade_step_pre(final(steps).view()[j].old_u, cpu_id) && ipc_pages_downgrade_step(final(steps).view()[j].old_u, final(steps).view()[j].new_u, cpu_id),

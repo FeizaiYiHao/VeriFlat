@@ -160,7 +160,6 @@ impl KernelK {
             kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), final(self)),
             kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, final(self).ep_mp),
             kernel_container_nonlock_fields_and_quotas_unchanged(old(self), final(self)),
-            kernel_k_to_nonlock_kernel_u(*final(self)) == kernel_k_to_nonlock_kernel_u(*old(self)),
             typed_lock_maps_aligned(final(self), final(lctx)),
             *final(self) == (KernelK { pcid_allc_mp: final(self).pcid_allc_mp, ..*old(self) }),
             final(self).pcid_allc_mp.unchanged_except(&old(self).pcid_allc_mp, allocator_ptr),
@@ -181,7 +180,6 @@ impl KernelK {
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
             pcid_allocator_lock_op_eof(*old(self), *self, allocator_ptr);
-            assert(kernel_k_to_nonlock_kernel_u(*self) == kernel_k_to_nonlock_kernel_u(*old(self))) by { kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(old(self), self); };
         }
     }
 }

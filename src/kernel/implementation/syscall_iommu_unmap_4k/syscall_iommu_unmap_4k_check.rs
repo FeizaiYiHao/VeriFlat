@@ -19,7 +19,6 @@ pub(super) fn iommu_unmap_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): T
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        old(steps).nonlock_view().len() == 0,
         old(steps).view().len() == 0,
         old(steps).snapshot_k() == *old(krnl),
     ensures
@@ -35,8 +34,6 @@ pub(super) fn iommu_unmap_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): T
             &&& final(krnl).all_objects_unlocked(final(lctx))
             &&& final(steps).snapshot_k() == *final(krnl)
             &&& final(steps).view().len() == 0
-            &&& final(steps).nonlock_view().len() == 0
-            &&& kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl))
         }),
         ret is Ok ==> ({
             let e = ret->Ok_0.0;

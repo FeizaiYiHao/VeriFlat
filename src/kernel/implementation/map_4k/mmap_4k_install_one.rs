@@ -163,9 +163,6 @@ verus! {
             pagetable_lock_perm.thread_id() == final(lctx).thread_id(),
             write_held ==> pagetable_lock_perm.lock_id() == final(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
             !write_held ==> final(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map.contains_pair(final(lctx).thread_id(), pagetable_lock_perm.lock_id()),
-            final(steps).nonlock_view().len() == old(steps).nonlock_view().len() + 1,
-            final(steps).nonlock_view().subrange(0, old(steps).nonlock_view().len() as int) == old(steps).nonlock_view(),
-            final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
             kernel_cpu_process_thread_nonlock_fields_unchanged(&final(steps).snapshot_k(), final(krnl)),
             kernel_endpoint_nonlock_fields_unchanged(final(steps).snapshot_k().ep_mp, final(krnl).ep_mp),
@@ -728,9 +725,6 @@ verus! {
                 &&& progress->Some_0->Share4k_origin matches Share4kOrigin::IpcPages { peer }
                     ==> final(krnl).thr_mp.spec_index(peer).view().state is IPC_TRANSIT && final(krnl).thr_mp.spec_index(peer).view().state->IPC_TRANSIT_partner == progress_thread
             },
-            final(steps).nonlock_view().len() == old(steps).nonlock_view().len() + 1,
-            final(steps).nonlock_view().subrange(0, old(steps).nonlock_view().len() as int) == old(steps).nonlock_view(),
-            final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
             final(steps).snapshot_k() == *final(krnl),
             kernel_cpu_process_thread_nonlock_fields_unchanged(&final(steps).snapshot_k(), final(krnl)),
             kernel_endpoint_nonlock_fields_unchanged(final(steps).snapshot_k().ep_mp, final(krnl).ep_mp),

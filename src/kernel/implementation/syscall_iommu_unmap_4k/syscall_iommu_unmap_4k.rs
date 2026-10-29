@@ -21,7 +21,6 @@ pub fn syscall_iommu_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        old(steps).nonlock_view().len() == 0,
         old(steps).view().len() == 0,
         old(steps).snapshot_k() == *old(krnl),
     ensures
@@ -36,8 +35,7 @@ pub fn syscall_iommu_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
         ret == iommu_unmap_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, iova, range),
         ret is Success ==> final(steps).view()[0].old_u == kernel_k_to_kernel_u(*old(krnl)),
         ret is Success ==> iommu_unmap_4k_syscall_trace(final(steps).view(), cpu_id, iova, range),
-        !(ret is Success) ==> final(steps).nonlock_view().len() == 0 && final(steps).view().len() == 0,
-        !(ret is Success) ==> kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
+        !(ret is Success) ==> final(steps).view().len() == 0,
 {
     let (locked, iommu_table, Tracked(iommu_table_perm)) = match iommu_unmap_4k_lock_and_check(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, iova, range) {
         Ok(e) => e,

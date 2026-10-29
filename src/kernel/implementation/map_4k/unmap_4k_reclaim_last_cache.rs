@@ -21,7 +21,6 @@ pub fn reclaim_last_lock_4k_cache_with_room(krnl: &mut KernelK, allocator_ptr: R
         old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()),
     ensures
         final(steps).view() == old(steps).view(),
-        final(steps).nonlock_view() == old(steps).nonlock_view(),
         *final(krnl) == (KernelK { pg_arr: final(krnl).pg_arr, allc_4k_mp: final(krnl).allc_4k_mp, ..final(steps).snapshot_k() }),
         kernel_cpu_process_thread_nonlock_fields_unchanged(&final(steps).snapshot_k(), final(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(final(steps).snapshot_k().ep_mp, final(krnl).ep_mp),

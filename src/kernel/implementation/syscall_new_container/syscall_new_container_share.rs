@@ -137,7 +137,6 @@ pub(super) fn end_new_container_created_step(
         typed_lock_map_contains_mode(final(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
         typed_lock_map_contains_mode(final(lctx).pagetable_lock_map(), source_pagetable_ptr, TypedLockMode::Read),
         typed_lock_map_contains_mode(final(lctx).pagetable_lock_map(), child_pagetable_ptr, TypedLockMode::Write),
-        final(steps).nonlock_view() == old(steps).nonlock_view().push(final(steps).nonlock_view().last()),
         final(steps).snapshot_k() == *final(krnl),
         final(krnl).cpu_arr.spec_index(caller_cpu_id).view() == old(krnl).cpu_arr.spec_index(caller_cpu_id).view(),
         final(krnl).cpu_hw_cr3_pcid[caller_cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[caller_cpu_id as int].view(),
@@ -318,8 +317,6 @@ pub(super) fn share_new_container_range(
             entry_lctx.pagetable_window_lock_map().dom().contains((p, w)) ==> final(lctx).pagetable_window_lock_map().dom().contains((p, w))
                 && final(lctx).pagetable_window_lock_map().index((p, w)) == entry_lctx.pagetable_window_lock_map().index((p, w)),
         held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
-        old(steps).nonlock_view().len() as int + source_range.len as int <= final(steps).nonlock_view().len() as int,
-        final(steps).nonlock_view().len() as int <= old(steps).nonlock_view().len() as int + 4 * source_range.len as int,
         kernel_cpu_process_thread_nonlock_fields_unchanged(&final(steps).snapshot_k(), final(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(final(steps).snapshot_k().ep_mp, final(krnl).ep_mp),
         final(krnl).irt.view().owners() == final(steps).snapshot_k().irt.view().owners(),
@@ -858,7 +855,6 @@ pub(super) fn create_new_container_root_thread_and_finish(
         final(lctx).no_locks_held(),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        final(steps).nonlock_view() == old(steps).nonlock_view().push(final(steps).nonlock_view().last()),
         final(steps).snapshot_k() == *final(krnl),
 {
     proof { assert(krnl.sched_mp.dom().contains(child_scheduler_ptr)) by { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, child_container_ptr); }; }
@@ -972,7 +968,6 @@ fn end_new_container_finish_step(
         final(steps).view().last().new_u == kernel_k_to_kernel_u(*krnl),
         new_container_finish_step_pre(final(steps).view().last().old_u, caller_cpu_id),
         new_container_finish_step(final(steps).view().last().old_u, final(steps).view().last().new_u, caller_cpu_id),
-        final(steps).nonlock_view() == old(steps).nonlock_view().push(final(steps).nonlock_view().last()),
         final(steps).snapshot_k() == *krnl,
 {
     proof {

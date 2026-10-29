@@ -181,7 +181,6 @@ fn ipc_pages_fill_target(
         final(lctx).allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
         final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
         old(steps).view().len() <= final(steps).view().len() <= old(steps).view().len() + 3 * target_range.len + 1,
-        old(steps).nonlock_view().len() <= final(steps).nonlock_view().len() <= old(steps).nonlock_view().len() + 3 * target_range.len,
         forall|j: int| #![trigger final(steps).view()[j]] 0 <= j < old(steps).view().len() ==> final(steps).view()[j] == old(steps).view()[j],
         forall|j: int| #![trigger final(steps).view()[j]] old(steps).view().len() <= j < final(steps).view().len()
             ==> share_4k_range_step(final(steps).view()[j], cpu_id) || ipc_pages_downgrade_step_pre(final(steps).view()[j].old_u, cpu_id) && ipc_pages_downgrade_step(final(steps).view()[j].old_u, final(steps).view()[j].new_u, cpu_id),
@@ -344,7 +343,6 @@ fn ipc_pages_fill_target(
             steps.snapshot_k() == *krnl,
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, steps.view()),
             old(steps).view().len() <= steps.view().len() <= old(steps).view().len() + 3 * i,
-            old(steps).nonlock_view().len() <= steps.nonlock_view().len() <= old(steps).nonlock_view().len() + 3 * i,
             forall|j: int| #![trigger steps.view()[j]] 0 <= j < old(steps).view().len() ==> steps.view()[j] == old(steps).view()[j],
             forall|j: int| #![trigger steps.view()[j]] old(steps).view().len() <= j < steps.view().len()
                 ==> share_4k_range_step(steps.view()[j], cpu_id) || ipc_pages_downgrade_step_pre(steps.view()[j].old_u, cpu_id) && ipc_pages_downgrade_step(steps.view()[j].old_u, steps.view()[j].new_u, cpu_id),
@@ -681,7 +679,6 @@ fn ipc_pages_downgrade_target(
         final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
         final(lctx).pagetable_window_lock_map() == old(lctx).pagetable_window_lock_map(),
         old(steps).view().len() <= final(steps).view().len() <= old(steps).view().len() + 1,
-        final(steps).nonlock_view() == old(steps).nonlock_view(),
         forall|j: int| #![trigger final(steps).view()[j]] 0 <= j < old(steps).view().len() ==> final(steps).view()[j] == old(steps).view()[j],
         forall|j: int| #![trigger final(steps).view()[j]] start <= j < final(steps).view().len()
             ==> share_4k_range_step(final(steps).view()[j], cpu_id) || ipc_pages_downgrade_step_pre(final(steps).view()[j].old_u, cpu_id) && ipc_pages_downgrade_step(final(steps).view()[j].old_u, final(steps).view()[j].new_u, cpu_id),
@@ -1039,7 +1036,6 @@ pub(super) fn ipc_pages_prepare_target(
         final(lctx).allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
         final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
         old(steps).view().len() + 1 <= final(steps).view().len() <= old(steps).view().len() + 3 * target_range.len + 2,
-        old(steps).nonlock_view().len() + 1 <= final(steps).nonlock_view().len() <= old(steps).nonlock_view().len() + 3 * target_range.len + 1,
         ipc_pages_check_result(final(steps).view()[old(steps).view().len() as int].old_u, cpu_id) is Success,
         ipc_pages_check_step_pre(final(steps).view()[old(steps).view().len() as int].old_u, cpu_id, channel_index),
         ipc_pages_check_step(final(steps).view()[old(steps).view().len() as int].old_u, final(steps).view()[old(steps).view().len() as int].new_u, cpu_id),

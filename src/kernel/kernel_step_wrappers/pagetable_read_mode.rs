@@ -19,8 +19,6 @@ pub proof fn kernel_held_pagetable_windows_unchanged_implies_u_window_mappings_e
     ensures
         kernel_k_to_kernel_u(*pre).process_map.dom().contains(process_ptr) && kernel_k_to_kernel_u(*pre).process_map.spec_index(process_ptr).pagetable is Some,
         kernel_k_to_kernel_u(*post).process_map.dom().contains(process_ptr) && kernel_k_to_kernel_u(*post).process_map.spec_index(process_ptr).pagetable is Some,
-        kernel_k_to_nonlock_kernel_u(*pre).process_map.dom().contains(process_ptr) && kernel_k_to_nonlock_kernel_u(*pre).process_map.spec_index(process_ptr).pagetable is Some,
-        kernel_k_to_nonlock_kernel_u(*post).process_map.dom().contains(process_ptr) && kernel_k_to_nonlock_kernel_u(*post).process_map.spec_index(process_ptr).pagetable is Some,
         forall|wva: WindowVa, v: VAddr|
             #![trigger lctx.pagetable_window_lock_map().dom().contains((pagetable_ptr, wva)), kernel_k_to_kernel_u(*post).process_map.spec_index(process_ptr).pagetable->Some_0.mapping_4k.dom().contains(v)]
             #![trigger lctx.pagetable_window_lock_map().dom().contains((pagetable_ptr, wva)), kernel_k_to_kernel_u(*pre).process_map.spec_index(process_ptr).pagetable->Some_0.mapping_4k.dom().contains(v)]
@@ -30,28 +28,8 @@ pub proof fn kernel_held_pagetable_windows_unchanged_implies_u_window_mappings_e
                 &&& post_t.mapping_4k.dom().contains(v) == pre_t.mapping_4k.dom().contains(v)
                 &&& pre_t.mapping_4k.dom().contains(v) ==> post_t.mapping_4k.spec_index(v) == pre_t.mapping_4k.spec_index(v)
             },
-        forall|wva: WindowVa, v: VAddr|
-            #![trigger lctx.pagetable_window_lock_map().dom().contains((pagetable_ptr, wva)), kernel_k_to_nonlock_kernel_u(*post).process_map.spec_index(process_ptr).pagetable->Some_0.mapping_4k.dom().contains(v)]
-            #![trigger lctx.pagetable_window_lock_map().dom().contains((pagetable_ptr, wva)), kernel_k_to_nonlock_kernel_u(*pre).process_map.spec_index(process_ptr).pagetable->Some_0.mapping_4k.dom().contains(v)]
-            lctx.pagetable_window_lock_map().dom().contains((pagetable_ptr, wva)) && spec_v2l4index(v) == spec_v2l4index(wva.va) && spec_v2l3index(v) == spec_v2l3index(wva.va) && spec_v2l2index(v) == spec_v2l2index(wva.va) ==> {
-                let pre_t = kernel_k_to_nonlock_kernel_u(*pre).process_map.spec_index(process_ptr).pagetable->Some_0;
-                let post_t = kernel_k_to_nonlock_kernel_u(*post).process_map.spec_index(process_ptr).pagetable->Some_0;
-                &&& post_t.mapping_4k.dom().contains(v) == pre_t.mapping_4k.dom().contains(v)
-                &&& pre_t.mapping_4k.dom().contains(v) ==> post_t.mapping_4k.spec_index(v) == pre_t.mapping_4k.spec_index(v)
-            },
-        forall|wva: WindowVa| #![trigger lctx.pagetable_window_lock_map().dom().contains((pagetable_ptr, wva))] lctx.pagetable_window_lock_map().dom().contains((pagetable_ptr, wva)) ==> {
-            let pre_t = kernel_k_to_kernel_u(*pre).process_map.spec_index(process_ptr).pagetable->Some_0;
-            let post_t = kernel_k_to_kernel_u(*post).process_map.spec_index(process_ptr).pagetable->Some_0;
-            let pre_n = kernel_k_to_nonlock_kernel_u(*pre).process_map.spec_index(process_ptr).pagetable->Some_0;
-            let post_n = kernel_k_to_nonlock_kernel_u(*post).process_map.spec_index(process_ptr).pagetable->Some_0;
-            &&& post_t.mapping_2m.dom().contains(wva.va) == pre_t.mapping_2m.dom().contains(wva.va)
-            &&& pre_t.mapping_2m.dom().contains(wva.va) ==> post_t.mapping_2m.spec_index(wva.va) == pre_t.mapping_2m.spec_index(wva.va)
-            &&& post_n.mapping_2m.dom().contains(wva.va) == pre_n.mapping_2m.dom().contains(wva.va)
-            &&& pre_n.mapping_2m.dom().contains(wva.va) ==> post_n.mapping_2m.spec_index(wva.va) == pre_n.mapping_2m.spec_index(wva.va)
-        },
 {
     kernel_process_projection_at(pre, process_ptr); kernel_process_projection_at(post, process_ptr);
-    kernel_process_nonlock_projection_at(pre, process_ptr); kernel_process_nonlock_projection_at(post, process_ptr);
 }
 
 /// Read-mode entry: the cpu and thread become write-held, the process pagetable becomes read-held, and the thread's progress

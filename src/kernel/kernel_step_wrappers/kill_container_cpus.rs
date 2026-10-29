@@ -38,8 +38,8 @@ pub proof fn kernel_cpu_set_locked_and_marked_implies_u_step(before: &KernelK, a
 }
 
 /// Moving the cpu `cpu_id` from the container `source` to `target`, with every cpu-set lock mode and mark kept and the
-/// offline request of `source` for that cpu cleared, changes only that cpu's owner and that request, so both
-/// projections change.
+/// offline request of `source` for that cpu cleared, changes only that cpu's owner and that request, so the
+/// projection changes.
 pub proof fn kernel_cpu_moved_to_container_implies_u_step(before: &KernelK, after: &KernelK, cpu_id: CpuId, source: RwLockContainerPtr, target: RwLockContainerPtr)
     requires
         container_cpu_set_wf(before.ctn_mp, before.cpu_set_mp),
@@ -73,7 +73,6 @@ pub proof fn kernel_cpu_moved_to_container_implies_u_step(before: &KernelK, afte
             })
         }),
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
-        kernel_k_to_nonlock_kernel_u(*before) != kernel_k_to_nonlock_kernel_u(*after),
 {
     kernel_u_domains_projection(before); kernel_u_domains_projection(after);
     let pre = kernel_k_to_kernel_u(*before);
@@ -95,8 +94,6 @@ pub proof fn kernel_cpu_moved_to_container_implies_u_step(before: &KernelK, afte
     assert_maps_equal!(post.thread_map, pre.thread_map, t => { if before.thr_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); } });
     assert_maps_equal!(post.endpoint_map, pre.endpoint_map, e => { if before.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(before, e); kernel_endpoint_projection_at(after, e); } });
     assert(post.cpu_array[cpu_id as int].owning_container != pre.cpu_array[cpu_id as int].owning_container) by { kernel_cpu_projection_at(before, cpu_id); kernel_cpu_projection_at(after, cpu_id); };
-    kernel_nonlock_projection_is_u_nonlock_fields(*before); kernel_nonlock_projection_is_u_nonlock_fields(*after);
-    assert(kernel_u_nonlock_fields(post).cpu_array[cpu_id as int].owning_container != kernel_u_nonlock_fields(pre).cpu_array[cpu_id as int].owning_container) by { reveal(kernel_u_nonlock_fields); };
 }
 
 /// With no cpu in the cpu set of the container `container_ptr`, no cpu of the projection belongs to that container.

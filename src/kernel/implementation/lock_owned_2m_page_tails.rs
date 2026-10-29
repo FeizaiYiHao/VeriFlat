@@ -264,7 +264,6 @@ pub fn wlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(lc
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(krnl).inv(),
-        kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).thread_id() == old(lctx).thread_id(),
         final(lctx).kernel_view_locking_state() is Acquire,
@@ -377,11 +376,6 @@ pub fn wlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(lc
         assert(page_2m_tail_prefix_indices(head, 511) == page_2m_tail_indices(head)) by { assert_sets_equal!(page_2m_tail_prefix_indices(head, 511) == page_2m_tail_indices(head), index => {}); };
         assert(held_pages_unchanged(old(krnl).pg_arr, krnl.pg_arr, old(lctx))) by { reveal(LockedArray::typed_lock_map_aligned); };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-        assert(kernel_k_to_nonlock_kernel_u(*krnl) == kernel_k_to_nonlock_kernel_u(*old(krnl))) by {
-            assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use kernel_endpoint_nonlock_fields_unchanged_for_equal; };
-            broadcast use kernel_pagetable_nonlock_fields_unchanged_for_equal, kernel_iommu_table_nonlock_fields_unchanged_for_equal;
-            kernel_no_change_to_nonlock_fields_imply_kernel_u_nonlock_eq(old(krnl), krnl);
-        };
     }
     Tracked(perms)
 }

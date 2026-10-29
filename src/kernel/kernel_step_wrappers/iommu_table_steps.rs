@@ -3,28 +3,9 @@ use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_seqs_equal};
 use crate::*;
 
 verus! {
-/// A global IOTLB flush that empties every domain and changes no other kernel field changes only the IOTLB projection,
-/// which keeps its domains and empties every valid one; the projections change exactly when the IOTLB view does.
-pub proof fn kernel_iommu_tlb_flushed_implies_u_step(pre: &KernelK, post: &KernelK)
-    requires
-        *post == (KernelK { iommu_tlb: post.iommu_tlb, ..*pre }),
-        post.iommu_tlb.view().dom() == pre.iommu_tlb.view().dom(),
-        forall|did: VtdDomainId| #![trigger post.iommu_tlb.spec_index(did)] vtd_domain_id_valid(did) ==> post.iommu_tlb.spec_index(did).is_empty(),
-    ensures
-        kernel_k_to_kernel_u(*post) == (KernelU { iommu_tlb: kernel_k_to_kernel_u(*post).iommu_tlb, ..kernel_k_to_kernel_u(*pre) }),
-        kernel_k_to_kernel_u(*post).iommu_tlb.dom() == kernel_k_to_kernel_u(*pre).iommu_tlb.dom(),
-        forall|did: VtdDomainId| #![trigger kernel_k_to_kernel_u(*post).iommu_tlb[did]] vtd_domain_id_valid(did)
-            ==> kernel_k_to_kernel_u(*post).iommu_tlb[did] == post.iommu_tlb.spec_index(did) && kernel_k_to_kernel_u(*post).iommu_tlb[did].is_empty(),
-        pre.iommu_tlb.view() != post.iommu_tlb.view() ==> kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post) && kernel_k_to_nonlock_kernel_u(*pre) != kernel_k_to_nonlock_kernel_u(*post),
-{
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); kernel_u_nonlock_domains_projection(pre); kernel_u_nonlock_domains_projection(post);
-    kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post);
-    kernel_process_maps_unchanged_implies_u_process_map(pre, post); kernel_thread_map_unchanged_implies_u_thread_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
-}
-
 /// Invalidating the valid IOTLB domain `did`, with the K-only context cache free to change and no other kernel field
 /// changed, changes only that domain of the IOTLB projection, to its new K contents, and keeps every other domain; the
-/// complete and lock-free projections change exactly when the IOTLB view does.
+/// projection changes exactly when the IOTLB view does.
 pub proof fn kernel_iommu_tlb_domain_invalidated_implies_u_step(pre: &KernelK, post: &KernelK, did: VtdDomainId)
     requires
         pre.iommu_tlb.inv(),
@@ -38,13 +19,11 @@ pub proof fn kernel_iommu_tlb_domain_invalidated_implies_u_step(pre: &KernelK, p
         kernel_k_to_kernel_u(*post).iommu_tlb.dom() == kernel_k_to_kernel_u(*pre).iommu_tlb.dom(),
         forall|d: VtdDomainId| #![trigger kernel_k_to_kernel_u(*post).iommu_tlb[d]] d != did ==> kernel_k_to_kernel_u(*post).iommu_tlb[d] == kernel_k_to_kernel_u(*pre).iommu_tlb[d],
         (kernel_k_to_kernel_u(*pre) == kernel_k_to_kernel_u(*post)) == (pre.iommu_tlb.view() == post.iommu_tlb.view()),
-        (kernel_k_to_nonlock_kernel_u(*pre) == kernel_k_to_nonlock_kernel_u(*post)) == (pre.iommu_tlb.view() == post.iommu_tlb.view()),
 {
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); kernel_u_nonlock_domains_projection(pre); kernel_u_nonlock_domains_projection(post);
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post);
     kernel_process_maps_unchanged_implies_u_process_map(pre, post); kernel_thread_map_unchanged_implies_u_thread_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
     assert(pre.iommu_tlb.view().dom().contains(did)) by { reveal(IommuTLB::inv); };
-    kernel_nonlock_projection_is_u_nonlock_fields(*pre); kernel_nonlock_projection_is_u_nonlock_fields(*post);
 }
 
 /// Removing one present 4K entry `iova` of an IOMMU table, together with page bookkeeping, 4K-allocator bookkeeping that keeps
@@ -85,7 +64,6 @@ pub proof fn kernel_iommu_table_4k_mapping_removed_implies_u_step(pre: &KernelK,
             })
         }),
         kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post),
-        kernel_k_to_nonlock_kernel_u(*pre) != kernel_k_to_nonlock_kernel_u(*post),
 {
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_iommu_table_match);
     let before = kernel_k_to_kernel_u(*pre);
@@ -105,9 +83,7 @@ pub proof fn kernel_iommu_table_4k_mapping_removed_implies_u_step(pre: &KernelK,
     assert_maps_equal!(after.container_map, before.container_map, c => {
         if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); kernel_container_projection_at(post, c); } reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
     });
-    assert(after.process_map[process].iommu_table->Some_0.mapping_4k.dom().contains(iova) != before.process_map[process].iommu_table->Some_0.mapping_4k.dom().contains(iova)
-        && kernel_k_to_nonlock_kernel_u(*pre).process_map[process].iommu_table->Some_0.mapping_4k.dom().contains(iova)
-        != kernel_k_to_nonlock_kernel_u(*post).process_map[process].iommu_table->Some_0.mapping_4k.dom().contains(iova)) by { kernel_process_nonlock_projection_at(pre, process); kernel_process_nonlock_projection_at(post, process); };
+    assert(after.process_map[process].iommu_table->Some_0.mapping_4k.dom().contains(iova) != before.process_map[process].iommu_table->Some_0.mapping_4k.dom().contains(iova));
 }
 
 /// Publishing one present 4K entry at an unmapped IOVA of an IOMMU table, together with page bookkeeping, inserts that

@@ -20,7 +20,6 @@ pub(super) fn cpu_offline_check_locked(
         old(krnl).inv(),
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        old(steps).nonlock_view().len() == 0,
         *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_op: old(krnl).cpu_op, ..old(steps).snapshot_k() }),
         old(krnl).cpu_op.view().view() == old(steps).snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::InStep),
         old(steps).snapshot_k().cpu_op.view().view()[cpu_id as int] == cpu_op_after_step(old(steps).snapshot_k().cpu_arr.spec_index(cpu_id).view().view().view().state),
@@ -74,7 +73,6 @@ pub(super) fn cpu_offline_check_locked(
         final(lctx).no_locks_held(),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
@@ -82,15 +80,8 @@ pub(super) fn cpu_offline_check_locked(
             final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()),
             kernel_k_to_kernel_u(*final(krnl)), cpu_id, *pt_regs, ret.0 is Off, if ret.0 is Off { cpu_offline_check_flushed_default_pcid(ret.1.view(), cpu_id) } else { false },
         ),
-        final(steps).nonlock_view().len() == if ret.0 is Off { 1nat } else { 0nat },
         ret.0 == cpu_offline_check_result(kernel_k_to_kernel_u(ret.1.view()), cpu_id),
-        ret.0 is Off ==> {
-            let step = final(steps).nonlock_view()[0];
-            &&& step.old_u == kernel_k_to_nonlock_kernel_u(ret.1.view())
-            &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
-            &&& cpu_offline_check_step(step.old_u, step.new_u, cpu_id, *pt_regs, cpu_offline_check_flushed_default_pcid(ret.1.view(), cpu_id))
-            &&& final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Off
-        },
+        ret.0 is Off ==> final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Off,
 {
     let ghost entry = steps.snapshot_k();
     let ghost start = steps.view().len() as int;

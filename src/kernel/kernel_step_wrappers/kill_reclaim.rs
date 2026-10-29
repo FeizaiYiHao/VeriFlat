@@ -6,7 +6,7 @@ verus! {
 /// Handing every PCI function of the process `target` to the process `owner`, detached, dropping the DID of `target`'s IOMMU
 /// table `iommu_table`, if any, and emptying the IOTLB domain `did` that table carried, if any, moves those functions in the
 /// process projection, drops the DID of `target`'s projected IOMMU table, hands `target`'s root-table slots detached to
-/// `owner`, and empties only that projected IOTLB domain; with any function moved, both projections change.
+/// `owner`, and empties only that projected IOTLB domain; with any function moved, the projection changes.
 pub proof fn kernel_process_functions_reassigned_implies_u_step(
     pre: &KernelK, post: &KernelK, target: RwLockProcessPtr, owner: RwLockProcessPtr, iommu_table: Option<RwLockPageTableRoot>, did: Option<VtdDomainId>,
 )
@@ -69,7 +69,6 @@ pub proof fn kernel_process_functions_reassigned_implies_u_step(
         },
         pre.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() != Set::<PciBdf>::empty() ==> {
             &&& kernel_k_to_kernel_u(*pre) != kernel_k_to_kernel_u(*post)
-            &&& kernel_k_to_nonlock_kernel_u(*pre) != kernel_k_to_nonlock_kernel_u(*post)
         },
 {
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_iommu_table_match);
@@ -87,7 +86,6 @@ pub proof fn kernel_process_functions_reassigned_implies_u_step(
     });
     kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post);
     kernel_thread_map_unchanged_implies_u_thread_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
-    if t.owned_pci_functions != Set::<PciBdf>::empty() { kernel_process_nonlock_projection_at(pre, target); kernel_process_nonlock_projection_at(post, target); }
 }
 
 /// Returning the whole `size` quota of the process `process_ptr` to the `size` allocator of its container grows only that

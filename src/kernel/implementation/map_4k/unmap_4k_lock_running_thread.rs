@@ -50,8 +50,6 @@ pub fn unmap_4k_lock_running_thread(krnl: &mut KernelK, Tracked(lctx): Tracked<&
             &&& final(krnl).all_objects_unlocked(final(lctx))
             &&& final(steps).snapshot_k() == *final(krnl)
             &&& final(steps).view() == old(steps).view()
-            &&& final(steps).nonlock_view() == old(steps).nonlock_view()
-            &&& kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl))
         }),
         ret is Ok ==> ({
             let e = ret->Ok_0;

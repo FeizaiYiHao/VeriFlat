@@ -26,7 +26,6 @@ pub(super) fn new_process_lock_cpu_owner(
         old(lctx).kernel_view_locking_state() is Acquire,
         old(lctx).no_locks_held(),
         old(krnl).all_objects_unlocked(old(lctx)),
-        old(steps).nonlock_view().len() == 0,
         old(steps).snapshot_k() == *old(krnl),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
     ensures
@@ -37,12 +36,10 @@ pub(super) fn new_process_lock_cpu_owner(
             let r = ret->Err_0;
             &&& new_process_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
                 kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, va, range, initial_regs, endpoint_index, with_iommu, r)
-            &&& final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl))
             &&& final(steps).snapshot_k() == *final(krnl)
             &&& final(krnl).all_objects_unlocked(final(lctx))
             &&& typed_lock_maps_aligned(final(krnl), final(lctx))
             &&& final(lctx).no_locks_held()
-            &&& final(steps).nonlock_view().len() == 0
             &&& !(r is SuccessPairUsize || r is SuccessThreeUsize)
             &&& !(new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, endpoint_index, with_iommu) is Success)
             &&& r == new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, endpoint_index, with_iommu)
@@ -254,7 +251,6 @@ pub(super) fn new_process_unlock_and_stutter(
         cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
-        old(steps).nonlock_view().len() == 0,
         !(error is SuccessPairUsize || error is SuccessThreeUsize),
         *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_op: old(krnl).cpu_op, prc_mp: old(krnl).prc_mp, thr_mp: old(krnl).thr_mp, ep_mp: old(krnl).ep_mp,
             pt_mp: old(krnl).pt_mp, pt_lower: old(krnl).pt_lower, pcid_allc_mp: old(krnl).pcid_allc_mp, ..old(steps).snapshot_k() }),
@@ -364,12 +360,10 @@ pub(super) fn new_process_unlock_and_stutter(
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         new_process_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
             kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, va, range, initial_regs, endpoint_index, with_iommu, error),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).no_locks_held(),
-        final(steps).nonlock_view().len() == 0,
 {
     if source_pagetable.is_some() {
         let tracked perm = source_pagetable_lock_perm.tracked_unwrap();

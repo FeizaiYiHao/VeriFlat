@@ -173,15 +173,9 @@ pub(super) fn ipc_reply_handoff_release_and_end_step(
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(steps).snapshot_k() == *final(krnl),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(old(steps).snapshot_k()), new_u: kernel_k_to_kernel_u(*final(krnl)) }),
         ipc_reply_handoff_step_pre(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, endpoint_index),
         ipc_reply_handoff_step(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index, entry_regs, context_switch_flushed_pcid(old(steps).snapshot_k(), cpu_id, caller_ptr)),
-        final(steps).nonlock_view().len() == old(steps).nonlock_view().len() + 1,
-        final(steps).nonlock_view().last().old_u == kernel_k_to_nonlock_kernel_u(old(steps).snapshot_k()),
-        final(steps).nonlock_view().last().new_u == kernel_k_to_nonlock_kernel_u(*final(krnl)),
-        ipc_reply_handoff_step_pre(final(steps).nonlock_view().last().old_u, cpu_id, endpoint_index),
-        ipc_reply_handoff_step(final(steps).nonlock_view().last().old_u, final(steps).nonlock_view().last().new_u, cpu_id, endpoint_index, entry_regs, context_switch_flushed_pcid(old(steps).snapshot_k(), cpu_id, caller_ptr)),
         final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
         *pt_regs == *old(steps).snapshot_k().thr_mp.spec_index(caller_ptr).view().trap_frame.get_some_0(),
 {
@@ -202,7 +196,6 @@ pub(super) fn ipc_reply_handoff_release_and_end_step(
         };
         steps.end_kernel_step_ipc_reply_handoff(&*krnl, &*lctx, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, entry_regs, flushed_pcid);
         ipc_reply_handoff_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*krnl), cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, entry_regs, flushed_pcid);
-        ipc_reply_handoff_step_from_u(steps.nonlock_view().last().old_u, steps.nonlock_view().last().new_u, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, entry_regs, flushed_pcid);
         assert(*pt_regs == *old(steps).snapshot_k().thr_mp.spec_index(caller_ptr).view().trap_frame.get_some_0()) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged); };
     }
 }

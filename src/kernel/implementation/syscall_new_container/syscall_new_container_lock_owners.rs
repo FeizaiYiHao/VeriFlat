@@ -20,7 +20,6 @@ pub(super) fn new_container_lock_process_and_thread(
         endpoint_index is Some ==> edp_idx_valid(endpoint_index->Some_0),
         cpu_id == old(lctx).cpu_id(),
         old(steps).snapshot_k().inv(),
-        old(steps).nonlock_view().len() == 0,
         source_range == (VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) }),
         source_range.wf(),
         0 < range <= (usize::MAX - 9) / 3 && range <= usize::MAX / 4096 && va_4k_valid(va) && index_valid(NUM_CPUS, transfer_cpu_id),
@@ -91,12 +90,10 @@ pub(super) fn new_container_lock_process_and_thread(
             let r = ret->Err_0;
             &&& new_container_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int),
                 kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, endpoint_index, r)
-            &&& final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl))
             &&& final(steps).snapshot_k() == *final(krnl)
             &&& final(krnl).all_objects_unlocked(final(lctx))
             &&& typed_lock_maps_aligned(final(krnl), final(lctx))
             &&& final(lctx).no_locks_held()
-            &&& final(steps).nonlock_view().len() == 0
             &&& !(r is SuccessThreeUsize)
             &&& !(new_container_syscall_result(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index) is Success)
             &&& r == new_container_syscall_result(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index)

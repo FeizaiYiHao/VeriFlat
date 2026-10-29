@@ -14,12 +14,10 @@ verus! {
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).no_locks_held(),
                 old(krnl).all_objects_unlocked(old(lctx)),
-                old(steps).nonlock_view().len() == 0,
                 old(steps).snapshot_k() == *old(krnl),
                 typed_lock_maps_aligned(old(krnl), old(lctx)),
             ensures
                 final(lctx).cpu_id() == old(lctx).cpu_id(),
-                final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
                 final(steps).snapshot_k() == *final(krnl),
                 old(steps).view().len() <= final(steps).view().len(),
                 forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
@@ -28,16 +26,6 @@ verus! {
                 typed_lock_maps_aligned(final(krnl), final(lctx)),
                 final(lctx).no_locks_held(),
                 ret == alloc_quota_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount),
-                !(ret is Success) ==> final(steps).nonlock_view().len() == 0,
-                ret is Success && alloc_amount == 0 ==> final(steps).nonlock_view().len() == 0,
-                ret is Success && alloc_amount > 0 ==> {
-                    let step = final(steps).nonlock_view()[0];
-                    &&& final(steps).nonlock_view().len() == 1
-                    &&& step.old_u == kernel_k_to_nonlock_kernel_u(*old(krnl))
-                    &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
-                    &&& alloc_quota_4k_step_pre(step.old_u, cpu_id, alloc_amount)
-                    &&& alloc_quota_4k_step(step.old_u, step.new_u, cpu_id, alloc_amount)
-                },
         {
             proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
 
@@ -189,12 +177,10 @@ verus! {
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).no_locks_held(),
                 old(krnl).all_objects_unlocked(old(lctx)),
-                old(steps).nonlock_view().len() == 0,
                 old(steps).snapshot_k() == *old(krnl),
                 typed_lock_maps_aligned(old(krnl), old(lctx)),
             ensures
                 final(lctx).cpu_id() == old(lctx).cpu_id(),
-                final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
                 final(steps).snapshot_k() == *final(krnl),
                 old(steps).view().len() <= final(steps).view().len(),
                 forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
@@ -203,16 +189,6 @@ verus! {
                 typed_lock_maps_aligned(final(krnl), final(lctx)),
                 final(lctx).no_locks_held(),
                 ret == alloc_thread_quota_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount),
-                !(ret is Success) ==> final(steps).nonlock_view().len() == 0,
-                ret is Success && alloc_amount == 0 ==> final(steps).nonlock_view().len() == 0,
-                ret is Success && alloc_amount > 0 ==> {
-                    let step = final(steps).nonlock_view()[0];
-                    &&& final(steps).nonlock_view().len() == 1
-                    &&& step.old_u == kernel_k_to_nonlock_kernel_u(*old(krnl))
-                    &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
-                    &&& alloc_thread_quota_4k_step_pre(step.old_u, cpu_id, alloc_amount)
-                    &&& alloc_thread_quota_4k_step(step.old_u, step.new_u, cpu_id, alloc_amount)
-                },
         {
             proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
 
@@ -342,12 +318,10 @@ verus! {
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).no_locks_held(),
                 old(krnl).all_objects_unlocked(old(lctx)),
-                old(steps).nonlock_view().len() == 0,
                 old(steps).snapshot_k() == *old(krnl),
                 typed_lock_maps_aligned(old(krnl), old(lctx)),
             ensures
                 final(lctx).cpu_id() == old(lctx).cpu_id(),
-                final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
                 final(steps).snapshot_k() == *final(krnl),
                 old(steps).view().len() <= final(steps).view().len(),
                 forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
@@ -356,16 +330,6 @@ verus! {
                 typed_lock_maps_aligned(final(krnl), final(lctx)),
                 final(lctx).no_locks_held(),
                 ret == alloc_quota_2m_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount),
-                !(ret is Success) ==> final(steps).nonlock_view().len() == 0,
-                ret is Success && alloc_amount == 0 ==> final(steps).nonlock_view().len() == 0,
-                ret is Success && alloc_amount > 0 ==> {
-                    let step = final(steps).nonlock_view()[0];
-                    &&& final(steps).nonlock_view().len() == 1
-                    &&& step.old_u == kernel_k_to_nonlock_kernel_u(*old(krnl))
-                    &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
-                    &&& alloc_quota_2m_step_pre(step.old_u, cpu_id, alloc_amount)
-                    &&& alloc_quota_2m_step(step.old_u, step.new_u, cpu_id, alloc_amount)
-                },
         {
             proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
 
@@ -517,12 +481,10 @@ verus! {
                 old(lctx).kernel_view_locking_state() is Acquire,
                 old(lctx).no_locks_held(),
                 old(krnl).all_objects_unlocked(old(lctx)),
-                old(steps).nonlock_view().len() == 0,
                 old(steps).snapshot_k() == *old(krnl),
                 typed_lock_maps_aligned(old(krnl), old(lctx)),
             ensures
                 final(lctx).cpu_id() == old(lctx).cpu_id(),
-                final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
                 final(steps).snapshot_k() == *final(krnl),
                 old(steps).view().len() <= final(steps).view().len(),
                 forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
@@ -531,16 +493,6 @@ verus! {
                 typed_lock_maps_aligned(final(krnl), final(lctx)),
                 final(lctx).no_locks_held(),
                 ret == alloc_thread_quota_2m_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, alloc_amount),
-                !(ret is Success) ==> final(steps).nonlock_view().len() == 0,
-                ret is Success && alloc_amount == 0 ==> final(steps).nonlock_view().len() == 0,
-                ret is Success && alloc_amount > 0 ==> {
-                    let step = final(steps).nonlock_view()[0];
-                    &&& final(steps).nonlock_view().len() == 1
-                    &&& step.old_u == kernel_k_to_nonlock_kernel_u(*old(krnl))
-                    &&& step.new_u == kernel_k_to_nonlock_kernel_u(*final(krnl))
-                    &&& alloc_thread_quota_2m_step_pre(step.old_u, cpu_id, alloc_amount)
-                    &&& alloc_thread_quota_2m_step(step.old_u, step.new_u, cpu_id, alloc_amount)
-                },
         {
             proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
 

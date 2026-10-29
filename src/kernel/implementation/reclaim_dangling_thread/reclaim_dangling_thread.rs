@@ -45,7 +45,6 @@ pub fn reclaim_dangling_thread(
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(steps).view() == old(steps).view(),
-        final(steps).nonlock_view() == old(steps).nonlock_view(),
         kernel_dangling_thread_reclaimed_fields(&final(steps).snapshot_k(), final(krnl), dangling_ptr),
         final(krnl).cpu_arr == final(steps).snapshot_k().cpu_arr,
         final(krnl).cpu_op == final(steps).snapshot_k().cpu_op,

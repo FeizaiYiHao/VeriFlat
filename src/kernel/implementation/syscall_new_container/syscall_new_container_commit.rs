@@ -173,10 +173,7 @@ pub(super) fn commit_new_container(
         final(lctx).no_locks_held(),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
-        old(steps).nonlock_view().len() as int + source_range.len as int + 3 <= final(steps).nonlock_view().len() as int,
-        final(steps).nonlock_view().len() as int <= old(steps).nonlock_view().len() as int + 4 * source_range.len as int + 3,
 {
     let tracked caller_cpu_lock_perm = caller_cpu_lock_perm.get();
     let tracked parent_container_lock_perm = parent_container_lock_perm.get();
@@ -350,7 +347,6 @@ fn commit_new_container_publish(
     ensures
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         final(steps).view().len() == old(steps).view().len() + 2,
-        final(steps).nonlock_view().len() == old(steps).nonlock_view().len() + 2,
         new_container_trace_after_publish(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()),
             caller_cpu_id, *source_range, funding_page_count, process_quota_4k, transfer_cpu_id, regs, if endpoint is Some { Some(endpoint_index) } else { None }),
         final(steps).snapshot_k() == *final(krnl),
@@ -668,7 +664,6 @@ fn commit_new_container_publish_staged(
     ensures
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         final(steps).view().len() == old(steps).view().len() + 1,
-        final(steps).nonlock_view().len() == old(steps).nonlock_view().len() + 1,
         new_container_trace_after_publish(final(steps).view().subrange(start, final(steps).view().len() as int), pre, caller_cpu_id, *source_range, funding_page_count,
             process_quota_4k, transfer_cpu_id, regs, if endpoint is Some { Some(endpoint_index) } else { None }),
         final(steps).snapshot_k() == *final(krnl),

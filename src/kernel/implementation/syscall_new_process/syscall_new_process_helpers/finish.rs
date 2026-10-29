@@ -185,12 +185,7 @@ pub(in super::super) fn create_initial_thread_and_finish_new_process(
         new_process_finish_step(final(steps).view().last().old_u, final(steps).view().last().new_u, cpu_id),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         final(krnl).inv(),
-        final(steps).nonlock_view().len() == old(steps).nonlock_view().len() + 1,
-        final(steps).nonlock_view().subrange(0, old(steps).nonlock_view().len() as int) == old(steps).nonlock_view(),
-        final(steps).nonlock_view().last().new_u == kernel_k_to_nonlock_kernel_u(*final(krnl)),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
-        kernel_u_new_thread_changed(final(steps).nonlock_view().last().old_u, final(steps).nonlock_view().last().new_u, child_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, *initial_regs, endpoint, None),
         final(lctx).no_locks_held(),
         final(krnl).all_objects_unlocked(final(lctx)),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -326,11 +321,7 @@ fn end_new_process_finish_step(
         final(steps).view().last().new_u == kernel_k_to_kernel_u(*krnl),
         new_process_finish_step_pre(final(steps).view().last().old_u, cpu_id),
         new_process_finish_step(final(steps).view().last().old_u, final(steps).view().last().new_u, cpu_id),
-        final(steps).nonlock_view() == old(steps).nonlock_view().push(final(steps).nonlock_view().last()),
-        final(steps).nonlock_view().last().new_u == kernel_k_to_nonlock_kernel_u(*krnl),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*krnl),
         final(steps).snapshot_k() == *krnl,
-        kernel_u_new_thread_changed(final(steps).nonlock_view().last().old_u, final(steps).nonlock_view().last().new_u, child_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, *initial_regs, endpoint, None),
 {
     proof {
         steps.end_kernel_step_new_thread(krnl, lctx, child_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, *initial_regs, endpoint, None);

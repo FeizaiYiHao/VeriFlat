@@ -62,7 +62,6 @@ pub proof fn kernel_endpoint_released_implies_u_step(before: &KernelK, after: &K
             })
         }),
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
-        kernel_k_to_nonlock_kernel_u(*before) != kernel_k_to_nonlock_kernel_u(*after),
 {
     kernel_u_domains_projection(before); kernel_u_domains_projection(after);
     kernel_thread_projection_at(before, thread_ptr); kernel_endpoint_projection_at(before, endpoint_ptr);
@@ -86,14 +85,11 @@ pub proof fn kernel_endpoint_released_implies_u_step(before: &KernelK, after: &K
         if before.ctn_mp.dom().contains(c) { kernel_container_projection_at(before, c); kernel_container_projection_at(after, c); }
     });
     kernel_cpu_array_unchanged_implies_u_cpu_array(before, after); kernel_process_maps_unchanged_implies_u_process_map(before, after);
-    assert(kernel_k_to_nonlock_kernel_u(*before).endpoint_map.dom().contains(endpoint_ptr) && !kernel_k_to_nonlock_kernel_u(*after).endpoint_map.dom().contains(endpoint_ptr)) by {
-        reveal(kernel_k_to_nonlock_kernel_u);
-    };
     reveal(kernel_u_endpoint_released);
 }
 
 /// Releasing the endpoint held only at descriptor `index` of the write-held killed thread `thread_ptr` projects to
-/// `kernel_u_killed_endpoint_released`, changes both projections, and changes no thread outside `thread_ptr`'s container.
+/// `kernel_u_killed_endpoint_released`, changes the projection, and changes no thread outside `thread_ptr`'s container.
 pub proof fn kernel_killed_endpoint_released_implies_u_step(before: &KernelK, after: &KernelK, thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, index: EndpointIdx)
     requires
         index < MAX_NUM_ENDPOINT_DESCRIPTORS,
@@ -138,7 +134,6 @@ pub proof fn kernel_killed_endpoint_released_implies_u_step(before: &KernelK, af
                 pre.thread_map.dom().contains(t) && (!post.thread_map.dom().contains(t) || post.thread_map[t] != pre.thread_map[t]) ==> pre.thread_map[t].owning_container == before.thr_mp.spec_index(thread_ptr).view().owning_container
         }),
         kernel_k_to_kernel_u(*before) != kernel_k_to_kernel_u(*after),
-        kernel_k_to_nonlock_kernel_u(*before) != kernel_k_to_nonlock_kernel_u(*after),
 {
     kernel_endpoint_released_implies_u_step(before, after, thread_ptr, endpoint_ptr, index);
     kernel_thread_projection_at(after, thread_ptr);

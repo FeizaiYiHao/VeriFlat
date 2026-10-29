@@ -254,9 +254,6 @@ pub(super) fn ipc_begin_endpoint_transfer(
         final(krnl).inv(),
         final(lctx).kernel_view_locking_state() is Acquire,
         final(lctx).thread_id() == old(lctx).thread_id(),
-        final(steps).nonlock_view().len() == old(steps).nonlock_view().len() + 1,
-        final(steps).nonlock_view().subrange(0, old(steps).nonlock_view().len() as int) == old(steps).nonlock_view(),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
         final(krnl).thr_mp.dom().contains(current_thread_ptr),
         final(krnl).thr_mp.spec_index(current_thread_ptr).is_init(),
@@ -565,9 +562,6 @@ pub(super) fn ipc_finish_endpoint_transit(
         ret == result,
         final(krnl).inv(),
         final(lctx).kernel_view_locking_state() is Release,
-        final(steps).nonlock_view().len() == old(steps).nonlock_view().len() + 1,
-        final(steps).nonlock_view().subrange(0, old(steps).nonlock_view().len() as int) == old(steps).nonlock_view(),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
         final(lctx).no_locks_held(),
         final(krnl).all_objects_unlocked(final(lctx)),
@@ -750,9 +744,6 @@ fn ipc_endpoint_check_slots(
             &&& r is ErrorIpcEndpointSourceInvalid || r is ErrorIpcEndpointTargetInUse
             &&& final(krnl).inv()
             &&& final(lctx).kernel_view_locking_state() is Release
-            &&& final(steps).nonlock_view().len() == old(steps).nonlock_view().len() + 1
-            &&& final(steps).nonlock_view().subrange(0, old(steps).nonlock_view().len() as int) == old(steps).nonlock_view()
-            &&& final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl))
             &&& final(steps).snapshot_k() == *final(krnl)
             &&& final(lctx).no_locks_held()
             &&& final(krnl).all_objects_unlocked(final(lctx))
@@ -954,10 +945,6 @@ pub(super) fn ipc_rendezvous_endpoint(
         ret is Success || ret is ErrorIpcEndpointSourceInvalid || ret is ErrorIpcEndpointTargetInUse || ret is ErrorIpcEndpointOwnerMismatch,
         final(krnl).inv(),
         final(lctx).kernel_view_locking_state() is Release,
-        ret is Success || ret is ErrorIpcEndpointOwnerMismatch ==> final(steps).nonlock_view().len() == old(steps).nonlock_view().len() + 2,
-        ret is ErrorIpcEndpointSourceInvalid || ret is ErrorIpcEndpointTargetInUse ==> final(steps).nonlock_view().len() == old(steps).nonlock_view().len() + 1,
-        final(steps).nonlock_view().subrange(0, old(steps).nonlock_view().len() as int) == old(steps).nonlock_view(),
-        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).snapshot_k() == *final(krnl),
         final(lctx).no_locks_held(),
         final(krnl).all_objects_unlocked(final(lctx)),

@@ -75,7 +75,6 @@ pub(super) fn map_one_mmap_4k_page(
         held_locks_order_below(final(krnl), final(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() + 1 <= final(steps).view().len() <= old(steps).view().len() + 2,
-        final(steps).nonlock_view().len() - old(steps).nonlock_view().len() == final(steps).view().len() - old(steps).view().len(),
         forall|j: int| #![trigger final(steps).view()[j]] 0 <= j < old(steps).view().len() ==> final(steps).view()[j] == old(steps).view()[j],
         forall|j: int| #![trigger final(steps).view()[j]] old(steps).view().len() <= j < final(steps).view().len() ==> mmap_4k_range_step(final(steps).view()[j], cpu_id),
         final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
