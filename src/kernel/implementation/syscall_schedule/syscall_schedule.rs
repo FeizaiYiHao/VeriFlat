@@ -342,6 +342,7 @@ pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
     if let Some((next_thread, next_perm)) = head {
         proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
         proof { assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; }; }
+        proof { assert(context_switch_flushed_pcid(*krnl, cpu_id, next_thread) == context_switch_flushed_pcid(*old(krnl), cpu_id, next_thread)); }
         let syscall_return = schedule_switch_to_queue_head(
             krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, pt_regs, scheduler_ptr, next_thread, current_process, current_thread,
             process_lock_perm, current_thread_lock_perm, Tracked(scheduler_lock_perm), next_perm, Tracked(cpu_lock_perm),
