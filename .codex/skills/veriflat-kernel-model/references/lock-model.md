@@ -82,6 +82,7 @@
   affected object's own (ghost) state, for example a container or process ghost
   kill flag, and that object's invariant constrains it. `SyscallProgress` stays
   in step specs, trace lemmas, and exec contracts.
+- U step boundaries follow the coarsest-span rule in `AGENTS.md`.
 - A CPU offline request cell has the fixed owner `(Some(container depth),
   None)`, so it follows the process and thread locks of that container. The
   self-offline check probes the cell under the cpu lock and releases it, holds

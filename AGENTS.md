@@ -58,6 +58,14 @@ they must point to these canonical sources instead of redefining their rules.
   object's own (ghost) state, such as a container ghost kill flag, with the
   invariant stated on that object. `SyscallProgress` may still appear in step
   specs, trace lemmas, and exec contracts.
+- Runtime performance comes first: a syscall's exec code is designed for
+  speed and is never reordered or extended for the sake of the U model. Given
+  that exec code, choose U step boundaries as coarse as possible: lock,
+  unlock, and ghost-only changes fold into the adjacent recorded step; a
+  `u_eq`/`rebase_snapshot_k_if_unchanged` point that stops holding is deleted
+  so its stretch merges into the next recorded step, not turned into a new
+  step; add a step only when a recorded boundary sits in between and cannot
+  move without changing exec code.
 - After changing a contract, simplify its callers' old proofs and verify which
   facts are still necessary. Use typed lock maps directly for lock membership
   and scope; preserve the approved relations described by the kernel-model skill.
