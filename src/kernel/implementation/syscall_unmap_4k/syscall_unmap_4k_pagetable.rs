@@ -3,8 +3,6 @@ use crate::*;
 use super::syscall_unmap_4k_spec::*;
 use super::syscall_unmap_4k_trace::*;
 use super::syscall_unmap_4k_helpers::unmap_4k_unmap_and_finish;
-#[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 /// With cpu `cpu_id`, its container, process, and running thread write-held since the entry snapshot `entry_lctx` was
@@ -326,13 +324,7 @@ fn unmap_4k_unlock_all_rejected(
     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_perm));
     krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_perm));
     krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_perm));
-    proof {
-        let ghost pre = *krnl;
-        let ghost pre_lctx = *lctx;
-        krnl.u_sys_exit(lctx);
-        u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-    }
-    krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
+    krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
     proof {
         assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
         steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), Some(process_ptr), Some(thread_ptr), None, Some(pagetable), None);

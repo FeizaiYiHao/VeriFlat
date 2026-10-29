@@ -3,6 +3,12 @@ use crate::{define::*};
 use core::sync::atomic::*;
 use crate::locks::*;
 
+// Platform implementation: clear and set the calling cpu's interrupt flag.
+unsafe extern "C" {
+    fn veriflat_disable_interrupts();
+    fn veriflat_enable_interrupts();
+}
+
 verus! {
 #[derive(Clone,Copy)]
 pub struct KillerInfo {
@@ -75,6 +81,26 @@ impl RwLockInner {
         }
     }
 
+    /// `wlock_unless_killed` that clears the calling cpu's interrupt flag under the guard when it grants the lock.
+    #[verifier::external_body]
+    pub fn wlock_unless_killed_cli(&mut self) -> Result<(),KillerInfo> {
+        loop {
+            if self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok() {
+                if let LockControl::Killed(ret) = self.control {
+                    self.lock.store(false, Ordering::Release);
+                    return Err(ret);
+                }
+                if self.num_of_reader == 0 && self.writing == false {
+                    self.writing = true;
+                    unsafe { veriflat_disable_interrupts(); }
+                    self.lock.store(false, Ordering::Release);
+                    return Ok(());
+                }
+                self.lock.store(false, Ordering::Release);
+            }
+        }
+    }
+
     #[verifier::external_body]
     pub fn try_wlock_and_mark_kill(&mut self, killer_info: KillerInfo) -> Result<(),KillerInfo> {
         loop {
@@ -127,6 +153,20 @@ impl RwLockInner {
                 debug_assert!(self.writing, "wunlock called on object that is not write-locked");
                 self.writing = false;
                 self.lock.store(false, Ordering::Release);
+                break;
+            }
+        }
+    }
+
+    /// `wunlock` that sets the calling cpu's interrupt flag once the lock is released.
+    #[verifier::external_body]
+    pub fn wunlock_sti(&mut self) {
+        loop {
+            if self.lock.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok() {
+                debug_assert!(self.writing, "wunlock_sti called on object that is not write-locked");
+                self.writing = false;
+                self.lock.store(false, Ordering::Release);
+                unsafe { veriflat_enable_interrupts(); }
                 break;
             }
         }
@@ -685,6 +725,58 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             unlock_ensures(old(lctx), final(lctx), obj_id.view(), lock_id.view()),
     {
         self.lock.wunlock();
+    }
+
+    /// `wlock_unless_killed` that also clears the calling cpu's interrupt flag when it takes the lock.
+    #[verifier::external_body]
+    pub fn wlock_unless_killed_cli(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>) -> (ret: Option<Tracked<LockPerm>>)
+        requires
+            !(old(self).view_rodata().container_source() is Dynamic),
+            !(old(self).view_rodata().process_source() is Dynamic),
+            wlock_requires(*old(self), old(lctx)),
+            !old(self).being_killed() ==> {
+                &&& old(self).view().container_depth() == lock_id.view().container
+                &&& old(self).view().process_depth() == lock_id.view().process
+                &&& old(self).view().lock_major_sat(lock_id.view().major)
+                &&& old(lctx).lock_id_acyclic(lock_id.view())
+            },
+        ensures
+            ret is None ==> {
+                &&& old(self).being_killed() == true
+                &&& *old(self) == *final(self)
+                &&& *final(lctx) == *old(lctx)
+            },
+            ret is Some ==> {
+                &&& old(self).being_killed() == false
+                &&& wlock_ensures(*old(self), *final(self), lock_id.view(), final(lctx), ret.unwrap().view())
+                &&& lock_ensures(old(lctx), final(lctx), lock_id.view(), obj_id.view())
+            }
+    {
+        if self.lock.wlock_unless_killed_cli().is_err() {
+            None
+        } else {
+            Some(Tracked::assume_new())
+        }
+    }
+
+    /// `wunlock` that also sets the calling cpu's interrupt flag after the release.
+    #[verifier::external_body]
+    pub fn wunlock_sti(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>)
+        requires
+            !(old(self).view_rodata().container_source() is Dynamic),
+            !(old(self).view_rodata().process_source() is Dynamic),
+            old(self).wlocked_by(old(lctx)),
+            old(self).inv(),
+            lp.view().state() is WriteLock,
+            lp.view().thread_id() == old(lctx).thread_id(),
+            lp.view().lock_id() == old(self).locking_thread()->Write_lock_id,
+            old(lctx).lock_entry_contains(lock_id.view(), obj_id.view()),
+        ensures
+            old(self).being_killed() == final(self).being_killed(),
+            wunlock_ensures(*old(self), *final(self)),
+            unlock_ensures(old(lctx), final(lctx), obj_id.view(), lock_id.view()),
+    {
+        self.lock.wunlock_sti();
     }
 
     /// Atomically write-lock the object and mark it as being-killed.

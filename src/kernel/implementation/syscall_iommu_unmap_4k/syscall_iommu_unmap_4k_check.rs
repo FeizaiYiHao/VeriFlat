@@ -3,8 +3,6 @@ use crate::*;
 use super::syscall_iommu_unmap_4k_spec::*;
 use super::syscall_iommu_unmap_4k_trace::*;
 use super::syscall_iommu_unmap_4k_lock::*;
-#[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 /// Validates the arguments, write-locks cpu `cpu_id`, its running thread's container, process, and thread, and the process's
@@ -149,13 +147,7 @@ pub(super) fn iommu_unmap_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): T
         krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_perm));
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_perm));
         krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_perm));
-        proof {
-            let ghost pre = *krnl;
-            let ghost pre_lctx = *lctx;
-            krnl.u_sys_exit(lctx);
-            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-        }
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
+        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
         proof {
             assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), Some(process_ptr), Some(thread_ptr), None, None, None);
@@ -179,13 +171,7 @@ pub(super) fn iommu_unmap_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): T
         krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_perm));
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_perm));
         krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_perm));
-        proof {
-            let ghost pre = *krnl;
-            let ghost pre_lctx = *lctx;
-            krnl.u_sys_exit(lctx);
-            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-        }
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
+        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
         proof {
             assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
             steps.end_kernel_step_restored_locks_with_iommu_table(&*krnl, &*lctx, cpu_id, Some(container_ptr), Some(process_ptr), Some(thread_ptr), None, None, None, Some(iommu_table));

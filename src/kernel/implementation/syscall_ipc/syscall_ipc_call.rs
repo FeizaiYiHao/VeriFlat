@@ -1,7 +1,5 @@
 use vstd::prelude::*;
 use crate::*;
-#[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 use super::syscall_ipc_dispatch::{ipc_lock_entry, IpcEntryLocked};
 #[cfg(verus_keep_ghost)]
 use super::syscall_ipc_dispatch::{endpoint_queue_member_thread_facts, running_thread_not_in_endpoint_queue};
@@ -222,14 +220,8 @@ verus! {
         krnl.wunlock_thread(callee_ptr, Tracked(&mut *lctx), Tracked(callee_lock_perm));
         krnl.wunlock_thread(caller_ptr, Tracked(&mut *lctx), Tracked(caller_lock_perm));
         krnl.wunlock_endpoint(endpoint_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
-        proof {
-            let ghost pre = *krnl;
-            let ghost pre_lctx = *lctx;
-            assert(krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
-            krnl.u_sys_exit(lctx);
-            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-        }
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+        assert(krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
+        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
             assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view()) by { reveal(ipc_call_handoff_eof_transition_framing); };
             let ghost flushed_pcid = ipc_handoff_flushed_pcid(old(steps).snapshot_k(), cpu_id, callee_ptr);
@@ -427,14 +419,8 @@ verus! {
         krnl.wunlock_thread(caller_ptr, Tracked(&mut *lctx), Tracked(caller_lock_perm));
         krnl.wunlock_thread(callee_ptr, Tracked(&mut *lctx), Tracked(callee_lock_perm));
         krnl.wunlock_endpoint(endpoint_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
-        proof {
-            let ghost pre = *krnl;
-            let ghost pre_lctx = *lctx;
-            assert(krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
-            krnl.u_sys_exit(lctx);
-            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-        }
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+        assert(krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
+        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
             assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
             assert(kernel_ipc_accept_call_fields(&steps.snapshot_k(), &*krnl, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr)) by {

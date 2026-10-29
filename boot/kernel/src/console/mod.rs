@@ -10,6 +10,10 @@
 //!
 //! `serial=[com1|com2|com3|com4]`
 
+use core::arch::asm;
+use core::mem::ManuallyDrop;
+use core::ops::{Deref, DerefMut};
+
 use crate::boot;
 use astd::sync::{Mutex, MutexGuard};
 use ns16550a::PioSerial;
@@ -22,22 +26,61 @@ const COM2: usize = 0x2f8;
 /// The serial device.
 static SERIAL: Mutex<PioSerial> = Mutex::new(unsafe { PioSerial::new(COM1) });
 
-pub type WriterType = MutexGuard<'static, PioSerial>;
+/// RFLAGS.IF.
+const RFLAGS_IF: u64 = 1 << 9;
+
+/// The serial lock with interrupts off while it is held: kernel code logs with interrupts on, and
+/// an interrupt handler that logs on the same CPU would otherwise spin on the lock it interrupted.
+/// Dropping it unlocks, then turns interrupts back on only if they were on before.
+pub struct WriterType {
+    guard: ManuallyDrop<MutexGuard<'static, PioSerial>>,
+    interrupts_were_on: bool,
+}
+
+impl Deref for WriterType {
+    type Target = PioSerial;
+
+    fn deref(&self) -> &PioSerial {
+        &self.guard
+    }
+}
+
+impl DerefMut for WriterType {
+    fn deref_mut(&mut self) -> &mut PioSerial {
+        &mut self.guard
+    }
+}
+
+impl Drop for WriterType {
+    fn drop(&mut self) {
+        unsafe {
+            ManuallyDrop::drop(&mut self.guard);
+            if self.interrupts_were_on {
+                asm!("sti", options(nostack, preserves_flags));
+            }
+        }
+    }
+}
 
 /// Returns a writer that implements `core::fmt::Write`.
 pub fn get_writer() -> WriterType {
-    SERIAL.lock()
+    let rflags: u64;
+    unsafe {
+        asm!("pushfq", "pop {}", out(reg) rflags, options(nomem, preserves_flags));
+        asm!("cli", options(nostack, preserves_flags));
+    }
+    WriterType { guard: ManuallyDrop::new(SERIAL.lock()), interrupts_were_on: rflags & RFLAGS_IF != 0 }
 }
 
 /// Initializes early logging.
 pub unsafe fn early_init() {
-    let serial = SERIAL.lock();
+    let serial = get_writer();
     serial.init();
 }
 
 /// Initializes the serial console.
 pub unsafe fn init() {
-    let mut serial = SERIAL.lock();
+    let mut serial = get_writer();
     let mut invalid_serial = false;
 
     let cmdline = boot::get_command_line();

@@ -3,8 +3,8 @@ use crate::*;
 use super::cpu_cr3_pcid::CpuCr3Pcid;
 
 // Platform implementation: send the maskable running-to-idle IPI to `cpu_id` and spin until it acknowledges. The target
-// takes the IPI only with interrupts enabled, in user mode or at the `hlt` of its idle loop; it loads `cr3` with the
-// default PCID, acknowledges, and from user mode abandons its thread for the idle loop.
+// takes the IPI anywhere outside a kernel step, where its interrupt flag is set; it loads `cr3` with the default PCID,
+// marks its next trap exit to divert to the idle loop, and acknowledges.
 unsafe extern "C" {
     fn veriflat_ipi_running_to_idle(cpu_id: usize, cr3: usize);
 }
@@ -53,22 +53,25 @@ impl AtomicPcidCr3 {
     }
 
     /// Platform running-to-idle IPI to the remote cpu `cpu_id` that owns this entry: a maskable IPI whose acknowledgement
-    /// this cpu awaits. The platform guarantees that the target takes the IPI only with interrupts enabled, that is in user
-    /// mode or at the `hlt` of its idle loop, never inside a syscall; there it loads `cr3` with the default PCID,
-    /// acknowledges, and, from user mode, abandons its thread for the idle loop. The wait ends because the caller
-    /// write-holds and marked the target's cpu lock: every kernel path of the target that would lock its own cpu sees the
-    /// mark, returns at once, and reaches user mode or the idle `hlt`. This cpu then stores the default context in the
-    /// target's hardware cr3/pcid word. Sending the IPI uses the target's kernel-call permission `perm`; the target rests in
-    /// `Idle` afterwards.
+    /// this cpu awaits. The target takes the IPI with its interrupt flag set, which holds exactly outside a kernel step:
+    /// in user mode, on its trap path, or in its idle loop. There it loads `cr3` with the default PCID, marks its next trap
+    /// exit to divert to the idle loop, and acknowledges. `target_lock` is the target's cpu lock, which the caller
+    /// write-holds and marked: the target runs a thread, is not in a kernel step, and every kernel path of it that would
+    /// lock its own cpu sees the mark and returns at once, so the wait ends. This cpu then stores the default context in
+    /// the target's hardware cr3/pcid word. Sending the IPI uses the target's kernel-call permission `perm`; the target
+    /// rests in `Idle` afterwards.
     // TODO: model the IPI wait as a virtual lock in the lock order.
     #[verifier::external_body]
     pub(super) fn ipi_remote_running_to_idle_raw(
         &mut self, hardware: &mut CpuCr3Pcid, cpu_id: CpuId, cr3: PageTableRoot, Tracked(cpu_op): Tracked<&mut CpuOpArray>, perm: Tracked<&KernelCallPerm>,
-        Tracked(lctx): Tracked<&LocalContext>,
+        Ghost(target_lock): Ghost<RwLock<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>>, Tracked(lctx): Tracked<&LocalContext>,
     )
         requires
             old(hardware).wf(),
             perm.view().cpu_id() == cpu_id,
+            target_lock.being_killed(),
+            target_lock.view().view().state is Running,
+            !(old(cpu_op).view()[cpu_id as int] is InStep),
             index_valid(NUM_CPUS, cpu_id),
             cpu_id != lctx.cpu_id(),
             page_ptr_valid(cr3),

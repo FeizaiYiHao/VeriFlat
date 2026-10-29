@@ -2,10 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_new_process_spec::*;
 use super::syscall_new_process_trace::*;
-#[cfg(all(feature = "split-crates", verus_keep_ghost))]
-use veriflat_kernel_core::kernel::implementation::locker_unlocker::u_sys_exit_eof;
-#[cfg(all(not(feature = "split-crates"), verus_keep_ghost))]
-use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 /// Exec state handed from the owner lock phase of `new_process_lock_entry` to its pcid, endpoint, and source checks.
@@ -208,13 +204,7 @@ pub(super) fn new_process_lock_cpu_owner(
     }
     let process_res = krnl.wlock_process_unless_killed(parent_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
     if process_res.is_none() {
-        proof {
-            let ghost pre = *krnl;
-            let ghost pre_lctx = *lctx;
-            krnl.u_sys_exit(lctx);
-            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-        }
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
             assert(krnl.cpu_op.view().view() =~= old(krnl).cpu_op.view().view());
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(parent_ptr), None, None, None, None);
@@ -227,13 +217,7 @@ pub(super) fn new_process_lock_cpu_owner(
     let thread_res = krnl.wlock_current_running_thread_unless_killed(current_thread_ptr, Tracked(&mut *lctx));
     if thread_res.is_none() {
         krnl.wunlock_process(parent_ptr, Tracked(&mut *lctx), Tracked(parent_lock_perm));
-        proof {
-            let ghost pre = *krnl;
-            let ghost pre_lctx = *lctx;
-            krnl.u_sys_exit(lctx);
-            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-        }
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
             assert(krnl.cpu_op.view().view() =~= old(krnl).cpu_op.view().view());
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(parent_ptr), Some(current_thread_ptr), None, None, None);
@@ -406,14 +390,8 @@ pub(super) fn new_process_unlock_and_stutter(
     krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
     krnl.wunlock_process(parent_ptr, Tracked(&mut *lctx), Tracked(parent_lock_perm));
     krnl.wunlock_pcid_allocator(pcid_allocator_ptr, Tracked(&mut *lctx), Tracked(pcid_allocator_lock_perm));
-    proof {
-        cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id);
-        let ghost pre = *krnl;
-        let ghost pre_lctx = *lctx;
-        krnl.u_sys_exit(lctx);
-        u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-    }
-    krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+    proof { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }
+    krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
         steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(parent_ptr), Some(current_thread_ptr), endpoint, source_pagetable, Some(pcid_allocator_ptr));

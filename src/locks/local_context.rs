@@ -60,8 +60,8 @@ pub tracked struct LocalContext {
     ghost allocator_2m_lock_maps: AllocatorLockMaps,
     ghost allocator_1g_lock_maps: AllocatorLockMaps,
     state: LCtxtState,
-    /// This cpu's kernel-call permission while its thread is inside a kernel step; moved in by `KernelK::wlock_cpu` on the
-    /// own cpu and back to the cpu object by `KernelK::u_sys_exit`.
+    /// This cpu's kernel-call permission while its thread is inside a kernel step; moved in by `KernelK::wlock_own_cpu` and
+    /// back to the cpu object by `KernelK::wunlock_own_cpu`.
     kernel_call_perm: Option<KernelCallPerm>,
 }
 

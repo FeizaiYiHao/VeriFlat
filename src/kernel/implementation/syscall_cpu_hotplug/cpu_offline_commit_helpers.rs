@@ -4,8 +4,6 @@ use super::cpu_offline_check_spec::*;
 use super::cpu_offline_check_trace::*;
 #[cfg(verus_keep_ghost)]
 use super::cpu_offline_check_eof::{cpu_went_off_eof, cpu_went_off_eof_fields};
-#[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 /// Finish of the offline of `cpu_id` committed from `before_k`, which is `entry_k` with the `(cpu_id, KERNEL_DEFAULT_PCID)`
@@ -212,14 +210,8 @@ pub(super) fn cpu_offline_commit_unlock_and_record(
         krnl.wunlock_process(current_process.unwrap(), Tracked(&mut *lctx), perm);
     }
     krnl.wunlock_cpu_offline_flag(flags_ptr, cpu_id, Tracked(&mut *lctx), Tracked(flag_lock_perm));
-    proof {
-        let ghost pre = *krnl;
-        let ghost pre_lctx = *lctx;
-        cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id);
-        krnl.u_sys_exit(lctx);
-        u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-    }
-    krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+    proof { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }
+    krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         let flushed = cpu_offline_check_flushed_default_pcid(entry_k, cpu_id);
         cpu_went_off_eof_fields(steps.snapshot_k(), entry_k, before_k, mid, *krnl, cpu_id, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, current_process, current_thread, *pt_regs);

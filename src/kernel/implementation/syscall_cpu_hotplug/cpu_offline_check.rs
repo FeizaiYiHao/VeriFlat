@@ -249,7 +249,7 @@ pub fn cpu_offline_check(
 {
     let ghost entry = *krnl;
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }
-    let cpu_lock_res = krnl.wlock_cpu(cpu_id, Tracked(&mut *lctx));
+    let cpu_lock_res = krnl.wlock_own_cpu(cpu_id, Tracked(&mut *lctx));
     if cpu_lock_res.is_none() {
         proof {
             no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); enter_kernel_view_release_preserving_lock_alignments(&*krnl, lctx); steps.rebase_snapshot_k_if_unchanged(&*krnl);

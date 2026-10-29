@@ -3,8 +3,6 @@ use crate::*;
 use super::syscall_cpu_hotplug_spec::*;
 use super::syscall_cpu_hotplug_trace::*;
 use super::cpu_online_child_locked::cpu_online_child_locked;
-#[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 /// Brings `target`, an Off cpu of the `child`-th child of the caller's live, non-zombie container, back to Idle under the
@@ -73,13 +71,7 @@ pub fn syscall_cpu_online_child(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut 
     let Tracked(container_lock_perm) = match container_res {
         DynamicWLockResult::Acquired(perm) => perm,
         DynamicWLockResult::Killed(_) => {
-            proof {
-                let ghost pre = *krnl;
-                let ghost pre_lctx = *lctx;
-                krnl.u_sys_exit(lctx);
-                u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-            }
-            krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+            krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
             proof {
                 assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
                 steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(caller_ptr), None, None, None, None, None);
@@ -89,13 +81,7 @@ pub fn syscall_cpu_online_child(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut 
             return RetValueType::ErrorContainerKilled;
         },
         DynamicWLockResult::DepthConflict { .. } => {
-            proof {
-                let ghost pre = *krnl;
-                let ghost pre_lctx = *lctx;
-                krnl.u_sys_exit(lctx);
-                u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-            }
-            krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+            krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
             proof {
                 assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
                 steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(caller_ptr), None, None, None, None, None);
@@ -111,13 +97,7 @@ pub fn syscall_cpu_online_child(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut 
     if caller.zombie || child >= caller.children.len() {
         let result = if caller.zombie { RetValueType::ErrorContainerZombie } else { RetValueType::ErrorCpuOwnerMismatch };
         krnl.wunlock_container(caller_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
-        proof {
-            let ghost pre = *krnl;
-            let ghost pre_lctx = *lctx;
-            krnl.u_sys_exit(lctx);
-            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-        }
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
             assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(caller_ptr), None, None, None, None, None);

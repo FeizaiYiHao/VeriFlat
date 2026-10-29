@@ -7,8 +7,6 @@ use super::rebalance_pull_release::rebalance_pull_release_unpulled;
 use super::rebalance_pull_eof::rebalance_pull_eof;
 #[cfg(verus_keep_ghost)]
 use super::super::syscall_schedule::syscall_schedule::schedule_current_cpu_references_wf;
-#[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 pub enum RebalanceResult {
@@ -421,14 +419,8 @@ fn rebalance_pull_move_head(
     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
     if let Some(local_perm) = local_lock_perm { krnl.wunlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx), local_perm); }
     rebalance_unlock_shard_prefix(krnl, Tracked(&mut *lctx), scheduler_ptr, count, Tracked(shard_perms));
-    proof {
-        let ghost pre = *krnl;
-        let ghost pre_lctx = *lctx;
-        assert(krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
-        krnl.u_sys_exit(lctx);
-        u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-    }
-    krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+    assert(krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
+    krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         let ghost pull_before = steps.view();
         assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
@@ -482,7 +474,7 @@ pub fn rebalance_pull(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalConte
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
     proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
 
-    let cpu_lock_res = krnl.wlock_cpu(cpu_id, Tracked(&mut *lctx));
+    let cpu_lock_res = krnl.wlock_own_cpu(cpu_id, Tracked(&mut *lctx));
     if cpu_lock_res.is_none() {
         proof {
             no_locks_held_imply_all_objects_unlocked(&*krnl, &*lctx); enter_kernel_view_release_preserving_lock_alignments(&*krnl, lctx);

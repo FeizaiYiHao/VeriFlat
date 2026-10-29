@@ -757,6 +757,7 @@ fn kill_container_move_cpu_commit(
         set_perm.lock_id() == old(krnl).cpu_set_mp.spec_index(set_ptr).locking_thread()->Write_lock_id,
         old(krnl).cpu_hw_cr3_pcid[cpu_i as int].view() == (old(krnl).cpu_arr.spec_index(cpu_i).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_i).view().view().view().current_pcid),
         old(krnl).cpu_arr.spec_index(cpu_i).view().view_ghost() == Some(old(lctx).cpu_id()),
+        cpu_i != old(lctx).cpu_id(),
         old(krnl).cpu_op.view().view()[cpu_i as int] is Off || old(krnl).cpu_op.view().view()[cpu_i as int] is Idle,
         *old(krnl) == (KernelK { cpu_arr: old(krnl).cpu_arr, cpu_set_mp: old(krnl).cpu_set_mp, cpu_offline_mp: old(krnl).cpu_offline_mp, ..base }),
         old(krnl).cpu_arr.unchanged_except(&base.cpu_arr, cpu_i),

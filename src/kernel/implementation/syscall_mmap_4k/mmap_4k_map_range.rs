@@ -3,8 +3,6 @@ use crate::*;
 use super::mmap_4k_map_one_leaf::map_one_mmap_4k_page;
 use super::syscall_mmap_4k_spec::*;
 use super::syscall_mmap_4k_trace::*;
-#[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 /// Under the pagetable's big read lock, holding exactly the 2M windows of `range`, publish a present, writable, executable
@@ -363,14 +361,8 @@ pub(super) fn mmap_4k_map_leaves_and_finish(
     proof { krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr); }
     krnl.runlock_pagetable(pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
-    proof {
-        cpu_op_wf_at(old(krnl).cpu_op.view().view(), old(krnl).cpu_arr, cpu_id); cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id);
-        let ghost pre = *krnl;
-        let ghost pre_lctx = *lctx;
-        krnl.u_sys_exit(lctx);
-        u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-    }
-    krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+    proof { cpu_op_wf_at(old(krnl).cpu_op.view().view(), old(krnl).cpu_arr, cpu_id); cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }
+    krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     let ghost exit_k = *krnl;
     proof {
         steps.end_kernel_step_thread_syscall_progress_changed(&*krnl, &*lctx, thread_ptr);

@@ -3,8 +3,6 @@ use crate::*;
 use super::syscall_cpu_hotplug_spec::*;
 use super::syscall_cpu_hotplug_trace::*;
 use super::cpu_offline_request_child_locked::cpu_offline_request_child_locked;
-#[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 /// Asks `target`, a cpu of the `child`-th child of the caller's live, non-zombie container, to go Off at its next schedule
@@ -76,13 +74,7 @@ pub fn syscall_cpu_offline_request_child(krnl: &mut KernelK, Tracked(lctx): Trac
     let Tracked(container_lock_perm) = match container_res {
         DynamicWLockResult::Acquired(perm) => perm,
         DynamicWLockResult::Killed(_) => {
-            proof {
-                let ghost pre = *krnl;
-                let ghost pre_lctx = *lctx;
-                krnl.u_sys_exit(lctx);
-                u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-            }
-            krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+            krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
             proof {
                 assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
                 steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(caller_ptr), None, None, None, None, None);
@@ -92,13 +84,7 @@ pub fn syscall_cpu_offline_request_child(krnl: &mut KernelK, Tracked(lctx): Trac
             return RetValueType::ErrorContainerKilled;
         },
         DynamicWLockResult::DepthConflict { .. } => {
-            proof {
-                let ghost pre = *krnl;
-                let ghost pre_lctx = *lctx;
-                krnl.u_sys_exit(lctx);
-                u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-            }
-            krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+            krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
             proof {
                 assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
                 steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(caller_ptr), None, None, None, None, None);
@@ -111,13 +97,7 @@ pub fn syscall_cpu_offline_request_child(krnl: &mut KernelK, Tracked(lctx): Trac
     let caller = krnl.ctn_mp.borrow_typed(caller_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(&container_lock_perm));
     if caller.zombie {
         krnl.wunlock_container(caller_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
-        proof {
-            let ghost pre = *krnl;
-            let ghost pre_lctx = *lctx;
-            krnl.u_sys_exit(lctx);
-            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-        }
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
             assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(caller_ptr), None, None, None, None, None);
@@ -129,13 +109,7 @@ pub fn syscall_cpu_offline_request_child(krnl: &mut KernelK, Tracked(lctx): Trac
     proof { caller.children.lemma_len_view(); }
     if child >= caller.children.len() {
         krnl.wunlock_container(caller_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
-        proof {
-            let ghost pre = *krnl;
-            let ghost pre_lctx = *lctx;
-            krnl.u_sys_exit(lctx);
-            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-        }
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
             assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(caller_ptr), None, None, None, None, None);

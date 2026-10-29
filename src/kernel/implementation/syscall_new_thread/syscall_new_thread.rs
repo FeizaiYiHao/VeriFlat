@@ -1,9 +1,5 @@
 use vstd::prelude::*;
 use crate::*;
-#[cfg(all(feature = "split-crates", verus_keep_ghost))]
-use veriflat_kernel_core::kernel::implementation::locker_unlocker::u_sys_exit_eof;
-#[cfg(all(not(feature = "split-crates"), verus_keep_ghost))]
-use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 use super::syscall_new_thread_helpers::add_new_thread_to_proc_container_and_scheduler;
 use super::syscall_new_thread_spec::*;
 use super::syscall_new_thread_trace::*;
@@ -77,13 +73,7 @@ verus! {
 
             let process_res = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
             if process_res.is_none() {
-                proof {
-                    let ghost pre = *krnl;
-                    let ghost pre_lctx = *lctx;
-                    krnl.u_sys_exit(lctx);
-                    u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-                }
-                krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+                krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
                 proof { assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view()); steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(process_ptr), None, None, None, None); }
                 proof { new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, None); }
                 proof { new_thread_result_from_k(&*old(krnl), cpu_id, None, RetValueType::ErrorProcessKilled); }
@@ -102,13 +92,7 @@ verus! {
             let thread_res = krnl.wlock_current_running_thread_unless_killed(current_thread_ptr, Tracked(&mut *lctx));
             if thread_res.is_none() {
                 krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
-                proof {
-                    let ghost pre = *krnl;
-                    let ghost pre_lctx = *lctx;
-                    krnl.u_sys_exit(lctx);
-                    u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-                }
-                krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+                krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
                 proof { assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view()); steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(process_ptr), Some(current_thread_ptr), None, None, None); }
                 proof { new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, None); }
                 proof { new_thread_result_from_k(&*old(krnl), cpu_id, None, RetValueType::ErrorThreadKilled); }
@@ -120,13 +104,7 @@ verus! {
             if thread_ref.quota_4k == 0 {
                 krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
                 krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
-                proof {
-                    let ghost pre = *krnl;
-                    let ghost pre_lctx = *lctx;
-                    krnl.u_sys_exit(lctx);
-                    u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-                }
-                krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+                krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
                 proof { assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view()); steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(process_ptr), Some(current_thread_ptr), None, None, None); }
                 proof { new_thread_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, *initial_regs, None); }
                 proof { new_thread_result_from_k(&*old(krnl), cpu_id, None, RetValueType::ErrorNoQuota); }

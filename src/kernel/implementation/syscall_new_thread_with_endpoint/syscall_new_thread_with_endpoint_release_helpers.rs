@@ -1,10 +1,6 @@
 use vstd::prelude::*;
 use vstd::assert_seqs_equal;
 use crate::*;
-#[cfg(all(feature = "split-crates", verus_keep_ghost))]
-use veriflat_kernel_core::kernel::implementation::locker_unlocker::u_sys_exit_eof;
-#[cfg(all(not(feature = "split-crates"), verus_keep_ghost))]
-use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 #[cfg(feature = "split-crates")]
 use veriflat_kernel_core::attach_endpoint_reference_and_unlock;
 #[cfg(not(feature = "split-crates"))]
@@ -136,14 +132,8 @@ pub(super) fn attach_endpoint_and_release_new_thread_locks(
     krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(None), Tracked(&*lctx), Tracked(&current_thread_lock_perm));
     krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
     krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
-    proof {
-        let ghost pre = *krnl;
-        let ghost pre_lctx = *lctx;
-        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep && krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
-        krnl.u_sys_exit(lctx);
-        u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-    }
-    krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+    proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep && krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
+    krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         assert(kernel_new_thread_fields(&finish_k, krnl, process_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, regs, Some(endpoint_ptr), None)) by {
             let descriptors = krnl.thr_mp.spec_index(new_thread_ptr).view().endpoint_descriptors.view();

@@ -5,8 +5,6 @@ use super::mmap_4k_map_range::mmap_4k_map_leaves_and_finish;
 use super::mmap_4k_precheck::{mmap_4k_precheck, Mmap4kPrecheck};
 use super::syscall_mmap_4k_spec::*;
 use super::syscall_mmap_4k_trace::*;
-#[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 /// At the start of the fill section, with `cpu_id` and its current `thread_ptr` write-held since the recorded hold step and
@@ -118,14 +116,8 @@ pub(super) fn mmap_4k_fill_enter(
         proof { mmap_4k_result_from_k(&old(steps).snapshot_k(), cpu_id, va, range, ret, if invalid { None } else { Some(checked) }, found); }
         krnl.wunlock_pagetable(pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
         krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
-        proof {
-            cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id);
-            let ghost pre = *krnl;
-            let ghost pre_lctx = *lctx;
-            krnl.u_sys_exit(lctx);
-            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-        }
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+        proof { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }
+        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };

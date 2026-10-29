@@ -5,10 +5,6 @@ use veriflat_kernel_core::attach_endpoint_reference_and_unlock;
 #[cfg(not(feature = "split-crates"))]
 use crate::kernel::implementation::attach_endpoint_reference_and_unlock::attach_endpoint_reference_and_unlock;
 use super::finish_helpers::wunlock_new_process_iommu_table;
-#[cfg(all(feature = "split-crates", verus_keep_ghost))]
-use veriflat_kernel_core::kernel::implementation::locker_unlocker::u_sys_exit_eof;
-#[cfg(all(not(feature = "split-crates"), verus_keep_ghost))]
-use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 /// First release phase of new-process finish: unlocks the child's IOMMU table, the child, both page tables, the new
@@ -301,14 +297,8 @@ pub(super) fn release_new_process_thread_locks_and_attach_endpoint(
         None => krnl.wunlock_thread(new_thread_ptr, Tracked(&mut *lctx), Tracked(new_thread_lock_perm)),
     }
     krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
-    proof {
-        cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id);
-        let ghost pre = *krnl;
-        let ghost pre_lctx = *lctx;
-        krnl.u_sys_exit(lctx);
-        u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-    }
-    krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+    proof { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }
+    krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         assert(kernel_cpu_nonlock_fields_unchanged(old(krnl).cpu_arr, krnl.cpu_arr)) by {
             broadcast use kernel_cpu_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged);

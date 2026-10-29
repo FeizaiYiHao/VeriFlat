@@ -5,8 +5,6 @@ use super::syscall_iommu_unmap_4k_check::iommu_unmap_4k_lock_and_check;
 use super::syscall_iommu_unmap_4k_range::{iommu_unmap_4k_hide_range, iommu_unmap_4k_reclaim_range};
 #[cfg(verus_keep_ghost)]
 use super::syscall_iommu_unmap_4k_trace::*;
-#[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 /// Unmap the 4K pages `iova..iova + range * 4K` from the running process's IOMMU table. Success records an entering step that
@@ -85,14 +83,8 @@ pub fn syscall_iommu_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_perm));
     krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_perm));
     krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_perm));
-    proof {
-        let ghost pre = *krnl;
-        let ghost pre_lctx = *lctx;
-        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
-        krnl.u_sys_exit(lctx);
-        u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-    }
-    krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
+    proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
+    krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
     proof {
         let exit_k = *krnl;
         steps.end_kernel_step_thread_syscall_progress_changed(&*krnl, &*lctx, thread_ptr);

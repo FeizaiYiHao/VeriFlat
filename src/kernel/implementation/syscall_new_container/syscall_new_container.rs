@@ -4,8 +4,6 @@ use super::syscall_new_container_commit::commit_new_container;
 use super::syscall_new_container_spec::*;
 use super::syscall_new_container_trace::*;
 use super::syscall_new_container_lock_owners::{new_container_lock_process_and_thread, new_container_lock_source_windows};
-#[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 /// Exec state handed from the lock-and-check prefix of `syscall_new_container` to its commit.
@@ -177,13 +175,7 @@ fn new_container_release_entry_locks(
     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
     krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
     krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
-    proof {
-        let ghost pre = *krnl;
-        let ghost pre_lctx = *lctx;
-        krnl.u_sys_exit(lctx);
-        u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-    }
-    krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+    krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
@@ -389,13 +381,7 @@ fn new_container_lock_owners(
     let Tracked(container_lock_perm) = match container_res {
         DynamicWLockResult::Acquired(perm) => perm,
         DynamicWLockResult::Killed(_) => {
-            proof {
-                let ghost pre = *krnl;
-                let ghost pre_lctx = *lctx;
-                krnl.u_sys_exit(lctx);
-                u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-            }
-            krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+            krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
             proof {
                 assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
                 steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(parent_container_ptr), None, None, None, None, None);
@@ -407,13 +393,7 @@ fn new_container_lock_owners(
         },
         DynamicWLockResult::DepthConflict { .. } => {
             proof { assert(krnl.pt_mp.dom().contains(krnl.prc_mp.spec_index(parent_process_ptr).view().pagetable)) by { process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, parent_process_ptr); }; }
-            proof {
-                let ghost pre = *krnl;
-                let ghost pre_lctx = *lctx;
-                krnl.u_sys_exit(lctx);
-                u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-            }
-            krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+            krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
             proof {
                 assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
                 steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(parent_container_ptr), None, None, None, None, None);
@@ -432,13 +412,7 @@ fn new_container_lock_owners(
     if parent_zombie || parent_depth >= MAX_CONTAINER_TREE_DEPTH {
         let error = if parent_zombie { RetValueType::ErrorContainerZombie } else { RetValueType::Error };
         krnl.wunlock_container(parent_container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
-        proof {
-            let ghost pre = *krnl;
-            let ghost pre_lctx = *lctx;
-            krnl.u_sys_exit(lctx);
-            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-        }
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
             assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(parent_container_ptr), None, None, None, None, None);

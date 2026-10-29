@@ -3,8 +3,6 @@ use crate::*;
 use super::syscall_alloc_quota_spec::*;
 use super::syscall_alloc_quota_trace::*;
 use super::syscall_alloc_quota_eof::*;
-#[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 verus! {
     pub(super) fn commit_alloc_quota_4k(
         krnl: &mut KernelK,
@@ -133,12 +131,8 @@ verus! {
                 assert(commit_alloc_quota_4k_eof_transition_framing(&*old(krnl), &*krnl, process_ptr, alloc_ptr_4k, alloc_amount)) by { reveal(commit_alloc_quota_4k_eof_transition_framing); };
                 commit_alloc_quota_4k_eof(&*old(krnl), &*krnl, container_ptr, process_ptr, alloc_ptr_4k, alloc_amount);
             }
-            let ghost pre = *krnl;
-            let ghost pre_lctx = *lctx;
-            krnl.u_sys_exit(lctx);
-            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
         }
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), cpu_lock_perm);
+        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), cpu_lock_perm);
         krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), container_lock_perm);
         krnl.wunlock_allocator_quota_4k(alloc_ptr_4k, Tracked(&mut *lctx), quota_lock_perm);
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), process_lock_perm);
@@ -296,13 +290,7 @@ verus! {
         }
         krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), thread_lock_perm);
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), process_lock_perm);
-        proof {
-            let ghost pre = *krnl;
-            let ghost pre_lctx = *lctx;
-            krnl.u_sys_exit(lctx);
-            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-        }
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), cpu_lock_perm);
+        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), cpu_lock_perm);
         proof {
             assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
             let quota_before = steps.view();
@@ -447,12 +435,8 @@ verus! {
                 assert(commit_alloc_quota_2m_eof_transition_framing(&*old(krnl), &*krnl, process_ptr, alloc_ptr_2m, alloc_amount)) by { reveal(commit_alloc_quota_2m_eof_transition_framing); };
                 commit_alloc_quota_2m_eof(&*old(krnl), &*krnl, container_ptr, process_ptr, alloc_ptr_2m, alloc_amount);
             }
-            let ghost pre = *krnl;
-            let ghost pre_lctx = *lctx;
-            krnl.u_sys_exit(lctx);
-            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
         }
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), cpu_lock_perm);
+        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), cpu_lock_perm);
         krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), container_lock_perm);
         krnl.wunlock_allocator_quota_2m(alloc_ptr_2m, Tracked(&mut *lctx), quota_lock_perm);
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), process_lock_perm);
@@ -610,13 +594,7 @@ verus! {
         }
         krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), thread_lock_perm);
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), process_lock_perm);
-        proof {
-            let ghost pre = *krnl;
-            let ghost pre_lctx = *lctx;
-            krnl.u_sys_exit(lctx);
-            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-        }
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), cpu_lock_perm);
+        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), cpu_lock_perm);
         proof {
             assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
             let quota_before = steps.view();

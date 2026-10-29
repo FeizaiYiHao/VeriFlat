@@ -206,6 +206,20 @@ impl Cpu {
             final(self).cr3_matches_hardware() == old(self).cr3_matches_hardware(),
     { self.kernel_call_perm.borrow_mut().tracked_take() }
 
+    /// Takes back the kernel-call permission of cpu `cpu_id`, which this object holds outside that cpu's kernel steps.
+    pub(crate) proof fn put_kernel_call_perm(tracked &mut self, cpu_id: CpuId, tracked perm: KernelCallPerm)
+        requires
+            old(self).kernel_call_perm() is None,
+            perm.cpu_id() == cpu_id,
+        ensures
+            final(self).kernel_call_perm() == Some(cpu_id),
+            final(self).view() == old(self).view(),
+            final(self).cr3_matches_hardware() == old(self).cr3_matches_hardware(),
+    {
+        let tracked mut slot = Some(perm);
+        vstd::modes::tracked_swap(self.kernel_call_perm.borrow_mut(), &mut slot);
+    }
+
     pub open spec fn spec_state(&self) -> CpuState { self.view().state }
 
     #[verifier(when_used_as_spec(spec_state))]
@@ -365,6 +379,123 @@ impl Cpu {
 }
 
 impl CpuLockedArray {
+    /// TCB: write-lock the own cpu `cpu_id` unless a killer marked it, and enter its kernel step. When the lock is granted
+    /// the cpu clears its interrupt flag under the lock guard; the lock then records the cpu as holder, the cpu's
+    /// kernel-call permission moves from the cpu object into the local context, and its running state becomes InStep. A
+    /// marked cpu returns `None` at once and nothing changes.
+    #[verifier::external_body]
+    pub fn wlock_own_cpu_enter_step(&mut self, cpu_id: CpuId, Tracked(cpu_op): Tracked<&mut CpuOpArray>, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Option<Tracked<LockPerm>>)
+        requires
+            old(self).inv(),
+            0 <= cpu_id < NUM_CPUS,
+            cpu_id == old(lctx).cpu_id(),
+            !old(self).spec_index(cpu_id).view().locked() ==> old(self).spec_index(cpu_id).view().view().kernel_call_perm() == Some(cpu_id),
+            !(old(self).spec_index(cpu_id).view().view_rodata().container_source() is Dynamic),
+            !(old(self).spec_index(cpu_id).view().view_rodata().process_source() is Dynamic),
+            wlock_requires(old(self).spec_index(cpu_id).view(), old(lctx)),
+            !old(self).spec_index(cpu_id).view().being_killed() ==> old(lctx).lock_id_acyclic(old(self).lock_id_by_index(cpu_id)),
+        ensures
+            final(self).inv(),
+            final(self).view().len() == old(self).view().len(),
+            final(self).entries_unchanged_except(old(self), cpu_id),
+            final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
+            (ret is None) == old(self).spec_index(cpu_id).view().being_killed(),
+            ret is None ==> *final(self) == *old(self) && *final(lctx) == *old(lctx) && *final(cpu_op) == *old(cpu_op),
+            ret is Some ==> {
+                let pre = old(self).spec_index(cpu_id).view();
+                let post = final(self).spec_index(cpu_id).view();
+                let perm = ret->Some_0.view();
+                &&& post.wlocked_by(final(lctx))
+                &&& post.locking_thread() == RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: perm.lock_id() }
+                &&& post.inv()
+                &&& post.view().view() == pre.view().view()
+                &&& post.view().wf() == pre.view().wf()
+                &&& post.view().kernel_call_perm() is None
+                &&& post.view_rodata() == pre.view_rodata()
+                &&& post.view_ghost() == Some(cpu_id)
+                &&& post.being_killed() == pre.being_killed()
+                &&& post.killer_info() == pre.killer_info()
+                &&& post.control() == pre.control()
+                &&& pre.locked() == false
+                &&& perm.state() is WriteLock
+                &&& post.locking_thread()->Write_lock_id == perm.lock_id()
+                &&& perm.ordering_lock_id() == old(self).lock_id_by_index(cpu_id)
+                &&& perm.thread_id() == final(lctx).thread_id()
+            },
+            ret is Some ==> lock_ensures(old(lctx), final(lctx), old(self).lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)),
+            ret is Some ==> final(lctx).kernel_call_perm() == Some(cpu_id),
+            ret is Some ==> final(cpu_op).view() == old(cpu_op).view().update(cpu_id as int, CpuOpState::InStep),
+    {
+        let ret = self.wlock_unless_killed_cli(cpu_id, Tracked(&mut *lctx), Ghost(KernelObjId::Cpu(cpu_id)));
+        if ret.is_none() {
+            return None;
+        }
+        let Tracked(perm) = ret.unwrap();
+        self.set_ghost(cpu_id, Ghost(Some(cpu_id)), Tracked(&*lctx), Tracked(&perm));
+        let cpu = self.borrow_mut(cpu_id, Tracked(&*lctx), Tracked(&perm));
+        proof {
+            let tracked token = cpu.take_kernel_call_perm();
+            lctx.put_kernel_call_perm(Some(token));
+            cpu_op.enter_step(cpu_id);
+        }
+        Some(Tracked(perm))
+    }
+
+    /// TCB: leave the kernel step of the own cpu `cpu_id` and release its lock. The cpu's running state becomes the resting
+    /// state its scheduling state implies, its kernel-call permission moves from the local context back into the cpu object
+    /// (it is there by linearity: only `wlock_own_cpu_enter_step` moves it in), the holder record is cleared, the cpu's
+    /// pending running-to-idle request is dropped, and the cpu sets its interrupt flag after the release.
+    #[verifier::external_body]
+    pub fn exit_step_wunlock_own_cpu(&mut self, cpu_id: CpuId, Tracked(cpu_op): Tracked<&mut CpuOpArray>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
+        requires
+            old(self).inv(),
+            0 <= cpu_id < NUM_CPUS,
+            cpu_id == old(lctx).cpu_id(),
+            old(cpu_op).view()[cpu_id as int] is InStep,
+            old(self).spec_index(cpu_id).view().view_ghost() == Some(cpu_id),
+            !(old(self).spec_index(cpu_id).view().view_rodata().container_source() is Dynamic),
+            !(old(self).spec_index(cpu_id).view().view_rodata().process_source() is Dynamic),
+            old(self).spec_index(cpu_id).view().wlocked_by(old(lctx)),
+            old(self).spec_index(cpu_id).view().being_killed() == false,
+            lock_perm.view().state() is WriteLock,
+            lock_perm.view().thread_id() == old(lctx).thread_id(),
+            lock_perm.view().lock_id() == old(self).spec_index(cpu_id).view().locking_thread()->Write_lock_id,
+            old(lctx).lock_entry_contains(old(self).lock_id_by_index(cpu_id), KernelObjId::Cpu(cpu_id)),
+        ensures
+            final(self).inv(),
+            final(self).view().len() == old(self).view().len(),
+            final(self).entries_unchanged_except(old(self), cpu_id),
+            final(self).lock_id_by_index(cpu_id) == old(self).lock_id_by_index(cpu_id),
+            ({
+                let pre = old(self).spec_index(cpu_id).view();
+                let post = final(self).spec_index(cpu_id).view();
+                &&& post.locking_thread() == RwLockState::None
+                &&& post.inv()
+                &&& post.view().view() == pre.view().view()
+                &&& post.view().wf() == pre.view().wf()
+                &&& post.view().kernel_call_perm() == Some(cpu_id)
+                &&& post.view_rodata() == pre.view_rodata()
+                &&& post.view_ghost() is None
+                &&& post.being_killed() == pre.being_killed()
+                &&& post.killer_info() == pre.killer_info()
+                &&& post.control() == pre.control()
+            }),
+            final(lctx).kernel_call_perm() is None,
+            unlock_ensures(old(lctx), final(lctx), KernelObjId::Cpu(cpu_id), old(self).lock_id_by_index(cpu_id)),
+            final(cpu_op).view() == old(cpu_op).view().update(cpu_id as int, cpu_op_after_step(old(self).spec_index(cpu_id).view().view().view().state)),
+    {
+        let Tracked(lock_perm) = lock_perm;
+        let cpu = self.borrow_mut(cpu_id, Tracked(&*lctx), Tracked(&lock_perm));
+        proof {
+            cpu_op.exit_step(cpu_id, cpu.state);
+            let tracked slot = lctx.take_kernel_call_perm();
+            cpu.put_kernel_call_perm(cpu_id, slot.tracked_unwrap());
+        }
+        self.set_ghost(cpu_id, Ghost(None), Tracked(&*lctx), Tracked(&lock_perm));
+        unsafe { super::cpu_ipi::veriflat_clear_running_to_idle_pending(); }
+        self.wunlock_sti(cpu_id, Tracked(&mut *lctx), Tracked(lock_perm), Ghost(KernelObjId::Cpu(cpu_id)));
+    }
+
     pub fn block_current(&mut self, cpu_id: CpuId, default_cr3: PageTableRoot, tlb: &mut CpuTLB, needflush: &mut PcidNeedFlushArray, hw_cr3_pcid: &mut CpuHwCr3PcidArray, needflush_perm: Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>, cpu_lock_perm: Tracked<&LockPerm>)
         requires
             old(self).inv(),
@@ -460,6 +591,7 @@ impl CpuLockedArray {
             old(self).inv(),
             old(self).spec_index(cpu_id).view().view().kernel_call_perm() == Some(cpu_id),
             !old(self).spec_index(cpu_id).view().being_killed(),
+            !(old(cpu_op).view()[cpu_id as int] is InStep),
             page_ptr_valid(default_cr3),
             index_valid(NUM_CPUS, cpu_id),
             cpu_id != old(lctx).cpu_id(),
@@ -499,9 +631,11 @@ impl CpuLockedArray {
         proof { lctx.enter_kernel_view_release(); }
         assert(self.spec_index(cpu_id).view().wlocked_by(&*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
         self.mark_kill(cpu_id, Tracked(&*lctx), killer_info);
+        let ghost target_lock = self.spec_index(cpu_id).view();
         assert(self.typed_lock_map_aligned(lctx.cpu_lock_map(), lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
         let cpu = self.borrow_mut_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), cpu_lock_perm);
-        hw_cr3_pcid[cpu_id].ipi_remote_running_to_idle_raw(&mut cpu.cr3_pcid, cpu_id, default_cr3, Tracked(&mut *cpu_op), Tracked(cpu.kernel_call_perm.borrow().tracked_borrow()), Tracked(&*lctx));
+        hw_cr3_pcid[cpu_id].ipi_remote_running_to_idle_raw(&mut cpu.cr3_pcid, cpu_id, default_cr3, Tracked(&mut *cpu_op), Tracked(cpu.kernel_call_perm.borrow().tracked_borrow()),
+            Ghost(target_lock), Tracked(&*lctx));
         self.unkill(cpu_id, Tracked(&*lctx));
         assert(self.typed_lock_map_aligned(lctx.cpu_lock_map(), lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
         let cpu = self.borrow_mut_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), cpu_lock_perm);

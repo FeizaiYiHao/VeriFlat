@@ -1,12 +1,15 @@
 //! Per-cpu running state and the per-cpu kernel-call permission.
 //!
-//! TCB model of `CpuOpState`. `Off` is a cpu halted in `wait_until_online`; `Idle` is the idle loop, including its
-//! `sti; hlt; cli`; `User` is ring 3; `Trap` is the IF=0 entry/return trampoline running without the own cpu lock
-//! (User to Trap at `syscall` and the interrupt gates, Trap to User at `sysretq`/`iretq`, Trap to Idle when
-//! `restore_frame` diverts on `running_to_idle_pending` or CpuIdle); `InStep` is a cpu that write-holds its own cpu
-//! lock with its own `KernelCallPerm` in its `LocalContext` (entered in `KernelK::wlock_cpu`, left by
-//! `KernelK::u_sys_exit`). The only writers are that enter and exit, `ipi_remote_running_to_idle_raw` (to Idle),
-//! `ipi_wake` (to Idle), and the boot trampolines, which the trap U steps and the step-boundary havoc model.
+//! TCB model of `CpuOpState`. A cpu runs with its interrupt flag clear exactly while it is `InStep`; every other state
+//! runs with IF=1. `Off` is a cpu halted in `wait_until_online`; `Idle` is the idle loop, which halts with a plain
+//! `hlt`; `User` is ring 3; `Trap` is the IF=1 kernel segment running without the own cpu lock (User to Trap at
+//! `syscall` and the interrupt gates, Trap to User at `sysretq`/`iretq`, Trap to Idle when `restore_frame` diverts on
+//! `running_to_idle_pending` or CpuIdle); `InStep` is a cpu that write-holds its own cpu lock with its own
+//! `KernelCallPerm` in its `LocalContext`. `CpuLockedArray::wlock_own_cpu_enter_step` enters it, clearing IF when the
+//! lock is granted, and `CpuLockedArray::exit_step_wunlock_own_cpu` leaves it, setting IF after the release; they are
+//! called by `KernelK::wlock_own_cpu` and `KernelK::wunlock_own_cpu`. The only writers are that enter and exit,
+//! `ipi_remote_running_to_idle_raw` (to Idle), `ipi_wake` (to Idle), and the boot trampolines, which the trap U steps
+//! and the step-boundary havoc model.
 use vstd::prelude::*;
 use crate::*;
 
@@ -43,7 +46,7 @@ impl CpuOpArray {
             ret.view() == ops,
     { unimplemented!() }
 
-    /// TCB: cpu `cpu_id` enters a kernel step by write-locking its own cpu in `KernelK::wlock_cpu`.
+    /// TCB: cpu `cpu_id` enters a kernel step by write-locking its own cpu in `CpuLockedArray::wlock_own_cpu_enter_step`.
     #[verifier::external_body]
     pub(crate) proof fn enter_step(tracked &mut self, cpu_id: CpuId)
         requires
@@ -52,7 +55,8 @@ impl CpuOpArray {
             final(self).view() == old(self).view().update(cpu_id as int, CpuOpState::InStep),
     { unimplemented!() }
 
-    /// TCB: cpu `cpu_id` leaves its kernel step in `KernelK::u_sys_exit` and rests in the state its scheduling state implies.
+    /// TCB: cpu `cpu_id` leaves its kernel step in `CpuLockedArray::exit_step_wunlock_own_cpu` and rests in the state its
+    /// scheduling state implies.
     #[verifier::external_body]
     pub(crate) proof fn exit_step(tracked &mut self, cpu_id: CpuId, state: CpuState)
         requires

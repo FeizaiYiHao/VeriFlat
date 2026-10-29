@@ -4,8 +4,6 @@ use super::syscall_schedule_spec::*;
 use super::syscall_schedule_trace::*;
 #[cfg(verus_keep_ghost)]
 use super::syscall_schedule::schedule_current_cpu_references_wf;
-#[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 /// With `cpu_id`, its shard of `scheduler_ptr`, and the live `current_process` and `current_thread`, if any, write-held since
@@ -315,14 +313,8 @@ pub(super) fn schedule_lock_current_and_shard(
     if let Some(process_ptr) = current_process {
         let res = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
         if res.is_none() {
-            proof {
-                let ghost pre = *krnl;
-                let ghost pre_lctx = *lctx;
-                assert(krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
-                krnl.u_sys_exit(lctx);
-                u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-            }
-            krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+            assert(krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
+            krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
             proof {
                 assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
                 steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(process_ptr), None, None, None, None);
@@ -335,14 +327,8 @@ pub(super) fn schedule_lock_current_and_shard(
         let res = krnl.wlock_current_running_thread_unless_killed(thread_ptr, Tracked(&mut *lctx));
         if res.is_none() {
             krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), process_lock_perm.unwrap());
-            proof {
-                let ghost pre = *krnl;
-                let ghost pre_lctx = *lctx;
-                assert(krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
-                krnl.u_sys_exit(lctx);
-                u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-            }
-            krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+            assert(krnl.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(cpu_id)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
+            krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
             proof {
                 assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
                 steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, None, Some(process_ptr), Some(thread_ptr), None, None, None);

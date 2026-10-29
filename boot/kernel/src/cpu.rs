@@ -104,11 +104,17 @@ pub struct Cpu {
     /// Whether the timer handler re-arms the one-shot LAPIC timer (false while the CPU is Off).
     pub timer_on: bool,
 
-    /// Set by a running-to-idle IPI taken in user mode (`platform::handle_running_to_idle_ipi`),
-    /// cleared on entry to the idle loop.
+    /// Set by every running-to-idle IPI (`platform::handle_running_to_idle_ipi`), cleared on entry
+    /// to the idle loop and when a kernel step releases this CPU's own lock
+    /// (`platform::veriflat_clear_running_to_idle_pending`).
     /// While it is set the CPU runs on the kernel page table and must not return to ring 3:
     /// `restore_frame` diverts to the idle loop instead.
     pub running_to_idle_pending: AtomicBool,
+
+    /// Set by the wake-up, running-to-idle, and timer handlers; cleared when this CPU's own lock is
+    /// granted (`platform::veriflat_disable_interrupts`). `platform::veriflat_halt_until_ipi` skips
+    /// its `hlt` while it is set: an interrupt arrived after the last step read this CPU's state.
+    pub wake_seen: AtomicBool,
 
     /// Returns of `restore_frame` through `sysretq` and through `iretq`.
     pub sysret_exits: u64,
@@ -161,6 +167,7 @@ impl Cpu {
             syscall_sp: 0,
             timer_on: false,
             running_to_idle_pending: AtomicBool::new(false),
+            wake_seen: AtomicBool::new(false),
             sysret_exits: 0,
             iret_exits: 0,
             xapic: MaybeUninit::uninit(),
@@ -231,13 +238,28 @@ pub fn is_started(cpu_id: usize) -> bool {
     STARTED[cpu_id].load(Ordering::Acquire)
 }
 
-/// Sets `running_to_idle_pending`. For the running-to-idle IPI handler, taken from user mode.
+/// Sets `running_to_idle_pending`. For the running-to-idle IPI handler.
 pub fn set_running_to_idle_pending() {
     get_current().running_to_idle_pending.store(true, Ordering::Relaxed);
 }
 
+/// Clears `running_to_idle_pending`. For the idle loop and `veriflat_clear_running_to_idle_pending`.
 pub fn clear_running_to_idle_pending() {
     get_current().running_to_idle_pending.store(false, Ordering::Relaxed);
+}
+
+/// Sets `wake_seen`. For the wake-up, running-to-idle, and timer handlers.
+pub fn set_wake_seen() {
+    get_current().wake_seen.store(true, Ordering::Relaxed);
+}
+
+/// Clears `wake_seen`. For `veriflat_disable_interrupts`, when this CPU's own lock is granted.
+pub fn clear_wake_seen() {
+    get_current().wake_seen.store(false, Ordering::Relaxed);
+}
+
+pub fn wake_seen() -> bool {
+    get_current().wake_seen.load(Ordering::Relaxed)
 }
 
 /// Returns of `restore_frame` through `sysretq` and through `iretq` on all CPUs so far.

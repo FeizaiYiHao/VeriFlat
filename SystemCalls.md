@@ -125,9 +125,10 @@ exact length bounds, and the exit step, each with its pre and transition.
 killer holds the cpu marked while it forces the cpu to idle (§18). The result
 specs keep the disjunct `!(cpu.state is Running)`, which the Trap entry rules
 out. A marked cpu is never waited for: the lock returns at once, so the cpu
-leaves its trap path for the idle loop and takes the running-to-idle IPI at the
-idle `hlt`. Entries that check their arguments before locking (mmap_4k,
-unmap_4k, new_process, new_container, the hotplug `target` index, the IPC
+leaves its trap path for the idle loop and takes the running-to-idle IPI
+wherever it runs with interrupts on (§15). Entries that check their arguments
+before locking (mmap_4k, unmap_4k, new_process, new_container, the hotplug
+`target` index, the IPC
 pages range) report argument errors first. The result specs and traces
 state this as their first branch (after the argument checks); IPC traces that
 classify `CpuIdle` as a block step take that branch only when the cpu is
@@ -1356,29 +1357,49 @@ publishes Off (§4b), cleared by `cpu_online_resume`; it is not U-visible and
 no invariant depends on it. Trusted primitives: `CpuTLB::flush_all_local_pcids`
 (external_body; empties every TLB entry of the calling cpu except
 `KERNEL_DEFAULT_PCID`), `ipi_wake` (external_body; the wake-up IPI, FFI
-`veriflat_send_ipi`, called only through `CpuLockedArray::wake_remote`), and
+`veriflat_send_ipi`, called only through `CpuLockedArray::wake_remote`),
 `halt_until_ipi` (external_body; FFI `veriflat_halt_until_ipi`, no model
-effect).
+effect; the boot implementation checks the per-cpu `wake_seen` flag with
+interrupts off before `sti; hlt`, so a wake-up taken before the halt is not
+slept through), `CpuLockedArray::wlock_own_cpu_enter_step` (external_body;
+takes the own cpu lock unless it is marked, through the lock-layer
+`wlock_unless_killed_cli`, which executes `cli` under the lock guard when it
+grants; moves the cpu's `KernelCallPerm` into the local context and sets
+`cpu_op` to `InStep`), `CpuLockedArray::exit_step_wunlock_own_cpu`
+(external_body; sets `cpu_op` to `cpu_op_after_step(state)`, moves the
+permission back, clears the pending running-to-idle flag through FFI
+`veriflat_clear_running_to_idle_pending`, and releases through the lock-layer
+`wunlock_sti`, which executes `sti` after the release), and the lock-layer
+variants `RwLock::wlock_unless_killed_cli` / `RwLock::wunlock_sti` and
+`LockedArray::wlock_unless_killed_cli` / `LockedArray::wunlock_sti`
+(external_body; contracts identical to `wlock_unless_killed` / `wunlock`; FFI
+`veriflat_disable_interrupts`, which also clears the boot-side `wake_seen`
+flag, and `veriflat_enable_interrupts`).
 
 Cpu running state and kernel-call permission (Batch 4, 2026-10-28, applied):
 `KernelK.cpu_op: Tracked<CpuOpArray>` (`src/cpu/cpu_op.rs`) holds one
 `CpuOpState` per cpu: `Off` (halted in `wait_until_online`), `Idle` (the idle
-loop), `User` (ring 3), `Trap` (the entry and return path, interrupts off,
-without the own cpu lock), and `InStep` (inside a kernel call, holding the own
-cpu lock). Only TCB code writes it: `wlock_cpu` of the own cpu (to `InStep`),
-`KernelK::u_sys_exit` (to `cpu_op_after_step(state)`: Running to Trap, Idle to
-Idle, Off to Off), `ipi_remote_running_to_idle_raw` and `ipi_wake` (a remote
-cpu to Idle), init (cpu 0 Idle, the others Off), and the step boundary. Each
-cpu has one
+loop), `User` (ring 3), `Trap` (the entry and return path, without the own
+cpu lock), and `InStep` (inside a kernel call, holding the own cpu lock). A
+cpu's interrupt flag is clear exactly while it is `InStep`; every other state
+runs with it set. Only TCB code writes it: `KernelK::wlock_own_cpu` (to
+`InStep`; the atomic `CpuLockedArray::wlock_own_cpu_enter_step` executes `cli`
+when the lock is granted), `KernelK::wunlock_own_cpu` (to
+`cpu_op_after_step(state)`: Running to Trap, Idle to Idle, Off to Off; the
+atomic `CpuLockedArray::exit_step_wunlock_own_cpu` releases the lock and then
+executes `sti`), `ipi_remote_running_to_idle_raw` and `ipi_wake` (a remote cpu
+to Idle), init (cpu 0 Idle, the others Off), and the step boundary. Each cpu
+has one
 `KernelCallPerm`, created at boot. It sits in `Cpu.kernel_call_perm` while the
-cpu is outside a kernel call, and in `LocalContext.kernel_call_perm` from the
-own-cpu `wlock_cpu` at entry (syscalls through `wlock_cpu_if_running`) until
-`u_sys_exit`, which runs before the own `wunlock_cpu` (the
-`release_cpu_and_*finish_syscall` helpers call it); `wunlock_cpu` of the own
-cpu requires that it is not `InStep`. The cpu lock's ghost records the
-locker's cpu id: `Some(c)` while write-held (`wlock_cpu`, `wlock_off_cpu`),
-`None` after `wunlock_cpu`. `cpu_op_wf` (in `KernelK::inv`; point lemma
-`cpu_op_wf_at`) states for each cpu `c`: `InStep` implies `c` is write-locked
+cpu is outside a kernel call, and in `LocalContext.kernel_call_perm` from
+`wlock_own_cpu` at entry (syscalls through `wlock_cpu_if_running`) until
+`wunlock_own_cpu` (the `release_cpu_and_*finish_syscall` helpers call it), so
+every syscall epilogue is one atomic exit. `wlock_cpu` and `wunlock_cpu` lock
+and release remote cpus only. The cpu lock's ghost records the locker's cpu
+id: `Some(c)` while write-held (`wlock_own_cpu`, `wlock_cpu`,
+`wlock_off_cpu`), `None` after `wunlock_own_cpu` or `wunlock_cpu`. `cpu_op_wf`
+(in `KernelK::inv`; point lemma `cpu_op_wf_at`) states for each cpu `c`:
+`InStep` implies `c` is write-locked
 with ghost `Some(c)`; `c` is `InStep` exactly when its permission is not in the
 cpu object, and a permission there is `c`'s own; `User` or `Trap` implies
 Running; `Idle` implies Idle, or Running and marked by a killer; `Off` implies
@@ -1880,11 +1901,13 @@ present, `W(V)`, `V.killed`)
   (`unkill`), and sets it Idle with no current process or thread
   (`ipi_remote_running_to_idle`). The IPI borrows `R`'s `KernelCallPerm` from
   the cpu object, where it stays because the killer's lock keeps `R` out of
-  `InStep` (`cpu_op_wf`, §15), and leaves `R` at `op` Idle. `R` takes the IPI
-  only in user mode or at its idle `hlt`: it loads the default page table with
-  the default PCID, acknowledges, and, from user mode, abandons `V` for
-  `run_idle`. Every own-cpu lock of `R` returns at once on the mark, so `R`
-  cannot spin while the killer waits. `update_lock_id` moves `R` to the idle
+  `InStep` (`cpu_op_wf`, §15), and leaves `R` at `op` Idle; the IPI requires
+  `R` marked, Running, and not `InStep`. `R` takes the IPI anywhere outside a
+  kernel step, where its interrupt flag is set (user mode, its trap path, its
+  idle loop): it loads the default page table with the default PCID, marks its
+  next trap exit to divert to `run_idle` instead of `V`, and acknowledges.
+  Every own-cpu lock of `R` returns at once on the mark, so `R` cannot spin
+  while the killer waits. `update_lock_id` moves `R` to the idle
   major (2), and `R` is released inside the step. The mark is U-visible as
   `cpu.killed` but cleared within the step.
 - Unlink (`kill_process_unlink_step`): `V.state is KILLED`; `V` leaves
@@ -2018,12 +2041,15 @@ Trusted primitives (external_body; authorized TCB): `RwLock::mark_kill`
 (marks a write-held object for its killer), `CpuLockedArray::unkill` (clears
 the mark of a cpu the killer still write-holds; no other object type is ever
 unmarked), the kill-aware `CpuLockedArray` lock operations
-(`wlock_unless_killed`, `wunlock`, `mark_kill`),
+(`wlock_unless_killed`, `wunlock`, `mark_kill`, and the own-cpu variants
+`wlock_unless_killed_cli` / `wunlock_sti` used by `wlock_own_cpu` /
+`wunlock_own_cpu`),
 `ipi_remote_running_to_idle_raw` under
-`CpuLockedArray::ipi_remote_running_to_idle` (a maskable IPI, taken only in
-user mode or at the idle `hlt`, makes the remote cpu load the default page
-table and acknowledge; it borrows the target's `KernelCallPerm` and leaves its
-`op` at Idle; the killer spins for the acknowledgement; TODO: model this wait
+`CpuLockedArray::ipi_remote_running_to_idle` (a maskable IPI, taken anywhere
+outside a kernel step, makes the remote cpu load the default page table,
+divert its next trap exit to the idle loop, and acknowledge; it borrows the
+target's `KernelCallPerm` and leaves its `op` at Idle; the killer spins for
+the acknowledgement; TODO: model this wait
 as a virtual lock in the lock order), `page_map_to_page_perm` (an unlinked
 table page is a 4K page again),
 `retype_pagetable_rwlock_to_4k_page_perms` (a page table whose only table

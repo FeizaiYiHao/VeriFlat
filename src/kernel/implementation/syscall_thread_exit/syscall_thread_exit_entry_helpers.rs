@@ -4,10 +4,6 @@ use super::syscall_thread_exit_spec::*;
 use super::syscall_thread_exit_trace::*;
 use super::syscall_thread_exit_entry::ThreadExitEntered;
 use super::syscall_thread_exit_entry_progress::thread_exit_enter_record_progress;
-#[cfg(all(feature = "split-crates", verus_keep_ghost))]
-use veriflat_kernel_core::kernel::implementation::locker_unlocker::u_sys_exit_eof;
-#[cfg(all(not(feature = "split-crates"), verus_keep_ghost))]
-use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 /// Lock phase of the entry of thread exit: write-locks cpu `cpu_id`, its container, process, and running thread,
@@ -161,13 +157,7 @@ pub(super) fn thread_exit_lock_running_thread(krnl: &mut KernelK, Tracked(lctx):
     let Tracked(container_lock_perm) = match container_res {
         DynamicWLockResult::Acquired(perm) => perm,
         DynamicWLockResult::Killed(_) => {
-            proof {
-                let ghost pre = *krnl;
-                let ghost pre_lctx = *lctx;
-                krnl.u_sys_exit(lctx);
-                u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-            }
-            krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+            krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
             proof {
                 assert(krnl.cpu_op.view().view() =~= old(krnl).cpu_op.view().view());
                 steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), None, None, None, None, None);
@@ -177,13 +167,7 @@ pub(super) fn thread_exit_lock_running_thread(krnl: &mut KernelK, Tracked(lctx):
             return Err(RetValueType::ErrorContainerKilled);
         },
         DynamicWLockResult::DepthConflict { .. } => {
-            proof {
-                let ghost pre = *krnl;
-                let ghost pre_lctx = *lctx;
-                krnl.u_sys_exit(lctx);
-                u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-            }
-            krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+            krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
             proof {
                 assert(krnl.cpu_op.view().view() =~= old(krnl).cpu_op.view().view());
                 steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), None, None, None, None, None);
@@ -196,13 +180,7 @@ pub(super) fn thread_exit_lock_running_thread(krnl: &mut KernelK, Tracked(lctx):
     let process_res = krnl.wlock_process_unless_killed(process_ptr, Ghost(cpu_id), Tracked(&mut *lctx));
     if process_res.is_none() {
         krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
-        proof {
-            let ghost pre = *krnl;
-            let ghost pre_lctx = *lctx;
-            krnl.u_sys_exit(lctx);
-            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-        }
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
             assert(krnl.cpu_op.view().view() =~= old(krnl).cpu_op.view().view());
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), Some(process_ptr), None, None, None, None);
@@ -216,13 +194,7 @@ pub(super) fn thread_exit_lock_running_thread(krnl: &mut KernelK, Tracked(lctx):
     if thread_res.is_none() {
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
         krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
-        proof {
-            let ghost pre = *krnl;
-            let ghost pre_lctx = *lctx;
-            krnl.u_sys_exit(lctx);
-            u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-        }
-        krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
             assert(krnl.cpu_op.view().view() =~= old(krnl).cpu_op.view().view());
             steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), Some(process_ptr), Some(thread_ptr), None, None, None);

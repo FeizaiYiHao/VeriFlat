@@ -11,13 +11,23 @@
 //! ring 3) on the way in, [`restore_frame`], the only exit to ring 3, on the way out. The NMI handler
 //! and the fatal-exception path may run with either base and use [`cpu::cpu_id_without_gs`] instead.
 //!
+//! Interrupts are off exactly while this CPU holds its own CPU lock inside a kernel step: the
+//! verified kernel's own-CPU lock executes `cli` when it is granted and `sti` after its release
+//! (`platform::veriflat_disable_interrupts`, `platform::veriflat_enable_interrupts`). Everywhere
+//! else (ring 3, the trampolines, the idle loop, an Off CPU) they are on. `syscall` and the
+//! interrupt gates clear IF in hardware; `sys_entry` and the interrupt trampolines (for frames from
+//! ring 3) execute `sti` once the frame is built, and [`restore_frame`] executes `cli` first, so
+//! its last check and the return to ring 3 are one step. An interrupt taken in the kernel keeps IF
+//! clear in its handler, which only acknowledges, re-arms the timer, or sets a flag.
+//!
 //! A running-to-idle IPI (`platform::veriflat_ipi_running_to_idle`) makes this CPU abandon its
-//! thread at another CPU's request. It is a maskable IPI, so this CPU takes it only with interrupts
-//! enabled: in ring 3 or at the `hlt` of [`run_idle`], never inside a syscall. It loads the kernel
-//! page table; from ring 3 it also sets `Cpu::running_to_idle_pending`, and the trampoline's exit
-//! through [`restore_frame`] diverts to the idle loop, which clears the flag. The requester marked
-//! this CPU's lock first, so a syscall or idle-loop step of this CPU that would lock its own CPU
-//! returns at once and reaches the `hlt`.
+//! thread at another CPU's request. It is a maskable IPI, so this CPU takes it anywhere outside a
+//! kernel step: in ring 3, in a trampoline, in [`run_idle`], or at a `hlt`. The requester holds and
+//! marked this CPU's lock, so this CPU is not inside a step and a step that would lock its own CPU
+//! returns at once. The IPI loads the kernel page table and sets `Cpu::running_to_idle_pending`;
+//! the next exit through [`restore_frame`] diverts to the idle loop instead of ring 3, and the idle
+//! loop clears the flag. Every step also clears it when it releases this CPU's own lock: a flag
+//! still set then is stale, since the requester released the lock before the step could start.
 //!
 //! TODO: the frame is not the whole user-visible CPU state. The x87/MMX registers (CR0.EM is 0)
 //! and the `fs`/`gs` selectors are neither saved nor reset across a thread switch, so the next
@@ -65,6 +75,7 @@ use crate::cpu::{self, Cpu};
 use crate::gdt::GlobalDescriptorTable;
 use crate::glue::kernel;
 use crate::interrupt::{self, Cycles};
+use crate::platform;
 
 const _: () = assert!(size_of::<Registers>() == 21 * 8);
 
@@ -128,19 +139,21 @@ pub unsafe fn init_cpu() {
 // rcx and r11 are taken by `syscall` (user rip and rflags); r10 is clobbered.
 
 /// cpu_op states (model of this TCB). The verified model keeps each CPU in one of five states, and
-/// this file makes the transitions:
-/// - Off: halted in [`wait_until_online`].
-/// - Idle: the [`run_idle`] loop, its `sti; hlt; cli` included.
-/// - User: ring 3.
-/// - Trap: the trampoline, interrupts off, without this CPU's own lock. User to Trap at `sys_entry`
-///   and the interrupt gates; Trap to User at the `sysretq`/`iretq` of [`restore_frame`]; Trap to
-///   Idle when [`restore_frame`] diverts on `running_to_idle_pending`, or when a syscall returns
-///   CpuIdle into [`run_idle`].
-/// - InStep: the verified kernel holds this CPU's own lock, from its `wlock_cpu` of this CPU until
-///   `u_sys_exit` leaves the state before the own unlock.
+/// this file makes the transitions. Interrupts are off exactly in InStep:
+/// - Off: halted in [`wait_until_online`], interrupts on.
+/// - Idle: the [`run_idle`] loop and its `hlt`, interrupts on.
+/// - User: ring 3, interrupts on.
+/// - Trap: the trampoline without this CPU's own lock, interrupts on. User to Trap at `sys_entry`
+///   and the interrupt gates, which clear IF until the trampoline's `sti` after the frame is built;
+///   Trap to User at the `sysretq`/`iretq` of [`restore_frame`], whose `cli` makes its check and
+///   the return one step; Trap to Idle when [`restore_frame`] diverts on `running_to_idle_pending`,
+///   or when a syscall returns CpuIdle into [`run_idle`].
+/// - InStep: the verified kernel holds this CPU's own lock, interrupts off, from its `wlock_cpu` of
+///   this CPU (the lock executes `cli` when granted) until its unlock (the lock clears
+///   `running_to_idle_pending`, releases, and executes `sti`).
 ///
-/// The running-to-idle IPI moves a CPU whose lock the killer holds from User to Idle; the wake IPI
-/// moves an Off CPU to Idle after `cpu_online` published it Idle.
+/// The running-to-idle IPI moves a CPU whose lock the killer holds from User or Trap to Idle; the
+/// wake IPI moves an Off CPU to Idle after `cpu_online` published it Idle.
 #[unsafe(naked)]
 unsafe extern "C" fn sys_entry() -> ! {
     naked_asm!(
@@ -171,6 +184,8 @@ unsafe extern "C" fn sys_entry() -> ! {
         "push r14",
         "push r15",
 
+        // The frame is on the kernel stack: Trap runs with interrupts on.
+        "sti",
         "mov rdi, rsp",
         "sub rsp, 8", // 21 pushes leave rsp 8 off the 16-byte call alignment
         "call {dispatch}",
@@ -192,15 +207,18 @@ unsafe extern "C" fn sys_entry() -> ! {
 /// has `rcx == rip`, `r11 == rflags`, the user `cs` and `ss`, and no [`SYSRET_UNSAFE_FLAGS`]. A
 /// frame `sys_entry` saved has all of them; a thread preempted by an interrupt or starting fresh
 /// almost never has. `rip` must also lie in the lower canonical half: on Intel CPUs `sysretq` to a
-/// non-canonical address faults in ring 0 after the user `rsp` is already loaded. Interrupts stay
-/// off until `sysretq`; NMIs and machine checks taken after the user `rsp` is loaded run on IST stacks.
-/// The frame is always a ring 3 frame, so both returns `swapgs` unconditionally.
+/// non-canonical address faults in ring 0 after the user `rsp` is already loaded. The first
+/// instruction turns interrupts off, and `sysretq`/`iretq` turn them on again from the user
+/// `rflags`; NMIs and machine checks taken after the user `rsp` is loaded run on IST stacks. The
+/// frame is always a ring 3 frame, so both returns `swapgs` unconditionally.
 ///
-/// A CPU forced from running to idle goes to the idle loop instead. Interrupts stay off from the
-/// check to the return, so no running-to-idle IPI lands after it.
+/// A CPU forced from running to idle goes to the idle loop instead. Interrupts are off from the
+/// check to the return, so a running-to-idle IPI that arrives after the check stays pending until
+/// the CPU is back in ring 3, takes it there, and comes back here through the trampoline.
 #[unsafe(naked)]
 pub(crate) unsafe extern "C" fn restore_frame() -> ! {
     naked_asm!(
+        "cli",
         "cmp byte ptr gs:[{running_to_idle_pending}], 0",
         "jne {running_to_idle}",
         // ZF = 1 selects sysretq. pop leaves the flags alone.
@@ -274,12 +292,14 @@ unsafe extern "C" fn enter_frame(frame: *const Registers) -> ! {
 }
 
 /// Abandons the current thread for the idle loop: restarts on this CPU's kernel stack below the
-/// frame slot. Entered with the kernel GS base and interrupts off.
+/// frame slot. Entered from [`restore_frame`] with the kernel GS base and interrupts off, and turns
+/// them on once on the new stack: the idle loop runs with interrupts on.
 #[unsafe(naked)]
 unsafe extern "C" fn running_to_idle_kernel_gs() -> ! {
     naked_asm!(
         "mov rsp, gs:{syscall_sp_offset}",
         "sub rsp, {reserve}",
+        "sti",
         "call {entry}",
         "ud2",
         syscall_sp_offset = const offset_of!(Cpu, syscall_sp),
@@ -300,21 +320,25 @@ extern "C" fn running_to_idle_entry() -> ! {
 }
 
 /// Runs the idle loop on the boot CPU until a thread is chosen, then enters it. Called once
-/// after the verified kernel is initialized.
+/// after the verified kernel is initialized. The boot CPU runs with interrupts off until here; the
+/// idle loop runs with them on.
 pub unsafe fn enter_first_thread() -> ! {
     let frame = cpu::top_frame();
     frame.write(Registers::zeroed());
     start_timer();
+    platform::veriflat_enable_interrupts();
     run_idle(&mut *frame);
     log::info!("entering first thread at {:#x}", (*frame).rip);
     enter_frame(frame);
 }
 
 /// Parks a started AP: it is Off in the verified model until `cpu_online` wakes it, then runs the
-/// idle loop and enters the thread it finds.
+/// idle loop and enters the thread it finds. The AP trampoline turned interrupts off; an Off CPU
+/// runs with them on, so its halts end at the wake IPI.
 pub unsafe fn enter_off_cpu() -> ! {
     let frame = cpu::top_frame();
     frame.write(Registers::zeroed());
+    platform::veriflat_enable_interrupts();
     wait_until_online(cpu::get_cpu_id());
     run_idle(&mut *frame);
     enter_frame(frame);
@@ -325,10 +349,12 @@ fn start_timer() {
     interrupt::set_timer(TICK);
 }
 
-/// LAPIC timer tick. From user mode it preempts the running thread; in the kernel it only ends a
-/// `hlt` of the idle loop.
+/// LAPIC timer tick. From user mode it preempts the running thread; in the kernel, where it arrives
+/// outside a step (in a trampoline, the idle loop, or its `hlt`), it only re-arms the timer. It
+/// sets `wake_seen` either way: the idle loop waits for ticks too.
 pub fn timer_interrupt(regs: &mut Registers) {
     interrupt::end_of_interrupt();
+    cpu::set_wake_seen();
     if cpu::get_current().timer_on {
         interrupt::set_timer(TICK);
     }
@@ -337,11 +363,13 @@ pub fn timer_interrupt(regs: &mut Registers) {
     }
 }
 
-/// Wake-up IPI (`platform::veriflat_send_ipi`, sent by `cpu_online`). It only ends a `hlt`, the
-/// one of [`wait_until_online`] or of the idle loop; taken in ring 3 it does nothing. An offline
-/// request sends no IPI: its target notices the request at its next timer tick or syscall.
+/// Wake-up IPI (`platform::veriflat_send_ipi`, sent by `cpu_online`). It ends a `hlt`, the one of
+/// [`wait_until_online`] or of the idle loop, and sets `wake_seen`, so a halt that has not started
+/// yet returns at once (`platform::veriflat_halt_until_ipi`). An offline request sends no IPI: its
+/// target notices the request at its next timer tick or syscall.
 pub fn wake_interrupt(_regs: &mut Registers) {
     interrupt::end_of_interrupt();
+    cpu::set_wake_seen();
 }
 
 fn from_user(regs: &Registers) -> bool {
@@ -720,10 +748,15 @@ fn schedule_from_running(regs: &mut Registers) {
     }
 }
 
-/// The idle loop of a CPU without a running thread. Returns once `regs` holds the frame of the
-/// thread the CPU switched to. A forced running-to-idle transition ends here: from ring 3 through
-/// [`restore_frame`], and from a syscall that found its CPU marked through the CpuIdle result; the
-/// running-to-idle IPI itself then arrives at the `hlt` below.
+/// The idle loop of a CPU without a running thread; it runs with interrupts on. Returns once `regs`
+/// holds the frame of the thread the CPU switched to. A forced running-to-idle transition ends here:
+/// through [`restore_frame`], or from a syscall or tick whose step found this CPU marked.
+///
+/// A running-to-idle IPI may also land inside this loop, between steps or at the `hlt`, and set
+/// `running_to_idle_pending` after the clear below. Nothing else is needed: every step clears the
+/// flag when it releases this CPU's own lock (`platform::veriflat_clear_running_to_idle_pending`),
+/// so a flag set before the step that switches to a thread does not survive that step, and one
+/// set after it makes [`restore_frame`] divert back here.
 fn run_idle(regs: &mut Registers) {
     cpu::clear_running_to_idle_pending();
     let cpu_id = cpu::get_cpu_id();
@@ -747,13 +780,13 @@ fn run_idle(regs: &mut Registers) {
         match rebalance_pull(k, Tracked::assume_new(), Tracked::assume_new(), cpu_id) {
             RebalanceResult::Pulled { .. } => continue,
             // Wait for the next tick or IPI; another CPU may queue a thread here meanwhile.
-            RebalanceResult::Nothing => unsafe { core::arch::asm!("sti", "hlt", "cli", options(nomem, nostack)) },
+            RebalanceResult::Nothing => platform::veriflat_halt_until_ipi(),
         }
     }
 }
 
-/// A CPU that is Off: its timer stops and `cpu_online_resume` halts it until `cpu_online` publishes
-/// it Idle again.
+/// A CPU that is Off: its timer stops and `cpu_online_resume` halts it, with interrupts on, until
+/// `cpu_online` publishes it Idle again.
 fn wait_until_online(cpu_id: usize) {
     log::info!("CPU {} is offline", cpu_id);
     cpu::get_current().timer_on = false;

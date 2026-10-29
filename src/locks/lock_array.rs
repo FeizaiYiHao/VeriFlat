@@ -359,6 +359,55 @@ verus! {
             self.array.ar[index].wunlock(Tracked(lctx), lock_perm, Ghost::assume_new(), obj_id);
         }
 
+        /// `wlock_unless_killed` that also clears the calling cpu's interrupt flag when it takes the lock.
+        #[verifier(external_body)]
+        pub fn wlock_unless_killed_cli(&mut self, index: usize, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>) -> (ret: Option<Tracked<LockPerm>>)
+            requires
+                old(self).inv(),
+                0 <= index < N,
+                !(old(self).spec_index(index).view().view_rodata().container_source() is Dynamic),
+                !(old(self).spec_index(index).view().view_rodata().process_source() is Dynamic),
+                wlock_requires(old(self).spec_index(index).view(), old(lctx)),
+                !old(self).spec_index(index).view().being_killed() ==> old(lctx).lock_id_acyclic(old(self).lock_id_by_index(index)),
+            ensures
+                final(self).inv(),
+                final(self).view().len() == old(self).view().len(),
+                final(self).unchanged_except(old(self), index),
+                final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
+                (ret is None) == old(self).spec_index(index).view().being_killed(),
+                ret is None ==> *final(self) == *old(self) && *final(lctx) == *old(lctx),
+                ret is Some ==> wlock_ensures(old(self).spec_index(index).view(), final(self).spec_index(index).view(), old(self).lock_id_by_index(index), final(lctx), ret->Some_0.view()),
+                ret is Some ==> lock_ensures(old(lctx), final(lctx), old(self).lock_id_by_index(index), obj_id.view()),
+        {
+            self.array.ar[index].wlock_unless_killed_cli(Tracked(lctx), Ghost::assume_new(), obj_id)
+        }
+
+        /// `wunlock` that also sets the calling cpu's interrupt flag after the release.
+        #[verifier(external_body)]
+        pub fn wunlock_sti(&mut self, index: usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, obj_id: Ghost<KernelObjId>)
+            requires
+                old(self).inv(),
+                0 <= index < N,
+                !(old(self).spec_index(index).view().view_rodata().container_source() is Dynamic),
+                !(old(self).spec_index(index).view().view_rodata().process_source() is Dynamic),
+                old(self).spec_index(index).view().wlocked_by(old(lctx)),
+                old(self).spec_index(index).view().being_killed() == false,
+                lock_perm.view().state() is WriteLock,
+                lock_perm.view().thread_id() == old(lctx).thread_id(),
+                lock_perm.view().lock_id() == old(self).spec_index(index).view().locking_thread() -> Write_lock_id,
+                old(lctx).lock_entry_contains(old(self).lock_id_by_index(index), obj_id.view()),
+            ensures
+                final(self).inv(),
+                final(self).view().len() == old(self).view().len(),
+                final(self).unchanged_except(old(self), index),
+                final(self).spec_index(index).view().locking_thread() is None,
+                final(self).lock_id_by_index(index) == old(self).lock_id_by_index(index),
+                wunlock_ensures(old(self).spec_index(index).view(), final(self).spec_index(index).view()),
+                unlock_ensures(old(lctx), final(lctx), obj_id.view(), old(self).lock_id_by_index(index)),
+        {
+            self.array.ar[index].wunlock_sti(Tracked(lctx), lock_perm, Ghost::assume_new(), obj_id);
+        }
+
         /// Mark entry `index`, which this thread write-holds, for its killer; the write lock stays. Like
         /// `RwLock::mark_kill`, the mark is a kernel-view Release: every other thread's next `*_unless_killed` lock fails.
         #[verifier(external_body)]

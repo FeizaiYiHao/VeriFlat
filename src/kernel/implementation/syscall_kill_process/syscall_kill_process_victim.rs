@@ -339,7 +339,7 @@ pub(crate) fn kill_running_victim_cpu_to_idle(krnl: &mut KernelK, Tracked(lctx):
             cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), remote);
         };
         assert(krnl.cpu_hw_cr3_pcid[remote as int].owner_cpu() == remote) by { cpu_hw_cr3_pcid_wf_at(krnl.cpu_hw_cr3_pcid, krnl.cpu_arr, krnl.pcid_needflush, remote); };
-        assert(krnl.cpu_arr.spec_index(remote).view().view().kernel_call_perm() == Some(remote)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, remote); };
+        assert(krnl.cpu_arr.spec_index(remote).view().view().kernel_call_perm() == Some(remote) && !(krnl.cpu_op.view().view()[remote as int] is InStep)) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, remote); };
     }
     let default_cr3 = krnl.dflt_pt.borrow().cr3;
     assert(page_ptr_valid(default_cr3)) by { krnl.default_pagetable_view_inv(); };

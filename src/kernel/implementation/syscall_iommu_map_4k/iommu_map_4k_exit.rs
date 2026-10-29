@@ -3,8 +3,6 @@ use crate::*;
 use super::syscall_iommu_map_4k_spec::*;
 #[cfg(verus_keep_ghost)]
 use super::syscall_iommu_map_4k_trace::*;
-#[cfg(verus_keep_ghost)]
-use crate::kernel::implementation::locker_unlocker::u_sys_exit_eof;
 
 verus! {
 /// After the whole range is mapped, clear progress, release the windows and every IOMMU-map lock, and record the exit step;
@@ -126,14 +124,8 @@ pub(super) fn iommu_map_4k_exit(
     krnl.runlock_pagetable(pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
     krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
-    proof {
-        let ghost pre = *krnl;
-        let ghost pre_lctx = *lctx;
-        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
-        krnl.u_sys_exit(lctx);
-        u_sys_exit_eof(pre, *krnl, pre_lctx, *lctx);
-    }
-    krnl.wunlock_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+    proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
+    krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         process_thread_wf_at(exit_start.prc_mp, exit_start.thr_mp, thread_ptr);
         process_pagetable_match_process_at(exit_start.prc_mp, exit_start.pt_mp, process_ptr); process_iommu_table_match_process_at(exit_start.prc_mp, exit_start.it_mp, process_ptr);

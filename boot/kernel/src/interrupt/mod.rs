@@ -47,7 +47,9 @@ pub const IST_IRQ: usize = 2;
 /// `restore_frame` after it loads the user `rsp` for `sysretq`, so they get their own IST stack.
 /// Every exception entry defaults to `IST_EXCEPTION` (`Entry::missing_exception`), which also
 /// covers machine checks there. IRQs use no IST: from user mode they build their frame at the top
-/// of the kernel stack like `sys_entry`, and in the kernel they only arrive at `hlt`.
+/// of the kernel stack like `sys_entry`, and in the kernel they arrive anywhere outside a kernel
+/// step (interrupts are on there) and push their frame on the current stack. Their handler keeps
+/// interrupts off for a kernel frame, so IRQs nest at most one deep.
 pub const IST_NMI: usize = IST_IRQ;
 
 /// The global IDT.
@@ -66,10 +68,11 @@ pub struct TrampolineMarker(());
 
 /// Builds a naked trampoline that saves the interrupted registers as a `Registers` frame, calls
 /// `handler(&mut frame)`, restores the frame, and returns with `iretq`. `prologue` runs first,
-/// with `rsp` at the CPU-pushed part of the frame, and `epilogue` runs after the handler, with `rsp`
-/// at the frame; `operands` are extra `naked_asm!` operands for both.
+/// with `rsp` at the CPU-pushed part of the frame; `built` runs once the frame is complete, before
+/// the handler, and `epilogue` after the handler, both with `rsp` at the frame; `operands` are extra
+/// `naked_asm!` operands for all three.
 macro_rules! trampoline {
-    ($handler:path, [$($prologue:literal),* $(,)?], [$($epilogue:literal),* $(,)?] $(, $($operands:tt)+)?) => {{
+    ($handler:path, [$($prologue:literal),* $(,)?], [$($built:literal),* $(,)?], [$($epilogue:literal),* $(,)?] $(, $($operands:tt)+)?) => {{
         let _: unsafe extern "C" fn(&mut Registers) = $handler;
 
         /// Interrupt trampoline
@@ -92,6 +95,7 @@ macro_rules! trampoline {
                 "push r13",
                 "push r14",
                 "push r15",
+                $($built,)*
 
                 // fn handler(registers: &mut Registers); 21 qwords keep rsp 8 off alignment
                 "mov rdi, rsp",
@@ -128,13 +132,15 @@ macro_rules! trampoline {
 }
 
 /// Wraps a `Registers` handler for a vector whose frame carries a CPU error code. A frame from
-/// ring 3 (`cs` at `[rsp + 16]` has RPL 3) needs `swapgs` on the way in, and leaves through
-/// `restore_frame`, the only exit to ring 3 (a running-to-idle IPI relies on it); a frame from the
-/// kernel already has the kernel GS base.
+/// ring 3 (`cs` at `[rsp + 16]` has RPL 3) needs `swapgs` on the way in, turns interrupts on once
+/// the frame is built (Trap runs with them on), and leaves through `restore_frame`, the only exit to
+/// ring 3 (a running-to-idle IPI relies on it). A frame from the kernel already has the kernel GS
+/// base and keeps interrupts off, so its handler runs uninterrupted and returns with `iretq`.
 macro_rules! wrap_interrupt_with_error_code {
     ($handler:path) => {
         // Here rsp is at [error_code][rip][cs][rflags][rsp][ss]
         trampoline!($handler, ["cld", "test byte ptr [rsp + 16], 3", "jz 1f", "swapgs", "1:"],
+            ["test byte ptr [rsp + {frame_cs}], 3", "jz 4f", "sti", "4:"],
             ["test byte ptr [rsp + {frame_cs}], 3", "jnz {restore}"],
             frame_cs = const offset_of!(Registers, cs), restore = sym crate::syscalls::restore_frame)
     };
@@ -145,6 +151,7 @@ macro_rules! wrap_interrupt {
     ($handler:path) => {
         // Here rsp is at [rip][cs][rflags][rsp][ss]; push 0 as the error code first
         trampoline!($handler, ["cld", "push 0", "test byte ptr [rsp + 16], 3", "jz 1f", "swapgs", "1:"],
+            ["test byte ptr [rsp + {frame_cs}], 3", "jz 4f", "sti", "4:"],
             ["test byte ptr [rsp + {frame_cs}], 3", "jnz {restore}"],
             frame_cs = const offset_of!(Registers, cs), restore = sym crate::syscalls::restore_frame)
     };
@@ -156,7 +163,7 @@ macro_rules! wrap_interrupt {
 /// frame.
 macro_rules! wrap_nmi {
     ($handler:path) => {
-        trampoline!($handler, ["cld", "push 0"], [])
+        trampoline!($handler, ["cld", "push 0"], [], [])
     };
 }
 
