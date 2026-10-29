@@ -1,8 +1,8 @@
 use super::*;
 #[cfg(verus_keep_ghost)]
-use super::allocate_free_4k_page_pop_postconditions::eof_pop_4k_postconditions;
+use super::allocate_free_4k_page_pop_postconditions::pop_stage_4k_page_eof_postconditions;
 #[cfg(verus_keep_ghost)]
-use super::allocate_free_4k_page_pop_eof::{eof_pop_4k_inv, pop_stage_4k_page_eof_transition_framing};
+use super::allocate_free_4k_page_pop_eof::{pop_stage_4k_page_eof_inv, pop_stage_4k_page_eof_transition_framing};
 use vstd::prelude::*;
 use vstd::simple_pptr::*;
 use crate::*;
@@ -165,8 +165,8 @@ verus! {
         };
         proof {
             assert(pop_stage_4k_page_eof_transition_framing(*old(krnl), *krnl, alloc_ptr_4k, thread_ptr, container_ptr, page_ptr, node_addr, source)) by { reveal(pop_stage_4k_page_eof_transition_framing); };
-            eof_pop_4k_inv(*old(krnl), *krnl, alloc_ptr_4k, thread_ptr, container_ptr, page_ptr, node_addr, source);
-            eof_pop_4k_postconditions(*old(krnl), *krnl, *old(lctx), alloc_ptr_4k, thread_ptr, container_ptr, page_ptr, node_addr, source);
+            pop_stage_4k_page_eof_inv(*old(krnl), *krnl, alloc_ptr_4k, thread_ptr, container_ptr, page_ptr, node_addr, source);
+            pop_stage_4k_page_eof_postconditions(*old(krnl), *krnl, *old(lctx), alloc_ptr_4k, thread_ptr, container_ptr, page_ptr, node_addr, source);
         }
         (page_ptr, Tracked(page_lock_perm))
     }

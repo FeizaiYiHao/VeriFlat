@@ -4,8 +4,7 @@ use crate::*;
 use vstd::simple_pptr::*;
 
 impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
-    pub fn new(pcid: Option<Pcid>, kernel_entries_ghost: Ghost<Seq<PageEntry>>, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<PageMap>>, mem_end_l4_index: usize, proc_ptr: RwLockProcessPtr)
-        -> (ret: Self)
+    pub fn new(pcid: Option<Pcid>, kernel_entries_ghost: Ghost<Seq<PageEntry>>, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<PageMap>>, mem_end_l4_index: usize, proc_ptr: RwLockProcessPtr) -> (ret: Self)
         requires
             pei_valid(mem_end_l4_index),
             page_ptr_valid(page_map_ptr),
@@ -13,10 +12,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             page_map_perm.is_init(),
             page_map_perm.value().wf(),
             kernel_entries_ghost.view().len() == mem_end_l4_index,
-            forall|i: usize|
-                #![trigger page_map_perm.value().spec_index(i).is_empty()]
-                #![trigger page_map_perm.value().spec_index(i)]
-                mem_end_l4_index <= i && pei_valid(i) ==> page_map_perm.value().spec_index(i).is_empty(),
+            forall|i: usize| #![trigger page_map_perm.value().spec_index(i).is_empty()] #![trigger page_map_perm.value().spec_index(i)] mem_end_l4_index <= i && pei_valid(i) ==> page_map_perm.value().spec_index(i).is_empty(),
             forall|i: usize|
                 #![trigger kernel_entries_ghost.view().spec_index(i as int)]
                 #![trigger page_map_perm.value().spec_index(i)]
@@ -47,44 +43,6 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             ret.new_eof_inv(page_map_perm);
         }
         ret
-    }
-
-    /// EOF closure of `new`: a table that owns only its root page satisfies the big-lock invariant.
-    proof fn new_eof_inv(&self, page_map_perm: PointsTo<PageMap>)
-        requires
-            pei_valid(self.kernel_l4_end),
-            page_ptr_valid(self.cr3),
-            page_map_perm.addr() == self.cr3,
-            page_map_perm.is_init(),
-            page_map_perm.value().wf(),
-            self.l4_table.view() == Map::<PageMapPtr, PointsTo<PageMap>>::empty().insert(self.cr3, page_map_perm),
-            self.l3_tables.view().dom() == Set::<PageMapPtr>::empty(),
-            self.mapping_1g.view() == Map::<VAddr, MapEntry>::empty(),
-            self.kernel_entries.view().len() == self.kernel_l4_end,
-            forall|i: usize|
-                #![trigger page_map_perm.value().spec_index(i).is_empty()]
-                #![trigger page_map_perm.value().spec_index(i)]
-                self.kernel_l4_end <= i && pei_valid(i) ==> page_map_perm.value().spec_index(i).is_empty(),
-            forall|i: usize|
-                #![trigger self.kernel_entries.view().spec_index(i as int)]
-                #![trigger page_map_perm.value().spec_index(i)]
-                0 <= i < self.kernel_l4_end ==> self.kernel_entries.view().spec_index(i as int) == page_map_perm.value().spec_index(i),
-            self.pcid_wf(),
-            self.did_wf(),
-            TABLE_TYPE == IOMMU_TYPE ==> self.kernel_l4_end == 0,
-        ensures
-            self.inv(),
-    {
-        assert(self.wf_l4()) by { reveal(PageTableHigher::wf_l4); };
-        assert(self.wf_l3()) by { reveal(PageTableHigher::wf_l3); };
-        assert(self.disjoint_l4()) by { reveal(PageTableHigher::disjoint_l4); };
-        assert(self.disjoint_l3()) by { reveal(PageTableHigher::disjoint_l3); };
-        assert(self.wf_mapping_1g()) by { reveal(PageTableHigher::wf_mapping_1g); };
-        assert(self.user_only()) by { reveal(PageTableHigher::user_only); };
-        assert(self.rwx_upper_level_entries()) by { reveal(PageTableHigher::rwx_upper_level_entries); };
-        assert(self.table_pages_wf()) by { reveal(PageTableHigher::table_pages_wf); };
-        assert(self.tables_reachable_wf()) by { reveal(PageTableHigher::tables_reachable_wf); };
-        assert(self.kernel_entries_wf()) by { reveal(PageTableHigher::kernel_entries_wf); };
     }
 
     pub fn get_entry_l4(&self, target_l4i: L4Index) -> (ret: Option<PageEntry>)
@@ -139,8 +97,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         if l3_entry.perm.ps && l3_entry.perm.kernel_present { Some(l3_entry) } else { None }
     }
 
-    pub fn get_entry_l2(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, l3_entry: &PageEntry)
-        -> (ret: Option<PageEntry>)
+    pub fn get_entry_l2(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, l3_entry: &PageEntry) -> (ret: Option<PageEntry>)
         requires
             (PageTableC { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
@@ -163,8 +120,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         if l2_entry.perm.present && !l2_entry.perm.ps { Some(l2_entry) } else { None }
     }
 
-    pub fn get_entry_2m_l2(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, l3_entry: &PageEntry)
-        -> (ret: Option<PageEntry>)
+    pub fn get_entry_2m_l2(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, l3_entry: &PageEntry) -> (ret: Option<PageEntry>)
         requires
             (PageTableC { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),

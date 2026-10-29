@@ -10,7 +10,7 @@ use super::syscall_kill_container_retire_spec::*;
 verus! {
 /// The retired container `container_ptr` is marked and childless, has parent `parent_ptr` and `owner_ptr` in its upper
 /// tree, owns no process, thread, indirect thread, or cpu, and has zero quotas.
-pub open spec fn kill_container_retire_eof_target_empty(pre: KernelK, container_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr) -> bool {
+pub(crate) open spec fn kill_container_retire_eof_target_empty(pre: KernelK, container_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr) -> bool {
     let target = pre.ctn_mp.spec_index(container_ptr);
     let ro = target.view_rodata().view();
     &&& pre.ctn_mp.dom().contains(container_ptr)
@@ -31,7 +31,7 @@ pub open spec fn kill_container_retire_eof_target_empty(pre: KernelK, container_
 }
 
 /// A childless container's subtree holds no container.
-pub broadcast proof fn kill_container_retire_eof_subtree_empty(pre: KernelK, container_ptr: RwLockContainerPtr, sub: RwLockContainerPtr)
+pub(crate) broadcast proof fn kill_container_retire_eof_subtree_empty(pre: KernelK, container_ptr: RwLockContainerPtr, sub: RwLockContainerPtr)
     requires
         pre.inv(),
         pre.ctn_mp.dom().contains(container_ptr),
@@ -59,7 +59,7 @@ pub broadcast proof fn kill_container_retire_eof_subtree_empty(pre: KernelK, con
 
 /// An endpoint whose owner is a childless container without threads has no holder `m`: every holder of an endpoint
 /// lives in its owner's subtree.
-pub broadcast proof fn kill_container_retire_eof_no_endpoint_holder(pre: KernelK, e: RwLockEndpointPtr, m: (RwLockThreadPtr, EndpointIdx))
+pub(crate) broadcast proof fn kill_container_retire_eof_no_endpoint_holder(pre: KernelK, e: RwLockEndpointPtr, m: (RwLockThreadPtr, EndpointIdx))
     requires
         pre.inv(),
         pre.ep_mp.dom().contains(e),
@@ -76,7 +76,7 @@ pub broadcast proof fn kill_container_retire_eof_no_endpoint_holder(pre: KernelK
 }
 
 /// A childless container without threads owns no endpoint: every endpoint has a holder in its owner's subtree.
-pub broadcast proof fn kill_container_retire_eof_no_endpoint(pre: KernelK, container_ptr: RwLockContainerPtr, e: RwLockEndpointPtr)
+pub(crate) broadcast proof fn kill_container_retire_eof_no_endpoint(pre: KernelK, container_ptr: RwLockContainerPtr, e: RwLockEndpointPtr)
     requires
         pre.inv(),
         pre.ctn_mp.dom().contains(container_ptr),
@@ -95,7 +95,7 @@ pub broadcast proof fn kill_container_retire_eof_no_endpoint(pre: KernelK, conta
 
 /// A mapped page whose owner is a childless container without processes records no page-table or IOMMU mapping `m`:
 /// every mapping belongs to a process in its owner's subtree.
-pub broadcast proof fn kill_container_retire_eof_no_mapping(pre: KernelK, i: PageIndex, m: (RwLockPageTableRoot, VAddr))
+pub(crate) broadcast proof fn kill_container_retire_eof_no_mapping(pre: KernelK, i: PageIndex, m: (RwLockPageTableRoot, VAddr))
     requires
         pre.inv(),
         index_valid(NUM_PAGES, i),
@@ -356,7 +356,7 @@ proof fn kill_container_retire_eof_owned_page_at(pre: KernelK, container_ptr: Rw
 }
 
 /// Every page the retired container `container_ptr` owns is one of its object pages or their tails.
-pub broadcast proof fn kill_container_retire_eof_owned_page(pre: KernelK, container_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, i: PageIndex)
+pub(crate) broadcast proof fn kill_container_retire_eof_owned_page(pre: KernelK, container_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, i: PageIndex)
     requires
         pre.inv(),
         kill_container_retire_eof_target_empty(pre, container_ptr, parent_ptr, owner_ptr),
@@ -377,7 +377,7 @@ pub broadcast proof fn kill_container_retire_eof_owned_page(pre: KernelK, contai
 /// Before the retire, the retired container owns its object pages: its five 4K object pages hold its scheduler, cpu
 /// set, and three allocators, its two 2M heads hold the container itself and its PCID allocator, and every tail of
 /// those heads is merged. None of them is an I/O page.
-pub proof fn kill_container_retire_eof_object_pages(pre: KernelK, container_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr)
+pub(crate) proof fn kill_container_retire_eof_object_pages(pre: KernelK, container_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr)
     requires
         pre.inv(),
         kill_container_retire_eof_target_empty(pre, container_ptr, parent_ptr, owner_ptr),

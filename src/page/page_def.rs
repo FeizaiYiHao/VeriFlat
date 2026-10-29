@@ -84,18 +84,12 @@ impl Page {
 
     #[verifier::opaque]
     pub open spec fn mappings_va_valid(&self) -> bool {
-        &&& forall|pt_p: RwLockPageTableRoot, va: VAddr|
-            self.state is Mapped4k && self.mappings().contains((pt_p, va)) ==> va_4k_valid(va)
-        &&& forall|pt_p: RwLockPageTableRoot, va: VAddr|
-            self.state is Mapped2m && self.mappings().contains((pt_p, va)) ==> crate::va_2m_valid(va)
-        &&& forall|pt_p: RwLockPageTableRoot, va: VAddr|
-            self.state is Mapped1g && self.mappings().contains((pt_p, va)) ==> crate::va_1g_valid(va)
-        &&& forall|it_p: RwLockPageTableRoot, iova: VAddr|
-            self.state is Mapped4k && self.iommu_mappings().contains((it_p, iova)) ==> crate::iova_4k_valid(iova)
-        &&& forall|it_p: RwLockPageTableRoot, iova: VAddr|
-            self.state is Mapped2m && self.iommu_mappings().contains((it_p, iova)) ==> crate::iova_2m_valid(iova)
-        &&& forall|it_p: RwLockPageTableRoot, iova: VAddr|
-            self.state is Mapped1g && self.iommu_mappings().contains((it_p, iova)) ==> crate::iova_1g_valid(iova)
+        &&& forall|pt_p: RwLockPageTableRoot, va: VAddr| self.state is Mapped4k && self.mappings().contains((pt_p, va)) ==> va_4k_valid(va)
+        &&& forall|pt_p: RwLockPageTableRoot, va: VAddr| self.state is Mapped2m && self.mappings().contains((pt_p, va)) ==> crate::va_2m_valid(va)
+        &&& forall|pt_p: RwLockPageTableRoot, va: VAddr| self.state is Mapped1g && self.mappings().contains((pt_p, va)) ==> crate::va_1g_valid(va)
+        &&& forall|it_p: RwLockPageTableRoot, iova: VAddr| self.state is Mapped4k && self.iommu_mappings().contains((it_p, iova)) ==> crate::iova_4k_valid(iova)
+        &&& forall|it_p: RwLockPageTableRoot, iova: VAddr| self.state is Mapped2m && self.iommu_mappings().contains((it_p, iova)) ==> crate::iova_2m_valid(iova)
+        &&& forall|it_p: RwLockPageTableRoot, iova: VAddr| self.state is Mapped1g && self.iommu_mappings().contains((it_p, iova)) ==> crate::iova_1g_valid(iova)
     }
 
     pub open spec fn is_mapped(&self) -> bool {

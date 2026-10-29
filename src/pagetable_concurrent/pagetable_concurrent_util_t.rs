@@ -33,10 +33,7 @@ pub fn retype_page_to_pagetable_c_and_insert(pt_mp: &mut PageTableHigherLockedMa
                 &&& final(pt_mp).dom().contains(ptr)
                 &&& final(pt_mp).spec_index(ptr) == old(pt_mp).spec_index(ptr)
             },
-        forall|ptr: RwLockPageTableRoot|
-            #![trigger old(pt_mp).lock_id_by_key(ptr)]
-            #![trigger final(pt_mp).lock_id_by_key(ptr)]
-            old(pt_mp).dom().contains(ptr) ==> final(pt_mp).lock_id_by_key(ptr) == old(pt_mp).lock_id_by_key(ptr),
+        forall|ptr: RwLockPageTableRoot| #![trigger old(pt_mp).lock_id_by_key(ptr)] #![trigger final(pt_mp).lock_id_by_key(ptr)] old(pt_mp).dom().contains(ptr) ==> final(pt_mp).lock_id_by_key(ptr) == old(pt_mp).lock_id_by_key(ptr),
         final(pt_mp).spec_index(page_ptr).is_init(),
         final(pt_mp).spec_index(page_ptr).view() == higher_value,
         final(pt_mp).spec_index(page_ptr).view_ghost() == lower_value,
@@ -74,12 +71,8 @@ impl PageTableHigher<PT_TYPE> {
             final(target_perm).addr() == target_ptr,
             final(target_perm).is_init(),
             final(target_perm).value().wf(),
-            forall|i: usize|
-                #![trigger final(target_perm).value().spec_index(i).is_empty()]
-                self.kernel_l4_end <= i && pei_valid(i) ==> final(target_perm).value().spec_index(i).is_empty(),
-            forall|i: usize|
-                #![trigger final(target_perm).value().spec_index(i)]
-                0 <= i < self.kernel_l4_end ==> final(target_perm).value().spec_index(i) =~= self.l4_table.view().spec_index(self.cr3).value().spec_index(i),
+            forall|i: usize| #![trigger final(target_perm).value().spec_index(i).is_empty()] self.kernel_l4_end <= i && pei_valid(i) ==> final(target_perm).value().spec_index(i).is_empty(),
+            forall|i: usize| #![trigger final(target_perm).value().spec_index(i)] 0 <= i < self.kernel_l4_end ==> final(target_perm).value().spec_index(i) =~= self.l4_table.view().spec_index(self.cr3).value().spec_index(i),
     {
         proof {
             self.wf_l4_cr3_at();

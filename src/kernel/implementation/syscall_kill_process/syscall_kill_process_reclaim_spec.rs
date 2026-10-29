@@ -76,7 +76,7 @@ pub open spec fn kill_reclaim_state(
 /// still present, and `owner`'s reverse set absorbs `target`'s.
 /// Lock owners, lock ids, and every other object stay.
 #[verifier::opaque]
-pub open spec fn kill_reassign_eof_transition_framing(pre: KernelK, post: KernelK, target: RwLockProcessPtr, owner: RwLockProcessPtr, iommu_table: Option<RwLockPageTableRoot>) -> bool {
+pub(crate) open spec fn kill_reassign_eof_transition_framing(pre: KernelK, post: KernelK, target: RwLockProcessPtr, owner: RwLockProcessPtr, iommu_table: Option<RwLockPageTableRoot>) -> bool {
     let empty_tlb = SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() };
     &&& post == (KernelK { irt: post.irt, iommu_tlb: post.iommu_tlb, it_mp: post.it_mp, prc_mp: post.prc_mp, ..pre })
     &&& post.irt.locking_thread() == pre.irt.locking_thread()
@@ -129,7 +129,7 @@ pub open spec fn kill_reassign_eof_transition_framing(pre: KernelK, post: Kernel
 }
 
 /// The write-held allocator `allocator_ptr` regains `returned` quota; nothing else in its map changes.
-pub open spec fn kill_quota_eof_allocator_returned<const SIZE: usize>(pre_allocators: PageAllocatorUnLockedMap<SIZE>, post_allocators: PageAllocatorUnLockedMap<SIZE>, allocator_ptr: RwLockPageAllocatorPtr, returned: int) -> bool {
+pub(crate) open spec fn kill_quota_eof_allocator_returned<const SIZE: usize>(pre_allocators: PageAllocatorUnLockedMap<SIZE>, post_allocators: PageAllocatorUnLockedMap<SIZE>, allocator_ptr: RwLockPageAllocatorPtr, returned: int) -> bool {
     let allocator = pre_allocators.spec_index(allocator_ptr);
     &&& post_allocators.perms_wf()
     &&& post_allocators.unchanged_except(&pre_allocators, allocator_ptr)
@@ -146,7 +146,7 @@ pub open spec fn kill_quota_eof_allocator_returned<const SIZE: usize>(pre_alloca
 /// container, which has room for it: the target drops its `size` quota, which the allocator regains. Lock owners, lock
 /// ids, and every other object stay.
 #[verifier::opaque]
-pub open spec fn kill_quota_eof_transition_framing(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, allocator_ptr: RwLockPageAllocatorPtr, size: PageSize) -> bool {
+pub(crate) open spec fn kill_quota_eof_transition_framing(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, allocator_ptr: RwLockPageAllocatorPtr, size: PageSize) -> bool {
     let process = pre.prc_mp.spec_index(process_ptr);
     let returned = match size { PageSize::SZ4k => process.view().quota_4k, PageSize::SZ2m => process.view().quota_2m, PageSize::SZ1g => process.view().quota_1g };
     &&& post == (KernelK { prc_mp: post.prc_mp, allc_4k_mp: post.allc_4k_mp, allc_2m_mp: post.allc_2m_mp, allc_1g_mp: post.allc_1g_mp, ..pre })
@@ -174,7 +174,7 @@ pub open spec fn kill_quota_eof_transition_framing(pre: KernelK, post: KernelK, 
 /// Marking the reclaimed target `process_ptr`, whose tables map nothing and which owns no thread, as having emptied its
 /// tables while it and its tables are still write-held. Lock owners, lock ids, and every other object stay.
 #[verifier::opaque]
-pub open spec fn kill_tables_emptied_eof_transition_framing(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr) -> bool {
+pub(crate) open spec fn kill_tables_emptied_eof_transition_framing(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr) -> bool {
     let process = pre.prc_mp.spec_index(process_ptr);
     &&& post == (KernelK { prc_mp: post.prc_mp, ..pre })
     &&& post.prc_mp.dom() == pre.prc_mp.dom()
@@ -192,7 +192,7 @@ pub open spec fn kill_tables_emptied_eof_transition_framing(pre: KernelK, post: 
 /// Making the reclaimed target `process_ptr` a zombie: it keeps every field but becomes a zombie, and the write-held PCID
 /// allocator `pcid_allocator_ptr` of its container releases its PCID. Lock owners, lock ids, and every other object stay.
 #[verifier::opaque]
-pub open spec fn kill_zombify_eof_transition_framing(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, pcid_allocator_ptr: RwLockPcidAllocatorPtr) -> bool {
+pub(crate) open spec fn kill_zombify_eof_transition_framing(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, pcid_allocator_ptr: RwLockPcidAllocatorPtr) -> bool {
     let process = pre.prc_mp.spec_index(process_ptr);
     let pcid = process.view().pcid;
     let pre_allocator = pre.pcid_allc_mp.spec_index(pcid_allocator_ptr);

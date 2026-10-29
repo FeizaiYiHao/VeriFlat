@@ -43,8 +43,7 @@ pub(crate) proof fn kill_container_result_pre_from_k(
             &&& !container.being_killed() && !conflict && krnl.prc_mp.spec_index(process_ptr).being_killed() ==> result is ErrorProcessKilled
             &&& !container.being_killed() && !conflict && !krnl.prc_mp.spec_index(process_ptr).being_killed() && krnl.thr_mp.spec_index(thread_ptr).being_killed() ==> result is ErrorThreadKilled
             &&& live && child_index >= children.len() ==> result is ErrorInvalidChild
-            &&& live && child_index < children.len() && krnl.ctn_mp.dom().contains(children[child_index as int]) && krnl.ctn_mp.spec_index(children[child_index as int]).being_killed()
-                ==> result is ErrorContainerKilled
+            &&& live && child_index < children.len() && krnl.ctn_mp.dom().contains(children[child_index as int]) && krnl.ctn_mp.spec_index(children[child_index as int]).being_killed() ==> result is ErrorContainerKilled
         }),
 {
     let children = krnl.ctn_mp.spec_index(container_ptr).view().children.view();

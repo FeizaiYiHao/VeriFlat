@@ -14,24 +14,12 @@ impl KernelK {
         &&& forall|flags_ptr: RwLockCpuOfflineFlagsPtr, cpu_i: CpuId|
             #![trigger self.cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_i), index_valid(NUM_CPUS, cpu_i)]
             self.cpu_offline_mp.dom().contains(flags_ptr) && index_valid(NUM_CPUS, cpu_i) ==> self.cpu_offline_mp.spec_index(flags_ptr).flags.spec_index(cpu_i).view().locked_by_thread(lctx.thread_id()) == false
-        &&& forall|p_i: PageIndex|
-            #![trigger self.pg_arr.spec_index(p_i), index_valid(NUM_PAGES, p_i)]
-            index_valid(NUM_PAGES, p_i) ==> self.pg_arr.spec_index(p_i).view().locked_by_thread(lctx.thread_id()) == false
-        &&& forall|c_ptr: RwLockContainerPtr|
-            #![trigger self.ctn_mp.dom().contains(c_ptr)]
-            self.ctn_mp.dom().contains(c_ptr) ==> self.ctn_mp.spec_index(c_ptr).locked_by_thread(lctx.thread_id()) == false
-        &&& forall|p_ptr: RwLockProcessPtr|
-            #![trigger self.prc_mp.dom().contains(p_ptr)]
-            self.prc_mp.dom().contains(p_ptr) ==> self.prc_mp.spec_index(p_ptr).locked_by_thread(lctx.thread_id()) == false
-        &&& forall|t_ptr: RwLockThreadPtr|
-            #![trigger self.thr_mp.spec_index(t_ptr)]
-            self.thr_mp.dom().contains(t_ptr) ==> self.thr_mp.spec_index(t_ptr).locked_by_thread(lctx.thread_id()) == false
-        &&& forall|e_ptr: RwLockEndpointPtr|
-            #![trigger self.ep_mp.spec_index(e_ptr)]
-            self.ep_mp.dom().contains(e_ptr) ==> self.ep_mp.spec_index(e_ptr).locked_by_thread(lctx.thread_id()) == false
-        &&& forall|pt_ptr: RwLockPageTableRoot|
-            #![trigger self.pt_mp.spec_index(pt_ptr).locked_by_thread(lctx.thread_id())]
-            self.pt_mp.dom().contains(pt_ptr) ==> self.pt_mp.spec_index(pt_ptr).locked_by_thread(lctx.thread_id()) == false
+        &&& forall|p_i: PageIndex| #![trigger self.pg_arr.spec_index(p_i), index_valid(NUM_PAGES, p_i)] index_valid(NUM_PAGES, p_i) ==> self.pg_arr.spec_index(p_i).view().locked_by_thread(lctx.thread_id()) == false
+        &&& forall|c_ptr: RwLockContainerPtr| #![trigger self.ctn_mp.dom().contains(c_ptr)] self.ctn_mp.dom().contains(c_ptr) ==> self.ctn_mp.spec_index(c_ptr).locked_by_thread(lctx.thread_id()) == false
+        &&& forall|p_ptr: RwLockProcessPtr| #![trigger self.prc_mp.dom().contains(p_ptr)] self.prc_mp.dom().contains(p_ptr) ==> self.prc_mp.spec_index(p_ptr).locked_by_thread(lctx.thread_id()) == false
+        &&& forall|t_ptr: RwLockThreadPtr| #![trigger self.thr_mp.spec_index(t_ptr)] self.thr_mp.dom().contains(t_ptr) ==> self.thr_mp.spec_index(t_ptr).locked_by_thread(lctx.thread_id()) == false
+        &&& forall|e_ptr: RwLockEndpointPtr| #![trigger self.ep_mp.spec_index(e_ptr)] self.ep_mp.dom().contains(e_ptr) ==> self.ep_mp.spec_index(e_ptr).locked_by_thread(lctx.thread_id()) == false
+        &&& forall|pt_ptr: RwLockPageTableRoot| #![trigger self.pt_mp.spec_index(pt_ptr).locked_by_thread(lctx.thread_id())] self.pt_mp.dom().contains(pt_ptr) ==> self.pt_mp.spec_index(pt_ptr).locked_by_thread(lctx.thread_id()) == false
         &&& forall|iommu_root: RwLockPageTableRoot|
             #![trigger self.it_mp.spec_index(iommu_root).locked_by_thread(lctx.thread_id())]
             self.it_mp.dom().contains(iommu_root) ==> self.it_mp.spec_index(iommu_root).locked_by_thread(lctx.thread_id()) == false

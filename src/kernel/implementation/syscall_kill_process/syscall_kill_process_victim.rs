@@ -35,7 +35,7 @@ pub(crate) fn kill_leave_process(
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), lctx),
-        kill_leave_process_eof_transition_framing(*old(krnl), *final(krnl), process_ptr, victim_ptr, callers@),
+        kill_leave_process_eof_transition_framing(*old(krnl), *final(krnl), process_ptr, victim_ptr, callers.view()),
         final(krnl).thr_mp.lock_id_by_key(victim_ptr) == old(krnl).thr_mp.lock_id_by_key(victim_ptr),
         final(krnl).prc_mp.lock_id_by_key(process_ptr) == old(krnl).prc_mp.lock_id_by_key(process_ptr),
 {

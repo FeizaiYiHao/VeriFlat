@@ -78,10 +78,10 @@ pub open spec fn window_obj_id(root: RwLockPageTableRoot, l4i: L4Index, l3i: L3I
 }
 
 /// `window_lock_id` of window `w`.
-pub open spec fn window_lock_id_at(root: RwLockPageTableRoot, w: WindowVa) -> LockId { window_lock_id(root, spec_v2l4index(w.va), spec_v2l3index(w.va), spec_v2l2index(w.va)) }
+pub open spec fn window_lock_id_of(root: RwLockPageTableRoot, w: WindowVa) -> LockId { window_lock_id(root, spec_v2l4index(w.va), spec_v2l3index(w.va), spec_v2l2index(w.va)) }
 
 /// `window_obj_id` of window `w`.
-pub open spec fn window_obj_id_at(root: RwLockPageTableRoot, w: WindowVa) -> KernelObjId { window_obj_id(root, spec_v2l4index(w.va), spec_v2l3index(w.va), spec_v2l2index(w.va)) }
+pub open spec fn window_obj_id_of(root: RwLockPageTableRoot, w: WindowVa) -> KernelObjId { window_obj_id(root, spec_v2l4index(w.va), spec_v2l3index(w.va), spec_v2l2index(w.va)) }
 
 /// Bases of the 2M windows that cover `range`: the 2M-aligned user addresses in path order between the windows of its
 /// first and last page.
@@ -225,9 +225,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     #[verifier::opaque]
     pub open spec fn table_pages_wf(&self) -> bool {
         &&& page_ptr_valid(self.cr3)
-        &&& forall|p: PageMapPtr|
-            #![trigger self.l3_tables.view().dom().contains(p), page_ptr_valid(p)]
-            self.l3_tables.view().dom().contains(p) ==> page_ptr_valid(p)
+        &&& forall|p: PageMapPtr| #![trigger self.l3_tables.view().dom().contains(p), page_ptr_valid(p)] self.l3_tables.view().dom().contains(p) ==> page_ptr_valid(p)
         &&& self.l4_table.view().dom().disjoint(self.l3_tables.view().dom())
     }
 
@@ -449,9 +447,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
 
     /// Every 4K leaf the user cannot see lies in a locked 2M window; every 2M and 1G leaf is present.
     pub open spec fn hidden_leaves_in_locked_windows(&self) -> bool {
-        &&& forall|va: VAddr|
-            #![trigger self.mapping_4k().spec_index(va)]
-            self.mapping_4k().dom().contains(va) && !self.mapping_4k().spec_index(va).present ==> self.window_locked(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))
+        &&& forall|va: VAddr| #![trigger self.mapping_4k().spec_index(va)] self.mapping_4k().dom().contains(va) && !self.mapping_4k().spec_index(va).present ==> self.window_locked(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va))
         &&& forall|va: VAddr| #![trigger self.mapping_2m().dom().contains(va)] self.mapping_2m().dom().contains(va) ==> self.mapping_2m().spec_index(va).present
         &&& forall|va: VAddr| #![trigger self.mapping_1g().dom().contains(va)] self.mapping_1g().dom().contains(va) ==> self.mapping_1g().spec_index(va).present
     }
@@ -559,9 +555,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
     pub open spec fn user_only(&self) -> bool {
         &&& forall|p: PageMapPtr|
             #![trigger self.lower.l2_perms.dom().contains(p)]
-            self.lower.l2_perms.dom().contains(p) ==> forall|i: L2Index|
-                #![trigger self.lower.l2_page(p).spec_index(i)]
-                pei_valid(i) && self.lower.l2_page(p).spec_index(i).perm.present ==> self.lower.l2_page(p).spec_index(i).perm.user
+            self.lower.l2_perms.dom().contains(p) ==> forall|i: L2Index| #![trigger self.lower.l2_page(p).spec_index(i)] pei_valid(i) && self.lower.l2_page(p).spec_index(i).perm.present ==> self.lower.l2_page(p).spec_index(i).perm.user
         &&& forall|p: PageMapPtr|
             #![trigger self.lower.l1_tables.dom().contains(p)]
             self.lower.l1_tables.dom().contains(p) ==> forall|i: L1Index|
@@ -581,12 +575,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
 
     #[verifier::opaque]
     pub open spec fn table_pages_wf(&self) -> bool {
-        &&& forall|p: PageMapPtr|
-            #![trigger self.lower.l2_perms.dom().contains(p), page_ptr_valid(p)]
-            self.lower.l2_perms.dom().contains(p) ==> page_ptr_valid(p)
-        &&& forall|p: PageMapPtr|
-            #![trigger self.lower.l1_tables.dom().contains(p), page_ptr_valid(p)]
-            self.lower.l1_tables.dom().contains(p) ==> page_ptr_valid(p)
+        &&& forall|p: PageMapPtr| #![trigger self.lower.l2_perms.dom().contains(p), page_ptr_valid(p)] self.lower.l2_perms.dom().contains(p) ==> page_ptr_valid(p)
+        &&& forall|p: PageMapPtr| #![trigger self.lower.l1_tables.dom().contains(p), page_ptr_valid(p)] self.lower.l1_tables.dom().contains(p) ==> page_ptr_valid(p)
         &&& self.higher.l4_table.view().dom().disjoint(self.lower.l2_perms.dom())
         &&& self.higher.l4_table.view().dom().disjoint(self.lower.l1_tables.dom())
         &&& self.higher.l3_tables.view().dom().disjoint(self.lower.l2_perms.dom())

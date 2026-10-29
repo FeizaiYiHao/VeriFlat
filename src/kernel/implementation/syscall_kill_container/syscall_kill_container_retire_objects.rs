@@ -59,8 +59,7 @@ pub(crate) fn kill_container_retire_scheduler_object(
 
 /// In a released view, retire the marked cpu set `cpu_set_ptr`, write-held through `lock_perm`: it leaves its map and
 /// its lock leaves `lctx`.
-pub(crate) fn kill_container_retire_cpu_set_object(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, cpu_set_ptr: RwLockCpuSetPtr, Tracked(lock_perm): Tracked<LockPerm>)
-    -> (ret: Tracked<PagePerm4k>)
+pub(crate) fn kill_container_retire_cpu_set_object(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, cpu_set_ptr: RwLockCpuSetPtr, Tracked(lock_perm): Tracked<LockPerm>) -> (ret: Tracked<PagePerm4k>)
     requires
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).kernel_view_locking_state() is Release,

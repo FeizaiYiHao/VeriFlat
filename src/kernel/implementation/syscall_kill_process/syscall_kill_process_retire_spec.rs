@@ -14,14 +14,15 @@ pub open spec fn kill_retire_pages(k: KernelK, target: RwLockProcessPtr) -> Seq<
     }
 }
 
-/// Retiring the empty zombie `target`, whose parent is `parent_ptr` and whose container is `container_ptr`: the process
-/// leaves the process map, its parent's children, and its ancestors' subtrees, and leaves its container's processes; its
-/// page table and IOMMU table, which only hold their root tables, leave their maps; every page in
-/// `kill_retire_pages(pre, target)` returns through its free-list node to shard `cpu_id` of the container's 4K allocator
-/// `allocator_ptr`, whose quota grows by the number of those pages.
+/// Retiring the empty zombie `target` of the container `container_ptr`: the process leaves the process map and its
+/// container's processes; with a parent `parent`, it also leaves that parent's children and its ancestors' subtrees, and
+/// without one it is the container's root, so the container clears its zombie flag; its page table and IOMMU table, which
+/// only hold their root tables, leave their maps; every page in `kill_retire_pages(pre, target)` returns through its
+/// free-list node to shard `cpu_id` of the container's 4K allocator `allocator_ptr`, whose quota grows by the number of
+/// those pages.
 #[verifier::opaque]
-pub open spec fn kill_retire_eof_transition_framing(
-    pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr,
+pub(crate) open spec fn kill_retire_eof_transition_framing(
+    pre: KernelK, post: KernelK, cpu_id: CpuId, target: RwLockProcessPtr, parent: Option<RwLockProcessPtr>, container_ptr: RwLockContainerPtr,
     allocator_ptr: RwLockPageAllocatorPtr,
 ) -> bool {
     let process = pre.prc_mp.spec_index(target);
@@ -41,9 +42,8 @@ pub open spec fn kill_retire_eof_transition_framing(
     &&& forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)] post.prc_mp.dom().contains(p) ==> {
         let old_p = pre.prc_mp.spec_index(p);
         let new_p = post.prc_mp.spec_index(p);
-        &&& new_p.view() == if p == parent_ptr { Process { children: new_p.view().children, ..old_p.view() } } else { old_p.view() }
-        &&& new_p.view_ghost() == if uppers.contains(p) { ProcessGhost { subtree_set: Ghost(old_p.view_ghost().subtree_set.view().remove(target)), ..old_p.view_ghost() } }
-            else { old_p.view_ghost() }
+        &&& new_p.view() == if parent == Some(p) { Process { children: new_p.view().children, ..old_p.view() } } else { old_p.view() }
+        &&& new_p.view_ghost() == if parent is Some && uppers.contains(p) { ProcessGhost { subtree_set: Ghost(old_p.view_ghost().subtree_set.view().remove(target)), ..old_p.view_ghost() } } else { old_p.view_ghost() }
         &&& new_p.view_rodata() == old_p.view_rodata()
         &&& new_p.is_init() == old_p.is_init()
         &&& new_p.locking_thread() == old_p.locking_thread()
@@ -52,15 +52,20 @@ pub open spec fn kill_retire_eof_transition_framing(
         &&& post.prc_mp.view().spec_index(p).is_init() == pre.prc_mp.view().spec_index(p).is_init()
         &&& post.prc_mp.view().spec_index(p).addr() == pre.prc_mp.view().spec_index(p).addr()
     }
-    &&& post.prc_mp.spec_index(parent_ptr).view().children.view() == pre.prc_mp.spec_index(parent_ptr).view().children.view().remove_value(target)
-    &&& post.prc_mp.spec_index(parent_ptr).view().children.map() == pre.prc_mp.spec_index(parent_ptr).view().children.map().remove(node_addr)
-    &&& post.prc_mp.spec_index(parent_ptr).view().children.dom() == pre.prc_mp.spec_index(parent_ptr).view().children.dom().remove(node_addr)
+    &&& parent is Some ==> {
+        let parent_ptr = parent->Some_0;
+        &&& post.prc_mp.spec_index(parent_ptr).view().children.view() == pre.prc_mp.spec_index(parent_ptr).view().children.view().remove_value(target)
+        &&& post.prc_mp.spec_index(parent_ptr).view().children.map() == pre.prc_mp.spec_index(parent_ptr).view().children.map().remove(node_addr)
+        &&& post.prc_mp.spec_index(parent_ptr).view().children.dom() == pre.prc_mp.spec_index(parent_ptr).view().children.dom().remove(node_addr)
+    }
     &&& post.ctn_mp.dom() == pre.ctn_mp.dom()
     &&& forall|c: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c)] pre.ctn_mp.dom().contains(c) && c != container_ptr ==> post.ctn_mp.spec_index(c) == pre.ctn_mp.spec_index(c)
-    &&& post.ctn_mp.spec_index(container_ptr).view() == pre.ctn_mp.spec_index(container_ptr).view()
+    &&& post.ctn_mp.spec_index(container_ptr).view() == if parent is Some { pre.ctn_mp.spec_index(container_ptr).view() }
+        else { Container { zombie: false, ..pre.ctn_mp.spec_index(container_ptr).view() } }
     &&& post.ctn_mp.spec_index(container_ptr).view_rodata() == pre.ctn_mp.spec_index(container_ptr).view_rodata()
     &&& post.ctn_mp.spec_index(container_ptr).view_ghost() == (ContainerGhost {
         owned_processes: Ghost(pre.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().remove(target)), ..pre.ctn_mp.spec_index(container_ptr).view_ghost() })
+    &&& post.ctn_mp.spec_index(container_ptr).is_init() == pre.ctn_mp.spec_index(container_ptr).is_init()
     &&& post.ctn_mp.spec_index(container_ptr).locking_thread() == pre.ctn_mp.spec_index(container_ptr).locking_thread()
     &&& post.ctn_mp.spec_index(container_ptr).being_killed() == pre.ctn_mp.spec_index(container_ptr).being_killed()
     &&& post.ctn_mp.spec_index(container_ptr).killer_info() == pre.ctn_mp.spec_index(container_ptr).killer_info()

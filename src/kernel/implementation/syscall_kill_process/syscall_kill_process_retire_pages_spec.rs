@@ -7,7 +7,7 @@ verus! {
 /// allocator `allocator_ptr` of its owner, the container of the write-held killer `thread_ptr`, whose direct pending
 /// 4K refund grows by one.
 #[verifier::opaque]
-pub open spec fn kill_retire_table_page_eof_transition_framing(
+pub(crate) open spec fn kill_retire_table_page_eof_transition_framing(
     pre: KernelK, post: KernelK, iommu: bool, table: RwLockPageTableRoot, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId,
     node_addr: usize,
 ) -> bool {

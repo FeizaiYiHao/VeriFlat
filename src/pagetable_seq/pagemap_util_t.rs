@@ -28,9 +28,7 @@ fn page_map_set_raw(page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<&m
         final(page_map_perm).addr() == page_map_ptr,
         final(page_map_perm).is_init(),
         final(page_map_perm).value().wf(),
-        forall|i: usize|
-            #![trigger final(page_map_perm).value().spec_index(i)]
-            pei_valid(i) && i != index ==> final(page_map_perm).value().spec_index(i) =~= old(page_map_perm).value().spec_index(i),
+        forall|i: usize| #![trigger final(page_map_perm).value().spec_index(i)] pei_valid(i) && i != index ==> final(page_map_perm).value().spec_index(i) =~= old(page_map_perm).value().spec_index(i),
         final(page_map_perm).value().spec_index(index) =~= value,
 {
     let pptr: PPtr<PageMap> = PPtr::from_addr(page_map_ptr);
@@ -47,18 +45,13 @@ pub fn page_map_copy_kernel_entry_range(source_ptr: PageMapPtr, Tracked(source_p
         old(target_perm).is_init(),
         old(target_perm).value().wf(),
         pei_valid(end),
-        forall|i: usize| #![trigger old(target_perm).value().spec_index(i).is_empty()]
-            pei_valid(i) ==> old(target_perm).value().spec_index(i).is_empty(),
+        forall|i: usize| #![trigger old(target_perm).value().spec_index(i).is_empty()] pei_valid(i) ==> old(target_perm).value().spec_index(i).is_empty(),
     ensures
         final(target_perm).addr() == target_ptr,
         final(target_perm).is_init(),
         final(target_perm).value().wf(),
-        forall|i: usize|
-            #![trigger final(target_perm).value().spec_index(i).is_empty()]
-            end <= i && pei_valid(i) ==> final(target_perm).value().spec_index(i).is_empty(),
-        forall|i: usize|
-            #![trigger final(target_perm).value().spec_index(i)]
-            0 <= i < end ==> final(target_perm).value().spec_index(i) =~= source_perm.value().spec_index(i),
+        forall|i: usize| #![trigger final(target_perm).value().spec_index(i).is_empty()] end <= i && pei_valid(i) ==> final(target_perm).value().spec_index(i).is_empty(),
+        forall|i: usize| #![trigger final(target_perm).value().spec_index(i)] 0 <= i < end ==> final(target_perm).value().spec_index(i) =~= source_perm.value().spec_index(i),
 {
     let source: &PageMap = PPtr::<PageMap>::from_usize(source_ptr).borrow(Tracked(source_perm));
     for index in 0..end
@@ -73,12 +66,8 @@ pub fn page_map_copy_kernel_entry_range(source_ptr: PageMapPtr, Tracked(source_p
             target_perm.addr() == target_ptr,
             target_perm.is_init(),
             target_perm.value().wf(),
-            forall|i: usize|
-                #![trigger target_perm.value().spec_index(i).is_empty()]
-                end <= i && pei_valid(i) ==> target_perm.value().spec_index(i).is_empty(),
-            forall|i: usize|
-                #![trigger target_perm.value().spec_index(i)]
-                0 <= i < index ==> target_perm.value().spec_index(i) =~= source_perm.value().spec_index(i),
+            forall|i: usize| #![trigger target_perm.value().spec_index(i).is_empty()] end <= i && pei_valid(i) ==> target_perm.value().spec_index(i).is_empty(),
+            forall|i: usize| #![trigger target_perm.value().spec_index(i)] 0 <= i < index ==> target_perm.value().spec_index(i) =~= source_perm.value().spec_index(i),
     {
         let raw = *source.ar.get(index);
         let value = usize2page_entry(raw);
@@ -93,18 +82,13 @@ impl PageTable<PT_TYPE> {
             old(target_perm).addr() == target_ptr,
             old(target_perm).is_init(),
             old(target_perm).value().wf(),
-            forall|i: usize| #![trigger old(target_perm).value().spec_index(i).is_empty()]
-                pei_valid(i) ==> old(target_perm).value().spec_index(i).is_empty(),
+            forall|i: usize| #![trigger old(target_perm).value().spec_index(i).is_empty()] pei_valid(i) ==> old(target_perm).value().spec_index(i).is_empty(),
         ensures
             final(target_perm).addr() == target_ptr,
             final(target_perm).is_init(),
             final(target_perm).value().wf(),
-            forall|i: usize|
-                #![trigger final(target_perm).value().spec_index(i).is_empty()]
-                self.kernel_l4_end <= i && pei_valid(i) ==> final(target_perm).value().spec_index(i).is_empty(),
-            forall|i: usize|
-                #![trigger final(target_perm).value().spec_index(i)]
-                0 <= i < self.kernel_l4_end ==> final(target_perm).value().spec_index(i) =~= self.kernel_entries.view().spec_index(i as int),
+            forall|i: usize| #![trigger final(target_perm).value().spec_index(i).is_empty()] self.kernel_l4_end <= i && pei_valid(i) ==> final(target_perm).value().spec_index(i).is_empty(),
+            forall|i: usize| #![trigger final(target_perm).value().spec_index(i)] 0 <= i < self.kernel_l4_end ==> final(target_perm).value().spec_index(i) =~= self.kernel_entries.view().spec_index(i as int),
     {
         assert({
             &&& self.l4_table.view().dom().contains(self.cr3)
@@ -117,14 +101,6 @@ impl PageTable<PT_TYPE> {
         page_map_copy_kernel_entry_range(self.cr3, Tracked(source_perm), target_ptr, Tracked(&mut *target_perm), self.kernel_l4_end);
         proof { self.copy_kernel_entries_to_unpublished_root_eof(target_perm.value()); }
     }
-
-    /// EOF closure of `copy_kernel_entries_to_unpublished_root`: the copied root entries are the recorded kernel entries.
-    proof fn copy_kernel_entries_to_unpublished_root_eof(&self, target: PageMap)
-        requires
-            self.kernel_entries_wf(),
-            forall|i: usize| #![trigger target.spec_index(i)] 0 <= i < self.kernel_l4_end ==> target.spec_index(i) =~= self.l4_table.view().spec_index(self.cr3).value().spec_index(i),
-        ensures forall|i: usize| #![trigger target.spec_index(i)] 0 <= i < self.kernel_l4_end ==> target.spec_index(i) =~= self.kernel_entries.view().spec_index(i as int),
-    { reveal(PageTable::kernel_entries_wf); }
 }
 
 pub(crate) fn page_map_set_published(page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<&mut PointsTo<PageMap>>, index: usize, value: PageEntry, Tracked(lctx): Tracked<&mut LocalContext>)
@@ -168,9 +144,7 @@ pub(crate) fn page_map_set_published_in_map(page_map_ptr: PageMapPtr, Tracked(pa
         final(lctx).kernel_view_locking_state() is Release,
         typed_lock_maps_unchanged(old(lctx), final(lctx)),
         final(page_map_perms).dom() == old(page_map_perms).dom(),
-        forall|p: PageMapPtr|
-            #![trigger final(page_map_perms).spec_index(p)]
-            old(page_map_perms).dom().contains(p) && p != page_map_ptr ==> final(page_map_perms).spec_index(p) == old(page_map_perms).spec_index(p),
+        forall|p: PageMapPtr| #![trigger final(page_map_perms).spec_index(p)] old(page_map_perms).dom().contains(p) && p != page_map_ptr ==> final(page_map_perms).spec_index(p) == old(page_map_perms).spec_index(p),
         final(page_map_perms).spec_index(page_map_ptr).addr() == page_map_ptr,
         final(page_map_perms).spec_index(page_map_ptr).is_init(),
         final(page_map_perms).spec_index(page_map_ptr).value().wf(),
@@ -194,9 +168,7 @@ pub fn page_perm_to_page_map(page_ptr: PagePtr, Tracked(page_perm): Tracked<Page
         ret.1.view().addr() == ret.0,
         ret.1.view().is_init(),
         ret.1.view().value().wf(),
-        forall|i: usize|
-            #![trigger ret.1.view().value().spec_index(i).is_empty()]
-            pei_valid(i) ==> ret.1.view().value().spec_index(i).is_empty(),
+        forall|i: usize| #![trigger ret.1.view().value().spec_index(i).is_empty()] pei_valid(i) ==> ret.1.view().value().spec_index(i).is_empty(),
 {
     unsafe {
         let uptr = page_ptr as *mut MaybeUninit<PageMap>;

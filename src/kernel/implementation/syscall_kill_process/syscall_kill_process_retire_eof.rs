@@ -19,7 +19,7 @@ pub(crate) proof fn kill_retire_eof(
 )
     requires
         pre.inv(),
-        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        kill_retire_eof_transition_framing(pre, post, cpu_id, target, Some(parent_ptr), container_ptr, allocator_ptr),
         index_valid(NUM_CPUS, cpu_id),
         pre.prc_mp.dom().contains(target),
         pre.prc_mp.spec_index(target).locking_thread() is Write,
@@ -67,11 +67,11 @@ pub(crate) proof fn kill_retire_eof(
     ensures post.inv(),
 {
     kill_retire_pages_held_and_owned(pre, target, kill_retire_pages(pre, target).to_set(), allocator_ptr, cpu_id);
-    kill_retire_eof_memory(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr);
-    kill_retire_eof_container_relations(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr);
-    kill_retire_eof_process_relations(pre, post, lctx, cpu_id, target, parent_ptr, container_ptr, allocator_ptr);
-    kill_retire_eof_iommu(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr);
-    kill_retire_eof_tlb(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr);
+    kill_retire_eof_memory(pre, post, cpu_id, target, Some(parent_ptr), container_ptr, allocator_ptr);
+    kill_retire_eof_container_relations(pre, post, cpu_id, target, Some(parent_ptr), container_ptr, allocator_ptr);
+    kill_retire_eof_process_relations(pre, post, lctx, cpu_id, target, Some(parent_ptr), container_ptr, allocator_ptr);
+    kill_retire_eof_iommu(pre, post, cpu_id, target, Some(parent_ptr), container_ptr, allocator_ptr);
+    kill_retire_eof_tlb(pre, post, cpu_id, target, Some(parent_ptr), container_ptr, allocator_ptr);
     kill_retire_eof_tree(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr);
 }
 } // verus!

@@ -152,9 +152,7 @@ verus! {
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             final(steps).view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*final(krnl))),
             kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
-            forall|i: CpuId|
-                #![trigger final(krnl).cpu_arr.spec_index(i)]
-                index_valid(NUM_CPUS, i) ==> final(krnl).cpu_arr.spec_index(i).view().view().view() == old(krnl).cpu_arr.spec_index(i).view().view().view(),
+            forall|i: CpuId| #![trigger final(krnl).cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) ==> final(krnl).cpu_arr.spec_index(i).view().view().view() == old(krnl).cpu_arr.spec_index(i).view().view().view(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(krnl).inv(),
@@ -241,9 +239,7 @@ verus! {
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             final(steps).view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*final(krnl))),
             kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
-            forall|i: CpuId|
-                #![trigger final(krnl).cpu_arr.spec_index(i)]
-                index_valid(NUM_CPUS, i) ==> final(krnl).cpu_arr.spec_index(i).view().view().view() == old(krnl).cpu_arr.spec_index(i).view().view().view(),
+            forall|i: CpuId| #![trigger final(krnl).cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) ==> final(krnl).cpu_arr.spec_index(i).view().view().view() == old(krnl).cpu_arr.spec_index(i).view().view().view(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(krnl).inv(),
@@ -343,9 +339,7 @@ verus! {
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             final(steps).view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*final(krnl))),
             kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
-            forall|i: CpuId|
-                #![trigger final(krnl).cpu_arr.spec_index(i)]
-                index_valid(NUM_CPUS, i) ==> final(krnl).cpu_arr.spec_index(i).view().view().view() == old(krnl).cpu_arr.spec_index(i).view().view().view(),
+            forall|i: CpuId| #![trigger final(krnl).cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) ==> final(krnl).cpu_arr.spec_index(i).view().view().view() == old(krnl).cpu_arr.spec_index(i).view().view().view(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(krnl).inv(),
@@ -454,9 +448,7 @@ verus! {
             old(steps).snapshot_u() == kernel_k_to_kernel_u(old(steps).snapshot_k()),
             final(steps).view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*final(krnl))),
             kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
-            forall|i: CpuId|
-                #![trigger final(krnl).cpu_arr.spec_index(i)]
-                index_valid(NUM_CPUS, i) ==> final(krnl).cpu_arr.spec_index(i).view().view().view() == old(krnl).cpu_arr.spec_index(i).view().view().view(),
+            forall|i: CpuId| #![trigger final(krnl).cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) ==> final(krnl).cpu_arr.spec_index(i).view().view().view() == old(krnl).cpu_arr.spec_index(i).view().view().view(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(krnl).inv(),

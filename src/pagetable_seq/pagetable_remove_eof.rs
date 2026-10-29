@@ -33,8 +33,17 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             post.l2_tables.view().spec_index(target_l2_p).value().spec_index(target_l2i) =~= (PageEntry { addr: 0, perm: PageEntryPerm {
                 present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: false } }),
         ensures
-            post.wf_l4(), post.wf_l3(), post.wf_l2(), post.wf_l1(), post.disjoint_l4(), post.disjoint_l3(), post.disjoint_l2(),
-            post.user_only(), post.rwx_upper_level_entries(), post.table_pages_wf(), post.kernel_entries_wf(),
+            post.wf_l4(),
+            post.wf_l3(),
+            post.wf_l2(),
+            post.wf_l1(),
+            post.disjoint_l4(),
+            post.disjoint_l3(),
+            post.disjoint_l2(),
+            post.user_only(),
+            post.rwx_upper_level_entries(),
+            post.table_pages_wf(),
+            post.kernel_entries_wf(),
             post.page_closure() =~= pre.page_closure().remove(target_l1_p),
     {
         assert(post.wf_l4()) by { reveal(PageTable::wf_l4); };
@@ -108,7 +117,8 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             post.l2_tables.view().spec_index(target_l2_p).value().spec_index(target_l2i) =~= (PageEntry { addr: 0, perm: PageEntryPerm {
                 present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: false } }),
         ensures
-            post.wf_mapping_2m(), post.wf_mapping_1g(),
+            post.wf_mapping_2m(),
+            post.wf_mapping_1g(),
     {
         assert(post.wf_mapping_2m()) by { reveal(PageTable::wf_mapping_2m); };
         assert(post.wf_mapping_1g()) by { reveal(PageTable::wf_mapping_1g); };
@@ -174,8 +184,17 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             post.l3_tables.view().spec_index(target_l3_p).value().spec_index(target_l3i) =~= (PageEntry { addr: 0, perm: PageEntryPerm {
                 present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: false } }),
         ensures
-            post.wf_l4(), post.wf_l3(), post.wf_l2(), post.wf_l1(), post.disjoint_l4(), post.disjoint_l3(), post.disjoint_l2(),
-            post.user_only(), post.rwx_upper_level_entries(), post.table_pages_wf(), post.kernel_entries_wf(),
+            post.wf_l4(),
+            post.wf_l3(),
+            post.wf_l2(),
+            post.wf_l1(),
+            post.disjoint_l4(),
+            post.disjoint_l3(),
+            post.disjoint_l2(),
+            post.user_only(),
+            post.rwx_upper_level_entries(),
+            post.table_pages_wf(),
+            post.kernel_entries_wf(),
             post.page_closure() =~= pre.page_closure().remove(target_l2_p),
     {
         assert(post.wf_l4()) by { reveal(PageTable::wf_l4); };
@@ -249,7 +268,8 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             post.l3_tables.view().spec_index(target_l3_p).value().spec_index(target_l3i) =~= (PageEntry { addr: 0, perm: PageEntryPerm {
                 present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: false } }),
         ensures
-            post.wf_mapping_2m(), post.wf_mapping_1g(),
+            post.wf_mapping_2m(),
+            post.wf_mapping_1g(),
     {
         assert(post.wf_mapping_2m()) by { reveal(PageTable::wf_mapping_2m); reveal(PageTable::wf_l4); reveal(PageTable::disjoint_l3); };
         assert(post.wf_mapping_1g()) by { reveal(PageTable::wf_mapping_1g); };

@@ -3,7 +3,7 @@ use crate::*;
 use super::syscall_cpu_hotplug_spec::*;
 use super::syscall_cpu_hotplug_trace::*;
 #[cfg(verus_keep_ghost)]
-use super::cpu_online_child_eof::{cpu_online_child_eof, cpu_online_child_eof_transition_framing};
+use super::syscall_cpu_online_child_eof::{cpu_online_child_eof, cpu_online_child_eof_transition_framing};
 
 verus! {
 /// Brings `target`, an Off cpu of the caller's container, back to Idle under the cpu, cpu-set, and Off-cpu locks and wakes

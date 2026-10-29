@@ -6,7 +6,7 @@ verus! {
 /// is parked as an exited zombie, as having emptied its tables while it and its tables are still write-held. Lock
 /// owners, lock ids, and every other object stay.
 #[verifier::opaque]
-pub open spec fn thread_exit_tables_emptied_eof_transition_framing(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr) -> bool {
+pub(super) open spec fn thread_exit_tables_emptied_eof_transition_framing(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr) -> bool {
     let process = pre.prc_mp.spec_index(process_ptr);
     &&& post == (KernelK { prc_mp: post.prc_mp, ..pre })
     &&& post.prc_mp.dom() == pre.prc_mp.dom()
@@ -27,7 +27,7 @@ pub open spec fn thread_exit_tables_emptied_eof_transition_framing(pre: KernelK,
 /// emptied; cached context entries of other DIDs stay and any left tagged with it match a present slot. Owners, the table
 /// base, the root-table lock, the table's lock, and every other object stay.
 #[verifier::opaque]
-pub open spec fn thread_exit_detach_process_functions_eof_transition_framing(pre: KernelK, post: KernelK, iommu_table: RwLockPageTableRoot) -> bool {
+pub(super) open spec fn thread_exit_detach_process_functions_eof_transition_framing(pre: KernelK, post: KernelK, iommu_table: RwLockPageTableRoot) -> bool {
     let table = pre.it_mp.spec_index(iommu_table);
     let empty_tlb = SingleTLB { tlb_4k: Map::empty(), tlb_2m: Map::empty(), tlb_1g: Map::empty() };
     &&& post == (KernelK { irt: post.irt, iommu_tlb: post.iommu_tlb, it_mp: post.it_mp, ..pre })

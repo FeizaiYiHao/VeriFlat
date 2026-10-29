@@ -216,7 +216,7 @@ impl KernelK {
             typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::PageTable(pagetable_ptr)),
     {
         proof {
-            assert({ &&& old(self).pt_mp.perms_wf() &&& old(self).pt_mp.spec_index(pagetable_ptr).inv() }) by { pagetable_perms_wf_map(old(self).pt_mp); pagetable_perms_wf_at(old(self).pt_mp, pagetable_ptr); };
+            assert(old(self).pt_mp.perms_wf() && old(self).pt_mp.spec_index(pagetable_ptr).inv()) by { pagetable_perms_wf_map(old(self).pt_mp); pagetable_perms_wf_at(old(self).pt_mp, pagetable_ptr); };
             assert(old(lctx).lock_entry_contains(old(self).pt_mp.lock_id_by_key(pagetable_ptr), KernelObjId::PageTable(pagetable_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         assert(self.pt_mp.spec_index(pagetable_ptr).wlocked_by(&*lctx)) by { old(self).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable_ptr); };
@@ -265,7 +265,7 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::PageTable(pagetable_ptr), TypedHeldLock { lock_id: old(self).pt_mp.lock_id_by_key(pagetable_ptr), mode: TypedLockMode::Read }),
     {
         proof {
-            assert({ &&& old(self).pt_mp.perms_wf() &&& old(self).pt_mp.spec_index(pagetable_ptr).inv() }) by { pagetable_perms_wf_map(old(self).pt_mp); pagetable_perms_wf_at(old(self).pt_mp, pagetable_ptr); };
+            assert(old(self).pt_mp.perms_wf() && old(self).pt_mp.spec_index(pagetable_ptr).inv()) by { pagetable_perms_wf_map(old(self).pt_mp); pagetable_perms_wf_at(old(self).pt_mp, pagetable_ptr); };
             assert(old(lctx).lock_entry_contains(old(self).pt_mp.lock_id_by_key(pagetable_ptr), KernelObjId::PageTable(pagetable_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         assert(self.pt_mp.spec_index(pagetable_ptr).wlocked_by(&*lctx)) by { old(self).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable_ptr); };
@@ -564,7 +564,7 @@ impl KernelK {
             typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::PageTable(pagetable_ptr)),
     {
         proof {
-            assert({ &&& old(self).pt_mp.perms_wf() &&& old(self).pt_mp.spec_index(pagetable_ptr).inv() }) by { pagetable_perms_wf_map(old(self).pt_mp); pagetable_perms_wf_at(old(self).pt_mp, pagetable_ptr); };
+            assert(old(self).pt_mp.perms_wf() && old(self).pt_mp.spec_index(pagetable_ptr).inv()) by { pagetable_perms_wf_map(old(self).pt_mp); pagetable_perms_wf_at(old(self).pt_mp, pagetable_ptr); };
             assert(old(lctx).lock_entry_contains(old(self).pt_mp.lock_id_by_key(pagetable_ptr), KernelObjId::PageTable(pagetable_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         assert(self.pt_mp.spec_index(pagetable_ptr).rlocked_by(&*lctx)) by { old(self).pt_mp.typed_lock_map_aligned_read_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable_ptr); };

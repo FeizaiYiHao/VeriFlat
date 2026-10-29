@@ -1,7 +1,7 @@
 use vstd::assert_sets_equal;
 use vstd::prelude::*;
 use crate::*;
-use super::staged_4k_page_chain::cleanup_published_4k_page_chain;
+use super::syscall_new_container_staged_4k_page_chain::cleanup_published_4k_page_chain;
 use super::syscall_new_container_publish_indices::new_container_publish_staging_heads;
 use super::*;
 
@@ -157,15 +157,15 @@ pub(super) fn release_new_container_publish_staging(
         thread_page_lock_perm.thread_id() == old(lctx).thread_id(),
         thread_page_lock_perm.lock_id() == old(krnl).pg_arr.spec_index(page_ptr2page_index(pages_4k.view().spec_index(7))).view().locking_thread()->Write_lock_id,
     ensures
-        ret.4@ == (KernelK { pg_arr: ret.4@.pg_arr, thr_mp: ret.4@.thr_mp, ..*old(krnl) }),
-        ret.4@.inv(),
-        ret.4@.thr_mp.unchanged_except(&old(krnl).thr_mp, current_thread_ptr),
-        ret.4@.thr_mp.spec_index(current_thread_ptr).view() == (Thread { syscall_progress: Ghost(progress), ..old(krnl).thr_mp.spec_index(current_thread_ptr).view() }),
-        ret.4@.thr_mp.spec_index(current_thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread(),
-        ret.4@.thr_mp.spec_index(current_thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(current_thread_ptr).being_killed(),
-        ret.4@.thr_mp.spec_index(current_thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost(),
-        kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(ret.4@),
-        *final(krnl) == (KernelK { pg_arr: final(krnl).pg_arr, pcid_allc_mp: final(krnl).pcid_allc_mp, ..ret.4@ }),
+        ret.4.view() == (KernelK { pg_arr: ret.4.view().pg_arr, thr_mp: ret.4.view().thr_mp, ..*old(krnl) }),
+        ret.4.view().inv(),
+        ret.4.view().thr_mp.unchanged_except(&old(krnl).thr_mp, current_thread_ptr),
+        ret.4.view().thr_mp.spec_index(current_thread_ptr).view() == (Thread { syscall_progress: Ghost(progress), ..old(krnl).thr_mp.spec_index(current_thread_ptr).view() }),
+        ret.4.view().thr_mp.spec_index(current_thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread(),
+        ret.4.view().thr_mp.spec_index(current_thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(current_thread_ptr).being_killed(),
+        ret.4.view().thr_mp.spec_index(current_thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost(),
+        kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(ret.4.view()),
+        *final(krnl) == (KernelK { pg_arr: final(krnl).pg_arr, pcid_allc_mp: final(krnl).pcid_allc_mp, ..ret.4.view() }),
         final(krnl).pg_arr.spec_index(page_ptr2page_index(pages_4k.view().spec_index(7))) == old(krnl).pg_arr.spec_index(page_ptr2page_index(pages_4k.view().spec_index(7))),
         final(krnl).inv(),
         final(lctx).cpu_id() == old(lctx).cpu_id(),

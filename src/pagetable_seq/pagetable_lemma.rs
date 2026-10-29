@@ -91,9 +91,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
                 #![trigger pei_valid(l4i)]
                 self.kernel_l4_end <= l4i && pei_valid(l4i) ==> forall|l3i: L3Index|
                     #![trigger pei_valid(l3i)]
-                    pei_valid(l3i) ==> forall|l2i: L2Index|
-                        #![trigger self.spec_resolve_mapping_l2(l4i, l3i, l2i)]
-                        pei_valid(l2i) ==> self.spec_resolve_mapping_l2(l4i, l3i, l2i) == other.spec_resolve_mapping_l2(l4i, l3i, l2i),
+                    pei_valid(l3i) ==> forall|l2i: L2Index| #![trigger self.spec_resolve_mapping_l2(l4i, l3i, l2i)] pei_valid(l2i) ==> self.spec_resolve_mapping_l2(l4i, l3i, l2i) == other.spec_resolve_mapping_l2(l4i, l3i, l2i),
     {
     }
 }

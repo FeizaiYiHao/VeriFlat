@@ -293,8 +293,7 @@ pub fn iommu_root_table_attach(
         final(irt).locking_thread() == old(irt).locking_thread(),
         final(irt).view().table_base() == old(irt).view().table_base(),
         final(irt).view().owners() == old(irt).view().owners(),
-        final(irt).view().iommu_roots()
-            == seq3_update(old(irt).view().iommu_roots(), bus as int, device as int, function as int, Some(old(iommu_table_map).spec_index(iommu_table_ptr).view().cr3)),
+        final(irt).view().iommu_roots() == seq3_update(old(irt).view().iommu_roots(), bus as int, device as int, function as int, Some(old(iommu_table_map).spec_index(iommu_table_ptr).view().cr3)),
         final(irt).view().iommu_dids() == seq3_update(old(irt).view().iommu_dids(), bus as int, device as int, function as int, Some(did)),
         forall|b: usize, d: usize, f: usize| #![trigger final(irt).view().spec_index_owner(b, d, f)] #![trigger final(irt).view().spec_index_iommu_root(b, d, f)]
             #![trigger final(irt).view().spec_index_iommu_did(b, d, f)] pci_bdf_valid(b, d, f) ==> {

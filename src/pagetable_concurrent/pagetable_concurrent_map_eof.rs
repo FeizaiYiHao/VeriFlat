@@ -153,9 +153,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
             Self::map_4k_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry),
         ensures
-            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
-                #![trigger post.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)]
-                post.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) == pre.spec_resolve_mapping_2m_l2(l4i, l3i, l2i),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)] post.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) == pre.spec_resolve_mapping_2m_l2(l4i, l3i, l2i),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
                 #![trigger post.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
                 post.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && (l4i, l3i, l2i, l1i) != (target_l4i, target_l3i, target_l2i, target_l1i)

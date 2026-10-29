@@ -217,7 +217,7 @@ pub(super) fn ipc_pages_fill_target_page(
         Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(target_thread_lock_perm), Tracked(target_pagetable_lock_perm), Tracked(None), Tracked(None),
     );
     proof {
-        ipc_pages_share_steps_from_directory(&*steps, before, start, cpu_id);
+        share_4k_range_steps_from_directory(&*steps, before, before.len() as int, cpu_id);
         window_perms.tracked_union_prefer_right(minted);
     }
 }

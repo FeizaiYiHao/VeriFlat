@@ -266,7 +266,7 @@ pub(crate) fn kill_reclaim_unmapped_4k_page_scoped(
                     TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(page_index), mode: TypedLockMode::Write });
                 map_insert_remove_absent_lemma(old(lctx).page_lock_map(), page_index, TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(page_index), mode: TypedLockMode::Write });
                 map_insert_remove_absent_lemma(old(lctx).pagetable_window_lock_map(), (pagetable, WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0)) }),
-                    TypedHeldLock { lock_id: window_lock_id_at(pagetable, WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0)) }), mode: TypedLockMode::Write });
+                    TypedHeldLock { lock_id: window_lock_id_of(pagetable, WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0)) }), mode: TypedLockMode::Write });
             };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
@@ -279,7 +279,7 @@ pub(crate) fn kill_reclaim_unmapped_4k_page_scoped(
         proof {
             assert(typed_lock_maps_unchanged(old(lctx), lctx)) by {
                 map_insert_remove_absent_lemma(old(lctx).pagetable_window_lock_map(), (pagetable, WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0)) }),
-                    TypedHeldLock { lock_id: window_lock_id_at(pagetable, WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0)) }), mode: TypedLockMode::Write });
+                    TypedHeldLock { lock_id: window_lock_id_of(pagetable, WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0)) }), mode: TypedLockMode::Write });
             };
         }
     }

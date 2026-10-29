@@ -6,10 +6,7 @@ verus! {
 /// Kernel invariants read thread payloads, not the current thread lock owner.
 pub open spec fn thread_invariant_fields_unchanged(pre: ThreadLockedMap, post: ThreadLockedMap) -> bool {
     &&& pre.dom() =~= post.dom()
-    &&& forall|t_ptr: RwLockThreadPtr|
-        #![trigger pre.spec_index(t_ptr)]
-        #![trigger post.spec_index(t_ptr)]
-        pre.dom().contains(t_ptr) ==> post.spec_index(t_ptr).view() == pre.spec_index(t_ptr).view()
+    &&& forall|t_ptr: RwLockThreadPtr| #![trigger pre.spec_index(t_ptr)] #![trigger post.spec_index(t_ptr)] pre.dom().contains(t_ptr) ==> post.spec_index(t_ptr).view() == pre.spec_index(t_ptr).view()
 }
 
 /// Thread fields read by the 4K conservation law.

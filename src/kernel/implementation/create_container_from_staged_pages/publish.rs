@@ -872,13 +872,13 @@ pub fn publish_staged_container_root(
         Tracked(container_tail_lock_perms), Tracked(pcid_allocator_tail_lock_perms),
     );
     proof {
-        eof_publish_postconditions(
+        publish_staged_container_root_eof_postconditions(
             pre_krnl, *krnl, *old(lctx), parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page,
             allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page,
             l4_page, thread_page, funding_pages, allocator_quota_4k, process_quota_4k,
             *parent_container_lock_perm, *current_thread_lock_perm, *lctx, *funding_page_lock_perms,
         );
-        eof_inv(
+        publish_staged_container_root_eof_inv(
             pre_krnl, *krnl, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page,
             allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page,
             funding_pages, allocator_quota_4k, process_quota_4k,

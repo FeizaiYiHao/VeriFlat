@@ -1,8 +1,8 @@
 use vstd::prelude::*;
 use crate::*;
-use super::staged_4k_page_chain::allocate_staged_4k_page_chain;
+use super::syscall_new_container_staged_4k_page_chain::allocate_staged_4k_page_chain;
 #[cfg(verus_keep_ghost)]
-use super::staged_4k_page_chain::page_ptr_sets_disjoint_from_index_disjoint;
+use super::syscall_new_container_staged_4k_page_chain::page_ptr_sets_disjoint_from_index_disjoint;
 use super::*;
 use super::syscall_new_container_spec::*;
 use super::syscall_new_container_trace::*;

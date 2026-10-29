@@ -71,9 +71,7 @@ pub(super) proof fn page_ptr_indices_disjoint_from_2m_tail(page_ptrs: Seq<PagePt
     requires
         page_index_2m_valid(head),
         page_indices == page_ptrs.map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).to_set(),
-        forall|page_ptr: PagePtr|
-            #![trigger page_ptrs.to_set().contains(page_ptr)]
-            page_ptrs.to_set().contains(page_ptr) ==> page_ptr_valid(page_ptr),
+        forall|page_ptr: PagePtr| #![trigger page_ptrs.to_set().contains(page_ptr)] page_ptrs.to_set().contains(page_ptr) ==> page_ptr_valid(page_ptr),
         page_ptrs.to_set().disjoint(page_2m_all_ptrs(head)),
     ensures
         page_indices.disjoint(page_2m_tail_indices(head)),
@@ -297,9 +295,7 @@ pub fn wlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(lc
         final(lctx).allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
         final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
         *final(krnl) == (KernelK { pg_arr: final(krnl).pg_arr, ..*old(krnl) }),
-        forall|index: PageIndex|
-            #![trigger final(krnl).pg_arr.spec_index(index).view().view()]
-            index_valid(NUM_PAGES, index) ==> final(krnl).pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
+        forall|index: PageIndex| #![trigger final(krnl).pg_arr.spec_index(index).view().view()] index_valid(NUM_PAGES, index) ==> final(krnl).pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
         owned_2m_tail_lock_perms_wf(ret.view(), final(krnl).pg_arr, final(lctx), head),
 {
     hide(Seq::contains);
@@ -339,9 +335,7 @@ pub fn wlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(lc
             lctx.allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
             lctx.allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
             *krnl == (KernelK { pg_arr: krnl.pg_arr, ..*old(krnl) }),
-            forall|index: PageIndex|
-                #![trigger krnl.pg_arr.spec_index(index).view().view()]
-                index_valid(NUM_PAGES, index) ==> krnl.pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
+            forall|index: PageIndex| #![trigger krnl.pg_arr.spec_index(index).view().view()] index_valid(NUM_PAGES, index) ==> krnl.pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
             forall|index: PageIndex|
                 #![trigger krnl.pg_arr.spec_index(index)]
                 #![trigger old(krnl).pg_arr.spec_index(index)]
@@ -409,9 +403,7 @@ pub(super) fn set_owned_2m_page_tail_pair_container(
         preserved_page_ptrs == preserved_page_ptr_seq.to_set(),
         preserved_indices == preserved_page_ptr_seq.map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).to_set(),
         preserved_indices == preserved_page_ptrs.map(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)),
-        forall|page_ptr: PagePtr|
-            #![trigger preserved_page_ptrs.contains(page_ptr)]
-            preserved_page_ptrs.contains(page_ptr) ==> page_ptr_valid(page_ptr),
+        forall|page_ptr: PagePtr| #![trigger preserved_page_ptrs.contains(page_ptr)] preserved_page_ptrs.contains(page_ptr) ==> page_ptr_valid(page_ptr),
         preserved_indices.disjoint(page_2m_tail_indices(first_head)),
         preserved_indices.disjoint(page_2m_tail_indices(second_head)),
         page_2m_tail_indices(first_head).disjoint(protected_indices),
@@ -426,21 +418,15 @@ pub(super) fn set_owned_2m_page_tail_pair_container(
         owned_2m_tail_lock_perms_wf(*first_perms, *final(pages), lctx, first_head),
         owned_2m_tail_lock_perms_wf(*second_perms, *final(pages), lctx, second_head),
         staged_4k_page_chain(*final(pages), preserved_page_ptr_seq),
-        forall|index: PageIndex|
-            #![trigger first_perms.dom().contains(index)]
-            first_perms.dom().contains(index) ==> final(pages).spec_index(index).view().view().owning_container == owning_container,
-        forall|index: PageIndex|
-            #![trigger second_perms.dom().contains(index)]
-            second_perms.dom().contains(index) ==> final(pages).spec_index(index).view().view().owning_container == owning_container,
+        forall|index: PageIndex| #![trigger first_perms.dom().contains(index)] first_perms.dom().contains(index) ==> final(pages).spec_index(index).view().view().owning_container == owning_container,
+        forall|index: PageIndex| #![trigger second_perms.dom().contains(index)] second_perms.dom().contains(index) ==> final(pages).spec_index(index).view().view().owning_container == owning_container,
         forall|index: PageIndex|
             #![trigger final(pages).spec_index(index).view().view().mappings()]
             index_valid(NUM_PAGES, index) ==> final(pages).spec_index(index).view().view().mappings() == reference_pages.spec_index(index).view().view().mappings(),
         forall|index: PageIndex|
             #![trigger final(pages).spec_index(index).view().view().iommu_mappings()]
             index_valid(NUM_PAGES, index) ==> final(pages).spec_index(index).view().view().iommu_mappings() == reference_pages.spec_index(index).view().view().iommu_mappings(),
-        forall|index: PageIndex|
-            #![trigger final(pages).spec_index(index).view().view().state]
-            index_valid(NUM_PAGES, index) ==> final(pages).spec_index(index).view().view().state == reference_pages.spec_index(index).view().view().state,
+        forall|index: PageIndex| #![trigger final(pages).spec_index(index).view().view().state] index_valid(NUM_PAGES, index) ==> final(pages).spec_index(index).view().view().state == reference_pages.spec_index(index).view().view().state,
         forall|index: PageIndex|
             #![trigger final(pages).spec_index(index).view().view().owning_container]
             index_valid(NUM_PAGES, index) && !page_2m_tail_indices(first_head).contains(index) && !page_2m_tail_indices(second_head).contains(index)
@@ -450,12 +436,8 @@ pub(super) fn set_owned_2m_page_tail_pair_container(
             #![trigger reference_pages.spec_index(index)]
             index_valid(NUM_PAGES, index) && !page_2m_tail_indices(first_head).contains(index) && !page_2m_tail_indices(second_head).contains(index)
                 ==> final(pages).spec_index(index) == reference_pages.spec_index(index),
-        forall|index: PageIndex|
-            #![trigger preserved_indices.contains(index)]
-            preserved_indices.contains(index) && index_valid(NUM_PAGES, index) ==> final(pages).spec_index(index) == reference_pages.spec_index(index),
-        forall|index: PageIndex|
-            #![trigger protected_indices.contains(index)]
-            protected_indices.contains(index) && index_valid(NUM_PAGES, index) ==> final(pages).spec_index(index) == reference_pages.spec_index(index),
+        forall|index: PageIndex| #![trigger preserved_indices.contains(index)] preserved_indices.contains(index) && index_valid(NUM_PAGES, index) ==> final(pages).spec_index(index) == reference_pages.spec_index(index),
+        forall|index: PageIndex| #![trigger protected_indices.contains(index)] protected_indices.contains(index) && index_valid(NUM_PAGES, index) ==> final(pages).spec_index(index) == reference_pages.spec_index(index),
         forall|page_ptr: PagePtr|
             #![trigger preserved_page_ptrs.contains(page_ptr)]
             preserved_page_ptrs.contains(page_ptr) ==> final(pages).spec_index(page_ptr2page_index(page_ptr)) == reference_pages.spec_index(page_ptr2page_index(page_ptr)),
@@ -484,9 +466,7 @@ pub(super) fn set_owned_2m_page_tail_pair_container(
             reference_pages == *old(pages),
             preserved_page_ptrs == preserved_page_ptr_seq.to_set(),
             preserved_indices == preserved_page_ptr_seq.map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).to_set(),
-            forall|page_ptr: PagePtr|
-                #![trigger preserved_page_ptrs.contains(page_ptr)]
-                preserved_page_ptrs.contains(page_ptr) ==> page_ptr_valid(page_ptr),
+            forall|page_ptr: PagePtr| #![trigger preserved_page_ptrs.contains(page_ptr)] preserved_page_ptrs.contains(page_ptr) ==> page_ptr_valid(page_ptr),
             0 <= count <= 511,
             pages.typed_lock_map_aligned(lctx.page_lock_map(), lctx.thread_id()),
             first_perms.dom() == page_2m_tail_indices(first_head),
@@ -530,12 +510,8 @@ pub(super) fn set_owned_2m_page_tail_pair_container(
                 #![trigger pages.spec_index(index)]
                 index_valid(NUM_PAGES, index) && !page_2m_tail_prefix_indices(first_head, count).contains(index) && !page_2m_tail_prefix_indices(second_head, count).contains(index)
                     ==> pages.spec_index(index) == old(pages).spec_index(index),
-            forall|index: PageIndex|
-                #![trigger preserved_indices.contains(index)]
-                preserved_indices.contains(index) && index_valid(NUM_PAGES, index) ==> pages.spec_index(index) == reference_pages.spec_index(index),
-            forall|index: PageIndex|
-                #![trigger protected_indices.contains(index)]
-                protected_indices.contains(index) && index_valid(NUM_PAGES, index) ==> pages.spec_index(index) == reference_pages.spec_index(index),
+            forall|index: PageIndex| #![trigger preserved_indices.contains(index)] preserved_indices.contains(index) && index_valid(NUM_PAGES, index) ==> pages.spec_index(index) == reference_pages.spec_index(index),
+            forall|index: PageIndex| #![trigger protected_indices.contains(index)] protected_indices.contains(index) && index_valid(NUM_PAGES, index) ==> pages.spec_index(index) == reference_pages.spec_index(index),
             forall|i: int|
                 #![trigger pages.spec_index(page_ptr2page_index(preserved_page_ptr_seq.spec_index(i))).view().view().free_list]
                 0 <= i < preserved_page_ptr_seq.len() ==> {
@@ -613,12 +589,8 @@ pub fn wunlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(
         final(lctx).allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
         final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
         *final(krnl) == (KernelK { pg_arr: final(krnl).pg_arr, ..*old(krnl) }),
-        forall|index: PageIndex|
-            #![trigger final(krnl).pg_arr.spec_index(index).view().view()]
-            index_valid(NUM_PAGES, index) ==> final(krnl).pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
-        forall|index: PageIndex|
-            #![trigger page_2m_tail_indices(head).contains(index)]
-            page_2m_tail_indices(head).contains(index) ==> !final(lctx).page_lock_map().dom().contains(index),
+        forall|index: PageIndex| #![trigger final(krnl).pg_arr.spec_index(index).view().view()] index_valid(NUM_PAGES, index) ==> final(krnl).pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
+        forall|index: PageIndex| #![trigger page_2m_tail_indices(head).contains(index)] page_2m_tail_indices(head).contains(index) ==> !final(lctx).page_lock_map().dom().contains(index),
 {
     let tracked mut perms = perms;
     let mut count: usize = 0;
@@ -652,9 +624,7 @@ pub fn wunlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(
             lctx.allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
             lctx.allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
             *krnl == (KernelK { pg_arr: krnl.pg_arr, ..*old(krnl) }),
-            forall|index: PageIndex|
-                #![trigger krnl.pg_arr.spec_index(index).view().view()]
-                index_valid(NUM_PAGES, index) ==> krnl.pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
+            forall|index: PageIndex| #![trigger krnl.pg_arr.spec_index(index).view().view()] index_valid(NUM_PAGES, index) ==> krnl.pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
             forall|index: PageIndex|
                 #![trigger krnl.pg_arr.spec_index(index)]
                 #![trigger old(krnl).pg_arr.spec_index(index)]
@@ -670,9 +640,7 @@ pub fn wunlock_owned_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracked(
                     &&& perms.spec_index(index).thread_id() == lctx.thread_id()
                     &&& perms.spec_index(index).lock_id() == krnl.pg_arr.spec_index(index).view().locking_thread()->Write_lock_id
                 },
-            forall|index: PageIndex|
-                #![trigger page_2m_tail_prefix_indices(head, count).contains(index)]
-                page_2m_tail_prefix_indices(head, count).contains(index) ==> !lctx.page_lock_map().dom().contains(index),
+            forall|index: PageIndex| #![trigger page_2m_tail_prefix_indices(head, count).contains(index)] page_2m_tail_prefix_indices(head, count).contains(index) ==> !lctx.page_lock_map().dom().contains(index),
         decreases 511 - count,
     {
         let index = head + 1usize + count;

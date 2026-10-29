@@ -228,9 +228,7 @@ impl Thread {
             ret.proc_pagetable_ptr == proc_pagetable_ptr,
             ret.upper_container_seq.view() == Seq::<RwLockContainerPtr>::empty(),
             ret.endpoint_descriptors.spec_index(0) == Some(endpoint_ptr),
-            forall|endpoint_index: EndpointIdx|
-                #![trigger ret.endpoint_descriptors.spec_index(endpoint_index)]
-                edp_idx_valid(endpoint_index) && endpoint_index != 0 ==> ret.endpoint_descriptors.spec_index(endpoint_index) is None,
+            forall|endpoint_index: EndpointIdx| #![trigger ret.endpoint_descriptors.spec_index(endpoint_index)] edp_idx_valid(endpoint_index) && endpoint_index != 0 ==> ret.endpoint_descriptors.spec_index(endpoint_index) is None,
             ret.ipc_payload is Empty,
             ret.error_code is None,
             ret.caller is None,
@@ -290,15 +288,9 @@ impl Thread {
         &&& self.direct_free_quota_pending_4k.view() == 0
         &&& self.direct_free_quota_pending_2m.view() == 0
         &&& self.direct_free_quota_pending_1g.view() == 0
-        &&& forall|i: int|
-            #![trigger self.indirect_free_quota_pending_4k.view().spec_index(i)]
-            0 <= i < self.indirect_free_quota_pending_4k.view().len() ==> self.indirect_free_quota_pending_4k.view().spec_index(i) == 0
-        &&& forall|i: int|
-            #![trigger self.indirect_free_quota_pending_2m.view().spec_index(i)]
-            0 <= i < self.indirect_free_quota_pending_2m.view().len() ==> self.indirect_free_quota_pending_2m.view().spec_index(i) == 0
-        &&& forall|i: int|
-            #![trigger self.indirect_free_quota_pending_1g.view().spec_index(i)]
-            0 <= i < self.indirect_free_quota_pending_1g.view().len() ==> self.indirect_free_quota_pending_1g.view().spec_index(i) == 0
+        &&& forall|i: int| #![trigger self.indirect_free_quota_pending_4k.view().spec_index(i)] 0 <= i < self.indirect_free_quota_pending_4k.view().len() ==> self.indirect_free_quota_pending_4k.view().spec_index(i) == 0
+        &&& forall|i: int| #![trigger self.indirect_free_quota_pending_2m.view().spec_index(i)] 0 <= i < self.indirect_free_quota_pending_2m.view().len() ==> self.indirect_free_quota_pending_2m.view().spec_index(i) == 0
+        &&& forall|i: int| #![trigger self.indirect_free_quota_pending_1g.view().spec_index(i)] 0 <= i < self.indirect_free_quota_pending_1g.view().len() ==> self.indirect_free_quota_pending_1g.view().spec_index(i) == 0
     }
 
     /// Construct a fresh Thread for retype operations.
@@ -328,9 +320,7 @@ impl Thread {
             ret.scheduler_linkedlist_node.is_init(),
             ret.blocking_endpoint_ptr is None,
             ret.blocking_endpoint_index is None,
-            forall|edp_index: EndpointIdx|
-                #![trigger ret.endpoint_descriptors.spec_index(edp_index)]
-                edp_idx_valid(edp_index) ==> ret.endpoint_descriptors.spec_index(edp_index) is None,
+            forall|edp_index: EndpointIdx| #![trigger ret.endpoint_descriptors.spec_index(edp_index)] edp_idx_valid(edp_index) ==> ret.endpoint_descriptors.spec_index(edp_index) is None,
             ret.endpoint_descriptors.view() == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| None),
             ret.ipc_payload is Empty,
             ret.error_code is None,

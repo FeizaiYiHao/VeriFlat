@@ -59,9 +59,7 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
                         &&& cache_array.spec_index(i).view().linked_list.map() == Map::<usize, PagePtr>::empty()
                         &&& !cache_array.spec_index(i).locked()
                     },
-                forall|i: int|
-                    #![trigger cache_array.view().spec_index(i)]
-                    0 <= i < cpu_id ==> cache_array.view().spec_index(i).view().linked_list.view().len() == 0,
+                forall|i: int| #![trigger cache_array.view().spec_index(i)] 0 <= i < cpu_id ==> cache_array.view().spec_index(i).view().linked_list.view().len() == 0,
             decreases NUM_CPUS - cpu_id,
         {
             let cache = AllocatorCache { linked_list: LinkedList::new(Some(container_depth), Some(cpu_id)) };

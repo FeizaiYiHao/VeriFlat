@@ -263,18 +263,13 @@ impl KernelK {
             final(self).prc_mp.lock_id_by_key(process_ptr) == old(self).prc_mp.lock_id_by_key(process_ptr),
             wunlock_ensures(old(self).prc_mp.spec_index(process_ptr), final(self).prc_mp.spec_index(process_ptr)),
             // ---- LocalContext: lock dropped; thread preserved ----
-            // NOTE: do NOT assert `kernel_view_locking_state() == old` here —
-            // `unlock_ensures` transitions it Acquire -> Release, so restating
-            // `== old` would contradict it and make the postcondition `false`
-            // in an Acquire section. `unlock_ensures` is the source of truth
-            // for the phase transition (same trap as the NOTE on
-            // `LockedArray::wunlock`). user_view is separately preserved.
+            // Do not restate `kernel_view_locking_state() == old`: see the NOTE on `LockedArray::wunlock` (lock_array.rs).
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::Process(process_ptr)),
     {
         proof {
-            assert({ &&& old(self).prc_mp.perms_wf() &&& old(self).prc_mp.spec_index(process_ptr).inv() }) by { process_perms_wf_map(old(self).prc_mp); process_perms_wf_at(old(self).prc_mp, process_ptr); };
+            assert(old(self).prc_mp.perms_wf() && old(self).prc_mp.spec_index(process_ptr).inv()) by { process_perms_wf_map(old(self).prc_mp); process_perms_wf_at(old(self).prc_mp, process_ptr); };
             assert(old(lctx).lock_entry_contains(old(self).prc_mp.lock_id_by_key(process_ptr), KernelObjId::Process(process_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         assert(self.prc_mp.spec_index(process_ptr).wlocked_by(&*lctx)) by { old(self).prc_mp.typed_lock_map_aligned_write_at(old(lctx).process_lock_map(), old(lctx).thread_id(), process_ptr); };

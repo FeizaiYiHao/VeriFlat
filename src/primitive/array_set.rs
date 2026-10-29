@@ -79,31 +79,17 @@ impl<const N: usize> ArraySet<N> {
     }
 
     pub open spec fn elements_in_range(&self) -> bool {
-        &&& forall|i: usize|
-            #![trigger self.view().contains(i)]
-            self.view().contains(i) ==> 0 <= i < N
+        &&& forall|i: usize| #![trigger self.view().contains(i)] self.view().contains(i) ==> 0 <= i < N
     }
 
     pub closed spec fn internal_wf(&self) -> bool {
         &&& self.data.wf()
         &&& self.closed.wf()
         &&& 0 <= self.len <= N
-        &&& forall|i: usize|
-            #![trigger self.data.view().spec_index(i as int)]
-            #![trigger self.set.view().contains(i)]
-            0 <= i < N && self.data.view().spec_index(i as int) ==> self.set.view().contains(i)
-        &&& forall|i: usize|
-            #![trigger self.data.view().spec_index(i as int)]
-            #![trigger self.set.view().contains(i)]
-            self.set.view().contains(i) ==> 0 <= i < N && self.data.view().spec_index(i as int)
-        &&& forall|i: usize|
-            #![trigger self.closed.view().spec_index(i as int)]
-            #![trigger self.closed_set.view().contains(i)]
-            0 <= i < N && self.closed.view().spec_index(i as int) ==> self.closed_set.view().contains(i)
-        &&& forall|i: usize|
-            #![trigger self.closed.view().spec_index(i as int)]
-            #![trigger self.closed_set.view().contains(i)]
-            self.closed_set.view().contains(i) ==> 0 <= i < N && self.closed.view().spec_index(i as int)
+        &&& forall|i: usize| #![trigger self.data.view().spec_index(i as int)] #![trigger self.set.view().contains(i)] 0 <= i < N && self.data.view().spec_index(i as int) ==> self.set.view().contains(i)
+        &&& forall|i: usize| #![trigger self.data.view().spec_index(i as int)] #![trigger self.set.view().contains(i)] self.set.view().contains(i) ==> 0 <= i < N && self.data.view().spec_index(i as int)
+        &&& forall|i: usize| #![trigger self.closed.view().spec_index(i as int)] #![trigger self.closed_set.view().contains(i)] 0 <= i < N && self.closed.view().spec_index(i as int) ==> self.closed_set.view().contains(i)
+        &&& forall|i: usize| #![trigger self.closed.view().spec_index(i as int)] #![trigger self.closed_set.view().contains(i)] self.closed_set.view().contains(i) ==> 0 <= i < N && self.closed.view().spec_index(i as int)
         &&& self.closed_set.view().subset_of(self.set.view())
         &&& self.len == self.set.view().len()
     }

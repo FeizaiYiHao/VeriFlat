@@ -4,6 +4,7 @@ pub(crate) mod syscall_kill_process_trace;
 pub(crate) mod syscall_kill_process_reclaim;
 pub(crate) mod syscall_kill_process_reclaim_eof;
 pub(crate) mod syscall_kill_process_reclaim_release;
+pub(crate) mod syscall_kill_process_reclaim_zombify;
 pub(crate) mod syscall_kill_process_reclaim_spec;
 pub(crate) mod syscall_kill_process_reclaim_scoped;
 pub(crate) mod syscall_kill_process_reclaim_scoped_eof;

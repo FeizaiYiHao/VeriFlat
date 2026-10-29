@@ -5,7 +5,7 @@ use crate::*;
 
 verus! {
 impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
-    pub fn remove_helper(&mut self, addr: usize) -> (ret: (usize, Tracked<PointsTo<Node<T>>>))
+    pub fn unlink_interior_node(&mut self, addr: usize) -> (ret: (usize, Tracked<PointsTo<Node<T>>>))
         requires
             old(self).wf(),
             old(self).dom().contains(addr),
@@ -64,9 +64,9 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
         self.length = self.length - 1;
 
         proof {
-            Self::remove_helper_eof_lists(*old(self), *self, addr, ghost_index.view(), prev, next);
-            Self::remove_helper_eof_prev(*old(self), *self, addr, ghost_index.view(), prev, next);
-            Self::remove_helper_eof_next(*old(self), *self, addr, ghost_index.view(), prev, next);
+            Self::unlink_interior_node_eof_lists(*old(self), *self, addr, ghost_index.view(), prev, next);
+            Self::unlink_interior_node_eof_prev(*old(self), *self, addr, ghost_index.view(), prev, next);
+            Self::unlink_interior_node_eof_next(*old(self), *self, addr, ghost_index.view(), prev, next);
         }
         assert(old(self).view().no_duplicates() ==> self.view() == old(self).view().remove_value(old(self).map().spec_index(addr))) by { seq_remove_lemma::<T>(); };
 
@@ -156,7 +156,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             assert(self.view() == old(self).view().remove_value(old(self).map().spec_index(addr))) by { seq_remove_lemma::<T>(); };
             return (addr, Tracked(old_tail_perm));
         } else {
-            return self.remove_helper(addr);
+            return self.unlink_interior_node(addr);
         }
     }
 }

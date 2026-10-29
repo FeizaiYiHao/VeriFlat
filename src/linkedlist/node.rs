@@ -72,9 +72,7 @@ impl<T> ExternalNode<T> {
 #[verifier(external_body)]
 pub proof fn node_perm_disjoint<T, K, V>(tracked this: &mut PointsTo<Node<T>>, tracked others: &Map<K, PointsTo<Node<V>>>)
     ensures
-        forall|k: K|
-            #![trigger others.spec_index(k).addr()]
-            others.dom().contains(k) ==> final(this).addr() != others.spec_index(k).addr(),
+        forall|k: K| #![trigger others.spec_index(k).addr()] others.dom().contains(k) ==> final(this).addr() != others.spec_index(k).addr(),
         *final(this) == *old(this),
 {
 }

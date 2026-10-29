@@ -54,10 +54,8 @@ pub mod map_4k;
 pub mod allocate_free_4k_page;
 #[cfg(not(feature = "split-crates"))]
 pub mod allocate_free_2m_page;
-
 #[cfg(not(feature = "split-crates"))]
 pub(crate) mod allocator_cache_spec;
-
 #[cfg(not(feature = "split-crates"))]
 pub mod free_4k_page;
 #[cfg(not(feature = "split-crates"))]

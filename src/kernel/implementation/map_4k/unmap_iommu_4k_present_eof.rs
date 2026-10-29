@@ -32,7 +32,6 @@ pub(super) proof fn clear_iommu_4k_mapping_present_eof(pre: KernelK, post: Kerne
         pre.it_mp.spec_index(iommu_table).locking_thread() is Write,
         post.it_mp.perms_wf(),
         post.it_mp.spec_index(iommu_table).inv(),
-        // Produced by `iommu_table_map_clear_4k_present`.
         iommu_table_perms_wf(post.it_mp),
     ensures
         post.inv(),

@@ -85,7 +85,9 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
 
     pub proof fn kernel_entries_wf_len_at(&self)
         requires self.kernel_entries_wf()
-        ensures pei_valid(self.kernel_l4_end), self.kernel_entries.view().len() == self.kernel_l4_end as nat
+        ensures
+            pei_valid(self.kernel_l4_end),
+            self.kernel_entries.view().len() == self.kernel_l4_end as nat,
     { reveal(PageTableHigher::kernel_entries_wf); }
 
     pub proof fn kernel_entries_wf_at(&self, i: usize)
@@ -304,9 +306,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
                 #![trigger pei_valid(l4i)]
                 self.kernel_l4_end() <= l4i && pei_valid(l4i) ==> forall|l3i: L3Index|
                     #![trigger pei_valid(l3i)]
-                    pei_valid(l3i) ==> forall|l2i: L2Index|
-                        #![trigger self.spec_resolve_mapping_l2(l4i, l3i, l2i)]
-                        pei_valid(l2i) ==> self.spec_resolve_mapping_l2(l4i, l3i, l2i) == other.spec_resolve_mapping_l2(l4i, l3i, l2i),
+                    pei_valid(l3i) ==> forall|l2i: L2Index| #![trigger self.spec_resolve_mapping_l2(l4i, l3i, l2i)] pei_valid(l2i) ==> self.spec_resolve_mapping_l2(l4i, l3i, l2i) == other.spec_resolve_mapping_l2(l4i, l3i, l2i),
     {
     }
 }

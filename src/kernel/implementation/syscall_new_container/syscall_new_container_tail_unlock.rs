@@ -45,9 +45,7 @@ pub(super) fn wunlock_new_container_2m_page_tails(
             #![trigger final(krnl).pg_arr.spec_index(index)]
             #![trigger old(krnl).pg_arr.spec_index(index)]
             index_valid(NUM_PAGES, index) && !page_2m_tail_indices(left).contains(index) && !page_2m_tail_indices(right).contains(index) ==> final(krnl).pg_arr.spec_index(index) == old(krnl).pg_arr.spec_index(index),
-        forall|index: PageIndex|
-            #![trigger final(krnl).pg_arr.spec_index(index).view().view()]
-            index_valid(NUM_PAGES, index) ==> final(krnl).pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
+        forall|index: PageIndex| #![trigger final(krnl).pg_arr.spec_index(index).view().view()] index_valid(NUM_PAGES, index) ==> final(krnl).pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
 {
     wunlock_owned_2m_page_tails(krnl, left, Tracked(&mut *lctx), Tracked(left_perms));
     wunlock_owned_2m_page_tails(krnl, right, Tracked(&mut *lctx), Tracked(right_perms));

@@ -14,9 +14,7 @@ pub open spec fn process_pagetable_match(process_map: ProcessLockedMap, pagetabl
             && pagetable_map.spec_index(process_map.spec_index(proc_ptr).view().pagetable).view().pcid_value() == process_map.spec_index(proc_ptr).view().pcid
     &&& forall|pt_ptr:RwLockPageTableRoot|
         #![trigger pagetable_map.spec_index(pt_ptr).view().proc_ptr]
-        pagetable_map.dom().contains(pt_ptr)
-            ==> process_map.dom().contains(pagetable_map.spec_index(pt_ptr).view().proc_ptr)
-            && process_map.spec_index(pagetable_map.spec_index(pt_ptr).view().proc_ptr).view().pagetable == pt_ptr
+        pagetable_map.dom().contains(pt_ptr) ==> process_map.dom().contains(pagetable_map.spec_index(pt_ptr).view().proc_ptr) && process_map.spec_index(pagetable_map.spec_index(pt_ptr).view().proc_ptr).view().pagetable == pt_ptr
 }
 
 pub proof fn process_pagetable_match_process_at(process_map: ProcessLockedMap, pagetable_map: PageTableLockedMap, proc_ptr: RwLockProcessPtr)

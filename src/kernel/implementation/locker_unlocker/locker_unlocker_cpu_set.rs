@@ -215,7 +215,7 @@ impl KernelK {
             unlock_ensures(old(lctx), final(lctx), KernelObjId::CpuSet(cpu_set_ptr), old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr)),
     {
         proof {
-            assert({ &&& old(self).cpu_set_mp.perms_wf() &&& old(self).cpu_set_mp.spec_index(cpu_set_ptr).inv() }) by { cpu_set_perms_wf_map(old(self).cpu_set_mp); cpu_set_perms_wf_at(old(self).cpu_set_mp, cpu_set_ptr); };
+            assert(old(self).cpu_set_mp.perms_wf() && old(self).cpu_set_mp.spec_index(cpu_set_ptr).inv()) by { cpu_set_perms_wf_map(old(self).cpu_set_mp); cpu_set_perms_wf_at(old(self).cpu_set_mp, cpu_set_ptr); };
             assert(old(lctx).lock_entry_contains(old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr), KernelObjId::CpuSet(cpu_set_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         assert(self.cpu_set_mp.spec_index(cpu_set_ptr).wlocked_by(&*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };

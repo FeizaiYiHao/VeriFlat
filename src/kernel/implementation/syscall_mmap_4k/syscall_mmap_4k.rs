@@ -15,8 +15,7 @@ verus! {
     /// exiting step. Failure records no step, or the hold step and a release step when the fill section rejected the range.
     /// The result is `mmap_4k_syscall_result` of the state `ret.1` the section that decided it starts from: the entry state
     /// for the read section, or the fill section's start, which other cpus may have changed since the hold step.
-    pub fn syscall_mmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, range: usize)
-        -> (ret: (RetValueType, Ghost<KernelU>))
+    pub fn syscall_mmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, range: usize) -> (ret: (RetValueType, Ghost<KernelU>))
         requires
             index_valid(NUM_CPUS, cpu_id),
             cpu_id == old(lctx).cpu_id(),
@@ -37,15 +36,15 @@ verus! {
             final(krnl).all_objects_unlocked(final(lctx)),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             final(steps).snapshot_k() == *final(krnl),
-            ret.0 == mmap_4k_syscall_result(ret.1@, cpu_id, va, range),
+            ret.0 == mmap_4k_syscall_result(ret.1.view(), cpu_id, va, range),
             !(mmap_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range) is Success)
-                && !(mmap_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range) is ErrorVaInUse) ==> ret.1@ == kernel_k_to_kernel_u(*old(krnl)),
+                && !(mmap_4k_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range) is ErrorVaInUse) ==> ret.1.view() == kernel_k_to_kernel_u(*old(krnl)),
             ret.0 is Success ==> range + 2 <= final(steps).nonlock_view().len() <= 4 * range + 3,
-            ret.0 is Success ==> mmap_4k_syscall_trace(final(steps).view(), cpu_id, va, range, Mmap4kPhase::Read) && ret.1@ == final(steps).view()[0].old_u
-                || mmap_4k_syscall_trace(final(steps).view(), cpu_id, va, range, Mmap4kPhase::Fill) && ret.1@ == final(steps).view()[1].old_u,
+            ret.0 is Success ==> mmap_4k_syscall_trace(final(steps).view(), cpu_id, va, range, Mmap4kPhase::Read) && ret.1.view() == final(steps).view()[0].old_u
+                || mmap_4k_syscall_trace(final(steps).view(), cpu_id, va, range, Mmap4kPhase::Fill) && ret.1.view() == final(steps).view()[1].old_u,
             ret.0 is Success ==> mmap_4k_syscall_success_mapped(final(krnl), cpu_id, va, range),
             !(ret.0 is Success) ==> final(steps).nonlock_view().len() == 0,
-            !(ret.0 is Success) ==> final(steps).view().len() == 0 || mmap_4k_syscall_failure_trace(final(steps).view(), cpu_id, va, range) && ret.1@ == final(steps).view()[1].old_u,
+            !(ret.0 is Success) ==> final(steps).view().len() == 0 || mmap_4k_syscall_failure_trace(final(steps).view(), cpu_id, va, range) && ret.1.view() == final(steps).view()[1].old_u,
     {
         proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
         if range == 0 || range > usize::MAX / 4096usize || !va_4k_valid(va) {

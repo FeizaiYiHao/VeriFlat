@@ -81,8 +81,15 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             pre.higher.l3_tables.view().dom().contains(target_l3_p),
             Self::remove_l4_entry_eof_transition_framing(pre, post, target_l4i, target_l3_p),
         ensures
-            post.va_addr_valid(), post.wf_l3(), post.l2_tokens_paired(), post.wf_l2(), post.wf_l1(), post.disjoint_l2(), post.user_only(),
-            post.rwx_upper_level_entries(), post.table_pages_wf(),
+            post.va_addr_valid(),
+            post.wf_l3(),
+            post.l2_tokens_paired(),
+            post.wf_l2(),
+            post.wf_l1(),
+            post.disjoint_l2(),
+            post.user_only(),
+            post.rwx_upper_level_entries(),
+            post.table_pages_wf(),
             post.page_closure() =~= pre.page_closure().remove(target_l3_p),
     {
         reveal(PageTableC::remove_l4_entry_eof_transition_framing);
@@ -108,7 +115,9 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             forall|i: L3Index| #![trigger pre.spec_resolve_mapping_l3(target_l4i, i)] pei_valid(i) ==> pre.spec_resolve_mapping_l3(target_l4i, i) is None,
             Self::remove_l4_entry_eof_transition_framing(pre, post, target_l4i, target_l3_p),
         ensures
-            post.wf_mapping_4k(), post.wf_mapping_2m(), post.tables_reachable_wf(),
+            post.wf_mapping_4k(),
+            post.wf_mapping_2m(),
+            post.tables_reachable_wf(),
     {
         reveal(PageTableC::remove_l4_entry_eof_transition_framing);
         assert(post.wf_mapping_4k()) by { reveal(PageTableC::wf_mapping_4k); reveal(PageTableHigher::disjoint_l4); };

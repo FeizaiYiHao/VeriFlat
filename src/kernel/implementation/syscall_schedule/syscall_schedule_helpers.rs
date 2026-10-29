@@ -195,10 +195,10 @@ pub(super) fn schedule_switch_unlock_and_record(
         final(steps).snapshot_k() == *final(krnl),
         final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(old(steps).snapshot_k()), new_u: kernel_k_to_kernel_u(*final(krnl)) }),
         schedule_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()),
-            kernel_k_to_kernel_u(*final(krnl)), cpu_id, entry_regs, true, schedule_flushed_pcid(entry_k, cpu_id, next_thread)),
+            kernel_k_to_kernel_u(*final(krnl)), cpu_id, entry_regs, true, context_switch_flushed_pcid(entry_k, cpu_id, next_thread)),
         final(steps).nonlock_view() == old(steps).nonlock_view().push(KernelStep { old_u: old(steps).nonlock_snapshot_u(), new_u: kernel_k_to_nonlock_kernel_u(*final(krnl)) }),
         schedule_step_pre(final(steps).nonlock_view().last().old_u, cpu_id),
-        schedule_step(final(steps).nonlock_view().last().old_u, final(steps).nonlock_view().last().new_u, cpu_id, entry_regs, schedule_flushed_pcid(entry_k, cpu_id, next_thread)),
+        schedule_step(final(steps).nonlock_view().last().old_u, final(steps).nonlock_view().last().new_u, cpu_id, entry_regs, context_switch_flushed_pcid(entry_k, cpu_id, next_thread)),
         forall|other_cpu: CpuId| #![trigger final(krnl).cpu_arr.spec_index(other_cpu)]
             index_valid(NUM_CPUS, other_cpu) && other_cpu != cpu_id ==> final(krnl).cpu_arr.spec_index(other_cpu).view().view().view() == entry_k.cpu_arr.spec_index(other_cpu).view().view().view(),
         {
@@ -229,7 +229,7 @@ pub(super) fn schedule_switch_unlock_and_record(
     schedule_switch_release_locks(krnl, Tracked(&mut *lctx), cpu_id, scheduler_ptr, next_thread, current_process, current_thread, pcid, process_lock_perm,
         current_thread_lock_perm, Tracked(scheduler_lock_perm), Tracked(next_lock_perm), Tracked(cpu_lock_perm), Tracked(needflush_perm));
     proof {
-        let ghost flushed_pcid = schedule_flushed_pcid(entry_k, cpu_id, next_thread);
+        let ghost flushed_pcid = context_switch_flushed_pcid(entry_k, cpu_id, next_thread);
         let ghost switch_before = steps.view();
         assert(kernel_context_switch_fields(&steps.snapshot_k(), &*krnl, cpu_id, next_thread, entry_regs, flushed_pcid)) by {
             assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view().update(cpu_id as int, CpuOpState::Trap));

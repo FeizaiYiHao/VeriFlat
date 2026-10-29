@@ -3,7 +3,7 @@ use crate::*;
 
 verus! {
 /// The write-held allocator `allocator_ptr` regains `returned` quota; nothing else in its map changes.
-pub open spec fn thread_exit_quota_eof_allocator_returned<const SIZE: usize>(pre_allocators: PageAllocatorUnLockedMap<SIZE>, post_allocators: PageAllocatorUnLockedMap<SIZE>, allocator_ptr: RwLockPageAllocatorPtr, returned: int) -> bool {
+pub(super) open spec fn thread_exit_quota_eof_allocator_returned<const SIZE: usize>(pre_allocators: PageAllocatorUnLockedMap<SIZE>, post_allocators: PageAllocatorUnLockedMap<SIZE>, allocator_ptr: RwLockPageAllocatorPtr, returned: int) -> bool {
     let allocator = pre_allocators.spec_index(allocator_ptr);
     &&& post_allocators.perms_wf()
     &&& post_allocators.unchanged_except(&pre_allocators, allocator_ptr)
@@ -23,7 +23,7 @@ pub open spec fn thread_exit_quota_eof_allocator_returned<const SIZE: usize>(pre
 /// whole `size` quota, which the write-held `size` allocator `allocator_ptr` of their container regains. Lock owners,
 /// lock ids, and every other object stay.
 #[verifier::opaque]
-pub open spec fn thread_exit_quota_eof_transition_framing(
+pub(super) open spec fn thread_exit_quota_eof_transition_framing(
     pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, allocator_ptr: RwLockPageAllocatorPtr, size: PageSize,
 ) -> bool {
     let process = pre.prc_mp.spec_index(process_ptr);

@@ -2,7 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_cpu_hotplug_spec::*;
 use super::syscall_cpu_hotplug_trace::*;
-use super::cpu_offline_request_child_locked::cpu_offline_request_child_locked;
+use super::syscall_cpu_offline_request_child_locked::cpu_offline_request_child_locked;
 
 verus! {
 /// Asks `target`, a cpu of the `child`-th child of the caller's live, non-zombie container, to go Off at its next schedule

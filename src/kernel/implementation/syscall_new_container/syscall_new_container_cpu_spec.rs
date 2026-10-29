@@ -5,16 +5,13 @@ verus! {
 /// Moves one Off CPU owned by the parent container into the new child container's
 /// CPU set. Every other kernel object is unchanged.
 #[verifier::opaque]
-pub open spec fn new_container_cpu_transfer_eof_transition_framing(
+pub(super) open spec fn new_container_cpu_transfer_eof_transition_framing(
     pre: KernelK, post: KernelK, parent_container: RwLockContainerPtr, child_container: RwLockContainerPtr,
     parent_cpu_set: RwLockCpuSetPtr, child_cpu_set: RwLockCpuSetPtr, transfer_cpu_id: CpuId, thread_id: LockThreadId,
 ) -> bool {
     &&& post == (KernelK { cpu_arr: post.cpu_arr, cpu_set_mp: post.cpu_set_mp, ..pre })
     &&& post.cpu_arr.view().len() == pre.cpu_arr.view().len()
-    &&& forall|cpu_i: CpuId|
-        #![trigger pre.cpu_arr.spec_index(cpu_i)]
-        #![trigger post.cpu_arr.spec_index(cpu_i)]
-        index_valid(NUM_CPUS, cpu_i) && cpu_i != transfer_cpu_id ==> post.cpu_arr.spec_index(cpu_i) == pre.cpu_arr.spec_index(cpu_i)
+    &&& forall|cpu_i: CpuId| #![trigger pre.cpu_arr.spec_index(cpu_i)] #![trigger post.cpu_arr.spec_index(cpu_i)] index_valid(NUM_CPUS, cpu_i) && cpu_i != transfer_cpu_id ==> post.cpu_arr.spec_index(cpu_i) == pre.cpu_arr.spec_index(cpu_i)
     &&& {
         let before = pre.cpu_arr.spec_index(transfer_cpu_id).view();
         let after = post.cpu_arr.spec_index(transfer_cpu_id).view();

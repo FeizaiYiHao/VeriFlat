@@ -47,7 +47,7 @@ pub open spec fn unlock_window_eof_transition_framing(pre: PageTableC<PT_TYPE>, 
     &&& post.lower.window_stale_cpus == pre.lower.window_stale_cpus
 }
 
-/// EOF closure of `lock_window`.
+/// EOF closure of `lock_window`: re-establishes `PageTableC::wf`, with `wf_window_locks` from `lock_window_eof_window_locks`.
 pub(super) proof fn lock_window_eof(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId, lock_token: LockToken)
     requires
         pre.wf(),
@@ -99,7 +99,7 @@ proof fn lock_window_eof_window_locks(pre: PageTableC<PT_TYPE>, post: PageTableC
     reveal(PageTableC::wf_window_locks);
 }
 
-/// EOF closure of `unlock_window`.
+/// EOF closure of `unlock_window`: re-establishes `PageTableC::wf`, with `wf_window_locks` from `unlock_window_eof_window_locks`.
 pub(super) proof fn unlock_window_eof(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
     requires
         pre.wf(),

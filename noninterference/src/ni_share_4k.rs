@@ -37,6 +37,12 @@ pub proof fn share_4k_leaf_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 { reveal(share_4k_leaf_step_pre); reveal(share_4k_leaf_step); reveal(share_4k_leaf_pre_at); reveal(share_4k_leaf_at); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_container_tree_wf); }
 
+/// A share-4k leaf step changes no process's owning container or IOMMU table.
+pub proof fn share_4k_leaf_step_implies_process_owner_and_iommu_table_unchanged(old_u: KernelU, new_u: KernelU, cpu_id: CpuId)
+    requires share_4k_leaf_step_pre(old_u, cpu_id), share_4k_leaf_step(old_u, new_u, cpu_id),
+    ensures forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] new_u.process_map[p].owning_container == old_u.process_map[p].owning_container && new_u.process_map[p].iommu_table == old_u.process_map[p].iommu_table,
+{ reveal(share_4k_leaf_step); reveal(share_4k_leaf_at); }
+
 /// The step of `share_4k_leaf_step_lr` preserves isolation. `progress` is the running thread's share and
 /// `source` the process whose entry it copies. A source process outside `a` is the pages peer's, and the
 /// page it shares is one no process of `b` maps in its page table or IOMMU table.
@@ -59,5 +65,8 @@ pub proof fn share_4k_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuI
                     ==> old_u.process_map[q].iommu_table->Some_0.mapping_4k[v].addr != shared
         },
     ensures isolated(new_u, a, b),
-{ reveal(share_4k_leaf_step_pre); reveal(share_4k_leaf_step); reveal(share_4k_leaf_pre_at); reveal(share_4k_leaf_at); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_container_tree_wf); }
+{
+    share_4k_leaf_step_implies_process_owner_and_iommu_table_unchanged(old_u, new_u, cpu_id);
+    reveal(share_4k_leaf_step_pre); reveal(share_4k_leaf_step); reveal(share_4k_leaf_pre_at); reveal(share_4k_leaf_at); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_container_tree_wf);
+}
 } // verus!

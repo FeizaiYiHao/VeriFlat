@@ -5,7 +5,7 @@ verus! {
 /// Dequeues and schedules the endpoint waiter and, on success, moves the Off
 /// CPU between the source and target CPU sets, preserving PCID and hardware cr3/pcid word.
 #[verifier::opaque]
-pub open spec fn ipc_cpu_rendezvous_eof_transition_framing(
+pub(super) open spec fn ipc_cpu_rendezvous_eof_transition_framing(
     pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr,
     endpoint_ptr: RwLockEndpointPtr, peer_scheduler_ptr: RwLockSchedulerPtr, wake_cpu: CpuId,
     source_container: RwLockContainerPtr, target_container: RwLockContainerPtr,

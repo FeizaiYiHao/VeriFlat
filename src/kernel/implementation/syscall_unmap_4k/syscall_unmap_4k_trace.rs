@@ -33,8 +33,7 @@ pub(super) proof fn unmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VA
             &&& (ret is Success || ret is Error) ==> live && !process.view().zombie && krnl.pt_mp.dom().contains(process.view().pagetable)
             &&& ret is Success ==> mapped
             &&& ret is Error ==> !mapped
-            &&& ret is CpuIdle || ret is ErrorContainerKilled || ret is ErrorContainerLockOrderConflict || ret is ErrorContainerZombie || ret is ErrorProcessKilled || ret is ErrorThreadKilled
-                || ret is Success || ret is Error
+            &&& ret is CpuIdle || ret is ErrorContainerKilled || ret is ErrorContainerLockOrderConflict || ret is ErrorContainerZombie || ret is ErrorProcessKilled || ret is ErrorThreadKilled || ret is Success || ret is Error
         },
     ensures
         unmap_4k_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, va, range) == ret,
@@ -50,6 +49,34 @@ pub(super) proof fn unmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VA
         }
     }
 }
+
+/// A rejection by `unmap_4k_lock_running_thread`, stated on the entry state, is the unmap result `ret`.
+pub(super) proof fn unmap_4k_lock_rejected_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAddr, range: usize, ret: RetValueType)
+    requires
+        krnl.inv(),
+        index_valid(NUM_CPUS, cpu_id),
+        !(range == 0 || range > usize::MAX / 4096 || !spec_va_4k_valid(va) || va >= usize::MAX - range * 4096 || !spec_va_4k_range_valid(va, range)),
+        ({
+            let cpu = krnl.cpu_arr.spec_index(cpu_id).value;
+            let thread_ptr = cpu.view().view().current_thread->Some_0;
+            let thread = krnl.thr_mp.spec_index(thread_ptr);
+            let container = krnl.ctn_mp.spec_index(thread.view().owning_container);
+            let process = krnl.prc_mp.spec_index(thread.view().owning_proc);
+            let unowned = container.lock_process_owner_u() is None;
+            &&& ret is CpuIdle || ret is ErrorContainerKilled || ret is ErrorContainerLockOrderConflict || ret is ErrorContainerZombie || ret is ErrorProcessKilled || ret is ErrorThreadKilled
+            &&& !(ret is Success)
+            &&& ret is CpuIdle ==> !(cpu.view().view().state is Running) || cpu.being_killed()
+            &&& !(ret is CpuIdle) ==> cpu.view().view().state is Running && !cpu.being_killed() && cpu.view().view().current_thread is Some
+            &&& !(ret is CpuIdle) ==> krnl.thr_mp.dom().contains(thread_ptr) && krnl.prc_mp.dom().contains(thread.view().owning_proc) && krnl.ctn_mp.dom().contains(thread.view().owning_container)
+            &&& ret is ErrorContainerKilled ==> container.being_killed()
+            &&& ret is ErrorContainerLockOrderConflict ==> !container.being_killed() && container.lock_process_owner_u() is Some && container.lock_process_owner_u()->Some_0 < LockOwnerId::Some(process.view_rodata().view().depth)
+            &&& ret is ErrorContainerZombie ==> !container.being_killed() && unowned && container.view().zombie
+            &&& ret is ErrorProcessKilled ==> !container.being_killed() && unowned && !container.view().zombie && process.being_killed()
+            &&& ret is ErrorThreadKilled ==> !container.being_killed() && unowned && !container.view().zombie && !process.being_killed() && thread.being_killed()
+        }),
+    ensures
+        unmap_4k_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, va, range) == ret,
+{ unmap_4k_result_from_k(krnl, cpu_id, va, range, ret); }
 
 /// Write-locking the caller's context under its process depth and recording the first page is the enter step on `pre`/`post`.
 pub(super) proof fn unmap_4k_enter_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, range: VaRange4K)

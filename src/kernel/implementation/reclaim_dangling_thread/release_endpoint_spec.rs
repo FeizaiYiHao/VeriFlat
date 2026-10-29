@@ -40,8 +40,7 @@ pub open spec fn release_endpoint_eof_transition_framing(
             &&& b.locking_thread() == a.locking_thread()
             &&& b.killer_info() == a.killer_info()
             &&& b.control() == a.control()
-            &&& b.view_ghost() == if c == endpoint_owner { ContainerGhost { owned_endpoints: Ghost(a.view_ghost().owned_endpoints.view().remove(endpoint_ptr)), ..a.view_ghost() } }
-                else { a.view_ghost() }
+            &&& b.view_ghost() == if c == endpoint_owner { ContainerGhost { owned_endpoints: Ghost(a.view_ghost().owned_endpoints.view().remove(endpoint_ptr)), ..a.view_ghost() } } else { a.view_ghost() }
         }
     &&& post.pg_arr.entries_unchanged_except(&pre.pg_arr, page_index)
     &&& forall|i: PageIndex| #![trigger pre.pg_arr.spec_index(i).view().view().state] #![trigger post.pg_arr.spec_index(i).view().view().state]

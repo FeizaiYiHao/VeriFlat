@@ -64,15 +64,11 @@ pub open spec fn share_mapping_4k_leaf_ready(krnl: &KernelK, source_pagetable: R
 }
 
 pub open spec fn share_mapping_4k_range_owner_compatible(krnl: &KernelK, source_pagetable: RwLockPageTableRoot, target_container: RwLockContainerPtr, source_range: &VaRange4K) -> bool {
-    forall|i: int|
-        #![trigger source_range.view().spec_index(i)]
-        0 <= i < source_range.len ==> share_mapping_4k_leaf_owner_compatible(krnl, source_pagetable, target_container, source_range.view().spec_index(i))
+    forall|i: int| #![trigger source_range.view().spec_index(i)] 0 <= i < source_range.len ==> share_mapping_4k_leaf_owner_compatible(krnl, source_pagetable, target_container, source_range.view().spec_index(i))
 }
 
 pub open spec fn share_mapping_4k_range_owner_compatible_prefix(krnl: &KernelK, source_pagetable: RwLockPageTableRoot, target_container: RwLockContainerPtr, source_range: &VaRange4K, upper: int) -> bool {
-    forall|i: int|
-        #![trigger source_range.view().spec_index(i)]
-        0 <= i < upper ==> share_mapping_4k_leaf_owner_compatible(krnl, source_pagetable, target_container, source_range.view().spec_index(i))
+    forall|i: int| #![trigger source_range.view().spec_index(i)] 0 <= i < upper ==> share_mapping_4k_leaf_owner_compatible(krnl, source_pagetable, target_container, source_range.view().spec_index(i))
 }
 
 /// A present source range of a well-formed 4K mapping resolves to `Mapped4k` pages that record each source leaf.
@@ -117,9 +113,7 @@ pub open spec fn share_mapping_4k_target_map_with_shared_prefix(source: Map<VAdd
 /// Every not-yet-shared target VA is still absent from the 4K mapping.
 #[verifier::opaque]
 pub open spec fn share_mapping_4k_target_range_empty_from(pagetable: Map<VAddr, MapEntry>, target_range: &VaRange4K, first: int) -> bool {
-    forall|i: int|
-        #![trigger pagetable.dom().contains(target_range.view().spec_index(i))]
-        first <= i < target_range.len ==> !pagetable.dom().contains(target_range.view().spec_index(i))
+    forall|i: int| #![trigger pagetable.dom().contains(target_range.view().spec_index(i))] first <= i < target_range.len ==> !pagetable.dom().contains(target_range.view().spec_index(i))
 }
 
 /// Checks a source 4K range without mutating krnl or page-table state.

@@ -122,18 +122,6 @@ pub open spec fn scheduler_context_switch_eof_transition_framing(pre: KernelK, p
         index_valid(NUM_CPUS, c) && pcid_valid(p) && !(flush && c == cpu_id && p == pcid) ==> post.cpu_tlb.spec_index((c, p)) == pre.cpu_tlb.spec_index((c, p)))
 }
 
-/// The PCID whose `(cpu_id, pcid)` TLB entry the switch to `next_thread` flushes, if any.
-pub open spec fn schedule_flushed_pcid(pre: KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr) -> Option<Pcid> {
-    let next_process = pre.thr_mp.spec_index(next_thread).view().owning_proc;
-    let target = pre.prc_mp.spec_index(next_process).view_rodata().view();
-    let pcid = target.pcid;
-    let dirty = pre.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
-    if pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush
-        || (dirty is Some && (dirty.unwrap().process_ptr != next_process || dirty.unwrap().pagetable_ptr != target.pagetable)) {
-        Some(pcid)
-    } else { None }
-}
-
 /// User-visible precondition of the scheduler switch step on `cpu_id`; the cpu, the next thread, and
 /// any current thread and process are unlocked.
 #[verifier::opaque]

@@ -5,18 +5,9 @@ use super::syscall_alloc_quota_trace::*;
 use super::syscall_alloc_quota_eof::*;
 verus! {
     pub(super) fn commit_alloc_quota_4k(
-        krnl: &mut KernelK,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        Tracked(steps): Tracked<&mut KernelSteps>,
-        cpu_id: CpuId,
-        container_ptr: RwLockContainerPtr,
-        process_ptr: RwLockProcessPtr,
-        alloc_ptr_4k: RwLockPageAllocatorPtr,
-        alloc_amount: usize,
-        cpu_lock_perm: Tracked<LockPerm>,
-        container_lock_perm: Tracked<LockPerm>,
-        quota_lock_perm: Tracked<LockPerm>,
-        process_lock_perm: Tracked<LockPerm>,
+        krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
+        container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, alloc_ptr_4k: RwLockPageAllocatorPtr, alloc_amount: usize,
+        cpu_lock_perm: Tracked<LockPerm>, container_lock_perm: Tracked<LockPerm>, quota_lock_perm: Tracked<LockPerm>, process_lock_perm: Tracked<LockPerm>,
     )
         requires
             old(krnl).inv(),
@@ -171,17 +162,9 @@ verus! {
     }
 
     pub(super) fn commit_alloc_thread_quota_4k(
-        krnl: &mut KernelK,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        Tracked(steps): Tracked<&mut KernelSteps>,
-        cpu_id: CpuId,
-        container_ptr: RwLockContainerPtr,
-        process_ptr: RwLockProcessPtr,
-        thread_ptr: RwLockThreadPtr,
-        alloc_amount: usize,
-        cpu_lock_perm: Tracked<LockPerm>,
-        process_lock_perm: Tracked<LockPerm>,
-        thread_lock_perm: Tracked<LockPerm>,
+        krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
+        container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, alloc_amount: usize,
+        cpu_lock_perm: Tracked<LockPerm>, process_lock_perm: Tracked<LockPerm>, thread_lock_perm: Tracked<LockPerm>,
     )
         requires
             old(krnl).inv(),
@@ -309,18 +292,9 @@ verus! {
     }
 
     pub(super) fn commit_alloc_quota_2m(
-        krnl: &mut KernelK,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        Tracked(steps): Tracked<&mut KernelSteps>,
-        cpu_id: CpuId,
-        container_ptr: RwLockContainerPtr,
-        process_ptr: RwLockProcessPtr,
-        alloc_ptr_2m: RwLockPageAllocatorPtr,
-        alloc_amount: usize,
-        cpu_lock_perm: Tracked<LockPerm>,
-        container_lock_perm: Tracked<LockPerm>,
-        quota_lock_perm: Tracked<LockPerm>,
-        process_lock_perm: Tracked<LockPerm>,
+        krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
+        container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, alloc_ptr_2m: RwLockPageAllocatorPtr, alloc_amount: usize,
+        cpu_lock_perm: Tracked<LockPerm>, container_lock_perm: Tracked<LockPerm>, quota_lock_perm: Tracked<LockPerm>, process_lock_perm: Tracked<LockPerm>,
     )
         requires
             old(krnl).inv(),
@@ -473,17 +447,9 @@ verus! {
     }
 
     pub(super) fn commit_alloc_thread_quota_2m(
-        krnl: &mut KernelK,
-        Tracked(lctx): Tracked<&mut LocalContext>,
-        Tracked(steps): Tracked<&mut KernelSteps>,
-        cpu_id: CpuId,
-        container_ptr: RwLockContainerPtr,
-        process_ptr: RwLockProcessPtr,
-        thread_ptr: RwLockThreadPtr,
-        alloc_amount: usize,
-        cpu_lock_perm: Tracked<LockPerm>,
-        process_lock_perm: Tracked<LockPerm>,
-        thread_lock_perm: Tracked<LockPerm>,
+        krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
+        container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, alloc_amount: usize,
+        cpu_lock_perm: Tracked<LockPerm>, process_lock_perm: Tracked<LockPerm>, thread_lock_perm: Tracked<LockPerm>,
     )
         requires
             old(krnl).inv(),

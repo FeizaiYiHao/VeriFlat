@@ -3,7 +3,7 @@ use crate::*;
 use super::*;
 
 verus! {
-pub(super) proof fn eof_not_in_moved_pages(
+pub(super) proof fn publish_staged_container_root_eof_not_in_moved_pages(
     container_page: PagePtr, pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
     scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, page_ptr: PagePtr,
 )
@@ -15,7 +15,7 @@ pub(super) proof fn eof_not_in_moved_pages(
         !new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page,).contains(page_ptr),
 { reveal(new_container_moved_pages); }
 
-pub(super) proof fn eof_page_fields_eq_outside_moved_pages(
+pub(super) proof fn publish_staged_container_root_eof_page_fields_eq_outside_moved_pages(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
     scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
@@ -92,7 +92,7 @@ pub(super) proof fn eof_page_fields_eq_outside_moved_pages(
 }
 
 #[verifier::spinoff_prover]
-pub(super) broadcast proof fn eof_unmodified_object_page_state_eq(
+pub(super) broadcast proof fn publish_staged_container_root_eof_unmodified_object_page_state_eq(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr, scheduler_page: PagePtr,
     cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr, funding_pages: Seq<PagePtr>,
@@ -229,14 +229,14 @@ pub(super) broadcast proof fn eof_unmodified_object_page_state_eq(
         }
     };
     assert(!new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).contains(page_ptr)) by { reveal(new_container_moved_pages); };
-    eof_page_fields_eq_outside_moved_pages(
+    publish_staged_container_root_eof_page_fields_eq_outside_moved_pages(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k, page_index,
     );
 }
 
-pub(super) proof fn eof_existing_container_page_not_staged_4k(
+pub(super) proof fn publish_staged_container_root_eof_existing_container_page_not_staged_4k(
     pre: KernelK, current_thread_ptr: RwLockThreadPtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
     scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
     funding_pages: Seq<PagePtr>, container_ptr: RwLockContainerPtr,
@@ -268,7 +268,7 @@ pub(super) proof fn eof_existing_container_page_not_staged_4k(
     };
 }
 
-pub(super) proof fn eof_existing_container_page_not_staged_2m(pre: KernelK, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr, pcid_allocator_page: PagePtr, container_ptr: RwLockContainerPtr)
+pub(super) proof fn publish_staged_container_root_eof_existing_container_page_not_staged_2m(pre: KernelK, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr, pcid_allocator_page: PagePtr, container_ptr: RwLockContainerPtr)
     requires
         pre.inv(),
         page_ptr_2m_valid(container_page),
@@ -302,7 +302,7 @@ pub(super) proof fn eof_existing_container_page_not_staged_2m(pre: KernelK, curr
     };
 }
 
-pub(super) proof fn eof_existing_container_page_state_eq(
+pub(super) proof fn publish_staged_container_root_eof_existing_container_page_state_eq(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
     scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
@@ -337,17 +337,17 @@ pub(super) proof fn eof_existing_container_page_state_eq(
     ensures
         post.pg_arr.spec_index(page_ptr2page_index(container_ptr)).view().view().state == pre.pg_arr.spec_index(page_ptr2page_index(container_ptr)).view().view().state,
 {
-    eof_not_in_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, container_ptr);
+    publish_staged_container_root_eof_not_in_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, container_ptr);
     let container_index = page_ptr2page_index(container_ptr);
     assert(page_index2page_ptr(container_index) == container_ptr);
-    eof_page_fields_eq_outside_moved_pages(
+    publish_staged_container_root_eof_page_fields_eq_outside_moved_pages(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k, container_index,
     );
 }
 
-pub(super) proof fn eof_pre_container_page_in_map(pre: KernelK, page_index: PageIndex,)
+pub(super) proof fn publish_staged_container_root_eof_pre_container_page_in_map(pre: KernelK, page_index: PageIndex,)
     requires
         pre.inv(),
         index_valid(NUM_PAGES, page_index),
@@ -356,7 +356,7 @@ pub(super) proof fn eof_pre_container_page_in_map(pre: KernelK, page_index: Page
         pre.ctn_mp.dom().contains(page_index2page_ptr(page_index)),
 { assert(container_pages_forward_wf(pre.pg_arr, pre.ctn_mp)) by { reveal(container_pages_wf); }; }
 
-pub(super) proof fn eof_existing_post_container_page_state_eq(
+pub(super) proof fn publish_staged_container_root_eof_existing_post_container_page_state_eq(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
     scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
@@ -402,15 +402,15 @@ pub(super) proof fn eof_existing_post_container_page_state_eq(
             if page_index == page_ptr2page_index(pcid_allocator_page) { } else { }
         }
     };
-    eof_not_in_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, page_ptr);
-    eof_page_fields_eq_outside_moved_pages(
+    publish_staged_container_root_eof_not_in_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, page_ptr);
+    publish_staged_container_root_eof_page_fields_eq_outside_moved_pages(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k, page_index,
     );
 }
 
-pub(super) broadcast proof fn eof_container_pages_forward_new(
+pub(super) broadcast proof fn publish_staged_container_root_eof_container_pages_forward_new(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr, scheduler_page: PagePtr,
     cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr, funding_pages: Seq<PagePtr>,
@@ -441,7 +441,7 @@ pub(super) broadcast proof fn eof_container_pages_forward_new(
     assert(post.ctn_mp.dom().contains(container_page)) by { reveal(publish_staged_container_root_eof_transition_framing); };
 }
 
-pub(super) broadcast proof fn eof_container_pages_forward_existing(
+pub(super) broadcast proof fn publish_staged_container_root_eof_container_pages_forward_existing(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr, scheduler_page: PagePtr,
     cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr, funding_pages: Seq<PagePtr>,
@@ -484,15 +484,15 @@ pub(super) broadcast proof fn eof_container_pages_forward_existing(
         post.ctn_mp.dom().contains(page_index2page_ptr(page_index)),
 {
     reveal(publish_staged_container_root_eof_transition_framing);
-    eof_existing_post_container_page_state_eq(
+    publish_staged_container_root_eof_existing_post_container_page_state_eq(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k, page_index,
     );
-    eof_pre_container_page_in_map(pre, page_index,);
+    publish_staged_container_root_eof_pre_container_page_in_map(pre, page_index,);
 }
 
-pub(super) broadcast proof fn eof_container_pages_backward(
+pub(super) broadcast proof fn publish_staged_container_root_eof_container_pages_backward(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr, scheduler_page: PagePtr,
     cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr, funding_pages: Seq<PagePtr>,
@@ -535,9 +535,9 @@ pub(super) broadcast proof fn eof_container_pages_backward(
     reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
     if container_ptr == container_page { } else {
         assert(container_pages_backward_wf(pre.pg_arr, pre.ctn_mp)) by { reveal(container_pages_wf); };
-        eof_existing_container_page_not_staged_4k(pre, current_thread_ptr, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages, container_ptr);
-        eof_existing_container_page_not_staged_2m(pre, current_thread_ptr, container_page, pcid_allocator_page, container_ptr,);
-        eof_existing_container_page_state_eq(
+        publish_staged_container_root_eof_existing_container_page_not_staged_4k(pre, current_thread_ptr, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages, container_ptr);
+        publish_staged_container_root_eof_existing_container_page_not_staged_2m(pre, current_thread_ptr, container_page, pcid_allocator_page, container_ptr,);
+        publish_staged_container_root_eof_existing_container_page_state_eq(
             pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
             allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
             allocator_quota_4k, process_quota_4k, container_ptr,
@@ -545,7 +545,7 @@ pub(super) broadcast proof fn eof_container_pages_backward(
     }
 }
 
-pub(super) broadcast proof fn eof_existing_pagetable_closure_page_backward(
+pub(super) broadcast proof fn publish_staged_container_root_eof_existing_pagetable_closure_page_backward(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr, scheduler_page: PagePtr,
     cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr, funding_pages: Seq<PagePtr>,
@@ -603,277 +603,14 @@ pub(super) broadcast proof fn eof_existing_pagetable_closure_page_backward(
         }
     };
     page_ptr_valid_imply_page_index_valid();
-    eof_unmodified_object_page_state_eq(
+    publish_staged_container_root_eof_unmodified_object_page_state_eq(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k, page_ptr2page_index(pt_page_ptr),
     );
 }
 
-pub(super) broadcast proof fn eof_thread_staged_pages_4k_forward(
-    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
-    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr, scheduler_page: PagePtr,
-    cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr, funding_pages: Seq<PagePtr>,
-    allocator_quota_4k: usize, process_quota_4k: usize, page_index: PageIndex,
-)
-    requires
-        pre.inv(),
-        page_ptr_2m_valid(container_page),
-        page_ptr_2m_valid(pcid_allocator_page),
-        page_ptr_valid(allocator_4k_page),
-        page_ptr_valid(allocator_2m_page),
-        page_ptr_valid(allocator_1g_page),
-        page_ptr_valid(scheduler_page),
-        page_ptr_valid(cpu_set_page),
-        page_ptr_valid(process_page),
-        page_ptr_valid(pagetable_page),
-        page_ptr_valid(l4_page),
-        page_ptr_valid(thread_page),
-        publish_staged_container_root_eof_transition_framing(
-            pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
-            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
-            allocator_quota_4k, process_quota_4k,
-        ),
-        publish_staged_container_root_eof_preconditions(
-            pre, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
-            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
-            allocator_quota_4k, process_quota_4k,
-        ),
-        index_valid(NUM_PAGES, page_index),
-        post.pg_arr.spec_index(page_index).view().view().state is Owned4k,
-    ensures
-        #![trigger
-            publish_staged_container_root_eof_transition_framing(
-                pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page,
-                allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page,
-                funding_pages, allocator_quota_4k, process_quota_4k,
-            ),
-            post.pg_arr.spec_index(page_index).view().view().state
-        ]
-        {
-            let thread_ptr = post.pg_arr.spec_index(page_index).view().view().state->Owned4k_thread_ptr;
-            &&& post.thr_mp.dom().contains(thread_ptr)
-            &&& post.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().contains(page_index2page_ptr(page_index))
-        },
-{
-    reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
-    eof_unmodified_object_page_state_eq(
-        pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
-        allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
-        allocator_quota_4k, process_quota_4k, page_index,
-    );
-    let page_ptr = page_index2page_ptr(page_index);
-    let thread_ptr = post.pg_arr.spec_index(page_index).view().view().state->Owned4k_thread_ptr;
-    assert(pre.thr_mp.dom().contains(thread_ptr)) by { reveal(thread_staged_pages_4k_wf); };
-    assert(pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr)) by { reveal(thread_staged_pages_4k_wf); };
-    if thread_ptr == current_thread_ptr {
-        assert(!funding_pages.to_set().contains(page_ptr)) by { page_index_roundtrip(); };
-        assert(!new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page,).contains(page_ptr)) by {
-            reveal(new_container_bootstrap_4k_pages); page_index_roundtrip();
-        };
-    } else { }
-}
-
-pub(super) broadcast proof fn eof_thread_staged_pages_4k_backward(
-    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
-    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr, scheduler_page: PagePtr,
-    cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr, funding_pages: Seq<PagePtr>,
-    allocator_quota_4k: usize, process_quota_4k: usize, thread_ptr: RwLockThreadPtr, page_ptr: PagePtr,
-)
-    requires
-        pre.inv(),
-        page_ptr_2m_valid(container_page),
-        page_ptr_2m_valid(pcid_allocator_page),
-        page_ptr_valid(allocator_4k_page),
-        page_ptr_valid(allocator_2m_page),
-        page_ptr_valid(allocator_1g_page),
-        page_ptr_valid(scheduler_page),
-        page_ptr_valid(cpu_set_page),
-        page_ptr_valid(process_page),
-        page_ptr_valid(pagetable_page),
-        page_ptr_valid(l4_page),
-        page_ptr_valid(thread_page),
-        publish_staged_container_root_eof_transition_framing(
-            pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
-            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
-            allocator_quota_4k, process_quota_4k,
-        ),
-        publish_staged_container_root_eof_preconditions(
-            pre, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
-            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
-            allocator_quota_4k, process_quota_4k,
-        ),
-        post.thr_mp.dom().contains(thread_ptr),
-        post.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr),
-    ensures
-        #![trigger
-            publish_staged_container_root_eof_transition_framing(
-                pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page,
-                allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page,
-                funding_pages, allocator_quota_4k, process_quota_4k,
-            ),
-            post.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr)
-        ]
-        page_ptr_valid(page_ptr) && post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Owned4k { thread_ptr }),
-{
-    reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
-    if thread_ptr == current_thread_ptr {
-        assert(pre.pg_arr.spec_index(page_ptr2page_index(thread_page)).view().view().state == (PageState::Owned4k { thread_ptr: current_thread_ptr })) by { reveal(thread_staged_pages_4k_wf); };
-    } else {
-        assert(page_ptr_valid(page_ptr)) by { reveal(thread_staged_pages_4k_wf); };
-        assert(pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Owned4k { thread_ptr })) by { reveal(thread_staged_pages_4k_wf); };
-        page_ptr_valid_imply_page_index_valid();
-        eof_unmodified_object_page_state_eq(
-            pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
-            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
-            allocator_quota_4k, process_quota_4k, page_ptr2page_index(page_ptr),
-        );
-    }
-}
-
-pub(super) broadcast proof fn eof_thread_staged_pages_2m_forward(
-    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
-    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr, scheduler_page: PagePtr,
-    cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr, funding_pages: Seq<PagePtr>,
-    allocator_quota_4k: usize, process_quota_4k: usize, page_index: PageIndex,
-)
-    requires
-        thread_staged_pages_2m_wf(pre.thr_mp, pre.pg_arr),
-        publish_staged_container_root_eof_transition_framing(
-            pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
-            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
-            allocator_quota_4k, process_quota_4k,
-        ),
-        publish_staged_container_root_eof_preconditions(
-            pre, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
-            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
-            allocator_quota_4k, process_quota_4k,
-        ),
-        index_valid(NUM_PAGES, page_index),
-        page_ptr_2m_valid(container_page),
-        page_ptr_2m_valid(pcid_allocator_page),
-        page_ptr_valid(allocator_4k_page),
-        page_ptr_valid(allocator_2m_page),
-        page_ptr_valid(allocator_1g_page),
-        page_ptr_valid(scheduler_page),
-        page_ptr_valid(cpu_set_page),
-        page_ptr_valid(process_page),
-        page_ptr_valid(pagetable_page),
-        page_ptr_valid(l4_page),
-        post.pg_arr.spec_index(page_index).view().view().state is Owned2m,
-    ensures
-        #![trigger
-            publish_staged_container_root_eof_transition_framing(
-                pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page,
-                allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page,
-                funding_pages, allocator_quota_4k, process_quota_4k,
-            ),
-            post.pg_arr.spec_index(page_index).view().view().state
-        ]
-        {
-            &&& post.thr_mp.dom().contains(post.pg_arr.spec_index(page_index).view().view().state->Owned2m_thread_ptr)
-            &&& post.thr_mp.spec_index(post.pg_arr.spec_index(page_index).view().view().state->Owned2m_thread_ptr).view().temp_alloc_cache_2m.view().contains(page_index2page_ptr(page_index))
-        },
-{
-    hide(Seq::contains); reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
-    page_index_valid_imply_page_ptr_valid(); page_index_roundtrip();
-    assert(!new_container_moved_pages(
-        container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page,
-    ).contains(page_index2page_ptr(page_index))) by {
-        reveal(Seq::contains); reveal(new_container_moved_pages); reveal(new_container_bootstrap_4k_pages);
-        page_ptr_2m_valid_imply_page_index_2m_valid(container_page); page_ptr_2m_valid_imply_page_index_2m_valid(pcid_allocator_page);
-        broadcast use page_2m_ptr_prefix_member_bounds;
-    };
-    eof_page_fields_eq_outside_moved_pages(
-        pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
-        allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
-        allocator_quota_4k, process_quota_4k, page_index,
-    );
-    assert(thread_staged_pages_2m_forward_wf(pre.thr_mp, pre.pg_arr)) by { reveal(thread_staged_pages_2m_wf); };
-}
-
-pub(super) broadcast proof fn eof_thread_staged_pages_2m_backward(
-    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
-    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr, scheduler_page: PagePtr,
-    cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr, funding_pages: Seq<PagePtr>,
-    allocator_quota_4k: usize, process_quota_4k: usize, thread_ptr: RwLockThreadPtr, page_ptr: PagePtr,
-)
-    requires
-        pre.inv(),
-        page_ptr_2m_valid(container_page),
-        page_ptr_2m_valid(pcid_allocator_page),
-        page_ptr_valid(allocator_4k_page),
-        page_ptr_valid(allocator_2m_page),
-        page_ptr_valid(allocator_1g_page),
-        page_ptr_valid(scheduler_page),
-        page_ptr_valid(cpu_set_page),
-        page_ptr_valid(process_page),
-        page_ptr_valid(pagetable_page),
-        page_ptr_valid(l4_page),
-        post.thr_mp.dom().contains(thread_ptr),
-        post.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m.view().contains(page_ptr),
-        publish_staged_container_root_eof_transition_framing(
-            pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
-            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
-            allocator_quota_4k, process_quota_4k,
-        ),
-        publish_staged_container_root_eof_preconditions(
-            pre, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
-            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
-            allocator_quota_4k, process_quota_4k,
-        ),
-    ensures
-        #![trigger
-            publish_staged_container_root_eof_transition_framing(
-                pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page,
-                allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page,
-                funding_pages, allocator_quota_4k, process_quota_4k,
-            ),
-            post.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m.view().contains(page_ptr)
-        ]
-        {
-            &&& page_ptr_valid(page_ptr)
-            &&& post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Owned2m { thread_ptr })
-        },
-{
-    reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
-    assert(hugepage_2m_tail_forward_wf(pre.pg_arr)) by { reveal(hugepage_2m_wf); };
-    page_ptr_2m_valid_imply_page_index_2m_valid(container_page); page_ptr_2m_valid_imply_page_index_2m_valid(pcid_allocator_page);
-    assert(pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Owned2m { thread_ptr })) by { reveal(thread_staged_pages_2m_wf); };
-    assert(page_ptr_valid(page_ptr)) by { reveal(thread_staged_pages_2m_wf); };
-    page_ptr_valid_imply_page_index_valid();
-    assert(!funding_pages.to_set().contains(page_ptr)) by { reveal(thread_staged_pages_4k_wf); };
-    assert(!page_2m_tail_indices(page_ptr2page_index(container_page)).contains(page_ptr2page_index(page_ptr))) by {
-        if page_2m_tail_indices(page_ptr2page_index(container_page)).contains(page_ptr2page_index(page_ptr)) { }
-    };
-    assert(!page_2m_tail_indices(page_ptr2page_index(pcid_allocator_page)).contains(page_ptr2page_index(page_ptr))) by {
-        if page_2m_tail_indices(page_ptr2page_index(pcid_allocator_page)).contains(page_ptr2page_index(page_ptr)) { }
-    };
-    assert(!new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).contains(page_ptr)) by { reveal(thread_staged_pages_4k_wf); };
-    assert(!page_2m_all_ptrs(page_ptr2page_index(container_page)).contains(page_ptr)) by {
-        if page_2m_all_ptrs(page_ptr2page_index(container_page)).contains(page_ptr) {
-            page_2m_ptr_prefix_member_bounds(page_ptr2page_index(container_page), 512, page_ptr,);
-            assert(page_ptr2page_index(page_ptr) != page_ptr2page_index(container_page)) by { page_ptr2page_index_injective(); };
-        }
-    };
-    assert(!page_2m_all_ptrs(page_ptr2page_index(pcid_allocator_page)).contains(page_ptr)) by {
-        if page_2m_all_ptrs(page_ptr2page_index(pcid_allocator_page)).contains(page_ptr) {
-            page_2m_ptr_prefix_member_bounds(page_ptr2page_index(pcid_allocator_page), 512, page_ptr,);
-            assert(page_ptr2page_index(page_ptr) != page_ptr2page_index(pcid_allocator_page)) by { page_ptr2page_index_injective(); };
-        }
-    };
-    assert(!new_container_moved_pages(
-        container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page,
-    ).contains(page_ptr)) by { reveal(new_container_moved_pages); page_ptr2page_index_injective(); };
-    page_ptr_roundtrip();
-    eof_page_fields_eq_outside_moved_pages(
-        pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
-        allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
-        allocator_quota_4k, process_quota_4k, page_ptr2page_index(page_ptr),
-    );
-}
-
-pub(super) broadcast proof fn eof_hugepage_2m_head_valid(
+pub(super) broadcast proof fn publish_staged_container_root_eof_hugepage_2m_head_valid(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr, scheduler_page: PagePtr,
     cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr, funding_pages: Seq<PagePtr>,
@@ -936,7 +673,7 @@ pub(super) broadcast proof fn eof_hugepage_2m_head_valid(
         reveal(Seq::contains); reveal(new_container_bootstrap_4k_pages);
     };
     assert(!new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).contains(page_ptr)) by { reveal(new_container_moved_pages); };
-    eof_page_fields_eq_outside_moved_pages(
+    publish_staged_container_root_eof_page_fields_eq_outside_moved_pages(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k, page_index,
@@ -944,7 +681,7 @@ pub(super) broadcast proof fn eof_hugepage_2m_head_valid(
 }
 
 #[verifier::spinoff_prover]
-pub(super) broadcast proof fn eof_hugepage_2m_tail_forward(
+pub(super) broadcast proof fn publish_staged_container_root_eof_hugepage_2m_tail_forward(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr, scheduler_page: PagePtr,
     cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr, funding_pages: Seq<PagePtr>,
@@ -1003,7 +740,7 @@ pub(super) broadcast proof fn eof_hugepage_2m_tail_forward(
     let pcid_allocator_head = page_ptr2page_index(pcid_allocator_page);
     assert(hugepage_2m_head_valid_wf(pre.pg_arr)) by { reveal(hugepage_2m_wf); };
     assert(hugepage_2m_tail_forward_wf(pre.pg_arr)) by { reveal(hugepage_2m_wf); };
-    eof_hugepage_2m_head_valid(
+    publish_staged_container_root_eof_hugepage_2m_head_valid(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k, head_index,
@@ -1025,7 +762,7 @@ pub(super) broadcast proof fn eof_hugepage_2m_tail_forward(
         reveal(Seq::contains); reveal(new_container_bootstrap_4k_pages);
     };
     assert(!new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).contains(head_ptr)) by { reveal(new_container_moved_pages); };
-    eof_page_fields_eq_outside_moved_pages(
+    publish_staged_container_root_eof_page_fields_eq_outside_moved_pages(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k, head_index,
@@ -1037,14 +774,14 @@ pub(super) broadcast proof fn eof_hugepage_2m_tail_forward(
     };
     assert(!funding_pages.to_set().contains(tail_ptr)) by { if funding_pages.to_set().contains(tail_ptr) { reveal(thread_staged_pages_4k_wf); } };
     assert(!new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).contains(tail_ptr)) by { reveal(new_container_moved_pages); };
-    eof_page_fields_eq_outside_moved_pages(
+    publish_staged_container_root_eof_page_fields_eq_outside_moved_pages(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k, tail_index,
     );
 }
 
-pub(super) broadcast proof fn eof_hugepage_2m_tail_backward(
+pub(super) broadcast proof fn publish_staged_container_root_eof_hugepage_2m_tail_backward(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr, scheduler_page: PagePtr,
     cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr, funding_pages: Seq<PagePtr>,
@@ -1116,7 +853,7 @@ pub(super) broadcast proof fn eof_hugepage_2m_tail_backward(
     };
     assert(!new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page,).contains(tail_ptr)) by { reveal(Seq::contains); reveal(new_container_bootstrap_4k_pages); };
     assert(!new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).contains(tail_ptr)) by { reveal(new_container_moved_pages); };
-    eof_page_fields_eq_outside_moved_pages(
+    publish_staged_container_root_eof_page_fields_eq_outside_moved_pages(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k, tail_index,
@@ -1133,14 +870,14 @@ pub(super) broadcast proof fn eof_hugepage_2m_tail_backward(
     };
     assert(!funding_pages.to_set().contains(head_ptr)) by { if funding_pages.to_set().contains(head_ptr) { reveal(thread_staged_pages_4k_wf); } };
     assert(!new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).contains(head_ptr)) by { reveal(new_container_moved_pages); };
-    eof_page_fields_eq_outside_moved_pages(
+    publish_staged_container_root_eof_page_fields_eq_outside_moved_pages(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k, head_index,
     );
 }
 
-pub(super) proof fn eof_object_page_pagetable_wf_4k(
+pub(super) proof fn publish_staged_container_root_eof_object_page_pagetable_wf_4k(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
     scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
@@ -1174,12 +911,12 @@ pub(super) proof fn eof_object_page_pagetable_wf_4k(
 {
     reveal(publish_staged_container_root_eof_transition_framing);
     assert(mapped_4k_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-        broadcast use eof_unmodified_object_page_state_eq; reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf);
+        broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq; reveal(mapped_4k_page_pagetable_wf); reveal(pagetable_lower_wf);
         page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
     };
 }
 
-pub(super) proof fn eof_object_page_pagetable_wf_2m(
+pub(super) proof fn publish_staged_container_root_eof_object_page_pagetable_wf_2m(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
     scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
@@ -1213,12 +950,12 @@ pub(super) proof fn eof_object_page_pagetable_wf_2m(
 {
     reveal(publish_staged_container_root_eof_transition_framing);
     assert(mapped_2m_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-        broadcast use eof_unmodified_object_page_state_eq; reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf);
+        broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq; reveal(mapped_2m_page_pagetable_wf); reveal(pagetable_lower_wf);
         page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
     };
 }
 
-pub(super) proof fn eof_object_page_pagetable_wf_1g(
+pub(super) proof fn publish_staged_container_root_eof_object_page_pagetable_wf_1g(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
     scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
@@ -1252,12 +989,12 @@ pub(super) proof fn eof_object_page_pagetable_wf_1g(
 {
     reveal(publish_staged_container_root_eof_transition_framing);
     assert(mapped_1g_page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by {
-        broadcast use eof_unmodified_object_page_state_eq; reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_perms_wf);
+        broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq; reveal(mapped_1g_page_pagetable_wf); reveal(pagetable_perms_wf);
         page_ptr_roundtrip();
     };
 }
 
-pub(super) proof fn eof_object_page_pagetable_wf(
+pub(super) proof fn publish_staged_container_root_eof_object_page_pagetable_wf(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
     scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
@@ -1288,22 +1025,22 @@ pub(super) proof fn eof_object_page_pagetable_wf(
         ),
     ensures page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
 {
-    eof_object_page_pagetable_wf_4k(
+    publish_staged_container_root_eof_object_page_pagetable_wf_4k(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page,
         scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages, allocator_quota_4k, process_quota_4k,
     );
-    eof_object_page_pagetable_wf_2m(
+    publish_staged_container_root_eof_object_page_pagetable_wf_2m(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page,
         scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages, allocator_quota_4k, process_quota_4k,
     );
-    eof_object_page_pagetable_wf_1g(
+    publish_staged_container_root_eof_object_page_pagetable_wf_1g(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page,
         scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages, allocator_quota_4k, process_quota_4k,
     );
 }
 
 #[verifier::spinoff_prover]
-pub(super) proof fn eof_object_pages_wf(
+pub(super) proof fn publish_staged_container_root_eof_object_pages_wf(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
     scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
@@ -1349,44 +1086,44 @@ pub(super) proof fn eof_object_pages_wf(
         container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr),
         page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr),
 {
-    eof_object_pages_allocators_pagetable(
+    publish_staged_container_root_eof_object_pages_allocators_pagetable(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k,
     );
-    eof_object_pages_process_thread_iommu_endpoint(
+    publish_staged_container_root_eof_object_pages_process_thread_iommu_endpoint(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k,
     );
-    eof_object_pages_scheduler_cpu_set(
+    publish_staged_container_root_eof_object_pages_scheduler_cpu_set(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k,
     );
-    eof_object_pages_pcid_allocator(
+    publish_staged_container_root_eof_object_pages_pcid_allocator(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k,
     );
-    eof_object_page_pagetable_wf(
+    publish_staged_container_root_eof_object_page_pagetable_wf(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k,
     );
-    eof_object_pages_container_process_pagetable(
+    publish_staged_container_root_eof_object_pages_container_process_pagetable(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k,
     );
-    eof_object_pages_iommu(
+    publish_staged_container_root_eof_object_pages_iommu(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k,
     );
 }
 
-pub(super) proof fn eof_hugepage_wf(
+pub(super) proof fn publish_staged_container_root_eof_hugepage_wf(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
     scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
@@ -1419,54 +1156,14 @@ pub(super) proof fn eof_hugepage_wf(
         hugepage_2m_wf(post.pg_arr),
         hugepage_1g_wf(post.pg_arr),
 {
-    assert(hugepage_2m_head_valid_wf(post.pg_arr)) by { assert(hugepage_2m_head_valid_wf(pre.pg_arr)) by { reveal(hugepage_2m_wf); }; broadcast use eof_hugepage_2m_head_valid; };
-    assert(hugepage_2m_tail_forward_wf(post.pg_arr)) by { broadcast use eof_hugepage_2m_tail_forward; };
-    assert(hugepage_2m_tail_backward_wf(post.pg_arr)) by { broadcast use eof_hugepage_2m_tail_backward; };
+    assert(hugepage_2m_head_valid_wf(post.pg_arr)) by { assert(hugepage_2m_head_valid_wf(pre.pg_arr)) by { reveal(hugepage_2m_wf); }; broadcast use publish_staged_container_root_eof_hugepage_2m_head_valid; };
+    assert(hugepage_2m_tail_forward_wf(post.pg_arr)) by { broadcast use publish_staged_container_root_eof_hugepage_2m_tail_forward; };
+    assert(hugepage_2m_tail_backward_wf(post.pg_arr)) by { broadcast use publish_staged_container_root_eof_hugepage_2m_tail_backward; };
     assert(hugepage_2m_wf(post.pg_arr)) by { reveal(hugepage_2m_wf); };
-    assert(hugepage_1g_wf(post.pg_arr)) by { broadcast use eof_unmodified_object_page_state_eq; reveal(hugepage_1g_wf); };
+    assert(hugepage_1g_wf(post.pg_arr)) by { broadcast use publish_staged_container_root_eof_unmodified_object_page_state_eq; reveal(hugepage_1g_wf); };
 }
 
-pub(super) proof fn eof_thread_staged_pages_wf(
-    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
-    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
-    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
-    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize,
-)
-    requires
-        pre.inv(),
-        page_ptr_2m_valid(container_page),
-        page_ptr_2m_valid(pcid_allocator_page),
-        page_ptr_valid(allocator_4k_page),
-        page_ptr_valid(allocator_2m_page),
-        page_ptr_valid(allocator_1g_page),
-        page_ptr_valid(scheduler_page),
-        page_ptr_valid(cpu_set_page),
-        page_ptr_valid(process_page),
-        page_ptr_valid(pagetable_page),
-        page_ptr_valid(l4_page),
-        page_ptr_valid(thread_page),
-        publish_staged_container_root_eof_transition_framing(
-            pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
-            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
-            allocator_quota_4k, process_quota_4k,
-        ),
-        publish_staged_container_root_eof_preconditions(
-            pre, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
-            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
-            allocator_quota_4k, process_quota_4k,
-        ),
-    ensures
-        thread_staged_pages_wf(post.thr_mp, post.pg_arr),
-{
-    reveal(publish_staged_container_root_eof_transition_framing);
-    assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by { broadcast use eof_thread_staged_pages_4k_forward; broadcast use eof_thread_staged_pages_4k_backward; reveal(thread_staged_pages_4k_wf); };
-    assert(thread_staged_pages_2m_backward_wf(post.thr_mp, post.pg_arr)) by { broadcast use eof_thread_staged_pages_2m_backward; };
-    assert(thread_staged_pages_2m_forward_wf(post.thr_mp, post.pg_arr)) by { broadcast use eof_thread_staged_pages_2m_forward; };
-    reveal(thread_staged_pages_2m_wf);
-    assert(thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr)) by { broadcast use eof_unmodified_object_page_state_eq; reveal(thread_staged_pages_1g_wf); };
-}
-
-pub(super) proof fn eof_container_pages_wf(
+pub(super) proof fn publish_staged_container_root_eof_container_pages_wf(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
     scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
@@ -1498,6 +1195,6 @@ pub(super) proof fn eof_container_pages_wf(
     ensures
         container_pages_wf(post.pg_arr, post.ctn_mp),
 {
-    broadcast use eof_container_pages_forward_new; broadcast use eof_container_pages_forward_existing; broadcast use eof_container_pages_backward; reveal(container_pages_wf);
+    broadcast use publish_staged_container_root_eof_container_pages_forward_new; broadcast use publish_staged_container_root_eof_container_pages_forward_existing; broadcast use publish_staged_container_root_eof_container_pages_backward; reveal(container_pages_wf);
 }
 }

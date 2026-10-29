@@ -129,8 +129,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     /// Unlink the table page that `scan` names and return its memory; every mapping stays. Lock preconditions per branch:
     /// an L1 page is unlinked by clearing its L2 entry, the window spin lock word, so this thread holds that window lock; an L2
     /// page is freed whole, so none of its 512 windows is locked; an L3 page carries no window lock.
-    pub fn remove_structure_page(&mut self, Tracked(lower): Tracked<&mut PageTableLower<TABLE_TYPE>>, scan: StructureScan, Tracked(lctx): Tracked<&mut LocalContext>)
-        -> (ret: Tracked<PagePerm4k>)
+    pub fn remove_structure_page(&mut self, Tracked(lower): Tracked<&mut PageTableLower<TABLE_TYPE>>, scan: StructureScan, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<PagePerm4k>)
         requires
             (PageTableC { higher: *old(self), lower: *old(lower) }).wf(),
             (PageTableC { higher: *old(self), lower: *old(lower) }).spec_structure_scan_wf(scan),

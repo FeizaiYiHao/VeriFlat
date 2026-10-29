@@ -8,7 +8,6 @@ use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_
 use super::syscall_new_process_spec::*;
 use super::syscall_new_process_trace::*;
 use super::syscall_new_process_helpers::create_initial_thread_and_finish_new_process;
-use super::syscall_new_process_build::build_new_process_child_structure;
 
 verus! {
 /// Shares the caller's range into the published child and finishes the call: the share steps and the finish step
@@ -205,9 +204,10 @@ pub(super) fn share_and_finish_new_process(
         }) by { reveal(share_4k_objects_k); };
     }
     let ghost origin = Share4kOrigin::NewProcess(NewProcessProgress { range: *source_range, regs: *initial_regs, endpoint_index: endpoint_index_opt, with_iommu: iommu_table is Some, child: Some(child_ptr) });
-    let Tracked(target_window_perms) = build_new_process_child_structure(
-        krnl, source_range, allocator_ptr, current_thread_ptr, child_ptr, container_ptr, cpu_id, source_pagetable_ptr, target_pagetable_ptr, Ghost(origin), Ghost(entry_k),
-        Ghost(entry_lctx), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&current_thread_lock_perm), Tracked(&target_pagetable_lock_perm),
+    let Tracked(target_window_perms) = build_new_child_structure(
+        krnl, source_range, allocator_ptr, current_thread_ptr, child_ptr, container_ptr, None, cpu_id, source_pagetable_ptr, target_pagetable_ptr, Ghost(origin),
+        Ghost(entry_k), Ghost(entry_lctx), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&current_thread_lock_perm), Tracked(&target_pagetable_lock_perm),
+        Tracked(None), Tracked(None),
     );
     proof {
         assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable_ptr, container_ptr, source_range)) by {

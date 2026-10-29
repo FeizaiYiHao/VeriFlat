@@ -630,14 +630,12 @@ impl KernelK {
             final(self).thr_mp.lock_id_by_key(thread_ptr) == old(self).thr_mp.lock_id_by_key(thread_ptr),
             wunlock_ensures(old(self).thr_mp.spec_index(thread_ptr), final(self).thr_mp.spec_index(thread_ptr)),
             // ---- LocalContext: lock dropped; thread preserved ----
-            // NOTE: do NOT assert `kernel_view_locking_state() == old` here —
-            // `unlock_ensures` transitions it Acquire -> Release (same trap as
-            // the NOTE on wunlock_process / LockedArray::wunlock).
+            // Do not restate `kernel_view_locking_state() == old`: see the NOTE on `LockedArray::wunlock` (lock_array.rs).
             final(lctx).kernel_view_locking_state() is Release,
             unlock_ensures(old(lctx), final(lctx), KernelObjId::Thread(thread_ptr), old(self).thr_mp.lock_id_by_key(thread_ptr)),
     {
         proof {
-            assert({ &&& old(self).thr_mp.perms_wf() &&& old(self).thr_mp.spec_index(thread_ptr).inv() }) by { thread_perms_wf_map(old(self).thr_mp); thread_perms_wf_at(old(self).thr_mp, thread_ptr); };
+            assert(old(self).thr_mp.perms_wf() && old(self).thr_mp.spec_index(thread_ptr).inv()) by { thread_perms_wf_map(old(self).thr_mp); thread_perms_wf_at(old(self).thr_mp, thread_ptr); };
             assert(old(lctx).lock_entry_contains(old(self).thr_mp.lock_id_by_key(thread_ptr), KernelObjId::Thread(thread_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         assert(self.thr_mp.spec_index(thread_ptr).wlocked_by(&*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };

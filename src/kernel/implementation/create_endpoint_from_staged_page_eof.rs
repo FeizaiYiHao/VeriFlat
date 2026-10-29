@@ -4,7 +4,7 @@ use crate::*;
 verus! {
 /// Complete kernel-state summary of `create_endpoint_from_staged_page`.
 #[verifier::opaque]
-pub open spec fn create_endpoint_from_staged_page_eof_transition_framing(
+pub(super) open spec fn create_endpoint_from_staged_page_eof_transition_framing(
     pre: KernelK, post: KernelK, page_ptr: PagePtr, container_ptr: RwLockContainerPtr, staging_thread_ptr: RwLockThreadPtr, endpoint_index: EndpointIdx,
 ) -> bool {
     let page_index = page_ptr2page_index(page_ptr);
@@ -52,7 +52,7 @@ pub open spec fn create_endpoint_from_staged_page_eof_transition_framing(
     &&& endpoint.view().owning_container == container_ptr
 }
 
-proof fn eof_create_endpoint_memory_management_inv(
+proof fn create_endpoint_from_staged_page_eof_memory_management_inv(
     pre: KernelK, post: KernelK, page_ptr: PagePtr, container_ptr: RwLockContainerPtr, staging_thread_ptr: RwLockThreadPtr, endpoint_index: EndpointIdx,
 )
     requires
@@ -129,7 +129,7 @@ proof fn eof_create_endpoint_memory_management_inv(
     assert(container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr)) by { container_allocator_free_1g_page_wf_preserved_for_nonfree_page_change(post.allc_1g_mp, pre.pg_arr, post.pg_arr, page_index); };
 }
 
-proof fn eof_create_endpoint_ref_counter_wf(
+proof fn create_endpoint_from_staged_page_eof_ref_counter_wf(
     pre: KernelK, post: KernelK, page_ptr: PagePtr, container_ptr: RwLockContainerPtr, staging_thread_ptr: RwLockThreadPtr, endpoint_index: EndpointIdx,
 )
     requires
@@ -145,7 +145,7 @@ proof fn eof_create_endpoint_ref_counter_wf(
     reveal(create_endpoint_from_staged_page_eof_transition_framing); reveal(thread_endpoint_ref_counter_wf);
 }
 
-proof fn eof_create_endpoint_process_management_inv(
+proof fn create_endpoint_from_staged_page_eof_process_management_inv(
     pre: KernelK, post: KernelK, page_ptr: PagePtr, container_ptr: RwLockContainerPtr, staging_thread_ptr: RwLockThreadPtr, endpoint_index: EndpointIdx,
 )
     requires
@@ -174,7 +174,7 @@ proof fn eof_create_endpoint_process_management_inv(
     assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { reveal(container_endpoint_wf); };
     assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { container_cpu_wf_preserved_for_container_cpu_fields_eq(pre.ctn_mp, post.ctn_mp, post.cpu_set_mp, post.cpu_arr); };
     assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by {
-        thread_perms_wf_at(pre.thr_mp, staging_thread_ptr); eof_create_endpoint_ref_counter_wf(pre, post, page_ptr, container_ptr, staging_thread_ptr, endpoint_index);
+        thread_perms_wf_at(pre.thr_mp, staging_thread_ptr); create_endpoint_from_staged_page_eof_ref_counter_wf(pre, post, page_ptr, container_ptr, staging_thread_ptr, endpoint_index);
     };
     assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_queue_wf); };
     assert(thread_caller_callee_wf(post.thr_mp)) by { thread_caller_callee_wf_preserved_for_call_link_eq(pre.thr_mp, post.thr_mp); };
@@ -192,7 +192,7 @@ proof fn eof_create_endpoint_process_management_inv(
     assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_running_thread_eq(pre.thr_mp, post.thr_mp, pre.cpu_arr, post.cpu_arr); };
 }
 
-pub(super) proof fn eof_create_endpoint_inv(
+pub(super) proof fn create_endpoint_from_staged_page_eof_inv(
     pre: KernelK, post: KernelK, page_ptr: PagePtr, container_ptr: RwLockContainerPtr, staging_thread_ptr: RwLockThreadPtr, endpoint_index: EndpointIdx,
 )
     requires
@@ -215,8 +215,8 @@ pub(super) proof fn eof_create_endpoint_inv(
     ensures
         post.inv(),
 {
-    eof_create_endpoint_memory_management_inv(pre, post, page_ptr, container_ptr, staging_thread_ptr, endpoint_index);
-    eof_create_endpoint_process_management_inv(pre, post, page_ptr, container_ptr, staging_thread_ptr, endpoint_index);
+    create_endpoint_from_staged_page_eof_memory_management_inv(pre, post, page_ptr, container_ptr, staging_thread_ptr, endpoint_index);
+    create_endpoint_from_staged_page_eof_process_management_inv(pre, post, page_ptr, container_ptr, staging_thread_ptr, endpoint_index);
     reveal(create_endpoint_from_staged_page_eof_transition_framing);
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {

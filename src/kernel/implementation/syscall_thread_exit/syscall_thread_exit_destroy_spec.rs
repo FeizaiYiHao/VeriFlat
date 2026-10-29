@@ -8,7 +8,7 @@ verus! {
 /// and the thread's page returns through its free-list node at `cache_node_addr` to shard `cpu_id` of the 4K allocator
 /// of its owner `owner`, whose quota grows by one; a zombie releases its PCID to its container's PCID allocator.
 #[verifier::opaque]
-pub open spec fn thread_exit_destroy_eof_transition_framing(
+pub(super) open spec fn thread_exit_destroy_eof_transition_framing(
     pre: KernelK, post: KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
     owner: RwLockContainerPtr, allocator_ptr: RwLockPageAllocatorPtr, proc_node_addr: usize, cache_node_addr: usize,
 ) -> bool {

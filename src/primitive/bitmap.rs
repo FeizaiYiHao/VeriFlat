@@ -14,15 +14,8 @@ impl<T: Copy, const N: usize> BitMap<T, N> {
 
     pub open spec fn inv(&self) -> bool {
         &&& self.bit_map.wf()
-        &&& forall|i: usize|
-            #![trigger self.view().dom().contains(i)]
-            #![trigger usize_in_range::<N>(i)]
-            usize_in_range::<N>(i) == self.view().dom().contains(i)
-        &&& forall|i: usize|
-            #![trigger usize_in_range::<N>(i)]
-            #![trigger self.view().spec_index(i)]
-            #![trigger self.bit_map.spec_index(i)]
-            usize_in_range::<N>(i) ==> self.view().spec_index(i) == self.bit_map.spec_index(i)
+        &&& forall|i: usize| #![trigger self.view().dom().contains(i)] #![trigger usize_in_range::<N>(i)] usize_in_range::<N>(i) == self.view().dom().contains(i)
+        &&& forall|i: usize| #![trigger usize_in_range::<N>(i)] #![trigger self.view().spec_index(i)] #![trigger self.bit_map.spec_index(i)] usize_in_range::<N>(i) ==> self.view().spec_index(i) == self.bit_map.spec_index(i)
     }
 
     pub fn new_with_init_value(value: T) -> (ret: Self)

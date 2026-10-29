@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::create_endpoint_from_staged_page_eof::{create_endpoint_from_staged_page_eof_transition_framing, eof_create_endpoint_inv};
+use super::create_endpoint_from_staged_page_eof::{create_endpoint_from_staged_page_eof_transition_framing, create_endpoint_from_staged_page_eof_inv};
 verus! {
 /// Consume a staged page to create an empty receive endpoint of `container_ptr` held at descriptor
 /// `endpoint_index` of `staging_thread_ptr`.
@@ -121,7 +121,7 @@ pub fn create_endpoint_from_staged_page(
         assert(create_endpoint_from_staged_page_eof_transition_framing(*old(krnl), *krnl, page_ptr, container_ptr, staging_thread_ptr, endpoint_index)) by {
             reveal(create_endpoint_from_staged_page_eof_transition_framing);
         };
-        eof_create_endpoint_inv(*old(krnl), *krnl, page_ptr, container_ptr, staging_thread_ptr, endpoint_index);
+        create_endpoint_from_staged_page_eof_inv(*old(krnl), *krnl, page_ptr, container_ptr, staging_thread_ptr, endpoint_index);
         assert(kernel_new_endpoint_fields(old(krnl), krnl, container_ptr, staging_thread_ptr, endpoint_index, page_ptr,
             old(krnl).thr_mp.spec_index(staging_thread_ptr).view().syscall_progress.view())) by {
             reveal(kernel_new_endpoint_fields); reveal(kernel_cpu_nonlock_fields_unchanged); reveal(kernel_process_nonlock_fields_unchanged);

@@ -5,7 +5,7 @@ verus! {
 /// Removes a page's final mapping, a 4K leaf of a write-locked IOMMU table, returns the page to the allocator CPU cache,
 /// and increments the owning thread's pending free-quota counter.
 #[verifier::opaque]
-pub open spec fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing(
+pub(super) open spec fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof_transition_framing(
     pre: KernelK, post: KernelK, iommu_table: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index, L1Index), page_ptr: PagePtr, thread_ptr: RwLockThreadPtr, owner: RwLockContainerPtr,
     depth: usize, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, old_counter: usize, new_counter: usize, node_addr: usize,
 ) -> bool {

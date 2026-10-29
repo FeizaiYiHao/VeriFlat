@@ -277,7 +277,6 @@ pub(super) proof fn reclaim_last_iommu_4k_mapping_to_cpu_cache_eof(
             &&& old_counter == old_thread.view().free_quota_pending_4k_at_depth(depth)
         }),
         iommu_table_perms_wf(post.it_mp),
-        // Produced by `page_array_remove_last_4k_iommu_mapping_to_cache` and `thread_map_add_free_quota_pending_4k`.
         page_array_wf(post.pg_arr),
         thread_perms_wf(post.thr_mp),
         post.pg_arr.inv(),

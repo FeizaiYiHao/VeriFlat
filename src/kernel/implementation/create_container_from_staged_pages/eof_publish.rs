@@ -222,9 +222,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& post.ctn_mp.spec_index(container_page).view_ghost().owned_threads.view().is_empty()
     &&& post.ctn_mp.spec_index(container_page).view_ghost().owned_indirect_threads.view().is_empty()
     &&& post.prc_mp.dom() =~= pre.prc_mp.dom().insert(process_page)
-    &&& forall|ptr: RwLockProcessPtr|
-        #![trigger post.prc_mp.spec_index(ptr)]
-        pre.prc_mp.dom().contains(ptr) ==> post.prc_mp.spec_index(ptr) == pre.prc_mp.spec_index(ptr)
+    &&& forall|ptr: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(ptr)] pre.prc_mp.dom().contains(ptr) ==> post.prc_mp.spec_index(ptr) == pre.prc_mp.spec_index(ptr)
     &&& post.prc_mp.spec_index(process_page).wlocked()
     &&& !post.prc_mp.spec_index(process_page).being_killed()
     &&& !post.prc_mp.spec_index(process_page).view().zombie
@@ -251,9 +249,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& post.prc_mp.spec_index(process_page).view_ghost().uppertree_seq.view().len() == 0
     &&& post.prc_mp.spec_index(process_page).view_ghost().subtree_set.view().is_empty()
     &&& post.pt_mp.dom() =~= pre.pt_mp.dom().insert(pagetable_page)
-    &&& forall|ptr: RwLockPageTableRoot|
-        #![trigger post.pt_mp.spec_index(ptr)]
-        pre.pt_mp.dom().contains(ptr) ==> post.pt_mp.spec_index(ptr) == pre.pt_mp.spec_index(ptr)
+    &&& forall|ptr: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(ptr)] pre.pt_mp.dom().contains(ptr) ==> post.pt_mp.spec_index(ptr) == pre.pt_mp.spec_index(ptr)
     &&& !post.pt_mp.spec_index(pagetable_page).being_killed()
     &&& post.pt_mp.spec_index(pagetable_page).view().proc_ptr == process_page
     &&& post.pt_mp.spec_index(pagetable_page).view().pcid is Some
@@ -269,9 +265,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_page).is_empty()
     &&& pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_page).page_closure() =~= set![l4_page]
     &&& post.sched_mp.dom() =~= pre.sched_mp.dom().insert(scheduler_page)
-    &&& forall|ptr: RwLockSchedulerPtr|
-        #![trigger post.sched_mp.spec_index(ptr)]
-        pre.sched_mp.dom().contains(ptr) ==> post.sched_mp.spec_index(ptr) == pre.sched_mp.spec_index(ptr)
+    &&& forall|ptr: RwLockSchedulerPtr| #![trigger post.sched_mp.spec_index(ptr)] pre.sched_mp.dom().contains(ptr) ==> post.sched_mp.spec_index(ptr) == pre.sched_mp.spec_index(ptr)
     &&& post.sched_mp.spec_index(scheduler_page).owning_container == container_page
     &&& forall|cpu_id: CpuId|
         #![trigger post.sched_mp.spec_index(scheduler_page).shards.spec_index(cpu_id)]
@@ -280,9 +274,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
             &&& post.sched_mp.spec_index(scheduler_page).shard(cpu_id).queue.view() == Seq::<RwLockThreadPtr>::empty()
         }
     &&& post.cpu_set_mp.dom() =~= pre.cpu_set_mp.dom().insert(cpu_set_page)
-    &&& forall|ptr: RwLockCpuSetPtr|
-        #![trigger post.cpu_set_mp.spec_index(ptr)]
-        pre.cpu_set_mp.dom().contains(ptr) ==> post.cpu_set_mp.spec_index(ptr) == pre.cpu_set_mp.spec_index(ptr)
+    &&& forall|ptr: RwLockCpuSetPtr| #![trigger post.cpu_set_mp.spec_index(ptr)] pre.cpu_set_mp.dom().contains(ptr) ==> post.cpu_set_mp.spec_index(ptr) == pre.cpu_set_mp.spec_index(ptr)
     &&& post.cpu_set_mp.spec_index(cpu_set_page).view().owning_container.view() == container_page
     &&& post.cpu_set_mp.spec_index(cpu_set_page).view().container_depth.view() == post.ctn_mp.spec_index(container_page).view_rodata().view().depth
     &&& post.cpu_set_mp.spec_index(cpu_set_page).view().owned_cpus.view().is_empty()
@@ -290,9 +282,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& !post.cpu_set_mp.spec_index(cpu_set_page).being_killed()
     &&& post.cpu_offline_mp.perms_wf()
     &&& post.cpu_offline_mp.dom() =~= pre.cpu_offline_mp.dom().insert(cpu_offline_flags_ptr(container_page))
-    &&& forall|ptr: RwLockCpuOfflineFlagsPtr|
-        #![trigger post.cpu_offline_mp.spec_index(ptr)]
-        pre.cpu_offline_mp.dom().contains(ptr) ==> post.cpu_offline_mp.spec_index(ptr) == pre.cpu_offline_mp.spec_index(ptr)
+    &&& forall|ptr: RwLockCpuOfflineFlagsPtr| #![trigger post.cpu_offline_mp.spec_index(ptr)] pre.cpu_offline_mp.dom().contains(ptr) ==> post.cpu_offline_mp.spec_index(ptr) == pre.cpu_offline_mp.spec_index(ptr)
     &&& post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_page)).inv()
     &&& post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_page)).owning_container.view() == container_page
     &&& post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_page)).container_depth.view() == post.ctn_mp.spec_index(container_page).view_rodata().view().depth
@@ -304,9 +294,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
             &&& !post.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(container_page)).flags.spec_index(cpu_id).view().view().requested
         }
     &&& post.pcid_allc_mp.dom() =~= pre.pcid_allc_mp.dom().insert(pcid_allocator_page)
-    &&& forall|ptr: RwLockPcidAllocatorPtr|
-        #![trigger post.pcid_allc_mp.spec_index(ptr)]
-        pre.pcid_allc_mp.dom().contains(ptr) ==> post.pcid_allc_mp.spec_index(ptr) == pre.pcid_allc_mp.spec_index(ptr)
+    &&& forall|ptr: RwLockPcidAllocatorPtr| #![trigger post.pcid_allc_mp.spec_index(ptr)] pre.pcid_allc_mp.dom().contains(ptr) ==> post.pcid_allc_mp.spec_index(ptr) == pre.pcid_allc_mp.spec_index(ptr)
     &&& post.pcid_allc_mp.spec_index(pcid_allocator_page).view().owning_container.view() == container_page
     &&& post.pcid_allc_mp.spec_index(pcid_allocator_page).view().container_depth.view() == post.ctn_mp.spec_index(container_page).view_rodata().view().depth
     &&& post.pcid_allc_mp.spec_index(pcid_allocator_page).view().ref_counters.spec_index(root_pcid) == 1
@@ -317,15 +305,9 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& post.allc_4k_mp.dom() =~= pre.allc_4k_mp.dom().insert(allocator_4k_page)
     &&& post.allc_2m_mp.dom() =~= pre.allc_2m_mp.dom().insert(allocator_2m_page)
     &&& post.allc_1g_mp.dom() =~= pre.allc_1g_mp.dom().insert(allocator_1g_page)
-    &&& forall|ptr: RwLockPageAllocatorPtr|
-        #![trigger post.allc_4k_mp.spec_index(ptr)]
-        pre.allc_4k_mp.dom().contains(ptr) ==> post.allc_4k_mp.spec_index(ptr) == pre.allc_4k_mp.spec_index(ptr)
-    &&& forall|ptr: RwLockPageAllocatorPtr|
-        #![trigger post.allc_2m_mp.spec_index(ptr)]
-        pre.allc_2m_mp.dom().contains(ptr) ==> post.allc_2m_mp.spec_index(ptr) == pre.allc_2m_mp.spec_index(ptr)
-    &&& forall|ptr: RwLockPageAllocatorPtr|
-        #![trigger post.allc_1g_mp.spec_index(ptr)]
-        pre.allc_1g_mp.dom().contains(ptr) ==> post.allc_1g_mp.spec_index(ptr) == pre.allc_1g_mp.spec_index(ptr)
+    &&& forall|ptr: RwLockPageAllocatorPtr| #![trigger post.allc_4k_mp.spec_index(ptr)] pre.allc_4k_mp.dom().contains(ptr) ==> post.allc_4k_mp.spec_index(ptr) == pre.allc_4k_mp.spec_index(ptr)
+    &&& forall|ptr: RwLockPageAllocatorPtr| #![trigger post.allc_2m_mp.spec_index(ptr)] pre.allc_2m_mp.dom().contains(ptr) ==> post.allc_2m_mp.spec_index(ptr) == pre.allc_2m_mp.spec_index(ptr)
+    &&& forall|ptr: RwLockPageAllocatorPtr| #![trigger post.allc_1g_mp.spec_index(ptr)] pre.allc_1g_mp.dom().contains(ptr) ==> post.allc_1g_mp.spec_index(ptr) == pre.allc_1g_mp.spec_index(ptr)
     &&& post.allc_4k_mp.spec_index(allocator_4k_page).owning_container == container_page
     &&& post.allc_4k_mp.spec_index(allocator_4k_page).global_pool.view().view() == funding_pages
     &&& forall|page_ptr: PagePtr|
@@ -378,7 +360,7 @@ pub open spec fn publish_staged_container_root_eof_transition_framing(
     &&& thread_quota_1g_fields_unchanged(pre.thr_mp, post.thr_mp)
 }
 
-pub(super) proof fn eof_publish_postconditions(
+pub(super) proof fn publish_staged_container_root_eof_postconditions(
     pre: KernelK, post: KernelK, pre_lctx: LocalContext, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr,
     container_page: PagePtr, pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
     scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,

@@ -5,10 +5,7 @@ verus! {
 pub proof fn held_pages_unchanged_except_for_changed_set(pre: PageLockedArray, post: PageLockedArray, lctx: &LocalContext, changed: Set<PageIndex>)
     requires
         pre.typed_lock_map_aligned(lctx.page_lock_map(), lctx.thread_id()),
-        forall|index: PageIndex|
-            #![trigger post.spec_index(index)]
-            #![trigger pre.spec_index(index)]
-            index_valid(NUM_PAGES, index) && !changed.contains(index) ==> post.spec_index(index) == pre.spec_index(index),
+        forall|index: PageIndex| #![trigger post.spec_index(index)] #![trigger pre.spec_index(index)] index_valid(NUM_PAGES, index) && !changed.contains(index) ==> post.spec_index(index) == pre.spec_index(index),
     ensures
         held_pages_unchanged_except(pre, post, lctx, changed),
 { reveal(LockedArray::typed_lock_map_aligned); }

@@ -167,7 +167,9 @@ verus! {
 
         pub proof fn default_pagetable_view_inv(&self)
             requires self.default_pagetable_wf()
-            ensures self.dflt_pt.view().inv(), page_ptr_valid(self.dflt_pt.view().cr3)
+            ensures
+                self.dflt_pt.view().inv(),
+                page_ptr_valid(self.dflt_pt.view().cr3),
         { reveal(KernelK::default_pagetable_wf); self.dflt_pt.view().table_pages_wf_cr3_at(); }
 
         /// Page table `pagetable_ptr` shares the default table's kernel L4 range end, `KERNEL_MEM_END_L4INDEX`.
@@ -258,9 +260,7 @@ verus! {
                 old(lctx).holds_no_allocator_locks(PageSize::SZ4k) ==> final(lctx).holds_no_allocator_locks(PageSize::SZ4k),
                 old(lctx).holds_no_allocator_locks(PageSize::SZ2m) ==> final(lctx).holds_no_allocator_locks(PageSize::SZ2m),
                 old(lctx).holds_no_allocator_locks(PageSize::SZ1g) ==> final(lctx).holds_no_allocator_locks(PageSize::SZ1g),
-                forall|major: LockMajorId|
-                    #![trigger old(lctx).held_lock_majors_lt(major)]
-                    old(lctx).held_lock_majors_lt(major) ==> final(lctx).held_lock_majors_lt(major),
+                forall|major: LockMajorId| #![trigger old(lctx).held_lock_majors_lt(major)] old(lctx).held_lock_majors_lt(major) ==> final(lctx).held_lock_majors_lt(major),
                 typed_lock_maps_aligned(final(self), final(lctx)),
                 // Record this thread's completed section before refreshing the
                 // snapshot to the post-interleaving projection.
@@ -288,9 +288,7 @@ verus! {
             #![trigger lctx.pcid_needflush_lock_map().dom().contains((cpu_id, pcid))]
             lctx.pcid_needflush_lock_map().dom().contains((cpu_id, pcid)) ==> post.pcid_needflush.spec_index(cpu_id, pcid) == pre.pcid_needflush.spec_index(cpu_id, pcid)
         // Direct typed-map framing for owner objects.
-        &&& forall|cpu_id: CpuId|
-            #![trigger lctx.cpu_lock_map().dom().contains(cpu_id)]
-            lctx.cpu_lock_map().dom().contains(cpu_id) ==> post.cpu_arr.spec_index(cpu_id).view() == pre.cpu_arr.spec_index(cpu_id).view()
+        &&& forall|cpu_id: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(cpu_id)] lctx.cpu_lock_map().dom().contains(cpu_id) ==> post.cpu_arr.spec_index(cpu_id).view() == pre.cpu_arr.spec_index(cpu_id).view()
         // A held remote cpu that runs a thread may still trap, return to user mode, or divert to its idle loop once
         // marked; every other held cpu keeps its running state.
         &&& forall|cpu_id: CpuId|

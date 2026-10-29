@@ -19,7 +19,7 @@ pub open spec fn rebalance_pull_syscall_result(pre: KernelU, cpu_id: CpuId) -> R
 /// Moves the head of shard `victim` of `scheduler_ptr` to the tail of the empty shard `cpu_id` and retargets
 /// that thread's scheduled state; every other object is unchanged.
 #[verifier::opaque]
-pub open spec fn rebalance_pull_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, scheduler_ptr: RwLockSchedulerPtr, victim: CpuId, thread_ptr: RwLockThreadPtr) -> bool {
+pub(super) open spec fn rebalance_pull_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, scheduler_ptr: RwLockSchedulerPtr, victim: CpuId, thread_ptr: RwLockThreadPtr) -> bool {
     let before = pre.thr_mp.spec_index(thread_ptr);
     let after = post.thr_mp.spec_index(thread_ptr);
     let scheduler_before = pre.sched_mp.spec_index(scheduler_ptr);

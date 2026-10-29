@@ -48,12 +48,8 @@ impl L2PageGhost {
     pub closed spec fn wf(&self) -> bool {
         &&& self.words.len() == 512
         &&& self.spec_seq.len() == 512
-        &&& forall|i: usize|
-            #![trigger usize2page_entry(self.words.spec_index(i as int))]
-            pei_valid(i) ==> (usize2page_entry(self.words.spec_index(i as int)) =~= self.spec_seq.spec_index(i as int))
-        &&& forall|i: usize|
-            #![trigger self.spec_seq.spec_index(i as int).perm.kernel_present]
-            pei_valid(i) && self.spec_seq.spec_index(i as int).perm.kernel_present ==> mem_valid(self.spec_seq.spec_index(i as int).addr)
+        &&& forall|i: usize| #![trigger usize2page_entry(self.words.spec_index(i as int))] pei_valid(i) ==> (usize2page_entry(self.words.spec_index(i as int)) =~= self.spec_seq.spec_index(i as int))
+        &&& forall|i: usize| #![trigger self.spec_seq.spec_index(i as int).perm.kernel_present] pei_valid(i) && self.spec_seq.spec_index(i as int).perm.kernel_present ==> mem_valid(self.spec_seq.spec_index(i as int).addr)
     }
 
     pub closed spec fn view(&self) -> Seq<PageEntry> { self.spec_seq }
@@ -149,8 +145,7 @@ impl L2PageMap {
 
     /// TCB: spin until this thread owns the window lock bit of entry `index`; the bit is free when this thread takes it.
     #[verifier::external_body]
-    pub(super) fn lock(&self, Tracked(lk): Tracked<&mut L2LockGhost>, index: usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>)
-        -> (ret: Tracked<LockPerm>)
+    pub(super) fn lock(&self, Tracked(lk): Tracked<&mut L2LockGhost>, index: usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>) -> (ret: Tracked<LockPerm>)
         requires
             old(lk).wf(),
             old(lk).addr() == self.addr(),
@@ -291,7 +286,7 @@ pub fn page_perm_to_l2_page_map(page_ptr: PagePtr, Tracked(page_perm): Tracked<P
                 ==> final(lctx).pagetable_window_lock_map().index((p, w)) == old(lctx).pagetable_window_lock_map().index((p, w)),
         forall|w: WindowVa| #![trigger final(lctx).pagetable_window_lock_map().index((root, w))]
             w.wf() && spec_v2l4index(w.va) == l4i && spec_v2l3index(w.va) == l3i && lo <= spec_v2l2index(w.va) <= hi
-                ==> final(lctx).pagetable_window_lock_map().index((root, w)) == (TypedHeldLock { lock_id: window_lock_id_at(root, w), mode: TypedLockMode::Write }),
+                ==> final(lctx).pagetable_window_lock_map().index((root, w)) == (TypedHeldLock { lock_id: window_lock_id_of(root, w), mode: TypedLockMode::Write }),
 {
     unsafe {
         core::ptr::write_bytes(page_ptr as *mut u8, 0u8, PAGE_SZ_4K);
@@ -303,8 +298,7 @@ pub fn page_perm_to_l2_page_map(page_ptr: PagePtr, Tracked(page_perm): Tracked<P
 /// TCB: an unlocked L2 page that its page table no longer links is an ordinary 4K page again; its bytes stay
 /// as they are. The inverse of `page_perm_to_l2_page_map`.
 #[verifier::external_body]
-pub fn l2_page_map_to_page_perm(page_map_ptr: PageMapPtr, Tracked(perm): Tracked<PointsTo<L2PageMap>>, Tracked(g): Tracked<L2PageGhost>, Tracked(lk): Tracked<L2LockGhost>)
-    -> (ret: Tracked<PagePerm4k>)
+pub fn l2_page_map_to_page_perm(page_map_ptr: PageMapPtr, Tracked(perm): Tracked<PointsTo<L2PageMap>>, Tracked(g): Tracked<L2PageGhost>, Tracked(lk): Tracked<L2LockGhost>) -> (ret: Tracked<PagePerm4k>)
     requires
         perm.addr() == page_map_ptr,
         perm.is_init(),

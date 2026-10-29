@@ -73,7 +73,7 @@ impl KernelK {
             ret.view().state() is WriteLock,
             ret.view().thread_id() == final(lctx).thread_id(),
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::PageTableWindow(root, WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }),
-                TypedHeldLock { lock_id: window_lock_id_at(root, WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }), mode: TypedLockMode::Write }),
+                TypedHeldLock { lock_id: window_lock_id_of(root, WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }), mode: TypedLockMode::Write }),
     {
         let ghost w = WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) };
         let ghost pre_c = pagetable_c(self.pt_mp, self.pt_lower.view(), root);

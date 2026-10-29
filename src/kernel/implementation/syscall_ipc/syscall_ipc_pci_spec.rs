@@ -8,7 +8,7 @@ verus! {
 /// when `bdf` was its anchor, and the old DID domain is invalidated down to what the IOMMU may cache in the detached root
 /// table; an absent `bdf` only changes owner.
 #[verifier::opaque]
-pub open spec fn ipc_pci_rendezvous_eof_transition_framing(
+pub(super) open spec fn ipc_pci_rendezvous_eof_transition_framing(
     pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr,
     endpoint_ptr: RwLockEndpointPtr, peer_scheduler_ptr: RwLockSchedulerPtr, wake_cpu: CpuId,
     sender_proc: RwLockProcessPtr, receiver_proc: RwLockProcessPtr, bdf: PciBdf, transferred: bool, peer_result: RetValueType, thread_id: LockThreadId,

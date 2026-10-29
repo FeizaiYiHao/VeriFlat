@@ -95,12 +95,8 @@ impl Endpoint {
             old(self).queue.dom().contains(ret.0),
             old(self).queue.map().dom().contains(ret.0),
             old(self).queue.map().spec_index(ret.0) == thread_ptr,
-            forall|value: RwLockThreadPtr|
-                #![trigger final(self).queue.view().contains(value)]
-                old(self).queue.view().contains(value) && value != thread_ptr ==> final(self).queue.view().contains(value),
-            forall|value: RwLockThreadPtr|
-                #![trigger final(self).queue.view().contains(value)]
-                final(self).queue.view().contains(value) ==> old(self).queue.view().contains(value),
+            forall|value: RwLockThreadPtr| #![trigger final(self).queue.view().contains(value)] old(self).queue.view().contains(value) && value != thread_ptr ==> final(self).queue.view().contains(value),
+            forall|value: RwLockThreadPtr| #![trigger final(self).queue.view().contains(value)] final(self).queue.view().contains(value) ==> old(self).queue.view().contains(value),
             !final(self).queue.view().contains(thread_ptr),
             final(self).queue_state == old(self).queue_state,
             final(self).rf_counter == old(self).rf_counter,

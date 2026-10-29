@@ -11,8 +11,7 @@ verus! {
 /// write-locks the cpu, container, process, thread, and IOMMU table; one step per hidden leaf; one IOTLB flush step; one step
 /// per quota refund; and an exiting step that releases all five. Failure records no step. The result is
 /// `iommu_unmap_4k_syscall_result` of the state at entry.
-pub fn syscall_iommu_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, iova: VAddr, range: usize)
-    -> (ret: RetValueType)
+pub fn syscall_iommu_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, iova: VAddr, range: usize) -> (ret: RetValueType)
     requires
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),

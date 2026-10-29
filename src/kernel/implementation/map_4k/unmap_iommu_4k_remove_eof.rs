@@ -59,7 +59,6 @@ pub(super) proof fn remove_iommu_4k_mapping_without_free_eof(pre: KernelK, post:
         post.it_mp.spec_index(iommu_table).inv(),
         post.pg_arr.inv(),
         post.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().inv(),
-        // Produced by `iommu_table_map_unmap_4k_kernel` and `page_array_remove_4k_iommu_mapping_without_free`.
         iommu_table_perms_wf(post.it_mp),
         page_array_wf(post.pg_arr),
         !was_present ==> iommu_table_tlb_entries_present(pre.iommu_tlb, pre.irt.view(), pre.it_mp, iommu_table),

@@ -5,10 +5,7 @@ verus! {
 /// Every page table keeps its payload, so with an unchanged window half every whole table is unchanged.
 pub open spec fn pagetable_invariant_fields_unchanged(pre: PageTableLockedMap, post: PageTableLockedMap, pt_lower: PageTableLowerMap) -> bool {
     &&& pre.dom() =~= post.dom()
-    &&& forall|pt_ptr: RwLockPageTableRoot|
-        #![trigger pre.spec_index(pt_ptr).view()]
-        #![trigger post.spec_index(pt_ptr).view()]
-        pre.dom().contains(pt_ptr) ==> post.spec_index(pt_ptr).view() == pre.spec_index(pt_ptr).view()
+    &&& forall|pt_ptr: RwLockPageTableRoot| #![trigger pre.spec_index(pt_ptr).view()] #![trigger post.spec_index(pt_ptr).view()] pre.dom().contains(pt_ptr) ==> post.spec_index(pt_ptr).view() == pre.spec_index(pt_ptr).view()
     &&& forall|pt_ptr: RwLockPageTableRoot|
         #![trigger pagetable_c(pre, pt_lower, pt_ptr)]
         #![trigger pagetable_c(post, pt_lower, pt_ptr)]

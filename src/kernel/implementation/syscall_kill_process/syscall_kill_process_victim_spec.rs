@@ -6,7 +6,7 @@ verus! {
 /// which absorbs its quota, and takes back its process node; a thread waiting for a reply becomes a dangling thread, and it
 /// and its dangling callers `callers` record the end of its call chain.
 #[verifier::opaque]
-pub open spec fn kill_leave_process_eof_transition_framing(
+pub(crate) open spec fn kill_leave_process_eof_transition_framing(
     pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr, victim_ptr: RwLockThreadPtr, callers: Set<RwLockThreadPtr>,
 ) -> bool {
     let process = pre.prc_mp.spec_index(process_ptr);
@@ -59,7 +59,7 @@ pub open spec fn kill_leave_process_eof_transition_framing(
 /// The write-held marked thread `victim_ptr` scheduled on shard `shard` of `scheduler_ptr` leaves the shard and becomes
 /// killed.
 #[verifier::opaque]
-pub open spec fn kill_dequeue_scheduled_eof_transition_framing(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, scheduler_ptr: RwLockSchedulerPtr, shard: CpuId) -> bool {
+pub(crate) open spec fn kill_dequeue_scheduled_eof_transition_framing(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, scheduler_ptr: RwLockSchedulerPtr, shard: CpuId) -> bool {
     let victim = pre.thr_mp.spec_index(victim_ptr);
     let after_victim = post.thr_mp.spec_index(victim_ptr);
     let node_addr = victim.view().scheduler_linkedlist_node.addr();
@@ -90,7 +90,7 @@ pub open spec fn kill_dequeue_scheduled_eof_transition_framing(pre: KernelK, pos
 /// The write-held marked thread `victim_ptr` waiting in the queue of the write-held endpoint `endpoint_ptr` leaves the
 /// queue and becomes killed.
 #[verifier::opaque]
-pub open spec fn kill_dequeue_endpoint_eof_transition_framing(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr) -> bool {
+pub(crate) open spec fn kill_dequeue_endpoint_eof_transition_framing(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr) -> bool {
     let victim = pre.thr_mp.spec_index(victim_ptr);
     let after_victim = post.thr_mp.spec_index(victim_ptr);
     let node_addr = victim.view().endpoint_linkedlist_node.addr();
@@ -127,7 +127,7 @@ pub open spec fn kill_dequeue_endpoint_eof_transition_framing(pre: KernelK, post
 /// the cpu loads the default page table with the default PCID and goes idle, its running state becomes Idle, and the
 /// thread becomes killed.
 #[verifier::opaque]
-pub open spec fn kill_cpu_to_idle_eof_transition_framing(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, remote: CpuId, default_cr3: PageTableRoot) -> bool {
+pub(crate) open spec fn kill_cpu_to_idle_eof_transition_framing(pre: KernelK, post: KernelK, victim_ptr: RwLockThreadPtr, remote: CpuId, default_cr3: PageTableRoot) -> bool {
     let victim = pre.thr_mp.spec_index(victim_ptr);
     let after_victim = post.thr_mp.spec_index(victim_ptr);
     let before = pre.cpu_arr.spec_index(remote).view();

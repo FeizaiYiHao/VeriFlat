@@ -1,6 +1,7 @@
 mod atomic_pcid_cr3;
 mod cpu_cr3_pcid;
 pub mod cpu_def;
+mod cpu_def_eof;
 pub mod cpu_tlb_def;
 pub mod pcid_needflush;
 pub mod hw_cr3_pcid;

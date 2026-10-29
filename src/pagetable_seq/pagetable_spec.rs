@@ -91,10 +91,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             page_map_perm.is_init(),
             page_map_perm.value().wf(),
             kernel_entries_ghost.view().len() == mem_end_l4_index,
-            forall|i: usize|
-                #![trigger page_map_perm.value().spec_index(i).is_empty()]
-                #![trigger page_map_perm.value().spec_index(i)]
-                mem_end_l4_index <= i && pei_valid(i) ==> page_map_perm.value().spec_index(i).is_empty(),
+            forall|i: usize| #![trigger page_map_perm.value().spec_index(i).is_empty()] #![trigger page_map_perm.value().spec_index(i)] mem_end_l4_index <= i && pei_valid(i) ==> page_map_perm.value().spec_index(i).is_empty(),
             forall|i: usize|
                 #![trigger kernel_entries_ghost.view().spec_index(i as int)]
                 #![trigger page_map_perm.value().spec_index(i)]
@@ -198,9 +195,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
     }
 
     pub open spec fn is_empty(&self) -> bool {
-        &&& forall|i: L4Index|
-            #![trigger self.l4_table.view().spec_index(self.cr3).value().spec_index(i).perm.present]
-            self.kernel_l4_end <= i && pei_valid(i) ==> self.l4_table.view().spec_index(self.cr3).value().spec_index(i).is_empty()
+        &&& forall|i: L4Index| #![trigger self.l4_table.view().spec_index(self.cr3).value().spec_index(i).perm.present] self.kernel_l4_end <= i && pei_valid(i) ==> self.l4_table.view().spec_index(self.cr3).value().spec_index(i).is_empty()
         &&& self.l3_tables.view().dom() == Set::<PageMapPtr>::empty()
         &&& self.l2_tables.view().dom() == Set::<PageMapPtr>::empty()
         &&& self.l1_tables.view().dom() == Set::<PageMapPtr>::empty()
@@ -390,15 +385,9 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
     #[verifier::opaque]
     pub open spec fn table_pages_wf(&self) -> bool {
         &&& page_ptr_valid(self.cr3)
-        &&& forall|p: PageMapPtr|
-            #![trigger self.l3_tables.view().dom().contains(p), page_ptr_valid(p)]
-            self.l3_tables.view().dom().contains(p) ==> page_ptr_valid(p)
-        &&& forall|p: PageMapPtr|
-            #![trigger self.l2_tables.view().dom().contains(p), page_ptr_valid(p)]
-            self.l2_tables.view().dom().contains(p) ==> page_ptr_valid(p)
-        &&& forall|p: PageMapPtr|
-            #![trigger self.l1_tables.view().dom().contains(p), page_ptr_valid(p)]
-            self.l1_tables.view().dom().contains(p) ==> page_ptr_valid(p)
+        &&& forall|p: PageMapPtr| #![trigger self.l3_tables.view().dom().contains(p), page_ptr_valid(p)] self.l3_tables.view().dom().contains(p) ==> page_ptr_valid(p)
+        &&& forall|p: PageMapPtr| #![trigger self.l2_tables.view().dom().contains(p), page_ptr_valid(p)] self.l2_tables.view().dom().contains(p) ==> page_ptr_valid(p)
+        &&& forall|p: PageMapPtr| #![trigger self.l1_tables.view().dom().contains(p), page_ptr_valid(p)] self.l1_tables.view().dom().contains(p) ==> page_ptr_valid(p)
         &&& self.l4_table.view().dom().disjoint(self.l3_tables.view().dom())
         &&& self.l4_table.view().dom().disjoint(self.l2_tables.view().dom())
         &&& self.l4_table.view().dom().disjoint(self.l1_tables.view().dom())
@@ -629,7 +618,9 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
 
     pub proof fn kernel_entries_wf_len_at(&self)
         requires self.kernel_entries_wf()
-        ensures pei_valid(self.kernel_l4_end), self.kernel_entries.view().len() == self.kernel_l4_end as nat
+        ensures
+            pei_valid(self.kernel_l4_end),
+            self.kernel_entries.view().len() == self.kernel_l4_end as nat,
     { reveal(PageTable::kernel_entries_wf); }
 
     pub proof fn wf_mapping_2m_at(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index)

@@ -148,8 +148,8 @@ pub enum PageState {
     Free2m { allocator_ptr: Ghost<RwLockPageAllocatorPtr>, state: FreePageAllocatorState },
     Free1g { allocator_ptr: Ghost<RwLockPageAllocatorPtr>, state: FreePageAllocatorState },
     /// Freshly allocated from the allocator, staged in `thread_ptr`'s
-    /// `temp_alloc_cache` while the thread write-lock is held. Not yet
-    /// wired into a page table.
+    /// `temp_alloc_cache_{4k,2m,1g}` while the thread write-lock is held. Not
+    /// yet wired into a page table.
     Owned4k { thread_ptr: RwLockThreadPtr },
     Owned2m { thread_ptr: RwLockThreadPtr },
     Owned1g { thread_ptr: RwLockThreadPtr },
@@ -281,8 +281,7 @@ impl VaRange4K {
         requires
             self.wf(),
         ensures
-            forall|i: usize|
-                0 <= i < self.len ==> self.view().spec_index(i as int) == spec_va_add_range(self.start, i),
+            forall|i: usize| 0 <= i < self.len ==> self.view().spec_index(i as int) == spec_va_add_range(self.start, i),
     {
     }
 
@@ -299,9 +298,7 @@ impl VaRange4K {
     }
 
     pub closed spec fn view_match_spec(&self) -> bool {
-        &&& forall|i: usize|
-            #![trigger spec_va_add_range(self.start, i)]
-            0 <= i < self.len ==> spec_va_add_range(self.start, i) == self.view().spec_index(i as int)
+        &&& forall|i: usize| #![trigger spec_va_add_range(self.start, i)] 0 <= i < self.len ==> spec_va_add_range(self.start, i) == self.view().spec_index(i as int)
     }
 
     pub fn new(va: VAddr, len: usize) -> (ret: Self)

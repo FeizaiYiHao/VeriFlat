@@ -9,7 +9,8 @@ mod share_mapping_4k_eof;
 mod share_mapping_4k_leaf_copy;
 mod share_mapping_4k_precheck_helpers;
 pub mod share_mapping_4k_spec;
-mod share_mapping_4k_trace;
+pub mod share_mapping_4k_trace;
+pub mod share_mapping_4k_child_structure;
 
 pub mod unmap_4k_present;
 mod unmap_4k_present_eof;
@@ -27,6 +28,7 @@ mod unmap_4k_reclaim_last;
 mod unmap_4k_reclaim_last_cache;
 mod unmap_4k_mapped_page_ptr;
 pub mod unmap_4k_range;
+pub mod unmap_4k_lock_running_thread;
 pub mod unmap_iommu_4k_present;
 mod unmap_iommu_4k_present_eof;
 pub mod unmap_iommu_4k_remove;

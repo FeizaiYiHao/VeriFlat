@@ -181,8 +181,7 @@ proof fn kill_leave_process_eof_chain_end_redirect(
                 }
             },
         forall|t: RwLockThreadPtr| #![trigger pre.spec_index(t).view_ghost()]
-            pre.dom().contains(t) && thread_is_dangling(pre.spec_index(t)) && !pre.spec_index(t).being_killed() && pre.spec_index(t).view_ghost().chain_end == Some(victim_ptr)
-                ==> callers.contains(t),
+            pre.dom().contains(t) && thread_is_dangling(pre.spec_index(t)) && !pre.spec_index(t).being_killed() && pre.spec_index(t).view_ghost().chain_end == Some(victim_ptr) ==> callers.contains(t),
         post.dom() == pre.dom(),
         forall|t: RwLockThreadPtr| #![trigger post.spec_index(t)]
             pre.dom().contains(t) && t != victim_ptr && !callers.contains(t) ==> post.spec_index(t) == pre.spec_index(t),

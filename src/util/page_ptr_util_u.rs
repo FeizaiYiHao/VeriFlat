@@ -100,9 +100,7 @@ pub fn va_4k_valid(va: usize) -> (ret: bool)
 }
 
 pub open spec fn spec_va_4k_range_valid(va: usize, len: usize) -> bool {
-    forall|i: usize|
-        #![trigger spec_va_add_range(va, i)]
-        0 <= i < len ==> spec_va_4k_valid(spec_va_add_range(va, i))
+    forall|i: usize| #![trigger spec_va_add_range(va, i)] 0 <= i < len ==> spec_va_4k_valid(spec_va_add_range(va, i))
 }
 
 #[verifier(when_used_as_spec(spec_va_4k_range_valid))]
@@ -119,9 +117,7 @@ pub fn va_4k_range_valid(va: usize, len: usize) -> (ret: bool)
             va_4k_valid(va),
             len <= usize::MAX / 4096,
             va < usize::MAX - len * 4096,
-            forall|i: usize|
-                #![trigger spec_va_add_range(va, i)]
-                0 <= i < idx ==> spec_va_4k_valid(spec_va_add_range(va, i)),
+            forall|i: usize| #![trigger spec_va_add_range(va, i)] 0 <= i < idx ==> spec_va_4k_valid(spec_va_add_range(va, i)),
     {
         assert(idx <= usize::MAX / 4096) by (bit_vector)
             requires
@@ -321,37 +317,25 @@ pub proof fn va_range_lemma(va: VAddr, len: usize, i: usize, j: usize)
 
 pub proof fn page_ptr_valid_imply_page_index_valid()
     ensures
-        forall|pa: PagePtr|
-            #![trigger page_ptr_valid(pa)]
-            #![trigger page_ptr2page_index(pa)]
-            page_ptr_valid(pa) ==> index_valid(NUM_PAGES, page_ptr2page_index(pa)),
+        forall|pa: PagePtr| #![trigger page_ptr_valid(pa)] #![trigger page_ptr2page_index(pa)] page_ptr_valid(pa) ==> index_valid(NUM_PAGES, page_ptr2page_index(pa)),
 {
 }
 
 pub proof fn page_index_valid_imply_page_ptr_valid()
     ensures
-        forall|i: usize|
-            #![trigger index_valid(NUM_PAGES, i)]
-            #![trigger page_index2page_ptr(i)]
-            index_valid(NUM_PAGES, i) ==> page_ptr_valid(page_index2page_ptr(i)),
+        forall|i: usize| #![trigger index_valid(NUM_PAGES, i)] #![trigger page_index2page_ptr(i)] index_valid(NUM_PAGES, i) ==> page_ptr_valid(page_index2page_ptr(i)),
 {
 }
 
 pub proof fn page_ptr_roundtrip()
     ensures
-        forall|pa: PagePtr|
-            #![trigger page_ptr_valid(pa)]
-            #![trigger page_ptr2page_index(pa)]
-            page_ptr_valid(pa) ==> pa == page_index2page_ptr(page_ptr2page_index(pa)),
+        forall|pa: PagePtr| #![trigger page_ptr_valid(pa)] #![trigger page_ptr2page_index(pa)] page_ptr_valid(pa) ==> pa == page_index2page_ptr(page_ptr2page_index(pa)),
 {
 }
 
 pub proof fn page_index_roundtrip()
     ensures
-        forall|i: usize|
-            #![trigger index_valid(NUM_PAGES, i)]
-            #![trigger page_index2page_ptr(i)]
-            index_valid(NUM_PAGES, i) ==> i == page_ptr2page_index(page_index2page_ptr(i)),
+        forall|i: usize| #![trigger index_valid(NUM_PAGES, i)] #![trigger page_index2page_ptr(i)] index_valid(NUM_PAGES, i) ==> i == page_ptr2page_index(page_index2page_ptr(i)),
 {
 }
 
@@ -387,9 +371,7 @@ pub proof fn page_ptr_seq_indices_no_duplicates(pages: Seq<PagePtr>)
 pub proof fn page_ptr_seq_indices_excludes_page(pages: Seq<PagePtr>, excluded_page: PagePtr)
     requires
         page_ptr_valid(excluded_page),
-        forall|i: int|
-            #![trigger page_ptr_valid(pages.spec_index(i))]
-            0 <= i < pages.len() ==> page_ptr_valid(pages.spec_index(i)),
+        forall|i: int| #![trigger page_ptr_valid(pages.spec_index(i))] 0 <= i < pages.len() ==> page_ptr_valid(pages.spec_index(i)),
         !pages.to_set().contains(excluded_page),
     ensures
         !pages.map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).to_set().contains(page_ptr2page_index(excluded_page)),
@@ -421,8 +403,7 @@ pub proof fn spec_va_4k_valid_imply_indices_valid()
 
 pub proof fn spec_index2va_injective()
     ensures
-        forall|
-            l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index, l4j: L4Index, l3j: L3Index, l2j: L2Index, l1j: L1Index,
+        forall| l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index, l4j: L4Index, l3j: L3Index, l2j: L2Index, l1j: L1Index,
         |
             #![trigger spec_index2va((l4i, l3i, l2i, l1i)), spec_index2va((l4j, l3j, l2j, l1j))]
             pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && pei_valid(l4j) && pei_valid(l3j) && pei_valid(l2j) && pei_valid(l1j)
@@ -469,7 +450,11 @@ pub broadcast proof fn spec_va_2m_valid_index_roundtrip(va: VAddr)
 
 /// Valid user L4/L3/L2 indices with a zero L1 index build a valid user 2M address.
 pub broadcast proof fn spec_index2va_2m_valid(l4i: L4Index, l3i: L3Index, l2i: L2Index)
-    requires KERNEL_MEM_END_L4INDEX <= l4i, pei_valid(l4i), pei_valid(l3i), pei_valid(l2i),
+    requires
+        KERNEL_MEM_END_L4INDEX <= l4i,
+        pei_valid(l4i),
+        pei_valid(l3i),
+        pei_valid(l2i),
     ensures
         spec_va_2m_valid(#[trigger] spec_index2va((l4i, l3i, l2i, 0usize))),
         spec_va2index(spec_index2va((l4i, l3i, l2i, 0usize))) == (l4i, l3i, l2i, 0usize),

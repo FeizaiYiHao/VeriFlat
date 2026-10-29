@@ -1,7 +1,8 @@
 use vstd::prelude::*;
 use crate::*;
 use super::syscall_unmap_4k_spec::*;
-use super::syscall_unmap_4k_helpers::unmap_4k_lock_running_thread;
+#[cfg(verus_keep_ghost)]
+use super::syscall_unmap_4k_trace::unmap_4k_lock_rejected_result_from_k;
 use super::syscall_unmap_4k_pagetable::unmap_4k_lock_pagetable_and_unmap;
 
 verus! {
@@ -67,9 +68,12 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         proof { enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx); steps.end_kernel_step_unchanged(&*krnl, &*lctx); }
         return RetValueType::Error;
     }
-    let locked = match unmap_4k_lock_running_thread(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range) {
+    let locked = match unmap_4k_lock_running_thread(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id) {
         Ok(e) => e,
-        Err(r) => { return r; },
+        Err(r) => {
+            proof { unmap_4k_lock_rejected_result_from_k(&*old(krnl), cpu_id, va, range, r); }
+            return r;
+        },
     };
     let Tracked(cpu_perm) = locked.cpu_lock_perm;
     let Tracked(container_perm) = locked.container_lock_perm;

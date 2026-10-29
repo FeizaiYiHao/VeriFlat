@@ -21,9 +21,7 @@ pub open spec fn process_subsystem_create_scheduled_thread_eof_transition_framin
     &&& post_process.spec_index(process_ptr).view_ghost() == pre_process.spec_index(process_ptr).view_ghost()
     &&& post_process.spec_index(process_ptr).locking_thread() == pre_process.spec_index(process_ptr).locking_thread()
     &&& post_process.spec_index(process_ptr).being_killed() == pre_process.spec_index(process_ptr).being_killed()
-    &&& forall|ptr: RwLockProcessPtr|
-        #![trigger post_process.spec_index(ptr)]
-        pre_process.dom().contains(ptr) && ptr != process_ptr ==> post_process.spec_index(ptr) == pre_process.spec_index(ptr)
+    &&& forall|ptr: RwLockProcessPtr| #![trigger post_process.spec_index(ptr)] pre_process.dom().contains(ptr) && ptr != process_ptr ==> post_process.spec_index(ptr) == pre_process.spec_index(ptr)
     &&& post_thread.dom() =~= pre_thread.dom().insert(page_ptr)
     &&& post_thread.spec_index(page_ptr).view() == thread_value
     &&& post_thread.spec_index(page_ptr).is_init()
@@ -36,9 +34,7 @@ pub open spec fn process_subsystem_create_scheduled_thread_eof_transition_framin
     &&& post_thread.spec_index(staging_thread_ptr).being_killed() == pre_thread.spec_index(staging_thread_ptr).being_killed()
     &&& post_thread.spec_index(staging_thread_ptr).killer_info() == pre_thread.spec_index(staging_thread_ptr).killer_info()
     &&& post_thread.spec_index(staging_thread_ptr).view_ghost() == pre_thread.spec_index(staging_thread_ptr).view_ghost()
-    &&& forall|ptr: RwLockThreadPtr|
-        #![trigger post_thread.spec_index(ptr)]
-        pre_thread.dom().contains(ptr) && ptr != staging_thread_ptr ==> post_thread.spec_index(ptr) == pre_thread.spec_index(ptr)
+    &&& forall|ptr: RwLockThreadPtr| #![trigger post_thread.spec_index(ptr)] pre_thread.dom().contains(ptr) && ptr != staging_thread_ptr ==> post_thread.spec_index(ptr) == pre_thread.spec_index(ptr)
     &&& post_scheduler.unchanged_except(&pre_scheduler, scheduler_ptr)
     &&& post_scheduler.spec_index(scheduler_ptr).owning_container == pre_scheduler.spec_index(scheduler_ptr).owning_container
     &&& post_scheduler.spec_index(scheduler_ptr).shards.entries_unchanged_except(&pre_scheduler.spec_index(scheduler_ptr).shards, cpu_id)

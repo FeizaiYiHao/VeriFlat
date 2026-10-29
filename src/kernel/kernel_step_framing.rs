@@ -3,7 +3,9 @@ use crate::*;
 
 verus! {
 pub broadcast proof fn kernel_pagetable_nonlock_fields_unchanged_for_equal(pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap)
-    requires pre_pt == post_pt, pre_lower == post_lower,
+    requires
+        pre_pt == post_pt,
+        pre_lower == post_lower,
     ensures #[trigger] kernel_pagetable_nonlock_fields_unchanged(pre_pt, pre_lower, post_pt, post_lower),
 { reveal(kernel_pagetable_nonlock_fields_unchanged); }
 
@@ -99,7 +101,10 @@ pub broadcast group group_kernel_endpoint_nonlock_fields_unchanged_transitive {
 
 pub proof fn kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(steps: &KernelSteps, krnl: &KernelK)
     requires steps.snapshot_k() == *krnl,
-    ensures kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), krnl), kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp), kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), krnl),
+    ensures
+        kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), krnl),
+        kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp),
+        kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), krnl),
 {
     broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, group_kernel_endpoint_nonlock_fields_unchanged_transitive;
     reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);

@@ -43,9 +43,7 @@ verus! {
 
         #[verifier::inline]
         pub open spec fn entries_unchanged_except(&self, old: &Self, index: usize) -> bool {
-            forall|i: usize|
-                #![trigger self.spec_index(i)]
-                index_valid(N, i) && i != index ==> self.spec_index(i) == old.spec_index(i)
+            forall|i: usize| #![trigger self.spec_index(i)] index_valid(N, i) && i != index ==> self.spec_index(i) == old.spec_index(i)
         }
 
         pub open spec fn unchanged_except(&self, old: &Self, index: usize) -> bool {

@@ -30,9 +30,7 @@ impl CpuTLB {
     pub fn new_empty() -> (ret: Self)
         ensures
             ret.inv(),
-            forall|cpu_id: CpuId, pcid: Pcid|
-                #![trigger ret.spec_index((cpu_id, pcid))]
-                index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) ==> ret.spec_index((cpu_id, pcid)).is_empty(),
+            forall|cpu_id: CpuId, pcid: Pcid| #![trigger ret.spec_index((cpu_id, pcid))] index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) ==> ret.spec_index((cpu_id, pcid)).is_empty(),
     {
         let ghost cpu_ids = Set::range(0usize, NUM_CPUS);
         let ghost pcids = Set::range(0usize, PCID_MAX);
@@ -95,9 +93,7 @@ impl CpuTLB {
     }
     #[verifier::opaque]
     pub open spec fn inv(&self) -> bool {
-        &&& forall|cpu_id: CpuId, pcid: Pcid|
-            #![trigger self.view().dom().contains((cpu_id, pcid))]
-            self.view().dom().contains((cpu_id, pcid)) <==> index_valid(NUM_CPUS, cpu_id) && usize_in_range::<PCID_MAX>(pcid)
+        &&& forall|cpu_id: CpuId, pcid: Pcid| #![trigger self.view().dom().contains((cpu_id, pcid))] self.view().dom().contains((cpu_id, pcid)) <==> index_valid(NUM_CPUS, cpu_id) && usize_in_range::<PCID_MAX>(pcid)
     }
 }
 }

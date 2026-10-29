@@ -104,7 +104,7 @@ verus! {
             let tracked current_thread_lock_perm = current_thread_lock_perm.get();
             enter_new_thread_commit(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, container_ptr, scheduler_ptr, Tracked(&current_thread_lock_perm), initial_regs);
             proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
-            let (page_ptr, Tracked(page_lock_perm)) = allocate_free_4k_page_k(krnl, current_thread_ptr, container_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&current_thread_lock_perm));
+            let (page_ptr, Tracked(page_lock_perm)) = allocate_free_4k_page(krnl, current_thread_ptr, container_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&current_thread_lock_perm));
             finish_new_thread_commit(
                 krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, current_thread_ptr, container_ptr, scheduler_ptr, page_ptr, Tracked(page_lock_perm),
                 process_lock_perm, Tracked(current_thread_lock_perm), cpu_lock_perm, scheduler_lock_perm, initial_regs, Ghost(old(steps).view().len() as int),

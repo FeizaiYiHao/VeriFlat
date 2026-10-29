@@ -566,8 +566,7 @@ pub(super) fn new_process_lock_source_windows(
         ret.0 ==> kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
         ret.0 ==> kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
         ret.0 ==> forall|w: WindowVa| #![trigger va_range_2m_windows(*range).contains(w)]
-            va_range_2m_windows(*range).contains(w) && pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some
-                ==> ret.1.view().dom().contains(w),
+            va_range_2m_windows(*range).contains(w) && pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some ==> ret.1.view().dom().contains(w),
         ret.0 ==> forall|w: WindowVa| #![trigger ret.1.view().dom().contains(w)] ret.1.view().dom().contains(w) ==> {
             &&& va_range_2m_windows(*range).contains(w)
             &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some

@@ -28,7 +28,7 @@ pub proof fn container_process_page_pagetable_wf_page_at(
 /// table, and the page returns through its free-list node at `node_addr` to shard `cpu_id` of the 4K allocator
 /// `allocator_ptr` of its owner, whose quota grows by one.
 #[verifier::opaque]
-pub open spec fn kill_reclaim_unmapped_4k_page_scoped_eof_transition_framing(
+pub(crate) open spec fn kill_reclaim_unmapped_4k_page_scoped_eof_transition_framing(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, page_ptr: PagePtr, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, node_addr: usize,
 ) -> bool {
     let page_index = page_ptr2page_index(page_ptr);
@@ -126,7 +126,7 @@ pub proof fn page_iommu_table_wf_page_owner_at(
 /// leaves the table, and the page returns through its free-list node at `node_addr` to shard `cpu_id` of the 4K allocator
 /// `allocator_ptr` of its owner, whose quota grows by one.
 #[verifier::opaque]
-pub open spec fn kill_reclaim_unmapped_iommu_4k_page_scoped_eof_transition_framing(
+pub(crate) open spec fn kill_reclaim_unmapped_iommu_4k_page_scoped_eof_transition_framing(
     pre: KernelK, post: KernelK, iommu_table: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index, L1Index), page_ptr: PagePtr, allocator_ptr: RwLockPageAllocatorPtr,
     cpu_id: CpuId, node_addr: usize,
 ) -> bool {
@@ -195,7 +195,7 @@ pub open spec fn kill_reclaim_unmapped_iommu_4k_page_scoped_eof_transition_frami
 /// `iommu`), every mapping staying, and returns through its free-list node at `node_addr` to shard `cpu_id` of the 4K
 /// allocator `allocator_ptr` of its owner, whose quota grows by one.
 #[verifier::opaque]
-pub open spec fn kill_retire_table_page_scoped_eof_transition_framing(
+pub(crate) open spec fn kill_retire_table_page_scoped_eof_transition_framing(
     pre: KernelK, post: KernelK, iommu: bool, table: RwLockPageTableRoot, page_ptr: PagePtr, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, node_addr: usize,
 ) -> bool {
     let page_index = page_ptr2page_index(page_ptr);

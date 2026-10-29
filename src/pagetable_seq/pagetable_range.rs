@@ -29,9 +29,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
     /// No abstract 4K mapping exists in the inclusive L1 interval under one
     /// fixed L4/L3/L2 path.
     pub open spec fn spec_mapping_4k_l1_range_empty(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, start_l1i: L1Index, end_l1i: L1Index) -> bool {
-        forall|l1i: L1Index|
-            #![trigger self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
-            start_l1i <= l1i <= end_l1i ==> !self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
+        forall|l1i: L1Index| #![trigger self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))] start_l1i <= l1i <= end_l1i ==> !self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
     }
 
     /// No abstract 4K mapping exists in the inclusive (L2, L1) interval
@@ -114,9 +112,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
                 pei_valid(end_l1i),
                 start_l1i <= l1i <= end_l1i + 1,
                 self.spec_resolve_mapping_l2(l4i, l3i, l2i) =~= Some(*l2_entry),
-                forall|done_l1i: L1Index|
-                    #![trigger self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, done_l1i)))]
-                    start_l1i <= done_l1i < l1i ==> !self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, done_l1i))),
+                forall|done_l1i: L1Index| #![trigger self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, done_l1i)))] start_l1i <= done_l1i < l1i ==> !self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, done_l1i))),
             decreases end_l1i + 1 - l1i,
         {
             let entry = self.get_entry_l1(l4i, l3i, l2i, l1i, l2_entry);
@@ -299,9 +295,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
                 pei_valid(l2i),
                 start_l1i <= l1i <= 512,
                 self.spec_resolve_mapping_l2(l4i, l3i, l2i) =~= Some(*l2_entry),
-                forall|done_l1i: L1Index|
-                    #![trigger self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, done_l1i)))]
-                    start_l1i <= done_l1i < l1i ==> !self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, done_l1i))),
+                forall|done_l1i: L1Index| #![trigger self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, done_l1i)))] start_l1i <= done_l1i < l1i ==> !self.mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, done_l1i))),
             decreases 512 - l1i,
         {
             let entry = self.get_entry_l1(l4i, l3i, l2i, l1i, l2_entry);

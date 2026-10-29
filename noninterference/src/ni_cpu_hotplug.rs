@@ -1,6 +1,6 @@
 use vstd::prelude::*;
 use crate::*;
-use veriflat_syscall_cpu_hotplug::syscall_cpu_hotplug::{cpu_offline_check_spec::*, syscall_cpu_hotplug_spec::*};
+use veriflat_syscall_cpu_hotplug::syscall_cpu_hotplug::{syscall_cpu_offline_check_spec::*, syscall_cpu_hotplug_spec::*};
 
 verus! {
 /// Setting a request bit in the container of a cpu of `a` leaves the view of `b` unchanged.

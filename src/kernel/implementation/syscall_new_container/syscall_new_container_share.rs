@@ -8,7 +8,6 @@ use super::syscall_new_container_trace::{new_container_finish_step_from_u, new_c
 use super::syscall_new_container_share_eof::{create_new_container_root_thread_and_unlock_eof, create_new_container_root_thread_and_unlock_eof_transition_framing};
 use super::syscall_new_container_cpu::transfer_new_container_cpu;
 use super::syscall_new_container_share_helpers::release_new_container_root_thread_locks_and_attach_endpoint;
-use super::syscall_new_container_build::build_new_container_child_structure;
 #[cfg(not(feature = "split-crates"))]
 use crate::implementation::create_thread_from_staged_page::create_thread_from_staged_page_merged;
 
@@ -401,10 +400,10 @@ pub(super) fn share_new_container_range(
         }) by { reveal(share_4k_objects_k); };
     }
     let ghost origin = Share4kOrigin::NewContainer(NewContainerProgress { child_container: Some(child_container_ptr), ..record });
-    let Tracked(child_window_perms) = build_new_container_child_structure(
-        krnl, source_range, child_allocator_4k_ptr, current_thread_ptr, child_process_ptr, child_container_ptr, parent_container_ptr, caller_cpu_id, source_pagetable_ptr,
-        child_pagetable_ptr, Ghost(origin), Ghost(entry_k), Ghost(entry_lctx), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(current_thread_lock_perm),
-        Tracked(child_pagetable_lock_perm), Tracked(parent_container_lock_perm), Tracked(child_container_lock_perm),
+    let Tracked(child_window_perms) = build_new_child_structure(
+        krnl, source_range, child_allocator_4k_ptr, current_thread_ptr, child_process_ptr, child_container_ptr, Some(parent_container_ptr), caller_cpu_id,
+        source_pagetable_ptr, child_pagetable_ptr, Ghost(origin), Ghost(entry_k), Ghost(entry_lctx), Tracked(&mut *lctx), Tracked(&mut *steps),
+        Tracked(current_thread_lock_perm), Tracked(child_pagetable_lock_perm), Tracked(Some(parent_container_lock_perm)), Tracked(Some(child_container_lock_perm)),
     );
     proof {
         assert(share_mapping_4k_range_owner_compatible(krnl, source_pagetable_ptr, parent_container_ptr, source_range)) by {

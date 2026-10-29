@@ -598,7 +598,7 @@ pub(crate) fn kill_retire_commit(
     }
     let ghost mid = *krnl;
     proof {
-        assert(kill_retire_eof_transition_framing(entry, mid, cpu_id, target, parent_ptr, container_ptr, allocator_ptr)) by { reveal(kill_retire_eof_transition_framing); };
+        assert(kill_retire_eof_transition_framing(entry, mid, cpu_id, target, Some(parent_ptr), container_ptr, allocator_ptr)) by { reveal(kill_retire_eof_transition_framing); };
         assert(mid.inv()) by { reveal(LockedMap::typed_lock_map_aligned); kill_retire_eof(entry, mid, *old(lctx), cpu_id, target, parent_ptr, container_ptr, allocator_ptr); };
     }
     krnl.wunlock_allocator_quota_4k(allocator_ptr, Tracked(&mut *lctx), Tracked(quota_lock_perm));
@@ -675,6 +675,7 @@ pub(crate) fn kill_retire_unlink_process(
         final(krnl).ctn_mp.spec_index(container_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(container_ptr).view_rodata(),
         final(krnl).ctn_mp.spec_index(container_ptr).view_ghost() == (ContainerGhost {
             owned_processes: Ghost(old(krnl).ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().remove(target)), ..old(krnl).ctn_mp.spec_index(container_ptr).view_ghost() }),
+        final(krnl).ctn_mp.spec_index(container_ptr).is_init() == old(krnl).ctn_mp.spec_index(container_ptr).is_init(),
         final(krnl).ctn_mp.spec_index(container_ptr).locking_thread() == old(krnl).ctn_mp.spec_index(container_ptr).locking_thread(),
         final(krnl).ctn_mp.spec_index(container_ptr).control() == old(krnl).ctn_mp.spec_index(container_ptr).control(),
         ret.view().is_init(),
@@ -683,7 +684,7 @@ pub(crate) fn kill_retire_unlink_process(
     proof {
         let root = krnl.ctn_mp.spec_index(container_ptr).view().root_process;
         let tree = krnl.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view();
-        process_perms_wf_at(krnl.prc_mp, target); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target);
+        process_perms_wf_at(krnl.prc_mp, target); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target); container_perms_wf_at(krnl.ctn_mp, container_ptr);
         assert(process_tree_wf(root, tree, krnl.prc_mp)) by { per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, container_ptr); };
         assert(root != target) by {
             process_root_wf_at(root, tree, krnl.prc_mp, target); process_children_parent_wf_parent_at(root, tree, krnl.prc_mp, target); process_children_parent_wf_at(root, tree, krnl.prc_mp, parent_ptr, target);

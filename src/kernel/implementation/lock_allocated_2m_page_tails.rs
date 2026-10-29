@@ -59,9 +59,7 @@ pub fn wlock_allocated_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracke
         final(lctx).allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
         final(lctx).allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
         *final(krnl) == (KernelK { pg_arr: final(krnl).pg_arr, ..*old(krnl) }),
-        forall|index: PageIndex|
-            #![trigger final(krnl).pg_arr.spec_index(index).view().view()]
-            index_valid(NUM_PAGES, index) ==> final(krnl).pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
+        forall|index: PageIndex| #![trigger final(krnl).pg_arr.spec_index(index).view().view()] index_valid(NUM_PAGES, index) ==> final(krnl).pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
         owned_2m_tail_lock_perms_wf(ret.view(), final(krnl).pg_arr, final(lctx), head),
 {
     let tracked mut perms: Map<PageIndex, LockPerm> = Map::tracked_empty();
@@ -100,9 +98,7 @@ pub fn wlock_allocated_2m_page_tails(krnl: &mut KernelK, head: PageIndex, Tracke
             lctx.allocator_2m_lock_maps() == old(lctx).allocator_2m_lock_maps(),
             lctx.allocator_1g_lock_maps() == old(lctx).allocator_1g_lock_maps(),
             *krnl == (KernelK { pg_arr: krnl.pg_arr, ..*old(krnl) }),
-            forall|index: PageIndex|
-                #![trigger krnl.pg_arr.spec_index(index).view().view()]
-                index_valid(NUM_PAGES, index) ==> krnl.pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
+            forall|index: PageIndex| #![trigger krnl.pg_arr.spec_index(index).view().view()] index_valid(NUM_PAGES, index) ==> krnl.pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
             forall|index: PageIndex|
                 #![trigger krnl.pg_arr.spec_index(index)]
                 #![trigger old(krnl).pg_arr.spec_index(index)]

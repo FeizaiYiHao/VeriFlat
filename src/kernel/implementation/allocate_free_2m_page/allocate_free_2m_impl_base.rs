@@ -704,7 +704,7 @@ verus! {
 /// After a failed cache scan (every cpu cache of `alloc_ptr_2m` empty), the
 /// container conservation law forces the global pool to be non-empty: the
 /// total free-page count equals the pool length (all cache summands are zero),
-/// and that total is at least the held thread's `effective_quota_2m >= 1`
+/// and that total is at least the held thread's `thread_effective_quota_2m >= 1`
 /// because every other conservation summand is non-negative.
 pub proof fn lemma_scan_fail_pool_nonempty(k: &KernelK, container_ptr: RwLockContainerPtr, alloc_ptr_2m: RwLockPageAllocatorPtr, thread_ptr: RwLockThreadPtr)
     requires

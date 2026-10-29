@@ -8,7 +8,9 @@ pub(super) use crate::kernel::implementation::lock_owned_2m_page_tails::{
 
 mod publish;
 mod publish_objects;
+mod publish_backing_pages;
 mod eof_pages;
+mod eof_pages_thread_staged;
 mod eof_allocator;
 mod eof_process;
 mod eof_close;
@@ -18,7 +20,9 @@ mod eof_object_pages;
 
 pub use publish::*;
 pub use publish_objects::*;
+pub use publish_backing_pages::*;
 pub use eof_pages::*;
+pub use eof_pages_thread_staged::*;
 pub use eof_allocator::*;
 pub use eof_process::*;
 pub use eof_close::*;

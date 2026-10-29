@@ -41,10 +41,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
     pub open spec fn unchanged_except(&self, old: &Self, key: usize) -> bool {
         &&& old.dom() == self.dom()
         &&& self.dom().contains(key)
-        &&& forall|k: usize|
-            #![trigger self.spec_index(k)]
-            #![trigger old.spec_index(k)]
-            old.dom().contains(k) && k != key ==> self.spec_index(k) == old.spec_index(k)
+        &&& forall|k: usize| #![trigger self.spec_index(k)] #![trigger old.spec_index(k)] old.dom().contains(k) && k != key ==> self.spec_index(k) == old.spec_index(k)
     }
 
     #[verifier::opaque]
@@ -59,9 +56,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
                 &&& self.dom().contains(key)
                 &&& self.spec_index(key).locked_by_thread(thread_id)
             })
-        &&& (forall|key: usize|
-            #![trigger self.spec_index(key).locked_by_thread(thread_id)]
-            self.dom().contains(key) && self.spec_index(key).locked_by_thread(thread_id) ==> held_locks.dom().contains(key))
+        &&& (forall|key: usize| #![trigger self.spec_index(key).locked_by_thread(thread_id)] self.dom().contains(key) && self.spec_index(key).locked_by_thread(thread_id) ==> held_locks.dom().contains(key))
         &&& (forall|key: usize|
             #![trigger held_locks.index(key).lock_id]
             held_locks.dom().contains(key) ==> held_locks.index(key).lock_id == LockId {
@@ -219,10 +214,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
         ensures
             old(self).perms_wf() ==> final(self).perms_wf(),
             final(self).dom() == old(self).dom(),
-            forall|k: usize|
-                #![trigger final(self).view().spec_index(k)]
-                #![trigger old(self).view().spec_index(k)]
-                old(self).dom().contains(k) && k != key ==> final(self).spec_index(k) == old(self).spec_index(k),
+            forall|k: usize| #![trigger final(self).view().spec_index(k)] #![trigger old(self).view().spec_index(k)] old(self).dom().contains(k) && k != key ==> final(self).spec_index(k) == old(self).spec_index(k),
             // Lock state of `key`'s rwlock is preserved.
             final(self).spec_index(key).is_init(),
             final(self).spec_index(key).wlocked_by(lctx),
@@ -307,10 +299,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedMap<usize, T, ROT, GhostT
             forall|k: usize, thread_id: LockThreadId|
                 #![trigger final(self).spec_index(k).wlocked_by_thread(thread_id)]
                 old(self).dom().contains(k) ==> final(self).spec_index(k).wlocked_by_thread(thread_id) == old(self).spec_index(k).wlocked_by_thread(thread_id),
-            forall|k: usize|
-                #![trigger old(self).lock_id_by_key(k)]
-                #![trigger final(self).lock_id_by_key(k)]
-                old(self).dom().contains(k) ==> final(self).lock_id_by_key(k) == old(self).lock_id_by_key(k),
+            forall|k: usize| #![trigger old(self).lock_id_by_key(k)] #![trigger final(self).lock_id_by_key(k)] old(self).dom().contains(k) ==> final(self).lock_id_by_key(k) == old(self).lock_id_by_key(k),
     {
         let tracked mut perm = self.map.borrow_mut().tracked_remove(key);
         update_ghost(&mut perm, new_ghost);
@@ -343,12 +332,8 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             final(self).dom() =~= old(self).dom().insert(key),
             final(self).view().spec_index(key).is_init(),
             final(self).view().spec_index(key).addr() == key,
-            forall|k: usize| #![auto]
-                old(self).dom().contains(k) ==> final(self).spec_index(k) == old(self).spec_index(k),
-            forall|k: usize|
-                #![trigger old(self).lock_id_by_key(k)]
-                #![trigger final(self).lock_id_by_key(k)]
-                old(self).dom().contains(k) ==> final(self).lock_id_by_key(k) == old(self).lock_id_by_key(k),
+            forall|k: usize| #![auto] old(self).dom().contains(k) ==> final(self).spec_index(k) == old(self).spec_index(k),
+            forall|k: usize| #![trigger old(self).lock_id_by_key(k)] #![trigger final(self).lock_id_by_key(k)] old(self).dom().contains(k) ==> final(self).lock_id_by_key(k) == old(self).lock_id_by_key(k),
             final(self).dom().contains(key),
             final(self).spec_index(key).is_init(),
             final(self).spec_index(key).view() == perm.value().view(),
@@ -370,10 +355,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             old(self).perms_wf() ==> final(self).perms_wf() && ret.view().is_init() && ret.view().addr() == key,
             final(self).dom() =~= old(self).dom().remove(key),
             forall|k: usize| #![trigger final(self).spec_index(k)] final(self).dom().contains(k) ==> final(self).spec_index(k) == old(self).spec_index(k),
-            forall|k: usize|
-                #![trigger old(self).lock_id_by_key(k)]
-                #![trigger final(self).lock_id_by_key(k)]
-                final(self).dom().contains(k) ==> final(self).lock_id_by_key(k) == old(self).lock_id_by_key(k),
+            forall|k: usize| #![trigger old(self).lock_id_by_key(k)] #![trigger final(self).lock_id_by_key(k)] final(self).dom().contains(k) ==> final(self).lock_id_by_key(k) == old(self).lock_id_by_key(k),
             ret.view().value() == old(self).spec_index(key),
     {
         let tracked perm = self.map.borrow_mut().tracked_remove(key);

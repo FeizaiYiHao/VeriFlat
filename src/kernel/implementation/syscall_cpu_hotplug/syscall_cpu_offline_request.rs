@@ -3,7 +3,7 @@ use crate::*;
 use super::syscall_cpu_hotplug_spec::*;
 use super::syscall_cpu_hotplug_trace::*;
 #[cfg(verus_keep_ghost)]
-use super::cpu_offline_request_eof::{cpu_offline_request_eof, cpu_offline_request_eof_transition_framing};
+use super::syscall_cpu_offline_request_eof::{cpu_offline_request_eof, cpu_offline_request_eof_transition_framing};
 
 verus! {
 /// Asks `target`, a cpu of the caller's container, to go Off at its next schedule check: the caller's container table

@@ -257,14 +257,14 @@ pub(super) fn publish_staged_process_with_iommu(
         Tracked(&l4_page_lock_perm), Tracked(&iommu_table_page_lock_perm), Tracked(&iommu_l4_page_lock_perm),
         Tracked(&parent_lock_perm), Tracked(&current_thread_lock_perm), Tracked(&pcid_allocator_lock_perm),
     );
-    proof { assert(krnl.prc_mp.spec_index(parent_ptr).view().state.view() is Running || krnl.prc_mp.spec_index(parent_ptr).view().state.view() is Zombie) by { reveal(create_process_with_iommu_from_staged_pages_eof_transition_framing); }; }
+    proof { assert(krnl.prc_mp.spec_index(parent_ptr).view().state.view() is Running || krnl.prc_mp.spec_index(parent_ptr).view().state.view() is Zombie) by { reveal(create_process_from_staged_pages_eof_transition_framing); }; }
     release_staged_process_with_iommu_input_locks(
         krnl, Tracked(&mut *lctx), cpu_id, container_ptr, parent_ptr, child_ptr, current_thread_ptr, pcid_allocator_ptr, source_pagetable_ptr,
         target_pagetable_ptr, iommu_table_ptr, process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr,
         Tracked(process_page_lock_perm), Tracked(pagetable_page_lock_perm), Tracked(l4_page_lock_perm), Tracked(iommu_table_page_lock_perm),
         Tracked(iommu_l4_page_lock_perm), Tracked(parent_lock_perm), Tracked(pcid_allocator_lock_perm),
     );
-    proof { reveal(create_process_with_iommu_from_staged_pages_eof_transition_framing); reveal(kernel_thread_quota_4k_changed); }
+    proof { reveal(create_process_from_staged_pages_eof_transition_framing); reveal(kernel_thread_quota_4k_changed); }
     end_new_process_publish_step(
         krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, parent_ptr, child_ptr, current_thread_ptr, pcid_allocator_ptr, source_pagetable_ptr,
         target_pagetable_ptr, Some(iommu_table_ptr), source_range, pcid, Tracked(current_thread_lock_perm), Ghost(regs), Ghost(endpoint_index),

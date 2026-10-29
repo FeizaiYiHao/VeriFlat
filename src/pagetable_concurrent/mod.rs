@@ -2,6 +2,7 @@ pub mod l2_page_map;
 pub mod pagetable_concurrent_spec;
 pub mod pagetable_concurrent_lemma;
 pub mod pagetable_concurrent_util;
+mod pagetable_concurrent_util_eof;
 pub mod pagetable_concurrent_util_t;
 
 pub use l2_page_map::*;

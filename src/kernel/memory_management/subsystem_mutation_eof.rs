@@ -5,7 +5,7 @@ verus! {
 /// S of `pagetable_map_insert_4k`: only the window half of `pagetable_ptr` changes, by the present 4K leaf `target_entry` at `va`;
 /// the big-lock payloads and every window lock stay.
 #[verifier::opaque]
-pub open spec fn pagetable_map_insert_4k_eof_transition_framing(
+pub(super) open spec fn pagetable_map_insert_4k_eof_transition_framing(
     pt_mp: PageTableLockedMap, pre_lower: PageTableLowerMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot, va: VAddr, target_entry: MapEntry,
 ) -> bool {
     &&& post_lower == pre_lower.insert(pagetable_ptr, post_lower.spec_index(pagetable_ptr))
@@ -25,7 +25,7 @@ pub open spec fn pagetable_map_insert_4k_eof_transition_framing(
 
 /// EOF closure of `pagetable_map_insert_4k`: the window-half invariants after one present 4K leaf is installed under the
 /// big read lock, which leaves the write-lock backup of every table valid.
-pub proof fn pagetable_map_insert_4k_eof(
+pub(super) proof fn pagetable_map_insert_4k_eof(
     pt_mp: PageTableLockedMap, pre_lower: PageTableLowerMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot, va: VAddr, target_entry: MapEntry,
     window_lock_map: Map<(RwLockPageTableRoot, WindowVa), TypedHeldLock>, pagetable_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>, thread_id: LockThreadId,
 )
@@ -59,7 +59,7 @@ pub proof fn pagetable_map_insert_4k_eof(
 /// S of `pagetable_map_clear_4k_present`: under the big write lock only the window half of `pagetable_ptr` changes, by clearing the
 /// user present bit of the 4K leaf at `va`; the lock's ghost slot is reset to the new window half and every window lock stays.
 #[verifier::opaque]
-pub open spec fn pagetable_map_clear_4k_present_eof_transition_framing(
+pub(super) open spec fn pagetable_map_clear_4k_present_eof_transition_framing(
     pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot, va: VAddr,
 ) -> bool {
     &&& post_pt.perms_wf()
@@ -85,7 +85,7 @@ pub open spec fn pagetable_map_clear_4k_present_eof_transition_framing(
 }
 
 /// EOF closure of `pagetable_map_clear_4k_present`: the big-lock and window-half invariants after a 4K leaf of the write-held table is hidden.
-pub proof fn pagetable_map_clear_4k_present_eof(
+pub(super) proof fn pagetable_map_clear_4k_present_eof(
     pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot, va: VAddr,
     window_lock_map: Map<(RwLockPageTableRoot, WindowVa), TypedHeldLock>, pagetable_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>, thread_id: LockThreadId,
 )
@@ -131,7 +131,7 @@ pub proof fn pagetable_map_clear_4k_present_eof(
 /// S of `pagetable_map_unmap_4k_kernel`: under the big write lock only the window half of `pagetable_ptr` changes, by removing the
 /// hidden 4K leaf at `va`; the lock's ghost slot is reset to the new window half and every window lock stays.
 #[verifier::opaque]
-pub open spec fn pagetable_map_unmap_4k_kernel_eof_transition_framing(
+pub(super) open spec fn pagetable_map_unmap_4k_kernel_eof_transition_framing(
     pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot, va: VAddr,
 ) -> bool {
     &&& post_pt.perms_wf()
@@ -157,7 +157,7 @@ pub open spec fn pagetable_map_unmap_4k_kernel_eof_transition_framing(
 }
 
 /// EOF closure of `pagetable_map_unmap_4k_kernel`: the big-lock and window-half invariants after a hidden 4K leaf is removed.
-pub proof fn pagetable_map_unmap_4k_kernel_eof(
+pub(super) proof fn pagetable_map_unmap_4k_kernel_eof(
     pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot, va: VAddr,
     window_lock_map: Map<(RwLockPageTableRoot, WindowVa), TypedHeldLock>, pagetable_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>, thread_id: LockThreadId,
 )
@@ -203,7 +203,7 @@ pub proof fn pagetable_map_unmap_4k_kernel_eof(
 /// S of `pagetable_map_clear_4k_present_rlocked`: under the big read lock only the window half of `pagetable_ptr` changes, by
 /// clearing the user present bit of the 4K leaf at `va`; the big-lock payloads and every window lock stay.
 #[verifier::opaque]
-pub open spec fn pagetable_map_clear_4k_present_rlocked_eof_transition_framing(
+pub(super) open spec fn pagetable_map_clear_4k_present_rlocked_eof_transition_framing(
     pt_mp: PageTableLockedMap, pre_lower: PageTableLowerMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot, va: VAddr,
 ) -> bool {
     &&& post_lower == pre_lower.insert(pagetable_ptr, post_lower.spec_index(pagetable_ptr))
@@ -223,7 +223,7 @@ pub open spec fn pagetable_map_clear_4k_present_rlocked_eof_transition_framing(
 
 /// EOF closure of `pagetable_map_clear_4k_present_rlocked`: the window-half invariants after a 4K leaf of the read-held table is
 /// hidden inside a window this thread holds, which leaves the write-lock backup of every table valid.
-pub proof fn pagetable_map_clear_4k_present_rlocked_eof(
+pub(super) proof fn pagetable_map_clear_4k_present_rlocked_eof(
     pt_mp: PageTableLockedMap, pre_lower: PageTableLowerMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot, indices: (L4Index, L3Index, L2Index, L1Index),
     window_lock_map: Map<(RwLockPageTableRoot, WindowVa), TypedHeldLock>, pagetable_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>, thread_id: LockThreadId,
 )
@@ -264,7 +264,7 @@ pub proof fn pagetable_map_clear_4k_present_rlocked_eof(
 /// S of `pagetable_map_unmap_4k_kernel_rlocked`: under the big read lock only the window half of `pagetable_ptr` changes, by removing
 /// the hidden 4K leaf at `va`; the big-lock payloads and every window lock stay.
 #[verifier::opaque]
-pub open spec fn pagetable_map_unmap_4k_kernel_rlocked_eof_transition_framing(
+pub(super) open spec fn pagetable_map_unmap_4k_kernel_rlocked_eof_transition_framing(
     pt_mp: PageTableLockedMap, pre_lower: PageTableLowerMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot, va: VAddr,
 ) -> bool {
     &&& post_lower == pre_lower.insert(pagetable_ptr, post_lower.spec_index(pagetable_ptr))
@@ -284,7 +284,7 @@ pub open spec fn pagetable_map_unmap_4k_kernel_rlocked_eof_transition_framing(
 
 /// EOF closure of `pagetable_map_unmap_4k_kernel_rlocked`: the window-half invariants after a hidden 4K leaf of the read-held table
 /// is removed, which leaves the write-lock backup of every table valid.
-pub proof fn pagetable_map_unmap_4k_kernel_rlocked_eof(
+pub(super) proof fn pagetable_map_unmap_4k_kernel_rlocked_eof(
     pt_mp: PageTableLockedMap, pre_lower: PageTableLowerMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot, va: VAddr,
     window_lock_map: Map<(RwLockPageTableRoot, WindowVa), TypedHeldLock>, pagetable_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>, thread_id: LockThreadId,
 )
@@ -318,7 +318,7 @@ pub proof fn pagetable_map_unmap_4k_kernel_rlocked_eof(
 /// unlinking one table page; the lock's ghost slot is reset to the new window half, and every mapping and every window lock of a
 /// valid user index stay.
 #[verifier::opaque]
-pub open spec fn pagetable_map_remove_table_page_eof_transition_framing(
+pub(super) open spec fn pagetable_map_remove_table_page_eof_transition_framing(
     pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot,
 ) -> bool {
     &&& post_pt.perms_wf()
@@ -345,7 +345,7 @@ pub open spec fn pagetable_map_remove_table_page_eof_transition_framing(
 }
 
 /// EOF closure of `pagetable_map_remove_table_page`: the big-lock and window-half invariants after one table page is unlinked.
-pub proof fn pagetable_map_remove_table_page_eof(
+pub(super) proof fn pagetable_map_remove_table_page_eof(
     pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot,
     window_lock_map: Map<(RwLockPageTableRoot, WindowVa), TypedHeldLock>, pagetable_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>, thread_id: LockThreadId,
 )
@@ -392,7 +392,7 @@ pub proof fn pagetable_map_remove_table_page_eof(
 /// S of `pagetable_map_insert_4k_wlocked`: under the big write lock only the window half of `pagetable_ptr` changes, by the present 4K
 /// leaf `target_entry` at `va`; the lock's ghost slot is reset to the new window half and every window lock stays.
 #[verifier::opaque]
-pub open spec fn pagetable_map_insert_4k_wlocked_eof_transition_framing(
+pub(super) open spec fn pagetable_map_insert_4k_wlocked_eof_transition_framing(
     pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot, va: VAddr,
     target_entry: MapEntry,
 ) -> bool {
@@ -420,7 +420,7 @@ pub open spec fn pagetable_map_insert_4k_wlocked_eof_transition_framing(
 
 /// EOF closure of `pagetable_map_insert_4k_wlocked`: the big-lock and window-half invariants after one 4K leaf of the write-held
 /// table is installed.
-pub proof fn pagetable_map_insert_4k_wlocked_eof(
+pub(super) proof fn pagetable_map_insert_4k_wlocked_eof(
     pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot, va: VAddr,
     target_entry: MapEntry, window_lock_map: Map<(RwLockPageTableRoot, WindowVa), TypedHeldLock>, pagetable_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>,
     thread_id: LockThreadId,
@@ -467,7 +467,7 @@ pub proof fn pagetable_map_insert_4k_wlocked_eof(
 /// S of `pagetable_map_create_entry_l2`: only the window half of `pagetable_ptr` changes, by linking one L1 page; every mapping, the
 /// big-lock payloads, and every window lock stay.
 #[verifier::opaque]
-pub open spec fn pagetable_map_create_entry_l2_eof_transition_framing(
+pub(super) open spec fn pagetable_map_create_entry_l2_eof_transition_framing(
     pt_mp: PageTableLockedMap, pre_lower: PageTableLowerMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot,
 ) -> bool {
     &&& post_lower == pre_lower.insert(pagetable_ptr, post_lower.spec_index(pagetable_ptr))
@@ -487,7 +487,7 @@ pub open spec fn pagetable_map_create_entry_l2_eof_transition_framing(
 
 /// EOF closure of `pagetable_map_create_entry_l2`: the window-half invariants after one L1 page is linked under the big read lock,
 /// which leaves the write-lock backup of every table valid.
-pub proof fn pagetable_map_create_entry_l2_eof(
+pub(super) proof fn pagetable_map_create_entry_l2_eof(
     pt_mp: PageTableLockedMap, pre_lower: PageTableLowerMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot,
     window_lock_map: Map<(RwLockPageTableRoot, WindowVa), TypedHeldLock>, pagetable_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>, thread_id: LockThreadId,
 )
@@ -520,7 +520,7 @@ pub proof fn pagetable_map_create_entry_l2_eof(
 /// S of `pagetable_map_create_entry_l2_wlocked`: under the big write lock only the window half of `pagetable_ptr` changes, by linking
 /// one L1 page; the lock's ghost slot is reset to the new window half, and every mapping and every window lock stay.
 #[verifier::opaque]
-pub open spec fn pagetable_map_create_entry_l2_wlocked_eof_transition_framing(
+pub(super) open spec fn pagetable_map_create_entry_l2_wlocked_eof_transition_framing(
     pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot,
 ) -> bool {
     &&& post_pt.perms_wf()
@@ -547,7 +547,7 @@ pub open spec fn pagetable_map_create_entry_l2_wlocked_eof_transition_framing(
 
 /// EOF closure of `pagetable_map_create_entry_l2_wlocked`: the big-lock and window-half invariants after one L1 page of the
 /// write-held table is linked.
-pub proof fn pagetable_map_create_entry_l2_wlocked_eof(
+pub(super) proof fn pagetable_map_create_entry_l2_wlocked_eof(
     pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot,
     window_lock_map: Map<(RwLockPageTableRoot, WindowVa), TypedHeldLock>, pagetable_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>, thread_id: LockThreadId,
 )
@@ -593,7 +593,7 @@ pub proof fn pagetable_map_create_entry_l2_wlocked_eof(
 /// S of `pagetable_map_create_entry_l4`: under the big write lock only the big-lock payload of `pagetable_ptr` changes, by linking
 /// one L3 page; the window half and its ghost-slot copy, every mapping, and every window lock of a valid user index stay.
 #[verifier::opaque]
-pub open spec fn pagetable_map_create_entry_l4_eof_transition_framing(
+pub(super) open spec fn pagetable_map_create_entry_l4_eof_transition_framing(
     pre_pt: PageTableLockedMap, post_pt: PageTableLockedMap, pt_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot,
 ) -> bool {
     &&& post_pt.perms_wf()
@@ -618,7 +618,7 @@ pub open spec fn pagetable_map_create_entry_l4_eof_transition_framing(
 }
 
 /// EOF closure of `pagetable_map_create_entry_l4`: the big-lock and window-half invariants after one L3 page is linked.
-pub proof fn pagetable_map_create_entry_l4_eof(
+pub(super) proof fn pagetable_map_create_entry_l4_eof(
     pre_pt: PageTableLockedMap, post_pt: PageTableLockedMap, pt_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot,
     window_lock_map: Map<(RwLockPageTableRoot, WindowVa), TypedHeldLock>, pagetable_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>, thread_id: LockThreadId,
 )
@@ -667,7 +667,7 @@ pub proof fn pagetable_map_create_entry_l4_eof(
 /// the lock's ghost slot is reset to the new window half, every mapping stays, and every other window lock of a valid user index
 /// stays.
 #[verifier::opaque]
-pub open spec fn pagetable_map_create_entry_l3_eof_transition_framing(
+pub(super) open spec fn pagetable_map_create_entry_l3_eof_transition_framing(
     pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot, l4i: L4Index,
     l3i: L3Index, lo: L2Index, hi: L2Index, thread_id: LockThreadId,
 ) -> bool {
@@ -697,7 +697,7 @@ pub open spec fn pagetable_map_create_entry_l3_eof_transition_framing(
 
 /// EOF closure of `pagetable_map_create_entry_l3`: the big-lock and window-half invariants after one L2 page is linked with windows
 /// `lo..=hi` held by `thread_id`, whose window map gains exactly those windows.
-pub proof fn pagetable_map_create_entry_l3_eof(
+pub(super) proof fn pagetable_map_create_entry_l3_eof(
     pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot,
     pre_window_lock_map: Map<(RwLockPageTableRoot, WindowVa), TypedHeldLock>, post_window_lock_map: Map<(RwLockPageTableRoot, WindowVa), TypedHeldLock>,
     pagetable_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>, thread_id: LockThreadId, l4i: L4Index, l3i: L3Index, lo: L2Index, hi: L2Index,
@@ -723,7 +723,7 @@ pub proof fn pagetable_map_create_entry_l3_eof(
                 ==> post_window_lock_map.index((p, w)) == pre_window_lock_map.index((p, w)),
         forall|w: WindowVa| #![trigger post_window_lock_map.index((pagetable_ptr, w))]
             w.wf() && spec_v2l4index(w.va) == l4i && spec_v2l3index(w.va) == l3i && lo <= spec_v2l2index(w.va) <= hi
-                ==> post_window_lock_map.index((pagetable_ptr, w)) == (TypedHeldLock { lock_id: window_lock_id_at(pagetable_ptr, w), mode: TypedLockMode::Write }),
+                ==> post_window_lock_map.index((pagetable_ptr, w)) == (TypedHeldLock { lock_id: window_lock_id_of(pagetable_ptr, w), mode: TypedLockMode::Write }),
         pagetable_map_create_entry_l3_eof_transition_framing(pre_pt, pre_lower, post_pt, post_lower, pagetable_ptr, l4i, l3i, lo, hi, thread_id),
     ensures
         pagetable_perms_wf(post_pt),
@@ -782,7 +782,7 @@ pub proof fn pagetable_l2_windows_unlocked_when_wlocker_holds_no_windows(
 
 /// S of `iommu_table_map_set_did`: only the DID of the write-held IOMMU table `iommu_table_ptr` changes; its lock state stays.
 #[verifier::opaque]
-pub open spec fn iommu_table_map_set_did_eof_transition_framing(
+pub(super) open spec fn iommu_table_map_set_did_eof_transition_framing(
     pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot, did: Option<VtdDomainId>,
 ) -> bool {
     &&& post.perms_wf()
@@ -848,7 +848,7 @@ proof fn iommu_table_map_set_did_eof_table_table_pages(pre_table: PageTable<IOMM
 { reveal(PageTable::table_pages_wf); reveal(PageTable::tables_reachable_wf); reveal(PageTable::kernel_entries_wf); }
 
 /// EOF closure of `iommu_table_map_set_did`: neither a table's well-formedness nor the hidden-leaf lock rule reads its DID.
-pub proof fn iommu_table_map_set_did_eof(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot, did: Option<VtdDomainId>)
+pub(super) proof fn iommu_table_map_set_did_eof(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot, did: Option<VtdDomainId>)
     requires
         iommu_table_perms_wf(pre),
         pre.dom().contains(iommu_table_ptr),
@@ -871,7 +871,7 @@ pub proof fn iommu_table_map_set_did_eof(pre: IommuTableLockedMap, post: IommuTa
 
 /// S of `page_array_retype_owned_4k`: only page `page_index` changes, by retyping the owned 4K page to a kernel object; it stays well formed at its address.
 #[verifier::opaque]
-pub open spec fn page_array_retype_owned_4k_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_retype_owned_4k_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
     &&& post.inv()
     &&& post.entries_unchanged_except(&pre, page_index)
     &&& post.spec_index(page_index).view().inv()
@@ -879,7 +879,7 @@ pub open spec fn page_array_retype_owned_4k_eof_transition_framing(pre: PageLock
 }
 
 /// EOF closure of `page_array_retype_owned_4k`: the page array stays well formed when one page changes in place.
-pub proof fn page_array_retype_owned_4k_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_retype_owned_4k_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
     requires
         page_array_wf(pre),
         index_valid(NUM_PAGES, page_index),
@@ -889,7 +889,7 @@ pub proof fn page_array_retype_owned_4k_eof(pre: PageLockedArray, post: PageLock
 
 /// S of `page_array_remove_4k_mapping_without_free`: only page `page_index` changes, by removing one mapping of the still-referenced 4K page; it stays well formed at its address.
 #[verifier::opaque]
-pub open spec fn page_array_remove_4k_mapping_without_free_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_remove_4k_mapping_without_free_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
     &&& post.inv()
     &&& post.entries_unchanged_except(&pre, page_index)
     &&& post.spec_index(page_index).view().inv()
@@ -897,7 +897,7 @@ pub open spec fn page_array_remove_4k_mapping_without_free_eof_transition_framin
 }
 
 /// EOF closure of `page_array_remove_4k_mapping_without_free`: the page array stays well formed when one page changes in place.
-pub proof fn page_array_remove_4k_mapping_without_free_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_remove_4k_mapping_without_free_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
     requires
         page_array_wf(pre),
         index_valid(NUM_PAGES, page_index),
@@ -907,7 +907,7 @@ pub proof fn page_array_remove_4k_mapping_without_free_eof(pre: PageLockedArray,
 
 /// S of `page_array_remove_last_4k_mapping_to_cache`: only page `page_index` changes, by removing the last mapping of the 4K page and freeing it to a cpu cache; it stays well formed at its address.
 #[verifier::opaque]
-pub open spec fn page_array_remove_last_4k_mapping_to_cache_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_remove_last_4k_mapping_to_cache_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
     &&& post.inv()
     &&& post.entries_unchanged_except(&pre, page_index)
     &&& post.spec_index(page_index).view().inv()
@@ -915,7 +915,7 @@ pub open spec fn page_array_remove_last_4k_mapping_to_cache_eof_transition_frami
 }
 
 /// EOF closure of `page_array_remove_last_4k_mapping_to_cache`: the page array stays well formed when one page changes in place.
-pub proof fn page_array_remove_last_4k_mapping_to_cache_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_remove_last_4k_mapping_to_cache_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
     requires
         page_array_wf(pre),
         index_valid(NUM_PAGES, page_index),
@@ -925,7 +925,7 @@ pub proof fn page_array_remove_last_4k_mapping_to_cache_eof(pre: PageLockedArray
 
 /// S of `page_array_remove_4k_iommu_mapping_without_free`: only page `page_index` changes, by removing one IOMMU mapping of the still-referenced 4K page; it stays well formed at its address.
 #[verifier::opaque]
-pub open spec fn page_array_remove_4k_iommu_mapping_without_free_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_remove_4k_iommu_mapping_without_free_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
     &&& post.inv()
     &&& post.entries_unchanged_except(&pre, page_index)
     &&& post.spec_index(page_index).view().inv()
@@ -933,7 +933,7 @@ pub open spec fn page_array_remove_4k_iommu_mapping_without_free_eof_transition_
 }
 
 /// EOF closure of `page_array_remove_4k_iommu_mapping_without_free`: the page array stays well formed when one page changes in place.
-pub proof fn page_array_remove_4k_iommu_mapping_without_free_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_remove_4k_iommu_mapping_without_free_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
     requires
         page_array_wf(pre),
         index_valid(NUM_PAGES, page_index),
@@ -943,7 +943,7 @@ pub proof fn page_array_remove_4k_iommu_mapping_without_free_eof(pre: PageLocked
 
 /// S of `page_array_remove_last_4k_iommu_mapping_to_cache`: only page `page_index` changes, by removing the last IOMMU mapping of the 4K page and freeing it to a cpu cache; it stays well formed at its address.
 #[verifier::opaque]
-pub open spec fn page_array_remove_last_4k_iommu_mapping_to_cache_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_remove_last_4k_iommu_mapping_to_cache_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
     &&& post.inv()
     &&& post.entries_unchanged_except(&pre, page_index)
     &&& post.spec_index(page_index).view().inv()
@@ -951,7 +951,7 @@ pub open spec fn page_array_remove_last_4k_iommu_mapping_to_cache_eof_transition
 }
 
 /// EOF closure of `page_array_remove_last_4k_iommu_mapping_to_cache`: the page array stays well formed when one page changes in place.
-pub proof fn page_array_remove_last_4k_iommu_mapping_to_cache_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_remove_last_4k_iommu_mapping_to_cache_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
     requires
         page_array_wf(pre),
         index_valid(NUM_PAGES, page_index),
@@ -961,7 +961,7 @@ pub proof fn page_array_remove_last_4k_iommu_mapping_to_cache_eof(pre: PageLocke
 
 /// S of `page_array_retire_kernel_object_4k_to_cache`: only page `page_index` changes, by retiring the 4K kernel object page to a cpu cache; it stays well formed at its address.
 #[verifier::opaque]
-pub open spec fn page_array_retire_kernel_object_4k_to_cache_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_retire_kernel_object_4k_to_cache_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
     &&& post.inv()
     &&& post.entries_unchanged_except(&pre, page_index)
     &&& post.spec_index(page_index).view().inv()
@@ -969,7 +969,7 @@ pub open spec fn page_array_retire_kernel_object_4k_to_cache_eof_transition_fram
 }
 
 /// EOF closure of `page_array_retire_kernel_object_4k_to_cache`: the page array stays well formed when one page changes in place.
-pub proof fn page_array_retire_kernel_object_4k_to_cache_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_retire_kernel_object_4k_to_cache_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
     requires
         page_array_wf(pre),
         index_valid(NUM_PAGES, page_index),
@@ -979,7 +979,7 @@ pub proof fn page_array_retire_kernel_object_4k_to_cache_eof(pre: PageLockedArra
 
 /// S of `page_array_retire_kernel_object_2m_to_global`: only page `page_index` changes, by retiring the 2M kernel object page to a global pool; it stays well formed at its address.
 #[verifier::opaque]
-pub open spec fn page_array_retire_kernel_object_2m_to_global_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_retire_kernel_object_2m_to_global_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
     &&& post.inv()
     &&& post.entries_unchanged_except(&pre, page_index)
     &&& post.spec_index(page_index).view().inv()
@@ -987,7 +987,7 @@ pub open spec fn page_array_retire_kernel_object_2m_to_global_eof_transition_fra
 }
 
 /// EOF closure of `page_array_retire_kernel_object_2m_to_global`: the page array stays well formed when one page changes in place.
-pub proof fn page_array_retire_kernel_object_2m_to_global_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_retire_kernel_object_2m_to_global_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
     requires
         page_array_wf(pre),
         index_valid(NUM_PAGES, page_index),
@@ -997,7 +997,7 @@ pub proof fn page_array_retire_kernel_object_2m_to_global_eof(pre: PageLockedArr
 
 /// S of `page_array_retire_kernel_object_4k_to_global`: only page `page_index` changes, by retiring the 4K kernel object page to a global pool; it stays well formed at its address.
 #[verifier::opaque]
-pub open spec fn page_array_retire_kernel_object_4k_to_global_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_retire_kernel_object_4k_to_global_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
     &&& post.inv()
     &&& post.entries_unchanged_except(&pre, page_index)
     &&& post.spec_index(page_index).view().inv()
@@ -1005,7 +1005,7 @@ pub open spec fn page_array_retire_kernel_object_4k_to_global_eof_transition_fra
 }
 
 /// EOF closure of `page_array_retire_kernel_object_4k_to_global`: the page array stays well formed when one page changes in place.
-pub proof fn page_array_retire_kernel_object_4k_to_global_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_retire_kernel_object_4k_to_global_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
     requires
         page_array_wf(pre),
         index_valid(NUM_PAGES, page_index),
@@ -1015,7 +1015,7 @@ pub proof fn page_array_retire_kernel_object_4k_to_global_eof(pre: PageLockedArr
 
 /// S of `page_array_move_free_4k_to_global_list`: only page `page_index` changes, by moving the free 4K page to a global list; it stays well formed at its address.
 #[verifier::opaque]
-pub open spec fn page_array_move_free_4k_to_global_list_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_move_free_4k_to_global_list_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
     &&& post.inv()
     &&& post.entries_unchanged_except(&pre, page_index)
     &&& post.spec_index(page_index).view().inv()
@@ -1023,7 +1023,7 @@ pub open spec fn page_array_move_free_4k_to_global_list_eof_transition_framing(p
 }
 
 /// EOF closure of `page_array_move_free_4k_to_global_list`: the page array stays well formed when one page changes in place.
-pub proof fn page_array_move_free_4k_to_global_list_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_move_free_4k_to_global_list_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
     requires
         page_array_wf(pre),
         index_valid(NUM_PAGES, page_index),
@@ -1033,7 +1033,7 @@ pub proof fn page_array_move_free_4k_to_global_list_eof(pre: PageLockedArray, po
 
 /// S of `page_array_move_free_4k_to_cpu_cache`: only page `page_index` changes, by moving the free 4K page to a cpu cache; it stays well formed at its address.
 #[verifier::opaque]
-pub open spec fn page_array_move_free_4k_to_cpu_cache_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_move_free_4k_to_cpu_cache_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
     &&& post.inv()
     &&& post.entries_unchanged_except(&pre, page_index)
     &&& post.spec_index(page_index).view().inv()
@@ -1041,7 +1041,7 @@ pub open spec fn page_array_move_free_4k_to_cpu_cache_eof_transition_framing(pre
 }
 
 /// EOF closure of `page_array_move_free_4k_to_cpu_cache`: the page array stays well formed when one page changes in place.
-pub proof fn page_array_move_free_4k_to_cpu_cache_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_move_free_4k_to_cpu_cache_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
     requires
         page_array_wf(pre),
         index_valid(NUM_PAGES, page_index),
@@ -1051,7 +1051,7 @@ pub proof fn page_array_move_free_4k_to_cpu_cache_eof(pre: PageLockedArray, post
 
 /// S of `page_array_retype_owned_4k_for_container`: only page `page_index` changes, by retyping the owned 4K page to a kernel object of a child container; it stays well formed at its address.
 #[verifier::opaque]
-pub open spec fn page_array_retype_owned_4k_for_container_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_retype_owned_4k_for_container_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
     &&& post.inv()
     &&& post.entries_unchanged_except(&pre, page_index)
     &&& post.spec_index(page_index).view().inv()
@@ -1059,7 +1059,7 @@ pub open spec fn page_array_retype_owned_4k_for_container_eof_transition_framing
 }
 
 /// EOF closure of `page_array_retype_owned_4k_for_container`: the page array stays well formed when one page changes in place.
-pub proof fn page_array_retype_owned_4k_for_container_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_retype_owned_4k_for_container_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
     requires
         page_array_wf(pre),
         index_valid(NUM_PAGES, page_index),
@@ -1069,7 +1069,7 @@ pub proof fn page_array_retype_owned_4k_for_container_eof(pre: PageLockedArray, 
 
 /// S of `page_array_retype_owned_2m_for_container`: only page `page_index` changes, by retyping the owned 2M page to a kernel object of a child container; it stays well formed at its address.
 #[verifier::opaque]
-pub open spec fn page_array_retype_owned_2m_for_container_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_retype_owned_2m_for_container_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
     &&& post.inv()
     &&& post.entries_unchanged_except(&pre, page_index)
     &&& post.spec_index(page_index).view().inv()
@@ -1077,7 +1077,7 @@ pub open spec fn page_array_retype_owned_2m_for_container_eof_transition_framing
 }
 
 /// EOF closure of `page_array_retype_owned_2m_for_container`: the page array stays well formed when one page changes in place.
-pub proof fn page_array_retype_owned_2m_for_container_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_retype_owned_2m_for_container_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
     requires
         page_array_wf(pre),
         index_valid(NUM_PAGES, page_index),
@@ -1087,7 +1087,7 @@ pub proof fn page_array_retype_owned_2m_for_container_eof(pre: PageLockedArray, 
 
 /// S of `page_array_add_4k_mapping`: only page `page_index` changes, by recording one more mapping of the mapped 4K page; it stays well formed at its address, keeping its state and owning container.
 #[verifier::opaque]
-pub open spec fn page_array_add_4k_mapping_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_add_4k_mapping_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
     &&& post.inv()
     &&& post.entries_unchanged_except(&pre, page_index)
     &&& post.spec_index(page_index).view().inv()
@@ -1097,7 +1097,7 @@ pub open spec fn page_array_add_4k_mapping_eof_transition_framing(pre: PageLocke
 }
 
 /// EOF closure of `page_array_add_4k_mapping`: the page array and the huge-page invariants after one page changes outside every page state.
-pub proof fn page_array_add_4k_mapping_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_add_4k_mapping_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
     requires
         page_array_wf(pre),
         hugepage_2m_wf(pre),
@@ -1115,7 +1115,7 @@ pub proof fn page_array_add_4k_mapping_eof(pre: PageLockedArray, post: PageLocke
 
 /// S of `page_array_add_4k_iommu_mapping`: only page `page_index` changes, by recording one more IOMMU mapping of the mapped 4K page; it stays well formed at its address, keeping its state and owning container.
 #[verifier::opaque]
-pub open spec fn page_array_add_4k_iommu_mapping_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
+pub(super) open spec fn page_array_add_4k_iommu_mapping_eof_transition_framing(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex) -> bool {
     &&& post.inv()
     &&& post.entries_unchanged_except(&pre, page_index)
     &&& post.spec_index(page_index).view().inv()
@@ -1125,7 +1125,7 @@ pub open spec fn page_array_add_4k_iommu_mapping_eof_transition_framing(pre: Pag
 }
 
 /// EOF closure of `page_array_add_4k_iommu_mapping`: the page array and the huge-page invariants after one page changes outside every page state.
-pub proof fn page_array_add_4k_iommu_mapping_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
+pub(super) proof fn page_array_add_4k_iommu_mapping_eof(pre: PageLockedArray, post: PageLockedArray, page_index: PageIndex)
     requires
         page_array_wf(pre),
         hugepage_2m_wf(pre),
@@ -1143,7 +1143,7 @@ pub proof fn page_array_add_4k_iommu_mapping_eof(pre: PageLockedArray, post: Pag
 
 /// S of `iommu_table_map_clear_4k_present`: only the write-held IOMMU table `iommu_table_ptr` changes, by clearing the present bit of one 4K leaf; it stays well formed and keeps its lock.
 #[verifier::opaque]
-pub open spec fn iommu_table_map_clear_4k_present_eof_transition_framing(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot) -> bool {
+pub(super) open spec fn iommu_table_map_clear_4k_present_eof_transition_framing(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot) -> bool {
     &&& post.perms_wf()
     &&& post.unchanged_except(&pre, iommu_table_ptr)
     &&& post.spec_index(iommu_table_ptr).inv()
@@ -1151,7 +1151,7 @@ pub open spec fn iommu_table_map_clear_4k_present_eof_transition_framing(pre: Io
 }
 
 /// EOF closure of `iommu_table_map_clear_4k_present`: the changed table stays write-held, so the hidden-leaf lock rule holds.
-pub proof fn iommu_table_map_clear_4k_present_eof(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot)
+pub(super) proof fn iommu_table_map_clear_4k_present_eof(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot)
     requires
         iommu_table_perms_wf(pre),
         pre.spec_index(iommu_table_ptr).locking_thread() is Write,
@@ -1161,7 +1161,7 @@ pub proof fn iommu_table_map_clear_4k_present_eof(pre: IommuTableLockedMap, post
 
 /// S of `iommu_table_map_unmap_4k_kernel`: only the write-held IOMMU table `iommu_table_ptr` changes, by unmapping one 4K leaf; it stays well formed and keeps its lock.
 #[verifier::opaque]
-pub open spec fn iommu_table_map_unmap_4k_kernel_eof_transition_framing(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot) -> bool {
+pub(super) open spec fn iommu_table_map_unmap_4k_kernel_eof_transition_framing(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot) -> bool {
     &&& post.perms_wf()
     &&& post.unchanged_except(&pre, iommu_table_ptr)
     &&& post.spec_index(iommu_table_ptr).inv()
@@ -1169,7 +1169,7 @@ pub open spec fn iommu_table_map_unmap_4k_kernel_eof_transition_framing(pre: Iom
 }
 
 /// EOF closure of `iommu_table_map_unmap_4k_kernel`: the changed table stays write-held, so the hidden-leaf lock rule holds.
-pub proof fn iommu_table_map_unmap_4k_kernel_eof(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot)
+pub(super) proof fn iommu_table_map_unmap_4k_kernel_eof(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot)
     requires
         iommu_table_perms_wf(pre),
         pre.spec_index(iommu_table_ptr).locking_thread() is Write,
@@ -1179,7 +1179,7 @@ pub proof fn iommu_table_map_unmap_4k_kernel_eof(pre: IommuTableLockedMap, post:
 
 /// S of `iommu_table_map_insert_4k`: only the write-held IOMMU table `iommu_table_ptr` changes, by installing one 4K leaf; it stays well formed and keeps its lock.
 #[verifier::opaque]
-pub open spec fn iommu_table_map_insert_4k_eof_transition_framing(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot) -> bool {
+pub(super) open spec fn iommu_table_map_insert_4k_eof_transition_framing(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot) -> bool {
     &&& post.perms_wf()
     &&& post.unchanged_except(&pre, iommu_table_ptr)
     &&& post.spec_index(iommu_table_ptr).inv()
@@ -1187,7 +1187,7 @@ pub open spec fn iommu_table_map_insert_4k_eof_transition_framing(pre: IommuTabl
 }
 
 /// EOF closure of `iommu_table_map_insert_4k`: the changed table stays write-held, so the hidden-leaf lock rule holds.
-pub proof fn iommu_table_map_insert_4k_eof(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot)
+pub(super) proof fn iommu_table_map_insert_4k_eof(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot)
     requires
         iommu_table_perms_wf(pre),
         pre.spec_index(iommu_table_ptr).locking_thread() is Write,
@@ -1197,7 +1197,7 @@ pub proof fn iommu_table_map_insert_4k_eof(pre: IommuTableLockedMap, post: Iommu
 
 /// S of `iommu_table_map_create_entry_l4`: only the write-held IOMMU table `iommu_table_ptr` changes, by installing one L3 table; it stays well formed and keeps its lock.
 #[verifier::opaque]
-pub open spec fn iommu_table_map_create_entry_l4_eof_transition_framing(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot) -> bool {
+pub(super) open spec fn iommu_table_map_create_entry_l4_eof_transition_framing(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot) -> bool {
     &&& post.perms_wf()
     &&& post.unchanged_except(&pre, iommu_table_ptr)
     &&& post.spec_index(iommu_table_ptr).inv()
@@ -1205,7 +1205,7 @@ pub open spec fn iommu_table_map_create_entry_l4_eof_transition_framing(pre: Iom
 }
 
 /// EOF closure of `iommu_table_map_create_entry_l4`: the changed table stays write-held, so the hidden-leaf lock rule holds.
-pub proof fn iommu_table_map_create_entry_l4_eof(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot)
+pub(super) proof fn iommu_table_map_create_entry_l4_eof(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot)
     requires
         iommu_table_perms_wf(pre),
         pre.spec_index(iommu_table_ptr).locking_thread() is Write,
@@ -1215,7 +1215,7 @@ pub proof fn iommu_table_map_create_entry_l4_eof(pre: IommuTableLockedMap, post:
 
 /// S of `iommu_table_map_create_entry_l3`: only the write-held IOMMU table `iommu_table_ptr` changes, by installing one L2 table; it stays well formed and keeps its lock.
 #[verifier::opaque]
-pub open spec fn iommu_table_map_create_entry_l3_eof_transition_framing(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot) -> bool {
+pub(super) open spec fn iommu_table_map_create_entry_l3_eof_transition_framing(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot) -> bool {
     &&& post.perms_wf()
     &&& post.unchanged_except(&pre, iommu_table_ptr)
     &&& post.spec_index(iommu_table_ptr).inv()
@@ -1223,7 +1223,7 @@ pub open spec fn iommu_table_map_create_entry_l3_eof_transition_framing(pre: Iom
 }
 
 /// EOF closure of `iommu_table_map_create_entry_l3`: the changed table stays write-held, so the hidden-leaf lock rule holds.
-pub proof fn iommu_table_map_create_entry_l3_eof(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot)
+pub(super) proof fn iommu_table_map_create_entry_l3_eof(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot)
     requires
         iommu_table_perms_wf(pre),
         pre.spec_index(iommu_table_ptr).locking_thread() is Write,
@@ -1233,7 +1233,7 @@ pub proof fn iommu_table_map_create_entry_l3_eof(pre: IommuTableLockedMap, post:
 
 /// S of `iommu_table_map_create_entry_l2`: only the write-held IOMMU table `iommu_table_ptr` changes, by installing one L1 table; it stays well formed and keeps its lock.
 #[verifier::opaque]
-pub open spec fn iommu_table_map_create_entry_l2_eof_transition_framing(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot) -> bool {
+pub(super) open spec fn iommu_table_map_create_entry_l2_eof_transition_framing(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot) -> bool {
     &&& post.perms_wf()
     &&& post.unchanged_except(&pre, iommu_table_ptr)
     &&& post.spec_index(iommu_table_ptr).inv()
@@ -1241,7 +1241,7 @@ pub open spec fn iommu_table_map_create_entry_l2_eof_transition_framing(pre: Iom
 }
 
 /// EOF closure of `iommu_table_map_create_entry_l2`: the changed table stays write-held, so the hidden-leaf lock rule holds.
-pub proof fn iommu_table_map_create_entry_l2_eof(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot)
+pub(super) proof fn iommu_table_map_create_entry_l2_eof(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot)
     requires
         iommu_table_perms_wf(pre),
         pre.spec_index(iommu_table_ptr).locking_thread() is Write,
@@ -1251,7 +1251,7 @@ pub proof fn iommu_table_map_create_entry_l2_eof(pre: IommuTableLockedMap, post:
 
 /// S of `iommu_table_map_remove_table_page`: only the write-held IOMMU table `iommu_table_ptr` changes, by removing one structure page; it stays well formed and keeps its lock.
 #[verifier::opaque]
-pub open spec fn iommu_table_map_remove_table_page_eof_transition_framing(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot) -> bool {
+pub(super) open spec fn iommu_table_map_remove_table_page_eof_transition_framing(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot) -> bool {
     &&& post.perms_wf()
     &&& post.unchanged_except(&pre, iommu_table_ptr)
     &&& post.spec_index(iommu_table_ptr).inv()
@@ -1259,7 +1259,7 @@ pub open spec fn iommu_table_map_remove_table_page_eof_transition_framing(pre: I
 }
 
 /// EOF closure of `iommu_table_map_remove_table_page`: the changed table stays write-held, so the hidden-leaf lock rule holds.
-pub proof fn iommu_table_map_remove_table_page_eof(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot)
+pub(super) proof fn iommu_table_map_remove_table_page_eof(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot)
     requires
         iommu_table_perms_wf(pre),
         pre.spec_index(iommu_table_ptr).locking_thread() is Write,
@@ -1269,7 +1269,7 @@ pub proof fn iommu_table_map_remove_table_page_eof(pre: IommuTableLockedMap, pos
 
 /// S of `page_allocator_map_insert_new`: allocator `allocator_page` is added with value `allocator_value`; every other allocator stays.
 #[verifier::opaque]
-pub open spec fn page_allocator_map_insert_new_eof_transition_framing<const SIZE: usize>(
+pub(super) open spec fn page_allocator_map_insert_new_eof_transition_framing<const SIZE: usize>(
     pre: PageAllocatorUnLockedMap<SIZE>, post: PageAllocatorUnLockedMap<SIZE>, allocator_page: PagePtr, allocator_value: PageAllocator<SIZE>,
 ) -> bool {
     &&& post.perms_wf()
@@ -1279,7 +1279,7 @@ pub open spec fn page_allocator_map_insert_new_eof_transition_framing<const SIZE
 }
 
 /// EOF closure of `page_allocator_map_insert_new`: a well-formed allocator joins well-formed allocators.
-pub proof fn page_allocator_map_insert_new_eof<const SIZE: usize>(
+pub(super) proof fn page_allocator_map_insert_new_eof<const SIZE: usize>(
     pre: PageAllocatorUnLockedMap<SIZE>, post: PageAllocatorUnLockedMap<SIZE>, allocator_page: PagePtr, allocator_value: PageAllocator<SIZE>,
 )
     requires

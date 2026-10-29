@@ -214,8 +214,7 @@ pub proof fn share_4k_directory_step_from_k(
         transfer_source matches Some(source) ==> pre.ctn_mp.spec_index(container_ptr).view_rodata().view().parent == Some(source),
         !pre.prc_mp.spec_index(process_ptr).view().zombie && pre.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr,
         typed_lock_map_contains_mode(pre_lctx.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Read) || typed_lock_map_contains_mode(pre_lctx.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
-        transfer_source matches Some(source)
-            ==> typed_lock_map_contains_mode(pre_lctx.container_lock_map(), source, TypedLockMode::Write) && typed_lock_map_contains_mode(pre_lctx.container_lock_map(), container_ptr, TypedLockMode::Write),
+        transfer_source matches Some(source) ==> typed_lock_map_contains_mode(pre_lctx.container_lock_map(), source, TypedLockMode::Write) && typed_lock_map_contains_mode(pre_lctx.container_lock_map(), container_ptr, TypedLockMode::Write),
         kernel_thread_quota_4k_changed(pre, post, quota_thread_ptr, -1),
         post.thr_mp.spec_index(quota_thread_ptr).view().syscall_progress == pre.thr_mp.spec_index(quota_thread_ptr).view().syscall_progress,
         transfer_source is None ==> {

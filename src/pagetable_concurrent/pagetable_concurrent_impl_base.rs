@@ -97,7 +97,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
                     ==> final(lctx).pagetable_window_lock_map().index((p, w)) == old(lctx).pagetable_window_lock_map().index((p, w)),
             forall|w: WindowVa| #![trigger final(lctx).pagetable_window_lock_map().index((root, w))]
                 w.wf() && spec_v2l4index(w.va) == target_l4i && spec_v2l3index(w.va) == target_l3i && lo <= spec_v2l2index(w.va) <= hi
-                    ==> final(lctx).pagetable_window_lock_map().index((root, w)) == (TypedHeldLock { lock_id: window_lock_id_at(root, w), mode: TypedLockMode::Write }),
+                    ==> final(lctx).pagetable_window_lock_map().index((root, w)) == (TypedHeldLock { lock_id: window_lock_id_of(root, w), mode: TypedLockMode::Write }),
             (PageTableC { higher: *final(self), lower: *final(lower) }).wf(),
             final(self).kernel_l4_end == old(self).kernel_l4_end,
             final(self).pcid == old(self).pcid,

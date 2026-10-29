@@ -2,7 +2,6 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_iommu_unmap_4k_spec::*;
 use super::syscall_iommu_unmap_4k_trace::*;
-use super::syscall_iommu_unmap_4k_lock::*;
 
 verus! {
 /// Validates the arguments, write-locks cpu `cpu_id`, its running thread's container, process, and thread, and the process's
@@ -10,7 +9,7 @@ verus! {
 /// records no step, and returns `iommu_unmap_4k_syscall_result` of the entry state; otherwise the five locks are held, nothing
 /// else changed, and the result is Success.
 pub(super) fn iommu_unmap_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, iova: VAddr, range: usize)
-    -> (ret: Result<(IommuUnmap4kLocked, RwLockPageTableRoot, Tracked<LockPerm>), RetValueType>)
+    -> (ret: Result<(Unmap4kLocked, RwLockPageTableRoot, Tracked<LockPerm>), RetValueType>)
     requires
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),
@@ -130,9 +129,12 @@ pub(super) fn iommu_unmap_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): T
         proof { enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx); steps.end_kernel_step_unchanged(&*krnl, &*lctx); }
         return Err(RetValueType::Error);
     }
-    let locked = match iommu_unmap_4k_lock_running_thread(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, iova, range) {
+    let locked = match unmap_4k_lock_running_thread(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id) {
         Ok(e) => e,
-        Err(r) => { return Err(r); },
+        Err(r) => {
+            proof { iommu_unmap_4k_result_from_k(&*old(krnl), cpu_id, iova, range, r); }
+            return Err(r);
+        },
     };
     let Tracked(cpu_perm) = locked.cpu_lock_perm;
     let Tracked(container_perm) = locked.container_lock_perm;
@@ -189,7 +191,7 @@ pub(super) fn iommu_unmap_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): T
         iommu_unmap_4k_enter_step_from_k(&*old(krnl), &entered_k, cpu_id, container_ptr, process_ptr, thread_ptr, iommu_table, iova, range);
         iommu_unmap_4k_trace_enter_step(before, steps.view(), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(entered_k), cpu_id, iommu_unmap_4k_iova_range(iova, range));
     }
-    Ok((IommuUnmap4kLocked {
+    Ok((Unmap4kLocked {
         container_ptr, process_ptr, thread_ptr, cpu_lock_perm: Tracked(cpu_perm), container_lock_perm: Tracked(container_perm), process_lock_perm: Tracked(process_perm),
         thread_lock_perm: Tracked(thread_perm),
     }, iommu_table, Tracked(iommu_table_perm)))

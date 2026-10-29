@@ -7,7 +7,7 @@ verus! {
 /// `thread_id`, every other window keeps its holder, a write-held table's ghost slot follows its window half, and the
 /// leaves and table pages are unchanged.
 #[verifier::opaque]
-pub open spec fn lock_pagetable_window_eof_transition_framing(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index,
+pub(super) open spec fn lock_pagetable_window_eof_transition_framing(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index,
     thread_id: LockThreadId, lock_token: LockToken) -> bool
 {
     let before = pagetable_c(pre.pt_mp, pre.pt_lower.view(), root);
@@ -41,7 +41,7 @@ pub open spec fn lock_pagetable_window_eof_transition_framing(pre: KernelK, post
 /// window keeps its holder, a write-held table's ghost slot follows its window half, and the leaves and table pages
 /// are unchanged.
 #[verifier::opaque]
-pub open spec fn unlock_pagetable_window_eof_transition_framing(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index) -> bool {
+pub(super) open spec fn unlock_pagetable_window_eof_transition_framing(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index) -> bool {
     let before = pagetable_c(pre.pt_mp, pre.pt_lower.view(), root);
     let after = pagetable_c(post.pt_mp, post.pt_lower.view(), root);
     &&& post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, ..pre })

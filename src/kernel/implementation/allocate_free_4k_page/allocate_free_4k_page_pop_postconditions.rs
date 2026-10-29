@@ -4,7 +4,7 @@ use crate::*;
 use super::allocate_free_4k_page_pop_eof::pop_stage_4k_page_eof_transition_framing;
 
 verus! {
-pub(super) proof fn eof_pop_4k_postconditions(pre: KernelK, post: KernelK, pre_lctx: LocalContext, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)
+pub(super) proof fn pop_stage_4k_page_eof_postconditions(pre: KernelK, post: KernelK, pre_lctx: LocalContext, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)
     requires
         pre.inv(),
         typed_lock_maps_aligned(&pre, &pre_lctx),

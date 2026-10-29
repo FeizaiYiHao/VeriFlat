@@ -55,8 +55,16 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
             Self::unmap_4k_page_user_view_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
         ensures
-            post.higher.inv(), post.va_addr_valid(), post.wf_l3(), post.l2_tokens_paired(), post.wf_l2(), post.disjoint_l2(), post.wf_mapping_2m(),
-            post.rwx_upper_level_entries(), post.table_pages_wf(), post.wf_window_locks(),
+            post.higher.inv(),
+            post.va_addr_valid(),
+            post.wf_l3(),
+            post.l2_tokens_paired(),
+            post.wf_l2(),
+            post.disjoint_l2(),
+            post.wf_mapping_2m(),
+            post.rwx_upper_level_entries(),
+            post.table_pages_wf(),
+            post.wf_window_locks(),
             post.page_closure() =~= pre.page_closure(),
     {
         reveal(PageTableC::unmap_4k_page_user_view_eof_transition_framing);
@@ -77,7 +85,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             pei_valid(target_l1i),
             Self::unmap_4k_page_user_view_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
         ensures
-            post.wf_l1(), post.user_only(),
+            post.wf_l1(),
+            post.user_only(),
     {
         reveal(PageTableC::unmap_4k_page_user_view_eof_transition_framing);
         assert(post.wf_l1()) by { reveal(PageTableC::wf_l1); };

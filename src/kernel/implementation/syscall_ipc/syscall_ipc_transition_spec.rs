@@ -5,7 +5,7 @@ verus! {
 /// Blocks the running caller on the write-held endpoint and idles its cpu on the default page table; no other object
 /// changes.
 #[verifier::opaque]
-pub open spec fn ipc_block_current_eof_transition_framing(
+pub(super) open spec fn ipc_block_current_eof_transition_framing(
     pre: KernelK, post: KernelK, cpu_id: CpuId, current_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx,
     waiting_state: ThreadState, payload: IPCPayLoad, default_cr3: PageTableRoot,
 ) -> bool {
@@ -86,7 +86,7 @@ pub open spec fn ipc_block_current_eof_transition_framing(
 
 /// Dequeues the endpoint waiter and schedules it on `wake_cpu`; no other object changes.
 #[verifier::opaque]
-pub open spec fn ipc_schedule_waiting_peer_eof_transition_framing(
+pub(super) open spec fn ipc_schedule_waiting_peer_eof_transition_framing(
     pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
     peer_scheduler_ptr: RwLockSchedulerPtr, wake_cpu: CpuId, peer_result: RetValueType, thread_id: LockThreadId,
 ) -> bool {

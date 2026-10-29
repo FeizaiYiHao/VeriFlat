@@ -21,9 +21,7 @@ verus! {
 /// each process's effective quota is preserved.
 pub proof fn lemma_process_effective_quota_4k_fold_eq(s: Set<RwLockProcessPtr>, pre: ProcessLockedMap, post: ProcessLockedMap)
     requires
-        forall|p: RwLockProcessPtr|
-            #![trigger process_effective_quota_4k(pre.spec_index(p))]
-            s.contains(p) ==> process_effective_quota_4k(post.spec_index(p)) == process_effective_quota_4k(pre.spec_index(p)),
+        forall|p: RwLockProcessPtr| #![trigger process_effective_quota_4k(pre.spec_index(p))] s.contains(p) ==> process_effective_quota_4k(post.spec_index(p)) == process_effective_quota_4k(pre.spec_index(p)),
     ensures
         s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_4k(post.spec_index(p_ptr))) == s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_4k(pre.spec_index(p_ptr))),
 {
@@ -38,9 +36,7 @@ pub proof fn lemma_process_effective_quota_4k_fold_eq(s: Set<RwLockProcessPtr>, 
 
 pub proof fn lemma_process_effective_quota_2m_fold_eq(s: Set<RwLockProcessPtr>, pre: ProcessLockedMap, post: ProcessLockedMap)
     requires
-        forall|p: RwLockProcessPtr|
-            #![trigger process_effective_quota_2m(pre.spec_index(p))]
-            s.contains(p) ==> process_effective_quota_2m(post.spec_index(p)) == process_effective_quota_2m(pre.spec_index(p)),
+        forall|p: RwLockProcessPtr| #![trigger process_effective_quota_2m(pre.spec_index(p))] s.contains(p) ==> process_effective_quota_2m(post.spec_index(p)) == process_effective_quota_2m(pre.spec_index(p)),
     ensures
         s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_2m(post.spec_index(p_ptr))) == s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_2m(pre.spec_index(p_ptr))),
 {
@@ -55,9 +51,7 @@ pub proof fn lemma_process_effective_quota_2m_fold_eq(s: Set<RwLockProcessPtr>, 
 
 pub proof fn lemma_process_effective_quota_1g_fold_eq(s: Set<RwLockProcessPtr>, pre: ProcessLockedMap, post: ProcessLockedMap)
     requires
-        forall|p: RwLockProcessPtr|
-            #![trigger process_effective_quota_1g(pre.spec_index(p))]
-            s.contains(p) ==> process_effective_quota_1g(post.spec_index(p)) == process_effective_quota_1g(pre.spec_index(p)),
+        forall|p: RwLockProcessPtr| #![trigger process_effective_quota_1g(pre.spec_index(p))] s.contains(p) ==> process_effective_quota_1g(post.spec_index(p)) == process_effective_quota_1g(pre.spec_index(p)),
     ensures
         s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_1g(post.spec_index(p_ptr))) == s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_1g(pre.spec_index(p_ptr))),
 {
@@ -77,9 +71,7 @@ pub proof fn lemma_process_effective_quota_4k_fold_change_by(s: Set<RwLockProces
     requires
         s.contains(mod_p),
         process_effective_quota_4k(post.spec_index(mod_p)) == process_effective_quota_4k(pre.spec_index(mod_p)) + x,
-        forall|p: RwLockProcessPtr|
-            #![trigger process_effective_quota_4k(pre.spec_index(p))]
-            s.contains(p) && p != mod_p ==> process_effective_quota_4k(post.spec_index(p)) == process_effective_quota_4k(pre.spec_index(p)),
+        forall|p: RwLockProcessPtr| #![trigger process_effective_quota_4k(pre.spec_index(p))] s.contains(p) && p != mod_p ==> process_effective_quota_4k(post.spec_index(p)) == process_effective_quota_4k(pre.spec_index(p)),
     ensures
         s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_4k(post.spec_index(p_ptr))) == s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_4k(pre.spec_index(p_ptr))) + x,
 {
@@ -97,9 +89,7 @@ pub proof fn lemma_process_effective_quota_2m_fold_change_by(s: Set<RwLockProces
     requires
         s.contains(mod_p),
         process_effective_quota_2m(post.spec_index(mod_p)) == process_effective_quota_2m(pre.spec_index(mod_p)) + x,
-        forall|p: RwLockProcessPtr|
-            #![trigger process_effective_quota_2m(pre.spec_index(p))]
-            s.contains(p) && p != mod_p ==> process_effective_quota_2m(post.spec_index(p)) == process_effective_quota_2m(pre.spec_index(p)),
+        forall|p: RwLockProcessPtr| #![trigger process_effective_quota_2m(pre.spec_index(p))] s.contains(p) && p != mod_p ==> process_effective_quota_2m(post.spec_index(p)) == process_effective_quota_2m(pre.spec_index(p)),
     ensures
         s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_2m(post.spec_index(p_ptr))) == s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_2m(pre.spec_index(p_ptr))) + x,
 {
@@ -117,9 +107,7 @@ pub proof fn lemma_process_effective_quota_1g_fold_change_by(s: Set<RwLockProces
     requires
         s.contains(mod_p),
         process_effective_quota_1g(post.spec_index(mod_p)) == process_effective_quota_1g(pre.spec_index(mod_p)) + x,
-        forall|p: RwLockProcessPtr|
-            #![trigger process_effective_quota_1g(pre.spec_index(p))]
-            s.contains(p) && p != mod_p ==> process_effective_quota_1g(post.spec_index(p)) == process_effective_quota_1g(pre.spec_index(p)),
+        forall|p: RwLockProcessPtr| #![trigger process_effective_quota_1g(pre.spec_index(p))] s.contains(p) && p != mod_p ==> process_effective_quota_1g(post.spec_index(p)) == process_effective_quota_1g(pre.spec_index(p)),
     ensures
         s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_1g(post.spec_index(p_ptr))) == s.fold(0, |sum: int, p_ptr: RwLockProcessPtr| sum + process_effective_quota_1g(pre.spec_index(p_ptr))) + x,
 {
@@ -134,9 +122,7 @@ pub proof fn lemma_process_effective_quota_1g_fold_change_by(s: Set<RwLockProces
 
 pub proof fn lemma_process_effective_quota_4k_fold_nonneg(s: Set<RwLockProcessPtr>, process_map: ProcessLockedMap)
     requires
-        forall|p: RwLockProcessPtr|
-            #![trigger process_effective_quota_4k(process_map.spec_index(p))]
-            s.contains(p) ==> process_effective_quota_4k(process_map.spec_index(p)) >= 0,
+        forall|p: RwLockProcessPtr| #![trigger process_effective_quota_4k(process_map.spec_index(p))] s.contains(p) ==> process_effective_quota_4k(process_map.spec_index(p)) >= 0,
     ensures
         process_effective_quota_4k_fold_sum(s, process_map) >= 0,
 {
@@ -150,9 +136,7 @@ pub proof fn lemma_process_effective_quota_4k_fold_nonneg(s: Set<RwLockProcessPt
 /// the same finite-set semantics as the process-quota fold facts above.
 pub proof fn lemma_thread_effective_quota_4k_fold_eq(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap)
     requires
-        forall|t: RwLockThreadPtr|
-            #![trigger thread_effective_quota_4k(pre.spec_index(t))]
-            s.contains(t) ==> thread_effective_quota_4k(post.spec_index(t)) == thread_effective_quota_4k(pre.spec_index(t)),
+        forall|t: RwLockThreadPtr| #![trigger thread_effective_quota_4k(pre.spec_index(t))] s.contains(t) ==> thread_effective_quota_4k(post.spec_index(t)) == thread_effective_quota_4k(pre.spec_index(t)),
     ensures
         thread_effective_quota_4k_fold_sum(s, post) == thread_effective_quota_4k_fold_sum(s, pre),
 {
@@ -167,9 +151,7 @@ pub proof fn lemma_thread_effective_quota_4k_fold_eq(s: Set<RwLockThreadPtr>, pr
 
 pub proof fn lemma_thread_effective_quota_2m_fold_eq(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap)
     requires
-        forall|t: RwLockThreadPtr|
-            #![trigger thread_effective_quota_2m(pre.spec_index(t))]
-            s.contains(t) ==> thread_effective_quota_2m(post.spec_index(t)) == thread_effective_quota_2m(pre.spec_index(t)),
+        forall|t: RwLockThreadPtr| #![trigger thread_effective_quota_2m(pre.spec_index(t))] s.contains(t) ==> thread_effective_quota_2m(post.spec_index(t)) == thread_effective_quota_2m(pre.spec_index(t)),
     ensures
         thread_effective_quota_2m_fold_sum(s, post) == thread_effective_quota_2m_fold_sum(s, pre),
 {
@@ -184,9 +166,7 @@ pub proof fn lemma_thread_effective_quota_2m_fold_eq(s: Set<RwLockThreadPtr>, pr
 
 pub proof fn lemma_thread_effective_quota_1g_fold_eq(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap)
     requires
-        forall|t: RwLockThreadPtr|
-            #![trigger thread_effective_quota_1g(pre.spec_index(t))]
-            s.contains(t) ==> thread_effective_quota_1g(post.spec_index(t)) == thread_effective_quota_1g(pre.spec_index(t)),
+        forall|t: RwLockThreadPtr| #![trigger thread_effective_quota_1g(pre.spec_index(t))] s.contains(t) ==> thread_effective_quota_1g(post.spec_index(t)) == thread_effective_quota_1g(pre.spec_index(t)),
     ensures
         thread_effective_quota_1g_fold_sum(s, post) == thread_effective_quota_1g_fold_sum(s, pre),
 {
@@ -203,9 +183,7 @@ pub proof fn lemma_thread_effective_quota_4k_fold_change_by(s: Set<RwLockThreadP
     requires
         s.contains(mod_t),
         thread_effective_quota_4k(post.spec_index(mod_t)) == thread_effective_quota_4k(pre.spec_index(mod_t)) + x,
-        forall|t: RwLockThreadPtr|
-            #![trigger thread_effective_quota_4k(pre.spec_index(t))]
-            s.contains(t) && t != mod_t ==> thread_effective_quota_4k(post.spec_index(t)) == thread_effective_quota_4k(pre.spec_index(t)),
+        forall|t: RwLockThreadPtr| #![trigger thread_effective_quota_4k(pre.spec_index(t))] s.contains(t) && t != mod_t ==> thread_effective_quota_4k(post.spec_index(t)) == thread_effective_quota_4k(pre.spec_index(t)),
     ensures
         thread_effective_quota_4k_fold_sum(s, post) == thread_effective_quota_4k_fold_sum(s, pre) + x,
 {
@@ -221,9 +199,7 @@ pub proof fn lemma_thread_effective_quota_4k_fold_change_by(s: Set<RwLockThreadP
 pub proof fn lemma_thread_effective_quota_4k_fold_ge_member(s: Set<RwLockThreadPtr>, thread_map: ThreadLockedMap, mem: RwLockThreadPtr)
     requires
         s.contains(mem),
-        forall|t: RwLockThreadPtr|
-            #![trigger thread_effective_quota_4k(thread_map.spec_index(t))]
-            s.contains(t) ==> thread_effective_quota_4k(thread_map.spec_index(t)) >= 0,
+        forall|t: RwLockThreadPtr| #![trigger thread_effective_quota_4k(thread_map.spec_index(t))] s.contains(t) ==> thread_effective_quota_4k(thread_map.spec_index(t)) >= 0,
     ensures
         thread_effective_quota_4k_fold_sum(s, thread_map) >= thread_effective_quota_4k(thread_map.spec_index(mem)),
 {
@@ -237,9 +213,7 @@ pub proof fn lemma_thread_effective_quota_4k_fold_insert_zero(s: Set<RwLockThrea
     requires
         s.contains(new_t) == false,
         thread_effective_quota_4k(post.spec_index(new_t)) == 0,
-        forall|t: RwLockThreadPtr|
-            #![trigger thread_effective_quota_4k(pre.spec_index(t))]
-            s.contains(t) ==> thread_effective_quota_4k(post.spec_index(t)) == thread_effective_quota_4k(pre.spec_index(t)),
+        forall|t: RwLockThreadPtr| #![trigger thread_effective_quota_4k(pre.spec_index(t))] s.contains(t) ==> thread_effective_quota_4k(post.spec_index(t)) == thread_effective_quota_4k(pre.spec_index(t)),
     ensures
         thread_effective_quota_4k_fold_sum(s.insert(new_t), post) == thread_effective_quota_4k_fold_sum(s, pre),
 {
@@ -256,9 +230,7 @@ pub proof fn lemma_thread_effective_quota_2m_fold_insert_zero(s: Set<RwLockThrea
     requires
         s.contains(new_t) == false,
         thread_effective_quota_2m(post.spec_index(new_t)) == 0,
-        forall|t: RwLockThreadPtr|
-            #![trigger thread_effective_quota_2m(pre.spec_index(t))]
-            s.contains(t) ==> thread_effective_quota_2m(post.spec_index(t)) == thread_effective_quota_2m(pre.spec_index(t)),
+        forall|t: RwLockThreadPtr| #![trigger thread_effective_quota_2m(pre.spec_index(t))] s.contains(t) ==> thread_effective_quota_2m(post.spec_index(t)) == thread_effective_quota_2m(pre.spec_index(t)),
     ensures
         thread_effective_quota_2m_fold_sum(s.insert(new_t), post) == thread_effective_quota_2m_fold_sum(s, pre),
 {
@@ -275,9 +247,7 @@ pub proof fn lemma_thread_effective_quota_1g_fold_insert_zero(s: Set<RwLockThrea
     requires
         s.contains(new_t) == false,
         thread_effective_quota_1g(post.spec_index(new_t)) == 0,
-        forall|t: RwLockThreadPtr|
-            #![trigger thread_effective_quota_1g(pre.spec_index(t))]
-            s.contains(t) ==> thread_effective_quota_1g(post.spec_index(t)) == thread_effective_quota_1g(pre.spec_index(t)),
+        forall|t: RwLockThreadPtr| #![trigger thread_effective_quota_1g(pre.spec_index(t))] s.contains(t) ==> thread_effective_quota_1g(post.spec_index(t)) == thread_effective_quota_1g(pre.spec_index(t)),
     ensures
         thread_effective_quota_1g_fold_sum(s.insert(new_t), post) == thread_effective_quota_1g_fold_sum(s, pre),
 {
@@ -294,9 +264,7 @@ pub proof fn lemma_thread_effective_quota_1g_fold_insert_zero(s: Set<RwLockThrea
 pub proof fn lemma_thread_effective_quota_4k_fold_remove(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, removed: RwLockThreadPtr)
     requires
         s.contains(removed),
-        forall|t: RwLockThreadPtr|
-            #![trigger thread_effective_quota_4k(pre.spec_index(t))]
-            s.contains(t) && t != removed ==> thread_effective_quota_4k(post.spec_index(t)) == thread_effective_quota_4k(pre.spec_index(t)),
+        forall|t: RwLockThreadPtr| #![trigger thread_effective_quota_4k(pre.spec_index(t))] s.contains(t) && t != removed ==> thread_effective_quota_4k(post.spec_index(t)) == thread_effective_quota_4k(pre.spec_index(t)),
     ensures
         thread_effective_quota_4k_fold_sum(s.remove(removed), post) == thread_effective_quota_4k_fold_sum(s, pre) - thread_effective_quota_4k(pre.spec_index(removed)),
 {
@@ -313,9 +281,7 @@ pub proof fn lemma_thread_effective_quota_4k_fold_remove(s: Set<RwLockThreadPtr>
 pub proof fn lemma_thread_effective_quota_2m_fold_remove(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, removed: RwLockThreadPtr)
     requires
         s.contains(removed),
-        forall|t: RwLockThreadPtr|
-            #![trigger thread_effective_quota_2m(pre.spec_index(t))]
-            s.contains(t) && t != removed ==> thread_effective_quota_2m(post.spec_index(t)) == thread_effective_quota_2m(pre.spec_index(t)),
+        forall|t: RwLockThreadPtr| #![trigger thread_effective_quota_2m(pre.spec_index(t))] s.contains(t) && t != removed ==> thread_effective_quota_2m(post.spec_index(t)) == thread_effective_quota_2m(pre.spec_index(t)),
     ensures
         thread_effective_quota_2m_fold_sum(s.remove(removed), post) == thread_effective_quota_2m_fold_sum(s, pre) - thread_effective_quota_2m(pre.spec_index(removed)),
 {
@@ -332,9 +298,7 @@ pub proof fn lemma_thread_effective_quota_2m_fold_remove(s: Set<RwLockThreadPtr>
 pub proof fn lemma_thread_effective_quota_1g_fold_remove(s: Set<RwLockThreadPtr>, pre: ThreadLockedMap, post: ThreadLockedMap, removed: RwLockThreadPtr)
     requires
         s.contains(removed),
-        forall|t: RwLockThreadPtr|
-            #![trigger thread_effective_quota_1g(pre.spec_index(t))]
-            s.contains(t) && t != removed ==> thread_effective_quota_1g(post.spec_index(t)) == thread_effective_quota_1g(pre.spec_index(t)),
+        forall|t: RwLockThreadPtr| #![trigger thread_effective_quota_1g(pre.spec_index(t))] s.contains(t) && t != removed ==> thread_effective_quota_1g(post.spec_index(t)) == thread_effective_quota_1g(pre.spec_index(t)),
     ensures
         thread_effective_quota_1g_fold_sum(s.remove(removed), post) == thread_effective_quota_1g_fold_sum(s, pre) - thread_effective_quota_1g(pre.spec_index(removed)),
 {

@@ -5,7 +5,7 @@ use super::syscall_kill_container_retire_eof_entry::kill_container_retire_eof_su
 
 verus! {
 /// The killer sets `retire_ready` on the marked container `container_ptr` and changes nothing else.
-pub open spec fn kill_container_pages_eof_transition_framing(pre: KernelK, post: KernelK, container_ptr: RwLockContainerPtr) -> bool {
+pub(crate) open spec fn kill_container_pages_eof_transition_framing(pre: KernelK, post: KernelK, container_ptr: RwLockContainerPtr) -> bool {
     &&& post == (KernelK { ctn_mp: post.ctn_mp, ..pre })
     &&& post.ctn_mp.perms_wf()
     &&& post.ctn_mp.unchanged_except(&pre.ctn_mp, container_ptr)

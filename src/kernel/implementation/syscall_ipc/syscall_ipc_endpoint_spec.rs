@@ -5,7 +5,7 @@ verus! {
 /// Writes `payload_endpoint_ptr` into descriptor `target_endpoint_index` of the write-held receiver and records the
 /// reference on the write-held endpoint; no other object changes.
 #[verifier::opaque]
-pub open spec fn ipc_copy_endpoint_reference_eof_transition_framing(
+pub(super) open spec fn ipc_copy_endpoint_reference_eof_transition_framing(
     pre: KernelK, post: KernelK, receiver_thread_ptr: RwLockThreadPtr, target_endpoint_index: EndpointIdx, payload_endpoint_ptr: RwLockEndpointPtr,
 ) -> bool {
     let thread_before = pre.thr_mp.spec_index(receiver_thread_ptr);
@@ -38,7 +38,7 @@ pub open spec fn ipc_copy_endpoint_reference_eof_transition_framing(
 /// Dequeues the head waiter `peer_thread_ptr` of the write-held channel endpoint and moves it into transit with the
 /// running thread `current_thread_ptr`; no other object changes.
 #[verifier::opaque]
-pub open spec fn ipc_begin_transit_eof_transition_framing(
+pub(super) open spec fn ipc_begin_transit_eof_transition_framing(
     pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr, channel_endpoint_ptr: RwLockEndpointPtr,
 ) -> bool {
     let peer_before = pre.thr_mp.spec_index(peer_thread_ptr);
@@ -91,7 +91,7 @@ pub open spec fn ipc_begin_transit_eof_transition_framing(
 }
 /// Schedules the transit peer on `wake_cpu`; no other object changes.
 #[verifier::opaque]
-pub open spec fn ipc_finish_transit_eof_transition_framing(
+pub(super) open spec fn ipc_finish_transit_eof_transition_framing(
     pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr, peer_scheduler_ptr: RwLockSchedulerPtr,
     wake_cpu: CpuId, peer_result: RetValueType,
 ) -> bool {

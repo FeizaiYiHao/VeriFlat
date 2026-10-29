@@ -79,7 +79,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
     }
 
     /// Expose the (otherwise closed-`wf`) fact that the stored `length` equals
-    /// the view length. Additive helper — mirrors `LockedArray::lemma_view_len`.
+    /// the view length.
     pub proof fn lemma_len_view(&self)
         requires
             self.wf(),
@@ -94,7 +94,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
     /// value is unique. Concretely, any two in-domain addresses mapping to the
     /// same value are equal.
     ///
-    /// Proof idiom (per remove_helper): materialize each address's position in
+    /// Proof idiom (as in `unlink_interior_node`): materialize each address's position in
     /// `addr_list`, push the value equality through `wf_value_list` so both
     /// positions hold the same `view()` element, then `value_list_unique`
     /// forces the positions — hence the addresses — equal.
@@ -133,10 +133,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             #![trigger self.perms.view().spec_index(addr).addr()]
             #![trigger self.perms.view().dom().contains(addr)]
             self.perms.view().dom().contains(addr) ==> self.perms.view().spec_index(addr).is_init() && self.perms.view().spec_index(addr).addr() == addr
-        &&& forall|addr: usize|
-            #![trigger self.perms.view().dom().contains(addr)]
-            #![trigger self.addr_list.view().contains(addr)]
-            self.perms.view().dom().contains(addr) == self.addr_list.view().contains(addr)
+        &&& forall|addr: usize| #![trigger self.perms.view().dom().contains(addr)] #![trigger self.addr_list.view().contains(addr)] self.perms.view().dom().contains(addr) == self.addr_list.view().contains(addr)
     }
 
     #[verifier::opaque]
@@ -193,13 +190,8 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
     #[verifier::opaque]
     pub open spec fn wf_map(&self) -> bool {
         &&& self.map().dom() == self.perms.view().dom()
-        &&& forall|addr: usize|
-            #![trigger self.map().spec_index(addr)]
-            #![trigger self.perms.view().spec_index(addr)]
-            self.map().dom().contains(addr) ==> self.map().spec_index(addr) == self.perms.view().spec_index(addr).value().view()
-        &&& forall|i: usize, j: usize|
-            #![trigger self.map().spec_index(i), self.map().spec_index(j)]
-            self.map().dom().contains(i) && self.map().dom().contains(j) && i != j ==> self.map().spec_index(i) != self.map().spec_index(j)
+        &&& forall|addr: usize| #![trigger self.map().spec_index(addr)] #![trigger self.perms.view().spec_index(addr)] self.map().dom().contains(addr) ==> self.map().spec_index(addr) == self.perms.view().spec_index(addr).value().view()
+        &&& forall|i: usize, j: usize| #![trigger self.map().spec_index(i), self.map().spec_index(j)] self.map().dom().contains(i) && self.map().dom().contains(j) && i != j ==> self.map().spec_index(i) != self.map().spec_index(j)
     }
 
     pub open spec fn wf(&self) -> bool {
@@ -251,9 +243,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             final(self).view() == old(self).view().push(perm.view().value().view()),
             final(self).dom() == old(self).dom().insert(addr),
             final(self).map() == old(self).map().insert(addr, perm.view().value().view()),
-            forall|value: T|
-                #![trigger final(self).view().contains(value)]
-                old(self).view().contains(value) ==> final(self).view().contains(value),
+            forall|value: T| #![trigger final(self).view().contains(value)] old(self).view().contains(value) ==> final(self).view().contains(value),
             final(self).container_depth == old(self).container_depth,
             final(self).lock_minor() == old(self).lock_minor(),
             old(self).dom().contains(addr) == false,
@@ -432,12 +422,8 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             final(self).view() == old(self).view().skip(1),
             final(self).length == old(self).length - 1,
             final(self).map() == old(self).map().remove(ret.0),
-            forall|value: T|
-                #![trigger final(self).view().contains(value)]
-                old(self).view().contains(value) && value != ret.1.view().value().view() ==> final(self).view().contains(value),
-            forall|value: T|
-                #![trigger final(self).view().contains(value)]
-                final(self).view().contains(value) ==> old(self).view().contains(value),
+            forall|value: T| #![trigger final(self).view().contains(value)] old(self).view().contains(value) && value != ret.1.view().value().view() ==> final(self).view().contains(value),
+            forall|value: T| #![trigger final(self).view().contains(value)] final(self).view().contains(value) ==> old(self).view().contains(value),
             !final(self).view().contains(ret.1.view().value().view()),
             forall|old_addr: usize|
                 #![trigger final(self).map().dom().contains(old_addr)]
@@ -494,4 +480,4 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
 } // verus!
 
 mod remove_impl;
-mod remove_helper_eof;
+mod unlink_interior_node_eof;

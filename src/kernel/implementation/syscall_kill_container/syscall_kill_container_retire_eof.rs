@@ -16,7 +16,7 @@ verus! {
 /// PCID allocator 2M pages the 2M global pool of `owner_ptr`, which owns them, their tails, and every page the
 /// container owned. Quotas and every other object keep their values.
 #[verifier::opaque]
-pub open spec fn kill_container_retire_eof_transition_framing(
+pub(crate) open spec fn kill_container_retire_eof_transition_framing(
     pre: KernelK, post: KernelK, container_ptr: RwLockContainerPtr, parent_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr,
 ) -> bool {
     let target = pre.ctn_mp.spec_index(container_ptr);

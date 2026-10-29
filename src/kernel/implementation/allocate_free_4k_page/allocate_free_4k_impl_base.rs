@@ -1,4 +1,3 @@
-pub use super::allocate_free_4k_wrappers::allocate_free_4k_page;
 // Base implementation of the 4K allocator path.
 use super::super::allocator_cache_spec::*;
 use vstd::prelude::*;
@@ -11,7 +10,7 @@ verus! {
     /// Allocate a single 4k page from the container's allocator.
     /// Caller holds the allocating thread's write-lock.
     #[verifier::spinoff_prover]
-    pub fn allocate_free_4k_page_k(
+    pub fn allocate_free_4k_page(
         krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>,
         Tracked(steps): Tracked<&mut KernelSteps>, Tracked(thread_lock_perm): Tracked<&LockPerm>,
     ) -> (ret: (PagePtr, Tracked<LockPerm>))
@@ -679,7 +678,7 @@ verus! {
 /// After a failed cache scan (every cpu cache of `alloc_ptr_4k` empty), the
 /// container conservation law forces the global pool to be non-empty: the
 /// total free-page count equals the pool length (all cache summands are zero),
-/// and that total is at least the held thread's `effective_quota_4k >= 1`
+/// and that total is at least the held thread's `thread_effective_quota_4k >= 1`
 /// because every other conservation summand is non-negative.
 pub proof fn lemma_scan_fail_pool_nonempty(k: &KernelK, container_ptr: RwLockContainerPtr, alloc_ptr_4k: RwLockPageAllocatorPtr, thread_ptr: RwLockThreadPtr)
     requires

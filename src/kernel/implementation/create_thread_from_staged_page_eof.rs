@@ -5,7 +5,7 @@ use crate::*;
 verus! {
 /// Complete kernel-state summary of `create_thread_from_staged_page_merged`.
 #[verifier::opaque]
-pub open spec fn create_thread_from_staged_page_eof_transition_framing(
+pub(super) open spec fn create_thread_from_staged_page_eof_transition_framing(
     pre: KernelK, post: KernelK, page_ptr: PagePtr, process_ptr: RwLockProcessPtr, staging_thread_ptr: RwLockThreadPtr,
     container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_id: CpuId, process_node_addr: usize, sched_node_addr: usize,
 ) -> bool {
@@ -118,7 +118,7 @@ pub open spec fn create_thread_from_staged_page_eof_transition_framing(
 }
 
 /// Only the owning process's thread list changes and it runs, so no process becomes emptied and every table link keeps its value.
-proof fn eof_create_thread_process_emptied_tables_wf(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr)
+proof fn create_thread_from_staged_page_eof_process_emptied_tables_wf(pre: KernelK, post: KernelK, process_ptr: RwLockProcessPtr)
     requires
         process_emptied_tables_wf(pre.prc_mp, pre.pt_mp, pre.pt_lower.view(), pre.it_mp),
         post.pt_mp == pre.pt_mp,
@@ -131,7 +131,7 @@ proof fn eof_create_thread_process_emptied_tables_wf(pre: KernelK, post: KernelK
 { reveal(process_emptied_tables_wf); }
 
 #[verifier::spinoff_prover]
-proof fn eof_create_thread_memory_management_inv(
+proof fn create_thread_from_staged_page_eof_memory_management_inv(
     pre: KernelK, post: KernelK, page_ptr: PagePtr, process_ptr: RwLockProcessPtr, staging_thread_ptr: RwLockThreadPtr,
     container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_id: CpuId, process_node_addr: usize, sched_node_addr: usize,
 )
@@ -198,7 +198,7 @@ proof fn eof_create_thread_memory_management_inv(
     assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
     assert(process_pagetable_match(post.prc_mp, post.pt_mp)) by { lemma_process_pagetable_match_preserved_for_process_pagetable_fields_forall(); };
     assert(process_iommu_table_match(post.prc_mp, post.it_mp)) by { lemma_process_iommu_table_match_preserved_for_process_iommu_table_fields_forall(); };
-    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp)) by { eof_create_thread_process_emptied_tables_wf(pre, post, process_ptr); };
+    assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp)) by { create_thread_from_staged_page_eof_process_emptied_tables_wf(pre, post, process_ptr); };
     assert(container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
         pre.ctn_mp.spec_index(container_ptr).view_ghost().uppertree_seq.view().to_set_ensures(); thread_perms_wf_at(post.thr_mp, page_ptr);
         lemma_container_process_thread_quota_folds_insert_zero_forall(pre.rt_ctn, pre.ctn_mp, post.ctn_mp, pre.prc_mp, post.prc_mp, pre.thr_mp, post.thr_mp, container_ptr, page_ptr);
@@ -216,7 +216,7 @@ proof fn eof_create_thread_memory_management_inv(
     assert(container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr)) by { container_allocator_free_1g_page_wf_preserved_for_nonfree_page_change(post.allc_1g_mp, pre.pg_arr, post.pg_arr, page_index); };
 }
 
-proof fn eof_create_thread_endpoint_ref_counter_wf(
+proof fn create_thread_from_staged_page_eof_endpoint_ref_counter_wf(
     pre: KernelK, post: KernelK, page_ptr: PagePtr, process_ptr: RwLockProcessPtr, staging_thread_ptr: RwLockThreadPtr,
     container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_id: CpuId, process_node_addr: usize, sched_node_addr: usize,
 )
@@ -229,7 +229,7 @@ proof fn eof_create_thread_endpoint_ref_counter_wf(
     reveal(create_thread_from_staged_page_eof_transition_framing); reveal(thread_endpoint_ref_counter_wf);
 }
 
-proof fn eof_create_thread_process_management_inv(
+proof fn create_thread_from_staged_page_eof_process_management_inv(
     pre: KernelK, post: KernelK, page_ptr: PagePtr, process_ptr: RwLockProcessPtr, staging_thread_ptr: RwLockThreadPtr,
     container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_id: CpuId, process_node_addr: usize, sched_node_addr: usize,
 )
@@ -275,7 +275,7 @@ proof fn eof_create_thread_process_management_inv(
     };
     assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { reveal(container_endpoint_wf); };
     assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); };
-    eof_create_thread_endpoint_ref_counter_wf(pre, post, page_ptr, process_ptr, staging_thread_ptr, container_ptr, scheduler_ptr, cpu_id, process_node_addr, sched_node_addr);
+    create_thread_from_staged_page_eof_endpoint_ref_counter_wf(pre, post, page_ptr, process_ptr, staging_thread_ptr, container_ptr, scheduler_ptr, cpu_id, process_node_addr, sched_node_addr);
     assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_queue_wf); };
     assert(thread_caller_callee_wf(post.thr_mp)) by { reveal(thread_caller_callee_wf); };
     assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { reveal(container_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); reveal(container_thread_endpoint_wf); };
@@ -295,7 +295,7 @@ proof fn eof_create_thread_process_management_inv(
     assert(thread_dangling_chain_end_wf(post.thr_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thr_mp, post.thr_mp); };
 }
 
-pub(super) proof fn eof_create_thread_inv(
+pub(super) proof fn create_thread_from_staged_page_eof_inv(
     pre: KernelK, post: KernelK, page_ptr: PagePtr, process_ptr: RwLockProcessPtr, staging_thread_ptr: RwLockThreadPtr,
     container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_id: CpuId, process_node_addr: usize, sched_node_addr: usize,
 )
@@ -330,8 +330,8 @@ pub(super) proof fn eof_create_thread_inv(
     ensures
         post.inv(),
 {
-    eof_create_thread_memory_management_inv(pre, post, page_ptr, process_ptr, staging_thread_ptr, container_ptr, scheduler_ptr, cpu_id, process_node_addr, sched_node_addr);
-    eof_create_thread_process_management_inv(pre, post, page_ptr, process_ptr, staging_thread_ptr, container_ptr, scheduler_ptr, cpu_id, process_node_addr, sched_node_addr);
+    create_thread_from_staged_page_eof_memory_management_inv(pre, post, page_ptr, process_ptr, staging_thread_ptr, container_ptr, scheduler_ptr, cpu_id, process_node_addr, sched_node_addr);
+    create_thread_from_staged_page_eof_process_management_inv(pre, post, page_ptr, process_ptr, staging_thread_ptr, container_ptr, scheduler_ptr, cpu_id, process_node_addr, sched_node_addr);
     reveal(create_thread_from_staged_page_eof_transition_framing);
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
@@ -343,7 +343,7 @@ pub(super) proof fn eof_create_thread_inv(
 }
 
 /// The create-thread summary yields the new-thread step fields; container scheduler injectivity comes from `pre`.
-pub(super) proof fn eof_create_thread_new_thread_fields(
+pub(super) proof fn create_thread_from_staged_page_eof_new_thread_fields(
     pre: KernelK, post: KernelK, page_ptr: PagePtr, process_ptr: RwLockProcessPtr, staging_thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr,
     scheduler_ptr: RwLockSchedulerPtr, cpu_id: CpuId, process_node_addr: usize, sched_node_addr: usize, initial_regs: Registers,
 )

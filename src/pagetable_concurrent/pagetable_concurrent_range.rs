@@ -6,9 +6,7 @@ use crate::*;
 impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
     /// No 4K leaf resolves in the inclusive L1 interval under one fixed L4/L3/L2 path.
     pub open spec fn spec_resolve_4k_l1_range_empty(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, start_l1i: L1Index, end_l1i: L1Index) -> bool {
-        forall|l1i: L1Index|
-            #![trigger self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
-            start_l1i <= l1i <= end_l1i ==> self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is None
+        forall|l1i: L1Index| #![trigger self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)] start_l1i <= l1i <= end_l1i ==> self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is None
     }
 
     /// No 4K leaf resolves in the inclusive (L2, L1) interval under one fixed L4/L3 path.
@@ -214,9 +212,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
                 pei_valid(end_l1i),
                 start_l1i <= l1i <= end_l1i + 1,
                 c.spec_resolve_mapping_l2(l4i, l3i, l2i) =~= Some(*l2_entry),
-                forall|done_l1i: L1Index|
-                    #![trigger c.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, done_l1i)]
-                    start_l1i <= done_l1i < l1i ==> c.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, done_l1i) is None,
+                forall|done_l1i: L1Index| #![trigger c.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, done_l1i)] start_l1i <= done_l1i < l1i ==> c.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, done_l1i) is None,
             decreases end_l1i + 1 - l1i,
         {
             if self.get_entry_l1(Tracked(lower), l4i, l3i, l2i, l1i, l2_entry).is_some() { return false; }
@@ -371,8 +367,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
 
     /// Check whether the abstract 4K mapping is empty between two inclusive page-table index boundaries. Missing
     /// directory levels and huge-page entries skip their complete 4K subtrees.
-    pub fn mapping_4k_range_empty(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, start: (L4Index, L3Index, L2Index, L1Index), end: (L4Index, L3Index, L2Index, L1Index))
-        -> (ret: bool)
+    pub fn mapping_4k_range_empty(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, start: (L4Index, L3Index, L2Index, L1Index), end: (L4Index, L3Index, L2Index, L1Index)) -> (ret: bool)
         requires
             (PageTableC { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= start.0,
@@ -394,8 +389,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     }
 
     /// The first 4K leaf under one fixed L4/L3/L2 path at or after `start_l1i`; `start_l1i == 512` scans nothing.
-    fn next_resolved_4k_l1_from(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, l4i: L4Index, l3i: L3Index, l2i: L2Index, l2_entry: &PageEntry, start_l1i: L1Index)
-        -> (ret: Option<L1Index>)
+    fn next_resolved_4k_l1_from(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, l4i: L4Index, l3i: L3Index, l2i: L2Index, l2_entry: &PageEntry, start_l1i: L1Index) -> (ret: Option<L1Index>)
         requires
             (PageTableC { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= l4i && pei_valid(l4i),
@@ -425,9 +419,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
                 pei_valid(l2i),
                 start_l1i <= l1i <= 512,
                 c.spec_resolve_mapping_l2(l4i, l3i, l2i) =~= Some(*l2_entry),
-                forall|done_l1i: L1Index|
-                    #![trigger c.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, done_l1i)]
-                    start_l1i <= done_l1i < l1i ==> c.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, done_l1i) is None,
+                forall|done_l1i: L1Index| #![trigger c.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, done_l1i)] start_l1i <= done_l1i < l1i ==> c.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, done_l1i) is None,
             decreases 512 - l1i,
         {
             if self.get_entry_l1(Tracked(lower), l4i, l3i, l2i, l1i, l2_entry).is_some() { return Some(l1i); }
@@ -437,8 +429,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     }
 
     /// The first 4K leaf under one fixed L4/L3 path at or after `start` in (L2, L1) order.
-    fn next_resolved_4k_l2_from(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, l4i: L4Index, l3i: L3Index, l3_entry: &PageEntry, start: (L2Index, L1Index))
-        -> (ret: Option<(L2Index, L1Index)>)
+    fn next_resolved_4k_l2_from(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, l4i: L4Index, l3i: L3Index, l3_entry: &PageEntry, start: (L2Index, L1Index)) -> (ret: Option<(L2Index, L1Index)>)
         requires
             (PageTableC { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= l4i && pei_valid(l4i),
@@ -885,7 +876,9 @@ impl PageTableHigher<PT_TYPE> {
 /// Every 4K index between the first and last page of `range` lies in a covering 2M window, whose base has that index's L4, L3,
 /// and L2 indices and a zero L1 index.
 pub proof fn va_range_2m_windows_contains_window_of_every_va_in_range(range: VaRange4K)
-    requires range.wf(), range.len > 0,
+    requires
+        range.wf(),
+        range.len > 0,
     ensures
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger spec_index2va((l4i, l3i, l2i, l1i))]
             pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && spec_l4_index_path_le(spec_va2index(range.start), (l4i, l3i, l2i, l1i))
@@ -898,7 +891,10 @@ pub proof fn va_range_2m_windows_contains_window_of_every_va_in_range(range: VaR
 
 /// Each of the first `n` pages of `range` lies in a 2M window of the range at the page's own L4, L3 and L2 indices.
 pub proof fn va_range_2m_windows_contains_window_of_first_n_pages(range: VaRange4K, n: int)
-    requires range.wf(), range.len > 0, 0 <= n <= range.len,
+    requires
+        range.wf(),
+        range.len > 0,
+        0 <= n <= range.len,
     ensures
         forall|j: int| #![trigger range.view()[j]] 0 <= j < n ==> {
             &&& va_range_2m_windows(range).contains(window_of(range.view()[j]))

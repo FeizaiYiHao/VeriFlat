@@ -21,12 +21,8 @@ impl PcidAllocator {
             ret.container_depth.view() == 0,
             ret.ref_counters.spec_index(1) == 1,
             ret.id_to_proc.view().spec_index(1) =~= set![root_process],
-            forall|id: Pcid|
-                #![trigger ret.ref_counters.spec_index(id)]
-                pcid_valid(id) && id != 1 ==> ret.ref_counters.spec_index(id) == 0,
-            forall|id: Pcid|
-                #![trigger ret.id_to_proc.view().spec_index(id as int)]
-                pcid_valid(id) && id != 1 ==> ret.id_to_proc.view().spec_index(id as int).is_empty(),
+            forall|id: Pcid| #![trigger ret.ref_counters.spec_index(id)] pcid_valid(id) && id != 1 ==> ret.ref_counters.spec_index(id) == 0,
+            forall|id: Pcid| #![trigger ret.id_to_proc.view().spec_index(id as int)] pcid_valid(id) && id != 1 ==> ret.id_to_proc.view().spec_index(id as int).is_empty(),
     {
         let mut ret = Self::new_empty(owning_container, 0);
         ret.alloc(1, root_process);
@@ -59,9 +55,7 @@ impl PcidAllocator {
     }
 
     pub open spec fn process_is_unallocated(&self, process_ptr: RwLockProcessPtr) -> bool {
-        forall|id: usize|
-            #![trigger self.id_to_proc.view().spec_index(id as int).contains(process_ptr)]
-            usize_in_range::<PCID_MAX>(id) ==> self.id_to_proc.view().spec_index(id as int).contains(process_ptr) == false
+        forall|id: usize| #![trigger self.id_to_proc.view().spec_index(id as int).contains(process_ptr)] usize_in_range::<PCID_MAX>(id) ==> self.id_to_proc.view().spec_index(id as int).contains(process_ptr) == false
     }
 
     pub open spec fn pcid_is_free(&self, id: Pcid) -> bool {
@@ -79,21 +73,15 @@ impl PcidAllocator {
             self.wf(),
         ensures
             ret is Some ==> self.pcid_is_free(ret->Some_0),
-            ret is Some ==> forall|id: Pcid|
-                #![trigger self.ref_counters.spec_index(id)]
-                KERNEL_DEFAULT_PCID < id < ret->Some_0 ==> !self.pcid_is_free(id),
-            ret is None ==> forall|id: Pcid|
-                #![trigger self.ref_counters.spec_index(id)]
-                usize_in_range::<PCID_MAX>(id) ==> !self.pcid_is_free(id),
+            ret is Some ==> forall|id: Pcid| #![trigger self.ref_counters.spec_index(id)] KERNEL_DEFAULT_PCID < id < ret->Some_0 ==> !self.pcid_is_free(id),
+            ret is None ==> forall|id: Pcid| #![trigger self.ref_counters.spec_index(id)] usize_in_range::<PCID_MAX>(id) ==> !self.pcid_is_free(id),
     {
         let mut id = KERNEL_DEFAULT_PCID + 1;
         while id < PCID_MAX
             invariant
                 self.wf(),
                 KERNEL_DEFAULT_PCID < id <= PCID_MAX,
-                forall|candidate: Pcid|
-                    #![trigger self.ref_counters.spec_index(candidate)]
-                    KERNEL_DEFAULT_PCID < candidate < id ==> !self.pcid_is_free(candidate),
+                forall|candidate: Pcid| #![trigger self.ref_counters.spec_index(candidate)] KERNEL_DEFAULT_PCID < candidate < id ==> !self.pcid_is_free(candidate),
             decreases PCID_MAX - id,
         {
             if *self.ref_counters.get(id) == 0 {
@@ -148,7 +136,6 @@ impl PcidAllocator {
         self.ref_counters.set(id, 0);
         self.id_to_proc = Ghost(self.id_to_proc.view().update(id as int, self.id_to_proc.view().spec_index(id as int).remove(process_ptr)));
     }
-
 }
 
 impl LockInvTrait for PcidAllocator {

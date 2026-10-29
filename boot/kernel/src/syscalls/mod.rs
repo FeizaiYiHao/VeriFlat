@@ -42,8 +42,8 @@ use veriflat_monolith::kernel::implementation::rebalance_pull::rebalance_pull::{
 use veriflat_monolith::kernel::implementation::syscall_alloc_quota::syscall_alloc_quota::{
     syscall_alloc_quota_2m, syscall_alloc_quota_4k, syscall_alloc_thread_quota_2m, syscall_alloc_thread_quota_4k,
 };
-use veriflat_monolith::kernel::implementation::syscall_cpu_hotplug::cpu_offline_check::{cpu_offline_check, OfflineCheckResult};
-use veriflat_monolith::kernel::implementation::syscall_cpu_hotplug::cpu_online_resume::{cpu_online_resume, OnlineResumeResult};
+use veriflat_monolith::kernel::implementation::syscall_cpu_hotplug::syscall_cpu_offline_check::{cpu_offline_check, OfflineCheckResult};
+use veriflat_monolith::kernel::implementation::syscall_cpu_hotplug::syscall_cpu_online_resume::{cpu_online_resume, OnlineResumeResult};
 use veriflat_monolith::kernel::implementation::syscall_cpu_hotplug::syscall_cpu_offline_request::syscall_cpu_offline_request;
 use veriflat_monolith::kernel::implementation::syscall_cpu_hotplug::syscall_cpu_offline_request_child::syscall_cpu_offline_request_child;
 use veriflat_monolith::kernel::implementation::syscall_cpu_hotplug::syscall_cpu_online::syscall_cpu_online;

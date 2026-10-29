@@ -119,7 +119,6 @@ pub(super) proof fn thread_exit_detach_process_functions_eof(pre: KernelK, post:
         pre.inv(),
         thread_exit_detach_process_functions_eof_transition_framing(pre, post, iommu_table),
         pre.it_mp.dom().contains(iommu_table),
-        // Produced by `iommu_root_table_detach_all`.
         post.irt.inv(),
         post.iommu_tlb.inv(),
         iommu_table_perms_wf(post.it_mp),

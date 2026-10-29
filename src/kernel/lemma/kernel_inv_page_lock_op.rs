@@ -4,10 +4,7 @@ use crate::*;
 verus! {
 /// Kernel invariants read page payloads, never the current page lock owner.
 pub open spec fn page_invariant_fields_unchanged(pre: PageLockedArray, post: PageLockedArray) -> bool {
-    forall|page_index: PageIndex|
-        #![trigger pre.spec_index(page_index)]
-        #![trigger post.spec_index(page_index)]
-        index_valid(NUM_PAGES, page_index) ==> post.spec_index(page_index).view().view() == pre.spec_index(page_index).view().view()
+    forall|page_index: PageIndex| #![trigger pre.spec_index(page_index)] #![trigger post.spec_index(page_index)] index_valid(NUM_PAGES, page_index) ==> post.spec_index(page_index).view().view() == pre.spec_index(page_index).view().view()
 }
 
 pub proof fn page_lock_op_preserves_invariant_fields(pre: PageLockedArray, post: PageLockedArray, changed: PageIndex)

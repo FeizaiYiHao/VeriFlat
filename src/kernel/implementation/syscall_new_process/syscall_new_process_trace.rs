@@ -358,20 +358,6 @@ pub(super) proof fn new_process_trace_share_steps(steps: &KernelSteps, before: S
         new_process_trace_after_share(steps.view(), start, pre, cpu_id, range, regs, endpoint_index, with_iommu),
 { reveal(new_process_trace_after_publish); reveal(new_process_trace_after_share); }
 
-/// Share directory steps appended after share range steps that start at `start` are share range steps.
-pub(super) proof fn new_process_share_steps_from_directory(steps: &KernelSteps, before: Seq<KernelStep>, start: int, cpu_id: CpuId)
-    requires
-        0 <= start <= before.len() <= steps.view().len(),
-        forall|j: int| #![trigger before[j]] start <= j < before.len() ==> share_4k_range_step(before[j], cpu_id),
-        forall|j: int| #![trigger steps.view()[j]] 0 <= j < before.len() ==> steps.view()[j] == before[j],
-        forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
-            &&& share_4k_directory_step_pre(steps.view()[j].old_u, cpu_id)
-            &&& share_4k_directory_step(steps.view()[j].old_u, steps.view()[j].new_u, cpu_id)
-        },
-    ensures
-        forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> share_4k_range_step(steps.view()[j], cpu_id),
-{ reveal(share_4k_range_step); }
-
 /// The finish step pushed after the shared partial trace that starts at `start` completes the commit trace.
 pub(super) proof fn new_process_trace_finish_step(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, cpu_id: CpuId, range: VaRange4K, regs: Registers, endpoint_index: Option<EndpointIdx>, with_iommu: bool)
     requires

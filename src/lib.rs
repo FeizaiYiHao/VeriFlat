@@ -33,7 +33,7 @@ pub use iommu::*;
 pub use kernel::*;
 pub use kernel::implementation::free_4k_page::*;
 pub use kernel::implementation::reclaim_dangling_thread::*;
-pub use kernel::implementation::allocate_free_4k_page::allocate_free_4k_impl_base::{allocate_free_4k_page, allocate_free_4k_page_k};
+pub use kernel::implementation::allocate_free_4k_page::allocate_free_4k_impl_base::allocate_free_4k_page;
 pub use kernel::implementation::allocate_free_4k_page::allocate_free_4k_pages::allocate_free_4k_pages;
 #[cfg(verus_keep_ghost)]
 pub use kernel::implementation::allocate_free_4k_page::allocate_free_4k_pages::{allocated_4k_page_lock_perms_wf, page_ptrs_to_indices};
@@ -45,11 +45,13 @@ pub use kernel::implementation::lock_owned_2m_page_tails::*;
 pub use kernel::implementation::create_container_from_staged_pages::*;
 pub use kernel::implementation::map_4k::mmap_4k_build_structure::mmap_4k_build_one_structure;
 pub use kernel::implementation::map_4k::mmap_4k_install_one::install_one_mmap_4k_directory_page;
+pub use kernel::implementation::map_4k::share_mapping_4k_child_structure::build_new_child_structure;
 pub use kernel::implementation::map_4k::mmap_4k_build_structure_spec::*;
 pub use kernel::implementation::map_4k::map_iommu_4k_spec::*;
 pub use kernel::implementation::map_4k::map_iommu_4k::map_shared_page_into_iommu_4k;
 pub use kernel::implementation::map_4k::map_iommu_4k_directory::install_staged_4k_iommu_table_page;
 use kernel::implementation::map_4k::unmap_4k_range::unmap_4k_range;
+use kernel::implementation::map_4k::unmap_4k_lock_running_thread::{unmap_4k_lock_running_thread, Unmap4kLocked};
 use kernel::implementation::map_4k::unmap_4k_flush_all::flush_pagetable_tlbs;
 use kernel::implementation::map_4k::unmap_4k_present::clear_4k_mapping_present;
 use kernel::implementation::map_4k::unmap_4k_reclaim_one::reclaim_unmapped_4k_page;
@@ -67,6 +69,8 @@ pub use kernel::implementation::map_4k::share_mapping_4k::{share_mapping_4k_buil
 pub use kernel::implementation::map_4k::share_mapping_4k::{share_mapping_4k_leaf_owner_compatible, share_mapping_4k_range_owner_compatible, share_mapping_4k_source_range_present};
 #[cfg(verus_keep_ghost)]
 pub use kernel::implementation::map_4k::share_mapping_4k::{share_mapping_4k_range_owner_compatible_own_container, share_mapping_4k_source_range_present_from_wf};
+#[cfg(verus_keep_ghost)]
+pub use kernel::implementation::map_4k::share_mapping_4k_trace::share_4k_range_steps_from_directory;
 #[cfg(verus_keep_ghost)]
 pub use kernel::implementation::locker_unlocker::container_nonlock_fields_and_quotas_unchanged_for_cpu_set_relock;
 pub use kernel::implementation::transfer_staged_4k_page::*;

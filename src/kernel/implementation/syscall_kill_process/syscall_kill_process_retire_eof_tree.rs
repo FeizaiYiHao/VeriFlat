@@ -12,7 +12,7 @@ pub(crate) proof fn kill_retire_eof_tree(
 )
     requires
         pre.inv(),
-        kill_retire_eof_transition_framing(pre, post, cpu_id, target, parent_ptr, container_ptr, allocator_ptr),
+        kill_retire_eof_transition_framing(pre, post, cpu_id, target, Some(parent_ptr), container_ptr, allocator_ptr),
         pre.prc_mp.dom().contains(target),
         pre.prc_mp.spec_index(target).locking_thread() is Write,
         pre.prc_mp.spec_index(target).being_killed(),

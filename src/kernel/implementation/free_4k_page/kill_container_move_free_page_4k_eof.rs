@@ -49,9 +49,7 @@ pub(super) open spec fn kill_container_move_free_page_4k_eof_transition_framing(
             })
         }
     &&& post.allc_4k_mp.dom() == pre.allc_4k_mp.dom()
-    &&& forall|a: RwLockPageAllocatorPtr|
-        #![trigger post.allc_4k_mp.spec_index(a)]
-        pre.allc_4k_mp.dom().contains(a) && a != src_allocator && a != dst_allocator ==> post.allc_4k_mp.spec_index(a) == pre.allc_4k_mp.spec_index(a)
+    &&& forall|a: RwLockPageAllocatorPtr| #![trigger post.allc_4k_mp.spec_index(a)] pre.allc_4k_mp.dom().contains(a) && a != src_allocator && a != dst_allocator ==> post.allc_4k_mp.spec_index(a) == pre.allc_4k_mp.spec_index(a)
     &&& new_src == (PageAllocator { global_pool: new_src.global_pool, quota: new_src.quota, total_free_pages: new_src.total_free_pages, ..old_src })
     &&& old_src.global_pool.view().map().dom().contains(node)
     &&& old_src.global_pool.view().map().spec_index(node) == page_ptr

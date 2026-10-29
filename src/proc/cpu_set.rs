@@ -28,12 +28,8 @@ impl CpuSet {
             ret.inv(),
             ret.owning_container.view() == owning_container,
             ret.container_depth.view() == 0,
-            forall|cpu_id: CpuId|
-                #![trigger ret.owned_cpus.view().contains(cpu_id)]
-                ret.owned_cpus.view().contains(cpu_id) <==> index_valid(NUM_CPUS, cpu_id),
-            forall|cpu_id: CpuId|
-                #![trigger ret.owned_cpus.closed_view().contains(cpu_id)]
-                ret.owned_cpus.closed_view().contains(cpu_id) <==> index_valid(NUM_CPUS, cpu_id) && cpu_id != 0,
+            forall|cpu_id: CpuId| #![trigger ret.owned_cpus.view().contains(cpu_id)] ret.owned_cpus.view().contains(cpu_id) <==> index_valid(NUM_CPUS, cpu_id),
+            forall|cpu_id: CpuId| #![trigger ret.owned_cpus.closed_view().contains(cpu_id)] ret.owned_cpus.closed_view().contains(cpu_id) <==> index_valid(NUM_CPUS, cpu_id) && cpu_id != 0,
     {
         let mut ret = Self::new_empty(owning_container, 0);
         ret.owned_cpus.insert(0);
@@ -44,12 +40,8 @@ impl CpuSet {
                 ret.inv(),
                 ret.owning_container.view() == owning_container,
                 ret.container_depth.view() == 0,
-                forall|old_cpu: CpuId|
-                    #![trigger ret.owned_cpus.view().contains(old_cpu)]
-                    ret.owned_cpus.view().contains(old_cpu) <==> old_cpu < cpu_id,
-                forall|old_cpu: CpuId|
-                    #![trigger ret.owned_cpus.closed_view().contains(old_cpu)]
-                    ret.owned_cpus.closed_view().contains(old_cpu) <==> 0 < old_cpu < cpu_id,
+                forall|old_cpu: CpuId| #![trigger ret.owned_cpus.view().contains(old_cpu)] ret.owned_cpus.view().contains(old_cpu) <==> old_cpu < cpu_id,
+                forall|old_cpu: CpuId| #![trigger ret.owned_cpus.closed_view().contains(old_cpu)] ret.owned_cpus.closed_view().contains(old_cpu) <==> 0 < old_cpu < cpu_id,
             decreases NUM_CPUS - cpu_id,
         {
             ret.owned_cpus.insert_closed(cpu_id);

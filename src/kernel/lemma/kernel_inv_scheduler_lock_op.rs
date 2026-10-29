@@ -5,10 +5,7 @@ use crate::kernel::*;
 verus! {
 pub open spec fn scheduler_invariant_fields_unchanged(pre: SchedulerUnLockedMap, post: SchedulerUnLockedMap) -> bool {
     &&& pre.dom() =~= post.dom()
-    &&& forall|s_ptr: RwLockSchedulerPtr|
-        #![trigger pre.spec_index(s_ptr)]
-        #![trigger post.spec_index(s_ptr)]
-        pre.dom().contains(s_ptr) ==> post.spec_index(s_ptr).owning_container == pre.spec_index(s_ptr).owning_container
+    &&& forall|s_ptr: RwLockSchedulerPtr| #![trigger pre.spec_index(s_ptr)] #![trigger post.spec_index(s_ptr)] pre.dom().contains(s_ptr) ==> post.spec_index(s_ptr).owning_container == pre.spec_index(s_ptr).owning_container
     &&& forall|s_ptr: RwLockSchedulerPtr, cpu_id: CpuId|
         #![trigger pre.spec_index(s_ptr).shards.spec_index(cpu_id)]
         #![trigger post.spec_index(s_ptr).shards.spec_index(cpu_id)]

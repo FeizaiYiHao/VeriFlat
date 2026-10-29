@@ -176,12 +176,12 @@ pub(super) fn ipc_reply_handoff_release_and_end_step(
         final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(old(steps).snapshot_k()), new_u: kernel_k_to_kernel_u(*final(krnl)) }),
         ipc_reply_handoff_step_pre(kernel_k_to_kernel_u(old(steps).snapshot_k()), cpu_id, endpoint_index),
-        ipc_reply_handoff_step(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index, entry_regs, ipc_handoff_flushed_pcid(old(steps).snapshot_k(), cpu_id, caller_ptr)),
+        ipc_reply_handoff_step(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(*final(krnl)), cpu_id, endpoint_index, entry_regs, context_switch_flushed_pcid(old(steps).snapshot_k(), cpu_id, caller_ptr)),
         final(steps).nonlock_view().len() == old(steps).nonlock_view().len() + 1,
         final(steps).nonlock_view().last().old_u == kernel_k_to_nonlock_kernel_u(old(steps).snapshot_k()),
         final(steps).nonlock_view().last().new_u == kernel_k_to_nonlock_kernel_u(*final(krnl)),
         ipc_reply_handoff_step_pre(final(steps).nonlock_view().last().old_u, cpu_id, endpoint_index),
-        ipc_reply_handoff_step(final(steps).nonlock_view().last().old_u, final(steps).nonlock_view().last().new_u, cpu_id, endpoint_index, entry_regs, ipc_handoff_flushed_pcid(old(steps).snapshot_k(), cpu_id, caller_ptr)),
+        ipc_reply_handoff_step(final(steps).nonlock_view().last().old_u, final(steps).nonlock_view().last().new_u, cpu_id, endpoint_index, entry_regs, context_switch_flushed_pcid(old(steps).snapshot_k(), cpu_id, caller_ptr)),
         final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
         *pt_regs == *old(steps).snapshot_k().thr_mp.spec_index(caller_ptr).view().trap_frame.get_some_0(),
 {
@@ -193,7 +193,7 @@ pub(super) fn ipc_reply_handoff_release_and_end_step(
     krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view()) by { reveal(ipc_reply_handoff_eof_transition_framing); };
-        let ghost flushed_pcid = ipc_handoff_flushed_pcid(old(steps).snapshot_k(), cpu_id, caller_ptr);
+        let ghost flushed_pcid = context_switch_flushed_pcid(old(steps).snapshot_k(), cpu_id, caller_ptr);
         assert(kernel_ipc_reply_handoff_fields(&steps.snapshot_k(), &*krnl, cpu_id, callee_ptr, endpoint_ptr, endpoint_index, caller_ptr, entry_regs, flushed_pcid) && krnl.ctn_mp == steps.snapshot_k().ctn_mp) by {
             broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive;
             reveal(kernel_ipc_reply_handoff_fields); reveal(ipc_reply_handoff_eof_transition_framing);

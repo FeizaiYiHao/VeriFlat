@@ -16,9 +16,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         &&& post.lower.l2_ghost.dom() =~= pre.lower.l2_ghost.dom()
         &&& post.lower.l2_page(target_l2_p).addr() == target_l2_p
         &&& post.lower.l2_page(target_l2_p).wf()
-        &&& forall|i: usize|
-            #![trigger post.lower.l2_page(target_l2_p).spec_index(i)]
-            pei_valid(i) && i != target_l2i ==> post.lower.l2_page(target_l2_p).spec_index(i) =~= pre.lower.l2_page(target_l2_p).spec_index(i)
+        &&& forall|i: usize| #![trigger post.lower.l2_page(target_l2_p).spec_index(i)] pei_valid(i) && i != target_l2i ==> post.lower.l2_page(target_l2_p).spec_index(i) =~= pre.lower.l2_page(target_l2_p).spec_index(i)
         &&& post.lower.l2_page(target_l2_p).spec_index(target_l2i).is_empty()
     }
 
@@ -60,8 +58,16 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             pre.lower.l1_tables.dom().contains(target_l1_p),
             Self::remove_l2_entry_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p),
         ensures
-            post.higher.inv(), post.va_addr_valid(), post.wf_l3(), post.l2_tokens_paired(), post.wf_l1(), post.disjoint_l2(), post.user_only(),
-            post.rwx_upper_level_entries(), post.table_pages_wf(), post.wf_window_locks(),
+            post.higher.inv(),
+            post.va_addr_valid(),
+            post.wf_l3(),
+            post.l2_tokens_paired(),
+            post.wf_l1(),
+            post.disjoint_l2(),
+            post.user_only(),
+            post.rwx_upper_level_entries(),
+            post.table_pages_wf(),
+            post.wf_window_locks(),
             post.page_closure() =~= pre.page_closure().remove(target_l1_p),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
                 #![trigger post.window_locked_by_thread(l4i, l3i, l2i, thread_id)]
@@ -111,7 +117,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             forall|i: L1Index| #![trigger pre.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, i)] pei_valid(i) ==> pre.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, i) is None,
             Self::remove_l2_entry_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p),
         ensures
-            post.wf_mapping_4k(), post.wf_mapping_2m(),
+            post.wf_mapping_4k(),
+            post.wf_mapping_2m(),
     {
         reveal(PageTableC::remove_l2_entry_eof_transition_framing);
         assert(post.wf_mapping_4k()) by { reveal(PageTableC::wf_mapping_4k); broadcast use PageTableHigher::resolve_l3_addr_unique_at, PageTableC::resolve_l2_addr_unique_at; };
@@ -229,8 +236,15 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             pre.lower.l2_perms.dom().contains(target_l2_p),
             Self::remove_l3_entry_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, target_l2_p),
         ensures
-            post.va_addr_valid(), post.wf_l3(), post.l2_tokens_paired(), post.wf_l2(), post.wf_l1(), post.disjoint_l2(), post.user_only(),
-            post.rwx_upper_level_entries(), post.table_pages_wf(),
+            post.va_addr_valid(),
+            post.wf_l3(),
+            post.l2_tokens_paired(),
+            post.wf_l2(),
+            post.wf_l1(),
+            post.disjoint_l2(),
+            post.user_only(),
+            post.rwx_upper_level_entries(),
+            post.table_pages_wf(),
             post.page_closure() =~= pre.page_closure().remove(target_l2_p),
     {
         reveal(PageTableC::remove_l3_entry_eof_transition_framing);
@@ -259,7 +273,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             forall|i: L2Index| #![trigger pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, i)] pei_valid(i) ==> pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, i) is None,
             Self::remove_l3_entry_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, target_l2_p),
         ensures
-            post.wf_mapping_4k(), post.wf_mapping_2m(),
+            post.wf_mapping_4k(),
+            post.wf_mapping_2m(),
     {
         reveal(PageTableC::remove_l3_entry_eof_transition_framing);
         assert(post.wf_mapping_4k()) by { reveal(PageTableC::wf_mapping_4k); broadcast use PageTableHigher::resolve_l3_addr_unique_at; };

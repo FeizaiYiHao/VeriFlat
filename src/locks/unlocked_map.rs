@@ -39,10 +39,7 @@ impl<T> UnLockedMap<usize, T> {
     pub open spec fn unchanged_except(&self, old: &Self, key: usize) -> bool {
         &&& old.dom() == self.dom()
         &&& self.dom().contains(key)
-        &&& forall|k: usize|
-            #![trigger self.spec_index(k)]
-            #![trigger old.spec_index(k)]
-            old.dom().contains(k) && k != key ==> self.spec_index(k) == old.spec_index(k)
+        &&& forall|k: usize| #![trigger self.spec_index(k)] #![trigger old.spec_index(k)] old.dom().contains(k) && k != key ==> self.spec_index(k) == old.spec_index(k)
     }
 
     pub fn insert_with_perm(&mut self, key: usize, Tracked(perm): Tracked<PointsTo<T>>)
@@ -55,8 +52,7 @@ impl<T> UnLockedMap<usize, T> {
             final(self).dom() =~= old(self).dom().insert(key),
             final(self).dom().contains(key),
             final(self).spec_index(key) == perm.value(),
-            forall|old_key: usize| #![auto]
-                old(self).dom().contains(old_key) ==> final(self).spec_index(old_key) == old(self).spec_index(old_key),
+            forall|old_key: usize| #![auto] old(self).dom().contains(old_key) ==> final(self).spec_index(old_key) == old(self).spec_index(old_key),
     {
         proof { self.map.borrow_mut().tracked_insert(key, perm); }
     }

@@ -89,8 +89,7 @@ pub proof fn lemma_cache_len_fold_ge_elem<const SIZE: usize>(s: Seq<RwLock<Alloc
 
 pub proof fn lemma_cache_len_fold_all_zero<const SIZE: usize>(s: Seq<RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>>)
     requires
-        forall|j: int| #![trigger s.spec_index(j)]
-            0 <= j < s.len() ==> s.spec_index(j).view().linked_list.view().len() == 0,
+        forall|j: int| #![trigger s.spec_index(j)] 0 <= j < s.len() ==> s.spec_index(j).view().linked_list.view().len() == 0,
     ensures
         s.fold_left(0int, |sum: int, c: RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + c.view().linked_list.len() }) == 0,
     decreases s.len(),

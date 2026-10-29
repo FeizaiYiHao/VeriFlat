@@ -4,10 +4,7 @@ use crate::*;
 verus! {
 pub open spec fn endpoint_invariant_fields_unchanged(pre: EndpointLockedMap, post: EndpointLockedMap) -> bool {
     &&& pre.dom() =~= post.dom()
-    &&& forall|e_ptr: RwLockEndpointPtr|
-        #![trigger pre.spec_index(e_ptr).view()]
-        #![trigger post.spec_index(e_ptr).view()]
-        pre.dom().contains(e_ptr) ==> post.spec_index(e_ptr).view() == pre.spec_index(e_ptr).view()
+    &&& forall|e_ptr: RwLockEndpointPtr| #![trigger pre.spec_index(e_ptr).view()] #![trigger post.spec_index(e_ptr).view()] pre.dom().contains(e_ptr) ==> post.spec_index(e_ptr).view() == pre.spec_index(e_ptr).view()
 }
 
 pub proof fn lemma_endpoint_perms_wf_preserved_for_lock_op_forall()

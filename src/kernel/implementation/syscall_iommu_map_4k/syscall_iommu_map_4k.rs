@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 use super::syscall_iommu_map_4k_spec::*;
-use super::iommu_map_4k_range::iommu_map_4k_map_range_and_exit;
+use super::syscall_iommu_map_4k_range::iommu_map_4k_map_range_and_exit;
 use super::syscall_iommu_map_4k_check::iommu_map_4k_lock_and_check;
 #[cfg(verus_keep_ghost)]
 use super::syscall_iommu_map_4k_trace::*;
@@ -12,8 +12,7 @@ verus! {
 /// holds the existing 2M windows of the va range for the whole call. Success records an entering step, one step per
 /// installed IOMMU directory page or published IOMMU leaf, and an exiting step; failure records no step. The result is
 /// `iommu_map_4k_syscall_result` of the state at entry.
-pub fn syscall_iommu_map_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, iova: VAddr, range: usize)
-    -> (ret: RetValueType)
+pub fn syscall_iommu_map_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, iova: VAddr, range: usize) -> (ret: RetValueType)
     requires
         index_valid(NUM_CPUS, cpu_id),
         cpu_id == old(lctx).cpu_id(),

@@ -14,16 +14,6 @@ pub open spec fn ipc_recorded_caller(pre: KernelK, cpu_id: CpuId) -> RwLockThrea
     pre.thr_mp.spec_index(pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread.unwrap()).view().caller.unwrap()
 }
 
-/// Switching `cpu_id` to `next_thread` flushes its process's PCID entry when a flush is pending or the entry
-/// is dirty for another process or page table.
-pub open spec fn ipc_handoff_flushed_pcid(pre: KernelK, cpu_id: CpuId, next_thread: RwLockThreadPtr) -> Option<Pcid> {
-    let next_process = pre.thr_mp.spec_index(next_thread).view().owning_proc;
-    let target = pre.prc_mp.spec_index(next_process).view_rodata().view();
-    let pcid = target.pcid;
-    let dirty = pre.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid);
-    if pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush || (dirty is Some && (dirty.unwrap().process_ptr != next_process || dirty.unwrap().pagetable_ptr != target.pagetable)) { Some(pcid) } else { None }
-}
-
 /// The value a call-family syscall returns for the `payload` it delivers: the carried usize, or Success.
 pub open spec fn ipc_call_result(payload: IPCPayLoad) -> RetValueType {
     match payload {
@@ -308,7 +298,7 @@ pub open spec fn ipc_reply_and_receive_syscall_trace(
 /// Dequeues the receive-call callee, switches `cpu_id` to its process, records the caller on it, parks the
 /// caller waiting for the reply with `entry_regs`, and updates the affected PCID publication and TLB state.
 #[verifier::opaque]
-pub open spec fn ipc_call_handoff_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, callee_ptr: RwLockThreadPtr, entry_regs: Registers) -> bool {
+pub(super) open spec fn ipc_call_handoff_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, callee_ptr: RwLockThreadPtr, entry_regs: Registers) -> bool {
     let cpu_before = pre.cpu_arr.spec_index(cpu_id).view();
     let cpu_after = post.cpu_arr.spec_index(cpu_id).view();
     let old_cpu = cpu_before.view().view();
@@ -417,7 +407,7 @@ pub open spec fn ipc_call_handoff_eof_transition_framing(pre: KernelK, post: Ker
 /// Dequeues the caller at the queue head, parks it waiting for the reply of the running callee, and records
 /// it as that callee's caller.
 #[verifier::opaque]
-pub open spec fn ipc_accept_call_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, caller_ptr: RwLockThreadPtr) -> bool {
+pub(super) open spec fn ipc_accept_call_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, caller_ptr: RwLockThreadPtr) -> bool {
     let caller = pre.thr_mp.spec_index(caller_ptr).view();
     let caller_node = caller.endpoint_linkedlist_node.addr();
     let endpoint_before = pre.ep_mp.spec_index(endpoint_ptr);
@@ -476,7 +466,7 @@ pub open spec fn ipc_accept_call_eof_transition_framing(pre: KernelK, post: Kern
 /// `entry_regs` at the endpoint tail as a receive-call waiter, and updates the affected PCID publication and
 /// TLB state.
 #[verifier::opaque]
-pub open spec fn ipc_reply_handoff_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, caller_ptr: RwLockThreadPtr, entry_regs: Registers) -> bool {
+pub(super) open spec fn ipc_reply_handoff_eof_transition_framing(pre: KernelK, post: KernelK, cpu_id: CpuId, callee_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, endpoint_index: EndpointIdx, caller_ptr: RwLockThreadPtr, entry_regs: Registers) -> bool {
     let cpu_before = pre.cpu_arr.spec_index(cpu_id).view();
     let cpu_after = post.cpu_arr.spec_index(cpu_id).view();
     let old_cpu = cpu_before.view().view();

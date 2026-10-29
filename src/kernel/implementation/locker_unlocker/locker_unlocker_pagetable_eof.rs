@@ -153,7 +153,7 @@ pub(super) proof fn wunlock_pagetable_eof(pre: KernelK, post: KernelK, pre_lctx:
 /// `downgrade_pagetable` moved only the lock of table `pagetable_ptr`: `thread_id`'s write lock became its sole read
 /// lock under the same token, and the payload, ghost slot, kill state, and window half stayed.
 #[verifier::opaque]
-pub open spec fn downgrade_pagetable_eof_transition_framing(pre: KernelK, post: KernelK, thread_id: LockThreadId, pagetable_ptr: RwLockPageTableRoot) -> bool {
+pub(super) open spec fn downgrade_pagetable_eof_transition_framing(pre: KernelK, post: KernelK, thread_id: LockThreadId, pagetable_ptr: RwLockPageTableRoot) -> bool {
     &&& post == (KernelK { pt_mp: post.pt_mp, ..pre })
     &&& post.pt_mp.perms_wf()
     &&& post.pt_mp.unchanged_except(&pre.pt_mp, pagetable_ptr)

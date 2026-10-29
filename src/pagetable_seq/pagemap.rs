@@ -20,9 +20,7 @@ impl PageMap {
     pub open spec fn wf(&self) -> bool {
         &&& self.ar.wf()
         &&& self.spec_seq.view().len() == 512
-        &&& forall|i: usize|
-            #![trigger usize2page_entry(self.ar.view().spec_index(i as int))]
-            pei_valid(i) ==> (usize2page_entry(self.ar.view().spec_index(i as int)) =~= self.spec_seq.view().spec_index(i as int))
+        &&& forall|i: usize| #![trigger usize2page_entry(self.ar.view().spec_index(i as int))] pei_valid(i) ==> (usize2page_entry(self.ar.view().spec_index(i as int)) =~= self.spec_seq.view().spec_index(i as int))
         &&& forall|i: usize|
             #![trigger self.spec_seq.view().spec_index(i as int).perm.kernel_present]
             pei_valid(i) && self.spec_seq.view().spec_index(i as int).perm.kernel_present ==> mem_valid(self.spec_seq.view().spec_index(i as int).addr)

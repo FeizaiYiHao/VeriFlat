@@ -1,7 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::create_thread_from_staged_page_eof::{create_thread_from_staged_page_eof_transition_framing, eof_create_thread_inv, eof_create_thread_new_thread_fields};
+use super::create_thread_from_staged_page_eof::{create_thread_from_staged_page_eof_transition_framing, create_thread_from_staged_page_eof_inv, create_thread_from_staged_page_eof_new_thread_fields};
 verus! {
 /// Consume a staged page to create a scheduled thread in `process_ptr`.
 pub fn create_thread_from_staged_page_merged(
@@ -158,9 +158,7 @@ pub fn create_thread_from_staged_page_merged(
         forall|c: RwLockContainerPtr|
             #![trigger final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes]
             old(krnl).ctn_mp.dom().contains(c) ==> final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes,
-        forall|c: RwLockContainerPtr|
-            #![trigger final(krnl).ctn_mp.spec_index(c).locking_thread()]
-            old(krnl).ctn_mp.dom().contains(c) ==> final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread(),
+        forall|c: RwLockContainerPtr| #![trigger final(krnl).ctn_mp.spec_index(c).locking_thread()] old(krnl).ctn_mp.dom().contains(c) ==> final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread(),
 {
     let ghost uppers = krnl.ctn_mp.spec_index(container_ptr).view_ghost().uppertree_seq.view();
     proof {
@@ -211,8 +209,8 @@ pub fn create_thread_from_staged_page_merged(
         assert(create_thread_from_staged_page_eof_transition_framing(
             *old(krnl), *krnl, page_ptr, process_ptr, staging_thread_ptr, container_ptr, scheduler_ptr, cpu_id, node_addr, sched_node_addr,
         )) by { reveal(create_thread_from_staged_page_eof_transition_framing); };
-        eof_create_thread_inv(*old(krnl), *krnl, page_ptr, process_ptr, staging_thread_ptr, container_ptr, scheduler_ptr, cpu_id, node_addr, sched_node_addr);
-        eof_create_thread_new_thread_fields(*old(krnl), *krnl, page_ptr, process_ptr, staging_thread_ptr, container_ptr, scheduler_ptr, cpu_id, node_addr, sched_node_addr, *initial_regs);
+        create_thread_from_staged_page_eof_inv(*old(krnl), *krnl, page_ptr, process_ptr, staging_thread_ptr, container_ptr, scheduler_ptr, cpu_id, node_addr, sched_node_addr);
+        create_thread_from_staged_page_eof_new_thread_fields(*old(krnl), *krnl, page_ptr, process_ptr, staging_thread_ptr, container_ptr, scheduler_ptr, cpu_id, node_addr, sched_node_addr, *initial_regs);
     }
     (page_ptr, Tracked(thread_perm))
 }

@@ -10,6 +10,7 @@ use veriflat_alloc_page::free_4k_page::{drain_4k_cache_batch, refund_unmap_4k_qu
 pub mod map_4k;
 pub use map_4k::mmap_4k_build_structure::mmap_4k_build_one_structure;
 pub use map_4k::mmap_4k_install_one::install_one_mmap_4k_directory_page;
+pub use map_4k::share_mapping_4k_child_structure::build_new_child_structure;
 pub use map_4k::mmap_4k_build_structure_spec::*;
 pub use map_4k::share_mapping_4k_spec::*;
 pub use map_4k::unmap_4k_spec::*;
@@ -19,6 +20,8 @@ pub use map_4k::share_mapping_4k::{
 };
 #[cfg(verus_keep_ghost)]
 pub use map_4k::share_mapping_4k::{share_mapping_4k_range_owner_compatible_own_container, share_mapping_4k_source_range_present_from_wf};
+#[cfg(verus_keep_ghost)]
+pub use map_4k::share_mapping_4k_trace::share_4k_range_steps_from_directory;
 pub use map_4k::map_iommu_4k_directory::install_staged_4k_iommu_table_page;
 pub use map_4k::map_iommu_4k::map_shared_page_into_iommu_4k;
 pub use map_4k::map_iommu_4k_spec::*;

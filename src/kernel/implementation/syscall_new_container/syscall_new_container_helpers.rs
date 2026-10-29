@@ -257,9 +257,7 @@ pub(super) fn wlock_new_container_2m_page_tails(krnl: &mut KernelK, Tracked(lctx
             #![trigger final(krnl).pg_arr.spec_index(index)]
             #![trigger old(krnl).pg_arr.spec_index(index)]
             index_valid(NUM_PAGES, index) && !page_2m_tail_indices(left).union(page_2m_tail_indices(right)).contains(index) ==> final(krnl).pg_arr.spec_index(index) == old(krnl).pg_arr.spec_index(index),
-        forall|index: PageIndex|
-            #![trigger final(krnl).pg_arr.spec_index(index).view().view()]
-            index_valid(NUM_PAGES, index) ==> final(krnl).pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
+        forall|index: PageIndex| #![trigger final(krnl).pg_arr.spec_index(index).view().view()] index_valid(NUM_PAGES, index) ==> final(krnl).pg_arr.spec_index(index).view().view() == old(krnl).pg_arr.spec_index(index).view().view(),
         owned_2m_tail_lock_perms_wf(ret.0.view(), final(krnl).pg_arr, final(lctx), left),
         owned_2m_tail_lock_perms_wf(ret.1.view(), final(krnl).pg_arr, final(lctx), right),
         held_pages_unchanged(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx)),

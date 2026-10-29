@@ -1,5 +1,6 @@
 pub mod kernel_fold_lemmas;
 pub mod kernel_cardinality_axioms;
+pub mod set_fold_int_sum;
 pub mod allocator_quota_fold;
 pub mod allocator_free_page_lock_op;
 pub mod hugepage_page_state_eq;
@@ -31,6 +32,7 @@ pub mod container_without_processes;
 
 pub use kernel_fold_lemmas::*;
 pub use kernel_cardinality_axioms::*;
+pub use set_fold_int_sum::*;
 pub use allocator_quota_fold::*;
 pub use allocator_free_page_lock_op::*;
 pub use hugepage_page_state_eq::*;

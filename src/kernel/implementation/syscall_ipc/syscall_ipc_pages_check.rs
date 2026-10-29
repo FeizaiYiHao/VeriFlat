@@ -32,15 +32,15 @@ fn ipc_pages_target_free(
                 &&& !pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).mapping_2m().dom().contains(spec_index2va((indices.0, indices.1, indices.2, 0)))
                 &&& !pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).mapping_4k().dom().contains(target_range.view().spec_index(j))
             }),
-        ret.1@ is Some ==> {
-            let f = ret.1@->Some_0;
+        ret.1.view() is Some ==> {
+            let f = ret.1.view()->Some_0;
             &&& pei_valid(f.0) && pei_valid(f.1) && pei_valid(f.2) && pei_valid(f.3)
             &&& spec_l4_index_path_le(spec_va2index(target_range.start), f)
             &&& spec_l4_index_path_le(f, spec_va2index(target_range.view().spec_index(target_range.len - 1)))
             &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).mapping_4k().dom().contains(spec_index2va(f))
         },
-        !ret.0 && ret.1@ is None ==> pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).spec_mapping_4k_range_empty(spec_va2index(target_range.start), spec_va2index(target_range.view().spec_index(target_range.len - 1))),
-        ret.1@ is None ==> pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).spec_mapping_4k_va_range_empty(target_range.start, target_range.view().spec_index(target_range.len - 1)),
+        !ret.0 && ret.1.view() is None ==> pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).spec_mapping_4k_range_empty(spec_va2index(target_range.start), spec_va2index(target_range.view().spec_index(target_range.len - 1))),
+        ret.1.view() is None ==> pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).spec_mapping_4k_va_range_empty(target_range.start, target_range.view().spec_index(target_range.len - 1)),
 {
     let range_len = target_range.len;
     let range_start = target_range.start;

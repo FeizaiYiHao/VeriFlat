@@ -2,7 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_cpu_hotplug_spec::*;
 use super::syscall_cpu_hotplug_trace::*;
-use super::cpu_online_child_locked::cpu_online_child_locked;
+use super::syscall_cpu_online_child_locked::cpu_online_child_locked;
 
 verus! {
 /// Brings `target`, an Off cpu of the `child`-th child of the caller's live, non-zombie container, back to Idle under the

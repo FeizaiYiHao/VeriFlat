@@ -4,7 +4,7 @@ use crate::kernel::*;
 verus! {
 // Framing lemmas for each page-size component of `thread_staged_pages_wf`.
 // Hypothesis: same thread domain, the corresponding per-thread
-// `temp_alloc_cache_*` unchanged, and every page slot that is old or new
+// `temp_alloc_cache_{4k,2m,1g}` field unchanged, and every page slot that is old or new
 // `Owned*` keeps its state—the only fields each component reads.
 
 // thread_staged_pages_4k_wf: Owned4k <-> thread temp_alloc_cache_4k.

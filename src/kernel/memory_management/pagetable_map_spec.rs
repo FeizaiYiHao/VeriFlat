@@ -45,7 +45,9 @@ verus! {
     }
 
     pub proof fn pagetable_window_stale_cpus_only_when_locked_at(pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot, p: PageMapPtr, i: L2Index)
-        requires pagetable_window_stale_cpus_only_when_locked(pt_mp, pt_lower), pt_mp.dom().contains(pagetable_ptr),
+        requires
+            pagetable_window_stale_cpus_only_when_locked(pt_mp, pt_lower),
+            pt_mp.dom().contains(pagetable_ptr),
         ensures
             !(pt_mp.spec_index(pagetable_ptr).locking_thread() is Write) && pagetable_c(pt_mp, pt_lower, pagetable_ptr).lower.window_stale_cpus.dom().contains((p, i)) ==> {
                 &&& pagetable_c(pt_mp, pt_lower, pagetable_ptr).lower.l2_lock.dom().contains(p)
@@ -58,9 +60,7 @@ verus! {
     #[verifier::opaque]
     pub open spec fn pagetable_lower_wf(pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap) -> bool {
         &&& pt_lower.dom() == pt_mp.dom()
-        &&& forall|pagetable_ptr: RwLockPageTableRoot|
-            #![trigger pagetable_c(pt_mp, pt_lower, pagetable_ptr)]
-            pt_mp.dom().contains(pagetable_ptr) ==> pagetable_c(pt_mp, pt_lower, pagetable_ptr).wf()
+        &&& forall|pagetable_ptr: RwLockPageTableRoot| #![trigger pagetable_c(pt_mp, pt_lower, pagetable_ptr)] pt_mp.dom().contains(pagetable_ptr) ==> pagetable_c(pt_mp, pt_lower, pagetable_ptr).wf()
     }
 
     pub proof fn pagetable_lower_wf_at(pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, pagetable_ptr: RwLockPageTableRoot)
@@ -122,7 +122,7 @@ verus! {
                 &&& w.wf()
                 &&& pagetable_c(pt_mp, pt_lower, pagetable_ptr).kernel_l4_end() <= spec_v2l4index(w.va)
                 &&& pagetable_c(pt_mp, pt_lower, pagetable_ptr).window_locked_by_thread(spec_v2l4index(w.va), spec_v2l3index(w.va), spec_v2l2index(w.va), thread_id)
-                &&& window_lock_map.index((pagetable_ptr, w)) == (TypedHeldLock { lock_id: window_lock_id_at(pagetable_ptr, w), mode: TypedLockMode::Write })
+                &&& window_lock_map.index((pagetable_ptr, w)) == (TypedHeldLock { lock_id: window_lock_id_of(pagetable_ptr, w), mode: TypedLockMode::Write })
             }
         &&& forall|pagetable_ptr: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2i: L2Index|
             #![trigger pagetable_c(pt_mp, pt_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
@@ -143,7 +143,7 @@ verus! {
             w.wf(),
             pagetable_c(pt_mp, pt_lower, pagetable_ptr).kernel_l4_end() <= spec_v2l4index(w.va),
             pagetable_c(pt_mp, pt_lower, pagetable_ptr).window_locked_by_thread(spec_v2l4index(w.va), spec_v2l3index(w.va), spec_v2l2index(w.va), thread_id),
-            window_lock_map.index((pagetable_ptr, w)) == (TypedHeldLock { lock_id: window_lock_id_at(pagetable_ptr, w), mode: TypedLockMode::Write }),
+            window_lock_map.index((pagetable_ptr, w)) == (TypedHeldLock { lock_id: window_lock_id_of(pagetable_ptr, w), mode: TypedLockMode::Write }),
     { reveal(pagetable_window_typed_lock_map_aligned); }
 
     pub proof fn pagetable_window_typed_lock_map_aligned_locked_at(

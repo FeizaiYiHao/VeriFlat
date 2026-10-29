@@ -37,8 +37,7 @@ pub proof fn map_union_remove_right_domain_disjoint_lemma<K, V>(left: Map<K, V>,
 
 pub proof fn seq_push_lemma<A>()
     ensures
-        forall|s: Seq<A>, v: A, x: A|
-            s.contains(x) ==> s.push(v).contains(v) && s.push(v).contains(x),
+        forall|s: Seq<A>, v: A, x: A| s.contains(x) ==> s.push(v).contains(v) && s.push(v).contains(x),
         forall|s: Seq<A>, v: A| #![auto] s.push(v).contains(v),
         forall|s: Seq<A>, v: A, x: A| !s.contains(x) && v != x ==> !s.push(v).contains(x),
 {
@@ -47,8 +46,7 @@ pub proof fn seq_push_lemma<A>()
 
 pub proof fn seq_push_head_lemma<A>()
     ensures
-        forall|s: Seq<A>, v: A, x: A|
-            s.contains(x) ==> s.insert(0, v).contains(v) && s.insert(0, v).contains(x),
+        forall|s: Seq<A>, v: A, x: A| s.contains(x) ==> s.insert(0, v).contains(v) && s.insert(0, v).contains(x),
         forall|s: Seq<A>, v: A| #![auto] s.insert(0, v).contains(v),
         forall|s: Seq<A>, v: A, x: A| !s.contains(x) && v != x ==> !s.insert(0, v).contains(x),
 {
@@ -58,22 +56,16 @@ pub proof fn seq_push_head_lemma<A>()
 
 pub proof fn seq_skip_index_of_lemma<A>()
     ensures
-        forall|s: Seq<A>, v: A,|
-            #![auto]
-            s.len() != 0 && s.no_duplicates() && s.contains(v) && s.spec_index(0) != v ==> s.skip(1).index_of(v) == s.index_of(v) - 1,
+        forall|s: Seq<A>, v: A,| #![auto] s.len() != 0 && s.no_duplicates() && s.contains(v) && s.spec_index(0) != v ==> s.skip(1).index_of(v) == s.index_of(v) - 1,
 {
     assert forall|s: Seq<A>, v: A| s.len() != 0 && s.no_duplicates() && #[trigger] s.contains(v) && s.spec_index(0) != v implies s.skip(1).index_of(v) == s.index_of(v) - 1 by {
         assert(s.skip(1).spec_index(s.index_of(v) - 1) == v) by { vstd::seq_lib::lemma_seq_skip_index2(s, 1, s.index_of(v)); };
     }
 }
 
-// SPEC FIX: 1st conjunct now requires s.len() > 0 (s[0] is uninterp when len == 0).
-// 3rd conjunct now requires s.no_duplicates() (was false for s = [a, a]).
-// 4th conjunct now requires s.len() > 0 (s[0] is uninterp when len == 0).
 pub proof fn seq_skip_lemma<A>()
     ensures
-        forall|s: Seq<A>, v: A|
-            s.len() > 0 && s.spec_index(0) != v ==> (s.skip(1).contains(v) == s.contains(v)),
+        forall|s: Seq<A>, v: A| s.len() > 0 && s.spec_index(0) != v ==> (s.skip(1).contains(v) == s.contains(v)),
         forall|s: Seq<A>| #![trigger s.spec_index(0)] s.len() > 0 ==> s.contains(s.spec_index(0)),
         forall|s: Seq<A>| #![trigger s.spec_index(0)] s.len() > 0 && s.no_duplicates() ==> !s.skip(1).contains(s.spec_index(0)),
         forall|s: Seq<A>, v: A| s.len() > 0 && s.spec_index(0) == v && s.no_duplicates() ==> s.skip(1) =~= s.remove_value(v),
@@ -88,21 +80,14 @@ pub proof fn seq_skip_lemma<A>()
     assert forall|s: Seq<A>, v: A| s.len() > 0 && s.spec_index(0) == v && s.no_duplicates() implies s.skip(1) =~= s.remove_value(v) by { s.index_of_first_ensures(v); }
 }
 
-// SPEC FIX: bounded i to [0, s.len()) so subrange(0,i) and subrange(i+1, len) are well-defined.
 pub proof fn seq_remove_lemma<A>()
     ensures
-        forall|s: Seq<A>, v: A, i: int|
-            #![trigger s.subrange(0, i), s.contains(v)]
-            0 <= i < s.len() && s.contains(v) && s.spec_index(i) != v && s.no_duplicates() ==> s.subrange(0, i).add(s.subrange(i + 1, s.len() as int)).contains(v),
+        forall|s: Seq<A>, v: A, i: int| #![trigger s.subrange(0, i), s.contains(v)] 0 <= i < s.len() && s.contains(v) && s.spec_index(i) != v && s.no_duplicates() ==> s.subrange(0, i).add(s.subrange(i + 1, s.len() as int)).contains(v),
         forall|s: Seq<A>, v: A, i: int|
             #![trigger s.subrange(0, i), s.contains(v)]
             0 <= i < s.len() && s.contains(v) && s.spec_index(i) == v && s.no_duplicates() ==> s.subrange(0, i).add(s.subrange(i + 1, s.len() as int)).contains(v) == false,
-        forall|s: Seq<A>, i: int, j: int|
-            #![trigger s.subrange(0, i), s.spec_index(j)]
-            0 <= j < i <= s.len() ==> s.subrange(0, i).add(s.subrange(i + 1, s.len() as int)).spec_index(j) == s.spec_index(j),
-        forall|s: Seq<A>, i: int, j: int|
-            #![trigger s.subrange(0, i), s.spec_index(j + 1)]
-            0 <= i <= j < s.len() - 1 ==> s.subrange(0, i).add(s.subrange(i + 1, s.len() as int)).spec_index(j) == s.spec_index(j + 1),
+        forall|s: Seq<A>, i: int, j: int| #![trigger s.subrange(0, i), s.spec_index(j)] 0 <= j < i <= s.len() ==> s.subrange(0, i).add(s.subrange(i + 1, s.len() as int)).spec_index(j) == s.spec_index(j),
+        forall|s: Seq<A>, i: int, j: int| #![trigger s.subrange(0, i), s.spec_index(j + 1)] 0 <= i <= j < s.len() - 1 ==> s.subrange(0, i).add(s.subrange(i + 1, s.len() as int)).spec_index(j) == s.spec_index(j + 1),
         forall|s: Seq<A>, v: A, i: int|
             #![trigger s.remove_value(v), s.subrange(0, i)]
             0 <= i < s.len() && s.contains(v) && s.spec_index(i) == v && s.no_duplicates() ==> s.subrange(0, i).add(s.subrange(i + 1, s.len() as int)) == s.remove_value(v),
@@ -124,12 +109,8 @@ pub proof fn seq_remove_lemma<A>()
 
 pub proof fn seq_push_unique_lemma<A>()
     ensures
-        forall|s: Seq<A>, v: A|
-            #![auto]
-            s.no_duplicates() && s.contains(v) == false ==> s.push(v).no_duplicates() && s.push(v).index_of(v) == s.push(v).len() - 1,
-        forall|s: Seq<A>, v: A, y: A|
-            #![auto]
-            s.no_duplicates() && s.contains(v) && s.contains(y) == false ==> s.push(y).index_of(v) == s.index_of(v),
+        forall|s: Seq<A>, v: A| #![auto] s.no_duplicates() && s.contains(v) == false ==> s.push(v).no_duplicates() && s.push(v).index_of(v) == s.push(v).len() - 1,
+        forall|s: Seq<A>, v: A, y: A| #![auto] s.no_duplicates() && s.contains(v) && s.contains(y) == false ==> s.push(y).index_of(v) == s.index_of(v),
 {
     assert forall|s: Seq<A>, v: A| s.no_duplicates() && !#[trigger] s.contains(v) implies s.push(v).no_duplicates() && s.push(v).index_of(v) == s.push(v).len() - 1 by {
         let s2 = s.push(v);
@@ -149,24 +130,17 @@ pub proof fn seq_push_unique_lemma<A>()
 
 pub proof fn seq_push_head_unique_lemma<A>()
     ensures
-        forall|s: Seq<A>, v: A|
-            #![auto]
-            s.no_duplicates() && s.contains(v) == false ==> s.insert(0, v).no_duplicates() && s.insert(0, v).index_of(v) == 0,
+        forall|s: Seq<A>, v: A| #![auto] s.no_duplicates() && s.contains(v) == false ==> s.insert(0, v).no_duplicates() && s.insert(0, v).index_of(v) == 0,
 {
     assert forall|s: Seq<A>, v: A| s.no_duplicates() && !#[trigger] s.contains(v) implies s.insert(0, v).no_duplicates() && s.insert(0, v).index_of(v) == 0 by {
         s.insert_ensures(0, v);
     }
 }
 
-// PERF: ~16 ms / ~240k rlimit. Two large assert-forall blocks dispatching on
-// index_of_first(x) being Some/None and then doing position arithmetic in remove(i).
 pub proof fn lemma_seq_remove_value_membership<A>()
     ensures
-        forall|s: Seq<A>, v: A, x: A|
-            x != v && s.no_duplicates() ==> s.remove_value(x).contains(v) == s.contains(v),
-        forall|s: Seq<A>, v: A|
-            #![auto]
-            s.no_duplicates() ==> s.remove_value(v).contains(v) == false,
+        forall|s: Seq<A>, v: A, x: A| x != v && s.no_duplicates() ==> s.remove_value(x).contains(v) == s.contains(v),
+        forall|s: Seq<A>, v: A| #![auto] s.no_duplicates() ==> s.remove_value(v).contains(v) == false,
 {
     assert forall|s: Seq<A>, v: A, x: A| x != v && s.no_duplicates() implies s.remove_value(x).contains(v) == s.contains(v) by {
         s.index_of_first_ensures(x);
@@ -215,12 +189,9 @@ pub proof fn lemma_seq_remove_value_membership<A>()
     }
 }
 
-// SPEC FIX: i now bounded to [0, s.len()).
 pub proof fn seq_index_lemma<A>()
     ensures
-        forall|s: Seq<A>, i: int|
-            #![trigger s.spec_index(i)]
-            0 <= i < s.len() && s.no_duplicates() ==> s.index_of(s.spec_index(i)) == i,
+        forall|s: Seq<A>, i: int| #![trigger s.spec_index(i)] 0 <= i < s.len() && s.no_duplicates() ==> s.index_of(s.spec_index(i)) == i,
 {
 }
 

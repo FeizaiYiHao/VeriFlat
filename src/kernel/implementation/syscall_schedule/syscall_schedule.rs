@@ -200,10 +200,10 @@ fn schedule_switch_to_queue_head(
         final(steps).snapshot_k() == *final(krnl),
         final(steps).view() == old(steps).view().push(KernelStep { old_u: kernel_k_to_kernel_u(old(steps).snapshot_k()), new_u: kernel_k_to_kernel_u(*final(krnl)) }),
         schedule_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(old(steps).snapshot_k()),
-            kernel_k_to_kernel_u(*final(krnl)), cpu_id, *old(pt_regs), true, schedule_flushed_pcid(*old(krnl), cpu_id, next_thread)),
+            kernel_k_to_kernel_u(*final(krnl)), cpu_id, *old(pt_regs), true, context_switch_flushed_pcid(*old(krnl), cpu_id, next_thread)),
         final(steps).nonlock_view() == old(steps).nonlock_view().push(KernelStep { old_u: old(steps).nonlock_snapshot_u(), new_u: kernel_k_to_nonlock_kernel_u(*final(krnl)) }),
         schedule_step_pre(final(steps).nonlock_view().last().old_u, cpu_id),
-        schedule_step(final(steps).nonlock_view().last().old_u, final(steps).nonlock_view().last().new_u, cpu_id, *old(pt_regs), schedule_flushed_pcid(*old(krnl), cpu_id, next_thread)),
+        schedule_step(final(steps).nonlock_view().last().old_u, final(steps).nonlock_view().last().new_u, cpu_id, *old(pt_regs), context_switch_flushed_pcid(*old(krnl), cpu_id, next_thread)),
         forall|other_cpu: CpuId| #![trigger final(krnl).cpu_arr.spec_index(other_cpu)]
             index_valid(NUM_CPUS, other_cpu) && other_cpu != cpu_id ==> final(krnl).cpu_arr.spec_index(other_cpu).view().view().view() == old(krnl).cpu_arr.spec_index(other_cpu).view().view().view(),
         {
@@ -269,7 +269,7 @@ pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         old(steps).view().len() <= final(steps).view().len(),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         schedule_syscall_trace(final(steps).view().subrange(old(steps).view().len() as int, final(steps).view().len() as int), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(*final(krnl)), cpu_id, *old(pt_regs), ret is Switched,
-            if ret is Switched { schedule_flushed_pcid(*old(krnl), cpu_id, ret->Switched_thread_ptr) } else { None }),
+            if ret is Switched { context_switch_flushed_pcid(*old(krnl), cpu_id, ret->Switched_thread_ptr) } else { None }),
         final(steps).nonlock_view().len() == if ret is Switched { 1nat } else { 0nat },
         ret == schedule_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id),
         (ret is Switched) == {
@@ -292,7 +292,7 @@ pub fn syscall_schedule(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         ret is Switched ==> {
             let step = final(steps).nonlock_view()[0];
             &&& schedule_step_pre(step.old_u, cpu_id)
-            &&& schedule_step(step.old_u, step.new_u, cpu_id, *old(pt_regs), schedule_flushed_pcid(*old(krnl), cpu_id, ret->Switched_thread_ptr))
+            &&& schedule_step(step.old_u, step.new_u, cpu_id, *old(pt_regs), context_switch_flushed_pcid(*old(krnl), cpu_id, ret->Switched_thread_ptr))
         },
         forall|other_cpu: CpuId| #![trigger final(krnl).cpu_arr.spec_index(other_cpu)]
             index_valid(NUM_CPUS, other_cpu) && other_cpu != cpu_id ==> final(krnl).cpu_arr.spec_index(other_cpu).view().view().view() == old(krnl).cpu_arr.spec_index(other_cpu).view().view().view(),

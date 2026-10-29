@@ -8,6 +8,7 @@ pub mod pcid_allocator;
 pub mod trap_frame_def;
 pub mod thread_util_t;
 pub mod process_util_t;
+mod process_util_t_eof;
 pub mod endpoint_util_t;
 
 pub use container_def::*;

@@ -96,7 +96,7 @@ impl KernelK {
             unlock_ensures(old(lctx), final(lctx), KernelObjId::AllocatorCache(PageSize::SZ1g, alloc_ptr_1g, cache_cpu), old(self).allc_1g_mp.spec_index(alloc_ptr_1g).cpu_caches.spec_index(cache_cpu).lock_id()),
     {
         proof {
-            assert({ &&& old(self).allc_1g_mp.perms_wf() &&& old(self).allc_1g_mp.spec_index(alloc_ptr_1g).inv() }) by { allocator_perms_wf_map(old(self).allc_1g_mp); allocator_perms_wf_at(old(self).allc_1g_mp, alloc_ptr_1g); };
+            assert(old(self).allc_1g_mp.perms_wf() && old(self).allc_1g_mp.spec_index(alloc_ptr_1g).inv()) by { allocator_perms_wf_map(old(self).allc_1g_mp); allocator_perms_wf_at(old(self).allc_1g_mp, alloc_ptr_1g); };
             assert(old(lctx).lock_entry_contains(old(self).allc_1g_mp.spec_index(alloc_ptr_1g).cpu_caches.lock_id_by_index(cache_cpu), KernelObjId::AllocatorCache(PageSize::SZ1g, alloc_ptr_1g, cache_cpu))) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); };
         }
         assert(self.allc_1g_mp.spec_index(alloc_ptr_1g).cpu_caches.spec_index(cache_cpu).view().wlocked_by(&*lctx)) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); };

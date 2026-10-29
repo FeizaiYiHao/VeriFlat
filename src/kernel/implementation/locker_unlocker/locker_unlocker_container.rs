@@ -240,7 +240,7 @@ impl KernelK {
             unlock_ensures(old(lctx), final(lctx), KernelObjId::Container(container_ptr), old(self).ctn_mp.lock_id_by_key(container_ptr)),
     {
         proof {
-            assert({ &&& old(self).ctn_mp.perms_wf() &&& old(self).ctn_mp.spec_index(container_ptr).inv() }) by { container_perms_wf_map(old(self).ctn_mp); container_perms_wf_at(old(self).ctn_mp, container_ptr); };
+            assert(old(self).ctn_mp.perms_wf() && old(self).ctn_mp.spec_index(container_ptr).inv()) by { container_perms_wf_map(old(self).ctn_mp); container_perms_wf_at(old(self).ctn_mp, container_ptr); };
             assert(old(lctx).lock_entry_contains(old(self).ctn_mp.lock_id_by_key(container_ptr), KernelObjId::Container(container_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         assert(self.ctn_mp.spec_index(container_ptr).wlocked_by(&*lctx)) by { old(self).ctn_mp.typed_lock_map_aligned_write_at(old(lctx).container_lock_map(), old(lctx).thread_id(), container_ptr); };

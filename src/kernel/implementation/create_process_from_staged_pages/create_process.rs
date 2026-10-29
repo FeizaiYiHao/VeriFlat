@@ -105,7 +105,7 @@ pub fn create_process_from_staged_pages(
         final(krnl).inv(),
         ret.0 == process_page_ptr,
         ret.1 == pagetable_page_ptr,
-        create_process_from_staged_pages_eof_transition_framing(*old(krnl), *final(krnl), process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid),
+        create_process_from_staged_pages_eof_transition_framing(*old(krnl), *final(krnl), process_page_ptr, pagetable_page_ptr, l4_page_ptr, false, 0, 0, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid),
         typed_lock_map_contains_mode(final(lctx).process_lock_map(), process_page_ptr, TypedLockMode::Write),
         typed_lock_map_contains_mode(final(lctx).pagetable_lock_map(), pagetable_page_ptr, TypedLockMode::Write),
         ret.2.view().state() is WriteLock,
@@ -245,10 +245,10 @@ pub fn create_process_from_staged_pages(
 
     proof {
         assert(create_process_from_staged_pages_eof_transition_framing(
-            *old(krnl), *krnl, process_page_ptr, pagetable_page_ptr, l4_page_ptr,
-            parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid,
+            *old(krnl), *krnl, process_page_ptr, pagetable_page_ptr, l4_page_ptr, false, 0, 0, parent_ptr, staging_thread_ptr, container_ptr,
+            pcid_allocator_ptr, pcid,
         )) by { reveal(create_process_from_staged_pages_eof_transition_framing); ancestors.to_set_ensures(); };
-        eof_inv(*old(krnl), *krnl, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid);
+        create_process_from_staged_pages_eof_inv(*old(krnl), *krnl, process_page_ptr, pagetable_page_ptr, l4_page_ptr, parent_ptr, staging_thread_ptr, container_ptr, pcid_allocator_ptr, pcid);
     }
     (process_page_ptr, pagetable_page_ptr, Tracked(process_lock_perm), Tracked(pagetable_lock_perm))
 }

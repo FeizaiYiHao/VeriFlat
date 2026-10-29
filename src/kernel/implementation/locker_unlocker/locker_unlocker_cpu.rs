@@ -380,12 +380,7 @@ impl KernelK {
                 &&& post.control() == pre.control()
             }),
             // ---- LocalContext: lock dropped; thread preserved ----
-            // NOTE: do NOT assert `kernel_view_locking_state() == old` here —
-            // `unlock_ensures` transitions it Acquire -> Release, so restating
-            // `== old` would contradict it and make the postcondition `false`
-            // in an Acquire section. `unlock_ensures` is the source of truth
-            // for the phase transition (same trap as the NOTE on
-            // `LockedArray::wunlock`). user_view is separately preserved.
+            // Do not restate `kernel_view_locking_state() == old`: see the NOTE on `LockedArray::wunlock` (lock_array.rs).
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_removed(old(lctx), final(lctx), KernelObjId::Cpu(cpu_id)),

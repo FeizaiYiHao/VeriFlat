@@ -26,8 +26,7 @@ pub proof fn lemma_kernel_object_ptr_seq_len_bounded(krnl: &KernelK, ptrs: Seq<P
     requires
         krnl.inv(),
         ptrs.no_duplicates(),
-        forall|ptr: PagePtr| #![trigger ptrs.contains(ptr)]
-            ptrs.contains(ptr) ==> krnl.prc_mp.dom().contains(ptr) || krnl.thr_mp.dom().contains(ptr),
+        forall|ptr: PagePtr| #![trigger ptrs.contains(ptr)] ptrs.contains(ptr) ==> krnl.prc_mp.dom().contains(ptr) || krnl.thr_mp.dom().contains(ptr),
     ensures
         ptrs.len() <= NUM_PAGES,
 {}

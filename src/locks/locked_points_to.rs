@@ -34,7 +34,6 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
     }
 }
 
-// TODO
 #[verifier::external_body]
 pub fn wlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
     ROT: LockOwnerIdTrait, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, NO_KILL_STATE>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, NO_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>) -> (ret: Tracked<LockPerm>)
@@ -57,7 +56,6 @@ pub fn wlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
     }
 }
 
-// TODO
 #[verifier::external_body]
 pub fn wunlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
     ROT: LockOwnerIdTrait, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, NO_KILL_STATE>>, Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, NO_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, obj_id: Ghost<KernelObjId>)

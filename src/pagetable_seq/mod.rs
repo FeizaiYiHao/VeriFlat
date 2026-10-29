@@ -1,5 +1,6 @@
 pub mod pagemap;
 pub mod pagemap_util_t;
+mod pagemap_util_t_eof;
 pub mod entry;
 pub mod pagetable_spec;
 pub mod pagetable_lemma;
@@ -14,8 +15,10 @@ mod pagetable_remove_l4_eof;
 mod pagetable_unmap_kernel_eof;
 pub mod pagetable_util;
 pub mod pagetable_util_t;
+mod pagetable_util_t_eof;
 mod pagetable_window_stale_eof;
 pub mod pagetable_structure_scan;
+mod pagetable_structure_scan_eof;
 pub mod pagetable_range;
 
 pub use pagemap::*;

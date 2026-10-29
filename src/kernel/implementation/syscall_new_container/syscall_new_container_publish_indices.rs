@@ -2,7 +2,7 @@ use vstd::assert_sets_equal;
 use vstd::prelude::*;
 use crate::*;
 #[cfg(verus_keep_ghost)]
-use super::staged_4k_page_chain::page_ptrs_to_indices_excludes_distinct_valid_page;
+use super::syscall_new_container_staged_4k_page_chain::page_ptrs_to_indices_excludes_distinct_valid_page;
 use super::*;
 
 verus! {

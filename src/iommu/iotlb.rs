@@ -32,9 +32,7 @@ impl IommuTLB {
     pub fn new_empty() -> (ret: Self)
         ensures
             ret.inv(),
-            forall|did: VtdDomainId|
-                #![trigger ret.spec_index(did)]
-                vtd_domain_id_valid(did) ==> ret.spec_index(did).is_empty(),
+            forall|did: VtdDomainId| #![trigger ret.spec_index(did)] vtd_domain_id_valid(did) ==> ret.spec_index(did).is_empty(),
             ret.context_cache() == Map::<PciBdf, (PageTableRoot, VtdDomainId)>::empty(),
     {
         let ghost domain_ids = Set::range(0usize, VTD_DOMAIN_COUNT);

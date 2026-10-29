@@ -5,7 +5,7 @@ verus! {
 /// Removes a page's final 4K mapping, returns the page to the allocator CPU
 /// cache, and increments the owning thread's pending free-quota counter.
 #[verifier::opaque]
-pub open spec fn reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing(
+pub(super) open spec fn reclaim_last_4k_mapping_to_cpu_cache_eof_transition_framing(
     pre: KernelK, post: KernelK, pagetable: RwLockPageTableRoot, va: VAddr, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr, owner: RwLockContainerPtr,
     depth: usize, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, old_counter: usize, new_counter: usize, node_addr: usize,
 ) -> bool {
