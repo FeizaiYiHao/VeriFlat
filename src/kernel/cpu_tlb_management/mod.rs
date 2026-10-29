@@ -5,6 +5,7 @@ pub mod pcid_needflush_spec;
 pub mod cpu_offline_flags_spec;
 pub mod cpu_op_spec;
 pub mod cpu_tlb_subsystem_mutation;
+pub mod cpu_tlb_subsystem_mutation_eof;
 
 pub use cpu_array_spec::*;
 pub use tlb_wf_spec::*;
@@ -13,3 +14,4 @@ pub use pcid_needflush_spec::*;
 pub use cpu_offline_flags_spec::*;
 pub use cpu_op_spec::*;
 pub use cpu_tlb_subsystem_mutation::*;
+pub use cpu_tlb_subsystem_mutation_eof::*;

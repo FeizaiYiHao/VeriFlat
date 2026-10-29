@@ -198,7 +198,7 @@ pub(crate) fn kill_reassign_functions(
             kernel_restored_locks_implies_u_eq(&before, &after, cpu_id, None, None, None, None, None);
             assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
             krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-            assert(before.prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() =~= Set::<PciBdf>::empty()) by { reveal(process_pci_function_ownership_wf); };
+            kill_reassign_none_eof(before.irt.view(), before.prc_mp, target);
         }
     }
 }
@@ -467,7 +467,7 @@ pub(crate) fn kill_reclaim_lock_table(
     let Tracked(pagetable_perm) = krnl.wlock_pagetable(pagetable, Tracked(&mut *lctx));
     let iommu_perm = match iommu_table {
         Some(it) => {
-            proof { process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target); reveal(process_pci_function_ownership_wf); }
+            proof { process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target); }
             let Tracked(perm) = krnl.wlock_iommu_table(it, Tracked(&mut *lctx));
             Tracked(Some(perm))
         },

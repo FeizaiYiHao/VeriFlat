@@ -395,4 +395,15 @@ pub(crate) proof fn kill_container_retire_eof_allocator_quotas(
         reveal(container_process_allocator_quota_1g_wf); reveal(container_allocator_wf);
     };
 }
+
+/// EOF closure of `kill_container_retire_set_tails_owner`: the page array stays well formed when only the 2M tails of
+/// `head` change and each tail stays well formed at its address.
+pub(crate) proof fn kill_container_retire_set_tails_owner_eof(pre: PageLockedArray, post: PageLockedArray, head: PageIndex)
+    requires
+        page_array_wf(pre),
+        post.inv(),
+        forall|i: PageIndex| #![trigger post.spec_index(i)] index_valid(NUM_PAGES, i) && !page_2m_tail_indices(head).contains(i) ==> post.spec_index(i) == pre.spec_index(i),
+        forall|i: PageIndex| #![trigger post.spec_index(i)] page_2m_tail_indices(head).contains(i) ==> post.spec_index(i).view().inv() && post.spec_index(i).view().view().addr == pre.spec_index(i).view().view().addr,
+    ensures page_array_wf(post),
+{ reveal(page_array_wf); }
 } // verus!

@@ -407,14 +407,14 @@ pub fn container_tree_check_is_ancestor(root_container: RwLockContainerPtr, cont
         &&& container_perms.view().spec_index(child_ptr).is_init()
         &&& container_perms.view().spec_index(child_ptr).addr() == child_ptr
         &&& container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().contains(a_ptr) == container_perms.spec_index(a_ptr).view_ghost().subtree_set.view().contains(child_ptr)
-    }) by { reveal(container_perms_wf); reveal(container_subtree_set_exclusive); };
+    }) by { container_perms_wf_at(*container_perms, child_ptr); container_subtree_set_exclusive_at(root_container, *container_perms, a_ptr, child_ptr); };
     let current_child_ro = container_perms.borrow_rodata(child_ptr);
     let depth = current_child_ro.borrow().depth;
     assert({
         &&& container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().len() == depth
         &&& container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().no_duplicates()
-    }) by { reveal(container_tree_fields_wf); reveal(container_perms_wf); };
-    assert((depth == 0) == (child_ptr == root_container)) by { reveal(container_root_wf); };
+    }) by { container_perms_wf_at(*container_perms, child_ptr); };
+    assert((depth == 0) == (child_ptr == root_container)) by { container_root_wf_at(root_container, *container_perms, child_ptr); };
     if depth == 0 {
         return false;
     }
@@ -430,20 +430,20 @@ pub fn container_tree_check_is_ancestor(root_container: RwLockContainerPtr, cont
         assert({
             &&& container_perms.view().spec_index(current_c_ptr).is_init()
             &&& container_perms.view().spec_index(current_c_ptr).addr() == current_c_ptr
-        }) by { reveal(container_perms_wf); };
+        }) by { container_perms_wf_at(*container_perms, current_c_ptr); };
         let current_ro = container_perms.borrow_rodata(current_c_ptr);
         assert({
             &&& current_ro.view().parent is Some
             &&& current_c_ptr != root_container
-        }) by { reveal(container_root_wf); };
+        }) by { container_root_wf_at(root_container, *container_perms, current_c_ptr); };
         let next_parent_ptr = current_ro.borrow().parent.unwrap();
         if i == 0 {
-            assert(next_parent_ptr == container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().spec_index(depth - i - 1)) by { reveal(container_children_depth_wf); };
+            assert(next_parent_ptr == container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().spec_index(depth - i - 1)) by { container_children_depth_wf_at(root_container, *container_perms, current_c_ptr); };
         } else {
             assert(container_perms.spec_index(current_c_ptr).view_ghost().uppertree_seq.view() == container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().subrange(0, depth - i)) by {
-                reveal(container_uppertree_seq_wf); container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().lemma_index_contains(depth - i);
+                container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().lemma_index_contains(depth - i); container_uppertree_seq_wf_at(root_container, *container_perms, child_ptr, current_c_ptr);
             };
-            assert(next_parent_ptr == container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().spec_index(depth - i - 1)) by { reveal(container_children_depth_wf); };
+            assert(next_parent_ptr == container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().spec_index(depth - i - 1)) by { container_children_depth_wf_at(root_container, *container_perms, current_c_ptr); };
         }
         if next_parent_ptr == a_ptr {
             return true;
@@ -451,14 +451,22 @@ pub fn container_tree_check_is_ancestor(root_container: RwLockContainerPtr, cont
         assert({
             &&& container_perms.dom().contains(next_parent_ptr)
             &&& container_perms.spec_index(next_parent_ptr).view_rodata().view().depth == depth - i - 1
-        }) by { reveal(Seq::no_duplicates); reveal(container_uppertree_seq_wf); container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().lemma_index_contains(depth - i - 1); };
+        }) by {
+            reveal(Seq::no_duplicates); container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().lemma_index_contains(depth - i - 1);
+            container_uppertree_seq_wf_at(root_container, *container_perms, child_ptr, next_parent_ptr);
+        };
         current_c_ptr = next_parent_ptr;
     }
     assert({
         &&& container_perms.dom().contains(container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().spec_index(0))
         &&& container_perms.spec_index(container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().spec_index(0)).view_rodata().view().depth == 0
-    }) by { reveal(Seq::no_duplicates); reveal(container_uppertree_seq_wf); container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().lemma_index_contains(0); };
-    assert(container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().spec_index(0) == root_container) by { reveal(container_root_wf); };
+    }) by {
+        reveal(Seq::no_duplicates); container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().lemma_index_contains(0);
+        container_uppertree_seq_wf_at(root_container, *container_perms, child_ptr, container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().spec_index(0));
+    };
+    assert(container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().spec_index(0) == root_container) by {
+        container_root_wf_at(root_container, *container_perms, container_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().spec_index(0));
+    };
     if root_container == a_ptr {
         return true;
     }

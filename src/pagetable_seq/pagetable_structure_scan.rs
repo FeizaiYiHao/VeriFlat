@@ -106,17 +106,25 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             }
             l4i = l4i + 1;
         }
-        proof {
-            assert(self.page_closure() =~= set![self.cr3]) by { reveal(PageTable::wf_l4); reveal(PageTable::tables_reachable_wf); };
-            assert(TABLE_TYPE == IOMMU_TYPE ==> self.kernel_l4_end == 0) by { reveal(PageTable::kernel_entries_wf); };
-            assert(self.kernel_l4_end <= KERNEL_MEM_END_L4INDEX ==> self.mapping_4k().dom() =~= Set::<VAddr>::empty() && self.mapping_2m().dom() =~= Set::<VAddr>::empty()
-                && self.mapping_1g().dom() =~= Set::<VAddr>::empty()) by {
-                broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip, iova_4k_valid_index_roundtrip,
-                    iova_2m_valid_index_roundtrip, iova_1g_valid_index_roundtrip;
-                reveal(PageTable::wf_mapping_4k); reveal(PageTable::wf_mapping_2m); reveal(PageTable::wf_mapping_1g);
-            };
-        }
+        proof { self.next_structure_page_eof_empty(); }
         StructureScan::Empty
+    }
+
+    /// EOF closure of `next_structure_page` when no user L4 entry is present.
+    proof fn next_structure_page_eof_empty(&self)
+        requires
+            self.wf(),
+            forall|l4i: L4Index| #![trigger self.spec_resolve_mapping_l4(l4i)] self.kernel_l4_end <= l4i && pei_valid(l4i) ==> self.spec_resolve_mapping_l4(l4i) is None,
+        ensures self.spec_structure_scan_wf(StructureScan::Empty),
+    {
+        assert(self.page_closure() =~= set![self.cr3]) by { reveal(PageTable::wf_l4); reveal(PageTable::tables_reachable_wf); };
+        assert(TABLE_TYPE == IOMMU_TYPE ==> self.kernel_l4_end == 0) by { self.kernel_entries_wf_l4_end_at(); };
+        assert(self.kernel_l4_end <= KERNEL_MEM_END_L4INDEX ==> self.mapping_4k().dom() =~= Set::<VAddr>::empty() && self.mapping_2m().dom() =~= Set::<VAddr>::empty()
+            && self.mapping_1g().dom() =~= Set::<VAddr>::empty()) by {
+            broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip, iova_4k_valid_index_roundtrip,
+                iova_2m_valid_index_roundtrip, iova_1g_valid_index_roundtrip;
+            reveal(PageTable::wf_mapping_4k); reveal(PageTable::wf_mapping_2m); reveal(PageTable::wf_mapping_1g);
+        };
     }
 
     /// Unlink the table page that `scan` names and return its memory; every mapping stays.
@@ -183,7 +191,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             }
             l3i = l3i + 1;
         }
-        proof { assert(self.page_closure().contains(l4_entry.addr) && l4_entry.addr != self.cr3) by { reveal(PageTable::wf_l4); reveal(PageTable::table_pages_wf); }; }
+        proof { assert(self.page_closure().contains(l4_entry.addr) && l4_entry.addr != self.cr3) by { reveal(PageTable::wf_l4); self.table_pages_wf_l3_at(l4_entry.addr); }; }
         StructureScan::L3 { l4i, l3_p: l4_entry.addr }
     }
 
@@ -218,14 +226,14 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             }
             if let Some(l2_entry) = self.get_entry_l2(l4i, l3i, l2i, l3_entry) {
                 if self.l1_table_has_no_leaf(l4i, l3i, l2i, &l2_entry) {
-                    proof { assert(self.page_closure().contains(l2_entry.addr) && l2_entry.addr != self.cr3) by { reveal(PageTable::wf_l4); reveal(PageTable::wf_l3); reveal(PageTable::wf_l2); reveal(PageTable::table_pages_wf); }; }
+                    proof { assert(self.page_closure().contains(l2_entry.addr) && l2_entry.addr != self.cr3) by { reveal(PageTable::wf_l4); reveal(PageTable::wf_l3); reveal(PageTable::wf_l2); self.table_pages_wf_l1_at(l2_entry.addr); }; }
                     return StructureScan::L1 { l4i, l3i, l2i, l2_p: l3_entry.addr, l1_p: l2_entry.addr };
                 }
                 return StructureScan::Blocked;
             }
             l2i = l2i + 1;
         }
-        proof { assert(self.page_closure().contains(l3_entry.addr) && l3_entry.addr != self.cr3) by { reveal(PageTable::wf_l4); reveal(PageTable::wf_l3); reveal(PageTable::table_pages_wf); }; }
+        proof { assert(self.page_closure().contains(l3_entry.addr) && l3_entry.addr != self.cr3) by { reveal(PageTable::wf_l4); reveal(PageTable::wf_l3); self.table_pages_wf_l2_at(l3_entry.addr); }; }
         StructureScan::L2 { l4i, l3i, l3_p: l4_entry.addr, l2_p: l3_entry.addr }
     }
 

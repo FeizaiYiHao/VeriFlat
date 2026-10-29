@@ -131,8 +131,55 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             kernel_entries: kernel_entries_ghost,
             proc_ptr: proc_ptr,
         };
-        proof { ret.l4_table.borrow_mut().tracked_insert(page_map_ptr, page_map_perm); }
+        proof {
+            ret.l4_table.borrow_mut().tracked_insert(page_map_ptr, page_map_perm);
+            Self::new_eof(ret);
+        }
+        ret
+    }
 
+    /// EOF closure of `new`: a table whose only page is the root closes every structural leaf of `wf`.
+    proof fn new_eof(ret: Self)
+        requires
+            pei_valid(ret.kernel_l4_end),
+            page_ptr_valid(ret.cr3),
+            TABLE_TYPE == IOMMU_TYPE ==> ret.kernel_l4_end == 0,
+            ret.l4_table.view().dom() == set![ret.cr3],
+            ret.l4_table.view().spec_index(ret.cr3).addr() == ret.cr3,
+            ret.l4_table.view().spec_index(ret.cr3).is_init(),
+            ret.l4_table.view().spec_index(ret.cr3).value().wf(),
+            ret.kernel_entries.view().len() == ret.kernel_l4_end,
+            forall|i: usize|
+                #![trigger ret.l4_table.view().spec_index(ret.cr3).value().spec_index(i).is_empty()]
+                #![trigger ret.l4_table.view().spec_index(ret.cr3).value().spec_index(i)]
+                ret.kernel_l4_end <= i && pei_valid(i) ==> ret.l4_table.view().spec_index(ret.cr3).value().spec_index(i).is_empty(),
+            forall|i: usize|
+                #![trigger ret.kernel_entries.view().spec_index(i as int)]
+                #![trigger ret.l4_table.view().spec_index(ret.cr3).value().spec_index(i)]
+                0 <= i < ret.kernel_l4_end ==> ret.kernel_entries.view().spec_index(i as int) == ret.l4_table.view().spec_index(ret.cr3).value().spec_index(i),
+            ret.l3_tables.view() == Map::<PageMapPtr, PointsTo<PageMap>>::empty(),
+            ret.l2_tables.view() == Map::<PageMapPtr, PointsTo<PageMap>>::empty(),
+            ret.l1_tables.view() == Map::<PageMapPtr, PointsTo<PageMap>>::empty(),
+            ret.mapping_4k.view() == Map::<VAddr, MapEntry>::empty(),
+            ret.mapping_2m.view() == Map::<VAddr, MapEntry>::empty(),
+            ret.mapping_1g.view() == Map::<VAddr, MapEntry>::empty(),
+        ensures
+            ret.wf_l4(),
+            ret.wf_l3(),
+            ret.wf_l2(),
+            ret.wf_l1(),
+            ret.disjoint_l4(),
+            ret.disjoint_l3(),
+            ret.disjoint_l2(),
+            ret.wf_mapping_4k(),
+            ret.wf_mapping_2m(),
+            ret.wf_mapping_1g(),
+            ret.user_only(),
+            ret.rwx_upper_level_entries(),
+            ret.table_pages_wf(),
+            ret.tables_reachable_wf(),
+            ret.kernel_entries_wf(),
+    {
         assert(ret.wf_l4()) by { reveal(PageTable::wf_l4); };
         assert(ret.wf_l3()) by { reveal(PageTable::wf_l3); };
         assert(ret.wf_l2()) by { reveal(PageTable::wf_l2); };
@@ -148,8 +195,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         assert(ret.table_pages_wf()) by { reveal(PageTable::table_pages_wf); };
         assert(ret.tables_reachable_wf()) by { reveal(PageTable::tables_reachable_wf); };
         assert(ret.kernel_entries_wf()) by { reveal(PageTable::kernel_entries_wf); };
-
-        ret
     }
 
     pub open spec fn is_empty(&self) -> bool {
@@ -365,6 +410,27 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
     pub proof fn table_pages_wf_cr3_at(&self)
         requires self.table_pages_wf()
         ensures page_ptr_valid(self.cr3)
+    { reveal(PageTable::table_pages_wf); }
+
+    pub proof fn table_pages_wf_l3_at(&self, p: PageMapPtr)
+        requires
+            self.table_pages_wf(),
+            self.l3_tables.view().dom().contains(p),
+        ensures !self.l4_table.view().dom().contains(p),
+    { reveal(PageTable::table_pages_wf); }
+
+    pub proof fn table_pages_wf_l2_at(&self, p: PageMapPtr)
+        requires
+            self.table_pages_wf(),
+            self.l2_tables.view().dom().contains(p),
+        ensures !self.l4_table.view().dom().contains(p),
+    { reveal(PageTable::table_pages_wf); }
+
+    pub proof fn table_pages_wf_l1_at(&self, p: PageMapPtr)
+        requires
+            self.table_pages_wf(),
+            self.l1_tables.view().dom().contains(p),
+        ensures !self.l4_table.view().dom().contains(p),
     { reveal(PageTable::table_pages_wf); }
 
     pub open spec fn spec_resolve_mapping_l4(&self, l4i: L4Index) -> Option<PageEntry>

@@ -296,7 +296,7 @@ impl KernelK {
         let Tracked(iommu_table_perm) = self.it_mp.remove_with_perm(iommu_table_ptr);
         let ret = retype_iommu_table_rwlock_to_4k_page_perms(iommu_table_ptr, Tracked(iommu_table_perm), Tracked(lock_perm), Tracked(&mut *lctx));
         proof {
-            assert(iommu_table_perms_wf(old(self).it_mp) ==> iommu_table_perms_wf(self.it_mp)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); };
+            remove_iommu_table_and_reclaim_4k_page_perms_eof(old(self).it_mp, self.it_mp, iommu_table_ptr);
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         ret
@@ -444,6 +444,15 @@ proof fn retype_page_to_pagetable_and_insert_eof(
         reveal(pagetable_window_typed_lock_map_aligned); reveal(PageTableHigher::wf_l4);
     };
 }
+
+/// EOF closure of `remove_iommu_table_and_reclaim_4k_page_perms`: removing IOMMU table `iommu_table_ptr` keeps `iommu_table_perms_wf`.
+proof fn remove_iommu_table_and_reclaim_4k_page_perms_eof(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot)
+    requires
+        post.perms_wf(),
+        post.dom() =~= pre.dom().remove(iommu_table_ptr),
+        forall|p: RwLockPageTableRoot| #![trigger post.spec_index(p)] post.dom().contains(p) ==> post.spec_index(p) == pre.spec_index(p),
+    ensures iommu_table_perms_wf(pre) ==> iommu_table_perms_wf(post),
+{ reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }
 
 /// EOF closure of `KernelK::remove_pagetable_and_reclaim_4k_page_perms`: the removed table owned no window page, so
 /// this thread held none of its windows and the page-table invariants and lock alignment carry over.

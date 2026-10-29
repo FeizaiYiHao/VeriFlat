@@ -112,11 +112,19 @@ impl PageTable<PT_TYPE> {
             &&& self.l4_table.view().spec_index(self.cr3).is_init()
             &&& self.l4_table.view().spec_index(self.cr3).value().wf()
         }) by { reveal(PageTable::wf_l4); };
-        assert(pei_valid(self.kernel_l4_end)) by { reveal(PageTable::kernel_entries_wf); };
+        proof { self.kernel_l4_end_valid(); }
         let tracked source_perm = self.l4_table.borrow().tracked_borrow(self.cr3);
         page_map_copy_kernel_entry_range(self.cr3, Tracked(source_perm), target_ptr, Tracked(&mut *target_perm), self.kernel_l4_end);
-        proof { reveal(PageTable::kernel_entries_wf); }
+        proof { self.copy_kernel_entries_to_unpublished_root_eof(target_perm.value()); }
     }
+
+    /// EOF closure of `copy_kernel_entries_to_unpublished_root`: the copied root entries are the recorded kernel entries.
+    proof fn copy_kernel_entries_to_unpublished_root_eof(&self, target: PageMap)
+        requires
+            self.kernel_entries_wf(),
+            forall|i: usize| #![trigger target.spec_index(i)] 0 <= i < self.kernel_l4_end ==> target.spec_index(i) =~= self.l4_table.view().spec_index(self.cr3).value().spec_index(i),
+        ensures forall|i: usize| #![trigger target.spec_index(i)] 0 <= i < self.kernel_l4_end ==> target.spec_index(i) =~= self.kernel_entries.view().spec_index(i as int),
+    { reveal(PageTable::kernel_entries_wf); }
 }
 
 pub(crate) fn page_map_set_published(page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<&mut PointsTo<PageMap>>, index: usize, value: PageEntry, Tracked(lctx): Tracked<&mut LocalContext>)

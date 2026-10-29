@@ -680,7 +680,8 @@ fn new_container_lock_entry(
         let error = if !source_ready { RetValueType::Error } else if !transfer_cpu_owned { RetValueType::ErrorIpcCpuOwnerMismatch } else { RetValueType::ErrorIpcCpuNotOff };
         proof {
             assert(new_container_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index) == error) by {
-                reveal(container_cpu_wf); new_container_result_from_k(old(krnl), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index, error);
+                container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, transfer_cpu_id); container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, parent_container_ptr, transfer_cpu_id);
+                new_container_result_from_k(old(krnl), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index, error);
             };
         }
         new_container_release_entry_locks(

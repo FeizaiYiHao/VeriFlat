@@ -157,7 +157,6 @@ pub(crate) fn kill_retire_hold_tables(
     let Tracked(pt_perm) = krnl.wlock_pagetable(pagetable, Tracked(&mut *lctx));
     let Tracked(it_perm) = match iommu_table {
         Some(it) => {
-            proof { reveal(process_pci_function_ownership_wf); }
             let Tracked(perm) = krnl.wlock_iommu_table(it, Tracked(&mut *lctx));
             Tracked(Some(perm))
         },

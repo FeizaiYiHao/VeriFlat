@@ -1,6 +1,8 @@
 use vstd::prelude::*;
 use vstd::assert_sets_equal;
 use crate::*;
+#[cfg(verus_keep_ghost)]
+use super::syscall_kill_container_retire_eof_pages::kill_container_retire_set_tails_owner_eof;
 
 verus! {
 /// In a released view, returns the write-held `Allocated4k` pages `pages`, whose kernel objects were removed with their
@@ -388,6 +390,6 @@ fn kill_container_retire_set_tails_owner(
         }
         count = count + 1usize;
     }
-    proof { assert(page_array_wf(*pages)) by { reveal(page_array_wf); }; }
+    proof { kill_container_retire_set_tails_owner_eof(*old(pages), *pages, head); }
 }
 } // verus!

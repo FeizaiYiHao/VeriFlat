@@ -23,10 +23,7 @@ impl KernelK {
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
     {
         let ret = self.cpu_hw_cr3_pcid[cpu_id].load(Tracked(&mut *lctx));
-        assert(self.inv() ==> (page_ptr_valid(ret.0) && pcid_valid(ret.1))) by { reveal(cpu_hw_cr3_pcid_wf); };
-        assert(self.inv() && typed_lock_maps_aligned(self, old(lctx)) && cpu_id != old(lctx).cpu_id()
-            && typed_lock_map_contains_mode(old(lctx).pcid_needflush_lock_map(), (cpu_id, self.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid), TypedLockMode::Write)
-            ==> ret == (self.cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, self.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid)) by { reveal(cpu_hw_cr3_pcid_wf); };
+        proof { if self.inv() { cpu_hw_cr3_pcid_wf_at(self.cpu_hw_cr3_pcid, self.cpu_arr, self.pcid_needflush, cpu_id); } }
         ret
     }
 }

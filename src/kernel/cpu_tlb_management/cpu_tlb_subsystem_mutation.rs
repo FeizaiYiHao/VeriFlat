@@ -26,11 +26,12 @@ pub fn pcid_needflush_array_clear(needflush: &mut PcidNeedFlushArray, cpu_id: Cp
         forall|c: CpuId, p: Pcid| #![trigger typed_lock_map_contains_mode(lctx.pcid_needflush_lock_map(), (c, p), TypedLockMode::Write)] typed_lock_map_contains_mode(lctx.pcid_needflush_lock_map(), (c, p), TypedLockMode::Write)
             ==> final(needflush).spec_index(c, p).view_ghost() == old(needflush).spec_index(c, p).view_ghost(),
 {
-    assert(needflush.spec_index(cpu_id, pcid).is_init()) by { reveal(pcid_needflush_wf); };
+    proof { pcid_needflush_wf_at(*needflush, cpu_id, pcid); }
     let entry = needflush.borrow_mut_typed(cpu_id, pcid, Ghost(lctx.pcid_needflush_lock_map()), Tracked(lctx), Tracked(needflush_lock_perm));
     entry.set(false);
     proof {
-        assert(pcid_needflush_wf(*needflush) && needflush.lock_id_by_index(cpu_id, pcid) == old(needflush).lock_id_by_index(cpu_id, pcid)) by { reveal(pcid_needflush_wf); };
+        assert(pcid_needflush_array_clear_eof_transition_framing(*old(needflush), *needflush, cpu_id, pcid)) by { reveal(pcid_needflush_array_clear_eof_transition_framing); };
+        pcid_needflush_array_clear_eof(*old(needflush), *needflush, cpu_id, pcid);
         assert(needflush.typed_lock_map_aligned(lctx.pcid_needflush_lock_map(), lctx.thread_id())
             && forall|c: CpuId, p: Pcid| #![trigger typed_lock_map_contains_mode(lctx.pcid_needflush_lock_map(), (c, p), TypedLockMode::Write)] typed_lock_map_contains_mode(lctx.pcid_needflush_lock_map(), (c, p), TypedLockMode::Write)
             ==> needflush.spec_index(c, p).view_ghost() == old(needflush).spec_index(c, p).view_ghost()) by { reveal(LockedArray2D::typed_lock_map_aligned); };

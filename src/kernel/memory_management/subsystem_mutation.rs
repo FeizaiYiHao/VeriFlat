@@ -45,7 +45,10 @@ pub fn page_array_retype_owned_4k(
     assert(page_array.inv() && page_array.spec_index(page_index).view().is_init() && page_array.spec_index(page_index).view().view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, page_index); };
     let page = page_array.borrow_mut_typed(page_index, Ghost(page_locks), Tracked(lctx), Tracked(page_lock_perm));
     let ret = retype_owned_4k_to_kernel_object(page, new_state);
-    proof { assert(page_array_wf(*page_array)) by { reveal(page_array_wf); }; }
+    proof {
+        assert(page_array_retype_owned_4k_eof_transition_framing(*old(page_array), *page_array, page_index)) by { reveal(page_array_retype_owned_4k_eof_transition_framing); };
+        page_array_retype_owned_4k_eof(*old(page_array), *page_array, page_index);
+    }
     ret
 }
 
@@ -89,9 +92,8 @@ pub fn page_array_add_4k_mapping(page_array: &mut PageLockedArray, page_index: P
     let page = page_array.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     add_4k_mapping(page, pagetable_ptr, va);
     proof {
-        assert(page_array_wf(*page_array)) by { reveal(page_array_wf); };
-        assert(hugepage_2m_wf(*page_array)) by { hugepage_2m_wf_preserved_for_page_state_eq(*old(page_array), *page_array); };
-        assert(hugepage_1g_wf(*page_array)) by { hugepage_1g_wf_preserved_for_page_state_eq(*old(page_array), *page_array); };
+        assert(page_array_add_4k_mapping_eof_transition_framing(*old(page_array), *page_array, page_index)) by { reveal(page_array_add_4k_mapping_eof_transition_framing); };
+        page_array_add_4k_mapping_eof(*old(page_array), *page_array, page_index);
     }
 }
 
@@ -136,9 +138,8 @@ pub fn page_array_add_4k_iommu_mapping(page_array: &mut PageLockedArray, page_in
     let page = page_array.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     add_4k_iommu_mapping(page, iommu_table_ptr, iova);
     proof {
-        assert(page_array_wf(*page_array)) by { reveal(page_array_wf); };
-        assert(hugepage_2m_wf(*page_array)) by { hugepage_2m_wf_preserved_for_page_state_eq(*old(page_array), *page_array); };
-        assert(hugepage_1g_wf(*page_array)) by { hugepage_1g_wf_preserved_for_page_state_eq(*old(page_array), *page_array); };
+        assert(page_array_add_4k_iommu_mapping_eof_transition_framing(*old(page_array), *page_array, page_index)) by { reveal(page_array_add_4k_iommu_mapping_eof_transition_framing); };
+        page_array_add_4k_iommu_mapping_eof(*old(page_array), *page_array, page_index);
     }
 }
 
@@ -1053,7 +1054,10 @@ pub fn page_array_remove_4k_mapping_without_free(page_array: &mut PageLockedArra
     let page = page_array.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     if page.ref_count > 1 { remove_shared_4k_mapping(page, pagetable_ptr, va); }
     else { remove_last_4k_io_mapping(page, pagetable_ptr, va); }
-    proof { assert(page_array_wf(*page_array)) by { reveal(page_array_wf); }; }
+    proof {
+        assert(page_array_remove_4k_mapping_without_free_eof_transition_framing(*old(page_array), *page_array, page_index)) by { reveal(page_array_remove_4k_mapping_without_free_eof_transition_framing); };
+        page_array_remove_4k_mapping_without_free_eof(*old(page_array), *page_array, page_index);
+    }
 }
 
 pub fn page_array_remove_last_4k_mapping_to_cache(
@@ -1099,7 +1103,10 @@ pub fn page_array_remove_last_4k_mapping_to_cache(
     assert(page_array.inv() && page_array.spec_index(page_index).view().is_init() && page_array.spec_index(page_index).view().view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, page_index); };
     let page = page_array.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     let ret = remove_last_4k_mapping_to_cache(page, pagetable_ptr, va, allocator_ptr, cpu_id);
-    proof { assert(page_array_wf(*page_array)) by { reveal(page_array_wf); }; }
+    proof {
+        assert(page_array_remove_last_4k_mapping_to_cache_eof_transition_framing(*old(page_array), *page_array, page_index)) by { reveal(page_array_remove_last_4k_mapping_to_cache_eof_transition_framing); };
+        page_array_remove_last_4k_mapping_to_cache_eof(*old(page_array), *page_array, page_index);
+    }
     ret
 }
 
@@ -1151,7 +1158,10 @@ pub fn iommu_table_map_clear_4k_present(iommu_table_map: &mut IommuTableLockedMa
     assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).inv()) by { iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
     let iommu_table = iommu_table_map.borrow_mut_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm));
     iommu_table.unmap_4k_page_user_view(indices.0, indices.1, indices.2, indices.3, target_l1_ptr, Tracked(&mut *lctx));
-    proof { assert(iommu_table_perms_wf(*iommu_table_map)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }; }
+    proof {
+        assert(iommu_table_map_clear_4k_present_eof_transition_framing(*old(iommu_table_map), *iommu_table_map, iommu_table_ptr)) by { reveal(iommu_table_map_clear_4k_present_eof_transition_framing); };
+        iommu_table_map_clear_4k_present_eof(*old(iommu_table_map), *iommu_table_map, iommu_table_ptr);
+    }
 }
 
 /// Sets the VT-d domain ID of the write-held IOMMU table `iommu_table_ptr`; its mappings, topology, owner, and lock state are untouched.
@@ -1234,7 +1244,10 @@ pub fn iommu_table_map_unmap_4k_kernel(iommu_table_map: &mut IommuTableLockedMap
     assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).inv()) by { iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
     let iommu_table = iommu_table_map.borrow_mut_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm));
     iommu_table.unmap_4k_page_kernel(indices.0, indices.1, indices.2, indices.3, target_l1_ptr, Tracked(&mut *lctx));
-    proof { assert(iommu_table_perms_wf(*iommu_table_map)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }; }
+    proof {
+        assert(iommu_table_map_unmap_4k_kernel_eof_transition_framing(*old(iommu_table_map), *iommu_table_map, iommu_table_ptr)) by { reveal(iommu_table_map_unmap_4k_kernel_eof_transition_framing); };
+        iommu_table_map_unmap_4k_kernel_eof(*old(iommu_table_map), *iommu_table_map, iommu_table_ptr);
+    }
 }
 
 /// IOMMU mirror of `pagetable_map_insert_4k_wlocked`: install the present 4K leaf `target_entry` at `indices` of the write-held
@@ -1295,7 +1308,10 @@ pub fn iommu_table_map_insert_4k(
     assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).inv()) by { iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
     let iommu_table = iommu_table_map.borrow_mut_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm));
     iommu_table.map_4k_page(indices.0, indices.1, indices.2, indices.3, target_l1_ptr, target_entry, Tracked(&mut *lctx));
-    proof { assert(iommu_table_perms_wf(*iommu_table_map)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }; }
+    proof {
+        assert(iommu_table_map_insert_4k_eof_transition_framing(*old(iommu_table_map), *iommu_table_map, iommu_table_ptr)) by { reveal(iommu_table_map_insert_4k_eof_transition_framing); };
+        iommu_table_map_insert_4k_eof(*old(iommu_table_map), *iommu_table_map, iommu_table_ptr);
+    }
 }
 
 /// IOMMU mirror of `pagetable_map_create_entry_l4`: link the empty L3 page `page_map_ptr` at L4 index `indices.0` of the write-held
@@ -1353,7 +1369,10 @@ pub fn iommu_table_map_create_entry_l4(
     assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).inv()) by { iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
     let iommu_table = iommu_table_map.borrow_mut_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm));
     iommu_table.create_entry_l4(indices.0, indices.1, page_map_ptr, Tracked(page_map_perm), Tracked(&mut *lctx));
-    proof { assert(iommu_table_perms_wf(*iommu_table_map)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }; }
+    proof {
+        assert(iommu_table_map_create_entry_l4_eof_transition_framing(*old(iommu_table_map), *iommu_table_map, iommu_table_ptr)) by { reveal(iommu_table_map_create_entry_l4_eof_transition_framing); };
+        iommu_table_map_create_entry_l4_eof(*old(iommu_table_map), *iommu_table_map, iommu_table_ptr);
+    }
 }
 
 /// IOMMU mirror of `pagetable_map_create_entry_l3`: link the empty L2 page `page_map_ptr` at `indices` below the L3 page
@@ -1416,7 +1435,10 @@ pub fn iommu_table_map_create_entry_l3(
     assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).inv()) by { iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
     let iommu_table = iommu_table_map.borrow_mut_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm));
     iommu_table.create_entry_l3(indices.0, indices.1, indices.2, target_l3_ptr, page_map_ptr, Tracked(page_map_perm), Tracked(&mut *lctx));
-    proof { assert(iommu_table_perms_wf(*iommu_table_map)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }; }
+    proof {
+        assert(iommu_table_map_create_entry_l3_eof_transition_framing(*old(iommu_table_map), *iommu_table_map, iommu_table_ptr)) by { reveal(iommu_table_map_create_entry_l3_eof_transition_framing); };
+        iommu_table_map_create_entry_l3_eof(*old(iommu_table_map), *iommu_table_map, iommu_table_ptr);
+    }
 }
 
 /// IOMMU mirror of `pagetable_map_create_entry_l2_wlocked`: link the empty L1 page `page_map_ptr` at `indices` below the L2 page
@@ -1479,7 +1501,10 @@ pub fn iommu_table_map_create_entry_l2(
     assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).inv()) by { iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
     let iommu_table = iommu_table_map.borrow_mut_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm));
     iommu_table.create_entry_l2(indices.0, indices.1, indices.2, target_l2_ptr, page_map_ptr, Tracked(page_map_perm), Tracked(&mut *lctx));
-    proof { assert(iommu_table_perms_wf(*iommu_table_map)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }; }
+    proof {
+        assert(iommu_table_map_create_entry_l2_eof_transition_framing(*old(iommu_table_map), *iommu_table_map, iommu_table_ptr)) by { reveal(iommu_table_map_create_entry_l2_eof_transition_framing); };
+        iommu_table_map_create_entry_l2_eof(*old(iommu_table_map), *iommu_table_map, iommu_table_ptr);
+    }
 }
 
 /// Unlink the table page that `scan` names from the write-held page table `pagetable_ptr` and return its memory; every mapping stays.
@@ -1622,7 +1647,10 @@ pub fn iommu_table_map_remove_table_page(
     assert(iommu_table_map.perms_wf() && iommu_table_map.spec_index(iommu_table_ptr).inv()) by { iommu_table_perms_wf_map(*iommu_table_map); iommu_table_perms_wf_at(*iommu_table_map, iommu_table_ptr); };
     let iommu_table = iommu_table_map.borrow_mut_typed(iommu_table_ptr, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm));
     let ret = iommu_table.remove_structure_page(scan, Tracked(&mut *lctx));
-    proof { assert(iommu_table_perms_wf(*iommu_table_map)) by { reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked); }; }
+    proof {
+        assert(iommu_table_map_remove_table_page_eof_transition_framing(*old(iommu_table_map), *iommu_table_map, iommu_table_ptr)) by { reveal(iommu_table_map_remove_table_page_eof_transition_framing); };
+        iommu_table_map_remove_table_page_eof(*old(iommu_table_map), *iommu_table_map, iommu_table_ptr);
+    }
     ret
 }
 
@@ -1670,7 +1698,10 @@ pub fn page_array_remove_4k_iommu_mapping_without_free(page_array: &mut PageLock
     let page = page_array.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     if page.ref_count > 1 { remove_shared_4k_iommu_mapping(page, iommu_table_ptr, iova); }
     else { remove_last_4k_iommu_io_mapping(page, iommu_table_ptr, iova); }
-    proof { assert(page_array_wf(*page_array)) by { reveal(page_array_wf); }; }
+    proof {
+        assert(page_array_remove_4k_iommu_mapping_without_free_eof_transition_framing(*old(page_array), *page_array, page_index)) by { reveal(page_array_remove_4k_iommu_mapping_without_free_eof_transition_framing); };
+        page_array_remove_4k_iommu_mapping_without_free_eof(*old(page_array), *page_array, page_index);
+    }
 }
 
 pub fn page_array_remove_last_4k_iommu_mapping_to_cache(
@@ -1717,7 +1748,10 @@ pub fn page_array_remove_last_4k_iommu_mapping_to_cache(
     assert(page_array.inv() && page_array.spec_index(page_index).view().is_init() && page_array.spec_index(page_index).view().view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, page_index); };
     let page = page_array.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     let ret = remove_last_4k_iommu_mapping_to_cache(page, iommu_table_ptr, iova, allocator_ptr, cpu_id);
-    proof { assert(page_array_wf(*page_array)) by { reveal(page_array_wf); }; }
+    proof {
+        assert(page_array_remove_last_4k_iommu_mapping_to_cache_eof_transition_framing(*old(page_array), *page_array, page_index)) by { reveal(page_array_remove_last_4k_iommu_mapping_to_cache_eof_transition_framing); };
+        page_array_remove_last_4k_iommu_mapping_to_cache_eof(*old(page_array), *page_array, page_index);
+    }
     ret
 }
 
@@ -1764,7 +1798,10 @@ pub fn page_array_retire_kernel_object_4k_to_cache(
         && page_array.spec_index(page_index).view().view().addr == page_index2page_ptr(page_index)) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, page_index); };
     let page = page_array.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     let ret = convert_kernel_object_4k_to_free_cache(page, Tracked(perm), allocator_ptr, cpu_id);
-    proof { assert(page_array_wf(*page_array)) by { reveal(page_array_wf); }; }
+    proof {
+        assert(page_array_retire_kernel_object_4k_to_cache_eof_transition_framing(*old(page_array), *page_array, page_index)) by { reveal(page_array_retire_kernel_object_4k_to_cache_eof_transition_framing); };
+        page_array_retire_kernel_object_4k_to_cache_eof(*old(page_array), *page_array, page_index);
+    }
     ret
 }
 
@@ -1812,7 +1849,10 @@ pub fn page_array_retire_kernel_object_2m_to_global(
         && page_array.spec_index(page_index).view().view().addr == page_index2page_ptr(page_index)) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, page_index); };
     let page = page_array.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     let ret = convert_kernel_object_2m_to_free_global(page, Tracked(perm), allocator_ptr, owning_container);
-    proof { assert(page_array_wf(*page_array)) by { reveal(page_array_wf); }; }
+    proof {
+        assert(page_array_retire_kernel_object_2m_to_global_eof_transition_framing(*old(page_array), *page_array, page_index)) by { reveal(page_array_retire_kernel_object_2m_to_global_eof_transition_framing); };
+        page_array_retire_kernel_object_2m_to_global_eof(*old(page_array), *page_array, page_index);
+    }
     ret
 }
 
@@ -1860,7 +1900,10 @@ pub fn page_array_retire_kernel_object_4k_to_global(
         && page_array.spec_index(page_index).view().view().addr == page_index2page_ptr(page_index)) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, page_index); };
     let page = page_array.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     let ret = convert_kernel_object_4k_to_free_global(page, Tracked(perm), allocator_ptr, owning_container);
-    proof { assert(page_array_wf(*page_array)) by { reveal(page_array_wf); }; }
+    proof {
+        assert(page_array_retire_kernel_object_4k_to_global_eof_transition_framing(*old(page_array), *page_array, page_index)) by { reveal(page_array_retire_kernel_object_4k_to_global_eof_transition_framing); };
+        page_array_retire_kernel_object_4k_to_global_eof(*old(page_array), *page_array, page_index);
+    }
     ret
 }
 
@@ -1892,7 +1935,11 @@ pub fn page_array_move_free_4k_to_global_list(page_array: &mut PageLockedArray, 
     assert(page_array.inv() && page_array.spec_index(page_index).view().is_init() && page_array.spec_index(page_index).view().view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, page_index); };
     let page = page_array.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     page.state = PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::GlobalList };
-    proof { assert(page_array.spec_index(page_index).view().view().inv()) by { reveal(Page::mappings_va_valid); }; assert(page_array_wf(*page_array)) by { reveal(page_array_wf); }; }
+    proof {
+        assert(page_array.spec_index(page_index).view().view().inv()) by { reveal(Page::mappings_va_valid); };
+        assert(page_array_move_free_4k_to_global_list_eof_transition_framing(*old(page_array), *page_array, page_index)) by { reveal(page_array_move_free_4k_to_global_list_eof_transition_framing); };
+        page_array_move_free_4k_to_global_list_eof(*old(page_array), *page_array, page_index);
+    }
 }
 
 pub fn page_array_move_free_4k_to_cpu_cache(page_array: &mut PageLockedArray, page_index: PageIndex, allocator_ptr: RwLockPageAllocatorPtr, cpu_id: CpuId, Tracked(lctx): Tracked<&LocalContext>, Tracked(page_lock_perm): Tracked<&LockPerm>)
@@ -1924,7 +1971,11 @@ pub fn page_array_move_free_4k_to_cpu_cache(page_array: &mut PageLockedArray, pa
     assert(page_array.inv() && page_array.spec_index(page_index).view().is_init() && page_array.spec_index(page_index).view().view().inv()) by { page_array_wf_map(*page_array); page_array_wf_at(*page_array, page_index); };
     let page = page_array.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(lctx), Tracked(page_lock_perm));
     page.state = PageState::Free4k { allocator_ptr: Ghost(allocator_ptr), state: FreePageAllocatorState::PreCpuCache { cpu_id } };
-    proof { assert(page_array.spec_index(page_index).view().view().inv()) by { reveal(Page::mappings_va_valid); }; assert(page_array_wf(*page_array)) by { reveal(page_array_wf); }; }
+    proof {
+        assert(page_array.spec_index(page_index).view().view().inv()) by { reveal(Page::mappings_va_valid); };
+        assert(page_array_move_free_4k_to_cpu_cache_eof_transition_framing(*old(page_array), *page_array, page_index)) by { reveal(page_array_move_free_4k_to_cpu_cache_eof_transition_framing); };
+        page_array_move_free_4k_to_cpu_cache_eof(*old(page_array), *page_array, page_index);
+    }
 }
 
 pub fn page_array_retype_owned_4k_for_container(pages: &mut PageLockedArray, child_container_ptr: RwLockContainerPtr, page_ptr: PagePtr, page_state: Allocated4KPageState,
@@ -1967,7 +2018,10 @@ pub fn page_array_retype_owned_4k_for_container(pages: &mut PageLockedArray, chi
     let page = pages.borrow_mut_typed(page_index, Ghost(page_locks), Tracked(lctx), Tracked(page_lock_perm));
     let Tracked(page_perm) = retype_owned_4k_to_kernel_object(page, PageState::Allocated4k { state: page_state });
     page.owning_container = child_container_ptr;
-    proof { assert(page_array_wf(*pages)) by { reveal(page_array_wf); reveal(Page::mappings_va_valid); }; }
+    proof {
+        assert(page_array_retype_owned_4k_for_container_eof_transition_framing(*old(pages), *pages, page_index)) by { reveal(page_array_retype_owned_4k_for_container_eof_transition_framing); reveal(Page::mappings_va_valid); };
+        page_array_retype_owned_4k_for_container_eof(*old(pages), *pages, page_index);
+    }
     Tracked(page_perm)
 }
 
@@ -2012,7 +2066,10 @@ pub fn page_array_retype_owned_2m_for_container(pages: &mut PageLockedArray, chi
     let Tracked(page_perm) = take_perm_2m(page);
     page.state = PageState::Allocated2m { state: page_state };
     page.owning_container = child_container_ptr;
-    proof { assert(page_array_wf(*pages)) by { reveal(page_array_wf); reveal(Page::mappings_va_valid); }; }
+    proof {
+        assert(page_array_retype_owned_2m_for_container_eof_transition_framing(*old(pages), *pages, page_index)) by { reveal(page_array_retype_owned_2m_for_container_eof_transition_framing); reveal(Page::mappings_va_valid); };
+        page_array_retype_owned_2m_for_container_eof(*old(pages), *pages, page_index);
+    }
     Tracked(page_perm)
 }
 
@@ -2053,7 +2110,8 @@ pub fn page_allocator_map_insert_new<const SIZE: usize>(
 {
     allocator_map.retype_page_to_allocator_and_insert(allocator_page, allocator_value, Tracked(page_perm), Tracked(lctx));
     proof {
-        assert(allocator_perms_wf(*old(allocator_map)) ==> allocator_perms_wf(*allocator_map)) by { reveal(allocator_perms_wf); };
+        assert(page_allocator_map_insert_new_eof_transition_framing(*old(allocator_map), *allocator_map, allocator_page, allocator_value)) by { reveal(page_allocator_map_insert_new_eof_transition_framing); };
+        page_allocator_map_insert_new_eof(*old(allocator_map), *allocator_map, allocator_page, allocator_value);
         assert(allocator_map.typed_quota_lock_map_aligned(quota_lock_map, lctx.thread_id())) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); };
         assert(allocator_map.typed_cache_lock_map_aligned(cache_lock_map, lctx.thread_id())) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); };
         assert(allocator_map.typed_global_pool_lock_map_aligned(global_pool_lock_map, lctx.thread_id())) by { reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };

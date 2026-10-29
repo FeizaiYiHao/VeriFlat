@@ -371,7 +371,10 @@ impl KernelK {
         let (Tracked(process_rwlock_perm), Tracked(process_perm)) = retype_page_perm_to_rwlock::<Process, ReadOnlyNode<ProcessRO>, ProcessGhost, PROCESS_HAS_KILL_STATE>(
             page_ptr, process_value, rodata, Ghost(process_ghost), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::Process(page_ptr)));
         self.prc_mp.insert_with_perm(page_ptr, Tracked(process_rwlock_perm));
-        proof { assert(process_perms_wf(old(self).prc_mp) ==> process_perms_wf(self.prc_mp)) by { reveal(process_perms_wf); }; assert(self.prc_mp.typed_lock_map_aligned(lctx.process_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }
+        proof {
+            retype_page_to_process_and_insert_eof(old(self).prc_mp, self.prc_mp, page_ptr, process_value, rodata, process_ghost);
+            assert(self.prc_mp.typed_lock_map_aligned(lctx.process_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
+        }
         Tracked(process_perm)
     }
 
@@ -415,10 +418,43 @@ impl KernelK {
         let Tracked(process_perm) = self.prc_mp.remove_with_perm(process_ptr);
         let ret = retype_process_rwlock_to_4k_page_perm(process_ptr, Tracked(process_perm), Tracked(parent_node_perm), Tracked(lock_perm), Tracked(&mut *lctx));
         proof {
-            assert(process_perms_wf(old(self).prc_mp) ==> process_perms_wf(self.prc_mp)) by { reveal(process_perms_wf); };
+            remove_process_and_reclaim_4k_page_perm_eof(old(self).prc_mp, self.prc_mp, process_ptr);
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         ret
     }
 }
+
+/// EOF closure of `retype_page_to_process_and_insert`: inserting the write-held process `page_ptr` keeps `process_perms_wf`.
+proof fn retype_page_to_process_and_insert_eof(pre: ProcessLockedMap, post: ProcessLockedMap, page_ptr: RwLockProcessPtr, process_value: Process, rodata: ReadOnlyNode<ProcessRO>, process_ghost: ProcessGhost)
+    requires
+        process_value.inv(),
+        process_value.children.view().no_duplicates(),
+        !process_value.children.view().contains(page_ptr),
+        process_ghost.uppertree_seq.view().no_duplicates(),
+        process_ghost.uppertree_seq.view().len() == rodata.view().depth,
+        post.perms_wf(),
+        post.dom() =~= pre.dom().insert(page_ptr),
+        forall|ptr: RwLockProcessPtr|
+            #![trigger post.spec_index(ptr)]
+            #![trigger pre.spec_index(ptr)]
+            #![trigger pre.dom().contains(ptr)]
+            #![trigger post.dom().contains(ptr)]
+            pre.dom().contains(ptr) ==> post.spec_index(ptr) == pre.spec_index(ptr),
+        post.spec_index(page_ptr).is_init(),
+        post.spec_index(page_ptr).locking_thread() is Write,
+        post.spec_index(page_ptr).view() == process_value,
+        post.spec_index(page_ptr).view_rodata() == rodata,
+        post.spec_index(page_ptr).view_ghost() == process_ghost,
+    ensures process_perms_wf(pre) ==> process_perms_wf(post),
+{ reveal(process_perms_wf); }
+
+/// EOF closure of `remove_process_and_reclaim_4k_page_perm`: removing process `process_ptr` keeps `process_perms_wf`.
+proof fn remove_process_and_reclaim_4k_page_perm_eof(pre: ProcessLockedMap, post: ProcessLockedMap, process_ptr: RwLockProcessPtr)
+    requires
+        post.perms_wf(),
+        post.dom() =~= pre.dom().remove(process_ptr),
+        forall|p: RwLockProcessPtr| #![trigger post.spec_index(p)] post.dom().contains(p) ==> post.spec_index(p) == pre.spec_index(p),
+    ensures process_perms_wf(pre) ==> process_perms_wf(post),
+{ reveal(process_perms_wf); }
 } // verus!

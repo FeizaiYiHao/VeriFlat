@@ -357,4 +357,15 @@ pub(crate) proof fn kill_zombify_eof(pre: KernelK, post: KernelK, process_ptr: R
     assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_proc_pcid_match); };
 }
+
+/// EOF closure of `kill_reassign_functions` when the scan finds no function `target` owns: its reverse set is empty.
+pub(crate) proof fn kill_reassign_none_eof(root_table: IommuRootTable, process_map: ProcessLockedMap, target: RwLockProcessPtr)
+    requires
+        process_pci_function_ownership_wf(root_table, process_map),
+        process_map.dom().contains(target),
+        forall|b: usize, d: usize, f: usize| #![trigger root_table.spec_index_owner(b, d, f)] pci_bdf_valid(b, d, f) ==> root_table.spec_index_owner(b, d, f) != target,
+    ensures process_map.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
+{
+    assert(process_map.spec_index(target).view_ghost().owned_pci_functions.view() =~= Set::<PciBdf>::empty()) by { reveal(process_pci_function_ownership_wf); };
+}
 } // verus!

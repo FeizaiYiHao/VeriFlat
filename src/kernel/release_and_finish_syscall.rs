@@ -171,8 +171,8 @@ verus! {
         proof {
             let cpu = krnl.cpu_arr.spec_index(cpu_id).view();
             let t = cpu.view().view().current_thread->Some_0;
-            assert(cpu.being_killed() ==> krnl.thr_mp.spec_index(t).locked_by_thread(lctx.thread_id())) by { reveal(thread_cpu_wf); reveal(LockedArray::typed_lock_map_aligned); };
-            assert(!cpu.being_killed()) by { reveal(thread_cpu_wf); reveal(LockedMap::typed_lock_map_aligned); };
+            assert(cpu.being_killed() ==> krnl.thr_mp.spec_index(t).locked_by_thread(lctx.thread_id())) by { thread_cpu_wf_killed_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); reveal(LockedArray::typed_lock_map_aligned); };
+            assert(!cpu.being_killed()) by { thread_cpu_wf_killed_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); reveal(LockedMap::typed_lock_map_aligned); };
         }
         let tracked cpu_lock_perm = cpu_lock_perm.get();
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
@@ -260,8 +260,8 @@ verus! {
         proof {
             let cpu = krnl.cpu_arr.spec_index(cpu_id).view();
             let t = cpu.view().view().current_thread->Some_0;
-            assert(cpu.being_killed() ==> krnl.thr_mp.spec_index(t).locked_by_thread(lctx.thread_id())) by { reveal(thread_cpu_wf); reveal(LockedArray::typed_lock_map_aligned); };
-            assert(!cpu.being_killed()) by { reveal(thread_cpu_wf); reveal(LockedMap::typed_lock_map_aligned); };
+            assert(cpu.being_killed() ==> krnl.thr_mp.spec_index(t).locked_by_thread(lctx.thread_id())) by { thread_cpu_wf_killed_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); reveal(LockedArray::typed_lock_map_aligned); };
+            assert(!cpu.being_killed()) by { thread_cpu_wf_killed_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); reveal(LockedMap::typed_lock_map_aligned); };
         }
         let tracked process_lock_perm = process_lock_perm.get();
         let tracked cpu_lock_perm = cpu_lock_perm.get();
@@ -363,8 +363,8 @@ verus! {
         proof {
             let cpu = krnl.cpu_arr.spec_index(cpu_id).view();
             let t = cpu.view().view().current_thread->Some_0;
-            assert(cpu.being_killed() ==> krnl.thr_mp.spec_index(t).locked_by_thread(lctx.thread_id())) by { reveal(thread_cpu_wf); reveal(LockedArray::typed_lock_map_aligned); };
-            assert(!cpu.being_killed()) by { reveal(thread_cpu_wf); reveal(LockedMap::typed_lock_map_aligned); };
+            assert(cpu.being_killed() ==> krnl.thr_mp.spec_index(t).locked_by_thread(lctx.thread_id())) by { thread_cpu_wf_killed_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); reveal(LockedArray::typed_lock_map_aligned); };
+            assert(!cpu.being_killed()) by { thread_cpu_wf_killed_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); reveal(LockedMap::typed_lock_map_aligned); };
         }
         let tracked thread_lock_perm = thread_lock_perm.get();
         let tracked cpu_lock_perm = cpu_lock_perm.get();
@@ -474,8 +474,8 @@ verus! {
         proof {
             let cpu = krnl.cpu_arr.spec_index(cpu_id).view();
             let t = cpu.view().view().current_thread->Some_0;
-            assert(cpu.being_killed() ==> krnl.thr_mp.spec_index(t).locked_by_thread(lctx.thread_id())) by { reveal(thread_cpu_wf); reveal(LockedArray::typed_lock_map_aligned); };
-            assert(!cpu.being_killed()) by { reveal(thread_cpu_wf); reveal(LockedMap::typed_lock_map_aligned); };
+            assert(cpu.being_killed() ==> krnl.thr_mp.spec_index(t).locked_by_thread(lctx.thread_id())) by { thread_cpu_wf_killed_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); reveal(LockedArray::typed_lock_map_aligned); };
+            assert(!cpu.being_killed()) by { thread_cpu_wf_killed_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id); reveal(LockedMap::typed_lock_map_aligned); };
         }
         let tracked thread_lock_perm = thread_lock_perm.get();
         let tracked process_lock_perm = process_lock_perm.get();

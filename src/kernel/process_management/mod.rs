@@ -45,6 +45,8 @@ pub use container_cpu_set_spec::*;
 pub use container_cpu_offline_flags_spec::*;
 pub mod process_subsystem_mutation;
 pub mod process_subsystem_create_scheduled_thread_eof;
+pub mod process_subsystem_mutation_eof;
+pub use process_subsystem_mutation_eof::*;
 pub use process_subsystem_create_scheduled_thread_eof::*;
 pub mod process_kill_mark_spec;
 pub use process_kill_mark_spec::*;

@@ -1520,7 +1520,7 @@ pub fn finish_init_from_boot(
     let allocator_4k = PageAllocator::<ALLOCATOR_SIZE_4K>::new_with_global_pool(layout.root_container, 0, free_4k_pool, quota_4k);
     let allocator_2m = PageAllocator::<ALLOCATOR_SIZE_2M>::new_with_global_pool(layout.root_container, 0, free_2m_pool, quota_2m);
     let allocator_1g = PageAllocator::<ALLOCATOR_SIZE_1G>::new_with_global_pool(layout.root_container, 0, free_1g_pool, quota_1g);
-    proof { reveal(PageTable::table_pages_wf); }
+    proof { default_pagetable.view().table_pages_wf_cr3_at(); }
     let cpu_array = Cpu::new_boot_array(layout.root_container, default_cr3);
     let tracked cpu_op = CpuOpArray::new_boot(Seq::new(NUM_CPUS as nat, |i: int| if i == 0 { CpuOpState::Idle } else { CpuOpState::Off }));
     let cpu_tlb = CpuTLB::new_empty();
