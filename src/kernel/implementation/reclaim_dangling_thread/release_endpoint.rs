@@ -101,14 +101,10 @@ pub fn release_endpoint_last_reference(
     let ghost endpoint_owner = krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container;
     proof {
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &entry)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-        assert(krnl.ctn_mp.dom().contains(owner) && krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr) by {
-            container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_index);
-        };
         thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, thread_ptr);
         endpoint_perms_wf_map(krnl.ep_mp); endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr);
         container_perms_wf_map(krnl.ctn_mp);
         assert(krnl.ctn_mp.dom().contains(endpoint_owner)) by { container_endpoint_wf_at(krnl.ctn_mp, krnl.ep_mp, endpoint_ptr); };
-        page_array_wf_at(krnl.pg_arr, page_index);
         allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr);
         lemma_container_allocator_4k_quota_bounded(&*krnl, owner);
         assert(!krnl.allc_4k_mp.spec_index(allocator_ptr).global_pool.view().view().contains(endpoint_ptr)) by {

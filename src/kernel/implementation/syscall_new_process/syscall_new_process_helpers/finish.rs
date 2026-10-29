@@ -239,7 +239,6 @@ pub(in super::super) fn create_initial_thread_and_finish_new_process(
                 ||| krnl.ctn_mp.spec_index(krnl.ep_mp.spec_index(endpoint_ptr).view().owning_container).view_ghost().subtree_set.view().contains(container_ptr)
             }) by { container_endpoint_wf_at(krnl.ctn_mp, krnl.ep_mp, endpoint_ptr); container_thread_endpoint_wf_at(krnl.ctn_mp, krnl.thr_mp, krnl.ep_mp, current_thread_ptr, endpoint_index); };
         }
-        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
     }
     release_new_process_locks_and_attach_endpoint(
         krnl, Tracked(&mut *lctx), cpu_id, container_ptr, child_ptr, current_thread_ptr, new_thread_ptr, scheduler_ptr, endpoint, source_pagetable_ptr, target_pagetable_ptr,

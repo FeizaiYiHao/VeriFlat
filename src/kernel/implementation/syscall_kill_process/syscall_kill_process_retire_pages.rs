@@ -704,7 +704,6 @@ pub(crate) fn kill_retire_lock_cache(
     proof {
         kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl);
         krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-        container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_index);
     }
     Tracked(cache_perm)
 }

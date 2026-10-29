@@ -298,7 +298,6 @@ verus! {
             transfer_source, Ghost(progress_thread), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(quota_thread_lock_perm), Tracked(pagetable_lock_perm),
             Tracked(transfer_source_lock_perm), Tracked(transfer_target_lock_perm),
         );
-        assert(krnl.thr_mp.lock_id_by_key(quota_thread_ptr) == old(krnl).thr_mp.lock_id_by_key(quota_thread_ptr)) by { thread_lock_id_preserved_for_typed_maps_unchanged(old(krnl), krnl, old(lctx), lctx, quota_thread_ptr); };
         windows
     }
 

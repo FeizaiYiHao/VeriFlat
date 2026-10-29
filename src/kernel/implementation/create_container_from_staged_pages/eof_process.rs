@@ -28,7 +28,6 @@ pub(super) proof fn eof_container_uppertree_seq_wf(
 {
     assert(container_tree_fields_wf(pre.ctn_mp)) by { reveal(container_perms_wf); };
     assert(container_tree_fields_wf(post.ctn_mp)) by { reveal(container_perms_wf); };
-    let child_uppers = post.ctn_mp.spec_index(container_page).view_ghost().uppertree_seq.view();
     assert(container_uppertree_seq_wf(post.rt_ctn, post.ctn_mp)) by {
         reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions); reveal(container_uppertree_seq_wf); reveal(container_tree_fields_wf);
         seq_push_lemma::<RwLockContainerPtr>(); seq_push_unique_lemma::<RwLockContainerPtr>();
@@ -62,10 +61,7 @@ pub(super) proof fn eof_container_tree_wf(
     assert(container_children_parent_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_children_parent_wf); seq_push_lemma::<RwLockContainerPtr>(); };
     assert(containers_linkedlist_wf(post.rt_ctn, post.ctn_mp)) by { reveal(containers_linkedlist_wf); reveal(container_children_parent_wf); };
     assert(container_tree_fields_wf(pre.ctn_mp)) by { reveal(container_perms_wf); };
-    assert(container_children_depth_wf(post.rt_ctn, post.ctn_mp)) by {
-        let child_uppers = pre.ctn_mp.spec_index(parent_container_ptr).view_ghost().uppertree_seq.view().push(parent_container_ptr);
-        reveal(container_children_depth_wf); reveal(container_tree_fields_wf); seq_push_lemma::<RwLockContainerPtr>();
-    };
+    assert(container_children_depth_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_children_depth_wf); reveal(container_tree_fields_wf); seq_push_lemma::<RwLockContainerPtr>(); };
     assert(container_subtree_set_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_subtree_set_wf); reveal(container_uppertree_seq_wf); reveal(container_tree_fields_wf); seq_push_lemma::<RwLockContainerPtr>(); };
     eof_container_uppertree_seq_wf(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
@@ -531,30 +527,6 @@ pub(super) proof fn eof_memory_management_inv(
             allocator_quota_4k, process_quota_4k,
         ),
     ensures
-        allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp,),
-        container_page_owner_wf(post.ctn_mp, post.pg_arr),
-        hugepage_2m_wf(post.pg_arr),
-        hugepage_1g_wf(post.pg_arr),
-        page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
-        container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr,),
-        container_pages_wf(post.pg_arr, post.ctn_mp),
-        process_pages_wf(post.pg_arr, post.prc_mp),
-        pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
-        iommu_table_pages_wf(post.it_mp, post.pg_arr),
-        thread_pages_wf(post.thr_mp, post.pg_arr),
-        scheduler_pages_wf(post.sched_mp, post.pg_arr),
-        cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr),
-        pcid_allocator_pages_wf(post.pg_arr, post.pcid_allc_mp),
-        thread_staged_pages_wf(post.thr_mp, post.pg_arr),
-        endpoint_pages_wf(post.ep_mp, post.pg_arr),
-        process_pagetable_match(post.prc_mp, post.pt_mp),
-        process_iommu_table_match(post.prc_mp, post.it_mp),
-        post.allocator_free_pages_wf(),
-        container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp,),
-        container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp,),
-        container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr),
-        container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr),
-        container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr),
         post.memory_management_inv(),
 {
     hide(Seq::contains); reveal(publish_staged_container_root_eof_transition_framing);

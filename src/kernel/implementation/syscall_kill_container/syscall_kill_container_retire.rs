@@ -75,7 +75,6 @@ pub(crate) fn kill_container_retire(
         killer_held_context(*final(krnl), *final(lctx), process_ptr, thread_ptr, final(lctx).container_lock_map().dom()),
         final(lctx).thread_lock_map().dom() =~= set![thread_ptr],
         final(lctx).process_lock_map().dom() =~= set![process_ptr],
-        final(lctx).container_lock_map().dom() == old(lctx).container_lock_map().dom().remove(container_ptr),
         final(lctx).container_lock_map() == old(lctx).container_lock_map().remove(container_ptr),
         final(lctx).cpu_set_lock_map().dom().is_empty(),
         final(lctx).cpu_offline_flag_lock_map().dom().is_empty(),

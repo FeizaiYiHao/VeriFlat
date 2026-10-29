@@ -134,8 +134,7 @@ verus! {
                 old(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.view().linked_list.lemma_value_addr_unique(node_addr, node_addr2);
             }
         }
-        assert(krnl.pg_arr.inv() && krnl.thr_mp.perms_wf() && krnl.thr_mp.spec_index(thread_ptr).is_init()
-        ) by { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, page_index); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, thread_ptr); };
+        assert(krnl.pg_arr.inv() && krnl.thr_mp.spec_index(thread_ptr).is_init()) by { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, page_index); thread_perms_wf_at(krnl.thr_mp, thread_ptr); };
         let ghost old_page_lock_id = krnl.pg_arr.lock_id_by_index(page_index);
         {
             let mut page = krnl.pg_arr.borrow_mut_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_lock_perm));

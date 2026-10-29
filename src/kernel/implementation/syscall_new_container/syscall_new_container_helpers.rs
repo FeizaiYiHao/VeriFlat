@@ -61,7 +61,6 @@ pub(super) proof fn new_container_page_positions(pages: Seq<PagePtr>)
     pages.to_set_ensures();
     let bootstrap_pages = new_container_bootstrap_4k_pages(pages.spec_index(0), pages.spec_index(1), pages.spec_index(2), pages.spec_index(3), pages.spec_index(8), pages.spec_index(4), pages.spec_index(5), pages.spec_index(6));
     let bootstrap_seq = seq![pages.spec_index(0), pages.spec_index(1), pages.spec_index(2), pages.spec_index(3), pages.spec_index(8), pages.spec_index(4), pages.spec_index(5), pages.spec_index(6)];
-    bootstrap_seq.unique_seq_to_set();
     assert(bootstrap_pages == bootstrap_seq.to_set()) by { reveal(new_container_bootstrap_4k_pages); };
     assert(bootstrap_pages.len() == 8) by { bootstrap_seq.unique_seq_to_set(); };
     assert(pages.to_set() == bootstrap_pages.union(seq![pages.spec_index(7)].to_set())) by {

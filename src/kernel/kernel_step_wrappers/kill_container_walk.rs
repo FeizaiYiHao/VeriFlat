@@ -41,6 +41,5 @@ pub proof fn kernel_container_locked_and_marked_implies_u_step(before: &KernelK,
     assert_maps_equal!(post.endpoint_map, pre.endpoint_map, e => {
         if before.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(before, e); kernel_endpoint_projection_at(after, e); }
     });
-    reveal(kernel_k_to_kernel_u);
 }
 }

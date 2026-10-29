@@ -78,7 +78,6 @@ pub(super) fn thread_exit_drop_descriptors(
         final(krnl).prc_mp.dom().contains(process_ptr),
         final(krnl).prc_mp.spec_index(process_ptr) == old(krnl).prc_mp.spec_index(process_ptr),
         final(krnl).thr_mp.dom().contains(thread_ptr),
-        final(krnl).thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
         final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread {
             endpoint_descriptors: final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors,
             syscall_progress: final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress, ..old(krnl).thr_mp.spec_index(thread_ptr).view()
@@ -152,7 +151,6 @@ pub(super) fn thread_exit_drop_descriptors(
             krnl.prc_mp.dom().contains(process_ptr),
             krnl.prc_mp.spec_index(process_ptr) == old(krnl).prc_mp.spec_index(process_ptr),
             krnl.thr_mp.dom().contains(thread_ptr),
-            krnl.thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
             krnl.thr_mp.spec_index(thread_ptr).view() == (Thread {
                 endpoint_descriptors: krnl.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors,
                 syscall_progress: krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress, ..old(krnl).thr_mp.spec_index(thread_ptr).view()

@@ -284,7 +284,6 @@ verus! {
                 map_insert_remove_absent_lemma(entry_lctx.allocator_global_pool_2m_lock_map(), alloc_ptr_2m, TypedHeldLock { lock_id: entry_krnl.allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.lock_id(), mode: TypedLockMode::Write });
             };
             assert(krnl.ctn_mp.dom().contains(container_ptr)) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); };
-            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         }
         let ret = alloc_2m_scan_all_caches_and_pool(krnl, thread_ptr, container_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
         ret

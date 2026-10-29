@@ -48,8 +48,7 @@ pub fn thread_map_consume_staged_4k(thread_map: &mut ThreadLockedMap, thread_ptr
             reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
             reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
         };
-        assert(thread_map.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
-        assert(lctx.thread_lock_map().index(thread_ptr).lock_id == thread_map.lock_id_by_key(thread_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };
+        assert(thread_map.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()) && thread_map.lock_id_by_key(thread_ptr) == old(thread_map).lock_id_by_key(thread_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
 }
 
@@ -1053,7 +1052,6 @@ pub fn process_subsystem_create_scheduled_thread(
 {
     thread_map_consume_staged_4k(thread_map, staging_thread_ptr, page_ptr, Tracked(&*lctx), Tracked(staging_thread_lock_perm));
     proof {
-        assert(thread_map.perms_wf()) by { thread_perms_wf_map(*thread_map); };
         assert(!lctx.thread_lock_map().dom().contains(page_ptr)
             && lctx.typed_lock_entry(KernelObjId::Thread(page_ptr)) is None) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
@@ -1576,8 +1574,7 @@ pub fn thread_map_set_endpoint_descriptor(
             reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
             reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
         };
-        assert(thread_map.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
-        assert(lctx.thread_lock_map().index(thread_ptr).lock_id == thread_map.lock_id_by_key(thread_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };
+        assert(thread_map.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id()) && thread_map.lock_id_by_key(thread_ptr) == old(thread_map).lock_id_by_key(thread_ptr)) by { reveal(LockedMap::typed_lock_map_aligned); };
     }
 }
 

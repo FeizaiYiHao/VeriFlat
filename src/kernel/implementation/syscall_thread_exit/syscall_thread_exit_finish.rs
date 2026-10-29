@@ -122,11 +122,6 @@ pub(super) fn thread_exit_finish(
             finish_lctx = *lctx;
         }
     }
-    proof {
-        assert(krnl.ctn_mp.dom().contains(owner) && krnl.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr) by {
-            container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_ptr2page_index(thread_ptr));
-        };
-    }
     thread_exit_finish_destroy_and_record(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), Ghost(finish_lctx), cpu_id, container_ptr, process_ptr, thread_ptr, owner, allocator_ptr,
         pcid_allocator_ptr, Tracked(cpu_lock_perm), Tracked(container_lock_perm), Tracked(process_lock_perm), Tracked(thread_lock_perm), Tracked(page_lock_perm),
         Tracked(cache_lock_perm), Tracked(pcid_allocator_lock_perm), Ghost(start), Ghost(pre));

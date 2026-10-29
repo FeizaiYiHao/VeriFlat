@@ -56,13 +56,14 @@ pub(super) proof fn mark_kill_cpu_set_eof(pre: KernelK, post: KernelK, pre_lctx:
     ensures
         post.inv(),
 {
-    container_cpu_set_wf_container_at(pre.ctn_mp, pre.cpu_set_mp, container_ptr);
-    pre.prc_mp.typed_lock_map_aligned_write_at(pre_lctx.process_lock_map(), pre_lctx.thread_id(), killer_info.process);
     assert(cpu_set_perms_wf(post.cpu_set_mp)) by { reveal(cpu_set_perms_wf); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
     assert(post.memory_management_inv()) by { cpu_set_pages_wf_preserved_for_page_state_eq(pre.cpu_set_mp, post.cpu_set_mp, pre.pg_arr, post.pg_arr); };
     assert(cpu_set_invariant_fields_unchanged(pre.cpu_set_mp, post.cpu_set_mp)) by { cpu_set_lock_op_preserves_invariant_fields(pre.cpu_set_mp, post.cpu_set_mp, cpu_set_ptr); };
-    assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by { reveal(cpu_set_kill_mark_wf); };
+    assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by {
+        container_cpu_set_wf_container_at(pre.ctn_mp, pre.cpu_set_mp, container_ptr); pre.prc_mp.typed_lock_map_aligned_write_at(pre_lctx.process_lock_map(), pre_lctx.thread_id(), killer_info.process);
+        reveal(cpu_set_kill_mark_wf);
+    };
     assert(post.process_management_inv()) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); };
     assert(post.inv()) by { reveal(cpu_dirty_map_contains_container_processes); };
 }

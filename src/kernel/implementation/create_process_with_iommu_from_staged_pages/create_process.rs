@@ -222,7 +222,9 @@ pub fn create_process_with_iommu_from_staged_pages(
         }) by { page_ptr_roundtrip(); };
         assert(krnl.pt_mp.perms_wf()) by { pagetable_perms_wf_map(krnl.pt_mp); };
         assert(krnl.it_mp.perms_wf()) by { iommu_table_perms_wf_map(krnl.it_mp); };
-        assert(krnl.prc_mp.perms_wf() && krnl.prc_mp.view().spec_index(parent_ptr).is_init() && krnl.prc_mp.view().spec_index(parent_ptr).addr() == parent_ptr && krnl.prc_mp.spec_index(parent_ptr).inv()) by {
+        assert(krnl.prc_mp.perms_wf() && krnl.prc_mp.view().spec_index(parent_ptr).is_init() && krnl.prc_mp.view().spec_index(parent_ptr).addr() == parent_ptr && krnl.prc_mp.spec_index(parent_ptr).inv()
+            && krnl.prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view().no_duplicates() && krnl.prc_mp.spec_index(parent_ptr).view().children.view().no_duplicates()
+            && krnl.prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view().len() == krnl.prc_mp.spec_index(parent_ptr).view_rodata().view().depth) by {
             process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, parent_ptr);
         };
         assert(krnl.ctn_mp.perms_wf() && krnl.ctn_mp.view().spec_index(container_ptr).is_init() && krnl.ctn_mp.view().spec_index(container_ptr).addr() == container_ptr && krnl.ctn_mp.spec_index(container_ptr).inv()) by {
@@ -245,7 +247,7 @@ pub fn create_process_with_iommu_from_staged_pages(
             && krnl.pg_arr.spec_index(iommu_l4_page_index).view().view().addr == iommu_l4_page_ptr && krnl.pg_arr.spec_index(iommu_l4_page_index).view().view().perm_4k.view().is_some()
         ) by { page_array_wf_at(krnl.pg_arr, iommu_l4_page_index); };
         assert(krnl.dflt_pt.view().wf()) by { krnl.default_pagetable_view_inv(); };
-        assert(pei_valid(krnl.dflt_pt.view().kernel_l4_end)) by { krnl.dflt_pt.view().kernel_entries_wf_len_at(); };
+        assert(pei_valid(krnl.dflt_pt.view().kernel_l4_end) && krnl.dflt_pt.view().kernel_entries.view().len() == krnl.dflt_pt.view().kernel_l4_end) by { krnl.dflt_pt.view().kernel_entries_wf_len_at(); };
     }
     let ghost parent_ancestors = krnl.prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
     let ghost ancestors = parent_ancestors.push(parent_ptr);
@@ -257,15 +259,9 @@ pub fn create_process_with_iommu_from_staged_pages(
         assert(process_tree_wf(root_process, process_tree_dom, krnl.prc_mp)) by { per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, container_ptr); };
         assert(process_tree_dom.subset_of(krnl.prc_mp.dom())) by { container_process_wf_container_at(krnl.ctn_mp, krnl.prc_mp, container_ptr, parent_ptr); };
         assert(parent_ancestors.to_set().subset_of(process_tree_dom)) by { parent_ancestors.to_set_ensures(); process_uppertree_seq_wf_dom_at(root_process, process_tree_dom, krnl.prc_mp, parent_ptr); };
-        assert(ancestors.to_set().subset_of(process_tree_dom)) by { parent_ancestors.to_set_ensures(); ancestors.to_set_ensures(); };
-        assert(parent_ancestors.no_duplicates()) by { process_perms_wf_at(krnl.prc_mp, parent_ptr); };
         assert(!parent_ancestors.contains(parent_ptr)) by { process_uppertree_seq_wf_at(root_process, process_tree_dom, krnl.prc_mp, parent_ptr, parent_ptr); };
         assert(!krnl.prc_mp.spec_index(parent_ptr).view().children.view().contains(process_page_ptr)) by { process_children_parent_wf_at(root_process, process_tree_dom, krnl.prc_mp, parent_ptr, process_page_ptr); };
-        assert(parent_children.len() <= NUM_PAGES) by {
-            assert(parent_children.no_duplicates()) by { process_perms_wf_at(krnl.prc_mp, parent_ptr); };
-            process_children_parent_wf_children_dom_at(root_process, process_tree_dom, krnl.prc_mp, parent_ptr);
-            lemma_kernel_object_ptr_seq_len_bounded(&*krnl, parent_children);
-        };
+        assert(parent_children.len() <= NUM_PAGES) by { process_children_parent_wf_children_dom_at(root_process, process_tree_dom, krnl.prc_mp, parent_ptr); lemma_kernel_object_ptr_seq_len_bounded(&*krnl, parent_children); };
         assert(krnl.pcid_allc_mp.spec_index(pcid_allocator_ptr).view().process_is_unallocated(process_page_ptr)) by { process_pcid_allocator_wf_unallocated_at(krnl.ctn_mp, krnl.prc_mp, krnl.pcid_allc_mp, pcid_allocator_ptr, process_page_ptr); };
     }
     let ghost page_locks = lctx.page_lock_map();
@@ -274,7 +270,6 @@ pub fn create_process_with_iommu_from_staged_pages(
     let (l4_ptr, Tracked(mut l4_perm)) = page_perm_to_page_map(l4_page_ptr, Tracked(l4_page_perm));
     let default_pt = krnl.dflt_pt.borrow();
     default_pt.copy_kernel_entries_to_unpublished_root(l4_ptr, Tracked(&mut l4_perm));
-    proof { assert(default_pt.kernel_entries.view().len() == default_pt.kernel_l4_end) by { default_pt.kernel_entries_wf_len_at(); }; }
     let pagetable_higher = PageTableHigher::<PT_TYPE>::new(Some(pcid), Ghost(default_pt.kernel_entries.view()), l4_ptr, Tracked(l4_perm), default_pt.kernel_l4_end, process_page_ptr);
     let tracked pagetable_lower = PageTableLower::<PT_TYPE>::tracked_empty(pagetable_higher);
 
@@ -306,7 +301,6 @@ pub fn create_process_with_iommu_from_staged_pages(
         pagetable: pagetable_page_ptr, cr3, iommu_cr3: Some(iommu_l4_page_ptr), iommu_table_ptr: Some(iommu_table_page_ptr), pcid,
     }, Ghost(process_page_ptr));
     let process_ghost = ProcessGhost { uppertree_seq: Ghost(ancestors), subtree_set: Ghost(Set::empty()), owned_pci_functions: Ghost(Set::empty()) };
-    proof { assert(parent_ancestors.len() == parent_depth) by { process_perms_wf_at(krnl.prc_mp, parent_ptr); }; }
     let Tracked(process_page_perm) = page_array_retype_owned_4k(&mut krnl.pg_arr, process_page_index, PageState::Allocated4k { state: Allocated4KPageState::AsProcess }, Ghost(iommu_table_page_locks), Tracked(&*lctx), Tracked(process_page_lock_perm));
     let Tracked(process_lock_perm) = krnl.retype_page_to_process_and_insert(process_page_ptr, process_value, process_rodata, process_ghost, Tracked(process_page_perm), Tracked(&mut *lctx));
 
@@ -328,7 +322,6 @@ pub fn create_process_with_iommu_from_staged_pages(
     }
 
     proof {
-        krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), process_page_ptr);
         krnl.it_mp.typed_lock_map_aligned_write_at(lctx.iommu_table_lock_map(), lctx.thread_id(), iommu_table_page_ptr);
         assert(create_process_with_iommu_from_staged_pages_eof_transition_framing(
             *old(krnl), *krnl, process_page_ptr, pagetable_page_ptr, l4_page_ptr, iommu_table_page_ptr, iommu_l4_page_ptr,

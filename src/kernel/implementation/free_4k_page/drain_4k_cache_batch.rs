@@ -146,7 +146,7 @@ pub fn drain_4k_cache_batch(krnl: &mut KernelK, allocator: RwLockPageAllocatorPt
         let (_, page_ptr) = cache.linked_list.peek_head();
         assert(page_ptr_valid(page_ptr)) by { allocator_free_page_ptrs_wf_cache_at(krnl.allc_4k_mp, allocator, cpu_id, page_ptr); };
         let page_index = page_ptr2page_index(page_ptr);
-        assert(page_ptr_valid(page_ptr) && index_valid(NUM_PAGES, page_index) && krnl.pg_arr.lock_id_by_index(page_index).major == FREE_PAGE_LOCK_MAJOR) by {
+        assert(index_valid(NUM_PAGES, page_index) && krnl.pg_arr.lock_id_by_index(page_index).major == FREE_PAGE_LOCK_MAJOR) by {
             container_allocator_free_4k_page_wf_cache_at(krnl.allc_4k_mp, krnl.pg_arr, allocator, cpu_id, page_ptr); reveal(LinkedList::wf_value_list); page_ptr_valid_imply_page_index_valid();
             page_array_wf_at(krnl.pg_arr, page_index);
         };

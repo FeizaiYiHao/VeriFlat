@@ -39,7 +39,6 @@ pub proof fn kernel_process_locked_and_marked_implies_u_step(before: &KernelK, a
     assert_maps_equal!(post.endpoint_map, pre.endpoint_map, e => {
         if before.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(before, e); kernel_endpoint_projection_at(after, e); }
     });
-    reveal(kernel_k_to_kernel_u);
 }
 
 /// Write-locking and marking the unmarked thread `thread_ptr` changes only its lock mode and kill mark, and changes both
@@ -160,7 +159,6 @@ pub proof fn kernel_thread_left_process_implies_u_step(before: &KernelK, after: 
     assert_maps_equal!(post.endpoint_map, pre.endpoint_map, e => {
         if before.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(before, e); kernel_endpoint_projection_at(after, e); }
     });
-    reveal(kernel_k_to_kernel_u);
 }
 
 /// The scheduled thread `thread_ptr` leaving shard `shard` of its container's scheduler `scheduler_ptr` and becoming

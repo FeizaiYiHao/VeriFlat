@@ -72,10 +72,6 @@ pub(crate) fn kill_container_retire_root(
         final(krnl).ctn_mp.spec_index(scope->Container_container).being_killed(),
         final(krnl).ctn_mp.spec_index(scope->Container_container).view_ghost().owned_processes.view().is_empty(),
         !final(krnl).ctn_mp.spec_index(scope->Container_container).view().zombie,
-        container_perm.lock_id() == final(krnl).ctn_mp.spec_index(scope->Container_container).locking_thread()->Write_lock_id,
-        cpu_perm.lock_id() == final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-        process_perm.lock_id() == final(krnl).prc_mp.spec_index(process_ptr).locking_thread()->Write_lock_id,
-        thread_perm.lock_id() == final(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
             &&& final(krnl).ctn_mp.dom().contains(c)
             &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()
@@ -170,10 +166,6 @@ pub(crate) fn kill_container_retire_root_process(
         final(krnl).ctn_mp.spec_index(scope->Container_container).being_killed(),
         final(krnl).ctn_mp.spec_index(scope->Container_container).view_ghost().owned_processes.view().is_empty(),
         !final(krnl).ctn_mp.spec_index(scope->Container_container).view().zombie,
-        container_perm.lock_id() == final(krnl).ctn_mp.spec_index(scope->Container_container).locking_thread()->Write_lock_id,
-        cpu_perm.lock_id() == final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-        process_perm.lock_id() == final(krnl).prc_mp.spec_index(process_ptr).locking_thread()->Write_lock_id,
-        thread_perm.lock_id() == final(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
         forall|c: RwLockContainerPtr| #![trigger old(lctx).container_lock_map().dom().contains(c)] old(lctx).container_lock_map().dom().contains(c) ==> {
             &&& final(krnl).ctn_mp.dom().contains(c)
             &&& final(krnl).ctn_mp.spec_index(c).locking_thread() == old(krnl).ctn_mp.spec_index(c).locking_thread()

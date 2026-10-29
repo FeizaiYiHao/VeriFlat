@@ -174,7 +174,6 @@ impl UnLockedMap<usize, Scheduler> {
             final(self).spec_index(scheduler_ptr).shard(cpu_id) == *final(ret),
             final(self).typed_shard_lock_map_aligned(held_locks, lctx.thread_id()),
     {
-        assert(old(self).spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().wlocked_by(lctx)) by { reveal(UnLockedMap::typed_shard_lock_map_aligned); };
         proof { reveal(UnLockedMap::typed_shard_lock_map_aligned); }
         let scheduler = self.borrow_mut(scheduler_ptr);
         scheduler.shards.borrow_mut(cpu_id, Tracked(lctx), lock_perm)

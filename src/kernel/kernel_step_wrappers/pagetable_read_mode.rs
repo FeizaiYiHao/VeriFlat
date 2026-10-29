@@ -377,7 +377,7 @@ pub proof fn kernel_thread_quota_4k_and_progress_changed_pagetable_rlocked_impli
     post.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr);
     pre.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr);
     post.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr);
-    if index_valid(NUM_CPUS, cpu_id) { kernel_cpu_projection_at(pre, cpu_id); } if index_valid(NUM_CPUS, cpu_id) { kernel_cpu_projection_at(post, cpu_id); }
+    kernel_cpu_projection_at(pre, cpu_id); kernel_cpu_projection_at(post, cpu_id);
     if pre.prc_mp.dom().contains(process_ptr) { kernel_process_projection_at(pre, process_ptr); }
     if pre.thr_mp.dom().contains(thread_ptr) { kernel_thread_projection_at(pre, thread_ptr); }
     assert(pre.cpu_arr.spec_index(cpu_id).view().wlocked_by_thread(lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
@@ -487,7 +487,7 @@ pub proof fn kernel_thread_quota_4k_progress_and_4k_mapping_added_pagetable_rloc
     post.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr);
     pre.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr);
     post.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr);
-    if index_valid(NUM_CPUS, cpu_id) { kernel_cpu_projection_at(post, cpu_id); }
+    kernel_cpu_projection_at(post, cpu_id);
     if pre.prc_mp.dom().contains(process_ptr) { kernel_process_projection_at(pre, process_ptr); } if post.prc_mp.dom().contains(process_ptr) { kernel_process_projection_at(post, process_ptr); }
     if pre.thr_mp.dom().contains(thread_ptr) { kernel_thread_projection_at(pre, thread_ptr); } if post.thr_mp.dom().contains(thread_ptr) { kernel_thread_projection_at(post, thread_ptr); }
     assert(pre.cpu_arr.spec_index(cpu_id).view().wlocked_by_thread(lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };

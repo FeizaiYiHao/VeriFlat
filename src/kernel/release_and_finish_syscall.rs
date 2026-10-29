@@ -173,17 +173,13 @@ verus! {
             let t = cpu.view().view().current_thread->Some_0;
             assert(cpu.being_killed() ==> krnl.thr_mp.spec_index(t).locked_by_thread(lctx.thread_id())) by { reveal(thread_cpu_wf); reveal(LockedArray::typed_lock_map_aligned); };
             assert(!cpu.being_killed()) by { reveal(thread_cpu_wf); reveal(LockedMap::typed_lock_map_aligned); };
-            cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id);
         }
         let tracked cpu_lock_perm = cpu_lock_perm.get();
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
         proof {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-            assert(kernel_k_to_nonlock_kernel_u(*krnl) == kernel_k_to_nonlock_kernel_u(*old(krnl))) by {
-                broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive;
-                kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(old(krnl), krnl);
-            };
+            assert(kernel_k_to_nonlock_kernel_u(*krnl) == kernel_k_to_nonlock_kernel_u(*old(krnl))) by { kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(old(krnl), krnl); };
             steps.end_kernel_step_nonlock_fields_unchanged(&*krnl, &*lctx);
         }
     }
@@ -266,7 +262,6 @@ verus! {
             let t = cpu.view().view().current_thread->Some_0;
             assert(cpu.being_killed() ==> krnl.thr_mp.spec_index(t).locked_by_thread(lctx.thread_id())) by { reveal(thread_cpu_wf); reveal(LockedArray::typed_lock_map_aligned); };
             assert(!cpu.being_killed()) by { reveal(thread_cpu_wf); reveal(LockedMap::typed_lock_map_aligned); };
-            cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id);
         }
         let tracked process_lock_perm = process_lock_perm.get();
         let tracked cpu_lock_perm = cpu_lock_perm.get();
@@ -370,7 +365,6 @@ verus! {
             let t = cpu.view().view().current_thread->Some_0;
             assert(cpu.being_killed() ==> krnl.thr_mp.spec_index(t).locked_by_thread(lctx.thread_id())) by { reveal(thread_cpu_wf); reveal(LockedArray::typed_lock_map_aligned); };
             assert(!cpu.being_killed()) by { reveal(thread_cpu_wf); reveal(LockedMap::typed_lock_map_aligned); };
-            cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id);
         }
         let tracked thread_lock_perm = thread_lock_perm.get();
         let tracked cpu_lock_perm = cpu_lock_perm.get();
@@ -482,7 +476,6 @@ verus! {
             let t = cpu.view().view().current_thread->Some_0;
             assert(cpu.being_killed() ==> krnl.thr_mp.spec_index(t).locked_by_thread(lctx.thread_id())) by { reveal(thread_cpu_wf); reveal(LockedArray::typed_lock_map_aligned); };
             assert(!cpu.being_killed()) by { reveal(thread_cpu_wf); reveal(LockedMap::typed_lock_map_aligned); };
-            cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id);
         }
         let tracked thread_lock_perm = thread_lock_perm.get();
         let tracked process_lock_perm = process_lock_perm.get();

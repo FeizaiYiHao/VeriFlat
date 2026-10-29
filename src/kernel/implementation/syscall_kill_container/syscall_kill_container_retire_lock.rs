@@ -102,7 +102,7 @@ pub(crate) fn kill_container_retire_lock_flags_pcid(
         }),
 {
     proof {
-        container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, container_ptr); container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, container_ptr);
+        container_perms_wf_at(krnl.ctn_mp, container_ptr); container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, container_ptr);
         container_cpu_offline_flags_wf_container_at(krnl.ctn_mp, krnl.cpu_offline_mp, container_ptr); container_pcid_allocator_wf_container_at(krnl.ctn_mp, krnl.pcid_allc_mp, container_ptr);
         cpu_offline_flags_wf_map(krnl.cpu_offline_mp, krnl.cpu_arr); cpu_offline_flags_wf_at(krnl.cpu_offline_mp, krnl.cpu_arr, cpu_offline_flags_ptr(container_ptr));
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
@@ -298,7 +298,7 @@ pub(crate) fn kill_container_retire_lock_object_pages(
 {
     let ghost ro = krnl.ctn_mp.spec_index(container_ptr).view_rodata().view();
     proof {
-        container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, container_ptr); container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, container_ptr);
+        container_perms_wf_at(krnl.ctn_mp, container_ptr); container_pages_backward_at(krnl.pg_arr, krnl.ctn_mp, container_ptr);
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr);
         container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, container_ptr); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, container_ptr);
         container_pcid_allocator_wf_container_at(krnl.ctn_mp, krnl.pcid_allc_mp, container_ptr); container_cpu_offline_flags_wf_container_at(krnl.ctn_mp, krnl.cpu_offline_mp, container_ptr);
@@ -412,7 +412,7 @@ pub(crate) fn kill_container_retire_lock_shards(
         }),
 {
     proof {
-        container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, container_ptr); container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, container_ptr);
+        container_perms_wf_at(krnl.ctn_mp, container_ptr); container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, container_ptr);
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
         assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
@@ -622,7 +622,7 @@ pub(crate) fn kill_container_retire_lock_caches(
         }),
 {
     proof {
-        container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, container_ptr);
+        container_perms_wf_at(krnl.ctn_mp, container_ptr);
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr);
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
         assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
@@ -1060,7 +1060,7 @@ pub(crate) fn kill_container_retire_lock_pools_quotas(
         }),
 {
     proof {
-        container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, container_ptr); container_perms_wf_at(krnl.ctn_mp, owner_ptr);
+        container_perms_wf_at(krnl.ctn_mp, container_ptr); container_perms_wf_at(krnl.ctn_mp, owner_ptr);
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr);
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner_ptr);
     }
@@ -1156,7 +1156,7 @@ pub(crate) fn kill_container_retire_lock_tails(krnl: &mut KernelK, Tracked(lctx)
     let ghost pages_4k = kill_container_retire_pages_4k(ro);
     let ghost held = lctx.page_lock_map().dom();
     proof {
-        container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, container_ptr);
+        container_perms_wf_at(krnl.ctn_mp, container_ptr);
         container_cpu_offline_flags_wf_container_at(krnl.ctn_mp, krnl.cpu_offline_mp, container_ptr);
     }
     let pcid_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().pcid_allocator;

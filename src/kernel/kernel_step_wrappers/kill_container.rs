@@ -47,8 +47,6 @@ pub proof fn kernel_page_freed_to_owner_quota_implies_u_step(
     assert(changed =~= set![owner]);
     assert(changed.len() == 1);
     assert(b.container_map.dom() == a.container_map.dom());
-    assert(b == (KernelU { container_map: b.container_map, ..a }));
-    assert(b.container_map[owner] == (ContainerU { quota_4k: b.container_map[owner].quota_4k, ..a.container_map[owner] }));
     assert(b.container_map[owner].quota_4k > a.container_map[owner].quota_4k);
     assert(owner == origin || a.container_map[origin].uppertree_seq.contains(owner));
     assert(kernel_u_container_quota_4k_increased(a, b, origin)) by { reveal(kernel_u_container_quota_4k_increased); };
@@ -134,6 +132,5 @@ pub proof fn kernel_zombie_root_process_retired_implies_u_step(
     assert_seqs_equal!(b.cpu_array == a.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); } });
     assert_maps_equal!(b.thread_map, a.thread_map, x => { if pre.thr_mp.dom().contains(x) { kernel_thread_projection_at(pre, x); kernel_thread_projection_at(post, x); } });
     assert_maps_equal!(b.endpoint_map, a.endpoint_map, e => { if pre.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(pre, e); kernel_endpoint_projection_at(post, e); } });
-    reveal(kernel_k_to_kernel_u);
 }
 }

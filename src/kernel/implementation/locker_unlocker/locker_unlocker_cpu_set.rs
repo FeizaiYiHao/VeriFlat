@@ -164,8 +164,8 @@ impl KernelK {
         proof {
             container_cpu_set_wf_container_at(old(self).ctn_mp, old(self).cpu_set_mp, container_ptr);
             assert(old(self).cpu_set_mp.perms_wf() && old(self).cpu_set_mp.spec_index(cpu_set_ptr).inv()) by { cpu_set_perms_wf_map(old(self).cpu_set_mp); cpu_set_perms_wf_at(old(self).cpu_set_mp, cpu_set_ptr); };
-            old(self).prc_mp.typed_lock_map_aligned_write_at(old(lctx).process_lock_map(), old(lctx).thread_id(), killer_info.process);
             assert(!old(self).cpu_set_mp.spec_index(cpu_set_ptr).being_killed()) by {
+                old(self).prc_mp.typed_lock_map_aligned_write_at(old(lctx).process_lock_map(), old(lctx).thread_id(), killer_info.process);
                 cpu_set_kill_mark_wf_at(old(self).ctn_mp, old(self).cpu_set_mp, old(self).prc_mp, cpu_set_ptr);
                 old(self).cpu_set_mp.typed_lock_map_aligned_locked_at(old(lctx).cpu_set_lock_map(), old(lctx).thread_id(), cpu_set_ptr);
             };

@@ -1967,11 +1967,7 @@ pub fn page_array_retype_owned_4k_for_container(pages: &mut PageLockedArray, chi
     let page = pages.borrow_mut_typed(page_index, Ghost(page_locks), Tracked(lctx), Tracked(page_lock_perm));
     let Tracked(page_perm) = retype_owned_4k_to_kernel_object(page, PageState::Allocated4k { state: page_state });
     page.owning_container = child_container_ptr;
-    proof {
-        assert(pages.spec_index(page_index).view().inv()) by { reveal(Page::mappings_va_valid); };
-        assert(pages.spec_index(page_index).view().view().addr == page_index2page_ptr(page_index)) by { reveal(page_array_wf); };
-        assert(page_array_wf(*pages)) by { reveal(page_array_wf); };
-    }
+    proof { assert(page_array_wf(*pages)) by { reveal(page_array_wf); reveal(Page::mappings_va_valid); }; }
     Tracked(page_perm)
 }
 

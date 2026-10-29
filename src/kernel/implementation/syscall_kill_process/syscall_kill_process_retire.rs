@@ -35,7 +35,6 @@ pub(crate) fn kill_retire_target(
         old(krnl).prc_mp.spec_index(target).view().children.view().len() == 0,
         old(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
         old(krnl).prc_mp.spec_index(target).view_ghost().owned_pci_functions.view() == Set::<PciBdf>::empty(),
-        scope is Subtree ==> old(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set.view().contains(target),
         scope is Subtree || 1 < chain.len(),
     ensures
         final(krnl).inv(),

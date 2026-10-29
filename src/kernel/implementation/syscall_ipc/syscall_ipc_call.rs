@@ -820,7 +820,6 @@ verus! {
             proof {
                 assert(krnl.cpu_op.view().view() =~= old(steps).snapshot_k().cpu_op.view().view());
                 assert(kernel_k_to_kernel_u(old(steps).snapshot_k()) == kernel_k_to_kernel_u(*krnl)) by {
-                    broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive, group_kernel_endpoint_nonlock_fields_unchanged_transitive;
                     kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&old(steps).snapshot_k(), &*krnl);
                 };
                 if waiting_state is CALLING {

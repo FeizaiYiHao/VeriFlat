@@ -153,7 +153,6 @@ pub(super) fn thread_exit_destroy(
     krnl.wunlock_page(page_index, Tracked(&mut *lctx), Tracked(page_lock_perm));
     krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
     krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
-    proof { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }
     krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive;

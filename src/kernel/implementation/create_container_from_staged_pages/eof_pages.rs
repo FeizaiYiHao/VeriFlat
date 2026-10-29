@@ -65,7 +65,6 @@ pub(super) proof fn eof_page_fields_eq_outside_moved_pages(
     let funding_indices = funding_pages.map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).to_set();
     page_index_valid_imply_page_ptr_valid(); page_index_roundtrip();
     page_ptr_2m_valid_imply_page_index_2m_valid(container_page); page_ptr_2m_valid_imply_page_index_2m_valid(pcid_allocator_page);
-    staged_4k_page_chain_page_ptrs_valid(pre.pg_arr, funding_pages);
     page_ptr_seq_indices_excludes_page(funding_pages, page_index2page_ptr(page_index),);
     assert(!page_2m_all_ptrs(container_head).contains(page_index2page_ptr(page_index))) by { reveal(new_container_moved_pages); };
     assert(!page_2m_all_ptrs(pcid_allocator_head).contains(page_index2page_ptr(page_index))) by { reveal(new_container_moved_pages); };
@@ -791,7 +790,6 @@ pub(super) broadcast proof fn eof_thread_staged_pages_2m_forward(
         allocator_quota_4k, process_quota_4k, page_index,
     );
     assert(thread_staged_pages_2m_forward_wf(pre.thr_mp, pre.pg_arr)) by { reveal(thread_staged_pages_2m_wf); };
-    let thread_ptr = post.pg_arr.spec_index(page_index).view().view().state->Owned2m_thread_ptr;
 }
 
 pub(super) broadcast proof fn eof_thread_staged_pages_2m_backward(

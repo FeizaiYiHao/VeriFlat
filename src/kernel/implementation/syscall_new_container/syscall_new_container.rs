@@ -658,7 +658,7 @@ fn new_container_lock_entry(
         krnl.pt_mp.typed_lock_map_aligned_locked_at(lctx.pagetable_lock_map(), lctx.thread_id(), source_pagetable_ptr);
     }
     let Tracked(source_pagetable_lock_perm) = krnl.rlock_pagetable(source_pagetable_ptr, Tracked(&mut *lctx));
-    proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, source_pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable_ptr); }
+    proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, source_pagetable_ptr); }
     let (l4_ok, source_ready, source_window_perms) = new_container_lock_source_windows(krnl, Tracked(&mut *lctx), source_pagetable_ptr, &source_range, Tracked(&source_pagetable_lock_perm));
     let Tracked(source_window_perms) = source_window_perms;
     proof {

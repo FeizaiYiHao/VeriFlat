@@ -210,7 +210,6 @@ pub(super) fn cpu_offline_commit_unlock_and_record(
         krnl.wunlock_process(current_process.unwrap(), Tracked(&mut *lctx), perm);
     }
     krnl.wunlock_cpu_offline_flag(flags_ptr, cpu_id, Tracked(&mut *lctx), Tracked(flag_lock_perm));
-    proof { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }
     krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         let flushed = cpu_offline_check_flushed_default_pcid(entry_k, cpu_id);

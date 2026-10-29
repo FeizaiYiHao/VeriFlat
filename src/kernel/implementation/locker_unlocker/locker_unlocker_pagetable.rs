@@ -173,16 +173,16 @@ impl KernelK {
             let Tracked(source_perm) = self.wlock_pagetable(source_pagetable, Tracked(&mut *lctx));
             let Tracked(target_perm) = self.wlock_pagetable(target_pagetable, Tracked(&mut *lctx));
             proof {
-                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-                assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+                assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
             }
             (Tracked(source_perm), Tracked(target_perm))
         } else {
             let Tracked(target_perm) = self.wlock_pagetable(target_pagetable, Tracked(&mut *lctx));
             let Tracked(source_perm) = self.wlock_pagetable(source_pagetable, Tracked(&mut *lctx));
             proof {
-                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-                assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+                assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
             }
             (Tracked(source_perm), Tracked(target_perm))
         }
@@ -358,16 +358,16 @@ impl KernelK {
             let Tracked(source_perm) = self.rlock_pagetable(source_pagetable, Tracked(&mut *lctx));
             let Tracked(target_perm) = self.rlock_pagetable(target_pagetable, Tracked(&mut *lctx));
             proof {
-                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-                assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+                assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
             }
             (Tracked(source_perm), Tracked(target_perm))
         } else {
             let Tracked(target_perm) = self.rlock_pagetable(target_pagetable, Tracked(&mut *lctx));
             let Tracked(source_perm) = self.rlock_pagetable(source_pagetable, Tracked(&mut *lctx));
             proof {
-                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-                assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+                assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
             }
             (Tracked(source_perm), Tracked(target_perm))
         }
@@ -453,16 +453,16 @@ impl KernelK {
             let Tracked(read_perm) = self.rlock_pagetable(read_pagetable, Tracked(&mut *lctx));
             let Tracked(write_perm) = self.wlock_pagetable(write_pagetable, Tracked(&mut *lctx));
             proof {
-                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-                assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+                assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
             }
             (Tracked(read_perm), Tracked(write_perm))
         } else {
             let Tracked(write_perm) = self.wlock_pagetable(write_pagetable, Tracked(&mut *lctx));
             let Tracked(read_perm) = self.rlock_pagetable(read_pagetable, Tracked(&mut *lctx));
             proof {
-                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-                assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+                assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
             }
             (Tracked(read_perm), Tracked(write_perm))
         }

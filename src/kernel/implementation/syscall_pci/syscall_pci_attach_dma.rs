@@ -50,7 +50,6 @@ pub fn syscall_pci_attach_dma(
         },
 {
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
-    proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
     let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);
     if cpu_lock_res.is_none() {
         proof {

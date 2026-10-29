@@ -202,7 +202,6 @@ pub(crate) fn kill_container_mark_root(
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, root_ptr); per_container_process_tree_wf_at(krnl.ctn_mp, krnl.prc_mp, target);
         process_root_wf_at(root_ptr, tree, krnl.prc_mp, root_ptr); process_children_parent_wf_parent_at(root_ptr, tree, krnl.prc_mp, root_ptr);
         if let Some(parent_ptr) = krnl.prc_mp.spec_index(root_ptr).view_rodata().view().parent { process_children_parent_wf_at(root_ptr, tree, krnl.prc_mp, parent_ptr, root_ptr); }
-        assert(root_ptr != process_ptr);
         assert(krnl.prc_mp.spec_index(root_ptr).view_rodata().view().owning_container != krnl.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container) by {
             container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr);
         };

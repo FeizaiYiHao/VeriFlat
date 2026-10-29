@@ -651,8 +651,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             match resolved.1 {
                 PageTableErrorCode::NoError | PageTableErrorCode::EntryTakenBy4k | PageTableErrorCode::EntryTakenBy1g | PageTableErrorCode::EntryTakenBy2m => {
                     proof {
-                        assert(!self.spec_4k_entry_usable(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, spec_va2index(va).3)) by { spec_va_4k_valid_imply_indices_valid(); };
-                        assert(!self.spec_mapping_4k_va_range_buildable(range)) by { range.va_range_lemma(); };
+                        assert(!self.spec_mapping_4k_va_range_buildable(range)) by { range.va_range_lemma(); spec_va_4k_valid_imply_indices_valid(); };
                         assert({
                             let indices = spec_va2index(range.view().spec_index(i as int));
                             ||| self.mapping_1g().dom().contains(spec_index2va((indices.0, indices.1, 0, 0)))
@@ -668,7 +667,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
                 PageTableErrorCode::L4EntryNotExist | PageTableErrorCode::L3EntryNotExist | PageTableErrorCode::L2EntryNotExist | PageTableErrorCode::L1EntryNotExist => {},
             }
             proof {
-                assert(self.spec_4k_entry_usable(l4i, l3i, l2i, l1i)) by { spec_va_4k_valid_imply_indices_valid(); };
                 assert({
                     let checked_indices = spec_va2index(range.view().spec_index(i as int));
                     &&& self.kernel_l4_end <= checked_indices.0
@@ -681,7 +679,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
                     &&& !self.mapping_2m().dom().contains(spec_index2va((checked_indices.0, checked_indices.1, checked_indices.2, 0)))
                     &&& !self.mapping_4k().dom().contains(range.view().spec_index(i as int))
                 }) by {
-                    range.va_range_lemma();
+                    range.va_range_lemma(); spec_va_4k_valid_imply_indices_valid();
                     assert(spec_index2va((l4i, l3i, l2i, l1i)) == va) by { spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i); };
                     reveal(PageTable::wf_mapping_1g); reveal(PageTable::wf_mapping_2m); reveal(PageTable::wf_mapping_4k);
                 };

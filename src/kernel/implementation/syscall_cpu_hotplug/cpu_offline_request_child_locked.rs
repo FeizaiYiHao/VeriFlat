@@ -163,7 +163,6 @@ pub(super) fn cpu_offline_request_child_locked(
             &&& target != cpu_id
         }) by {
             container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, target); container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, child_ptr, target);
-            container_cpu_wf_cpu_at(entry.ctn_mp, entry.cpu_set_mp, entry.cpu_arr, target); container_cpu_wf_container_at(entry.ctn_mp, entry.cpu_set_mp, entry.cpu_arr, child_ptr, target);
         };
     }
     let success = if let RetValueType::Success = result { true } else { false };

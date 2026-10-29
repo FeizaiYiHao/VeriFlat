@@ -258,11 +258,9 @@ fn new_process_lock_entry(
 
     let (source_ready, source_window_perms) = new_process_lock_source_windows(krnl, Tracked(&mut *lctx), source_pagetable_ptr, &source_range, Tracked(&source_pagetable_lock_perm));
     let Tracked(source_window_perms) = source_window_perms;
+    proof { pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable_ptr); }
     if !source_ready {
-        proof {
-            pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable_ptr);
-            assert(krnl.pt_lower.view() =~= steps.snapshot_k().pt_lower.view().insert(source_pagetable_ptr, krnl.pt_lower.view().spec_index(source_pagetable_ptr)));
-        }
+        proof { assert(krnl.pt_lower.view() =~= steps.snapshot_k().pt_lower.view().insert(source_pagetable_ptr, krnl.pt_lower.view().spec_index(source_pagetable_ptr))); }
         new_process_unlock_and_stutter(
             krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, parent_ptr, current_thread_ptr, pcid_allocator_ptr, endpoint_option, Some(source_pagetable_ptr),
             Tracked(cpu_lock_perm), Tracked(parent_lock_perm), Tracked(current_thread_lock_perm), Tracked(pcid_allocator_lock_perm), Tracked(endpoint_lock_perm_opt),
@@ -272,7 +270,6 @@ fn new_process_lock_entry(
         return Err(RetValueType::Error);
     }
     proof {
-        pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable_ptr);
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_endpoint_nonlock_fields_unchanged(steps.snapshot_k().ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };

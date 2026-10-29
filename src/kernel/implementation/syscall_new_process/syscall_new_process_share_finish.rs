@@ -238,7 +238,6 @@ pub(super) fn share_and_finish_new_process(
             };
         }
         assert(krnl.prc_mp.spec_index(child_ptr).view().pagetable == target_pagetable_ptr) by { process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, child_ptr); };
-        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
     }
     let ghost finish_before = steps.view();
     let new_thread_ptr = create_initial_thread_and_finish_new_process(

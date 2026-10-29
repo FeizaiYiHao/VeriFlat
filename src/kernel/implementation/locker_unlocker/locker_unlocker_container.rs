@@ -250,8 +250,7 @@ impl KernelK {
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-            reveal(LockedMap::typed_lock_map_aligned);
-            wunlock_container_eof(*old(self), *self, *old(lctx), container_ptr);
+            assert(self.inv()) by { reveal(LockedMap::typed_lock_map_aligned); wunlock_container_eof(*old(self), *self, *old(lctx), container_ptr); };
         }
     }
 }

@@ -59,7 +59,6 @@ pub fn remove_4k_mapping_without_free(krnl: &mut KernelK, pagetable: RwLockPageT
         kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
-        kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
 {
     let page_index = page_ptr2page_index(page_ptr);
     let indices = va2index(va);
@@ -100,7 +99,6 @@ pub fn remove_4k_mapping_without_free(krnl: &mut KernelK, pagetable: RwLockPageT
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged);
         };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-        assert(kernel_k_to_nonlock_kernel_u(*krnl) == kernel_k_to_nonlock_kernel_u(*old(krnl))) by { kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(old(krnl), krnl); };
     }
 }
 
@@ -159,7 +157,6 @@ pub fn remove_4k_mapping_without_free_in_window(krnl: &mut KernelK, pagetable: R
         kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
-        kernel_k_to_nonlock_kernel_u(*final(krnl)) == kernel_k_to_nonlock_kernel_u(*old(krnl)),
 {
     let page_index = page_ptr2page_index(page_ptr);
     let indices = va2index(va);
@@ -200,7 +197,6 @@ pub fn remove_4k_mapping_without_free_in_window(krnl: &mut KernelK, pagetable: R
             reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged);
         };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-        assert(kernel_k_to_nonlock_kernel_u(*krnl) == kernel_k_to_nonlock_kernel_u(*old(krnl))) by { kernel_cpu_process_thread_nonlock_fields_unchanged_implies_u_nonlock_eq(old(krnl), krnl); };
     }
 }
 }

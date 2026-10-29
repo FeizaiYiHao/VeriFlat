@@ -556,9 +556,6 @@ fn ipc_pages_lock_tables_and_windows(
     proof {
         krnl.pt_mp.typed_lock_map_aligned_locked_at(lctx.pagetable_lock_map(), lctx.thread_id(), source_pagetable);
         krnl.pt_mp.typed_lock_map_aligned_locked_at(lctx.pagetable_lock_map(), lctx.thread_id(), target_pagetable);
-        assert(krnl.pt_mp.spec_index(source_pagetable).inv() && krnl.pt_mp.spec_index(target_pagetable).inv()) by {
-            pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, source_pagetable); pagetable_perms_wf_at(krnl.pt_mp, target_pagetable);
-        };
     }
     let (Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm)) = if write_target {
         krnl.rlock_wlock_pagetable_pair(source_pagetable, target_pagetable, Tracked(&mut *lctx))
@@ -1292,7 +1289,6 @@ pub(super) fn ipc_pages_lock_tables(
     );
     let ghost tables = if fill { IpcPagesTables::Fill } else { IpcPagesTables::Read };
     let ghost lock_pre_k = steps.snapshot_k();
-    let ghost attempted_k = *krnl;
     krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(Some(SyscallProgress::IpcPages { source_range: *source_range, target_range: *target_range, peer: peer_thread_ptr, tables: tables, released: None })),
         Tracked(&*lctx), Tracked(current_thread_lock_perm));
     proof {

@@ -99,7 +99,7 @@ verus! {
     {
         assert(krnl.allc_2m_mp.perms_wf() && krnl.allc_2m_mp.spec_index(alloc_ptr_2m).wf() && krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.inv()
             && krnl.allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.inv() && krnl.thr_mp.perms_wf() && krnl.pg_arr.inv()
-        ) by { allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, alloc_ptr_2m); thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, thread_ptr); page_array_wf_map(krnl.pg_arr); };
+        ) by { allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, alloc_ptr_2m); thread_perms_wf_map(krnl.thr_mp); page_array_wf_map(krnl.pg_arr); };
         let (node_addr, page_ptr) = match source {
             Some(cpu_id) => krnl.allc_2m_mp.borrow_cache_typed(alloc_ptr_2m, cpu_id, Ghost(lctx.allocator_cache_2m_lock_map()), Tracked(&*lctx), Tracked(source_lock_perm)).linked_list.peek_head(),
             None => krnl.allc_2m_mp.borrow_global_pool_typed(alloc_ptr_2m, Ghost(lctx.allocator_global_pool_2m_lock_map()), Tracked(&*lctx), Tracked(source_lock_perm)).peek_head(),
@@ -129,7 +129,7 @@ verus! {
                 old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().linked_list.lemma_value_addr_unique(node_addr, node_addr2);
             }
         }
-        assert(krnl.pg_arr.inv() && krnl.thr_mp.perms_wf() && krnl.thr_mp.spec_index(thread_ptr).is_init()) by {
+        assert(krnl.pg_arr.inv() && krnl.thr_mp.spec_index(thread_ptr).is_init()) by {
             assert(krnl.pg_arr.inv()) by { page_array_wf_map(krnl.pg_arr); };
             thread_perms_wf_at(krnl.thr_mp, thread_ptr);
         };

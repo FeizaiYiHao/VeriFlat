@@ -223,7 +223,7 @@ impl KernelK {
             proof {
                 perms.tracked_insert(window_va, perm);
                 broadcast use spec_va_2m_valid_index_roundtrip;
-                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
+                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             }
             if l2i < 511 {
                 l2i = l2i + 1;
@@ -904,7 +904,7 @@ impl KernelK {
                 let tracked perm = remaining.tracked_remove(window_va);
                 self.unlock_pagetable_window(root, l4i, l3i, l2i, Tracked(big), Tracked(&mut *lctx), Tracked(perm));
                 proof {
-                    assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
+                    assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
                 }
             }
             proof { broadcast use spec_va_2m_valid_index_roundtrip; }

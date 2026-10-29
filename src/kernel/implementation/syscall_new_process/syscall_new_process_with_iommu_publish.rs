@@ -270,7 +270,6 @@ pub(super) fn publish_staged_process_with_iommu(
         target_pagetable_ptr, Some(iommu_table_ptr), source_range, pcid, Tracked(current_thread_lock_perm), Ghost(regs), Ghost(endpoint_index),
     );
     proof {
-        assert(krnl.ctn_mp.dom().contains(container_ptr)) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, current_thread_ptr); };
         assert(krnl.pt_mp.spec_index(source_pagetable_ptr).view().proc_ptr == parent_ptr) by { process_thread_wf_at(old(krnl).prc_mp, old(krnl).thr_mp, current_thread_ptr); process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); reveal(process_pagetable_match); };
         assert(krnl.pt_mp.spec_index(target_pagetable_ptr).view().kernel_l4_end == old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end) by {
             krnl.default_pagetable_wf_at(target_pagetable_ptr); old(krnl).default_pagetable_wf_at(source_pagetable_ptr);

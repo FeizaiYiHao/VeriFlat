@@ -237,7 +237,6 @@ pub proof fn kernel_cpu_and_thread_unlocked_implies_u_step(before: &KernelK, aft
     assert_maps_equal!(post.endpoint_map, pre.endpoint_map, e => {
         if before.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(before, e); kernel_endpoint_projection_at(after, e); }
     });
-    reveal(kernel_k_to_kernel_u);
 }
 
 /// Reclaiming a killed dangling thread projects to `kernel_u_dangling_thread_reclaimed` and changes or removes no thread
@@ -282,7 +281,6 @@ pub proof fn kernel_dangling_thread_reclaimed_implies_u_step(before: &KernelK, a
     assert_maps_equal!(post.endpoint_map, pre.endpoint_map, e => {
         if before.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(before, e); kernel_endpoint_projection_at(after, e); }
     });
-    assert(post.iommu_root_table == pre.iommu_root_table && post.cpu_tlb == pre.cpu_tlb && post.iommu_tlb == pre.iommu_tlb && post.kernel_l4_end == pre.kernel_l4_end) by { reveal(kernel_k_to_kernel_u); };
     reveal(kernel_u_dangling_thread_reclaimed);
 }
 

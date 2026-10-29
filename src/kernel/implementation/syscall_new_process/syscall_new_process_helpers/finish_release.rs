@@ -297,7 +297,6 @@ pub(super) fn release_new_process_thread_locks_and_attach_endpoint(
         None => krnl.wunlock_thread(new_thread_ptr, Tracked(&mut *lctx), Tracked(new_thread_lock_perm)),
     }
     krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
-    proof { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }
     krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
         assert(kernel_cpu_nonlock_fields_unchanged(old(krnl).cpu_arr, krnl.cpu_arr)) by {

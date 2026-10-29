@@ -147,7 +147,6 @@ pub(crate) fn kill_reclaim_last_4k_mapping_scoped(
         };
         mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, va);
         assert(krnl.pg_arr.spec_index(page_index).view().view().mappings().contains((pagetable, va)) && krnl.pg_arr.spec_index(page_index).view().view().state is Mapped4k);
-        pagetable_perms_wf_at(krnl.pt_mp, pagetable); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target);
         container_process_page_pagetable_wf_page_at(krnl.ctn_mp, krnl.prc_mp, krnl.pt_mp, krnl.pg_arr, page_index, pagetable, va);
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target);
         assert(krnl.ctn_mp.dom().contains(origin) && krnl.ctn_mp.dom().contains(owner));
@@ -303,7 +302,6 @@ pub(crate) fn kill_reclaim_last_iommu_4k_mapping_scoped(
         assert(cache_lctx.page_lock_map().dom().contains(page_index) && cache_lctx.iommu_table_lock_map().dom().contains(iommu_table) && cache_lctx.process_lock_map().dom().contains(target));
         page_iommu_table_wf_table_at(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr, iommu_table, iova);
         assert(krnl.pg_arr.spec_index(page_index).view().view().iommu_mappings().contains((iommu_table, iova)) && krnl.pg_arr.spec_index(page_index).view().view().state is Mapped4k);
-        iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target);
         page_iommu_table_wf_page_owner_at(krnl.ctn_mp, krnl.prc_mp, krnl.it_mp, krnl.pg_arr, page_index, iommu_table, iova);
         container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target);
         assert(krnl.ctn_mp.dom().contains(origin) && krnl.ctn_mp.dom().contains(owner));

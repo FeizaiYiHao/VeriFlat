@@ -54,7 +54,6 @@ pub(crate) fn kill_container_retire_scheduler_object(
     proof { reveal(UnLockedMap::typed_shard_lock_map_aligned); }
     let Tracked(scheduler_perm) = krnl.sched_mp.remove_with_perm(scheduler_ptr);
     let ret = retype_scheduler_to_4k_page_perm(scheduler_ptr, Tracked(scheduler_perm), Tracked(shard_perms), Tracked(&mut *lctx));
-    proof { assert(typed_lock_maps_aligned(krnl, &*lctx)) by { reveal(UnLockedMap::typed_shard_lock_map_aligned); }; }
     ret
 }
 
@@ -195,11 +194,6 @@ pub(crate) fn kill_container_retire_allocator_4k_object(
     let Tracked(allocator_perm) = krnl.allc_4k_mp.remove_with_perm(allocator_ptr);
     let ret = retype_allocator_to_4k_page_perm::<ALLOCATOR_SIZE_4K>(PageSize::SZ4k, allocator_ptr, Tracked(allocator_perm), Tracked(cache_perms), Tracked(pool_perm), Tracked(quota_perm),
         Tracked(&mut *lctx));
-    proof {
-        assert(typed_lock_maps_aligned(krnl, &*lctx)) by {
-            reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
-        };
-    }
     ret
 }
 
@@ -268,11 +262,6 @@ pub(crate) fn kill_container_retire_allocator_2m_object(
     let Tracked(allocator_perm) = krnl.allc_2m_mp.remove_with_perm(allocator_ptr);
     let ret = retype_allocator_to_4k_page_perm::<ALLOCATOR_SIZE_2M>(PageSize::SZ2m, allocator_ptr, Tracked(allocator_perm), Tracked(cache_perms), Tracked(pool_perm), Tracked(quota_perm),
         Tracked(&mut *lctx));
-    proof {
-        assert(typed_lock_maps_aligned(krnl, &*lctx)) by {
-            reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
-        };
-    }
     ret
 }
 
@@ -341,11 +330,6 @@ pub(crate) fn kill_container_retire_allocator_1g_object(
     let Tracked(allocator_perm) = krnl.allc_1g_mp.remove_with_perm(allocator_ptr);
     let ret = retype_allocator_to_4k_page_perm::<ALLOCATOR_SIZE_1G>(PageSize::SZ1g, allocator_ptr, Tracked(allocator_perm), Tracked(cache_perms), Tracked(pool_perm), Tracked(quota_perm),
         Tracked(&mut *lctx));
-    proof {
-        assert(typed_lock_maps_aligned(krnl, &*lctx)) by {
-            reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
-        };
-    }
     ret
 }
 
@@ -425,7 +409,7 @@ pub(crate) fn kill_container_retire_container_object(
     let Tracked(flags_perm) = krnl.cpu_offline_mp.remove_with_perm(container_ptr + 4096);
     let ret = retype_container_rwlock_to_2m_page_perm(container_ptr, Tracked(container_perm), Tracked(flags_perm), Tracked(parent_node_perm), Tracked(lock_perm), Tracked(flag_perms),
         Tracked(&mut *lctx));
-    proof { assert(typed_lock_maps_aligned(krnl, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); reveal(UnLockedMap::typed_flag_lock_map_aligned); }; }
+    proof { assert(typed_lock_maps_aligned(krnl, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); }; }
     ret
 }
 } // verus!

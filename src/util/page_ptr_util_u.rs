@@ -397,7 +397,6 @@ pub proof fn page_ptr_seq_indices_excludes_page(pages: Seq<PagePtr>, excluded_pa
     pages.to_set_ensures();
     let page_ptr_set = pages.to_set();
     let mapped = pages.map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).to_set();
-    let mapped_by = page_ptr_set.map_by(|page_ptr: PagePtr| page_ptr2page_index(page_ptr), |index: PageIndex| spec_page_index2page_ptr(index));
     if mapped.contains(page_ptr2page_index(excluded_page)) {
         page_ptr_set.lemma_map_by_contains(|page_ptr: PagePtr| page_ptr2page_index(page_ptr), |index: PageIndex| spec_page_index2page_ptr(index), page_ptr2page_index(excluded_page));
         page_ptr_roundtrip();

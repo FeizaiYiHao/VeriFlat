@@ -98,10 +98,6 @@ pub(super) fn thread_exit_reclaim_clear_leaf(
         assert(kernel_process_4k_mapping_changed(&leaf_k, &leaf_post, process_ptr, pagetable, va)) by { reveal(kernel_process_4k_mapping_changed); };
         assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_process_4k_mapping_changed(&mut *lctx, &mut *steps, process_ptr, pagetable, va, process_ptr, pagetable, thread_ptr, thread_ptr);
-        assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable) == pagetable_c(leaf_post.pt_mp, leaf_post.pt_lower.view(), pagetable)) by {
-            old(krnl).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable);
-            pagetable_lower_backup_wf_at(leaf_post.pt_mp, leaf_post.pt_lower.view(), pagetable); pagetable_lower_backup_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
-        };
         assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
             thread_exit_leaf_step_pre_from_k(&leaf_k, &leaf_lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, va);
             kernel_pagetable_4k_present_cleared_and_progress_changed_implies_u_step(&leaf_k, &leaf_post, pagetable, va, thread_ptr);

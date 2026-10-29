@@ -415,7 +415,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             current = node.next.unwrap();
             i = i + 1;
         }
-        proof { reveal(LinkedList::wf_perms); reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_value_list); }
+        proof { reveal(LinkedList::wf_perms); reveal(LinkedList::wf_addr_list); }
         let tracked node_perm = self.perms.borrow().tracked_borrow(current);
         let node = PPtr::<Node<T>>::from_usize(current).borrow(Tracked(node_perm));
         node.value

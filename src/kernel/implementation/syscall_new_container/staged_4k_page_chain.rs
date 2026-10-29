@@ -228,8 +228,6 @@ pub(super) fn cleanup_published_4k_page_chain(
     {
         let page_ptr = current;
         let old_remaining = remaining;
-        let ghost krnl_before = *krnl;
-        let ghost lctx_before = *lctx;
         proof { broadcast use page_ptr_sequence_index_in_equal_set; page_ptr_valid_imply_page_index_valid(); vstd::seq::lemma_seq_subrange_index(page_ptrs, 0, remaining as int, remaining - 1); }
         let page_index = page_ptr2page_index(page_ptr);
         proof { page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, page_index); }

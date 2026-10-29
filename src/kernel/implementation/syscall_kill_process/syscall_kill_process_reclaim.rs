@@ -31,7 +31,6 @@ pub(crate) fn kill_reclaim_target(
         target == chain[chain.len() - 1],
         old(krnl).prc_mp.spec_index(target).view().children.view().len() == 0,
         old(krnl).prc_mp.spec_index(target).view().owned_threads.view().len() == 0,
-        scope is Subtree ==> old(krnl).prc_mp.spec_index(process_ptr).view_ghost().subtree_set.view().contains(target),
         scope is Subtree || 1 < chain.len(),
     ensures
         final(krnl).inv(),

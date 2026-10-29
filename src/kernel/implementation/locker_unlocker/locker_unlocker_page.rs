@@ -124,10 +124,9 @@ impl KernelK {
     {
         assert(self.pg_arr.inv()) by { page_array_wf_map(self.pg_arr); };
         assert({
-            &&& typed_lock_map_contains_mode(lctx.page_lock_map(), page_index, TypedLockMode::Write)
             &&& lctx.lock_entry_contains(self.pg_arr.lock_id_by_index(page_index), KernelObjId::Page(page_index))
+            &&& self.pg_arr.spec_index(page_index).view().wlocked_by(&*lctx)
         }) by { reveal(LockedArray::typed_lock_map_aligned); };
-        assert(self.pg_arr.spec_index(page_index).view().wlocked_by(&*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
         self.pg_arr.wunlock(page_index, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::Page(page_index)));
         proof {
             assert(typed_lock_maps_aligned(self, &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };

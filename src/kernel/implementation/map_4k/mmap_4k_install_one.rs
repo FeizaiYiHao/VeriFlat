@@ -394,7 +394,6 @@ verus! {
                 || (typed_lock_map_contains_mode(lctx.process_lock_map(), process_ptr, TypedLockMode::Write) && !krnl.prc_mp.spec_index(process_ptr).view().zombie))) by { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, quota_thread_ptr); };
             assert(krnl.allc_4k_mp.dom().contains(alloc_ptr_4k)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); };
             if !write_held {
-                spec_va_4k_index_roundtrip_at(window_va.va, indices.0, indices.1, indices.2, 0usize);
                 assert(directory_lctx.pagetable_window_lock_map().dom().contains((pagetable_ptr, window_va)));
                 assert(directory_lctx.pagetable_lock_map().dom().contains(pagetable_ptr));
             }

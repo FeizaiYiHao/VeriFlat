@@ -151,8 +151,6 @@ pub(crate) fn kill_dequeue_scheduled_victim(krnl: &mut KernelK, Tracked(lctx): T
     let Tracked(shard_lock_perm) = krnl.wlock_scheduler_shard(scheduler_ptr, shard, Tracked(&mut *lctx));
     let ghost pre = *krnl;
     proof {
-        thread_perms_wf_map(krnl.thr_mp);
-        thread_perms_wf_at(krnl.thr_mp, victim_ptr);
         assert(krnl.sched_mp.spec_index(scheduler_ptr).shard(shard).queue.map().dom().contains(node_addr) && krnl.sched_mp.spec_index(scheduler_ptr).shard(shard).queue.map().spec_index(node_addr) == victim_ptr)
             by { container_thread_scheduler_wf_thread_at(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp, victim_ptr); };
         assert(krnl.sched_mp.spec_index(scheduler_ptr).shard(shard).queue.dom().contains(node_addr)) by { scheduler_perms_wf_at(krnl.sched_mp, scheduler_ptr); krnl.sched_mp.spec_index(scheduler_ptr).shard(shard).queue.wf_map_at(node_addr); };
@@ -228,7 +226,7 @@ pub(crate) fn kill_dequeue_endpoint_victim(krnl: &mut KernelK, Tracked(lctx): Tr
     let Tracked(endpoint_lock_perm) = krnl.wlock_endpoint(endpoint_ptr, Tracked(&mut *lctx));
     let ghost pre = *krnl;
     proof {
-        thread_perms_wf_at(krnl.thr_mp, victim_ptr); thread_endpoint_queue_wf_thread_at(krnl.thr_mp, krnl.ep_mp, victim_ptr); endpoint_perms_wf_map(krnl.ep_mp); endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr);
+        thread_endpoint_queue_wf_thread_at(krnl.thr_mp, krnl.ep_mp, victim_ptr); endpoint_perms_wf_map(krnl.ep_mp); endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr);
         assert(krnl.ep_mp.spec_index(endpoint_ptr).view().queue.dom().contains(node_addr)) by { krnl.ep_mp.spec_index(endpoint_ptr).view().queue.wf_map_at(node_addr); };
     }
     let node_perm = {
@@ -326,10 +324,12 @@ pub(crate) fn kill_running_victim_cpu_to_idle(krnl: &mut KernelK, Tracked(lctx):
     };
     proof {
         let cpu = krnl.cpu_arr.spec_index(remote).view();
-        assert(cpu.being_killed() ==> cpu.wlocked_by_thread(lctx.thread_id())) by {
-            thread_cpu_wf_killed_cpu_at(krnl.thr_mp, krnl.cpu_arr, remote); krnl.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), victim_ptr);
+        assert(!cpu.being_killed()) by {
+            assert(cpu.being_killed() ==> cpu.wlocked_by_thread(lctx.thread_id())) by {
+                thread_cpu_wf_killed_cpu_at(krnl.thr_mp, krnl.cpu_arr, remote); krnl.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), victim_ptr);
+            };
+            reveal(LockedArray::typed_lock_map_aligned);
         };
-        assert(!cpu.being_killed()) by { reveal(LockedArray::typed_lock_map_aligned); };
     }
     let Tracked(cpu_lock_perm) = krnl.wlock_cpu(remote, Tracked(&mut *lctx)).unwrap();
     let ghost pre = *krnl;

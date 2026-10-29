@@ -256,7 +256,7 @@ pub(crate) fn kill_container_retire_target(
         final(krnl).ctn_mp.spec_index(owner_ptr).view_ghost().subtree_set.view().len() < old(krnl).ctn_mp.spec_index(owner_ptr).view_ghost().subtree_set.view().len(),
 {
     proof {
-        container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, target); container_without_children_and_processes_owns_no_threads(*krnl, target);
+        container_perms_wf_at(krnl.ctn_mp, target); container_without_children_and_processes_owns_no_threads(*krnl, target);
         if chain.len() > 1 { assert(krnl.ctn_mp.spec_index(chain[chain.len() - 1]).view_rodata().view().parent == Some(chain[chain.len() - 2])); }
         assert(krnl.ctn_mp.spec_index(owner_ptr).view_ghost().subtree_set.view().contains(target)) by {
             container_subtree_set_exclusive_at(krnl.rt_ctn, krnl.ctn_mp, owner_ptr, target);

@@ -43,7 +43,6 @@ pub fn syscall_cpu_offline_request(krnl: &mut KernelK, Tracked(lctx): Tracked<&m
         },
 {
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
-    proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
     if target >= NUM_CPUS {
         proof {
             enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);

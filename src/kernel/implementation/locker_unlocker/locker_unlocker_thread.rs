@@ -650,8 +650,7 @@ impl KernelK {
                 reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
             };
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-            reveal(LockedMap::typed_lock_map_aligned);
-            wunlock_thread_eof(*old(self), *self, thread_ptr, old(lctx).thread_id());
+            assert(self.inv()) by { reveal(LockedMap::typed_lock_map_aligned); wunlock_thread_eof(*old(self), *self, thread_ptr, old(lctx).thread_id()); };
         }
     }
 

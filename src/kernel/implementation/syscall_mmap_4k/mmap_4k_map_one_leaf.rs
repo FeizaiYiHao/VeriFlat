@@ -154,7 +154,6 @@ pub(super) fn map_one_mmap_4k_page(
         proof { mmap_4k_range_steps_from_directory(&*steps, entry_steps, entry_steps.len() as int, cpu_id); }
     }
     let ghost leaf_steps = steps.view();
-    let ghost installed = *krnl;
     let ghost installed_lctx = *lctx;
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }
     let (page_ptr, Tracked(page_lock_perm)) = allocate_free_4k_page(krnl, thread_ptr, container_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));

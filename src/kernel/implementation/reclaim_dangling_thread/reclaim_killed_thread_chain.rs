@@ -128,7 +128,6 @@ pub(super) fn release_killed_thread_descriptors(
             let released = drop_endpoint_descriptor(krnl, Tracked(&mut *lctx), cpu_id, thread_ptr, endpoint_ptr, index, Tracked(thread_lock_perm));
             proof {
                 drop_pre.thr_mp.typed_lock_map_aligned_write_at(drop_lctx.thread_lock_map(), drop_lctx.thread_id(), thread_ptr);
-                thread_perms_wf_at(drop_pre.thr_mp, thread_ptr);
                 if released {
                     kernel_killed_endpoint_released_implies_u_step(&drop_pre, &*krnl, thread_ptr, endpoint_ptr, index);
                 } else {

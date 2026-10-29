@@ -335,7 +335,6 @@ verus! {
             ret.4.view().thread_id() == old(lctx).thread_id(),
             ret.4.view().lock_id() == final(krnl).sched_mp.spec_index(peer_scheduler_ptr).shards.spec_index(wake_cpu).view().locking_thread()->Write_lock_id,
     {
-        proof { thread_perms_wf_map(krnl.thr_mp); }
         let ghost bdf: PciBdf = (bus as usize, dev as usize, fun as usize);
         let Tracked(irt_lock_perm) = krnl.wlock_iommu_root_table(Tracked(&mut *lctx));
         let owner = krnl.irt.borrow(Tracked(&irt_lock_perm)).owner(bus as usize, dev as usize, fun as usize);

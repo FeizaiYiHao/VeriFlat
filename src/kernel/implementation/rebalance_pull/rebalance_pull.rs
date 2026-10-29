@@ -415,7 +415,6 @@ fn rebalance_pull_move_head(
         assert(rebalance_pull_eof_transition_framing(before_move, *krnl, cpu_id, scheduler_ptr, victim, thread_ptr)) by { reveal(rebalance_pull_eof_transition_framing); };
         rebalance_pull_eof(before_move, *krnl, cpu_id, scheduler_ptr, victim, thread_ptr);
     }
-    let ghost after_move = *krnl;
     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
     if let Some(local_perm) = local_lock_perm { krnl.wunlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx), local_perm); }
     rebalance_unlock_shard_prefix(krnl, Tracked(&mut *lctx), scheduler_ptr, count, Tracked(shard_perms));
@@ -490,7 +489,6 @@ pub fn rebalance_pull(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalConte
     proof { schedule_current_cpu_references_wf(&*krnl, cpu_id); }
     let scheduler_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().scheduler;
     proof { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, container_ptr); }
-    let ghost queues = scheduler_shards_of(old(krnl).sched_mp.spec_index(scheduler_ptr));
     let (count, found, Tracked(shard_perms)) = rebalance_lock_shards_until_nonempty(krnl, Tracked(&mut *lctx), cpu_id, scheduler_ptr);
     if !found || count - 1 == cpu_id {
         proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }

@@ -177,12 +177,12 @@ pub(crate) fn kill_reclaim_clear_leaves(
                 assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
                 krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
                 kill_trace_push(&*steps, leaf_before, start, pre, before_u, kernel_k_to_kernel_u(leaf_post), cpu_id, ctx);
+                pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
             }
         } else {
             proof { assert(!pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().dom().contains(va) || !pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().spec_index(va).present) by { reveal(PageTableC::wf_mapping_4k); }; }
         }
         cursor = (next.0, next.1, next.2, next.3 + 1);
-        proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); }
         found = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_perm)).next_mapped_4k_from(Tracked(krnl.pt_lower.borrow().tracked_borrow(pagetable)), cursor);
     }
 }
@@ -746,7 +746,6 @@ pub(crate) fn kill_reclaim_iommu_leaves(
     let mut indirect = [0usize; MAX_CONTAINER_TREE_DEPTH];
     let mut direct = 0usize;
     let mut cursor: (L4Index, L3Index, L2Index, L1Index) = (0, 0, 0, 0);
-    proof { iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table); }
     let mut found = krnl.it_mp.borrow_typed(iommu_table, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_perm)).next_mapped_4k_from(cursor);
     proof { held_kernel_objects_unchanged_reflexive(&*krnl, &*lctx); }
     while found.is_some()
@@ -1553,7 +1552,7 @@ pub(crate) fn kill_reclaim_zombify(
     }
     let Tracked(pcid_allocator_perm) = krnl.wlock_pcid_allocator(pcid_allocator_ptr, Tracked(&mut *lctx));
     let ghost locked = *krnl;
-    proof { pcid_allocator_perms_wf_at(krnl.pcid_allc_mp, pcid_allocator_ptr); process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
+    proof { pcid_allocator_perms_wf_at(krnl.pcid_allc_mp, pcid_allocator_ptr); process_perms_wf_map(krnl.prc_mp); }
     pcid_allocator_map_release(&mut krnl.pcid_allc_mp, pcid_allocator_ptr, target, pcid, Tracked(&*lctx), Tracked(&pcid_allocator_perm));
     {
         let tracked target_perm = chain_perms.tracked_borrow(target);

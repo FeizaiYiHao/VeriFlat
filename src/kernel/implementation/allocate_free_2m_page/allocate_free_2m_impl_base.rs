@@ -677,8 +677,6 @@ verus! {
                 let tracked selected_cache_perm = cache_perms.tracked_borrow(cpu);
                 let (page_ptr, Tracked(page_lock_perm)) = pop_stage_2m_page(krnl, alloc_ptr_2m, Some(cpu), thread_ptr, container_ptr, Tracked(&mut *lctx), Tracked(selected_cache_perm), Tracked(thread_lock_perm));
                 assert(cache_perms_match_lctx(krnl.allc_2m_mp, alloc_ptr_2m, &*lctx, cache_perms)) by { reveal(cache_perms_match_lctx); };
-                proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
-                assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
                 return Some((page_ptr, Tracked(page_lock_perm)));
             }
             assert(krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.view().take(cpu as int + 1).fold_left(0int, |sum: int, cache: RwLock<AllocatorCache<ALLOCATOR_SIZE_2M>, (), (), NO_KILL_STATE>| { sum + cache.view().linked_list.len() }) == 0) by {

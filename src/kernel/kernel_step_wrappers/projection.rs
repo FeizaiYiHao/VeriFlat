@@ -2092,7 +2092,7 @@ pub proof fn kernel_cpu_process_thread_endpoint_lock_modes_changed_implies_u_ste
     kernel_process_lock_mode_changed_implies_u_process_map(pre, post, process_ptr, mode, pagetable);
     kernel_thread_lock_mode_changed_implies_u_thread_map(pre, post, thread_ptr, mode);
     kernel_endpoint_lock_mode_changed_implies_u_endpoint_map(pre, post, endpoint_ptr, mode);
-    if index_valid(NUM_CPUS, cpu_id) { kernel_cpu_projection_at(pre, cpu_id); }
+    kernel_cpu_projection_at(pre, cpu_id);
     if pre.prc_mp.dom().contains(process_ptr) { kernel_process_projection_at(pre, process_ptr); } if post.prc_mp.dom().contains(process_ptr) { kernel_process_projection_at(post, process_ptr); }
     if pre.thr_mp.dom().contains(thread_ptr) { kernel_thread_projection_at(pre, thread_ptr); }
     if let Some(c) = container { if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); } }
@@ -3136,7 +3136,7 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_step(
         ..old_u
     };
     let post_u = kernel_k_to_kernel_u(*post);
-    if index_valid(NUM_CPUS, cpu_id) { kernel_cpu_projection_at(post, cpu_id); } if index_valid(NUM_CPUS, cpu_id) { kernel_cpu_projection_at(pre, cpu_id); }
+    kernel_cpu_projection_at(post, cpu_id); kernel_cpu_projection_at(pre, cpu_id);
     if post.prc_mp.dom().contains(process_ptr) { kernel_process_projection_at(post, process_ptr); }
     if let Some(source) = release_source_process { if post.prc_mp.dom().contains(source) { kernel_process_projection_at(post, source); } }
     if pre.thr_mp.dom().contains(thread_ptr) { kernel_thread_projection_at(pre, thread_ptr); }
@@ -3254,7 +3254,7 @@ pub proof fn kernel_new_thread_fields_and_parent_unlocks_implies_u_step(
         ..old_u
     };
     let post_u = kernel_k_to_kernel_u(*post);
-    if index_valid(NUM_CPUS, cpu_id) { kernel_cpu_projection_at(pre, cpu_id); } if index_valid(NUM_CPUS, cpu_id) { kernel_cpu_projection_at(post, cpu_id); }
+    kernel_cpu_projection_at(pre, cpu_id); kernel_cpu_projection_at(post, cpu_id);
     if pre.prc_mp.dom().contains(process_ptr) { kernel_process_projection_at(pre, process_ptr); } if post.prc_mp.dom().contains(process_ptr) { kernel_process_projection_at(post, process_ptr); }
     if pre.prc_mp.dom().contains(release_source_process) { kernel_process_projection_at(pre, release_source_process); }
     if pre.thr_mp.dom().contains(thread_ptr) { kernel_thread_projection_at(pre, thread_ptr); }

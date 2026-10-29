@@ -111,10 +111,6 @@ pub(super) fn thread_exit_reclaim_return_quota_size(
             thread_exit_quota_step_from_u(kernel_k_to_kernel_u(size_k), kernel_k_to_kernel_u(returned_k), cpu_id, thread_ptr, size);
             thread_exit_trace_push(&*steps, before, start, pre, kernel_k_to_kernel_u(size_k), kernel_k_to_kernel_u(returned_k), cpu_id);
         };
-        assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable)) by {
-            old(krnl).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable);
-            pagetable_lower_backup_wf_at(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable); pagetable_lower_backup_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
-        };
     }
 }
 

@@ -493,7 +493,6 @@ pub(crate) fn kill_victim_off_cpu_or_queue(
             &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
             &&& final(krnl).ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
         },
-        final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
 {
     let ghost before = *krnl;
@@ -604,7 +603,6 @@ pub(crate) fn kill_release_victim_caller(
             &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
             &&& final(krnl).ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
         },
-        final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
 {
     let ghost before = *krnl;
@@ -693,7 +691,6 @@ pub(crate) fn kill_unlink_victim(
             &&& final(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes == old(krnl).ctn_mp.spec_index(c).view_ghost().owned_processes
             &&& final(krnl).ctn_mp.spec_index(c).view().children == old(krnl).ctn_mp.spec_index(c).view().children
         },
-        final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
 {
     let ghost before = *krnl;

@@ -698,6 +698,7 @@ fn thread_exit_reclaim_clear_leaves(
         if resolved.2.is_some() && resolved.2.unwrap().present {
             thread_exit_reclaim_clear_leaf(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), Ghost(cpu_id), Ghost(container_ptr), Ghost(process_ptr), Ghost(thread_ptr), pagetable, va,
                 Ghost(iommu_table), Tracked(pagetable_lock_perm), Ghost(start), Ghost(pre));
+            proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); }
         } else {
             proof {
                 assert(!pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().dom().contains(va) || !pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().spec_index(va).present) by {
@@ -706,10 +707,6 @@ fn thread_exit_reclaim_clear_leaves(
             }
         }
         cursor = (next.0, next.1, next.2, next.3 + 1);
-        proof {
-            pagetable_perms_wf_map(krnl.pt_mp);
-            pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
-        }
         found = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_lock_perm)).next_mapped_4k_from(Tracked(krnl.pt_lower.borrow().tracked_borrow(pagetable)), cursor);
     }
 }
