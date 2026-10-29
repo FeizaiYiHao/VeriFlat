@@ -227,6 +227,11 @@ pub(crate) fn kill_mark_child(
         kill_mark_child_step_from_u(before_u, kernel_k_to_kernel_u(marked_k), kernel_k_to_kernel_u(entered_k), cpu_id, thread_ptr, target, child_ptr, scope);
         kill_trace_push(&*steps, before_steps, start, pre, before_u, kernel_k_to_kernel_u(entered_k), cpu_id, ctx);
         chain_perms.tracked_insert(child_ptr, child_perm);
+        if scope is Subtree {
+            assert(kill_walk_state(*krnl, *lctx, cpu_id, scope, process_ptr, thread_ptr, chain.push(child_ptr), None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *chain_perms));
+        } else {
+            assert(kill_walk_state(*krnl, *lctx, cpu_id, scope, process_ptr, thread_ptr, chain.push(child_ptr), None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *chain_perms));
+        }
     }
     child_ptr
 }
@@ -334,6 +339,7 @@ pub(crate) fn kill_first_thread(
             kill_step_pre_from_k(&before, &before_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Walk, scope); kill_dangling_pre_from_k(&before, target, victim_ptr);
             kill_dangling_step_from_u(before_u, kernel_k_to_kernel_u(dangling_k), cpu_id, target, victim_ptr);
             kill_trace_push(&*steps, before_steps, start, pre, before_u, kernel_k_to_kernel_u(dangling_k), cpu_id, ctx);
+            assert(kill_walk_state(*krnl, *lctx, cpu_id, scope, process_ptr, thread_ptr, chain, None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *chain_perms));
         }
     } else {
         krnl.mark_thread_kill(victim_ptr, target, killer_info, Tracked(&mut *lctx));

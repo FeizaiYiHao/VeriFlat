@@ -4,6 +4,7 @@ use super::syscall_new_container_commit::commit_new_container;
 use super::syscall_new_container_spec::*;
 use super::syscall_new_container_trace::*;
 use super::syscall_new_container_lock_owners::{new_container_lock_process_and_thread, new_container_lock_source_windows};
+use super::syscall_new_container_release_source::new_container_release_source_table;
 
 verus! {
 /// Exec state handed from the lock-and-check prefix of `syscall_new_container` to its commit.
@@ -155,18 +156,7 @@ fn new_container_release_entry_locks(
 {
     krnl.wunlock_cpu_set(cpu_set_ptr, Tracked(&mut *lctx), Tracked(cpu_set_lock_perm));
     proof { container_nonlock_fields_and_quotas_unchanged_for_cpu_set_relock(&cpu_set_unlocked_k, &*krnl, cpu_set_ptr); }
-    if windows_held {
-        krnl.unlock_pagetable_range_existing_windows(pagetable_ptr, source_range, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx), Tracked(source_window_perms));
-    }
-    proof {
-        let entry = steps.snapshot_k().pt_mp.spec_index(pagetable_ptr);
-        if entry.locking_thread() is Read {
-            assert(entry.locking_thread()->Read_reader_map.insert(lctx.thread_id(), pagetable_lock_perm.lock_id()).remove(lctx.thread_id()) =~= entry.locking_thread()->Read_reader_map);
-        } else {
-            assert(Map::<LockThreadId, LockToken>::empty().insert(lctx.thread_id(), pagetable_lock_perm.lock_id()).remove(lctx.thread_id()).dom() =~= Set::empty());
-        }
-    }
-    krnl.runlock_pagetable(pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
+    new_container_release_source_table(krnl, Tracked(&mut *lctx), pagetable_ptr, source_range, windows_held, Ghost(steps.snapshot_k()), Tracked(pagetable_lock_perm), Tracked(source_window_perms));
     if endpoint.is_some() {
         let tracked endpoint_lock_perm = endpoint_lock_perm.tracked_unwrap();
         krnl.wunlock_endpoint(endpoint.unwrap(), Tracked(&mut *lctx), Tracked(endpoint_lock_perm));

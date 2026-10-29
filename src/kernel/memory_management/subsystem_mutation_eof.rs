@@ -792,6 +792,61 @@ pub open spec fn iommu_table_map_set_did_eof_transition_framing(
     &&& post.spec_index(iommu_table_ptr).view() == (PageTable { did, ..pre.spec_index(iommu_table_ptr).view() })
 }
 
+/// EOF closure of `iommu_table_map_set_did` for the changed table's table levels, which do not read the DID.
+proof fn iommu_table_map_set_did_eof_table_levels(pre_table: PageTable<IOMMU_TYPE>, post_table: PageTable<IOMMU_TYPE>, did: Option<VtdDomainId>)
+    requires
+        pre_table.wf(),
+        post_table == (PageTable { did, ..pre_table }),
+    ensures
+        post_table.wf_l4(),
+        post_table.wf_l3(),
+        post_table.wf_l2(),
+        post_table.wf_l1(),
+{ reveal(PageTable::wf_l4); reveal(PageTable::wf_l3); reveal(PageTable::wf_l2); reveal(PageTable::wf_l1); }
+
+/// EOF closure of `iommu_table_map_set_did` for the changed table's table disjointness, which does not read the DID.
+proof fn iommu_table_map_set_did_eof_table_disjoint(pre_table: PageTable<IOMMU_TYPE>, post_table: PageTable<IOMMU_TYPE>, did: Option<VtdDomainId>)
+    requires
+        pre_table.wf(),
+        post_table == (PageTable { did, ..pre_table }),
+    ensures
+        post_table.disjoint_l4(),
+        post_table.disjoint_l3(),
+        post_table.disjoint_l2(),
+{ reveal(PageTable::disjoint_l4); reveal(PageTable::disjoint_l3); reveal(PageTable::disjoint_l2); }
+
+/// EOF closure of `iommu_table_map_set_did` for the changed table's mappings, which do not read the DID.
+proof fn iommu_table_map_set_did_eof_table_mappings(pre_table: PageTable<IOMMU_TYPE>, post_table: PageTable<IOMMU_TYPE>, did: Option<VtdDomainId>)
+    requires
+        pre_table.wf(),
+        post_table == (PageTable { did, ..pre_table }),
+    ensures
+        post_table.wf_mapping_4k(),
+        post_table.wf_mapping_2m(),
+        post_table.wf_mapping_1g(),
+{ reveal(PageTable::wf_mapping_4k); reveal(PageTable::wf_mapping_2m); reveal(PageTable::wf_mapping_1g); }
+
+/// EOF closure of `iommu_table_map_set_did` for the changed table's entry permissions, which do not read the DID.
+proof fn iommu_table_map_set_did_eof_table_permissions(pre_table: PageTable<IOMMU_TYPE>, post_table: PageTable<IOMMU_TYPE>, did: Option<VtdDomainId>)
+    requires
+        pre_table.wf(),
+        post_table == (PageTable { did, ..pre_table }),
+    ensures
+        post_table.user_only(),
+        post_table.rwx_upper_level_entries(),
+{ reveal(PageTable::user_only); reveal(PageTable::rwx_upper_level_entries); }
+
+/// EOF closure of `iommu_table_map_set_did` for the changed table's table pages, reachability, and kernel entries, which do not read the DID.
+proof fn iommu_table_map_set_did_eof_table_table_pages(pre_table: PageTable<IOMMU_TYPE>, post_table: PageTable<IOMMU_TYPE>, did: Option<VtdDomainId>)
+    requires
+        pre_table.wf(),
+        post_table == (PageTable { did, ..pre_table }),
+    ensures
+        post_table.table_pages_wf(),
+        post_table.tables_reachable_wf(),
+        post_table.kernel_entries_wf(),
+{ reveal(PageTable::table_pages_wf); reveal(PageTable::tables_reachable_wf); reveal(PageTable::kernel_entries_wf); }
+
 /// EOF closure of `iommu_table_map_set_did`: neither a table's well-formedness nor the hidden-leaf lock rule reads its DID.
 pub proof fn iommu_table_map_set_did_eof(pre: IommuTableLockedMap, post: IommuTableLockedMap, iommu_table_ptr: RwLockPageTableRoot, did: Option<VtdDomainId>)
     requires
@@ -803,12 +858,15 @@ pub proof fn iommu_table_map_set_did_eof(pre: IommuTableLockedMap, post: IommuTa
     ensures iommu_table_perms_wf(post),
 {
     reveal(iommu_table_map_set_did_eof_transition_framing);
+    iommu_table_perms_wf_at(pre, iommu_table_ptr);
+    let pre_table = pre.spec_index(iommu_table_ptr).view();
+    let post_table = post.spec_index(iommu_table_ptr).view();
+    iommu_table_map_set_did_eof_table_levels(pre_table, post_table, did);
+    iommu_table_map_set_did_eof_table_disjoint(pre_table, post_table, did);
+    iommu_table_map_set_did_eof_table_mappings(pre_table, post_table, did);
+    iommu_table_map_set_did_eof_table_permissions(pre_table, post_table, did);
+    iommu_table_map_set_did_eof_table_table_pages(pre_table, post_table, did);
     reveal(iommu_table_perms_wf); reveal(iommu_table_hidden_leaves_only_when_wlocked);
-    reveal(PageTable::wf_l4); reveal(PageTable::wf_l3); reveal(PageTable::wf_l2); reveal(PageTable::wf_l1);
-    reveal(PageTable::disjoint_l4); reveal(PageTable::disjoint_l3); reveal(PageTable::disjoint_l2);
-    reveal(PageTable::wf_mapping_4k); reveal(PageTable::wf_mapping_2m); reveal(PageTable::wf_mapping_1g);
-    reveal(PageTable::user_only); reveal(PageTable::rwx_upper_level_entries); reveal(PageTable::table_pages_wf);
-    reveal(PageTable::tables_reachable_wf); reveal(PageTable::kernel_entries_wf);
 }
 
 /// S of `page_array_retype_owned_4k`: only page `page_index` changes, by retyping the owned 4K page to a kernel object; it stays well formed at its address.

@@ -433,7 +433,10 @@ impl IommuRootTable {
             let post = seq3_update(pre, bus as int, device as int, function as int, owner);
             assert_seqs_equal!(self.owners() == post, b => {
                 assert_seqs_equal!(self.owners()[b] == post[b], d => {
-                    assert_seqs_equal!(self.owners()[b][d] == post[b][d], f => {});
+                    assert_seqs_equal!(self.owners()[b][d] == post[b][d], f => {
+                        assert(pci_bdf_of_did(pci_bdf_did(b as usize, d as usize, f as usize)) == (b as usize, d as usize, f as usize)
+                            && vtd_domain_id_valid(pci_bdf_did(b as usize, d as usize, f as usize))) by (nonlinear_arith) requires pci_bdf_valid(b as usize, d as usize, f as usize);
+                    });
                 });
             });
         }
@@ -467,12 +470,18 @@ impl IommuRootTable {
             let post_dids = seq3_update(pre_dids, bus as int, device as int, function as int, None);
             assert_seqs_equal!(self.iommu_roots() == post, b => {
                 assert_seqs_equal!(self.iommu_roots()[b] == post[b], d => {
-                    assert_seqs_equal!(self.iommu_roots()[b][d] == post[b][d], f => {});
+                    assert_seqs_equal!(self.iommu_roots()[b][d] == post[b][d], f => {
+                        assert(pci_bdf_of_did(pci_bdf_did(b as usize, d as usize, f as usize)) == (b as usize, d as usize, f as usize)
+                            && vtd_domain_id_valid(pci_bdf_did(b as usize, d as usize, f as usize))) by (nonlinear_arith) requires pci_bdf_valid(b as usize, d as usize, f as usize);
+                    });
                 });
             });
             assert_seqs_equal!(self.iommu_dids() == post_dids, b => {
                 assert_seqs_equal!(self.iommu_dids()[b] == post_dids[b], d => {
-                    assert_seqs_equal!(self.iommu_dids()[b][d] == post_dids[b][d], f => {});
+                    assert_seqs_equal!(self.iommu_dids()[b][d] == post_dids[b][d], f => {
+                        assert(pci_bdf_of_did(pci_bdf_did(b as usize, d as usize, f as usize)) == (b as usize, d as usize, f as usize)
+                            && vtd_domain_id_valid(pci_bdf_did(b as usize, d as usize, f as usize))) by (nonlinear_arith) requires pci_bdf_valid(b as usize, d as usize, f as usize);
+                    });
                 });
             });
         }
@@ -521,12 +530,18 @@ impl IommuRootTable {
             let post_dids = seq3_update(pre_dids, bus as int, device as int, function as int, Some(did));
             assert_seqs_equal!(self.iommu_roots() == post, b => {
                 assert_seqs_equal!(self.iommu_roots()[b] == post[b], d => {
-                    assert_seqs_equal!(self.iommu_roots()[b][d] == post[b][d], f => {});
+                    assert_seqs_equal!(self.iommu_roots()[b][d] == post[b][d], f => {
+                        assert(pci_bdf_of_did(pci_bdf_did(b as usize, d as usize, f as usize)) == (b as usize, d as usize, f as usize)
+                            && vtd_domain_id_valid(pci_bdf_did(b as usize, d as usize, f as usize))) by (nonlinear_arith) requires pci_bdf_valid(b as usize, d as usize, f as usize);
+                    });
                 });
             });
             assert_seqs_equal!(self.iommu_dids() == post_dids, b => {
                 assert_seqs_equal!(self.iommu_dids()[b] == post_dids[b], d => {
-                    assert_seqs_equal!(self.iommu_dids()[b][d] == post_dids[b][d], f => {});
+                    assert_seqs_equal!(self.iommu_dids()[b][d] == post_dids[b][d], f => {
+                        assert(pci_bdf_of_did(pci_bdf_did(b as usize, d as usize, f as usize)) == (b as usize, d as usize, f as usize)
+                            && vtd_domain_id_valid(pci_bdf_did(b as usize, d as usize, f as usize))) by (nonlinear_arith) requires pci_bdf_valid(b as usize, d as usize, f as usize);
+                    });
                 });
             });
         }

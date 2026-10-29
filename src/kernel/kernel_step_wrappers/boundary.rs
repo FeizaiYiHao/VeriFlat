@@ -114,13 +114,56 @@ pub(super) proof fn kernel_process_quota_4k_changed_implies_u_step(pre: &KernelK
     let post_u = kernel_k_user_projection(*post, include_lock_state);
     assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { reveal(IommuRootTable::user_view); };
     assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_user_projection_at(pre, include_lock_state, i as usize); kernel_cpu_user_projection_at(post, include_lock_state, i as usize); } });
+    assert_maps_equal!(post_u.thread_map, pre_u.thread_map, t => { if pre.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, include_lock_state, t); } if post.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(post, include_lock_state, t); } });
+    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => { if pre.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(pre, include_lock_state, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(post, include_lock_state, e); } });
+    kernel_process_quota_4k_changed_implies_u_container_map(pre, post, cpu_id, process_ptr, container_ptr, delta, include_lock_state);
+    kernel_process_quota_4k_changed_implies_u_process_map(pre, post, cpu_id, process_ptr, container_ptr, delta, include_lock_state);
+}
+
+/// Moving `delta` 4K quota from a container to its running process lowers only that container's quota in the
+/// container projection.
+proof fn kernel_process_quota_4k_changed_implies_u_container_map(pre: &KernelK, post: &KernelK, cpu_id: CpuId, process_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr, delta: int, include_lock_state: bool)
+    requires
+        kernel_process_quota_4k_changed(pre, post, cpu_id, process_ptr, container_ptr, delta),
+        forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)] pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).lock_process_owner_u() == pre.ctn_mp.spec_index(p).lock_process_owner_u(),
+    ensures
+        ({
+            let pre_u = kernel_k_user_projection(*pre, include_lock_state);
+            let container = pre_u.container_map.spec_index(container_ptr);
+            kernel_k_user_projection(*post, include_lock_state).container_map == pre_u.container_map.insert(container_ptr, ContainerU { quota_4k: (container.quota_4k as int - delta) as usize, ..container })
+        }),
+{
+    hide(kernel_k_user_projection);
+    reveal(kernel_process_quota_4k_changed);
+    kernel_u_user_domains_projection(pre, include_lock_state); kernel_u_user_domains_projection(post, include_lock_state);
+    let pre_u = kernel_k_user_projection(*pre, include_lock_state);
+    let post_u = kernel_k_user_projection(*post, include_lock_state);
     let container = pre_u.container_map.spec_index(container_ptr);
-    let process = pre_u.process_map.spec_index(process_ptr);
     assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(container_ptr, ContainerU {
         quota_4k: (container.quota_4k as int - delta) as usize, ..container
     }), c => { if pre.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(pre, include_lock_state, c); } if post.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(post, include_lock_state, c); } });
-    assert_maps_equal!(post_u.thread_map, pre_u.thread_map, t => { if pre.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, include_lock_state, t); } if post.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(post, include_lock_state, t); } });
-    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => { if pre.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(pre, include_lock_state, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(post, include_lock_state, e); } });
+}
+
+/// Moving `delta` 4K quota from a container to its running process raises only that process's quota in the
+/// process projection.
+proof fn kernel_process_quota_4k_changed_implies_u_process_map(pre: &KernelK, post: &KernelK, cpu_id: CpuId, process_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr, delta: int, include_lock_state: bool)
+    requires
+        process_pagetable_match(post.prc_mp, post.pt_mp),
+        process_iommu_table_match(post.prc_mp, post.it_mp),
+        kernel_process_quota_4k_changed(pre, post, cpu_id, process_ptr, container_ptr, delta),
+    ensures
+        ({
+            let pre_u = kernel_k_user_projection(*pre, include_lock_state);
+            let process = pre_u.process_map.spec_index(process_ptr);
+            kernel_k_user_projection(*post, include_lock_state).process_map == pre_u.process_map.insert(process_ptr, ProcessU { quota_4k: (process.quota_4k as int + delta) as usize, ..process })
+        }),
+{
+    hide(kernel_k_user_projection);
+    reveal(kernel_process_quota_4k_changed);
+    kernel_u_user_domains_projection(pre, include_lock_state); kernel_u_user_domains_projection(post, include_lock_state);
+    let pre_u = kernel_k_user_projection(*pre, include_lock_state);
+    let post_u = kernel_k_user_projection(*post, include_lock_state);
+    let process = pre_u.process_map.spec_index(process_ptr);
     assert_maps_equal!(post_u.process_map, pre_u.process_map.insert(process_ptr, ProcessU {
         quota_4k: (process.quota_4k as int + delta) as usize, ..process
     }), p => {
@@ -171,13 +214,56 @@ pub(super) proof fn kernel_process_quota_2m_changed_implies_u_step(pre: &KernelK
     let post_u = kernel_k_user_projection(*post, include_lock_state);
     assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { reveal(IommuRootTable::user_view); };
     assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_user_projection_at(pre, include_lock_state, i as usize); kernel_cpu_user_projection_at(post, include_lock_state, i as usize); } });
+    assert_maps_equal!(post_u.thread_map, pre_u.thread_map, t => { if pre.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, include_lock_state, t); } if post.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(post, include_lock_state, t); } });
+    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => { if pre.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(pre, include_lock_state, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(post, include_lock_state, e); } });
+    kernel_process_quota_2m_changed_implies_u_container_map(pre, post, cpu_id, process_ptr, container_ptr, delta, include_lock_state);
+    kernel_process_quota_2m_changed_implies_u_process_map(pre, post, cpu_id, process_ptr, container_ptr, delta, include_lock_state);
+}
+
+/// Moving `delta` 2M quota from a container to its running process lowers only that container's quota in the
+/// container projection.
+proof fn kernel_process_quota_2m_changed_implies_u_container_map(pre: &KernelK, post: &KernelK, cpu_id: CpuId, process_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr, delta: int, include_lock_state: bool)
+    requires
+        kernel_process_quota_2m_changed(pre, post, cpu_id, process_ptr, container_ptr, delta),
+        forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)] pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).lock_process_owner_u() == pre.ctn_mp.spec_index(p).lock_process_owner_u(),
+    ensures
+        ({
+            let pre_u = kernel_k_user_projection(*pre, include_lock_state);
+            let container = pre_u.container_map.spec_index(container_ptr);
+            kernel_k_user_projection(*post, include_lock_state).container_map == pre_u.container_map.insert(container_ptr, ContainerU { quota_2m: (container.quota_2m as int - delta) as usize, ..container })
+        }),
+{
+    hide(kernel_k_user_projection);
+    reveal(kernel_process_quota_2m_changed);
+    kernel_u_user_domains_projection(pre, include_lock_state); kernel_u_user_domains_projection(post, include_lock_state);
+    let pre_u = kernel_k_user_projection(*pre, include_lock_state);
+    let post_u = kernel_k_user_projection(*post, include_lock_state);
     let container = pre_u.container_map.spec_index(container_ptr);
-    let process = pre_u.process_map.spec_index(process_ptr);
     assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(container_ptr, ContainerU {
         quota_2m: (container.quota_2m as int - delta) as usize, ..container
     }), c => { if pre.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(pre, include_lock_state, c); } if post.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(post, include_lock_state, c); } });
-    assert_maps_equal!(post_u.thread_map, pre_u.thread_map, t => { if pre.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, include_lock_state, t); } if post.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(post, include_lock_state, t); } });
-    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => { if pre.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(pre, include_lock_state, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(post, include_lock_state, e); } });
+}
+
+/// Moving `delta` 2M quota from a container to its running process raises only that process's quota in the
+/// process projection.
+proof fn kernel_process_quota_2m_changed_implies_u_process_map(pre: &KernelK, post: &KernelK, cpu_id: CpuId, process_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr, delta: int, include_lock_state: bool)
+    requires
+        process_pagetable_match(post.prc_mp, post.pt_mp),
+        process_iommu_table_match(post.prc_mp, post.it_mp),
+        kernel_process_quota_2m_changed(pre, post, cpu_id, process_ptr, container_ptr, delta),
+    ensures
+        ({
+            let pre_u = kernel_k_user_projection(*pre, include_lock_state);
+            let process = pre_u.process_map.spec_index(process_ptr);
+            kernel_k_user_projection(*post, include_lock_state).process_map == pre_u.process_map.insert(process_ptr, ProcessU { quota_2m: (process.quota_2m as int + delta) as usize, ..process })
+        }),
+{
+    hide(kernel_k_user_projection);
+    reveal(kernel_process_quota_2m_changed);
+    kernel_u_user_domains_projection(pre, include_lock_state); kernel_u_user_domains_projection(post, include_lock_state);
+    let pre_u = kernel_k_user_projection(*pre, include_lock_state);
+    let post_u = kernel_k_user_projection(*post, include_lock_state);
+    let process = pre_u.process_map.spec_index(process_ptr);
     assert_maps_equal!(post_u.process_map, pre_u.process_map.insert(process_ptr, ProcessU {
         quota_2m: (process.quota_2m as int + delta) as usize, ..process
     }), p => {
@@ -230,12 +316,36 @@ pub(super) proof fn kernel_cpu_offline_request_changed_implies_u_step(pre: &Kern
     let container = pre_u.container_map.spec_index(container_ptr);
     assert(container.cpu_offline_requests.len() == NUM_CPUS && !container.cpu_offline_requests[target as int]) by { reveal(cpu_offline_requests_of); };
     assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_user_projection_at(pre, include_lock_state, i as usize); kernel_cpu_user_projection_at(post, include_lock_state, i as usize); } });
-    assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(container_ptr, ContainerU {
-        cpu_offline_requests: container.cpu_offline_requests.update(target as int, true), ..container
-    }), c => { if pre.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(pre, include_lock_state, c); } if post.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(post, include_lock_state, c); } });
+    kernel_cpu_offline_request_changed_implies_u_container_map(pre, post, cpu_id, container_ptr, target, include_lock_state);
     assert_maps_equal!(post_u.thread_map, pre_u.thread_map, t => { if pre.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, include_lock_state, t); } if post.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(post, include_lock_state, t); } });
     assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => { if pre.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(pre, include_lock_state, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(post, include_lock_state, e); } });
     assert_maps_equal!(post_u.process_map, pre_u.process_map, p => { if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, include_lock_state, p); } if post.prc_mp.dom().contains(p) { kernel_process_user_projection_at(post, include_lock_state, p); } });
+}
+
+/// K→U: setting one request bit of the caller container's table changes only that container's `cpu_offline_requests`
+/// in the container projection.
+proof fn kernel_cpu_offline_request_changed_implies_u_container_map(pre: &KernelK, post: &KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, target: CpuId, include_lock_state: bool)
+    requires
+        kernel_cpu_offline_request_changed(pre, post, cpu_id, container_ptr, target),
+        forall|p: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(p)] pre.ctn_mp.dom().contains(p) ==> post.ctn_mp.spec_index(p).lock_process_owner_u() == pre.ctn_mp.spec_index(p).lock_process_owner_u(),
+    ensures
+        ({
+            let pre_u = kernel_k_user_projection(*pre, include_lock_state);
+            let container = pre_u.container_map.spec_index(container_ptr);
+            kernel_k_user_projection(*post, include_lock_state).container_map == pre_u.container_map.insert(container_ptr, ContainerU {
+                cpu_offline_requests: container.cpu_offline_requests.update(target as int, true), ..container
+            })
+        }),
+{
+    hide(kernel_k_user_projection);
+    reveal(kernel_cpu_offline_request_changed); reveal(container_cpu_set_wf); reveal(container_cpu_offline_flags_wf);
+    kernel_u_user_domains_projection(pre, include_lock_state); kernel_u_user_domains_projection(post, include_lock_state);
+    let pre_u = kernel_k_user_projection(*pre, include_lock_state);
+    let post_u = kernel_k_user_projection(*post, include_lock_state);
+    let container = pre_u.container_map.spec_index(container_ptr);
+    assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(container_ptr, ContainerU {
+        cpu_offline_requests: container.cpu_offline_requests.update(target as int, true), ..container
+    }), c => { if pre.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(pre, include_lock_state, c); } if post.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(post, include_lock_state, c); } });
 }
 
 /// K→U: publishing Idle on an Off cpu changes only that `CpuU.state`.
@@ -2137,11 +2247,10 @@ proof fn kernel_thread_exit_quota_returned_implies_u_container_map(pre: &KernelK
     ensures
         ({
             let a = kernel_k_to_kernel_u(*pre);
-            let t = pre.thr_mp.spec_index(thread_ptr).view();
             let thread = a.thread_map[thread_ptr];
-            let process = a.process_map[t.owning_proc];
-            let container = a.container_map[t.owning_container];
-            kernel_k_to_kernel_u(*post).container_map == a.container_map.insert(t.owning_container, match size {
+            let process = a.process_map[thread.owning_proc];
+            let container = a.container_map[thread.owning_container];
+            kernel_k_to_kernel_u(*post).container_map == a.container_map.insert(thread.owning_container, match size {
                 PageSize::SZ4k => ContainerU { quota_4k: (container.quota_4k + process.quota_4k + thread.quota_4k) as usize, ..container },
                 PageSize::SZ2m => ContainerU { quota_2m: (container.quota_2m + process.quota_2m + thread.quota_2m) as usize, ..container },
                 PageSize::SZ1g => ContainerU { quota_1g: (container.quota_1g + process.quota_1g + thread.quota_1g) as usize, ..container },
@@ -2154,8 +2263,8 @@ proof fn kernel_thread_exit_quota_returned_implies_u_container_map(pre: &KernelK
     kernel_thread_projection_at(pre, thread_ptr); kernel_process_projection_at(pre, t.owning_proc);
     kernel_container_projection_at(pre, t.owning_container);
     let thread = a.thread_map[thread_ptr];
-    let process = a.process_map[t.owning_proc];
-    let container = a.container_map[t.owning_container];
+    let process = a.process_map[thread.owning_proc];
+    let container = a.container_map[thread.owning_container];
     let new_c = match size {
         PageSize::SZ4k => ContainerU { quota_4k: (container.quota_4k + process.quota_4k + thread.quota_4k) as usize, ..container },
         PageSize::SZ2m => ContainerU { quota_2m: (container.quota_2m + process.quota_2m + thread.quota_2m) as usize, ..container },
@@ -2173,9 +2282,8 @@ proof fn kernel_thread_exit_quota_returned_implies_u_process_map(pre: &KernelK, 
     ensures
         ({
             let a = kernel_k_to_kernel_u(*pre);
-            let t = pre.thr_mp.spec_index(thread_ptr).view();
-            let process = a.process_map[t.owning_proc];
-            kernel_k_to_kernel_u(*post).process_map == a.process_map.insert(t.owning_proc, match size {
+            let process = a.process_map[a.thread_map[thread_ptr].owning_proc];
+            kernel_k_to_kernel_u(*post).process_map == a.process_map.insert(a.thread_map[thread_ptr].owning_proc, match size {
                 PageSize::SZ4k => ProcessU { quota_4k: 0, ..process },
                 PageSize::SZ2m => ProcessU { quota_2m: 0, ..process },
                 PageSize::SZ1g => ProcessU { quota_1g: 0, ..process },
@@ -2185,7 +2293,7 @@ proof fn kernel_thread_exit_quota_returned_implies_u_process_map(pre: &KernelK, 
     reveal(kernel_thread_exit_quota_returned); kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     let a = kernel_k_to_kernel_u(*pre);
     let t = pre.thr_mp.spec_index(thread_ptr).view();
-    kernel_process_projection_at(pre, t.owning_proc); kernel_process_projection_at(post, t.owning_proc);
+    kernel_thread_projection_at(pre, thread_ptr); kernel_process_projection_at(pre, t.owning_proc); kernel_process_projection_at(post, t.owning_proc);
     let process = a.process_map[t.owning_proc];
     assert_maps_equal!(kernel_k_to_kernel_u(*post).process_map, a.process_map.insert(t.owning_proc, match size {
         PageSize::SZ4k => ProcessU { quota_4k: 0, ..process },
@@ -2205,7 +2313,12 @@ proof fn kernel_thread_exit_quota_returned_implies_u_thread_map(pre: &KernelK, p
             let a = kernel_k_to_kernel_u(*pre);
             let thread = a.thread_map[thread_ptr];
             let progress = post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view();
-            kernel_k_to_kernel_u(*post).thread_map == a.thread_map.insert(thread_ptr, match size {
+            &&& a.thread_map.dom().contains(thread_ptr)
+            &&& a.process_map.dom().contains(thread.owning_proc)
+            &&& a.container_map.dom().contains(thread.owning_container)
+            &&& thread.owning_proc == pre.thr_mp.spec_index(thread_ptr).view().owning_proc
+            &&& thread.owning_container == pre.thr_mp.spec_index(thread_ptr).view().owning_container
+            &&& kernel_k_to_kernel_u(*post).thread_map == a.thread_map.insert(thread_ptr, match size {
                 PageSize::SZ4k => ThreadU { quota_4k: 0, syscall_progress: progress, ..thread },
                 PageSize::SZ2m => ThreadU { quota_2m: 0, syscall_progress: progress, ..thread },
                 PageSize::SZ1g => ThreadU { quota_1g: 0, syscall_progress: progress, ..thread },
@@ -2223,6 +2336,31 @@ proof fn kernel_thread_exit_quota_returned_implies_u_thread_map(pre: &KernelK, p
         PageSize::SZ1g => ThreadU { quota_1g: 0, syscall_progress: progress, ..thread },
     }), x => {
         if pre.thr_mp.dom().contains(x) { kernel_thread_projection_at(pre, x); kernel_thread_projection_at(post, x); }
+    });
+}
+
+/// Returning an exiting last thread's `size` quota leaves the cpu array, the endpoint map, and the remaining non-map
+/// projection fields unchanged.
+proof fn kernel_thread_exit_quota_returned_implies_u_cpu_array_and_endpoint_map(pre: &KernelK, post: &KernelK, thread_ptr: RwLockThreadPtr, size: PageSize)
+    requires kernel_thread_exit_quota_returned(pre, post, thread_ptr, size),
+    ensures
+        ({
+            let a = kernel_k_to_kernel_u(*pre);
+            let b = kernel_k_to_kernel_u(*post);
+            &&& b.cpu_array == a.cpu_array
+            &&& b.endpoint_map == a.endpoint_map
+            &&& b.iommu_root_table == a.iommu_root_table
+            &&& b.cpu_tlb == a.cpu_tlb
+            &&& b.iommu_tlb == a.iommu_tlb
+            &&& b.kernel_l4_end == a.kernel_l4_end
+        }),
+{
+    reveal(kernel_thread_exit_quota_returned); kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    let a = kernel_k_to_kernel_u(*pre);
+    let b = kernel_k_to_kernel_u(*post);
+    assert_seqs_equal!(b.cpu_array == a.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); } });
+    assert_maps_equal!(b.endpoint_map, a.endpoint_map, e => {
+        if pre.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(pre, e); kernel_endpoint_projection_at(post, e); }
     });
 }
 
@@ -2263,20 +2401,10 @@ pub proof fn kernel_thread_exit_quota_returned_implies_u_step(pre: &KernelK, pos
             })
         }),
 {
-    reveal(kernel_thread_exit_quota_returned); kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
-    let a = kernel_k_to_kernel_u(*pre);
-    let b = kernel_k_to_kernel_u(*post);
-    let t = pre.thr_mp.spec_index(thread_ptr).view();
-    kernel_thread_projection_at(pre, thread_ptr); kernel_thread_projection_at(post, thread_ptr);
-    kernel_process_projection_at(pre, t.owning_proc); kernel_process_projection_at(post, t.owning_proc);
-    kernel_container_projection_at(pre, t.owning_container); kernel_container_projection_at(post, t.owning_container);
     kernel_thread_exit_quota_returned_implies_u_container_map(pre, post, thread_ptr, size);
     kernel_thread_exit_quota_returned_implies_u_process_map(pre, post, thread_ptr, size);
     kernel_thread_exit_quota_returned_implies_u_thread_map(pre, post, thread_ptr, size);
-    assert_seqs_equal!(b.cpu_array == a.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); } });
-    assert_maps_equal!(b.endpoint_map, a.endpoint_map, e => {
-        if pre.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(pre, e); kernel_endpoint_projection_at(post, e); }
-    });
+    kernel_thread_exit_quota_returned_implies_u_cpu_array_and_endpoint_map(pre, post, thread_ptr, size);
 }
 
 /// Waking the caller of an exiting thread schedules the caller on `cpu_id` with `ErrorIpcCalleeExited` and drops the

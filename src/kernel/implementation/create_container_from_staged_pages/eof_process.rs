@@ -99,6 +99,95 @@ pub(super) proof fn eof_container_cpu_wf(
     reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions); reveal(container_cpu_set_wf); reveal(container_cpu_wf);
 }
 
+/// The new container owns no endpoint and no thread holds a descriptor into it; every other endpoint relation is unchanged.
+pub(super) proof fn eof_container_endpoint_relations_wf(
+    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
+    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize,
+)
+    requires
+        pre.inv(),
+        post.subsystems_inv(),
+        publish_staged_container_root_eof_transition_framing(
+            pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+        publish_staged_container_root_eof_preconditions(
+            pre, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+    ensures
+        container_endpoint_wf(post.ctn_mp, post.ep_mp),
+        thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp),
+        container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp),
+{
+    reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
+    assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by {
+        assert(forall|c: RwLockContainerPtr|
+            #![trigger post.ctn_mp.spec_index(c).view_ghost().owned_endpoints]
+            post.ctn_mp.dom().contains(c) && c != container_page ==> post.ctn_mp.spec_index(c).view_ghost().owned_endpoints == pre.ctn_mp.spec_index(c).view_ghost().owned_endpoints);
+        assert(forall|e: RwLockEndpointPtr|
+            #![trigger post.ctn_mp.spec_index(container_page).view_ghost().owned_endpoints.view().contains(e)]
+            !post.ctn_mp.spec_index(container_page).view_ghost().owned_endpoints.view().contains(e));
+        reveal(container_endpoint_wf);
+    };
+    assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); };
+    assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); reveal(container_endpoint_wf); reveal(container_thread_endpoint_wf); };
+}
+
+/// The new process owns no thread and every other process keeps its threads.
+pub(super) proof fn eof_process_thread_wf(
+    pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
+    pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
+    scheduler_page: PagePtr, cpu_set_page: PagePtr, process_page: PagePtr, pagetable_page: PagePtr, l4_page: PagePtr, thread_page: PagePtr,
+    funding_pages: Seq<PagePtr>, allocator_quota_4k: usize, process_quota_4k: usize,
+)
+    requires
+        pre.inv(),
+        post.subsystems_inv(),
+        publish_staged_container_root_eof_transition_framing(
+            pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+        publish_staged_container_root_eof_preconditions(
+            pre, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+            allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+            allocator_quota_4k, process_quota_4k,
+        ),
+    ensures process_thread_wf(post.prc_mp, post.thr_mp),
+{
+    reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
+    assert forall|p_ptr: RwLockProcessPtr, t_ptr: RwLockThreadPtr| #![trigger post.prc_mp.spec_index(p_ptr).view().owned_threads.view().contains(t_ptr)]
+        post.prc_mp.dom().contains(p_ptr) && post.prc_mp.spec_index(p_ptr).view().owned_threads.view().contains(t_ptr)
+        implies post.thr_mp.dom().contains(t_ptr) && post.thr_mp.spec_index(t_ptr).view().owning_proc == p_ptr
+            && post.thr_mp.spec_index(t_ptr).view().owning_container == post.prc_mp.spec_index(p_ptr).view_rodata().view().owning_container
+            && post.thr_mp.spec_index(t_ptr).view().container_depth == post.prc_mp.spec_index(p_ptr).view_rodata().view().container_depth
+            && post.thr_mp.spec_index(t_ptr).view().process_depth == post.prc_mp.spec_index(p_ptr).view_rodata().view().depth
+            && post.thr_mp.spec_index(t_ptr).view().proc_pagetable_ptr == post.prc_mp.spec_index(p_ptr).view().pagetable
+            && post.prc_mp.spec_index(p_ptr).view().owned_threads.map().dom().contains(post.thr_mp.spec_index(t_ptr).view().proc_linkedlist_node.addr())
+            && post.prc_mp.spec_index(p_ptr).view().owned_threads.map().spec_index(post.thr_mp.spec_index(t_ptr).view().proc_linkedlist_node.addr()) == t_ptr
+            && !post.thr_mp.spec_index(t_ptr).view().proc_linkedlist_node.is_init() by {
+        reveal(process_thread_wf);
+        if p_ptr == process_page { assert(post.prc_mp.spec_index(p_ptr).view().owned_threads.view().len() == 0); }
+        else { assert(pre.prc_mp.spec_index(p_ptr).view().owned_threads.view().contains(t_ptr)); }
+    };
+    assert forall|t_ptr: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t_ptr).being_killed()] post.thr_mp.dom().contains(t_ptr) && post.thr_mp.spec_index(t_ptr).being_killed() implies {
+        let process = post.prc_mp.spec_index(post.thr_mp.spec_index(t_ptr).view().owning_proc);
+        &&& post.thr_mp.spec_index(t_ptr).locking_thread() is Write
+        &&& !post.thr_mp.spec_index(t_ptr).view().state.is_reply_waiting()
+        &&& !thread_is_dangling(post.thr_mp.spec_index(t_ptr)) ==> {
+            &&& process.being_killed()
+            &&& process.locking_thread() is Write
+            &&& post.thr_mp.spec_index(t_ptr).locking_thread()->Write_thread_id == process.locking_thread()->Write_thread_id
+        }
+    } by { reveal(process_thread_wf); assert(pre.thr_mp.spec_index(t_ptr).being_killed()); };
+    assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(process_thread_wf); };
+}
+
 pub(super) proof fn eof_container_relations_wf(
     pre: KernelK, post: KernelK, parent_container_ptr: RwLockContainerPtr, current_thread_ptr: RwLockThreadPtr, container_page: PagePtr,
     pcid_allocator_page: PagePtr, allocator_4k_page: PagePtr, allocator_2m_page: PagePtr, allocator_1g_page: PagePtr,
@@ -135,16 +224,6 @@ pub(super) proof fn eof_container_relations_wf(
         process_thread_wf(post.prc_mp, post.thr_mp),
 {
     reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
-    assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by {
-        assert(forall|c: RwLockContainerPtr|
-            #![trigger post.ctn_mp.spec_index(c).view_ghost().owned_endpoints]
-            post.ctn_mp.dom().contains(c) && c != container_page ==> post.ctn_mp.spec_index(c).view_ghost().owned_endpoints == pre.ctn_mp.spec_index(c).view_ghost().owned_endpoints);
-        assert(forall|e: RwLockEndpointPtr|
-            #![trigger post.ctn_mp.spec_index(container_page).view_ghost().owned_endpoints.view().contains(e)]
-            !post.ctn_mp.spec_index(container_page).view_ghost().owned_endpoints.view().contains(e));
-        reveal(container_endpoint_wf);
-    };
-    assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); };
     assert(container_scheduler_wf(post.ctn_mp, post.sched_mp)) by { reveal(container_scheduler_wf); };
     assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { reveal(container_thread_wf); };
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
@@ -160,35 +239,19 @@ pub(super) proof fn eof_container_relations_wf(
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
         allocator_quota_4k, process_quota_4k,
     );
-    assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); reveal(container_endpoint_wf); reveal(container_thread_endpoint_wf); };
     assert(container_pcid_allocator_wf(post.ctn_mp, post.pcid_allc_mp)) by { reveal(container_pcid_allocator_wf); };
     assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { pcid_allocator_perms_wf_at(post.pcid_allc_mp, pcid_allocator_page); reveal(process_pcid_allocator_wf); };
     assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp,)) by { reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf); };
-    assert forall|p_ptr: RwLockProcessPtr, t_ptr: RwLockThreadPtr| #![trigger post.prc_mp.spec_index(p_ptr).view().owned_threads.view().contains(t_ptr)]
-        post.prc_mp.dom().contains(p_ptr) && post.prc_mp.spec_index(p_ptr).view().owned_threads.view().contains(t_ptr)
-        implies post.thr_mp.dom().contains(t_ptr) && post.thr_mp.spec_index(t_ptr).view().owning_proc == p_ptr
-            && post.thr_mp.spec_index(t_ptr).view().owning_container == post.prc_mp.spec_index(p_ptr).view_rodata().view().owning_container
-            && post.thr_mp.spec_index(t_ptr).view().container_depth == post.prc_mp.spec_index(p_ptr).view_rodata().view().container_depth
-            && post.thr_mp.spec_index(t_ptr).view().process_depth == post.prc_mp.spec_index(p_ptr).view_rodata().view().depth
-            && post.thr_mp.spec_index(t_ptr).view().proc_pagetable_ptr == post.prc_mp.spec_index(p_ptr).view().pagetable
-            && post.prc_mp.spec_index(p_ptr).view().owned_threads.map().dom().contains(post.thr_mp.spec_index(t_ptr).view().proc_linkedlist_node.addr())
-            && post.prc_mp.spec_index(p_ptr).view().owned_threads.map().spec_index(post.thr_mp.spec_index(t_ptr).view().proc_linkedlist_node.addr()) == t_ptr
-            && !post.thr_mp.spec_index(t_ptr).view().proc_linkedlist_node.is_init() by {
-        reveal(process_thread_wf);
-        if p_ptr == process_page { assert(post.prc_mp.spec_index(p_ptr).view().owned_threads.view().len() == 0); }
-        else { assert(pre.prc_mp.spec_index(p_ptr).view().owned_threads.view().contains(t_ptr)); }
-    };
-    assert forall|t_ptr: RwLockThreadPtr| #![trigger post.thr_mp.spec_index(t_ptr).being_killed()] post.thr_mp.dom().contains(t_ptr) && post.thr_mp.spec_index(t_ptr).being_killed() implies {
-        let process = post.prc_mp.spec_index(post.thr_mp.spec_index(t_ptr).view().owning_proc);
-        &&& post.thr_mp.spec_index(t_ptr).locking_thread() is Write
-        &&& !post.thr_mp.spec_index(t_ptr).view().state.is_reply_waiting()
-        &&& !thread_is_dangling(post.thr_mp.spec_index(t_ptr)) ==> {
-            &&& process.being_killed()
-            &&& process.locking_thread() is Write
-            &&& post.thr_mp.spec_index(t_ptr).locking_thread()->Write_thread_id == process.locking_thread()->Write_thread_id
-        }
-    } by { reveal(process_thread_wf); assert(pre.thr_mp.spec_index(t_ptr).being_killed()); };
-    assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(process_thread_wf); };
+    eof_container_endpoint_relations_wf(
+        pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+        allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+        allocator_quota_4k, process_quota_4k,
+    );
+    eof_process_thread_wf(
+        pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
+        allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
+        allocator_quota_4k, process_quota_4k,
+    );
 }
 
 pub(super) proof fn eof_process_management_inv(

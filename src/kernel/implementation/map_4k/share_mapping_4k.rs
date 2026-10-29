@@ -749,7 +749,7 @@ pub fn share_mapping_4k_source_owner_precheck(
 
 /// Sharing target slot `i` adds exactly that slot to the shared-prefix target map; a target map `cur` that gained only that slot over a map `prev`
 /// matching the slot-`i` prefix in every held window of `root` matches the slot-`i + 1` prefix in those windows.
-proof fn prove_share_mapping_4k_iteration_target_partition(source: Map<VAddr, MapEntry>, initial_target: Map<VAddr, MapEntry>, source_range: &VaRange4K, target_range: &VaRange4K, i: usize,
+pub(super) proof fn prove_share_mapping_4k_iteration_target_partition(source: Map<VAddr, MapEntry>, initial_target: Map<VAddr, MapEntry>, source_range: &VaRange4K, target_range: &VaRange4K, i: usize,
     windows: Set<(RwLockPageTableRoot, WindowVa)>, root: RwLockPageTableRoot, prev: Map<VAddr, MapEntry>, cur: Map<VAddr, MapEntry>, entry: MapEntry)
     requires
         source_range.wf(),
@@ -1248,31 +1248,18 @@ pub fn share_mapping_4k_build_and_share(
                 container_thread_wf_uppertree_at(old(krnl).ctn_mp, old(krnl).thr_mp, quota_thread); container_thread_wf_uppertree_at(krnl.ctn_mp, krnl.thr_mp, quota_thread);
             };
         }
-        let ghost leaf_before = steps.view();
         let ghost krnl_i = *krnl;
+        let ghost lctx_i = *lctx;
+        let ghost steps_i = *steps;
         share_one_mapping_4k(
             krnl, source_thread, quota_thread, progress_thread, target_process, target_container, source_pagetable, target_pagetable, target_write_held,
             cpu_id, source_va, target_va, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(source_thread_lock_perm), Tracked(quota_thread_lock_perm),
             Tracked(source_pagetable_lock_perm), Tracked(target_pagetable_lock_perm),
         );
         proof {
-            assert(share_mapping_4k_build_and_share_eol_loop_framing(*old(krnl), *krnl, old(lctx), old(steps), steps, (i + 1) as nat, source_range, target_range, source_thread, quota_thread,
-                progress_thread, target_process, target_container, cpu_id, source_pagetable, target_pagetable, source_pagetable_lock_perm.state() is WriteLock, target_write_held)) by {
-                reveal(share_mapping_4k_build_and_share_eol_loop_framing); share_4k_range_steps_from_leaf(&*steps, leaf_before, old(steps).view().len() as int, cpu_id);
-                prove_share_mapping_4k_iteration_target_partition(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k(),
-                    pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).mapping_4k(), source_range, target_range, i, old(lctx).pagetable_window_lock_map().dom(), target_pagetable,
-                    pagetable_c(krnl_i.pt_mp, krnl_i.pt_lower.view(), target_pagetable).mapping_4k(), pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).mapping_4k(),
-                    pagetable_c(krnl_i.pt_mp, krnl_i.pt_lower.view(), source_pagetable).mapping_4k().spec_index(source_va));
-                if target_write_held {
-                    assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable).user_view(LockStateU::Unlocked).mapping_4k == share_mapping_4k_target_map_with_shared_prefix(
-                        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).user_view(LockStateU::Unlocked).mapping_4k,
-                        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).user_view(LockStateU::Unlocked).mapping_4k, source_range, target_range, (i + 1) as nat)) by {
-                        assert(pagetable_c(krnl_i.pt_mp, krnl_i.pt_lower.view(), source_pagetable).user_view(LockStateU::Unlocked).mapping_4k.spec_index(source_va)
-                            == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).user_view(LockStateU::Unlocked).mapping_4k.spec_index(source_va));
-                        reveal(share_mapping_4k_target_map_with_shared_prefix);
-                    };
-                }
-            };
+            share_mapping_4k_build_and_share_eol_step(*old(krnl), krnl_i, *krnl, old(lctx), &lctx_i, old(steps), &steps_i, steps, i, source_range, target_range, source_thread,
+                quota_thread, progress_thread, target_process, target_container, cpu_id, source_pagetable, target_pagetable, source_pagetable_lock_perm.state() is WriteLock,
+                target_write_held, source_va, target_va);
         }
         i = i + 1;
     }

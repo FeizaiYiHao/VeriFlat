@@ -167,6 +167,7 @@ pub(crate) proof fn kill_container_retire_eof(pre: KernelK, post: KernelK, conta
     kill_container_retire_eof_page_objects_processes(pre, post, container_ptr, parent_ptr, owner_ptr);
     kill_container_retire_eof_page_objects_threads(pre, post, container_ptr, parent_ptr, owner_ptr);
     kill_container_retire_eof_hugepages(pre, post, container_ptr, parent_ptr, owner_ptr);
+    kill_container_retire_eof_mappings_pagetable(pre, post, container_ptr, parent_ptr, owner_ptr);
     kill_container_retire_eof_mappings(pre, post, container_ptr, parent_ptr, owner_ptr);
     kill_container_retire_eof_page_owners(pre, post, container_ptr, parent_ptr, owner_ptr);
     kill_container_retire_eof_allocators(pre, post, container_ptr, parent_ptr, owner_ptr);

@@ -25,6 +25,7 @@ pub mod syscall_new_container_cpu_spec;
 mod syscall_new_container_cpu_eof;
 mod syscall_new_container_cpu;
 mod syscall_new_container_lock_owners;
+mod syscall_new_container_release_source;
 
 pub(super) use syscall_new_container_helpers::*;
 pub(super) use syscall_new_container_allocation::*;

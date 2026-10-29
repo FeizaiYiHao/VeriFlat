@@ -93,6 +93,220 @@ proof fn cpu_went_off_eof_process_management_inv(pre: KernelK, post: KernelK, cp
     };
 }
 
+proof fn cpu_went_off_eof_thread_perms(pre: KernelK, post: KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, entry_regs: Registers)
+    requires
+        pre.inv(),
+        cpu_went_off_eof_transition_framing(pre, post, cpu_id, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, entry_regs),
+        ({
+            let old_cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
+            let queue_before = pre.sched_mp.spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().view().queue;
+            &&& index_valid(NUM_CPUS, cpu_id)
+            &&& old_cpu.owning_container == container_ptr
+            &&& pre.ctn_mp.dom().contains(container_ptr)
+            &&& pre.ctn_mp.spec_index(container_ptr).view_rodata().view().scheduler == scheduler_ptr
+            &&& pre.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set == cpu_set_ptr
+            &&& flags_ptr == cpu_offline_flags_ptr(container_ptr)
+            &&& pre.sched_mp.dom().contains(scheduler_ptr)
+            &&& pre.cpu_set_mp.dom().contains(cpu_set_ptr)
+            &&& !pre.cpu_set_mp.spec_index(cpu_set_ptr).being_killed()
+            &&& pre.cpu_offline_mp.dom().contains(flags_ptr)
+            &&& !pre.cpu_arr.spec_index(cpu_id).view().being_killed()
+            &&& old_cpu.current_process is Some == old_cpu.current_thread is Some
+            &&& (old_cpu.current_thread is Some ==> {
+                let prev = old_cpu.current_thread.unwrap();
+                &&& pre.thr_mp.dom().contains(prev)
+                &&& pre.thr_mp.spec_index(prev).view().state == (ThreadState::RUNNING { cpu_id })
+                &&& pre.thr_mp.spec_index(prev).view().syscall_progress.view() is None
+                &&& pre.thr_mp.spec_index(prev).view().owning_proc == old_cpu.current_process.unwrap()
+                &&& !queue_before.view().contains(prev)
+                &&& !queue_before.map().dom().contains(pre.thr_mp.spec_index(prev).view().scheduler_linkedlist_node.addr())
+            })
+        }),
+        post.cpu_op.view().view()[cpu_id as int] is InStep,
+        post.cpu_arr.inv(),
+        post.cpu_tlb.inv(),
+        post.cpu_arr.spec_index(cpu_id).view().view().wf(),
+        post.sched_mp.perms_wf(),
+        post.sched_mp.spec_index(scheduler_ptr).shards.inv(),
+        post.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.wf(),
+        post.cpu_set_mp.perms_wf(),
+        post.cpu_set_mp.spec_index(cpu_set_ptr).view().owned_cpus.wf(),
+        post.cpu_offline_mp.perms_wf(),
+        post.cpu_offline_mp.spec_index(flags_ptr).inv(),
+    ensures thread_perms_wf(post.thr_mp),
+{
+    hide(Seq::contains);
+    reveal(cpu_went_off_eof_transition_framing);
+    reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+    reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
+}
+
+proof fn cpu_went_off_eof_subsystems_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, entry_regs: Registers)
+    requires
+        pre.inv(),
+        cpu_went_off_eof_transition_framing(pre, post, cpu_id, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, entry_regs),
+        ({
+            let old_cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
+            let queue_before = pre.sched_mp.spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().view().queue;
+            &&& index_valid(NUM_CPUS, cpu_id)
+            &&& old_cpu.owning_container == container_ptr
+            &&& pre.ctn_mp.dom().contains(container_ptr)
+            &&& pre.ctn_mp.spec_index(container_ptr).view_rodata().view().scheduler == scheduler_ptr
+            &&& pre.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set == cpu_set_ptr
+            &&& flags_ptr == cpu_offline_flags_ptr(container_ptr)
+            &&& pre.sched_mp.dom().contains(scheduler_ptr)
+            &&& pre.cpu_set_mp.dom().contains(cpu_set_ptr)
+            &&& !pre.cpu_set_mp.spec_index(cpu_set_ptr).being_killed()
+            &&& pre.cpu_offline_mp.dom().contains(flags_ptr)
+            &&& !pre.cpu_arr.spec_index(cpu_id).view().being_killed()
+            &&& old_cpu.current_process is Some == old_cpu.current_thread is Some
+            &&& (old_cpu.current_thread is Some ==> {
+                let prev = old_cpu.current_thread.unwrap();
+                &&& pre.thr_mp.dom().contains(prev)
+                &&& pre.thr_mp.spec_index(prev).view().state == (ThreadState::RUNNING { cpu_id })
+                &&& pre.thr_mp.spec_index(prev).view().syscall_progress.view() is None
+                &&& pre.thr_mp.spec_index(prev).view().owning_proc == old_cpu.current_process.unwrap()
+                &&& !queue_before.view().contains(prev)
+                &&& !queue_before.map().dom().contains(pre.thr_mp.spec_index(prev).view().scheduler_linkedlist_node.addr())
+            })
+        }),
+        post.cpu_op.view().view()[cpu_id as int] is InStep,
+        post.cpu_arr.inv(),
+        post.cpu_tlb.inv(),
+        post.cpu_arr.spec_index(cpu_id).view().view().wf(),
+        post.sched_mp.perms_wf(),
+        post.sched_mp.spec_index(scheduler_ptr).shards.inv(),
+        post.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.wf(),
+        post.cpu_set_mp.perms_wf(),
+        post.cpu_set_mp.spec_index(cpu_set_ptr).view().owned_cpus.wf(),
+        post.cpu_offline_mp.perms_wf(),
+        post.cpu_offline_mp.spec_index(flags_ptr).inv(),
+    ensures post.subsystems_inv(),
+{
+    hide(Seq::contains);
+    reveal(cpu_went_off_eof_transition_framing);
+    assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); };
+    assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
+    cpu_went_off_eof_thread_perms(pre, post, cpu_id, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, entry_regs);
+    assert(scheduler_perms_wf(post.sched_mp)) by { reveal(scheduler_perms_wf); };
+    assert(cpu_set_perms_wf(post.cpu_set_mp)) by { reveal(cpu_set_perms_wf); };
+    assert(pcid_needflush_wf(post.pcid_needflush)) by { reveal(pcid_needflush_wf); };
+    assert(cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush)) by { reveal(cpu_hw_cr3_pcid_wf); reveal(KernelK::default_pagetable_wf); reveal(PageTable::table_pages_wf); };
+    assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { reveal(cpu_offline_flags_wf); reveal(container_cpu_offline_flags_wf); };
+    reveal(KernelK::default_pagetable_wf);
+}
+
+proof fn cpu_went_off_eof_memory_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, entry_regs: Registers)
+    requires
+        pre.inv(),
+        cpu_went_off_eof_transition_framing(pre, post, cpu_id, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, entry_regs),
+        ({
+            let old_cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
+            let queue_before = pre.sched_mp.spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().view().queue;
+            &&& index_valid(NUM_CPUS, cpu_id)
+            &&& old_cpu.owning_container == container_ptr
+            &&& pre.ctn_mp.dom().contains(container_ptr)
+            &&& pre.ctn_mp.spec_index(container_ptr).view_rodata().view().scheduler == scheduler_ptr
+            &&& pre.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set == cpu_set_ptr
+            &&& flags_ptr == cpu_offline_flags_ptr(container_ptr)
+            &&& pre.sched_mp.dom().contains(scheduler_ptr)
+            &&& pre.cpu_set_mp.dom().contains(cpu_set_ptr)
+            &&& !pre.cpu_set_mp.spec_index(cpu_set_ptr).being_killed()
+            &&& pre.cpu_offline_mp.dom().contains(flags_ptr)
+            &&& !pre.cpu_arr.spec_index(cpu_id).view().being_killed()
+            &&& old_cpu.current_process is Some == old_cpu.current_thread is Some
+            &&& (old_cpu.current_thread is Some ==> {
+                let prev = old_cpu.current_thread.unwrap();
+                &&& pre.thr_mp.dom().contains(prev)
+                &&& pre.thr_mp.spec_index(prev).view().state == (ThreadState::RUNNING { cpu_id })
+                &&& pre.thr_mp.spec_index(prev).view().syscall_progress.view() is None
+                &&& pre.thr_mp.spec_index(prev).view().owning_proc == old_cpu.current_process.unwrap()
+                &&& !queue_before.view().contains(prev)
+                &&& !queue_before.map().dom().contains(pre.thr_mp.spec_index(prev).view().scheduler_linkedlist_node.addr())
+            })
+        }),
+        post.cpu_op.view().view()[cpu_id as int] is InStep,
+        post.cpu_arr.inv(),
+        post.cpu_tlb.inv(),
+        post.cpu_arr.spec_index(cpu_id).view().view().wf(),
+        post.sched_mp.perms_wf(),
+        post.sched_mp.spec_index(scheduler_ptr).shards.inv(),
+        post.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.wf(),
+        post.cpu_set_mp.perms_wf(),
+        post.cpu_set_mp.spec_index(cpu_set_ptr).view().owned_cpus.wf(),
+        post.cpu_offline_mp.perms_wf(),
+        post.cpu_offline_mp.spec_index(flags_ptr).inv(),
+        post.subsystems_inv(),
+    ensures post.memory_management_inv(),
+{
+    hide(Seq::contains);
+    reveal(cpu_went_off_eof_transition_framing);
+    assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { reveal(scheduler_pages_wf); };
+    assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
+    assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
+    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
+    thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
+    thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
+    thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
+    container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_4k_mp);
+    container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_2m_mp);
+    container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_1g_mp);
+}
+
+proof fn cpu_went_off_eof_tlb(pre: KernelK, post: KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, entry_regs: Registers)
+    requires
+        pre.inv(),
+        cpu_went_off_eof_transition_framing(pre, post, cpu_id, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, entry_regs),
+        ({
+            let old_cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
+            let queue_before = pre.sched_mp.spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().view().queue;
+            &&& index_valid(NUM_CPUS, cpu_id)
+            &&& old_cpu.owning_container == container_ptr
+            &&& pre.ctn_mp.dom().contains(container_ptr)
+            &&& pre.ctn_mp.spec_index(container_ptr).view_rodata().view().scheduler == scheduler_ptr
+            &&& pre.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set == cpu_set_ptr
+            &&& flags_ptr == cpu_offline_flags_ptr(container_ptr)
+            &&& pre.sched_mp.dom().contains(scheduler_ptr)
+            &&& pre.cpu_set_mp.dom().contains(cpu_set_ptr)
+            &&& !pre.cpu_set_mp.spec_index(cpu_set_ptr).being_killed()
+            &&& pre.cpu_offline_mp.dom().contains(flags_ptr)
+            &&& !pre.cpu_arr.spec_index(cpu_id).view().being_killed()
+            &&& old_cpu.current_process is Some == old_cpu.current_thread is Some
+            &&& (old_cpu.current_thread is Some ==> {
+                let prev = old_cpu.current_thread.unwrap();
+                &&& pre.thr_mp.dom().contains(prev)
+                &&& pre.thr_mp.spec_index(prev).view().state == (ThreadState::RUNNING { cpu_id })
+                &&& pre.thr_mp.spec_index(prev).view().syscall_progress.view() is None
+                &&& pre.thr_mp.spec_index(prev).view().owning_proc == old_cpu.current_process.unwrap()
+                &&& !queue_before.view().contains(prev)
+                &&& !queue_before.map().dom().contains(pre.thr_mp.spec_index(prev).view().scheduler_linkedlist_node.addr())
+            })
+        }),
+        post.cpu_op.view().view()[cpu_id as int] is InStep,
+        post.cpu_arr.inv(),
+        post.cpu_tlb.inv(),
+        post.cpu_arr.spec_index(cpu_id).view().view().wf(),
+        post.sched_mp.perms_wf(),
+        post.sched_mp.spec_index(scheduler_ptr).shards.inv(),
+        post.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.wf(),
+        post.cpu_set_mp.perms_wf(),
+        post.cpu_set_mp.spec_index(cpu_set_ptr).view().owned_cpus.wf(),
+        post.cpu_offline_mp.perms_wf(),
+        post.cpu_offline_mp.spec_index(flags_ptr).inv(),
+        post.subsystems_inv(),
+        post.process_management_inv(),
+    ensures
+        cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush),
+        tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
+{
+    hide(Seq::contains);
+    reveal(cpu_went_off_eof_transition_framing);
+    assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
+        reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
+    };
+    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
+}
+
 /// Closes every kernel invariant after the committed offline from the entry invariants, the summary, and
 /// the representation facts its callees guarantee.
 pub(super) proof fn cpu_went_off_eof(pre: KernelK, post: KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr, entry_regs: Registers)
@@ -141,39 +355,11 @@ pub(super) proof fn cpu_went_off_eof(pre: KernelK, post: KernelK, cpu_id: CpuId,
         forall|other_cpu: CpuId| #![trigger post.cpu_arr.spec_index(other_cpu)]
             index_valid(NUM_CPUS, other_cpu) && other_cpu != cpu_id ==> post.cpu_arr.spec_index(other_cpu) == pre.cpu_arr.spec_index(other_cpu),
 {
-    hide(Seq::contains);
     reveal(cpu_went_off_eof_transition_framing);
-    assert(post.subsystems_inv()) by {
-        assert(cpu_array_wf(post.cpu_arr, post.dflt_pt.view())) by { reveal(cpu_array_wf); };
-        assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
-        assert(thread_perms_wf(post.thr_mp)) by {
-            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
-            reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
-        };
-        assert(scheduler_perms_wf(post.sched_mp)) by { reveal(scheduler_perms_wf); };
-        assert(cpu_set_perms_wf(post.cpu_set_mp)) by { reveal(cpu_set_perms_wf); };
-        assert(pcid_needflush_wf(post.pcid_needflush)) by { reveal(pcid_needflush_wf); };
-        assert(cpu_hw_cr3_pcid_wf(post.cpu_hw_cr3_pcid, post.cpu_arr, post.pcid_needflush)) by { reveal(cpu_hw_cr3_pcid_wf); reveal(KernelK::default_pagetable_wf); reveal(PageTable::table_pages_wf); };
-        assert(cpu_offline_flags_wf(post.cpu_offline_mp, post.cpu_arr)) by { reveal(cpu_offline_flags_wf); reveal(container_cpu_offline_flags_wf); };
-        reveal(KernelK::default_pagetable_wf);
-    };
-    assert(post.memory_management_inv()) by {
-        assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { reveal(scheduler_pages_wf); };
-        assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
-        assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
-        assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
-        thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
-        thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
-        thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
-        container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_4k_mp);
-        container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_2m_mp);
-        container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_1g_mp);
-    };
+    cpu_went_off_eof_subsystems_inv(pre, post, cpu_id, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, entry_regs);
+    cpu_went_off_eof_memory_management_inv(pre, post, cpu_id, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, entry_regs);
     cpu_went_off_eof_process_management_inv(pre, post, cpu_id, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, entry_regs);
-    assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
-        reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(cpu_not_in_dirty_map_imply_not_in_tlb);
-    };
-    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
+    cpu_went_off_eof_tlb(pre, post, cpu_id, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, entry_regs);
 }
 
 /// The committed offline, between the lock acquisitions that follow the check's start `snapshot` and the releases and the

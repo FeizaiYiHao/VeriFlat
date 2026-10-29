@@ -234,6 +234,7 @@ pub(super) proof fn boot_memory_management_inv_eof_pcid_allocator_pages(
 {
     hide(Seq::no_duplicates);
     reveal(pcid_allocator_pages_wf); reveal(boot_page_array_ready);
+    page_ptr_valid_imply_page_index_valid(); page_ptr_roundtrip();
 }
 
 pub(super) proof fn boot_memory_management_inv_eof_thread_staged_pages(

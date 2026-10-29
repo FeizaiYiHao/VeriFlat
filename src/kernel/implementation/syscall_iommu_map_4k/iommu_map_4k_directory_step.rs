@@ -144,6 +144,131 @@ pub(super) fn iommu_map_4k_install_directory(
     }
 }
 
+/// Below a linked L4 entry of `indices`, the path of page `i` of `iova_range`: install the missing L3 directory when
+/// `!l3_present` and the missing L2 directory when `!l2_present`, recording at most two directory steps.
+fn iommu_map_4k_ensure_l1_below_l4(
+    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va_range: &VaRange4K, iova_range: &VaRange4K, i: usize,
+    thread_ptr: RwLockThreadPtr, process_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr, pagetable_ptr: RwLockPageTableRoot, iommu_table_ptr: RwLockPageTableRoot,
+    indices: (L4Index, L3Index, L2Index, L1Index), l3_present: bool, l2_present: bool,
+    Ghost(k0): Ghost<KernelK>, Ghost(lctx0): Ghost<LocalContext>, Tracked(thread_lock_perm): Tracked<&LockPerm>, Tracked(iommu_table_lock_perm): Tracked<&LockPerm>,
+)
+    requires
+        old(krnl).inv(),
+        old(lctx).kernel_view_locking_state() is Acquire,
+        typed_lock_maps_aligned(old(krnl), old(lctx)),
+        typed_lock_maps_unchanged(&lctx0, old(lctx)),
+        old(lctx).cpu_id() == lctx0.cpu_id(),
+        old(lctx).thread_id() == lctx0.thread_id(),
+        old(steps).snapshot_k() == *old(krnl),
+        i < va_range.len,
+        i + 1 <= old(steps).view().len() <= 4 * i + 2,
+        iommu_map_4k_enter_step_pre(old(steps).view()[0].old_u, cpu_id, *va_range, *iova_range),
+        iommu_map_4k_enter_step(old(steps).view()[0].old_u, old(steps).view()[0].new_u, cpu_id, *va_range, *iova_range),
+        forall|j: int| #![trigger old(steps).view()[j]] 0 < j < old(steps).view().len() ==> iommu_map_4k_range_step(old(steps).view()[j], cpu_id),
+        held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
+        index_valid(NUM_CPUS, cpu_id) && cpu_id == lctx0.cpu_id(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
+        typed_lock_map_contains_mode(lctx0.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx0.process_lock_map(), process_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx0.thread_lock_map(), thread_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx0.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Read),
+        typed_lock_map_contains_mode(lctx0.iommu_table_lock_map(), iommu_table_ptr, TypedLockMode::Write),
+        lctx0.page_lock_map().dom().is_empty(),
+        va_range.wf() && iova_range.wf() && iova_range.len == va_range.len,
+        va_4k_valid(iova_range.view()[i as int]),
+        k0.thr_mp.dom().contains(thread_ptr) && !thread_is_dangling(k0.thr_mp.spec_index(thread_ptr)),
+        k0.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
+        k0.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
+        k0.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
+        k0.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
+        k0.thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
+        k0.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr,
+        k0.prc_mp.spec_index(process_ptr).view().iommu_table == Some(iommu_table_ptr),
+        thread_lock_perm.state() is WriteLock && thread_lock_perm.thread_id() == lctx0.thread_id(),
+        iommu_table_lock_perm.state() is WriteLock && iommu_table_lock_perm.thread_id() == lctx0.thread_id(),
+        old(krnl).cpu_arr.spec_index(cpu_id).view() == k0.cpu_arr.spec_index(cpu_id).view(),
+        old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == k0.cpu_hw_cr3_pcid[cpu_id as int].view(),
+        old(krnl).prc_mp.dom().contains(process_ptr),
+        old(krnl).prc_mp.spec_index(process_ptr) == k0.prc_mp.spec_index(process_ptr),
+        held_pagetables_unchanged(k0.pt_mp, old(krnl).pt_mp, &lctx0),
+        held_pagetable_windows_unchanged(k0.pt_mp, k0.pt_lower.view(), old(krnl).pt_mp, old(krnl).pt_lower.view(), &lctx0),
+        old(krnl).thr_mp.dom().contains(thread_ptr),
+        old(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread {
+            quota_4k: old(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k, temp_alloc_cache_4k: old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k,
+            syscall_progress: old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress, ..k0.thr_mp.spec_index(thread_ptr).view()
+        }),
+        old(krnl).thr_mp.spec_index(thread_ptr).view_ghost() == k0.thr_mp.spec_index(thread_ptr).view_ghost(),
+        !old(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
+        old(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k + 1 >= 3 * (va_range.len - i),
+        old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
+        ({
+            let progress = old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view();
+            &&& progress is Some && progress->Some_0 is IommuMap4k
+            &&& progress->Some_0->IommuMap4k_va_range == *va_range && progress->Some_0->IommuMap4k_iova_range == *iova_range && progress->Some_0->IommuMap4k_mapped == i
+            &&& mmap_4k_directory_rank(progress->Some_0->IommuMap4k_directory) <= 1
+        }),
+        thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
+        iommu_table_lock_perm.lock_id() == old(krnl).it_mp.spec_index(iommu_table_ptr).locking_thread()->Write_lock_id,
+        old(krnl).it_mp.dom().contains(iommu_table_ptr),
+        old(krnl).it_mp.spec_index(iommu_table_ptr).view().proc_ptr == k0.it_mp.spec_index(iommu_table_ptr).view().proc_ptr,
+        old(krnl).it_mp.spec_index(iommu_table_ptr).view().leaves_present(),
+        indices == spec_va2index(iova_range.view()[i as int]) && pei_valid(indices.0) && pei_valid(indices.1) && pei_valid(indices.2),
+        old(krnl).it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_l4(indices.0) is Some,
+        l3_present == (old(krnl).it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_l3(indices.0, indices.1) is Some),
+        l2_present ==> l3_present,
+        l3_present ==> l2_present == (old(krnl).it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some),
+    ensures
+        final(krnl).inv(),
+        final(lctx).kernel_view_locking_state() is Acquire,
+        typed_lock_maps_aligned(final(krnl), final(lctx)),
+        typed_lock_maps_unchanged(&lctx0, final(lctx)),
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(steps).snapshot_k() == *final(krnl),
+        i + 1 <= final(steps).view().len() <= 4 * i + 4,
+        final(steps).view()[0] == old(steps).view()[0],
+        forall|j: int| #![trigger final(steps).view()[j]] 0 < j < final(steps).view().len() ==> iommu_map_4k_range_step(final(steps).view()[j], cpu_id),
+        held_locks_order_below(final(krnl), final(lctx), ALLOCATOR_CACHE_4K_MAJOR),
+        final(krnl).cpu_arr.spec_index(cpu_id).view() == k0.cpu_arr.spec_index(cpu_id).view(),
+        final(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == k0.cpu_hw_cr3_pcid[cpu_id as int].view(),
+        final(krnl).cpu_op.view().view()[cpu_id as int] == old(krnl).cpu_op.view().view()[cpu_id as int],
+        final(krnl).prc_mp.dom().contains(process_ptr),
+        final(krnl).prc_mp.spec_index(process_ptr) == k0.prc_mp.spec_index(process_ptr),
+        held_pagetables_unchanged(k0.pt_mp, final(krnl).pt_mp, &lctx0),
+        held_pagetable_windows_unchanged(k0.pt_mp, k0.pt_lower.view(), final(krnl).pt_mp, final(krnl).pt_lower.view(), &lctx0),
+        final(krnl).thr_mp.dom().contains(thread_ptr),
+        final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread {
+            quota_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k, temp_alloc_cache_4k: final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k,
+            syscall_progress: final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress, ..k0.thr_mp.spec_index(thread_ptr).view()
+        }),
+        final(krnl).thr_mp.spec_index(thread_ptr).view_ghost() == k0.thr_mp.spec_index(thread_ptr).view_ghost(),
+        !final(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
+        final(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k >= 3 * (va_range.len - (i + 1)),
+        final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
+        ({
+            let progress = final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view();
+            &&& progress is Some && progress->Some_0 is IommuMap4k
+            &&& progress->Some_0->IommuMap4k_va_range == *va_range && progress->Some_0->IommuMap4k_iova_range == *iova_range && progress->Some_0->IommuMap4k_mapped == i
+        }),
+        thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
+        iommu_table_lock_perm.lock_id() == final(krnl).it_mp.spec_index(iommu_table_ptr).locking_thread()->Write_lock_id,
+        final(krnl).it_mp.dom().contains(iommu_table_ptr),
+        final(krnl).it_mp.spec_index(iommu_table_ptr).view().proc_ptr == k0.it_mp.spec_index(iommu_table_ptr).view().proc_ptr,
+        final(krnl).it_mp.spec_index(iommu_table_ptr).view().leaves_present(),
+        final(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_4k() == old(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_4k(),
+        final(krnl).it_mp.spec_index(iommu_table_ptr).view().spec_resolve_mapping_l2(spec_va2index(iova_range.view()[i as int]).0, spec_va2index(iova_range.view()[i as int]).1,
+            spec_va2index(iova_range.view()[i as int]).2) is Some,
+{
+    if !l3_present {
+        iommu_map_4k_install_directory(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), MissingPageTableLevel::L3, cpu_id, Ghost(*va_range), Ghost(*iova_range), thread_ptr, process_ptr,
+            container_ptr, pagetable_ptr, iommu_table_ptr, (indices.0, indices.1, indices.2), Tracked(thread_lock_perm), Tracked(iommu_table_lock_perm));
+    }
+    if !l2_present {
+        iommu_map_4k_install_directory(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), MissingPageTableLevel::L2, cpu_id, Ghost(*va_range), Ghost(*iova_range), thread_ptr, process_ptr,
+            container_ptr, pagetable_ptr, iommu_table_ptr, (indices.0, indices.1, indices.2), Tracked(thread_lock_perm), Tracked(iommu_table_lock_perm));
+    }
+}
+
 /// Install every missing IOMMU directory level on the path of page `i` of `iova_range` so its L1 page is linked; `k0` and
 /// `lctx0` are the state and lock context at the start of the range. Records at most three directory steps.
 pub(super) fn iommu_map_4k_ensure_l1(
@@ -269,13 +394,7 @@ pub(super) fn iommu_map_4k_ensure_l1(
         iommu_map_4k_install_directory(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), MissingPageTableLevel::L4, cpu_id, Ghost(*va_range), Ghost(*iova_range), thread_ptr, process_ptr,
             container_ptr, pagetable_ptr, iommu_table_ptr, (indices.0, indices.1, indices.2), Tracked(thread_lock_perm), Tracked(iommu_table_lock_perm));
     }
-    if !l3_present {
-        iommu_map_4k_install_directory(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), MissingPageTableLevel::L3, cpu_id, Ghost(*va_range), Ghost(*iova_range), thread_ptr, process_ptr,
-            container_ptr, pagetable_ptr, iommu_table_ptr, (indices.0, indices.1, indices.2), Tracked(thread_lock_perm), Tracked(iommu_table_lock_perm));
-    }
-    if !l2_present {
-        iommu_map_4k_install_directory(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), MissingPageTableLevel::L2, cpu_id, Ghost(*va_range), Ghost(*iova_range), thread_ptr, process_ptr,
-            container_ptr, pagetable_ptr, iommu_table_ptr, (indices.0, indices.1, indices.2), Tracked(thread_lock_perm), Tracked(iommu_table_lock_perm));
-    }
+    iommu_map_4k_ensure_l1_below_l4(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va_range, iova_range, i, thread_ptr, process_ptr, container_ptr, pagetable_ptr,
+        iommu_table_ptr, indices, l3_present, l2_present, Ghost(k0), Ghost(lctx0), Tracked(thread_lock_perm), Tracked(iommu_table_lock_perm));
 }
 } // verus!

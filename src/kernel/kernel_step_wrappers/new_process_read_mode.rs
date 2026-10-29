@@ -270,18 +270,7 @@ pub proof fn kernel_new_thread_fields_and_unlocks_source_runlocked_implies_u_ste
         assert(post.prc_mp.spec_index(source).view().pagetable == pre.prc_mp.spec_index(source).view().pagetable);
     };
     assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { reveal(kernel_new_thread_fields); pre.irt.view().user_view_unfold(); post.irt.view().user_view_unfold(); };
-    let process = unlocked.spec_index(process_ptr);
-    assert(post_u.process_map == unlocked.insert(process_ptr, ProcessU { owned_threads: process.owned_threads.push(new_thread_ptr), ..process })) by {
-        assert_maps_equal!(post_u.process_map, unlocked.insert(process_ptr, ProcessU { owned_threads: process.owned_threads.push(new_thread_ptr), ..process }), p => {
-            if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }
-            reveal(kernel_new_thread_fields); reveal(kernel_pagetable_nonlock_fields_unchanged);
-            process_pagetable_match_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, p);
-            process_pagetable_match_process_at(post.prc_mp, post.pt_mp, process_ptr); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, process_ptr);
-            process_pagetable_match_process_at(post.prc_mp, post.pt_mp, source);
-            assert(post.prc_mp.spec_index(process_ptr).view().pagetable == pre.prc_mp.spec_index(process_ptr).view().pagetable);
-            assert(post.prc_mp.spec_index(source).view().pagetable == pre.prc_mp.spec_index(source).view().pagetable);
-        });
-    };
+    kernel_new_thread_fields_and_unlocks_source_runlocked_implies_u_process_map(pre, post, process_ptr, thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, endpoint_ptr, source);
     assert(post_u.process_map.spec_index(process_ptr).owned_threads.last() == new_thread_ptr
         && kernel_u_new_thread_changed(pre_u, post_u, process_ptr, thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, endpoint_ptr, None)) by {
         kernel_new_thread_fields_and_unlocks_implies_u_cpu_array(pre, post, cpu_id, process_ptr, thread_ptr, container_ptr, new_thread_ptr, initial_regs, endpoint_ptr, None);
@@ -419,5 +408,66 @@ pub proof fn kernel_new_thread_fields_and_parent_unlocks_source_runlocked_implie
         reveal(kernel_u_new_thread_changed);
         assert_seqs_equal!(post_u.thread_map.spec_index(new_thread_ptr).endpoint_descriptors == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| if i == 0 { endpoint_ptr } else { None }));
     };
+}
+
+/// Read-mode new-process finish projects to the child process recording the new thread, with the child, its tables,
+/// and the parent's page table released to `lock`, the parent page table's remaining hold.
+proof fn kernel_new_thread_fields_and_unlocks_source_runlocked_implies_u_process_map(
+    pre: &KernelK, post: &KernelK, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, cpu_id: CpuId,
+    new_thread_ptr: RwLockThreadPtr, initial_regs: Registers, endpoint_ptr: Option<RwLockEndpointPtr>, source: RwLockProcessPtr,
+)
+    requires
+        process_pagetable_match(post.prc_mp, post.pt_mp),
+        process_iommu_table_match(post.prc_mp, post.it_mp),
+        source != process_ptr && pre.prc_mp.dom().contains(source) && !pre.prc_mp.spec_index(source).view().zombie && !pre.prc_mp.spec_index(process_ptr).view().zombie,
+        kernel_new_thread_fields(pre, post, process_ptr, thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, endpoint_ptr, None),
+        forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
+            pre.prc_mp.dom().contains(p) ==> if p == process_ptr { post.prc_mp.spec_index(p).locking_thread() is None } else { post.prc_mp.spec_index(p).locking_thread() == pre.prc_mp.spec_index(p).locking_thread() },
+        forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
+            pre.pt_mp.dom().contains(p) ==> if p == pre.prc_mp.spec_index(process_ptr).view().pagetable { post.pt_mp.spec_index(p).locking_thread() is None }
+                else if p == pre.prc_mp.spec_index(source).view().pagetable { !(post.pt_mp.spec_index(p).locking_thread() is Write) }
+                else { post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread() },
+        forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
+            pre.it_mp.dom().contains(p) ==> if pre.prc_mp.spec_index(process_ptr).view().iommu_table == Some(p) { post.it_mp.spec_index(p).locking_thread() is None }
+                else { post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread() },
+    ensures
+        ({
+            let old_u = kernel_k_to_kernel_u(*pre);
+            let post_u = kernel_k_to_kernel_u(*post);
+            let mode = LockStateU::Unlocked;
+            let lock = post_u.process_map[source].pagetable->Some_0.lock_state;
+            let unlocked = old_u.process_map.insert(source, ProcessU {
+                pagetable: Some(PageTableU { lock_state: lock, ..old_u.process_map[source].pagetable->Some_0 }), ..old_u.process_map[source]
+            }).insert(process_ptr, ProcessU {
+                lock_state: mode, pagetable: Some(PageTableU { lock_state: mode, ..old_u.process_map[process_ptr].pagetable->Some_0 }),
+                iommu_table: match old_u.process_map[process_ptr].iommu_table { Some(t) => Some(PageTableU { lock_state: mode, ..t }), None => None },
+                ..old_u.process_map[process_ptr]
+            });
+            let process = unlocked.spec_index(process_ptr);
+            post_u.process_map == unlocked.insert(process_ptr, ProcessU { owned_threads: process.owned_threads.push(new_thread_ptr), ..process })
+        }),
+{
+    kernel_u_domains_projection(post); kernel_u_domains_projection(pre);
+    let old_u = kernel_k_to_kernel_u(*pre);
+    let post_u = kernel_k_to_kernel_u(*post);
+    let mode = LockStateU::Unlocked;
+    let lock = post_u.process_map[source].pagetable->Some_0.lock_state;
+    let unlocked = old_u.process_map.insert(source, ProcessU {
+        pagetable: Some(PageTableU { lock_state: lock, ..old_u.process_map[source].pagetable->Some_0 }), ..old_u.process_map[source]
+    }).insert(process_ptr, ProcessU {
+        lock_state: mode, pagetable: Some(PageTableU { lock_state: mode, ..old_u.process_map[process_ptr].pagetable->Some_0 }),
+        iommu_table: match old_u.process_map[process_ptr].iommu_table { Some(t) => Some(PageTableU { lock_state: mode, ..t }), None => None },
+        ..old_u.process_map[process_ptr]
+    });
+    let process = unlocked.spec_index(process_ptr);
+    assert_maps_equal!(post_u.process_map, unlocked.insert(process_ptr, ProcessU { owned_threads: process.owned_threads.push(new_thread_ptr), ..process }), p => {
+        if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }
+        reveal(kernel_new_thread_fields); reveal(kernel_pagetable_nonlock_fields_unchanged);
+        process_pagetable_match_process_at(post.prc_mp, post.pt_mp, p); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, p);
+        process_pagetable_match_process_at(post.prc_mp, post.pt_mp, process_ptr); process_iommu_table_match_process_at(post.prc_mp, post.it_mp, process_ptr);
+        process_pagetable_match_process_at(post.prc_mp, post.pt_mp, source);
+        assert(post.prc_mp.spec_index(process_ptr).view().pagetable == pre.prc_mp.spec_index(process_ptr).view().pagetable);
+        assert(post.prc_mp.spec_index(source).view().pagetable == pre.prc_mp.spec_index(source).view().pagetable);
+    });
 }
 } // verus!
