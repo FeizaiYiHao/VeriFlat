@@ -237,4 +237,154 @@ pub proof fn kernel_k_trap_divert_preserves_inv(pre: KernelK, post: KernelK, cpu
     assert(post.default_pagetable_wf()) by { reveal(KernelK::default_pagetable_wf); };
     assert(cpu_op_wf(post.cpu_op.view().view(), post.cpu_arr)) by { reveal(cpu_op_wf); };
 }
+
+// Each environment event below happens while a thread is between two of its kernel sections. Its `respects_boundary`
+// lemma shows that the event stays within the step boundary's trusted framing of that thread, given the thread's local
+// context `lctx` aligned with the pre-state and no remote cpu the thread holds inside a kernel step.
+
+/// A trap entry on another cpu stays within the step-boundary framing of a thread between its sections.
+pub proof fn kernel_k_trap_enter_respects_boundary(pre: KernelK, post: KernelK, cpu_id: CpuId, lctx: LocalContext)
+    requires
+        pre.inv(),
+        kernel_k_trap_enter(pre, post, cpu_id),
+        typed_lock_maps_aligned(&pre, &lctx),
+        cpu_id != lctx.cpu_id(),
+        forall|c: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(c)] lctx.cpu_lock_map().dom().contains(c) && c != lctx.cpu_id() ==> !(pre.cpu_op.view().view()[c as int] is InStep),
+    ensures kernel_step_boundary_framing(pre, post, lctx),
+{
+    assert(post.inv()) by { kernel_k_trap_enter_preserves_inv(pre, post, cpu_id); };
+    held_kernel_objects_unchanged_reflexive(&pre, &lctx);
+    reveal(cpu_op_wf); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+}
+
+/// A trap return on another cpu stays within the step-boundary framing of a thread between its sections.
+pub proof fn kernel_k_trap_return_respects_boundary(pre: KernelK, post: KernelK, cpu_id: CpuId, lctx: LocalContext)
+    requires
+        pre.inv(),
+        kernel_k_trap_return(pre, post, cpu_id),
+        typed_lock_maps_aligned(&pre, &lctx),
+        cpu_id != lctx.cpu_id(),
+        forall|c: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(c)] lctx.cpu_lock_map().dom().contains(c) && c != lctx.cpu_id() ==> !(pre.cpu_op.view().view()[c as int] is InStep),
+    ensures kernel_step_boundary_framing(pre, post, lctx),
+{
+    assert(post.inv()) by { kernel_k_trap_return_preserves_inv(pre, post, cpu_id); };
+    held_kernel_objects_unchanged_reflexive(&pre, &lctx);
+    reveal(cpu_op_wf); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+}
+
+/// A trap diversion of another, marked cpu to its idle loop stays within the step-boundary framing of a thread between
+/// its sections.
+pub proof fn kernel_k_trap_divert_respects_boundary(pre: KernelK, post: KernelK, cpu_id: CpuId, lctx: LocalContext)
+    requires
+        pre.inv(),
+        kernel_k_trap_divert(pre, post, cpu_id),
+        typed_lock_maps_aligned(&pre, &lctx),
+        cpu_id != lctx.cpu_id(),
+        forall|c: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(c)] lctx.cpu_lock_map().dom().contains(c) && c != lctx.cpu_id() ==> !(pre.cpu_op.view().view()[c as int] is InStep),
+    ensures kernel_step_boundary_framing(pre, post, lctx),
+{
+    assert(post.inv()) by { kernel_k_trap_divert_preserves_inv(pre, post, cpu_id); };
+    held_kernel_objects_unchanged_reflexive(&pre, &lctx);
+    reveal(cpu_op_wf); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+}
+
+/// A CPU TLB fill stays within the step-boundary framing of a thread between its sections.
+pub proof fn kernel_k_cpu_tlb_filled_respects_boundary(pre: KernelK, post: KernelK, cpu_id: CpuId, pcid: Pcid, added: SingleTLB, lctx: LocalContext)
+    requires
+        pre.inv(),
+        kernel_k_cpu_tlb_filled(pre, post, cpu_id, pcid, added),
+        typed_lock_maps_aligned(&pre, &lctx),
+        forall|c: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(c)] lctx.cpu_lock_map().dom().contains(c) && c != lctx.cpu_id() ==> !(pre.cpu_op.view().view()[c as int] is InStep),
+    ensures kernel_step_boundary_framing(pre, post, lctx),
+{
+    assert(post.inv()) by { kernel_k_cpu_tlb_filled_preserves_inv(pre, post, cpu_id, pcid, added); };
+    held_kernel_objects_unchanged_reflexive(&pre, &lctx);
+    reveal(cpu_op_wf); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+}
+
+/// An IOTLB fill stays within the step-boundary framing of a thread between its sections: the domain of a write-held
+/// IOMMU table gains only present leaves of that table.
+pub proof fn kernel_k_iommu_tlb_filled_respects_boundary(pre: KernelK, post: KernelK, did: VtdDomainId, added: SingleTLB, lctx: LocalContext)
+    requires
+        pre.inv(),
+        kernel_k_iommu_tlb_filled(pre, post, did, added),
+        typed_lock_maps_aligned(&pre, &lctx),
+        forall|c: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(c)] lctx.cpu_lock_map().dom().contains(c) && c != lctx.cpu_id() ==> !(pre.cpu_op.view().view()[c as int] is InStep),
+    ensures kernel_step_boundary_framing(pre, post, lctx),
+{
+    assert(post.inv()) by { kernel_k_iommu_tlb_filled_preserves_inv(pre, post, did, added); };
+    held_kernel_objects_unchanged_reflexive(&pre, &lctx);
+    reveal(cpu_op_wf); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+    reveal(iommu_table_tlb_entries_present); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_match);
+}
+
+/// A context-cache fill stays within the step-boundary framing of a thread between its sections.
+pub proof fn kernel_k_iommu_context_cache_filled_respects_boundary(pre: KernelK, post: KernelK, bdf: PciBdf, entry: (PageTableRoot, VtdDomainId), lctx: LocalContext)
+    requires
+        pre.inv(),
+        kernel_k_iommu_context_cache_filled(pre, post, bdf, entry),
+        typed_lock_maps_aligned(&pre, &lctx),
+        forall|c: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(c)] lctx.cpu_lock_map().dom().contains(c) && c != lctx.cpu_id() ==> !(pre.cpu_op.view().view()[c as int] is InStep),
+    ensures kernel_step_boundary_framing(pre, post, lctx),
+{
+    assert(post.inv()) by { kernel_k_iommu_context_cache_filled_preserves_inv(pre, post, bdf, entry); };
+    held_kernel_objects_unchanged_reflexive(&pre, &lctx);
+    reveal(cpu_op_wf); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+    reveal(iommu_table_tlb_entries_present);
+}
+
+/// The running-to-idle IPI of `CpuOpArray::ipi_running_to_idle`, with the writes `CpuLockedArray::ipi_remote_running_to_idle`
+/// makes to the target cpu object and hardware cr3/pcid word, stays within the step-boundary framing of a thread between
+/// its sections that neither runs on nor holds the target. The IPI runs inside the sender's section, so the invariant
+/// after it is assumed.
+pub proof fn cpu_op_ipi_running_to_idle_respects_boundary(pre: KernelK, post: KernelK, cpu_id: CpuId, default_cr3: PageTableRoot, lctx: LocalContext)
+    requires
+        pre.inv(),
+        index_valid(NUM_CPUS, cpu_id),
+        post == (KernelK { cpu_op: post.cpu_op, cpu_arr: post.cpu_arr, cpu_hw_cr3_pcid: post.cpu_hw_cr3_pcid, ..pre }),
+        post.cpu_op.view().view() == pre.cpu_op.view().view().update(cpu_id as int, CpuOpState::Idle),
+        post.cpu_arr.inv(),
+        post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id),
+        post.cpu_arr.spec_index(cpu_id).view().is_init(),
+        post.cpu_arr.spec_index(cpu_id).view().view().wf(),
+        post.cpu_arr.spec_index(cpu_id).view().locking_thread() == pre.cpu_arr.spec_index(cpu_id).view().locking_thread(),
+        post.cpu_arr.spec_index(cpu_id).view().killer_info() == pre.cpu_arr.spec_index(cpu_id).view().killer_info(),
+        post.cpu_arr.spec_index(cpu_id).view().view_rodata() == pre.cpu_arr.spec_index(cpu_id).view().view_rodata(),
+        post.cpu_arr.spec_index(cpu_id).view().view_ghost() == pre.cpu_arr.spec_index(cpu_id).view().view_ghost(),
+        post.cpu_arr.spec_index(cpu_id).view().view().view() == (CpuView { state: CpuState::Idle, current_process: None, current_thread: None, current_pagetable: None,
+            current_cr3: default_cr3, current_pcid: KERNEL_DEFAULT_PCID, ..pre.cpu_arr.spec_index(cpu_id).view().view().view() }),
+        post.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() == pre.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm(),
+        post.cpu_hw_cr3_pcid[cpu_id as int].inv(),
+        post.cpu_hw_cr3_pcid[cpu_id as int].view() == (default_cr3, KERNEL_DEFAULT_PCID),
+        post.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu() == pre.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu(),
+        forall|c: CpuId| #![trigger post.cpu_hw_cr3_pcid[c as int]] #![trigger pre.cpu_hw_cr3_pcid[c as int]] index_valid(NUM_CPUS, c) && c != cpu_id ==> post.cpu_hw_cr3_pcid[c as int] == pre.cpu_hw_cr3_pcid[c as int],
+        typed_lock_maps_aligned(&pre, &lctx),
+        post.inv(),
+        cpu_id != lctx.cpu_id(),
+        !lctx.cpu_lock_map().dom().contains(cpu_id),
+        forall|c: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(c)] lctx.cpu_lock_map().dom().contains(c) && c != lctx.cpu_id() ==> !(pre.cpu_op.view().view()[c as int] is InStep),
+    ensures kernel_step_boundary_framing(pre, post, lctx),
+{
+    held_kernel_objects_unchanged_reflexive(&pre, &lctx);
+    reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned);
+    reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+}
+
+/// The wake-up IPI of `CpuOpArray::woken` stays within the step-boundary framing of a thread between its sections that
+/// does not run on the target. The IPI runs inside the waker's section, so the invariant after it is assumed.
+pub proof fn cpu_op_woken_respects_boundary(pre: KernelK, post: KernelK, cpu_id: CpuId, lctx: LocalContext)
+    requires
+        pre.inv(),
+        index_valid(NUM_CPUS, cpu_id),
+        post == (KernelK { cpu_op: post.cpu_op, ..pre }),
+        post.cpu_op.view().view() == pre.cpu_op.view().view().update(cpu_id as int, CpuOpState::Idle),
+        typed_lock_maps_aligned(&pre, &lctx),
+        post.inv(),
+        cpu_id != lctx.cpu_id(),
+        forall|c: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(c)] lctx.cpu_lock_map().dom().contains(c) && c != lctx.cpu_id() ==> !(pre.cpu_op.view().view()[c as int] is InStep),
+    ensures kernel_step_boundary_framing(pre, post, lctx),
+{
+    held_kernel_objects_unchanged_reflexive(&pre, &lctx);
+    reveal(cpu_op_wf); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+}
 }

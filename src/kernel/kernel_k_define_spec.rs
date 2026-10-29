@@ -199,7 +199,8 @@ verus! {
         ///
         /// Models "end the current krnl-view atomic section and begin a
         /// new one." Between sections, the rest of the world may run
-        /// arbitrary atomic sections:
+        /// arbitrary atomic sections. `kernel_step_boundary_framing` states what
+        /// survives them:
         ///   - all our held objects (those recorded in the LocalContext set) keep
         ///     their state across the boundary — `view`, `view_ghost`,
         ///     `view_rodata`, `locking_thread`,
@@ -216,11 +217,10 @@ verus! {
         ///   - everything else may change arbitrarily, including map
         ///     domains (except for the fixed-size arrays `cpu_array` and
         ///     `page_array`);
-        ///   - the LocalContext held-lock set is unchanged (we still hold what
-        ///     we held);
-        ///   - the krnl invariant `inv()` is re-established by trust;
-        ///   - krnl-view phase flips back to `Acquire`, ready for the
-        ///     next atomic section.
+        ///   - the krnl invariant `inv()` is re-established by trust.
+        /// Outside that framing, the LocalContext held-lock set is unchanged (we
+        /// still hold what we held), and the krnl-view phase flips back to
+        /// `Acquire`, ready for the next atomic section.
         ///
         /// Before interleaving, the boundary compares the completed krnl
         /// section's user projection with `steps.snapshot_u()`.  A changed
@@ -235,7 +235,8 @@ verus! {
         ///   - `typed_lock_maps_aligned(self, lctx)` (physical locks and typed
         ///     entries agree),
         /// TCB maintenance rule: do not change this function's signature,
-        /// contract, triggers, or body without the user's explicit approval.
+        /// contract, triggers, or body, or the body of `kernel_step_boundary_framing`,
+        /// without the user's explicit approval.
         ///
         #[verifier::external_body]
         pub(super) proof fn kernel_step_boundary_raw(tracked &mut self, tracked lctx: &mut LocalContext, tracked steps: &mut KernelSteps)
@@ -244,121 +245,141 @@ verus! {
                 old(lctx).kernel_view_locking_state() is Release,
                 typed_lock_maps_aligned(old(self), old(lctx)),
             ensures
+                kernel_step_boundary_framing(*old(self), *final(self), *old(lctx)),
                 final(lctx).cpu_id() == old(lctx).cpu_id(),
-                index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> {
-                    &&& final(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view().current_cr3 == old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view().current_cr3
-                    &&& final(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view().current_pcid == old(self).cpu_arr.spec_index(old(lctx).cpu_id()).view().view().view().current_pcid
-                    &&& final(self).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(self).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view()
-                    &&& final(self).cpu_op.view().view()[old(lctx).cpu_id() as int] == old(self).cpu_op.view().view()[old(lctx).cpu_id() as int]
-                },
-                final(self).inv(),
                 final(lctx).kernel_view_locking_state() is Acquire,
                 // LocalContext is thread-local: the phase flips to Acquire,
                 // while its identity and exact held-lock set stay put.
                 final(lctx).thread_id() == old(lctx).thread_id(),
                 typed_lock_maps_unchanged(old(lctx), final(lctx)),
-                forall|cpu_id: CpuId, pcid: Pcid|
-                    #![trigger old(lctx).pcid_needflush_lock_map().dom().contains((cpu_id, pcid))]
-                    old(lctx).pcid_needflush_lock_map().dom().contains((cpu_id, pcid))
-                    ==> final(self).pcid_needflush.spec_index(cpu_id, pcid) == old(self).pcid_needflush.spec_index(cpu_id, pcid),
                 old(lctx).holds_no_allocator_locks(PageSize::SZ4k) ==> final(lctx).holds_no_allocator_locks(PageSize::SZ4k),
                 old(lctx).holds_no_allocator_locks(PageSize::SZ2m) ==> final(lctx).holds_no_allocator_locks(PageSize::SZ2m),
                 old(lctx).holds_no_allocator_locks(PageSize::SZ1g) ==> final(lctx).holds_no_allocator_locks(PageSize::SZ1g),
                 forall|major: LockMajorId|
                     #![trigger old(lctx).held_lock_majors_lt(major)]
                     old(lctx).held_lock_majors_lt(major) ==> final(lctx).held_lock_majors_lt(major),
-                // Direct typed-map framing for owner objects.
-                forall|cpu_id: CpuId|
-                    #![trigger old(lctx).cpu_lock_map().dom().contains(cpu_id)]
-                    old(lctx).cpu_lock_map().dom().contains(cpu_id) ==> final(self).cpu_arr.spec_index(cpu_id).view() == old(self).cpu_arr.spec_index(cpu_id).view(),
-                // A held remote cpu that runs a thread may still trap, return to user mode, or divert to its idle loop once
-                // marked; every other held cpu keeps its running state.
-                forall|cpu_id: CpuId|
-                    #![trigger old(lctx).cpu_lock_map().dom().contains(cpu_id)]
-                    old(lctx).cpu_lock_map().dom().contains(cpu_id) ==> {
-                        let op = final(self).cpu_op.view().view()[cpu_id as int];
-                        if cpu_id != old(lctx).cpu_id() && old(self).cpu_arr.spec_index(cpu_id).view().view().view().state is Running {
-                            op is User || op is Trap || (op is Idle && old(self).cpu_arr.spec_index(cpu_id).view().being_killed())
-                        } else {
-                            op == old(self).cpu_op.view().view()[cpu_id as int]
-                        }
-                    },
-                forall|container_ptr: RwLockContainerPtr|
-                    #![trigger old(lctx).container_lock_map().dom().contains(container_ptr)]
-                    old(lctx).container_lock_map().dom().contains(container_ptr) ==> {
-                        &&& final(self).ctn_mp.dom().contains(container_ptr)
-                        &&& final(self).ctn_mp.lock_id_by_key(container_ptr) == old(self).ctn_mp.lock_id_by_key(container_ptr)
-                        &&& final(self).ctn_mp.spec_index(container_ptr) == old(self).ctn_mp.spec_index(container_ptr)
-                    },
-                forall|process_ptr: RwLockProcessPtr|
-                    #![trigger old(lctx).process_lock_map().dom().contains(process_ptr)]
-                    old(lctx).process_lock_map().dom().contains(process_ptr) ==> {
-                        &&& final(self).prc_mp.dom().contains(process_ptr)
-                        &&& final(self).prc_mp.lock_id_by_key(process_ptr) == old(self).prc_mp.lock_id_by_key(process_ptr)
-                        &&& final(self).prc_mp.spec_index(process_ptr) == old(self).prc_mp.spec_index(process_ptr)
-                    },
-                forall|thread_ptr: RwLockThreadPtr|
-                    #![trigger old(lctx).thread_lock_map().dom().contains(thread_ptr)]
-                    old(lctx).thread_lock_map().dom().contains(thread_ptr) ==> {
-                        &&& final(self).thr_mp.dom().contains(thread_ptr)
-                        &&& final(self).thr_mp.lock_id_by_key(thread_ptr) == old(self).thr_mp.lock_id_by_key(thread_ptr)
-                        &&& final(self).thr_mp.spec_index(thread_ptr) == old(self).thr_mp.spec_index(thread_ptr)
-                    },
-                forall|pagetable_ptr: RwLockPageTableRoot|
-                    #![trigger old(lctx).pagetable_lock_map().dom().contains(pagetable_ptr)]
-                    old(lctx).pagetable_lock_map().dom().contains(pagetable_ptr) ==> {
-                        &&& final(self).pt_mp.dom().contains(pagetable_ptr)
-                        &&& final(self).pt_mp.lock_id_by_key(pagetable_ptr) == old(self).pt_mp.lock_id_by_key(pagetable_ptr)
-                        &&& typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write)
-                            ==> final(self).pt_mp.spec_index(pagetable_ptr) == old(self).pt_mp.spec_index(pagetable_ptr)
-                        &&& typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Read) ==> {
-                            &&& final(self).pt_mp.spec_index(pagetable_ptr).view() == old(self).pt_mp.spec_index(pagetable_ptr).view()
-                            &&& final(self).pt_mp.spec_index(pagetable_ptr).rlocked_by_thread(old(lctx).thread_id())
-                            &&& final(self).pt_mp.spec_index(pagetable_ptr).being_killed() == old(self).pt_mp.spec_index(pagetable_ptr).being_killed()
-                            &&& final(self).pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map.spec_index(old(lctx).thread_id()) == old(self).pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map.spec_index(old(lctx).thread_id())
-                        }
-                    },
                 typed_lock_maps_aligned(final(self), final(lctx)),
                 // Record this thread's completed section before refreshing the
                 // snapshot to the post-interleaving projection.
                 final(steps).view() == record_user_view_change(old(steps).view(), old(steps).snapshot_u(), kernel_k_to_kernel_u(*old(self))),
                 final(steps).snapshot_u() == kernel_k_to_kernel_u(*final(self)),
                 final(steps).snapshot_k() == *final(self),
-                final(self).dflt_pt == old(self).dflt_pt,
-                containers_rodata_unchanged(old(self).ctn_mp, final(self).ctn_mp),
-                processes_rodata_unchanged(old(self).prc_mp, final(self).prc_mp),
-                // The krnl lock state is the anchor: every object held
-                // before interleaving is
-                // still present and bit-for-bit unchanged afterwards.
-                held_containers_unchanged(old(self).ctn_mp, final(self).ctn_mp, old(lctx)),
-                held_processes_unchanged(old(self).prc_mp, final(self).prc_mp, old(lctx)),
-
-                held_threads_unchanged(old(self).thr_mp, final(self).thr_mp, old(lctx)),
-                held_endpoints_unchanged(old(self).ep_mp, final(self).ep_mp, old(lctx)),
-                held_schedulers_unchanged(old(self).sched_mp, final(self).sched_mp, old(lctx)),
-                held_pcid_allocators_unchanged(old(self).pcid_allc_mp, final(self).pcid_allc_mp, old(lctx)),
-                held_cpu_sets_unchanged(old(self).cpu_set_mp, final(self).cpu_set_mp, old(lctx)),
-                held_pagetables_unchanged(old(self).pt_mp, final(self).pt_mp, old(lctx)),
-                held_pagetable_windows_unchanged(old(self).pt_mp, old(self).pt_lower.view(), final(self).pt_mp, final(self).pt_lower.view(), old(lctx)),
-                held_iommu_tables_unchanged(old(self).it_mp, final(self).it_mp, old(lctx)),
-                held_iommu_root_table_unchanged(old(self).irt, final(self).irt, old(lctx)),
-                held_pages_unchanged(old(self).pg_arr, final(self).pg_arr, old(lctx)),
-                held_cpus_unchanged(old(self).cpu_arr, final(self).cpu_arr, old(lctx)),
-                held_allocator_objects_unchanged(old(self).allc_4k_mp, final(self).allc_4k_mp, old(lctx), PageSize::SZ4k),
-                held_allocator_objects_unchanged(old(self).allc_2m_mp, final(self).allc_2m_mp, old(lctx), PageSize::SZ2m),
-                held_allocator_objects_unchanged(old(self).allc_1g_mp, final(self).allc_1g_mp, old(lctx), PageSize::SZ1g),
-                // A write holder's hidden leaves are never re-cached (`CAP.CM = 0`); the attached domains of its table may only gain present translations.
-                forall|it: RwLockPageTableRoot| #![trigger old(lctx).iommu_table_lock_map().dom().contains(it)]
-                    typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), it, TypedLockMode::Write) && iommu_table_tlb_entries_present(old(self).iommu_tlb, old(self).irt.view(), old(self).it_mp, it)
-                        ==> iommu_table_tlb_entries_present(final(self).iommu_tlb, final(self).irt.view(), final(self).it_mp, it),
-                // Deliberately omitted from the old boundary contract:
-                // - root-container equality across interleaving;
-                // The default page table is read-only and is framed directly.
-                // Global rodata immutability and final lock-id alignment remain
-                // explicit because both are common next-section framing facts.
         {
             unimplemented!()
         }
+    }
+
+    /// What the trusted step boundary `KernelK::kernel_step_boundary_raw` keeps from `pre` to `post` for the thread whose
+    /// local context across the boundary is `lctx`: the local cpu's hardware CR3/PCID, hardware cr3/pcid word, and
+    /// running state, the re-established invariant, every object `lctx` holds, lock-id alignment, the default page table,
+    /// and global read-only data. Part of the boundary's TCB contract.
+    pub open spec fn kernel_step_boundary_framing(pre: KernelK, post: KernelK, lctx: LocalContext) -> bool {
+        &&& index_valid(NUM_CPUS, lctx.cpu_id()) ==> {
+            &&& post.cpu_arr.spec_index(lctx.cpu_id()).view().view().view().current_cr3 == pre.cpu_arr.spec_index(lctx.cpu_id()).view().view().view().current_cr3
+            &&& post.cpu_arr.spec_index(lctx.cpu_id()).view().view().view().current_pcid == pre.cpu_arr.spec_index(lctx.cpu_id()).view().view().view().current_pcid
+            &&& post.cpu_hw_cr3_pcid[lctx.cpu_id() as int].view() == pre.cpu_hw_cr3_pcid[lctx.cpu_id() as int].view()
+            &&& post.cpu_op.view().view()[lctx.cpu_id() as int] == pre.cpu_op.view().view()[lctx.cpu_id() as int]
+        }
+        &&& post.inv()
+        &&& forall|cpu_id: CpuId, pcid: Pcid|
+            #![trigger lctx.pcid_needflush_lock_map().dom().contains((cpu_id, pcid))]
+            lctx.pcid_needflush_lock_map().dom().contains((cpu_id, pcid)) ==> post.pcid_needflush.spec_index(cpu_id, pcid) == pre.pcid_needflush.spec_index(cpu_id, pcid)
+        // Direct typed-map framing for owner objects.
+        &&& forall|cpu_id: CpuId|
+            #![trigger lctx.cpu_lock_map().dom().contains(cpu_id)]
+            lctx.cpu_lock_map().dom().contains(cpu_id) ==> post.cpu_arr.spec_index(cpu_id).view() == pre.cpu_arr.spec_index(cpu_id).view()
+        // A held remote cpu that runs a thread may still trap, return to user mode, or divert to its idle loop once
+        // marked; every other held cpu keeps its running state.
+        &&& forall|cpu_id: CpuId|
+            #![trigger lctx.cpu_lock_map().dom().contains(cpu_id)]
+            lctx.cpu_lock_map().dom().contains(cpu_id) ==> {
+                let op = post.cpu_op.view().view()[cpu_id as int];
+                if cpu_id != lctx.cpu_id() && pre.cpu_arr.spec_index(cpu_id).view().view().view().state is Running {
+                    op is User || op is Trap || (op is Idle && pre.cpu_arr.spec_index(cpu_id).view().being_killed())
+                } else {
+                    op == pre.cpu_op.view().view()[cpu_id as int]
+                }
+            }
+        &&& forall|container_ptr: RwLockContainerPtr|
+            #![trigger lctx.container_lock_map().dom().contains(container_ptr)]
+            lctx.container_lock_map().dom().contains(container_ptr) ==> {
+                &&& post.ctn_mp.dom().contains(container_ptr)
+                &&& post.ctn_mp.lock_id_by_key(container_ptr) == pre.ctn_mp.lock_id_by_key(container_ptr)
+                &&& post.ctn_mp.spec_index(container_ptr) == pre.ctn_mp.spec_index(container_ptr)
+            }
+        &&& forall|process_ptr: RwLockProcessPtr|
+            #![trigger lctx.process_lock_map().dom().contains(process_ptr)]
+            lctx.process_lock_map().dom().contains(process_ptr) ==> {
+                &&& post.prc_mp.dom().contains(process_ptr)
+                &&& post.prc_mp.lock_id_by_key(process_ptr) == pre.prc_mp.lock_id_by_key(process_ptr)
+                &&& post.prc_mp.spec_index(process_ptr) == pre.prc_mp.spec_index(process_ptr)
+            }
+        &&& forall|thread_ptr: RwLockThreadPtr|
+            #![trigger lctx.thread_lock_map().dom().contains(thread_ptr)]
+            lctx.thread_lock_map().dom().contains(thread_ptr) ==> {
+                &&& post.thr_mp.dom().contains(thread_ptr)
+                &&& post.thr_mp.lock_id_by_key(thread_ptr) == pre.thr_mp.lock_id_by_key(thread_ptr)
+                &&& post.thr_mp.spec_index(thread_ptr) == pre.thr_mp.spec_index(thread_ptr)
+            }
+        &&& forall|pagetable_ptr: RwLockPageTableRoot|
+            #![trigger lctx.pagetable_lock_map().dom().contains(pagetable_ptr)]
+            lctx.pagetable_lock_map().dom().contains(pagetable_ptr) ==> {
+                &&& post.pt_mp.dom().contains(pagetable_ptr)
+                &&& post.pt_mp.lock_id_by_key(pagetable_ptr) == pre.pt_mp.lock_id_by_key(pagetable_ptr)
+                &&& typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write)
+                    ==> post.pt_mp.spec_index(pagetable_ptr) == pre.pt_mp.spec_index(pagetable_ptr)
+                &&& typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Read) ==> {
+                    &&& post.pt_mp.spec_index(pagetable_ptr).view() == pre.pt_mp.spec_index(pagetable_ptr).view()
+                    &&& post.pt_mp.spec_index(pagetable_ptr).rlocked_by_thread(lctx.thread_id())
+                    &&& post.pt_mp.spec_index(pagetable_ptr).being_killed() == pre.pt_mp.spec_index(pagetable_ptr).being_killed()
+                    &&& post.pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map.spec_index(lctx.thread_id()) == pre.pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map.spec_index(lctx.thread_id())
+                }
+            }
+        // Deliberately omitted: root-container equality across interleaving. The default page table is read-only and is
+        // framed directly. Global rodata immutability and final lock-id alignment remain explicit because both are common
+        // next-section framing facts.
+        &&& typed_lock_maps_aligned(&post, &lctx)
+        &&& post.dflt_pt == pre.dflt_pt
+        &&& containers_rodata_unchanged(pre.ctn_mp, post.ctn_mp)
+        &&& processes_rodata_unchanged(pre.prc_mp, post.prc_mp)
+        // The krnl lock state is the anchor: every object held before interleaving is still present and bit-for-bit
+        // unchanged afterwards.
+        &&& held_containers_unchanged(pre.ctn_mp, post.ctn_mp, &lctx)
+        &&& held_processes_unchanged(pre.prc_mp, post.prc_mp, &lctx)
+        &&& held_threads_unchanged(pre.thr_mp, post.thr_mp, &lctx)
+        &&& held_endpoints_unchanged(pre.ep_mp, post.ep_mp, &lctx)
+        &&& held_schedulers_unchanged(pre.sched_mp, post.sched_mp, &lctx)
+        &&& held_pcid_allocators_unchanged(pre.pcid_allc_mp, post.pcid_allc_mp, &lctx)
+        &&& held_cpu_sets_unchanged(pre.cpu_set_mp, post.cpu_set_mp, &lctx)
+        &&& held_pagetables_unchanged(pre.pt_mp, post.pt_mp, &lctx)
+        &&& held_pagetable_windows_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), &lctx)
+        &&& held_iommu_tables_unchanged(pre.it_mp, post.it_mp, &lctx)
+        &&& held_iommu_root_table_unchanged(pre.irt, post.irt, &lctx)
+        &&& held_pages_unchanged(pre.pg_arr, post.pg_arr, &lctx)
+        &&& held_cpus_unchanged(pre.cpu_arr, post.cpu_arr, &lctx)
+        &&& held_allocator_objects_unchanged(pre.allc_4k_mp, post.allc_4k_mp, &lctx, PageSize::SZ4k)
+        &&& held_allocator_objects_unchanged(pre.allc_2m_mp, post.allc_2m_mp, &lctx, PageSize::SZ2m)
+        &&& held_allocator_objects_unchanged(pre.allc_1g_mp, post.allc_1g_mp, &lctx, PageSize::SZ1g)
+        // A write holder's hidden leaves are never re-cached (`CAP.CM = 0`); the attached domains of its table may only gain present translations.
+        &&& forall|it: RwLockPageTableRoot| #![trigger lctx.iommu_table_lock_map().dom().contains(it)]
+            typed_lock_map_contains_mode(lctx.iommu_table_lock_map(), it, TypedLockMode::Write) && iommu_table_tlb_entries_present(pre.iommu_tlb, pre.irt.view(), pre.it_mp, it)
+                ==> iommu_table_tlb_entries_present(post.iommu_tlb, post.irt.view(), post.it_mp, it)
+    }
+
+    /// The step-boundary framing composes for one thread, provided no container or process present in both `a` and `c`
+    /// was absent in `b`: the global read-only-data clauses only relate objects present at both ends.
+    pub proof fn kernel_step_boundary_framing_trans(a: KernelK, b: KernelK, c: KernelK, lctx: LocalContext)
+        requires
+            kernel_step_boundary_framing(a, b, lctx),
+            kernel_step_boundary_framing(b, c, lctx),
+            forall|x: RwLockContainerPtr| #![trigger a.ctn_mp.dom().contains(x), c.ctn_mp.dom().contains(x)] a.ctn_mp.dom().contains(x) && c.ctn_mp.dom().contains(x) ==> b.ctn_mp.dom().contains(x),
+            forall|x: RwLockProcessPtr| #![trigger a.prc_mp.dom().contains(x), c.prc_mp.dom().contains(x)] a.prc_mp.dom().contains(x) && c.prc_mp.dom().contains(x) ==> b.prc_mp.dom().contains(x),
+        ensures
+            kernel_step_boundary_framing(a, c, lctx),
+    {
+        assert(held_allocator_objects_unchanged(a.allc_4k_mp, c.allc_4k_mp, &lctx, PageSize::SZ4k)) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
+        assert(held_allocator_objects_unchanged(a.allc_2m_mp, c.allc_2m_mp, &lctx, PageSize::SZ2m)) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
+        assert(held_allocator_objects_unchanged(a.allc_1g_mp, c.allc_1g_mp, &lctx, PageSize::SZ1g)) by { reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
     }
 
     // ---- Held-lock / krnl-state alignment ----
