@@ -240,7 +240,7 @@ pub proof fn kernel_k_trap_divert_preserves_inv(pre: KernelK, post: KernelK, cpu
 
 // Each environment event below happens while a thread is between two of its kernel sections. Its `respects_boundary`
 // lemma shows that the event stays within the step boundary's trusted framing of that thread, given the thread's local
-// context `lctx` aligned with the pre-state and no remote cpu the thread holds inside a kernel step.
+// context `lctx` aligned with the pre-state; alignment keeps every remote cpu the thread holds outside a kernel step.
 
 /// A trap entry on another cpu stays within the step-boundary framing of a thread between its sections.
 pub proof fn kernel_k_trap_enter_respects_boundary(pre: KernelK, post: KernelK, cpu_id: CpuId, lctx: LocalContext)
@@ -249,12 +249,11 @@ pub proof fn kernel_k_trap_enter_respects_boundary(pre: KernelK, post: KernelK, 
         kernel_k_trap_enter(pre, post, cpu_id),
         typed_lock_maps_aligned(&pre, &lctx),
         cpu_id != lctx.cpu_id(),
-        forall|c: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(c)] lctx.cpu_lock_map().dom().contains(c) && c != lctx.cpu_id() ==> !(pre.cpu_op.view().view()[c as int] is InStep),
     ensures kernel_step_boundary_framing(pre, post, lctx),
 {
     assert(post.inv()) by { kernel_k_trap_enter_preserves_inv(pre, post, cpu_id); };
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
-    reveal(cpu_op_wf); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+    reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
 }
 
 /// A trap return on another cpu stays within the step-boundary framing of a thread between its sections.
@@ -264,12 +263,11 @@ pub proof fn kernel_k_trap_return_respects_boundary(pre: KernelK, post: KernelK,
         kernel_k_trap_return(pre, post, cpu_id),
         typed_lock_maps_aligned(&pre, &lctx),
         cpu_id != lctx.cpu_id(),
-        forall|c: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(c)] lctx.cpu_lock_map().dom().contains(c) && c != lctx.cpu_id() ==> !(pre.cpu_op.view().view()[c as int] is InStep),
     ensures kernel_step_boundary_framing(pre, post, lctx),
 {
     assert(post.inv()) by { kernel_k_trap_return_preserves_inv(pre, post, cpu_id); };
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
-    reveal(cpu_op_wf); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+    reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
 }
 
 /// A trap diversion of another, marked cpu to its idle loop stays within the step-boundary framing of a thread between
@@ -280,12 +278,11 @@ pub proof fn kernel_k_trap_divert_respects_boundary(pre: KernelK, post: KernelK,
         kernel_k_trap_divert(pre, post, cpu_id),
         typed_lock_maps_aligned(&pre, &lctx),
         cpu_id != lctx.cpu_id(),
-        forall|c: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(c)] lctx.cpu_lock_map().dom().contains(c) && c != lctx.cpu_id() ==> !(pre.cpu_op.view().view()[c as int] is InStep),
     ensures kernel_step_boundary_framing(pre, post, lctx),
 {
     assert(post.inv()) by { kernel_k_trap_divert_preserves_inv(pre, post, cpu_id); };
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
-    reveal(cpu_op_wf); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+    reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
 }
 
 /// A CPU TLB fill stays within the step-boundary framing of a thread between its sections.
@@ -294,12 +291,11 @@ pub proof fn kernel_k_cpu_tlb_filled_respects_boundary(pre: KernelK, post: Kerne
         pre.inv(),
         kernel_k_cpu_tlb_filled(pre, post, cpu_id, pcid, added),
         typed_lock_maps_aligned(&pre, &lctx),
-        forall|c: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(c)] lctx.cpu_lock_map().dom().contains(c) && c != lctx.cpu_id() ==> !(pre.cpu_op.view().view()[c as int] is InStep),
     ensures kernel_step_boundary_framing(pre, post, lctx),
 {
     assert(post.inv()) by { kernel_k_cpu_tlb_filled_preserves_inv(pre, post, cpu_id, pcid, added); };
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
-    reveal(cpu_op_wf); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+    reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
 }
 
 /// An IOTLB fill stays within the step-boundary framing of a thread between its sections: the domain of a write-held
@@ -309,12 +305,11 @@ pub proof fn kernel_k_iommu_tlb_filled_respects_boundary(pre: KernelK, post: Ker
         pre.inv(),
         kernel_k_iommu_tlb_filled(pre, post, did, added),
         typed_lock_maps_aligned(&pre, &lctx),
-        forall|c: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(c)] lctx.cpu_lock_map().dom().contains(c) && c != lctx.cpu_id() ==> !(pre.cpu_op.view().view()[c as int] is InStep),
     ensures kernel_step_boundary_framing(pre, post, lctx),
 {
     assert(post.inv()) by { kernel_k_iommu_tlb_filled_preserves_inv(pre, post, did, added); };
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
-    reveal(cpu_op_wf); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+    reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
     reveal(iommu_table_tlb_entries_present); reveal(iommu_root_table_process_wf); reveal(process_iommu_table_match);
 }
 
@@ -324,12 +319,11 @@ pub proof fn kernel_k_iommu_context_cache_filled_respects_boundary(pre: KernelK,
         pre.inv(),
         kernel_k_iommu_context_cache_filled(pre, post, bdf, entry),
         typed_lock_maps_aligned(&pre, &lctx),
-        forall|c: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(c)] lctx.cpu_lock_map().dom().contains(c) && c != lctx.cpu_id() ==> !(pre.cpu_op.view().view()[c as int] is InStep),
     ensures kernel_step_boundary_framing(pre, post, lctx),
 {
     assert(post.inv()) by { kernel_k_iommu_context_cache_filled_preserves_inv(pre, post, bdf, entry); };
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
-    reveal(cpu_op_wf); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+    reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
     reveal(iommu_table_tlb_entries_present);
 }
 
@@ -362,7 +356,6 @@ pub proof fn cpu_op_ipi_running_to_idle_respects_boundary(pre: KernelK, post: Ke
         post.inv(),
         cpu_id != lctx.cpu_id(),
         !lctx.cpu_lock_map().dom().contains(cpu_id),
-        forall|c: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(c)] lctx.cpu_lock_map().dom().contains(c) && c != lctx.cpu_id() ==> !(pre.cpu_op.view().view()[c as int] is InStep),
     ensures kernel_step_boundary_framing(pre, post, lctx),
 {
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
@@ -381,10 +374,9 @@ pub proof fn cpu_op_woken_respects_boundary(pre: KernelK, post: KernelK, cpu_id:
         typed_lock_maps_aligned(&pre, &lctx),
         post.inv(),
         cpu_id != lctx.cpu_id(),
-        forall|c: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(c)] lctx.cpu_lock_map().dom().contains(c) && c != lctx.cpu_id() ==> !(pre.cpu_op.view().view()[c as int] is InStep),
     ensures kernel_step_boundary_framing(pre, post, lctx),
 {
     held_kernel_objects_unchanged_reflexive(&pre, &lctx);
-    reveal(cpu_op_wf); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
+    reveal(cpu_op_wf); reveal(LockedArray::typed_lock_map_aligned); reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
 }
 }

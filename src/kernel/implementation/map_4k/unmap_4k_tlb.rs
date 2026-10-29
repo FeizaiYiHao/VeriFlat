@@ -132,6 +132,7 @@ pub fn flush_local_pcid_and_clear(krnl: &mut KernelK, cpu_id: CpuId, pcid: Pcid,
         assert(flush_local_pcid_and_clear_eof_transition_framing(*old(krnl), *krnl, cpu_id, pcid)) by { reveal(flush_local_pcid_and_clear_eof_transition_framing); };
         flush_local_pcid_and_clear_eof(*old(krnl), *krnl, cpu_id, pcid);
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+        assert(typed_lock_maps_aligned(&*krnl, lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
     }
 }
 }

@@ -255,6 +255,7 @@ pub(super) fn schedule_switch_commit(
     let syscall_return = target.scheduled_to_running(cpu_id, node_perm, pt_regs);
     proof {
         lctx.update_lock_id(KernelObjId::Thread(next_thread), old(krnl).thr_mp.lock_id_by_key(next_thread), krnl.thr_mp.lock_id_by_key(next_thread));
+        assert(typed_lock_maps_aligned(&*krnl, &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
         assert(scheduler_context_switch_eof_transition_framing(*old(krnl), *krnl, cpu_id, scheduler_ptr, next_thread, *old(pt_regs))) by { reveal(scheduler_context_switch_eof_transition_framing); };
     }
     syscall_return

@@ -404,6 +404,10 @@ verus! {
     pub open spec fn typed_lock_maps_aligned(k: &KernelK, lctx: &LocalContext) -> bool {
         &&& k.pg_arr.typed_lock_map_aligned(lctx.page_lock_map(), lctx.thread_id())
         &&& k.cpu_arr.typed_lock_map_aligned(lctx.cpu_lock_map(), lctx.thread_id())
+        &&& (forall|cpu_id: CpuId|
+            #![trigger typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write)]
+            typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write)
+            ==> k.cpu_arr.spec_index(cpu_id).view().view_ghost() == Some(lctx.cpu_id()))
         &&& k.pcid_needflush.typed_lock_map_aligned(lctx.pcid_needflush_lock_map(), lctx.thread_id())
         &&& (forall|cpu_id: CpuId, pcid: Pcid|
             #![trigger typed_lock_map_contains_mode(lctx.pcid_needflush_lock_map(), (cpu_id, pcid), TypedLockMode::Write)]

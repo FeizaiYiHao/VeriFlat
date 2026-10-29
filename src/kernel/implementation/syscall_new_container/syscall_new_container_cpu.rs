@@ -123,6 +123,7 @@ pub(super) fn transfer_new_container_cpu(
         };
         new_container_cpu_transfer_eof(locked_k, *krnl, parent_container_ptr, child_container_ptr, parent_cpu_set, child_cpu_set, transfer_cpu_id, lctx.thread_id());
         assert(!krnl.cpu_set_mp.spec_index(parent_cpu_set).being_killed() && !krnl.cpu_set_mp.spec_index(child_cpu_set).being_killed()) by { reveal(new_container_cpu_transfer_eof_transition_framing); };
+        assert(typed_lock_maps_aligned(&*krnl, &*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
     }
     krnl.wunlock_cpu(transfer_cpu_id, Tracked(&mut *lctx), Tracked(transfer_cpu_lock_perm));
     krnl.wunlock_cpu_set(child_cpu_set, Tracked(&mut *lctx), Tracked(child_cpu_set_lock_perm));

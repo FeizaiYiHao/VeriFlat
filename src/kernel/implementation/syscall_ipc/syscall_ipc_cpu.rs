@@ -597,6 +597,7 @@ verus! {
         target_set.owned_cpus.insert_closed(transfer_cpu_id);
         let transfer_cpu = krnl.cpu_arr.borrow_mut_typed(transfer_cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(lctx), Tracked(transfer_cpu_lock_perm));
         transfer_cpu.transfer_off_cpu_to_container(target_container, target_container_depth);
+        proof { assert(typed_lock_maps_aligned(&*krnl, lctx)) by { reveal(LockedArray::typed_lock_map_aligned); }; }
     }
 
     /// Write-locks the source and target CPU sets in address order and the peer's scheduler shard, checks that
