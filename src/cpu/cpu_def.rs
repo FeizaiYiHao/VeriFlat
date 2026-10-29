@@ -25,8 +25,6 @@ pub struct Cpu {
     tlb_dirty_bitmap: BitMap<Option<ProcessPageTablePair>, PCID_MAX>,
     container_depth: usize,
     process_depth: usize,
-    /// Ghost record of whether the hardware cpu is halted; set when publishing Off, cleared by the woken cpu.
-    hw_halted: Ghost<bool>,
     /// This cpu's kernel-call permission while the cpu is outside a kernel step; inside one it sits in the local context.
     kernel_call_perm: Tracked<Option<KernelCallPerm>>,
 }
@@ -45,7 +43,6 @@ pub ghost struct CpuView {
     pub tlb_dirty_bitmap: BitMap<Option<ProcessPageTablePair>, PCID_MAX>,
     pub container_depth: usize, // killing_container's depth if being killed.
     pub process_depth: usize,
-    pub hw_halted: bool,
 }
 
 pub ghost struct CpuU {
@@ -75,7 +72,6 @@ impl Cpu {
             ret.view().current_pagetable is None,
             ret.view().current_cr3 == default_cr3,
             ret.view().current_pcid == KERNEL_DEFAULT_PCID,
-            ret.view().hw_halted == (state is Off),
             forall|pcid: Pcid|
                 #![trigger ret.tlb_dirty_bitmap().spec_index(pcid)]
                 pcid_valid(pcid) ==> ret.tlb_dirty_bitmap().spec_index(pcid) is None,
@@ -83,7 +79,7 @@ impl Cpu {
         Self {
             owning_container, state, current_process: None, current_thread: None, current_pagetable: None,
             cr3_pcid: CpuCr3Pcid::new(default_cr3, KERNEL_DEFAULT_PCID), tlb_dirty_bitmap: BitMap::new_with_init_value(None),
-            container_depth, process_depth: 0, hw_halted: Ghost(state is Off), kernel_call_perm: Tracked(Some(KernelCallPerm::new_boot(cpu_id))),
+            container_depth, process_depth: 0, kernel_call_perm: Tracked(Some(KernelCallPerm::new_boot(cpu_id))),
         }
     }
 
@@ -186,7 +182,7 @@ impl Cpu {
         CpuView {
             owning_container: self.owning_container, state: self.state, current_process: self.current_process, current_thread: self.current_thread,
             current_pagetable: self.current_pagetable, current_cr3: self.cr3_pcid.cr3(), current_pcid: self.cr3_pcid.pcid(),
-            tlb_dirty_bitmap: self.tlb_dirty_bitmap, container_depth: self.container_depth, process_depth: self.process_depth, hw_halted: self.hw_halted.view(),
+            tlb_dirty_bitmap: self.tlb_dirty_bitmap, container_depth: self.container_depth, process_depth: self.process_depth,
         }
     }
 
@@ -351,16 +347,6 @@ impl Cpu {
         self.state = CpuState::Idle;
     }
 
-    /// The woken cpu records that its hardware runs again; the software state is untouched.
-    pub fn clear_hw_halted(&mut self)
-        requires
-            old(self).wf(),
-        ensures
-            final(self).wf(),
-            final(self).view() == (CpuView { hw_halted: false, ..old(self).view() }),
-            final(self).kernel_call_perm() == old(self).kernel_call_perm(),
-    { self.hw_halted = Ghost(false); }
-
     /// Publish Off from Idle with an empty dirty map; the caller has flushed every non-default PCID of this cpu.
     pub fn publish_off_from_idle(&mut self)
         requires
@@ -368,13 +354,12 @@ impl Cpu {
             old(self).view().state is Idle,
         ensures
             final(self).wf(),
-            final(self).view() == (CpuView { state: CpuState::Off, tlb_dirty_bitmap: final(self).view().tlb_dirty_bitmap, hw_halted: true, ..old(self).view() }),
+            final(self).view() == (CpuView { state: CpuState::Off, tlb_dirty_bitmap: final(self).view().tlb_dirty_bitmap, ..old(self).view() }),
             forall|pcid: Pcid| #![trigger final(self).tlb_dirty_bitmap().spec_index(pcid)] pcid_valid(pcid) ==> final(self).tlb_dirty_bitmap().spec_index(pcid) is None,
             final(self).kernel_call_perm() == old(self).kernel_call_perm(),
     {
         self.state = CpuState::Off;
         self.tlb_dirty_bitmap = BitMap::new_with_init_value(None);
-        self.hw_halted = Ghost(true);
     }
 }
 

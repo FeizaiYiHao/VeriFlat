@@ -363,11 +363,11 @@ bit is kept and `syscall_schedule` handles the kill), or a killer marked
 
 Loop entry of a cpu that went Off (the trap layer's `wait_until_online`), run
 again each time an interrupt ends its halt. Under `cpu` it re-reads its
-state: while still Off it unlocks and halts again (`StillOff`, also returned at once for a `killed` cpu); once
-`syscall_cpu_online` has published Idle it clears the ghost `Cpu.hw_halted`
-and returns to the idle loop (`Resumed`), where the trap layer runs
-`cpu_offline_check` and `syscall_schedule` as usual. U is unchanged in both
-outcomes (`hw_halted` is not projected).
+state and unlocks: while still Off it halts again (`StillOff`, also returned
+at once for a `killed` cpu); once `syscall_cpu_online` has published Idle it
+returns to the idle loop (`Resumed`), where the trap layer runs
+`cpu_offline_check` and `syscall_schedule` as usual. Neither outcome changes
+the cpu, and U is unchanged in both.
 
 ## 4c. rebalance_pull — one step
 
@@ -1351,10 +1351,9 @@ request cell is held, and an ordinary cell acquisition requires that no other
 cell is held; only a killer retiring a marked container may lock that
 container's PCID allocator while holding that container's cells.
 
-`Cpu.hw_halted: Ghost<bool>`
-(`CpuView.hw_halted`) records whether the hardware is halted: set when the cpu
-publishes Off (§4b), cleared by `cpu_online_resume`; it is not U-visible and
-no invariant depends on it. Trusted primitives: `CpuTLB::flush_all_local_pcids`
+The hardware Off state is `cpu_op` `Off`: written at the step exit that
+published Off (§4b) and left by the wake-up IPI; `cpu_op_wf` ties it to the
+Off scheduling state. Trusted primitives: `CpuTLB::flush_all_local_pcids`
 (external_body; empties every TLB entry of the calling cpu except
 `KERNEL_DEFAULT_PCID`), `ipi_wake` (external_body; the wake-up IPI, FFI
 `veriflat_send_ipi`, called only through `CpuLockedArray::wake_remote`),
@@ -1548,8 +1547,8 @@ The boot-side checks of this boundary are listed in `Methodology.md`.
    is killed; an offline request sends no IPI, the target finds it at its next
    check; `syscall_cpu_online` publishes Idle and wakes the target with the
    wake-up IPI while it still holds the target's lock, and the woken cpu only
-   clears `hw_halted` (re-halting while still Off); there is no `Offlining`
-   state.
+   returns to the idle loop (re-halting while still Off); there is no
+   `Offlining` state.
 5. Scheduler shards (2026-10-07): every enqueue goes to the acting cpu's shard
    (schedule requeue, new_thread, cpu_offline_check, same-container IPC wake,
    new_container's root thread); a cross-container IPC wake goes to the peer's

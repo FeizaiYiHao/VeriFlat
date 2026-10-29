@@ -1,7 +1,8 @@
 //! Per-cpu running state and the per-cpu kernel-call permission.
 //!
 //! TCB model of `CpuOpState`. A cpu runs with its interrupt flag clear exactly while it is `InStep`; every other state
-//! runs with IF=1. `Off` is a cpu halted in `wait_until_online`; `Idle` is the idle loop, which halts with a plain
+//! runs with IF=1. `Off` is the hardware Off state: the cpu halts in `wait_until_online`; it is written at the step
+//! exit that published Off and left by the wake IPI of `ipi_wake`. `Idle` is the idle loop, which halts with a plain
 //! `hlt`; `User` is ring 3; `Trap` is the IF=1 kernel segment running without the own cpu lock (User to Trap at
 //! `syscall` and the interrupt gates, Trap to User at `sysretq`/`iretq`, Trap to Idle when `restore_frame` diverts on
 //! `running_to_idle_pending` or CpuIdle); `InStep` is a cpu that write-holds its own cpu lock with its own

@@ -64,7 +64,7 @@ pub open spec fn cpu_went_off_eof_transition_framing(
     &&& cpu_after.view().kernel_call_perm() == cpu_before.view().kernel_call_perm()
     &&& new_cpu == (CpuView {
         state: CpuState::Off, current_process: None, current_thread: None, current_pagetable: None, current_cr3: pre.dflt_pt.view().cr3,
-        current_pcid: KERNEL_DEFAULT_PCID, tlb_dirty_bitmap: new_cpu.tlb_dirty_bitmap, hw_halted: true, ..old_cpu
+        current_pcid: KERNEL_DEFAULT_PCID, tlb_dirty_bitmap: new_cpu.tlb_dirty_bitmap, ..old_cpu
     })
     &&& (forall|pcid: Pcid| #![trigger cpu_after.view().tlb_dirty_bitmap().spec_index(pcid)] pcid_valid(pcid) ==> cpu_after.view().tlb_dirty_bitmap().spec_index(pcid) is None)
     &&& post.thr_mp.dom() == pre.thr_mp.dom()
