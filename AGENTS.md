@@ -24,6 +24,14 @@ they must point to these canonical sources instead of redefining their rules.
   explicit, disjoint file ownership and require it to report changed files
   plus verification run numbers. Workflow orchestration still needs explicit
   user permission.
+- Token economy. The main agent's context is re-sent on every wake-up, so
+  idle wake-ups are the main cost: it must not reply, poll, or re-prompt while
+  a subagent is waiting on a verification run, and it acts only on a final
+  report. A subagent waits for its own background run inside one blocking
+  call (a foreground command with a timeout, or a polling loop in one shell
+  invocation) instead of handing back mid-wait, and chains its runs into one
+  script so a single wait covers them. Brief subagents once, completely, with
+  file paths instead of pasted code; never read a subagent's transcript.
 - A subagent verifies only its own scope: one module or one equation
   (`./verify-workspace.sh --package <pkg> -- --verify-only-module <mod>` or
   `--verify-function <fn>`), each under `systemd-run --user --scope -p
