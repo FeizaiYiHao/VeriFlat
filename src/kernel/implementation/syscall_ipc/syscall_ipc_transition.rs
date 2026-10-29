@@ -1,6 +1,6 @@
 use vstd::prelude::*;
 use crate::*;
-use super::syscall_ipc_transition_helpers::{ipc_block_current_release_and_end_step, ipc_schedule_peer_on_shard};
+use super::syscall_ipc_transition_helpers::{ipc_block_current_release_and_end_step, ipc_schedule_peer_on_shard, unlock_ipc_scheduled_peer_locks};
 use super::syscall_ipc_queue::{ipc_block_thread_on_endpoint, ipc_enqueue_endpoint_waiter};
 use super::syscall_ipc_spec::*;
 use super::syscall_ipc_trace::*;
@@ -299,12 +299,11 @@ verus! {
             final(krnl).all_objects_unlocked(final(lctx)),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
     {
-        krnl.wunlock_thread(peer_thread_ptr, Tracked(&mut *lctx), Tracked(peer_thread_lock_perm));
         krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(None), Tracked(&*lctx), Tracked(&current_thread_lock_perm));
-        krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
-        krnl.wunlock_scheduler_shard(peer_scheduler_ptr, wake_cpu, Tracked(&mut *lctx), Tracked(peer_scheduler_lock_perm));
-        krnl.wunlock_endpoint(endpoint_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
-        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+        unlock_ipc_scheduled_peer_locks(
+            krnl, Tracked(&mut *lctx), cpu_id, current_thread_ptr, endpoint_ptr, peer_thread_ptr, peer_scheduler_ptr, wake_cpu, Tracked(cpu_lock_perm),
+            Tracked(current_thread_lock_perm), Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm), Tracked(peer_scheduler_lock_perm),
+        );
         proof {
             assert(krnl.cpu_op.view().view() =~= old(steps).snapshot_k().cpu_op.view().view());
             assert(kernel_ipc_rendezvous_fields(&steps.snapshot_k(), &*krnl, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, result, None, None)) by {

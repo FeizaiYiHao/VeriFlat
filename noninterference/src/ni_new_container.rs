@@ -85,6 +85,17 @@ pub proof fn new_container_finish_step_iso(old_u: KernelU, new_u: KernelU, cpu_i
 {
     reveal(new_container_finish_step_pre); reveal(new_container_finish_step); reveal(kernel_u_new_thread_changed); reveal(kernel_u_cpu_ownership_wf); reveal(kernel_u_container_tree_wf);
     reveal(kernel_u_endpoint_ownership_wf); reveal(kernel_u_ipc_transit_wf);
+    assert(new_u.process_map.dom() =~= old_u.process_map.dom());
+    assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] old_u.process_map.dom().contains(p) ==> {
+        &&& new_u.process_map[p].owning_container == old_u.process_map[p].owning_container
+        &&& new_u.process_map[p].iommu_table == old_u.process_map[p].iommu_table
+        &&& (new_u.process_map[p].pagetable is Some) == (old_u.process_map[p].pagetable is Some)
+        &&& new_u.process_map[p].pagetable->Some_0.mapping_4k == old_u.process_map[p].pagetable->Some_0.mapping_4k
+        &&& new_u.process_map[p].pagetable->Some_0.mapping_2m == old_u.process_map[p].pagetable->Some_0.mapping_2m
+        &&& new_u.process_map[p].pagetable->Some_0.mapping_1g == old_u.process_map[p].pagetable->Some_0.mapping_1g
+    });
+    assert(new_u.container_map.dom() =~= old_u.container_map.dom());
+    assert(forall|c: RwLockContainerPtr| #![trigger new_u.container_map[c]] new_u.container_map[c].subtree_set == old_u.container_map[c].subtree_set);
 }
 
 /// The container creation result of a running cpu of `b` reads only the view of `b`: a cpu outside the view

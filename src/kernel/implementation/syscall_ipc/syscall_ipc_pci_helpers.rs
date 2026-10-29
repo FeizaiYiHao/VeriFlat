@@ -7,6 +7,153 @@ use super::syscall_ipc_spec::*;
 use super::syscall_ipc_trace::*;
 
 verus! {
+    /// Releases every lock held by the PCI-payload rendezvous; only lock states move, and exactly the held ones become unlocked.
+    fn unlock_ipc_pci_rendezvous_locks(
+        krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, cpu_id: CpuId, current_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
+        peer_thread_ptr: RwLockThreadPtr, peer_scheduler_ptr: RwLockSchedulerPtr, wake_cpu: CpuId, Tracked(cpu_lock_perm): Tracked<LockPerm>,
+        Tracked(current_thread_lock_perm): Tracked<LockPerm>, Tracked(endpoint_lock_perm): Tracked<LockPerm>, Tracked(peer_thread_lock_perm): Tracked<LockPerm>,
+        Tracked(peer_scheduler_lock_perm): Tracked<LockPerm>, Tracked(irt_lock_perm): Tracked<LockPerm>, iommu_table: Option<RwLockPageTableRoot>,
+        Tracked(iommu_table_lock_perm): Tracked<Option<LockPerm>>,
+    )
+        requires
+            old(krnl).inv(),
+            old(lctx).kernel_view_locking_state() is Release,
+            typed_lock_maps_aligned(old(krnl), old(lctx)),
+            index_valid(NUM_CPUS, cpu_id),
+            cpu_id == old(lctx).cpu_id(),
+            old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
+            old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
+            current_thread_ptr != peer_thread_ptr,
+            old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid),
+            old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
+            typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
+            cpu_lock_perm.state() is WriteLock,
+            cpu_lock_perm.thread_id() == old(lctx).thread_id(),
+            cpu_lock_perm.lock_id() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
+            old(krnl).thr_mp.dom().contains(current_thread_ptr),
+            old(krnl).thr_mp.spec_index(current_thread_ptr).being_killed() == false,
+            !(old(krnl).thr_mp.spec_index(current_thread_ptr).view().state is IPC_TRANSIT),
+            !(old(krnl).thr_mp.spec_index(current_thread_ptr).view().state is KILLED),
+            old(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
+            old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_clean(),
+            old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost().exited,
+            typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
+            current_thread_lock_perm.state() is WriteLock,
+            current_thread_lock_perm.thread_id() == old(lctx).thread_id(),
+            current_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
+            old(krnl).thr_mp.dom().contains(peer_thread_ptr),
+            old(krnl).thr_mp.spec_index(peer_thread_ptr).being_killed() == false,
+            !(old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is IPC_TRANSIT),
+            !(old(krnl).thr_mp.spec_index(peer_thread_ptr).view().state is KILLED),
+            old(krnl).thr_mp.spec_index(peer_thread_ptr).view().free_quota_pending_clean(),
+            old(krnl).thr_mp.spec_index(peer_thread_ptr).view().temp_alloc_clean(),
+            old(krnl).thr_mp.spec_index(peer_thread_ptr).view().syscall_progress.view() is None,
+            !old(krnl).thr_mp.spec_index(peer_thread_ptr).view_ghost().exited,
+            typed_lock_map_contains_mode(old(lctx).thread_lock_map(), peer_thread_ptr, TypedLockMode::Write),
+            peer_thread_lock_perm.state() is WriteLock,
+            peer_thread_lock_perm.thread_id() == old(lctx).thread_id(),
+            peer_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(peer_thread_ptr).locking_thread()->Write_lock_id,
+            old(krnl).ep_mp.dom().contains(endpoint_ptr),
+            typed_lock_map_contains_mode(old(lctx).endpoint_lock_map(), endpoint_ptr, TypedLockMode::Write),
+            endpoint_lock_perm.state() is WriteLock,
+            endpoint_lock_perm.thread_id() == old(lctx).thread_id(),
+            endpoint_lock_perm.lock_id() == old(krnl).ep_mp.spec_index(endpoint_ptr).locking_thread()->Write_lock_id,
+            old(krnl).sched_mp.dom().contains(peer_scheduler_ptr),
+            index_valid(NUM_CPUS, wake_cpu),
+            typed_lock_map_contains_mode(old(lctx).scheduler_lock_map(), (peer_scheduler_ptr, wake_cpu), TypedLockMode::Write),
+            peer_scheduler_lock_perm.state() is WriteLock,
+            peer_scheduler_lock_perm.thread_id() == old(lctx).thread_id(),
+            peer_scheduler_lock_perm.lock_id() == old(krnl).sched_mp.spec_index(peer_scheduler_ptr).shards.spec_index(wake_cpu).view().locking_thread()->Write_lock_id,
+            typed_lock_map_contains_mode(old(lctx).iommu_root_table_lock_map(), old(krnl).irt.view().table_base(), TypedLockMode::Write),
+            irt_lock_perm.state() is WriteLock,
+            irt_lock_perm.thread_id() == old(lctx).thread_id(),
+            irt_lock_perm.lock_id() == old(krnl).irt.locking_thread()->Write_lock_id,
+            old(lctx).page_lock_map().dom().is_empty(),
+            old(lctx).cpu_lock_map().dom() =~= set![cpu_id],
+            old(lctx).container_lock_map().dom().is_empty(),
+            old(lctx).process_lock_map().dom().is_empty(),
+            old(lctx).thread_lock_map().dom() =~= set![current_thread_ptr, peer_thread_ptr],
+            old(lctx).endpoint_lock_map().dom() =~= set![endpoint_ptr],
+            old(lctx).scheduler_lock_map().dom() =~= set![(peer_scheduler_ptr, wake_cpu)],
+            old(lctx).pcid_allocator_lock_map().dom().is_empty(),
+            old(lctx).cpu_set_lock_map().dom().is_empty(),
+            old(lctx).pagetable_lock_map().dom().is_empty(),
+            old(lctx).pagetable_window_lock_map().dom().is_empty(),
+            iommu_table is None ==> old(lctx).iommu_table_lock_map().dom().is_empty(),
+            iommu_table matches Some(t) ==> {
+                &&& old(lctx).iommu_table_lock_map().dom() =~= set![t]
+                &&& typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), t, TypedLockMode::Write)
+                &&& old(krnl).it_mp.dom().contains(t)
+                &&& old(krnl).it_mp.spec_index(t).view().leaves_present()
+                &&& iommu_table_lock_perm is Some
+                &&& iommu_table_lock_perm->Some_0.state() is WriteLock
+                &&& iommu_table_lock_perm->Some_0.thread_id() == old(lctx).thread_id()
+                &&& iommu_table_lock_perm->Some_0.lock_id() == old(krnl).it_mp.spec_index(t).locking_thread()->Write_lock_id
+            },
+            old(lctx).iommu_root_table_lock_map().dom() =~= set![old(krnl).irt.view().table_base()],
+            old(lctx).allocator_quota_4k_lock_map().dom().is_empty(),
+            old(lctx).allocator_cache_4k_lock_map().dom().is_empty(),
+            old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
+            old(lctx).allocator_quota_2m_lock_map().dom().is_empty(),
+            old(lctx).allocator_cache_2m_lock_map().dom().is_empty(),
+            old(lctx).allocator_global_pool_2m_lock_map().dom().is_empty(),
+            old(lctx).allocator_quota_1g_lock_map().dom().is_empty(),
+            old(lctx).allocator_cache_1g_lock_map().dom().is_empty(),
+            old(lctx).allocator_global_pool_1g_lock_map().dom().is_empty(),
+            old(lctx).cpu_offline_flag_lock_map().dom().is_empty(),
+            old(lctx).pcid_needflush_lock_map().dom().is_empty(),
+        ensures
+            final(lctx).cpu_id() == old(lctx).cpu_id(),
+            final(lctx).thread_id() == old(lctx).thread_id(),
+            final(krnl).inv(),
+            final(lctx).kernel_view_locking_state() is Release,
+            typed_lock_maps_aligned(final(krnl), final(lctx)),
+            final(lctx).no_locks_held(),
+            final(krnl).all_objects_unlocked(final(lctx)),
+            *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_op: final(krnl).cpu_op, thr_mp: final(krnl).thr_mp, sched_mp: final(krnl).sched_mp, ep_mp: final(krnl).ep_mp,
+                irt: final(krnl).irt, it_mp: final(krnl).it_mp, ..*old(krnl) }),
+            final(krnl).cpu_op.view().view() == old(krnl).cpu_op.view().view().update(cpu_id as int, cpu_op_after_step(old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state)),
+            forall|i: CpuId| #![trigger final(krnl).cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) ==> {
+                &&& final(krnl).cpu_arr.spec_index(i).value.view().view() == old(krnl).cpu_arr.spec_index(i).value.view().view()
+                &&& final(krnl).cpu_arr.spec_index(i).value.killer_info() == old(krnl).cpu_arr.spec_index(i).value.killer_info()
+                &&& final(krnl).cpu_arr.spec_index(i).value.locking_thread() == if old(lctx).cpu_lock_map().dom().contains(i) { RwLockState::None } else { old(krnl).cpu_arr.spec_index(i).value.locking_thread() }
+            },
+            final(krnl).thr_mp.dom() == old(krnl).thr_mp.dom(),
+            forall|t: RwLockThreadPtr| #![trigger final(krnl).thr_mp.spec_index(t)] old(krnl).thr_mp.dom().contains(t) ==> {
+                &&& final(krnl).thr_mp.spec_index(t).view() == old(krnl).thr_mp.spec_index(t).view()
+                &&& final(krnl).thr_mp.spec_index(t).being_killed() == old(krnl).thr_mp.spec_index(t).being_killed()
+                &&& final(krnl).thr_mp.spec_index(t).locking_thread() == if old(lctx).thread_lock_map().dom().contains(t) { RwLockState::None } else { old(krnl).thr_mp.spec_index(t).locking_thread() }
+            },
+            final(krnl).ep_mp.dom() == old(krnl).ep_mp.dom(),
+            forall|e: RwLockEndpointPtr| #![trigger final(krnl).ep_mp.spec_index(e)] old(krnl).ep_mp.dom().contains(e) ==> {
+                &&& final(krnl).ep_mp.spec_index(e).view() == old(krnl).ep_mp.spec_index(e).view()
+                &&& final(krnl).ep_mp.spec_index(e).being_killed() == old(krnl).ep_mp.spec_index(e).being_killed()
+                &&& final(krnl).ep_mp.spec_index(e).locking_thread() == if old(lctx).endpoint_lock_map().dom().contains(e) { RwLockState::None } else { old(krnl).ep_mp.spec_index(e).locking_thread() }
+            },
+            final(krnl).irt.view() == old(krnl).irt.view(),
+            iommu_table is None ==> final(krnl).it_mp == old(krnl).it_mp,
+            final(krnl).it_mp.dom() == old(krnl).it_mp.dom(),
+            forall|p: RwLockPageTableRoot| #![trigger final(krnl).it_mp.spec_index(p)] old(krnl).it_mp.dom().contains(p) ==> {
+                &&& final(krnl).it_mp.spec_index(p).view() == old(krnl).it_mp.spec_index(p).view()
+                &&& final(krnl).it_mp.spec_index(p).locking_thread() == if old(lctx).iommu_table_lock_map().dom().contains(p) { RwLockState::None } else { old(krnl).it_mp.spec_index(p).locking_thread() }
+            },
+            forall|c: RwLockContainerPtr| #![trigger final(krnl).sched_mp.spec_index(final(krnl).ctn_mp.spec_index(c).view_rodata().view().scheduler)]
+                old(krnl).ctn_mp.dom().contains(c) ==> scheduler_shards_of(final(krnl).sched_mp.spec_index(final(krnl).ctn_mp.spec_index(c).view_rodata().view().scheduler))
+                    == scheduler_shards_of(old(krnl).sched_mp.spec_index(old(krnl).ctn_mp.spec_index(c).view_rodata().view().scheduler)),
+    {
+        if let Some(t) = iommu_table {
+            krnl.wunlock_iommu_table(t, Tracked(&mut *lctx), Tracked(iommu_table_lock_perm.tracked_unwrap()));
+        }
+        krnl.wunlock_iommu_root_table(Tracked(&mut *lctx), Tracked(irt_lock_perm));
+        krnl.wunlock_thread(peer_thread_ptr, Tracked(&mut *lctx), Tracked(peer_thread_lock_perm));
+        krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
+        krnl.wunlock_scheduler_shard(peer_scheduler_ptr, wake_cpu, Tracked(&mut *lctx), Tracked(peer_scheduler_lock_perm));
+        krnl.wunlock_endpoint(endpoint_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
+        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+        proof { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); }
+    }
+
     pub(super) fn finish_ipc_pci_rendezvous_release(
         krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
         process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr, peer_thread_ptr: RwLockThreadPtr,
@@ -171,21 +318,14 @@ verus! {
             ipc_rendezvous_step_pre(final(steps).nonlock_view().last().old_u, cpu_id, endpoint_index, waiting_state, payload),
             ipc_rendezvous_step(final(steps).nonlock_view().last().old_u, final(steps).nonlock_view().last().new_u, cpu_id, endpoint_index, waiting_state, payload),
     {
-        if let Some(t) = iommu_table {
-            krnl.wunlock_iommu_table(t, Tracked(&mut *lctx), Tracked(iommu_table_lock_perm.tracked_unwrap()));
-        }
-        krnl.wunlock_iommu_root_table(Tracked(&mut *lctx), Tracked(irt_lock_perm));
-        krnl.wunlock_thread(peer_thread_ptr, Tracked(&mut *lctx), Tracked(peer_thread_lock_perm));
-        krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
-        krnl.wunlock_scheduler_shard(peer_scheduler_ptr, wake_cpu, Tracked(&mut *lctx), Tracked(peer_scheduler_lock_perm));
-        krnl.wunlock_endpoint(endpoint_ptr, Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
-        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+        unlock_ipc_pci_rendezvous_locks(
+            krnl, Tracked(&mut *lctx), cpu_id, current_thread_ptr, endpoint_ptr, peer_thread_ptr, peer_scheduler_ptr, wake_cpu, Tracked(cpu_lock_perm), Tracked(current_thread_lock_perm),
+            Tracked(endpoint_lock_perm), Tracked(peer_thread_lock_perm), Tracked(peer_scheduler_lock_perm), Tracked(irt_lock_perm), iommu_table, Tracked(iommu_table_lock_perm),
+        );
         proof {
             assert(krnl.cpu_op.view().view() =~= old(steps).snapshot_k().cpu_op.view().view());
             assert(kernel_ipc_rendezvous_fields(&steps.snapshot_k(), &*krnl, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr,
-                peer_result, None, pci_transfer)) by {
-                reveal(kernel_ipc_rendezvous_fields); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
-            };
+                peer_result, None, pci_transfer)) by { reveal(kernel_ipc_rendezvous_fields); };
             steps.end_kernel_step_ipc_rendezvous(&*krnl, &*lctx, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr,
                 peer_result, None, pci_transfer, payload, false);
             assert({

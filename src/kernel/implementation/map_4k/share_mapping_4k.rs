@@ -579,6 +579,7 @@ pub fn share_mapping_4k_source_owner_precheck(
         final(krnl).thr_mp.spec_index(target_thread).view_ghost() == old(krnl).thr_mp.spec_index(target_thread).view_ghost(),
         ret == share_mapping_4k_range_owner_compatible(old(krnl), source_pagetable, target_container, source_range),
 {
+    hide(share_mapping_4k_leaf_owner_compatible);
     proof { steps.rebase_snapshot_k_if_unchanged(&*krnl); }
     proof {
         assert({
@@ -604,6 +605,7 @@ pub fn share_mapping_4k_source_owner_precheck(
     }
     let mut i: usize = 0;
     let mut all_compatible = true;
+    let ghost mut incompatible: int = 0;
     while i < source_range.len
         invariant
             forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, steps.view()),
@@ -680,7 +682,8 @@ pub fn share_mapping_4k_source_owner_precheck(
             krnl.ctn_mp.dom().contains(target_container),
             krnl.ctn_mp.spec_index(target_container).view_ghost().uppertree_seq == old(krnl).ctn_mp.spec_index(target_container).view_ghost().uppertree_seq,
             0 <= i <= source_range.len,
-            all_compatible == share_mapping_4k_range_owner_compatible_prefix(old(krnl), source_pagetable, target_container, source_range, i as int),
+            all_compatible ==> share_mapping_4k_range_owner_compatible_prefix(old(krnl), source_pagetable, target_container, source_range, i as int),
+            !all_compatible ==> 0 <= incompatible < i && !share_mapping_4k_leaf_owner_compatible(old(krnl), source_pagetable, target_container, source_range.view().spec_index(incompatible)),
             steps.nonlock_view().len() == old(steps).nonlock_view().len(),
             lctx.thread_id() == old(lctx).thread_id(),
             lctx.cpu_id() == old(lctx).cpu_id(),
@@ -713,6 +716,7 @@ pub fn share_mapping_4k_source_owner_precheck(
         decreases source_range.len - i,
     {
         let ghost krnl_i = *krnl;
+        let ghost lctx_i = *lctx;
         proof {
             let va = source_range.view().spec_index(i as int);
             assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(va)
@@ -726,14 +730,16 @@ pub fn share_mapping_4k_source_owner_precheck(
         let page_compatible = share_mapping_4k_source_owner_check_at(krnl, source_range, i, target_thread, target_process, target_container, source_pagetable, target_pagetable, Tracked(&mut *lctx), Tracked(&mut *steps),
             Tracked(source_pagetable_lock_perm));
         proof {
+            held_pagetable_windows_unchanged_chain_implies_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), krnl_i.pt_mp, krnl_i.pt_lower.view(), krnl.pt_mp, krnl.pt_lower.view(), old(lctx), &lctx_i);
             let va = source_range.view().spec_index(i as int);
             assert(page_compatible == share_mapping_4k_leaf_owner_compatible(old(krnl), source_pagetable, target_container, va)) by {
                 let page_index = page_ptr2page_index(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr);
-                page_ptr_valid_imply_page_index_valid();
+                reveal(share_mapping_4k_leaf_owner_compatible); page_ptr_valid_imply_page_index_valid();
                 mapped_4k_page_pagetable_wf_pagetable_at(old(krnl).pt_mp, old(krnl).pt_lower.view(), old(krnl).pg_arr, source_pagetable, va);
                 mapped_4k_page_pagetable_wf_pagetable_at(krnl_i.pt_mp, krnl_i.pt_lower.view(), krnl_i.pg_arr, source_pagetable, va);
                 container_page_owner_backward_at(old(krnl).ctn_mp, old(krnl).pg_arr, page_index); container_page_owner_backward_at(krnl_i.ctn_mp, krnl_i.pg_arr, page_index);
             };
+            if !page_compatible { incompatible = i as int; }
         }
         all_compatible = all_compatible && page_compatible;
         i = i + 1;

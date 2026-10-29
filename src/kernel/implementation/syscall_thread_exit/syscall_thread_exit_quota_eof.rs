@@ -37,10 +37,64 @@ pub(super) proof fn thread_exit_quota_eof_subsystems(
 {
     reveal(thread_exit_quota_eof_transition_framing);
     assert(pre.prc_mp.perms_wf() && pre.thr_mp.perms_wf() && pre.thr_mp.spec_index(thread_ptr).inv()) by { reveal(process_perms_wf); reveal(thread_perms_wf); };
-    assert(post.subsystems_inv()) by {
-        reveal(KernelK::default_pagetable_wf); reveal(process_perms_wf); reveal(allocator_perms_wf);
+    assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };
+    assert(thread_perms_wf(post.thr_mp)) by {
         reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
         reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_ipc_transit_wf);
+    };
+    assert(allocator_perms_wf(post.allc_4k_mp) && allocator_perms_wf(post.allc_2m_mp) && allocator_perms_wf(post.allc_1g_mp)) by { reveal(allocator_perms_wf); };
+    assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
+}
+
+proof fn thread_exit_quota_eof_memory_quota(
+    pre: KernelK, post: KernelK, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, allocator_ptr: RwLockPageAllocatorPtr,
+    size: PageSize,
+)
+    requires
+        pre.inv(),
+        thread_exit_quota_eof_transition_framing(pre, post, process_ptr, thread_ptr, allocator_ptr, size),
+        !pre.prc_mp.spec_index(process_ptr).being_killed(),
+        pre.ctn_mp.dom().contains(container_ptr),
+        pre.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().contains(process_ptr),
+        pre.ctn_mp.spec_index(container_ptr).view_ghost().owned_threads.view().contains(thread_ptr),
+        pre.prc_mp.dom().contains(process_ptr),
+        pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr,
+        pre.thr_mp.dom().contains(thread_ptr),
+        pre.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
+        pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
+        allocator_ptr == match size {
+            PageSize::SZ4k => pre.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k,
+            PageSize::SZ2m => pre.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_2m,
+            PageSize::SZ1g => pre.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_1g,
+        },
+        match size {
+            PageSize::SZ4k => pre.allc_4k_mp.spec_index(allocator_ptr).quota.view().value + pre.prc_mp.spec_index(process_ptr).view().quota_4k + pre.thr_mp.spec_index(thread_ptr).view().quota_4k,
+            PageSize::SZ2m => pre.allc_2m_mp.spec_index(allocator_ptr).quota.view().value + pre.prc_mp.spec_index(process_ptr).view().quota_2m + pre.thr_mp.spec_index(thread_ptr).view().quota_2m,
+            PageSize::SZ1g => pre.allc_1g_mp.spec_index(allocator_ptr).quota.view().value + pre.prc_mp.spec_index(process_ptr).view().quota_1g + pre.thr_mp.spec_index(thread_ptr).view().quota_1g,
+        } <= usize::MAX,
+    ensures
+        container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp),
+        container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp),
+        container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp),
+{
+    reveal(thread_exit_quota_eof_transition_framing);
+    let process = pre.prc_mp.spec_index(process_ptr).view();
+    let thread = pre.thr_mp.spec_index(thread_ptr).view();
+    let dp4k = if size is SZ4k { -(process.quota_4k as int) } else { 0int };
+    let dp2m = if size is SZ2m { -(process.quota_2m as int) } else { 0int };
+    let dp1g = if size is SZ1g { -(process.quota_1g as int) } else { 0int };
+    let dt4k = if size is SZ4k { -(thread.quota_4k as int) } else { 0int };
+    let dt2m = if size is SZ2m { -(thread.quota_2m as int) } else { 0int };
+    let dt1g = if size is SZ1g { -(thread.quota_1g as int) } else { 0int };
+    assert(pre.prc_mp.perms_wf() && pre.thr_mp.perms_wf() && pre.thr_mp.spec_index(thread_ptr).inv()) by { reveal(process_perms_wf); reveal(thread_perms_wf); };
+    assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp)) by {
+        lemma_container_process_thread_quota_folds_change_forall(pre.ctn_mp, pre.prc_mp, post.prc_mp, pre.thr_mp, post.thr_mp, container_ptr, process_ptr, thread_ptr, dp4k, dp2m, dp1g, dt4k, dt2m, dt1g); reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf);
+    };
+    assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp)) by {
+        lemma_container_process_thread_quota_folds_change_forall(pre.ctn_mp, pre.prc_mp, post.prc_mp, pre.thr_mp, post.thr_mp, container_ptr, process_ptr, thread_ptr, dp4k, dp2m, dp1g, dt4k, dt2m, dt1g); reveal(container_process_allocator_quota_2m_wf); reveal(container_allocator_wf);
+    };
+    assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp)) by {
+        lemma_container_process_thread_quota_folds_change_forall(pre.ctn_mp, pre.prc_mp, post.prc_mp, pre.thr_mp, post.thr_mp, container_ptr, process_ptr, thread_ptr, dp4k, dp2m, dp1g, dt4k, dt2m, dt1g); reveal(container_process_allocator_quota_1g_wf); reveal(container_allocator_wf);
     };
 }
 
@@ -70,18 +124,13 @@ pub(super) proof fn thread_exit_quota_eof_memory(
             PageSize::SZ2m => pre.allc_2m_mp.spec_index(allocator_ptr).quota.view().value + pre.prc_mp.spec_index(process_ptr).view().quota_2m + pre.thr_mp.spec_index(thread_ptr).view().quota_2m,
             PageSize::SZ1g => pre.allc_1g_mp.spec_index(allocator_ptr).quota.view().value + pre.prc_mp.spec_index(process_ptr).view().quota_1g + pre.thr_mp.spec_index(thread_ptr).view().quota_1g,
         } <= usize::MAX,
+        container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp),
+        container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp),
+        container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp),
     ensures
         post.memory_management_inv(),
 {
     reveal(thread_exit_quota_eof_transition_framing);
-    let process = pre.prc_mp.spec_index(process_ptr).view();
-    let thread = pre.thr_mp.spec_index(thread_ptr).view();
-    let dp4k = if size is SZ4k { -(process.quota_4k as int) } else { 0int };
-    let dp2m = if size is SZ2m { -(process.quota_2m as int) } else { 0int };
-    let dp1g = if size is SZ1g { -(process.quota_1g as int) } else { 0int };
-    let dt4k = if size is SZ4k { -(thread.quota_4k as int) } else { 0int };
-    let dt2m = if size is SZ2m { -(thread.quota_2m as int) } else { 0int };
-    let dt1g = if size is SZ1g { -(thread.quota_1g as int) } else { 0int };
     assert(pre.prc_mp.perms_wf() && pre.thr_mp.perms_wf() && pre.thr_mp.spec_index(thread_ptr).inv()) by { reveal(process_perms_wf); reveal(thread_perms_wf); };
     assert(post.memory_management_inv()) by {
         assert(allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
@@ -110,15 +159,6 @@ pub(super) proof fn thread_exit_quota_eof_memory(
         assert(container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by { lemma_container_allocator_free_4k_page_wf_preserved_for_lock_op(pre, post); };
         assert(container_allocator_free_2m_page_wf(post.allc_2m_mp, post.pg_arr)) by { lemma_container_allocator_free_2m_page_wf_preserved_for_lock_op(pre, post); };
         assert(container_allocator_free_1g_page_wf(post.allc_1g_mp, post.pg_arr)) by { lemma_container_allocator_free_1g_page_wf_preserved_for_lock_op(pre, post); };
-        assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp)) by {
-            lemma_container_process_thread_quota_folds_change_forall(pre.ctn_mp, pre.prc_mp, post.prc_mp, pre.thr_mp, post.thr_mp, container_ptr, process_ptr, thread_ptr, dp4k, dp2m, dp1g, dt4k, dt2m, dt1g); reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf);
-        };
-        assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp)) by {
-            lemma_container_process_thread_quota_folds_change_forall(pre.ctn_mp, pre.prc_mp, post.prc_mp, pre.thr_mp, post.thr_mp, container_ptr, process_ptr, thread_ptr, dp4k, dp2m, dp1g, dt4k, dt2m, dt1g); reveal(container_process_allocator_quota_2m_wf); reveal(container_allocator_wf);
-        };
-        assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp)) by {
-            lemma_container_process_thread_quota_folds_change_forall(pre.ctn_mp, pre.prc_mp, post.prc_mp, pre.thr_mp, post.thr_mp, container_ptr, process_ptr, thread_ptr, dp4k, dp2m, dp1g, dt4k, dt2m, dt1g); reveal(container_process_allocator_quota_1g_wf); reveal(container_allocator_wf);
-        };
     };
 }
 
@@ -223,6 +263,7 @@ pub(super) proof fn thread_exit_quota_eof(
     reveal(thread_exit_quota_eof_transition_framing);
     assert(pre.prc_mp.perms_wf() && pre.thr_mp.perms_wf() && pre.thr_mp.spec_index(thread_ptr).inv()) by { reveal(process_perms_wf); reveal(thread_perms_wf); };
     thread_exit_quota_eof_subsystems(pre, post, container_ptr, process_ptr, thread_ptr, allocator_ptr, size);
+    thread_exit_quota_eof_memory_quota(pre, post, container_ptr, process_ptr, thread_ptr, allocator_ptr, size);
     thread_exit_quota_eof_memory(pre, post, container_ptr, process_ptr, thread_ptr, allocator_ptr, size);
     thread_exit_quota_eof_process(pre, post, container_ptr, process_ptr, thread_ptr, allocator_ptr, size);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {

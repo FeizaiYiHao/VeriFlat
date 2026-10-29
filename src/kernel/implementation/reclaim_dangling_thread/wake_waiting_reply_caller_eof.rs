@@ -39,7 +39,31 @@ proof fn wake_waiting_reply_caller_eof_memory_management_inv(
     };
 }
 
-/// The cleared caller link and the woken caller keep every call link and dangling chain end.
+proof fn wake_waiting_reply_caller_eof_dangling_chain_end_wf(
+    pre: KernelK, post: KernelK, thread_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_id: CpuId,
+)
+    requires
+        pre.inv(),
+        thread_ptr != caller_ptr,
+        index_valid(NUM_CPUS, cpu_id),
+        pre.thr_mp.dom().contains(thread_ptr),
+        pre.thr_mp.dom().contains(caller_ptr),
+        pre.sched_mp.dom().contains(scheduler_ptr),
+        pre.ctn_mp.spec_index(pre.thr_mp.spec_index(caller_ptr).view().owning_container).view_rodata().view().scheduler == scheduler_ptr,
+        pre.thr_mp.spec_index(thread_ptr).view().caller == Some(caller_ptr),
+        pre.thr_mp.spec_index(caller_ptr).view().state is WAITING_REPLY,
+        !pre.sched_mp.spec_index(scheduler_ptr).shards.spec_index(cpu_id).view().view().queue.dom().contains(pre.thr_mp.spec_index(caller_ptr).view().scheduler_linkedlist_node.addr()),
+        wake_waiting_reply_caller_eof_transition_framing(pre, post, thread_ptr, caller_ptr, scheduler_ptr, cpu_id),
+        post.subsystems_inv(),
+        thread_caller_callee_wf(post.thr_mp),
+    ensures
+        thread_dangling_chain_end_wf(post.thr_mp),
+{
+    reveal(wake_waiting_reply_caller_eof_transition_framing);
+    assert(thread_dangling_chain_end_wf(post.thr_mp)) by { reveal(thread_dangling_chain_end_wf); };
+}
+
+/// The cleared caller link and the woken caller keep every call link.
 proof fn wake_waiting_reply_caller_eof_call_chain_wf(
     pre: KernelK, post: KernelK, thread_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_id: CpuId,
 )
@@ -58,11 +82,9 @@ proof fn wake_waiting_reply_caller_eof_call_chain_wf(
         post.subsystems_inv(),
     ensures
         thread_caller_callee_wf(post.thr_mp),
-        thread_dangling_chain_end_wf(post.thr_mp),
 {
     reveal(wake_waiting_reply_caller_eof_transition_framing);
     assert(thread_caller_callee_wf(post.thr_mp)) by { reveal(thread_caller_callee_wf); };
-    assert(thread_dangling_chain_end_wf(post.thr_mp)) by { reveal(thread_dangling_chain_end_wf); };
 }
 
 /// The woken caller keeps its container and process thread sets.
@@ -114,6 +136,7 @@ proof fn wake_waiting_reply_caller_eof_process_management_inv(
     ensures post.process_management_inv(),
 {
     wake_waiting_reply_caller_eof_call_chain_wf(pre, post, thread_ptr, caller_ptr, scheduler_ptr, cpu_id);
+    wake_waiting_reply_caller_eof_dangling_chain_end_wf(pre, post, thread_ptr, caller_ptr, scheduler_ptr, cpu_id);
     wake_waiting_reply_caller_eof_thread_owner_wf(pre, post, thread_ptr, caller_ptr, scheduler_ptr, cpu_id);
     reveal(wake_waiting_reply_caller_eof_transition_framing);
     assert(post.process_management_inv()) by {

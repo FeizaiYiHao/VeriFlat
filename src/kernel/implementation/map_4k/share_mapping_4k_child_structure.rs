@@ -4,6 +4,34 @@ use crate::*;
 use super::share_mapping_4k_trace::share_4k_range_steps_from_directory;
 
 verus! {
+/// The L2 bounds `(lo, hi)` of the 2M windows of `range` below the L3 entry of its page `cur_va`: such a window covers `range`
+/// exactly when its L2 index lies in `lo..=hi`.
+fn child_range_l2_bounds(range: &VaRange4K, cur_va: VAddr, cur: (L4Index, L3Index, L2Index, L1Index), start_indices: (L4Index, L3Index, L2Index, L1Index),
+    end_indices: (L4Index, L3Index, L2Index, L1Index)) -> (ret: (L2Index, L2Index))
+    requires
+        range.wf(),
+        range.len > 0,
+        spec_va_4k_valid(cur_va),
+        range.start <= cur_va <= range.view()[range.len - 1],
+        cur == spec_va2index(cur_va),
+        start_indices == spec_va2index(range.start),
+        end_indices == spec_va2index(range.view()[range.len - 1]),
+    ensures
+        pei_valid(ret.0) && pei_valid(ret.1),
+        ret.0 <= cur.2 <= ret.1,
+        forall|w: WindowVa| #![trigger va_range_2m_windows(*range).contains(w)] w.wf() && spec_v2l4index(w.va) == cur.0 && spec_v2l3index(w.va) == cur.1
+            ==> va_range_2m_windows(*range).contains(w) == (ret.0 <= spec_v2l2index(w.va) <= ret.1),
+{
+    let lo = if cur.0 == start_indices.0 && cur.1 == start_indices.1 { start_indices.2 } else { 0 };
+    let hi = if cur.0 == end_indices.0 && cur.1 == end_indices.1 { end_indices.2 } else { 511 };
+    proof {
+        broadcast use spec_va_2m_valid_index_roundtrip, spec_index2va_2m_valid;
+        spec_va_4k_valid_index_roundtrip(cur_va); spec_va_4k_valid_index_roundtrip(range.start); spec_va_4k_valid_index_roundtrip(range.view()[range.len - 1]);
+        spec_index2va_le_implies_4k_indices_lex_le(start_indices, cur); spec_index2va_le_implies_4k_indices_lex_le(cur, end_indices);
+    }
+    (lo, hi)
+}
+
 /// Under the child table's big write lock, builds the L4, L3 and L2 directories on the walk to page `i` of `range` in the
 /// table of the new child process `child_ptr`, funded by the caller's thread; with a `transfer_source` the pages move from that
 /// parent container into the child container `container_ptr`. A new L2 page starts with the range's windows under it held, and
@@ -228,13 +256,11 @@ fn build_new_child_page_structure(
     hide(Set::is_empty);
     let cur_va = range.index(i);
     let cur = va2index(cur_va);
-    let lo = if cur.0 == start_indices.0 && cur.1 == start_indices.1 { start_indices.2 } else { 0 };
-    let hi = if cur.0 == end_indices.0 && cur.1 == end_indices.1 { end_indices.2 } else { 511 };
+    let (lo, hi) = child_range_l2_bounds(range, cur_va, cur, start_indices, end_indices);
     proof {
         broadcast use spec_va_2m_valid_index_roundtrip, spec_index2va_2m_valid;
         spec_va_4k_valid_index_roundtrip(cur_va); spec_va_4k_valid_index_roundtrip(range.start); spec_va_4k_valid_index_roundtrip(range.view()[range.len - 1]);
         spec_v2l4index_monotonic(range.start, cur_va);
-        spec_index2va_le_implies_4k_indices_lex_le(start_indices, cur); spec_index2va_le_implies_4k_indices_lex_le(cur, end_indices);
         kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl);
         pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).higher.wf_mapping_1g_at(cur.0, cur.1);
         pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).wf_mapping_2m_at(cur.0, cur.1, cur.2);

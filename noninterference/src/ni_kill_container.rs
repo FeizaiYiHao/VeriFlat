@@ -33,7 +33,17 @@ pub proof fn kill_container_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_i
         kill_container_enter_step_pre(old_u, cpu_id, child_index),
         kill_container_enter_step(old_u, new_u, cpu_id, child_index),
     ensures isolated(new_u, a, b),
-{ reveal(kill_container_enter_step_pre); reveal(kill_container_enter_step); reveal(kernel_u_cpu_ownership_wf); }
+{
+    reveal(kill_container_enter_step_pre); reveal(kill_container_enter_step); reveal(kernel_u_cpu_ownership_wf);
+    assert(new_u.process_map.dom() =~= old_u.process_map.dom());
+    assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] new_u.process_map[p].pagetable == old_u.process_map[p].pagetable
+        && new_u.process_map[p].iommu_table == old_u.process_map[p].iommu_table && new_u.process_map[p].owning_container == old_u.process_map[p].owning_container);
+    assert(new_u.container_map.dom() =~= old_u.container_map.dom());
+    assert(forall|c: RwLockContainerPtr| #![trigger new_u.container_map[c]] new_u.container_map[c].subtree_set == old_u.container_map[c].subtree_set);
+    assert(new_u.thread_map.dom() =~= old_u.thread_map.dom());
+    assert(forall|t: RwLockThreadPtr| #![trigger new_u.thread_map[t]]
+        new_u.thread_map[t].owning_container == old_u.thread_map[t].owning_container && new_u.thread_map[t].state == old_u.thread_map[t].state);
+}
 
 /// Descending from the target of a container kill on a cpu of `a`, which lies in `a`, marks a child of the target, so
 /// it leaves the view of `b` unchanged.

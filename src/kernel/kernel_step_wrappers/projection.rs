@@ -854,36 +854,260 @@ pub proof fn kernel_container_root_published_implies_u_step(
         kernel_k_to_kernel_u(*before).thread_map[thread].syscall_progress == before.thr_mp.spec_index(thread).view().syscall_progress.view(),
         kernel_u_container_root_published(kernel_k_to_kernel_u(*before), kernel_k_to_kernel_u(*after), parent, child, process, thread, transfer_cpu, funding, process_quota, moved, thread_page, progress),
 {
-    reveal(kernel_u_container_root_published); reveal(kernel_k_to_kernel_u);
+    reveal(kernel_u_container_root_published);
+    kernel_u_domains_projection(before); kernel_u_domains_projection(after); kernel_thread_projection_at(before, thread); kernel_cpu_projection_at(before, transfer_cpu);
+    kernel_container_root_published_implies_u_cpu_array(before, after, transfer_cpu);
+    kernel_container_root_published_implies_u_thread_map(before, after, thread, funding, progress);
+    kernel_container_root_published_implies_u_process_map(before, after, child, process, process_quota);
+    kernel_container_root_published_implies_u_container_map(before, after, parent, child, process, funding, process_quota, moved, thread_page, pcid_allocator);
+    kernel_endpoint_map_unchanged_implies_u_endpoint_map(before, after);
+}
+
+/// Publishing a container root projects to the cpu array with only `transfer_cpu` write-locked.
+proof fn kernel_container_root_published_implies_u_cpu_array(before: &KernelK, after: &KernelK, transfer_cpu: CpuId)
+    requires
+        index_valid(NUM_CPUS, transfer_cpu),
+        kernel_cpu_nonlock_fields_unchanged(before.cpu_arr, after.cpu_arr),
+        after.cpu_op.view().view() == before.cpu_op.view().view(),
+        after.cpu_arr.spec_index(transfer_cpu).value.locking_thread() is Write,
+        forall|i: CpuId| #![trigger after.cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) && i != transfer_cpu ==>
+            after.cpu_arr.spec_index(i).value.locking_thread() == before.cpu_arr.spec_index(i).value.locking_thread(),
+    ensures
+        ({
+            let pre = kernel_k_to_kernel_u(*before);
+            kernel_k_to_kernel_u(*after).cpu_array == pre.cpu_array.update(transfer_cpu as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre.cpu_array[transfer_cpu as int] })
+        }),
+{
+    kernel_u_domains_projection(before); kernel_u_domains_projection(after); reveal(kernel_cpu_nonlock_fields_unchanged);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
-    let ancestors = pre.container_map[parent].uppertree_seq.push(parent);
-    assert(forall|c: RwLockContainerPtr| #![trigger post.container_map[c]] pre.container_map.dom().contains(c) ==>
-        (ContainerU { children: pre.container_map[c].children, subtree_set: pre.container_map[c].subtree_set,
-            owned_pages: pre.container_map[c].owned_pages, ..post.container_map[c] }) == pre.container_map[c]) by {
-        reveal(container_scheduler_wf); reveal(container_pcid_allocator_wf); reveal(container_allocator_wf); reveal(container_cpu_set_wf);
-    };
-    assert_maps_equal!(post.process_map[process].pagetable->Some_0.mapping_1g, Map::empty());
-    reveal(kernel_cpu_nonlock_fields_unchanged);
-    assert_seqs_equal!(post.cpu_array == pre.cpu_array.update(transfer_cpu as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre.cpu_array[transfer_cpu as int] }));
+    assert_seqs_equal!(post.cpu_array == pre.cpu_array.update(transfer_cpu as int, CpuU { lock_state: LockStateU::WriteLocked, ..pre.cpu_array[transfer_cpu as int] }), i => {
+        if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(before, i as usize); kernel_cpu_projection_at(after, i as usize); }
+    });
+}
+
+/// Publishing a container root projects to the thread map with only `thread` charged the funding and given `progress`.
+proof fn kernel_container_root_published_implies_u_thread_map(before: &KernelK, after: &KernelK, thread: RwLockThreadPtr, funding: usize, progress: Option<SyscallProgress>)
+    requires
+        before.thr_mp.spec_index(thread).view().quota_4k >= 8 + funding,
+        after.thr_mp.unchanged_except(&before.thr_mp, thread),
+        after.thr_mp.spec_index(thread).being_killed() == before.thr_mp.spec_index(thread).being_killed(),
+        after.thr_mp.spec_index(thread).locking_thread() == before.thr_mp.spec_index(thread).locking_thread(),
+        after.thr_mp.spec_index(thread).view().state == before.thr_mp.spec_index(thread).view().state,
+        after.thr_mp.spec_index(thread).view().caller == before.thr_mp.spec_index(thread).view().caller,
+        after.thr_mp.spec_index(thread).view().callee == before.thr_mp.spec_index(thread).view().callee,
+        after.thr_mp.spec_index(thread).view().owning_container == before.thr_mp.spec_index(thread).view().owning_container,
+        after.thr_mp.spec_index(thread).view().owning_proc == before.thr_mp.spec_index(thread).view().owning_proc,
+        after.thr_mp.spec_index(thread).view().last_cpu == before.thr_mp.spec_index(thread).view().last_cpu,
+        after.thr_mp.spec_index(thread).view().quota_4k == before.thr_mp.spec_index(thread).view().quota_4k - 8 - funding,
+        after.thr_mp.spec_index(thread).view().quota_2m == before.thr_mp.spec_index(thread).view().quota_2m - 2,
+        after.thr_mp.spec_index(thread).view().quota_1g == before.thr_mp.spec_index(thread).view().quota_1g,
+        after.thr_mp.spec_index(thread).view().endpoint_descriptors.view() == before.thr_mp.spec_index(thread).view().endpoint_descriptors.view(),
+        after.thr_mp.spec_index(thread).view().blocking_endpoint_ptr == before.thr_mp.spec_index(thread).view().blocking_endpoint_ptr,
+        after.thr_mp.spec_index(thread).view().ipc_payload == before.thr_mp.spec_index(thread).view().ipc_payload,
+        after.thr_mp.spec_index(thread).view().error_code == before.thr_mp.spec_index(thread).view().error_code,
+        after.thr_mp.spec_index(thread).view().trap_frame == before.thr_mp.spec_index(thread).view().trap_frame,
+        after.thr_mp.spec_index(thread).view().syscall_progress.view() == progress,
+    ensures
+        ({
+            let pre = kernel_k_to_kernel_u(*before);
+            kernel_k_to_kernel_u(*after).thread_map == pre.thread_map.insert(thread, ThreadU {
+                quota_4k: (pre.thread_map[thread].quota_4k - 8 - funding) as usize, quota_2m: (pre.thread_map[thread].quota_2m - 2) as usize,
+                syscall_progress: progress, ..pre.thread_map[thread]
+            })
+        }),
+{
+    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    let pre = kernel_k_to_kernel_u(*before);
+    let post = kernel_k_to_kernel_u(*after);
     assert_maps_equal!(post.thread_map, pre.thread_map.insert(thread, ThreadU {
         quota_4k: (pre.thread_map[thread].quota_4k - 8 - funding) as usize, quota_2m: (pre.thread_map[thread].quota_2m - 2) as usize,
         syscall_progress: progress, ..pre.thread_map[thread]
-    }), p => {});
+    }), t => { if before.thr_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); } });
+}
+
+/// Publishing a container root projects to the process map with only the new write-locked root `process` added.
+proof fn kernel_container_root_published_implies_u_process_map(before: &KernelK, after: &KernelK, child: RwLockContainerPtr, process: RwLockProcessPtr, process_quota: usize)
+    requires
+        process_pagetable_match(before.prc_mp, before.pt_mp),
+        !before.prc_mp.dom().contains(process),
+        after.it_mp == before.it_mp,
+        after.prc_mp.dom() == before.prc_mp.dom().insert(process),
+        forall|p: RwLockProcessPtr| #![trigger after.prc_mp.spec_index(p)] before.prc_mp.dom().contains(p) ==> after.prc_mp.spec_index(p) == before.prc_mp.spec_index(p),
+        after.prc_mp.spec_index(process).locking_thread() is Write,
+        !after.prc_mp.spec_index(process).being_killed(),
+        !after.prc_mp.spec_index(process).view().zombie,
+        after.prc_mp.spec_index(process).view().iommu_table is None,
+        after.prc_mp.spec_index(process).view_ghost().owned_pci_functions.view().is_empty(),
+        after.prc_mp.spec_index(process).view().quota_4k == process_quota,
+        after.prc_mp.spec_index(process).view().quota_2m == 0,
+        after.prc_mp.spec_index(process).view().quota_1g == 0,
+        after.prc_mp.spec_index(process).view_rodata().view().parent is None,
+        after.prc_mp.spec_index(process).view_rodata().view().owning_container == child,
+        after.prc_mp.spec_index(process).view_rodata().view().depth == 0,
+        after.prc_mp.spec_index(process).view().children.view().len() == 0,
+        after.prc_mp.spec_index(process).view().owned_threads.view().len() == 0,
+        after.prc_mp.spec_index(process).view_ghost().uppertree_seq.view().len() == 0,
+        after.prc_mp.spec_index(process).view_ghost().subtree_set.view().is_empty(),
+        before.pt_mp.dom().subset_of(after.pt_mp.dom()),
+        forall|p: RwLockPageTableRoot| #![trigger after.pt_mp.spec_index(p)] before.pt_mp.dom().contains(p) ==> after.pt_mp.spec_index(p) == before.pt_mp.spec_index(p) && after.pt_lower.view().spec_index(p) == before.pt_lower.view().spec_index(p),
+        after.pt_mp.dom().contains(after.prc_mp.spec_index(process).view().pagetable),
+        after.pt_mp.spec_index(after.prc_mp.spec_index(process).view().pagetable).locking_thread() is Write,
+        pagetable_c(after.pt_mp, after.pt_lower.view(), after.prc_mp.spec_index(process).view().pagetable).is_empty(),
+    ensures
+        ({
+            let pre = kernel_k_to_kernel_u(*before);
+            let post = kernel_k_to_kernel_u(*after);
+            post.process_map == pre.process_map.insert(process, ProcessU {
+                lock_state: LockStateU::WriteLocked, zombie: false,
+                pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty() }),
+                iommu_table: None, pcid: post.process_map[process].pcid, owning_container: child, owned_pci_functions: Set::empty(), quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
+                parent: None, children: Seq::empty(), depth: 0, uppertree_seq: Seq::empty(), subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
+            })
+        }),
+{
+    kernel_u_domains_projection(before); kernel_u_domains_projection(after); kernel_process_projection_at(after, process);
+    let pre = kernel_k_to_kernel_u(*before);
+    let post = kernel_k_to_kernel_u(*after);
+    assert_maps_equal!(post.process_map[process].pagetable->Some_0.mapping_1g, Map::empty());
     assert_seqs_equal!(post.process_map[process].children == Seq::empty());
     assert_seqs_equal!(post.process_map[process].uppertree_seq == Seq::empty());
     assert_seqs_equal!(post.process_map[process].owned_threads == Seq::empty());
-    assert_seqs_equal!(post.container_map[child].children == Seq::empty());
-    assert_sets_equal!(post.container_map[child].owned_pages, moved);
-    assert_sets_equal!(pre.container_map[parent].owned_pages.difference(post.container_map[parent].owned_pages), moved);
-    assert_sets_equal!(post.container_map[child].free_pcids, Set::range(1usize, PCID_MAX).remove(1usize));
-    reveal(process_pagetable_match);
     assert_maps_equal!(post.process_map, pre.process_map.insert(process, ProcessU {
         lock_state: LockStateU::WriteLocked, zombie: false,
         pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty() }),
         iommu_table: None, pcid: post.process_map[process].pcid, owning_container: child, owned_pci_functions: Set::empty(), quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
         parent: None, children: Seq::empty(), depth: 0, uppertree_seq: Seq::empty(), subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
-    }));
+    }), p => {
+        if before.prc_mp.dom().contains(p) { kernel_process_projection_at(before, p); kernel_process_projection_at(after, p); process_pagetable_match_process_at(before.prc_mp, before.pt_mp, p); }
+    });
+}
+
+/// Publishing a container root projects to the container map with `child` added under `parent`, the moved pages taken
+/// from `parent`, and `child` recorded in every ancestor's subtree.
+proof fn kernel_container_root_published_implies_u_container_map(
+    before: &KernelK, after: &KernelK, parent: RwLockContainerPtr, child: RwLockContainerPtr, process: RwLockProcessPtr, funding: usize, process_quota: usize,
+    moved: Set<PagePtr>, thread_page: PagePtr, pcid_allocator: RwLockPcidAllocatorPtr,
+)
+    requires
+        container_scheduler_wf(before.ctn_mp, before.sched_mp),
+        container_pcid_allocator_wf(before.ctn_mp, before.pcid_allc_mp),
+        container_allocator_wf(before.ctn_mp, before.allc_4k_mp, before.allc_2m_mp, before.allc_1g_mp),
+        container_cpu_set_wf(before.ctn_mp, before.cpu_set_mp),
+        before.ctn_mp.dom().contains(parent),
+        !before.ctn_mp.dom().contains(child),
+        after.cpu_offline_mp.dom().contains(cpu_offline_flags_ptr(child)),
+        cpu_offline_requests_of(after.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(child))) == Seq::new(NUM_CPUS as nat, |i: int| false),
+        forall|c: RwLockContainerPtr| #![trigger after.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c))] before.ctn_mp.dom().contains(c) ==>
+            after.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c)) == before.cpu_offline_mp.spec_index(cpu_offline_flags_ptr(c)),
+        forall|p: RwLockCpuSetPtr| #![trigger after.cpu_set_mp.spec_index(p)] before.cpu_set_mp.dom().contains(p) ==>
+            after.cpu_set_mp.spec_index(p).locking_thread() == before.cpu_set_mp.spec_index(p).locking_thread() && after.cpu_set_mp.spec_index(p).being_killed() == before.cpu_set_mp.spec_index(p).being_killed(),
+        after.ctn_mp.dom() == before.ctn_mp.dom().insert(child),
+        forall|c: RwLockContainerPtr| #![trigger after.ctn_mp.spec_index(c)] before.ctn_mp.dom().contains(c) ==> {
+            &&& after.ctn_mp.spec_index(c).view_rodata() == before.ctn_mp.spec_index(c).view_rodata()
+            &&& after.ctn_mp.spec_index(c).view_ghost().uppertree_seq == before.ctn_mp.spec_index(c).view_ghost().uppertree_seq
+            &&& after.ctn_mp.spec_index(c).view_ghost().owned_threads == before.ctn_mp.spec_index(c).view_ghost().owned_threads
+            &&& after.ctn_mp.spec_index(c).view_ghost().owned_processes == before.ctn_mp.spec_index(c).view_ghost().owned_processes
+            &&& after.ctn_mp.spec_index(c).view_ghost().owned_endpoints == before.ctn_mp.spec_index(c).view_ghost().owned_endpoints
+            &&& after.ctn_mp.spec_index(c).view_ghost().subtree_set.view() == if before.ctn_mp.spec_index(parent).view_ghost().uppertree_seq.view().push(parent).contains(c) {
+                before.ctn_mp.spec_index(c).view_ghost().subtree_set.view().insert(child)
+            } else { before.ctn_mp.spec_index(c).view_ghost().subtree_set.view() }
+            &&& after.ctn_mp.spec_index(c).view() == (Container { children: after.ctn_mp.spec_index(c).view().children,
+                owned_pages: after.ctn_mp.spec_index(c).view().owned_pages, ..before.ctn_mp.spec_index(c).view() })
+            &&& after.ctn_mp.spec_index(c).view().children.view() == if c == parent { before.ctn_mp.spec_index(c).view().children.view().push(child) } else { before.ctn_mp.spec_index(c).view().children.view() }
+            &&& c != parent ==> after.ctn_mp.spec_index(c).view().owned_pages == before.ctn_mp.spec_index(c).view().owned_pages
+            &&& after.ctn_mp.spec_index(c).locking_thread() == before.ctn_mp.spec_index(c).locking_thread()
+            &&& after.ctn_mp.spec_index(c).lock_process_owner_u() == before.ctn_mp.spec_index(c).lock_process_owner_u()
+            &&& after.ctn_mp.spec_index(c).being_killed() == before.ctn_mp.spec_index(c).being_killed()
+        },
+        after.ctn_mp.spec_index(parent).view().owned_pages.view().subset_of(before.ctn_mp.spec_index(parent).view().owned_pages.view()),
+        moved.subset_of(before.ctn_mp.spec_index(parent).view().owned_pages.view()),
+        after.ctn_mp.spec_index(parent).view().owned_pages.view() == before.ctn_mp.spec_index(parent).view().owned_pages.view().difference(moved),
+        after.ctn_mp.spec_index(parent).view().owned_pages.view().contains(thread_page),
+        moved.contains(after.ctn_mp.spec_index(child).view_rodata().view().cpu_set),
+        after.cpu_set_mp.spec_index(after.ctn_mp.spec_index(child).view_rodata().view().cpu_set).locking_thread() is Write,
+        !after.cpu_set_mp.spec_index(after.ctn_mp.spec_index(child).view_rodata().view().cpu_set).being_killed(),
+        after.ctn_mp.spec_index(child).locking_thread() is Write,
+        after.ctn_mp.spec_index(child).lock_process_owner_u() == Some(LockOwnerId::Some(0)),
+        !after.ctn_mp.spec_index(child).being_killed(),
+        !after.ctn_mp.spec_index(child).view().zombie,
+        after.ctn_mp.spec_index(child).view().children.view().len() == 0,
+        after.ctn_mp.spec_index(child).view_ghost().uppertree_seq.view() == before.ctn_mp.spec_index(parent).view_ghost().uppertree_seq.view().push(parent),
+        after.ctn_mp.spec_index(child).view_ghost().subtree_set.view().is_empty(),
+        after.ctn_mp.spec_index(child).view().root_process == process,
+        after.ctn_mp.spec_index(child).view_ghost().owned_processes.view() == set![process],
+        after.ctn_mp.spec_index(child).view_ghost().owned_threads.view().is_empty(),
+        after.ctn_mp.spec_index(child).view_ghost().owned_endpoints.view().is_empty(),
+        after.ctn_mp.spec_index(child).view().owned_pages.view() == moved,
+        after.ctn_mp.spec_index(child).view_rodata().view().parent == Some(parent),
+        after.ctn_mp.spec_index(child).view_rodata().view().depth == before.ctn_mp.spec_index(parent).view_rodata().view().depth + 1,
+        scheduler_shards_of(after.sched_mp.spec_index(after.ctn_mp.spec_index(child).view_rodata().view().scheduler)) == Seq::new(NUM_CPUS as nat, |i: int| Seq::<RwLockThreadPtr>::empty()),
+        after.ctn_mp.spec_index(child).view_rodata().view().pcid_allocator == pcid_allocator,
+        after.pcid_allc_mp.spec_index(pcid_allocator).view().ref_counters.spec_index(1usize) == 1,
+        forall|pcid: Pcid| #![trigger after.pcid_allc_mp.spec_index(pcid_allocator).view().ref_counters.spec_index(pcid)]
+            pcid_valid(pcid) && pcid != 1usize ==> after.pcid_allc_mp.spec_index(pcid_allocator).view().ref_counters.spec_index(pcid) == 0,
+        after.allc_4k_mp.spec_index(after.ctn_mp.spec_index(child).view_rodata().view().allocator_ptr_4k).quota.view().view() == funding - process_quota,
+        after.allc_2m_mp.spec_index(after.ctn_mp.spec_index(child).view_rodata().view().allocator_ptr_2m).quota.view().view() == 0,
+        after.allc_1g_mp.spec_index(after.ctn_mp.spec_index(child).view_rodata().view().allocator_ptr_1g).quota.view().view() == 0,
+        forall|p: RwLockSchedulerPtr| #![trigger after.sched_mp.spec_index(p)] before.sched_mp.dom().contains(p) ==>
+            scheduler_shards_of(after.sched_mp.spec_index(p)) == scheduler_shards_of(before.sched_mp.spec_index(p)),
+        forall|p: RwLockPcidAllocatorPtr| #![trigger after.pcid_allc_mp.spec_index(p)] before.pcid_allc_mp.dom().contains(p) ==>
+            after.pcid_allc_mp.spec_index(p).view().ref_counters.view() == before.pcid_allc_mp.spec_index(p).view().ref_counters.view(),
+        before.allc_4k_mp.dom().subset_of(after.allc_4k_mp.dom()),
+        forall|p: RwLockPageAllocatorPtr| #![trigger after.allc_4k_mp.spec_index(p)] before.allc_4k_mp.dom().contains(p) ==>
+            after.allc_4k_mp.spec_index(p).quota.view().view() == before.allc_4k_mp.spec_index(p).quota.view().view(),
+        before.allc_2m_mp.dom().subset_of(after.allc_2m_mp.dom()),
+        forall|p: RwLockPageAllocatorPtr| #![trigger after.allc_2m_mp.spec_index(p)] before.allc_2m_mp.dom().contains(p) ==>
+            after.allc_2m_mp.spec_index(p).quota.view().view() == before.allc_2m_mp.spec_index(p).quota.view().view(),
+        forall|p: RwLockPageAllocatorPtr| #![trigger after.allc_1g_mp.spec_index(p)] before.allc_1g_mp.dom().contains(p) ==>
+            after.allc_1g_mp.spec_index(p).quota.view().view() == before.allc_1g_mp.spec_index(p).quota.view().view(),
+    ensures
+        ({
+            let pre = kernel_k_to_kernel_u(*before);
+            let post = kernel_k_to_kernel_u(*after);
+            let ancestors = pre.container_map[parent].uppertree_seq.push(parent);
+            &&& post.container_map.dom() == pre.container_map.dom().insert(child)
+            &&& forall|c: RwLockContainerPtr| #![trigger post.container_map[c]] pre.container_map.dom().contains(c) ==> post.container_map[c] == (ContainerU {
+                    children: if c == parent { pre.container_map[c].children.push(child) } else { pre.container_map[c].children },
+                    subtree_set: if ancestors.contains(c) { pre.container_map[c].subtree_set.insert(child) } else { pre.container_map[c].subtree_set },
+                    owned_pages: if c == parent { post.container_map[parent].owned_pages } else { pre.container_map[c].owned_pages },
+                    ..pre.container_map[c]
+                })
+            &&& post.container_map[parent].owned_pages.subset_of(pre.container_map[parent].owned_pages)
+            &&& pre.container_map[parent].owned_pages.difference(post.container_map[parent].owned_pages) == moved
+            &&& !moved.contains(thread_page)
+            &&& post.container_map[parent].owned_pages.contains(thread_page)
+            &&& moved.contains(post.container_map[child].cpu_set)
+            &&& post.container_map[child] == (ContainerU {
+                lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(0)), zombie: false, children: Seq::empty(), uppertree_seq: ancestors, subtree_set: Set::empty(),
+                root_process: process, owned_processes: set![process], owned_threads: Set::empty(), owned_endpoints: Set::empty(), owned_pages: moved,
+                parent: Some(parent), depth: (pre.container_map[parent].depth + 1) as usize, scheduler: Seq::new(NUM_CPUS as nat, |i: int| Seq::<RwLockThreadPtr>::empty()),
+                cpu_set: post.container_map[child].cpu_set, cpu_set_lock: LockStateU::WriteLocked,
+                cpu_offline_requests: Seq::new(NUM_CPUS as nat, |i: int| false), free_pcids: Set::range(1usize, PCID_MAX).remove(1usize),
+                quota_4k: (funding - process_quota) as usize, quota_2m: 0, quota_1g: 0, killed: false, cpu_set_killed: false,
+            })
+        }),
+{
+    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_container_projection_at(before, parent); kernel_container_projection_at(after, parent); kernel_container_projection_at(after, child);
+    let pre = kernel_k_to_kernel_u(*before);
+    let post = kernel_k_to_kernel_u(*after);
+    let ancestors = pre.container_map[parent].uppertree_seq.push(parent);
+    assert_maps_equal!(post.container_map, Map::new(pre.container_map.dom(), |c: RwLockContainerPtr| ContainerU {
+        children: if c == parent { pre.container_map[c].children.push(child) } else { pre.container_map[c].children },
+        subtree_set: if ancestors.contains(c) { pre.container_map[c].subtree_set.insert(child) } else { pre.container_map[c].subtree_set },
+        owned_pages: if c == parent { post.container_map[parent].owned_pages } else { pre.container_map[c].owned_pages }, ..pre.container_map[c]
+    }).insert(child, post.container_map[child]), c => {
+        if before.ctn_mp.dom().contains(c) {
+            kernel_container_projection_at(before, c); kernel_container_projection_at(after, c);
+            container_scheduler_wf_at(before.ctn_mp, before.sched_mp, c); container_allocator_wf_at(before.ctn_mp, before.allc_4k_mp, before.allc_2m_mp, before.allc_1g_mp, c);
+            reveal(container_pcid_allocator_wf); reveal(container_cpu_set_wf);
+        }
+    });
+    assert_seqs_equal!(post.container_map[child].children == Seq::empty());
+    assert_sets_equal!(post.container_map[child].owned_pages, moved);
+    assert_sets_equal!(pre.container_map[parent].owned_pages.difference(post.container_map[parent].owned_pages), moved);
+    assert_sets_equal!(post.container_map[child].free_pcids, Set::range(1usize, PCID_MAX).remove(1usize));
 }
 
 pub proof fn kernel_cpu_and_page_owner_changed_implies_u_step(before: &KernelK, after: &KernelK, cpu: CpuId, source: RwLockContainerPtr, target: RwLockContainerPtr, page: PagePtr)

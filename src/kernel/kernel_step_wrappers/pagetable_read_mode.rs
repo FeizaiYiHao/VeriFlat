@@ -611,11 +611,8 @@ pub proof fn kernel_thread_context_wlocked_pagetable_rlocked_and_progress_change
         }),
 {
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
-    let pre_u = kernel_k_to_kernel_u(*pre);
-    let post_u = kernel_k_to_kernel_u(*post);
-    let process = pre_u.process_map.spec_index(process_ptr);
     kernel_cpu_projection_at(pre, cpu_id);
-    kernel_thread_projection_at(pre, thread_ptr); kernel_thread_projection_at(post, thread_ptr);
+    kernel_thread_projection_at(pre, thread_ptr);
     if pre.ctn_mp.dom().contains(container_ptr) { kernel_container_projection_at(pre, container_ptr); }
     assert(pre.prc_mp.dom().contains(process_ptr) && !pre.prc_mp.spec_index(process_ptr).view().zombie && pre.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr) by { reveal(process_cpu_wf); reveal(process_pagetable_match); };
     kernel_process_projection_at(pre, process_ptr);
@@ -623,25 +620,11 @@ pub proof fn kernel_thread_context_wlocked_pagetable_rlocked_and_progress_change
     if typed_lock_map_contains_mode(lctx.container_lock_map(), container_ptr, TypedLockMode::Write) { pre.ctn_mp.typed_lock_map_aligned_write_at(lctx.container_lock_map(), lctx.thread_id(), container_ptr); }
     if typed_lock_map_contains_mode(lctx.process_lock_map(), process_ptr, TypedLockMode::Write) { pre.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), process_ptr); }
     if typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write) { pre.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr); }
-    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: post.cpu_op.view().view()[cpu_id as int], ..pre_u.cpu_array[cpu_id as int] }), i => {
-        if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); }
-    });
-    assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(container_ptr, ContainerU {
-        lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(process.depth)), ..pre_u.container_map.spec_index(container_ptr)
-    }), c => {
-        if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); } if post.ctn_mp.dom().contains(c) { kernel_container_projection_at(post, c); }
-    });
-    assert_maps_equal!(post_u.process_map, pre_u.process_map.insert(process_ptr, ProcessU {
-        lock_state: LockStateU::WriteLocked, pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..process.pagetable->Some_0 }), ..process
-    }), p => {
-        if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); } reveal(process_pagetable_match);
-    });
-    assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thread_ptr, ThreadU {
-        lock_state: LockStateU::WriteLocked, syscall_progress: post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view(), ..pre_u.thread_map.spec_index(thread_ptr)
-    }), t => { if pre.thr_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thr_mp.dom().contains(t) { kernel_thread_projection_at(post, t); } });
-    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => {
-        if pre.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(pre, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(post, e); }
-    });
+    kernel_cpu_lock_and_op_changed_implies_u_cpu_array(pre, post, cpu_id);
+    kernel_container_lock_changed_implies_u_container_map(pre, post, container_ptr);
+    kernel_process_and_windowed_pagetable_lock_changed_implies_u_process_map(pre, post, process_ptr, pagetable_ptr);
+    kernel_thread_lock_and_progress_changed_implies_u_thread_map(pre, post, thread_ptr);
+    kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
 }
 
 /// Read-mode exit with the thread context: the cpu, container, process, and thread are released, the thread's read hold on
@@ -730,12 +713,8 @@ pub proof fn kernel_thread_context_unlocked_pagetable_runlocked_and_progress_cha
         }),
 {
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
-    let pre_u = kernel_k_to_kernel_u(*pre);
-    let post_u = kernel_k_to_kernel_u(*post);
-    let process = pre_u.process_map.spec_index(process_ptr);
-    let table_lock_state = post.pt_mp.spec_index(pagetable_ptr).lock_state_u();
     kernel_cpu_projection_at(pre, cpu_id);
-    kernel_thread_projection_at(pre, thread_ptr); kernel_thread_projection_at(post, thread_ptr);
+    kernel_thread_projection_at(pre, thread_ptr);
     if pre.ctn_mp.dom().contains(container_ptr) { kernel_container_projection_at(pre, container_ptr); }
     assert(pre.prc_mp.dom().contains(process_ptr) && !pre.prc_mp.spec_index(process_ptr).view().zombie && pre.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr) by { reveal(process_cpu_wf); reveal(process_pagetable_match); };
     kernel_process_projection_at(pre, process_ptr);
@@ -744,22 +723,50 @@ pub proof fn kernel_thread_context_unlocked_pagetable_runlocked_and_progress_cha
     if typed_lock_map_contains_mode(lctx.process_lock_map(), process_ptr, TypedLockMode::Write) { pre.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), process_ptr); }
     if typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write) { pre.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr); }
     if typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable_ptr, TypedLockMode::Read) { pre.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr); }
-    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: post.cpu_op.view().view()[cpu_id as int], ..pre_u.cpu_array[cpu_id as int] }), i => {
-        if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); }
-    });
-    assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..pre_u.container_map.spec_index(container_ptr) }), c => {
-        if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); } if post.ctn_mp.dom().contains(c) { kernel_container_projection_at(post, c); }
-    });
+    kernel_cpu_lock_and_op_changed_implies_u_cpu_array(pre, post, cpu_id);
+    kernel_container_lock_changed_implies_u_container_map(pre, post, container_ptr);
+    kernel_process_and_windowed_pagetable_lock_changed_implies_u_process_map(pre, post, process_ptr, pagetable_ptr);
+    kernel_thread_lock_and_progress_changed_implies_u_thread_map(pre, post, thread_ptr);
+    kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
+}
+
+/// Changing only the lock modes of process `process_ptr` and of its pagetable `pagetable_ptr`, whose lower half may be
+/// rewritten without changing its mappings, projects to that process and pagetable taking their new lock modes.
+proof fn kernel_process_and_windowed_pagetable_lock_changed_implies_u_process_map(pre: &KernelK, post: &KernelK, process_ptr: RwLockProcessPtr, pagetable_ptr: RwLockPageTableRoot)
+    requires
+        process_pagetable_match(pre.prc_mp, pre.pt_mp),
+        post.it_mp == pre.it_mp,
+        pre.prc_mp.dom().contains(process_ptr),
+        !pre.prc_mp.spec_index(process_ptr).view().zombie,
+        pre.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr,
+        post.prc_mp.unchanged_except(&pre.prc_mp, process_ptr),
+        post.prc_mp.spec_index(process_ptr).view() == pre.prc_mp.spec_index(process_ptr).view(),
+        post.prc_mp.spec_index(process_ptr).view_rodata() == pre.prc_mp.spec_index(process_ptr).view_rodata(),
+        post.prc_mp.spec_index(process_ptr).view_ghost() == pre.prc_mp.spec_index(process_ptr).view_ghost(),
+        post.prc_mp.spec_index(process_ptr).being_killed() == pre.prc_mp.spec_index(process_ptr).being_killed(),
+        post.pt_mp.unchanged_except(&pre.pt_mp, pagetable_ptr),
+        post.pt_mp.spec_index(pagetable_ptr).view() == pre.pt_mp.spec_index(pagetable_ptr).view(),
+        post.pt_lower.view() == pre.pt_lower.view().insert(pagetable_ptr, post.pt_lower.view().spec_index(pagetable_ptr)),
+        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k(),
+        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m(),
+        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g(),
+    ensures
+        ({
+            let pre_u = kernel_k_to_kernel_u(*pre);
+            let process = pre_u.process_map.spec_index(process_ptr);
+            kernel_k_to_kernel_u(*post).process_map == pre_u.process_map.insert(process_ptr, ProcessU {
+                lock_state: post.prc_mp.spec_index(process_ptr).lock_state_u(), pagetable: Some(PageTableU { lock_state: post.pt_mp.spec_index(pagetable_ptr).lock_state_u(), ..process.pagetable->Some_0 }), ..process
+            })
+        }),
+{
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post); kernel_process_projection_at(pre, process_ptr);
+    let pre_u = kernel_k_to_kernel_u(*pre);
+    let post_u = kernel_k_to_kernel_u(*post);
+    let process = pre_u.process_map.spec_index(process_ptr);
     assert_maps_equal!(post_u.process_map, pre_u.process_map.insert(process_ptr, ProcessU {
-        lock_state: LockStateU::Unlocked, pagetable: Some(PageTableU { lock_state: table_lock_state, ..process.pagetable->Some_0 }), ..process
+        lock_state: post.prc_mp.spec_index(process_ptr).lock_state_u(), pagetable: Some(PageTableU { lock_state: post.pt_mp.spec_index(pagetable_ptr).lock_state_u(), ..process.pagetable->Some_0 }), ..process
     }), p => {
-        if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); } reveal(process_pagetable_match);
-    });
-    assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thread_ptr, ThreadU {
-        lock_state: LockStateU::Unlocked, syscall_progress: post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view(), ..pre_u.thread_map.spec_index(thread_ptr)
-    }), t => { if pre.thr_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thr_mp.dom().contains(t) { kernel_thread_projection_at(post, t); } });
-    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => {
-        if pre.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(pre, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(post, e); }
+        if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); kernel_process_projection_at(post, p); } reveal(process_pagetable_match);
     });
 }
 } // verus!

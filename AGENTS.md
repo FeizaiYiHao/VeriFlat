@@ -120,7 +120,10 @@ they must point to these canonical sources instead of redefining their rules.
   U specs of that operation, and which introduces no new spec. List every
   added lemma in the report. New framing specs or framing lemmas, reusable
   cross-operation abstractions, new invariants, and any change of model
-  semantics still require approval.
+  semantics still require approval. Every new lemma name states what implies
+  what, `<premise>_implies_<conclusion>` (or `<producer>_implies_<fact>` for
+  point/frame facts); names like `lemma_*`, `*_helper`, or `*_successor`
+  without the conclusion are not accepted.
 - Exec equations and their own contracts contain no U reasoning: hold K facts
   and call wrapper K→U step lemmas, step-boundary wrappers, and the
   operation's trace lemmas. The full rule is in the proof skill's

@@ -36,6 +36,54 @@ proof fn take_over_dangling_caller_eof_memory_management_inv(pre: KernelK, post:
     };
 }
 
+proof fn take_over_dangling_caller_eof_call_chain_wf(pre: KernelK, post: KernelK, thread_ptr: RwLockThreadPtr, dangling_ptr: RwLockThreadPtr)
+    requires
+        pre.inv(),
+        thread_ptr != dangling_ptr,
+        pre.thr_mp.dom().contains(thread_ptr),
+        pre.thr_mp.dom().contains(dangling_ptr),
+        pre.thr_mp.spec_index(thread_ptr).view().caller == Some(dangling_ptr),
+        pre.thr_mp.spec_index(dangling_ptr).view().state is DANGLING,
+        pre.thr_mp.spec_index(dangling_ptr).locking_thread() is Write,
+        !pre.thr_mp.spec_index(dangling_ptr).being_killed(),
+        pre.thr_mp.spec_index(thread_ptr).locking_thread() is Write,
+        pre.thr_mp.spec_index(thread_ptr).view().state is RUNNING || pre.thr_mp.spec_index(thread_ptr).view().state is KILLED
+            || pre.thr_mp.spec_index(thread_ptr).view().state is WAITING_REPLY,
+        pre.thr_mp.spec_index(thread_ptr).locking_thread()->Write_thread_id == pre.thr_mp.spec_index(dangling_ptr).locking_thread()->Write_thread_id,
+        take_over_dangling_caller_eof_transition_framing(pre, post, thread_ptr, dangling_ptr),
+        post.subsystems_inv(),
+    ensures thread_caller_callee_wf(post.thr_mp),
+{ reveal(take_over_dangling_caller_eof_transition_framing); reveal(thread_caller_callee_wf); }
+
+proof fn take_over_dangling_caller_eof_dangling_chain_end_wf(pre: KernelK, post: KernelK, thread_ptr: RwLockThreadPtr, dangling_ptr: RwLockThreadPtr)
+    requires
+        pre.inv(),
+        thread_ptr != dangling_ptr,
+        pre.thr_mp.dom().contains(thread_ptr),
+        pre.thr_mp.dom().contains(dangling_ptr),
+        pre.thr_mp.spec_index(thread_ptr).view().caller == Some(dangling_ptr),
+        pre.thr_mp.spec_index(dangling_ptr).view().state is DANGLING,
+        pre.thr_mp.spec_index(dangling_ptr).locking_thread() is Write,
+        !pre.thr_mp.spec_index(dangling_ptr).being_killed(),
+        pre.thr_mp.spec_index(thread_ptr).locking_thread() is Write,
+        pre.thr_mp.spec_index(thread_ptr).view().state is RUNNING || pre.thr_mp.spec_index(thread_ptr).view().state is KILLED
+            || pre.thr_mp.spec_index(thread_ptr).view().state is WAITING_REPLY,
+        pre.thr_mp.spec_index(thread_ptr).locking_thread()->Write_thread_id == pre.thr_mp.spec_index(dangling_ptr).locking_thread()->Write_thread_id,
+        take_over_dangling_caller_eof_transition_framing(pre, post, thread_ptr, dangling_ptr),
+        post.subsystems_inv(),
+        thread_caller_callee_wf(post.thr_mp),
+    ensures thread_dangling_chain_end_wf(post.thr_mp),
+{
+    reveal(take_over_dangling_caller_eof_transition_framing);
+    assert(thread_dangling_chain_end_wf(post.thr_mp)) by {
+        let thread = pre.thr_mp.spec_index(thread_ptr);
+        thread_perms_wf_at(pre.thr_mp, thread_ptr); thread_perms_wf_at(pre.thr_mp, dangling_ptr); thread_caller_callee_wf_at(pre.thr_mp, thread_ptr);
+        thread_dangling_chain_end_wf_at(pre.thr_mp, dangling_ptr);
+        if thread_is_dangling(thread) && !thread.being_killed() { thread_dangling_chain_end_wf_at(pre.thr_mp, thread_ptr); }
+        reveal(thread_dangling_chain_end_wf);
+    };
+}
+
 proof fn take_over_dangling_caller_eof_process_management_inv(pre: KernelK, post: KernelK, thread_ptr: RwLockThreadPtr, dangling_ptr: RwLockThreadPtr)
     requires
         pre.inv(),
@@ -52,19 +100,13 @@ proof fn take_over_dangling_caller_eof_process_management_inv(pre: KernelK, post
         pre.thr_mp.spec_index(thread_ptr).locking_thread()->Write_thread_id == pre.thr_mp.spec_index(dangling_ptr).locking_thread()->Write_thread_id,
         take_over_dangling_caller_eof_transition_framing(pre, post, thread_ptr, dangling_ptr),
         post.subsystems_inv(),
+        thread_caller_callee_wf(post.thr_mp),
+        thread_dangling_chain_end_wf(post.thr_mp),
     ensures post.process_management_inv(),
 {
     reveal(take_over_dangling_caller_eof_transition_framing);
     assert(post.process_management_inv()) by {
         assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_ref_counter_wf_preserved_for_descriptor_eq(pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
-        assert(thread_caller_callee_wf(post.thr_mp)) by { reveal(thread_caller_callee_wf); };
-        assert(thread_dangling_chain_end_wf(post.thr_mp)) by {
-            let thread = pre.thr_mp.spec_index(thread_ptr);
-            thread_perms_wf_at(pre.thr_mp, thread_ptr); thread_perms_wf_at(pre.thr_mp, dangling_ptr); thread_caller_callee_wf_at(pre.thr_mp, thread_ptr);
-            thread_dangling_chain_end_wf_at(pre.thr_mp, dangling_ptr);
-            if thread_is_dangling(thread) && !thread.being_killed() { thread_dangling_chain_end_wf_at(pre.thr_mp, thread_ptr); }
-            reveal(thread_dangling_chain_end_wf);
-        };
         assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { reveal(container_thread_wf); };
         assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { thread_perms_wf_at(pre.thr_mp, dangling_ptr); reveal(process_thread_wf); };
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };
@@ -103,6 +145,8 @@ pub(super) proof fn take_over_dangling_caller_eof(pre: KernelK, post: KernelK, t
         reveal(KernelK::default_pagetable_wf);
     };
     take_over_dangling_caller_eof_memory_management_inv(pre, post, thread_ptr, dangling_ptr);
+    take_over_dangling_caller_eof_call_chain_wf(pre, post, thread_ptr, dangling_ptr);
+    take_over_dangling_caller_eof_dangling_chain_end_wf(pre, post, thread_ptr, dangling_ptr);
     take_over_dangling_caller_eof_process_management_inv(pre, post, thread_ptr, dangling_ptr);
 }
 } // verus!

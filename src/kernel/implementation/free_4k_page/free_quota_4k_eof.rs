@@ -33,7 +33,7 @@ pub(super) open spec fn return_free_quota_4k_eof_transition_framing(pre: KernelK
     &&& new_allocator.quota.being_killed() == old_allocator.quota.being_killed()
 }
 
-pub(super) proof fn return_free_quota_4k_eof(pre: KernelK, post: KernelK, thread_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, depth: usize, allocator_ptr: RwLockPageAllocatorPtr, amount: usize)
+proof fn return_free_quota_4k_eof_memory(pre: KernelK, post: KernelK, thread_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, depth: usize, allocator_ptr: RwLockPageAllocatorPtr, amount: usize)
     requires
         pre.inv(),
         return_free_quota_4k_eof_transition_framing(pre, post, thread_ptr, depth, allocator_ptr, amount),
@@ -48,12 +48,10 @@ pub(super) proof fn return_free_quota_4k_eof(pre: KernelK, post: KernelK, thread
         thread_perms_wf(post.thr_mp),
         post.thr_mp.spec_index(thread_ptr).inv(),
         post.allc_4k_mp.perms_wf(),
-    ensures
-        post.inv(),
-        kernel_container_quota_4k_changed(&pre, &post, owner, amount as int),
+        post.subsystems_inv(),
+    ensures post.memory_management_inv(),
 {
     reveal(return_free_quota_4k_eof_transition_framing);
-    assert(post.subsystems_inv()) by { reveal(allocator_perms_wf); reveal(KernelK::default_pagetable_wf); };
     assert(post.memory_management_inv()) by {
         assert(allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { lemma_allocator_pages_wf_preserved_for_allocator_invariant_fields_except_quota_forall(); };
         assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(container_allocator_wf); };
@@ -84,6 +82,30 @@ pub(super) proof fn return_free_quota_4k_eof(pre: KernelK, post: KernelK, thread
         assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp)) by { container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_2m_mp); };
         assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp)) by { container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_1g_mp); };
     };
+}
+
+pub(super) proof fn return_free_quota_4k_eof(pre: KernelK, post: KernelK, thread_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, depth: usize, allocator_ptr: RwLockPageAllocatorPtr, amount: usize)
+    requires
+        pre.inv(),
+        return_free_quota_4k_eof_transition_framing(pre, post, thread_ptr, depth, allocator_ptr, amount),
+        pre.thr_mp.dom().contains(thread_ptr),
+        pre.ctn_mp.dom().contains(owner),
+        pre.ctn_mp.spec_index(owner).view_rodata().view().depth == depth,
+        pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr,
+        depth <= pre.thr_mp.spec_index(thread_ptr).view().container_depth,
+        if depth == pre.thr_mp.spec_index(thread_ptr).view().container_depth { owner == pre.thr_mp.spec_index(thread_ptr).view().owning_container } else { pre.thr_mp.spec_index(thread_ptr).view().upper_container_seq.view().spec_index(depth as int) == owner },
+        amount == pre.thr_mp.spec_index(thread_ptr).view().free_quota_pending_4k_at_depth(depth),
+        pre.allc_4k_mp.spec_index(allocator_ptr).quota.view().value + amount <= pre.allc_4k_mp.spec_index(allocator_ptr).total_free_pages.view(),
+        thread_perms_wf(post.thr_mp),
+        post.thr_mp.spec_index(thread_ptr).inv(),
+        post.allc_4k_mp.perms_wf(),
+    ensures
+        post.inv(),
+        kernel_container_quota_4k_changed(&pre, &post, owner, amount as int),
+{
+    reveal(return_free_quota_4k_eof_transition_framing);
+    assert(post.subsystems_inv()) by { reveal(allocator_perms_wf); reveal(KernelK::default_pagetable_wf); };
+    return_free_quota_4k_eof_memory(pre, post, thread_ptr, owner, depth, allocator_ptr, amount);
     assert(post.process_management_inv()) by {
         thread_endpoint_ref_counter_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.ep_mp);
         thread_endpoint_queue_wf_preserved_for_thread_process_management_fields(pre.thr_mp, post.thr_mp, post.ep_mp);

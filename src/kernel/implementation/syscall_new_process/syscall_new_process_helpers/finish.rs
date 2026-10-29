@@ -251,14 +251,95 @@ pub(in super::super) fn create_initial_thread_and_finish_new_process(
             reveal(create_initial_thread_and_finish_new_process_eof_transition_framing);
         };
         create_initial_thread_and_finish_new_process_eof(finish_k, mid_k, *krnl, child_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, *initial_regs, endpoint);
-        steps.end_kernel_step_new_thread(&*krnl, &*lctx, child_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, *initial_regs, endpoint, None);
+    }
+    end_new_process_finish_step(
+        &*krnl, Tracked(&*lctx), Tracked(&mut *steps), cpu_id, container_ptr, child_ptr, current_thread_ptr, new_thread_ptr, endpoint, endpoint_index, iommu_table,
+        initial_regs, Ghost(parent_ptr), Ghost(finish_k), Ghost(finish_lctx),
+    );
+    new_thread_ptr
+}
+
+/// Ends the finish step that created `new_thread_ptr` from the staged page and released every lock since `finish_k`.
+fn end_new_process_finish_step(
+    krnl: &KernelK, Tracked(lctx): Tracked<&LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, container_ptr: RwLockContainerPtr,
+    child_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, new_thread_ptr: RwLockThreadPtr, endpoint: Option<RwLockEndpointPtr>,
+    endpoint_index: EndpointIdx, iommu_table: Option<RwLockPageTableRoot>, initial_regs: &Registers, Ghost(parent_ptr): Ghost<RwLockProcessPtr>,
+    Ghost(finish_k): Ghost<KernelK>, Ghost(finish_lctx): Ghost<LocalContext>,
+)
+    requires
+        old(steps).snapshot_k() == finish_k,
+        krnl.inv(),
+        lctx.kernel_view_locking_state() is Release,
+        kernel_new_thread_fields(&finish_k, krnl, child_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, *initial_regs, endpoint, None),
+        index_valid(NUM_CPUS, cpu_id),
+        typed_lock_maps_aligned(&finish_k, &finish_lctx),
+        typed_lock_map_contains_mode(finish_lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(finish_lctx.process_lock_map(), child_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(finish_lctx.thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(finish_lctx.pagetable_lock_map(), finish_k.prc_mp.spec_index(parent_ptr).view().pagetable, TypedLockMode::Read),
+        typed_lock_map_contains_mode(finish_lctx.pagetable_lock_map(), finish_k.prc_mp.spec_index(child_ptr).view().pagetable, TypedLockMode::Write),
+        finish_k.prc_mp.spec_index(child_ptr).view().iommu_table matches Some(t) ==> typed_lock_map_contains_mode(finish_lctx.iommu_table_lock_map(), t, TypedLockMode::Write),
+        finish_k.cpu_arr.spec_index(cpu_id).value.view().view().current_thread == Some(current_thread_ptr),
+        finish_k.thr_mp.dom().contains(current_thread_ptr),
+        finish_k.thr_mp.spec_index(current_thread_ptr).view().owning_proc == parent_ptr,
+        finish_k.thr_mp.spec_index(current_thread_ptr).view().owning_container == container_ptr,
+        finish_k.thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() matches Some(SyscallProgress::Share4k { source_range, shared, origin, .. })
+            && shared == source_range.len && origin == Share4kOrigin::NewProcess(NewProcessProgress {
+                range: source_range, regs: *initial_regs, endpoint_index: if endpoint is Some { Some(endpoint_index) } else { None }, with_iommu: iommu_table is Some, child: Some(child_ptr),
+            }),
+        endpoint is Some ==> {
+            &&& edp_idx_valid(endpoint_index)
+            &&& finish_k.thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.spec_index(endpoint_index) == endpoint
+            &&& finish_k.ep_mp.dom().contains(endpoint->Some_0)
+            &&& typed_lock_map_contains_mode(finish_lctx.endpoint_lock_map(), endpoint->Some_0, TypedLockMode::Write)
+        },
+        finish_k.ctn_mp.dom().contains(container_ptr),
+        parent_ptr != child_ptr,
+        finish_k.prc_mp.dom().contains(parent_ptr),
+        !finish_k.prc_mp.spec_index(parent_ptr).view().zombie,
+        finish_k.prc_mp.dom().contains(child_ptr),
+        !finish_k.prc_mp.spec_index(child_ptr).view().zombie,
+        finish_k.prc_mp.spec_index(child_ptr).view_rodata().view().owning_container == container_ptr,
+        forall|p: RwLockContainerPtr| #![trigger krnl.ctn_mp.spec_index(p)]
+            finish_k.ctn_mp.dom().contains(p) ==> krnl.ctn_mp.spec_index(p).locking_thread() == finish_k.ctn_mp.spec_index(p).locking_thread() && krnl.ctn_mp.spec_index(p).lock_process_owner_u() == finish_k.ctn_mp.spec_index(p).lock_process_owner_u(),
+        forall|p: RwLockProcessPtr| #![trigger krnl.prc_mp.spec_index(p)]
+            finish_k.prc_mp.dom().contains(p) ==> if p == child_ptr { krnl.prc_mp.spec_index(p).locking_thread() is None } else { krnl.prc_mp.spec_index(p).locking_thread() == finish_k.prc_mp.spec_index(p).locking_thread() },
+        forall|p: RwLockThreadPtr| #![trigger krnl.thr_mp.spec_index(p)]
+            finish_k.thr_mp.dom().contains(p) && p != new_thread_ptr ==> if p == current_thread_ptr { krnl.thr_mp.spec_index(p).locking_thread() is None } else { krnl.thr_mp.spec_index(p).locking_thread() == finish_k.thr_mp.spec_index(p).locking_thread() },
+        forall|p: RwLockEndpointPtr| #![trigger krnl.ep_mp.spec_index(p)]
+            finish_k.ep_mp.dom().contains(p) ==> if endpoint == Some(p) { krnl.ep_mp.spec_index(p).locking_thread() is None } else { krnl.ep_mp.spec_index(p).locking_thread() == finish_k.ep_mp.spec_index(p).locking_thread() },
+        forall|p: RwLockPageTableRoot| #![trigger krnl.pt_mp.spec_index(p)]
+            finish_k.pt_mp.dom().contains(p) ==> if p == finish_k.prc_mp.spec_index(child_ptr).view().pagetable { krnl.pt_mp.spec_index(p).locking_thread() is None }
+                else if p == finish_k.prc_mp.spec_index(parent_ptr).view().pagetable { !(krnl.pt_mp.spec_index(p).locking_thread() is Write) }
+                else { krnl.pt_mp.spec_index(p).locking_thread() == finish_k.pt_mp.spec_index(p).locking_thread() },
+        forall|p: RwLockPageTableRoot| #![trigger krnl.it_mp.spec_index(p)]
+            finish_k.it_mp.dom().contains(p) ==> if finish_k.prc_mp.spec_index(child_ptr).view().iommu_table == Some(p) { krnl.it_mp.spec_index(p).locking_thread() is None }
+                else { krnl.it_mp.spec_index(p).locking_thread() == finish_k.it_mp.spec_index(p).locking_thread() },
+        forall|i: CpuId| #![trigger krnl.cpu_arr.spec_index(i)]
+            index_valid(NUM_CPUS, i) ==> if i == cpu_id { krnl.cpu_arr.spec_index(i).value.locking_thread() is None } else { krnl.cpu_arr.spec_index(i).value.locking_thread() == finish_k.cpu_arr.spec_index(i).value.locking_thread() },
+        forall|i: CpuId| #![trigger krnl.cpu_op.view().view()[i as int]] index_valid(NUM_CPUS, i) && i != cpu_id ==> krnl.cpu_op.view().view()[i as int] == finish_k.cpu_op.view().view()[i as int],
+        krnl.cpu_op.view().view()[cpu_id as int] == cpu_op_after_step(finish_k.cpu_arr.spec_index(cpu_id).view().view().view().state),
+        krnl.thr_mp.spec_index(new_thread_ptr).locking_thread() is None,
+    ensures
+        forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
+        final(steps).view() == old(steps).view().push(final(steps).view().last()),
+        final(steps).view().last().new_u == kernel_k_to_kernel_u(*krnl),
+        new_process_finish_step_pre(final(steps).view().last().old_u, cpu_id),
+        new_process_finish_step(final(steps).view().last().old_u, final(steps).view().last().new_u, cpu_id),
+        final(steps).nonlock_view() == old(steps).nonlock_view().push(final(steps).nonlock_view().last()),
+        final(steps).nonlock_view().last().new_u == kernel_k_to_nonlock_kernel_u(*krnl),
+        final(steps).nonlock_snapshot_u() == kernel_k_to_nonlock_kernel_u(*krnl),
+        final(steps).snapshot_k() == *krnl,
+        kernel_u_new_thread_changed(final(steps).nonlock_view().last().old_u, final(steps).nonlock_view().last().new_u, child_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, *initial_regs, endpoint, None),
+{
+    proof {
+        steps.end_kernel_step_new_thread(krnl, lctx, child_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, *initial_regs, endpoint, None);
         assert(new_process_finish_step_pre(steps.view().last().old_u, cpu_id) && new_process_finish_step(steps.view().last().old_u, steps.view().last().new_u, cpu_id)) by {
             reveal(kernel_new_thread_fields);
             new_process_finish_step_pre_from_k(&finish_k, &finish_lctx, cpu_id, parent_ptr, child_ptr, current_thread_ptr, container_ptr, endpoint, endpoint_index, *initial_regs, iommu_table is Some);
-            kernel_new_thread_fields_and_unlocks_source_runlocked_implies_u_step(&finish_k, &*krnl, cpu_id, child_ptr, current_thread_ptr, container_ptr, new_thread_ptr, *initial_regs, endpoint, parent_ptr);
+            kernel_new_thread_fields_and_unlocks_source_runlocked_implies_u_step(&finish_k, krnl, cpu_id, child_ptr, current_thread_ptr, container_ptr, new_thread_ptr, *initial_regs, endpoint, parent_ptr);
             new_process_finish_step_from_u(kernel_k_to_kernel_u(finish_k), kernel_k_to_kernel_u(*krnl), cpu_id, parent_ptr, child_ptr, current_thread_ptr, container_ptr, new_thread_ptr, endpoint, *initial_regs);
         };
     }
-    new_thread_ptr
 }
 }

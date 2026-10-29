@@ -24,7 +24,21 @@ pub proof fn mmap_4k_enter_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuI
         mmap_4k_enter_step_pre(old_u, cpu_id, range, phase),
         mmap_4k_enter_step(old_u, new_u, cpu_id, range, phase),
     ensures isolated(new_u, a, b),
-{ reveal(mmap_4k_enter_step_pre); assert(memory_iso(new_u, a, b)) by { reveal(mmap_4k_enter_step); }; reveal(mmap_4k_enter_step); }
+{
+    reveal(mmap_4k_enter_step_pre); reveal(mmap_4k_enter_step);
+    assert(new_u.process_map.dom() =~= old_u.process_map.dom());
+    assert(forall|p: RwLockProcessPtr| #![trigger new_u.process_map[p]] old_u.process_map.dom().contains(p) ==> {
+        &&& new_u.process_map[p].owning_container == old_u.process_map[p].owning_container
+        &&& new_u.process_map[p].iommu_table == old_u.process_map[p].iommu_table
+        &&& (new_u.process_map[p].pagetable is Some) == (old_u.process_map[p].pagetable is Some)
+        &&& new_u.process_map[p].pagetable->Some_0.mapping_4k == old_u.process_map[p].pagetable->Some_0.mapping_4k
+        &&& new_u.process_map[p].pagetable->Some_0.mapping_2m == old_u.process_map[p].pagetable->Some_0.mapping_2m
+        &&& new_u.process_map[p].pagetable->Some_0.mapping_1g == old_u.process_map[p].pagetable->Some_0.mapping_1g
+    });
+    assert(new_u.thread_map.dom() =~= old_u.thread_map.dom());
+    assert(forall|t: RwLockThreadPtr| #![trigger new_u.thread_map[t]] old_u.thread_map.dom().contains(t)
+        ==> new_u.thread_map[t].owning_container == old_u.thread_map[t].owning_container && new_u.thread_map[t].state == old_u.thread_map[t].state);
+}
 
 /// Holding the cpu and thread on a cpu of `a` locks only objects of `a`.
 pub proof fn mmap_4k_hold_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, range: VaRange4K, a: RwLockContainerPtr, b: RwLockContainerPtr)

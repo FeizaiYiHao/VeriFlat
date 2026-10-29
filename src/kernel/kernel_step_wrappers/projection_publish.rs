@@ -130,29 +130,173 @@ pub proof fn kernel_process_published_and_parent_unlocked_implies_u_step(
             })
         }),
 {
-    reveal(kernel_k_to_kernel_u);
-    let pre = kernel_k_to_kernel_u(*before);
-    let post = kernel_k_to_kernel_u(*after);
-    let ancestors = pre.process_map[parent].uppertree_seq.push(parent);
-    let cost: usize = if iommu is Some { 5 } else { 3 };
+    kernel_u_domains_projection(before); kernel_u_domains_projection(after); kernel_u_cpu_array_projection(before); kernel_thread_projection_at(before, thread);
     after.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), child);
     after.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), table);
     if let Some(t) = iommu { after.it_mp.typed_lock_map_aligned_write_at(lctx.iommu_table_lock_map(), lctx.thread_id(), t); }
-    assert_seqs_equal!(post.cpu_array == pre.cpu_array);
-    assert_maps_equal!(post.endpoint_map, pre.endpoint_map, p => {});
+    kernel_cpu_array_unchanged_implies_u_cpu_array(before, after);
+    kernel_endpoint_map_unchanged_implies_u_endpoint_map(before, after);
+    kernel_process_published_and_parent_unlocked_implies_u_thread_map(before, after, thread, iommu, progress);
+    kernel_process_published_and_parent_unlocked_implies_u_container_map(before, after, child, container, pcid_allocator, pcid);
+    kernel_process_published_and_parent_unlocked_implies_u_process_map(before, after, parent, child, container, table, iommu);
+}
+
+/// Publishing a process projects to the thread map with only `thread` charged the publication cost and given `progress`.
+proof fn kernel_process_published_and_parent_unlocked_implies_u_thread_map(
+    before: &KernelK, after: &KernelK, thread: RwLockThreadPtr, iommu: Option<RwLockPageTableRoot>, progress: Option<SyscallProgress>,
+)
+    requires
+        before.thr_mp.spec_index(thread).view().quota_4k >= if iommu is Some { 5usize } else { 3usize },
+        after.thr_mp.unchanged_except(&before.thr_mp, thread),
+        kernel_thread_quota_4k_changed(before, after, thread, if iommu is Some { -5 } else { -3 }),
+        after.thr_mp.spec_index(thread).view().syscall_progress.view() == progress,
+        after.thr_mp.spec_index(thread).locking_thread() == before.thr_mp.spec_index(thread).locking_thread(),
+    ensures
+        ({
+            let pre = kernel_k_to_kernel_u(*before);
+            let cost: usize = if (iommu is Some) { 5 } else { 3 };
+            kernel_k_to_kernel_u(*after).thread_map == pre.thread_map.insert(thread, ThreadU { quota_4k: (pre.thread_map[thread].quota_4k - cost) as usize, syscall_progress: progress, ..pre.thread_map[thread] })
+        }),
+{
+    reveal(kernel_thread_quota_4k_changed); kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    let pre = kernel_k_to_kernel_u(*before);
+    let post = kernel_k_to_kernel_u(*after);
+    let cost: usize = if iommu is Some { 5 } else { 3 };
     assert_maps_equal!(post.thread_map, pre.thread_map.insert(thread, ThreadU {
         quota_4k: (pre.thread_map[thread].quota_4k - cost) as usize, syscall_progress: progress, ..pre.thread_map[thread]
-    }), p => { reveal(kernel_thread_quota_4k_changed); });
+    }), t => { if before.thr_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); } });
+}
+
+/// Publishing a process projects to the container map with only `container` owning `child` and giving up the pcid.
+proof fn kernel_process_published_and_parent_unlocked_implies_u_container_map(
+    before: &KernelK, after: &KernelK, child: RwLockProcessPtr, container: RwLockContainerPtr, pcid_allocator: RwLockPcidAllocatorPtr, pcid: Pcid,
+)
+    requires
+        container_pcid_allocator_wf(before.ctn_mp, before.pcid_allc_mp),
+        pcid_allocator_perms_wf(before.pcid_allc_mp),
+        *after == (KernelK { pg_arr: after.pg_arr, prc_mp: after.prc_mp, thr_mp: after.thr_mp, ctn_mp: after.ctn_mp,
+            pt_mp: after.pt_mp, pt_lower: after.pt_lower, it_mp: after.it_mp, pcid_allc_mp: after.pcid_allc_mp, ..*before }),
+        after.ctn_mp.unchanged_except(&before.ctn_mp, container),
+        after.ctn_mp.spec_index(container).view_rodata() == before.ctn_mp.spec_index(container).view_rodata(),
+        after.ctn_mp.spec_index(container).view_ghost() == (ContainerGhost { owned_processes: after.ctn_mp.spec_index(container).view_ghost().owned_processes, ..before.ctn_mp.spec_index(container).view_ghost() }),
+        after.ctn_mp.spec_index(container).being_killed() == before.ctn_mp.spec_index(container).being_killed(),
+        after.ctn_mp.spec_index(container).locking_thread() == before.ctn_mp.spec_index(container).locking_thread(),
+        after.ctn_mp.spec_index(container).lock_process_owner_u() == before.ctn_mp.spec_index(container).lock_process_owner_u(),
+        after.ctn_mp.spec_index(container).view() == before.ctn_mp.spec_index(container).view(),
+        after.ctn_mp.spec_index(container).view_ghost().owned_processes.view() == before.ctn_mp.spec_index(container).view_ghost().owned_processes.view().insert(child),
+        before.ctn_mp.spec_index(container).view_rodata().view().pcid_allocator == pcid_allocator,
+        after.pcid_allc_mp.unchanged_except(&before.pcid_allc_mp, pcid_allocator),
+        PcidAllocator::free_pcids(before.pcid_allc_mp.spec_index(pcid_allocator).view().ref_counters.view()).contains(pcid),
+        after.pcid_allc_mp.spec_index(pcid_allocator).view().alloc_ensures(&before.pcid_allc_mp.spec_index(pcid_allocator).view(), child, pcid),
+    ensures
+        ({
+            let pre = kernel_k_to_kernel_u(*before);
+            let post = kernel_k_to_kernel_u(*after);
+            &&& post.container_map[container].free_pcids.subset_of(pre.container_map[container].free_pcids)
+            &&& pre.container_map[container].free_pcids.difference(post.container_map[container].free_pcids).len() == 1
+            &&& post.container_map == pre.container_map.insert(container, ContainerU {
+                owned_processes: pre.container_map[container].owned_processes.insert(child), free_pcids: post.container_map[container].free_pcids, ..pre.container_map[container]
+            })
+        }),
+{
+    kernel_u_domains_projection(before); kernel_u_domains_projection(after); kernel_container_projection_at(before, container); kernel_container_projection_at(after, container);
+    let pre = kernel_k_to_kernel_u(*before);
+    let post = kernel_k_to_kernel_u(*after);
     assert_maps_equal!(post.container_map, pre.container_map.insert(container, ContainerU {
         owned_processes: pre.container_map[container].owned_processes.insert(child), free_pcids: post.container_map[container].free_pcids, ..pre.container_map[container]
-    }), p => { reveal(container_pcid_allocator_wf); });
+    }), c => { if before.ctn_mp.dom().contains(c) { kernel_container_projection_at(before, c); kernel_container_projection_at(after, c); reveal(container_pcid_allocator_wf); } });
+    assert(post.container_map[container].free_pcids =~= pre.container_map[container].free_pcids.remove(pcid)) by { pcid_allocator_perms_wf_at(before.pcid_allc_mp, pcid_allocator); };
+    assert_sets_equal!(pre.container_map[container].free_pcids.difference(post.container_map[container].free_pcids), set![pcid]);
+}
+
+/// Publishing a process projects to the process map with `child` added write-locked under `parent`, `parent` unlocked,
+/// and `child` recorded in every ancestor's subtree.
+proof fn kernel_process_published_and_parent_unlocked_implies_u_process_map(
+    before: &KernelK, after: &KernelK, parent: RwLockProcessPtr, child: RwLockProcessPtr, container: RwLockContainerPtr, table: RwLockPageTableRoot,
+    iommu: Option<RwLockPageTableRoot>,
+)
+    requires
+        process_pagetable_match(before.prc_mp, before.pt_mp),
+        process_iommu_table_match(before.prc_mp, before.it_mp),
+        before.prc_mp.dom().contains(parent),
+        !before.prc_mp.dom().contains(child),
+        after.prc_mp.dom() == before.prc_mp.dom().insert(child),
+        forall|p: RwLockProcessPtr| #![trigger after.prc_mp.spec_index(p)] before.prc_mp.dom().contains(p) ==> {
+            &&& after.prc_mp.spec_index(p).view_rodata() == before.prc_mp.spec_index(p).view_rodata()
+            &&& after.prc_mp.spec_index(p).view_ghost().uppertree_seq == before.prc_mp.spec_index(p).view_ghost().uppertree_seq
+            &&& after.prc_mp.spec_index(p).view_ghost().owned_pci_functions == before.prc_mp.spec_index(p).view_ghost().owned_pci_functions
+            &&& after.prc_mp.spec_index(p).view_ghost().subtree_set.view() == if before.prc_mp.spec_index(parent).view_ghost().uppertree_seq.view().push(parent).contains(p) {
+                before.prc_mp.spec_index(p).view_ghost().subtree_set.view().insert(child)
+            } else { before.prc_mp.spec_index(p).view_ghost().subtree_set.view() }
+            &&& after.prc_mp.spec_index(p).view() == (Process { children: after.prc_mp.spec_index(p).view().children, ..before.prc_mp.spec_index(p).view() })
+            &&& after.prc_mp.spec_index(p).view().children.view() == if p == parent { before.prc_mp.spec_index(p).view().children.view().push(child) } else { before.prc_mp.spec_index(p).view().children.view() }
+            &&& after.prc_mp.spec_index(p).being_killed() == before.prc_mp.spec_index(p).being_killed()
+            &&& if p == parent { after.prc_mp.spec_index(p).locking_thread() is None } else { after.prc_mp.spec_index(p).locking_thread() == before.prc_mp.spec_index(p).locking_thread() }
+        },
+        after.prc_mp.spec_index(child).locking_thread() is Write,
+        !after.prc_mp.spec_index(child).being_killed(),
+        !after.prc_mp.spec_index(child).view().zombie,
+        after.prc_mp.spec_index(child).view().pagetable == table,
+        after.prc_mp.spec_index(child).view().iommu_table == iommu,
+        after.prc_mp.spec_index(child).view_ghost().owned_pci_functions.view().is_empty(),
+        after.prc_mp.spec_index(child).view().quota_4k == 0,
+        after.prc_mp.spec_index(child).view().quota_2m == 0,
+        after.prc_mp.spec_index(child).view().quota_1g == 0,
+        after.prc_mp.spec_index(child).view_rodata().view().parent == Some(parent),
+        after.prc_mp.spec_index(child).view_rodata().view().owning_container == container,
+        after.prc_mp.spec_index(child).view_rodata().view().depth == before.prc_mp.spec_index(parent).view_rodata().view().depth + 1,
+        after.prc_mp.spec_index(child).view().children.view() == Seq::<RwLockProcessPtr>::empty(),
+        after.prc_mp.spec_index(child).view().owned_threads.view() == Seq::<RwLockThreadPtr>::empty(),
+        after.prc_mp.spec_index(child).view_ghost().uppertree_seq.view() == before.prc_mp.spec_index(parent).view_ghost().uppertree_seq.view().push(parent),
+        after.prc_mp.spec_index(child).view_ghost().subtree_set.view().is_empty(),
+        after.pt_mp.dom() == before.pt_mp.dom().insert(table),
+        forall|p: RwLockPageTableRoot| #![trigger after.pt_mp.spec_index(p)] before.pt_mp.dom().contains(p) ==> after.pt_mp.spec_index(p) == before.pt_mp.spec_index(p) && after.pt_lower.view().spec_index(p) == before.pt_lower.view().spec_index(p),
+        after.pt_mp.spec_index(table).locking_thread() is Write,
+        pagetable_c(after.pt_mp, after.pt_lower.view(), table).is_empty(),
+        iommu is None ==> after.it_mp == before.it_mp,
+        iommu matches Some(t) ==> {
+            &&& after.it_mp.dom() == before.it_mp.dom().insert(t)
+            &&& forall|p: RwLockPageTableRoot| #![trigger after.it_mp.spec_index(p)] before.it_mp.dom().contains(p) ==> after.it_mp.spec_index(p) == before.it_mp.spec_index(p)
+            &&& after.it_mp.spec_index(t).locking_thread() is Write
+            &&& after.it_mp.spec_index(t).view().is_empty()
+            &&& after.it_mp.spec_index(t).view().did is None
+        },
+    ensures
+        ({
+            let pre = kernel_k_to_kernel_u(*before);
+            let post = kernel_k_to_kernel_u(*after);
+            let ancestors = pre.process_map[parent].uppertree_seq.push(parent);
+            let empty_table = PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty() };
+            &&& post.process_map.dom() == pre.process_map.dom().insert(child)
+            &&& forall|p: RwLockProcessPtr| #![trigger post.process_map[p]] pre.process_map.dom().contains(p) ==> post.process_map[p] == (ProcessU {
+                lock_state: if p == parent { LockStateU::Unlocked } else { pre.process_map[p].lock_state },
+                children: if p == parent { pre.process_map[p].children.push(child) } else { pre.process_map[p].children },
+                subtree_set: if ancestors.contains(p) { pre.process_map[p].subtree_set.insert(child) } else { pre.process_map[p].subtree_set },
+                ..pre.process_map[p]
+            })
+            &&& post.process_map[child] == (ProcessU {
+                lock_state: LockStateU::WriteLocked, zombie: false, pagetable: Some(empty_table),
+                iommu_table: if (iommu is Some) { Some(empty_table) } else { None }, pcid: post.process_map[child].pcid, owning_container: container, owned_pci_functions: Set::empty(),
+                quota_4k: 0, quota_2m: 0, quota_1g: 0, parent: Some(parent), children: Seq::empty(),
+                depth: (pre.process_map[parent].depth + 1) as usize, uppertree_seq: ancestors,
+                subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
+            })
+        }),
+{
+    kernel_u_domains_projection(before); kernel_u_domains_projection(after); kernel_process_projection_at(before, parent); kernel_process_projection_at(after, child);
+    let pre = kernel_k_to_kernel_u(*before);
+    let post = kernel_k_to_kernel_u(*after);
+    let ancestors = pre.process_map[parent].uppertree_seq.push(parent);
     assert_maps_equal!(post.process_map, Map::new(pre.process_map.dom(), |p: RwLockProcessPtr| ProcessU {
         lock_state: if p == parent { LockStateU::Unlocked } else { pre.process_map[p].lock_state },
         children: if p == parent { pre.process_map[p].children.push(child) } else { pre.process_map[p].children },
         subtree_set: if ancestors.contains(p) { pre.process_map[p].subtree_set.insert(child) } else { pre.process_map[p].subtree_set }, ..pre.process_map[p]
-    }).insert(child, post.process_map[child]), p => { process_pagetable_match_process_at(before.prc_mp, before.pt_mp, p); process_iommu_table_match_process_at(before.prc_mp, before.it_mp, p); });
-    assert(post.container_map[container].free_pcids =~= pre.container_map[container].free_pcids.remove(pcid)) by { pcid_allocator_perms_wf_at(before.pcid_allc_mp, pcid_allocator); };
-    assert_sets_equal!(pre.container_map[container].free_pcids.difference(post.container_map[container].free_pcids), set![pcid]);
+    }).insert(child, post.process_map[child]), p => {
+        if before.prc_mp.dom().contains(p) {
+            kernel_process_projection_at(before, p); kernel_process_projection_at(after, p);
+            process_pagetable_match_process_at(before.prc_mp, before.pt_mp, p); process_iommu_table_match_process_at(before.prc_mp, before.it_mp, p);
+        }
+    });
     assert_maps_equal!(post.process_map[child].pagetable->Some_0.mapping_4k, Map::empty(), va => {});
     assert_maps_equal!(post.process_map[child].pagetable->Some_0.mapping_2m, Map::empty(), va => {});
     assert_maps_equal!(post.process_map[child].pagetable->Some_0.mapping_1g, Map::empty(), va => {});
@@ -819,6 +963,7 @@ pub proof fn kernel_new_thread_fields_and_parent_unlocks_implies_u_process_map(
             kernel_k_to_kernel_u(*post).process_map == unlocked.insert(process_ptr, ProcessU { owned_threads: process.owned_threads.push(new_thread_ptr), ..process })
         }),
 {
+    hide(Map::filter_keys);
     reveal(kernel_new_thread_fields); kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     let old_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);

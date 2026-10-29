@@ -120,6 +120,17 @@ pub broadcast proof fn held_pages_unchanged_except_transitive_for_held_middle(pr
         held_pages_unchanged_except(pre, post, pre_lctx, exceptions),
 {}
 
+/// Held windows unchanged from `pre` to `middle` and from `middle` to `post` are unchanged from `pre` to `post`.
+pub proof fn held_pagetable_windows_unchanged_chain_implies_unchanged(pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, middle_pt: PageTableLockedMap,
+    middle_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap, pre_lctx: &LocalContext, middle_lctx: &LocalContext)
+    requires
+        held_pagetable_windows_unchanged(pre_pt, pre_lower, middle_pt, middle_lower, pre_lctx),
+        held_pagetable_windows_unchanged(middle_pt, middle_lower, post_pt, post_lower, middle_lctx),
+        typed_lock_maps_unchanged(pre_lctx, middle_lctx),
+    ensures
+        held_pagetable_windows_unchanged(pre_pt, pre_lower, post_pt, post_lower, pre_lctx),
+{}
+
 pub broadcast group group_held_objects_unchanged_transitive {
     held_containers_unchanged_transitive,
     held_processes_unchanged_transitive,

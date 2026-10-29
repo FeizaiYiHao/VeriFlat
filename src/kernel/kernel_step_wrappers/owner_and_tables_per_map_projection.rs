@@ -145,6 +145,7 @@ pub proof fn kernel_process_tables_lock_state_changed_implies_u_process_map(pre:
             })
         }),
 {
+    hide(Map::filter_keys);
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);

@@ -2,6 +2,20 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
+/// The successor window index `succ` of window index `n` lies above `n`, and an index path lies at or above `succ` exactly when it
+/// lies at or above `n` outside window `n`.
+pub proof fn window_successor_implies_path_le_drops_only_predecessor(n: (L4Index, L3Index, L2Index, L1Index), succ: (L4Index, L3Index, L2Index, L1Index))
+    requires
+        n.0 < 512 && n.1 < 512 && n.2 < 512 && n.3 == 0,
+        succ == (if n.2 < 511 { (n.0, n.1, (n.2 + 1) as usize, 0usize) } else if n.1 < 511 { (n.0, (n.1 + 1) as usize, 0usize, 0usize) } else { ((n.0 + 1) as usize, 0usize, 0usize, 0usize) }),
+    ensures
+        spec_l4_index_path_le(n, succ),
+        succ != n,
+        forall|idx: (L4Index, L3Index, L2Index, L1Index)| #![trigger spec_l4_index_path_le(succ, idx)]
+            idx.1 < 512 && idx.2 < 512 ==> (spec_l4_index_path_le(succ, idx) <==> spec_l4_index_path_le(n, idx) && (idx.0, idx.1, idx.2) != (n.0, n.1, n.2)),
+{
+}
+
 impl KernelK {
     /// Lock, in ascending address order, every 2M window of page table `root` that covers `range`, while this thread
     /// holds the big lock of `root` in either mode through `big` and holds windows only of tables below `root`; each
@@ -223,6 +237,7 @@ impl KernelK {
                 broadcast use spec_va_2m_valid_index_roundtrip;
                 assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             }
+            let ghost prev = (l4i, l3i, l2i, 0usize);
             if l2i < 511 {
                 l2i = l2i + 1;
             } else if l3i < 511 {
@@ -233,6 +248,7 @@ impl KernelK {
                 l3i = 0;
                 l4i = l4i + 1;
             }
+            proof { window_successor_implies_path_le_drops_only_predecessor(prev, (l4i, l3i, l2i, 0usize)); }
         }
         proof {
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
@@ -428,6 +444,7 @@ impl KernelK {
                 broadcast use spec_va_2m_valid_index_roundtrip;
                 assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             }
+            let ghost prev = (l4i, l3i, l2i, 0usize);
             if l2i < 511 {
                 l2i = l2i + 1;
             } else if l3i < 511 {
@@ -438,6 +455,7 @@ impl KernelK {
                 l3i = 0;
                 l4i = l4i + 1;
             }
+            proof { window_successor_implies_path_le_drops_only_predecessor(prev, (l4i, l3i, l2i, 0usize)); }
         }
         proof {
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
@@ -679,6 +697,7 @@ impl KernelK {
                 }
             }
             proof { broadcast use spec_va_2m_valid_index_roundtrip; }
+            let ghost prev = (l4i, l3i, l2i, 0usize);
             if l2i < 511 {
                 l2i = l2i + 1;
             } else if l3i < 511 {
@@ -689,6 +708,7 @@ impl KernelK {
                 l3i = 0;
                 l4i = l4i + 1;
             }
+            proof { window_successor_implies_path_le_drops_only_predecessor(prev, (l4i, l3i, l2i, 0usize)); }
         }
         proof {
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };
@@ -902,6 +922,7 @@ impl KernelK {
                 }
             }
             proof { broadcast use spec_va_2m_valid_index_roundtrip; }
+            let ghost prev = (l4i, l3i, l2i, 0usize);
             if l2i < 511 {
                 l2i = l2i + 1;
             } else if l3i < 511 {
@@ -912,6 +933,7 @@ impl KernelK {
                 l3i = 0;
                 l4i = l4i + 1;
             }
+            proof { window_successor_implies_path_le_drops_only_predecessor(prev, (l4i, l3i, l2i, 0usize)); }
         }
         proof {
             assert(kernel_endpoint_nonlock_fields_unchanged(old(self).ep_mp, self.ep_mp)) by { reveal(kernel_endpoint_nonlock_fields_unchanged); };

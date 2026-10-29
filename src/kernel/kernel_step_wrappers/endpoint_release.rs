@@ -1,5 +1,5 @@
 use vstd::prelude::*;
-use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_seqs_equal, assert_sets_equal};
+use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_sets_equal};
 use crate::*;
 
 verus! {
@@ -85,10 +85,7 @@ pub proof fn kernel_endpoint_released_implies_u_step(before: &KernelK, after: &K
     }), c => {
         if before.ctn_mp.dom().contains(c) { kernel_container_projection_at(before, c); kernel_container_projection_at(after, c); }
     });
-    assert_seqs_equal!(post.cpu_array == pre.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(before, i as usize); kernel_cpu_projection_at(after, i as usize); } });
-    assert_maps_equal!(post.process_map, pre.process_map, p => {
-        if before.prc_mp.dom().contains(p) { kernel_process_projection_at(before, p); kernel_process_projection_at(after, p); }
-    });
+    kernel_cpu_array_unchanged_implies_u_cpu_array(before, after); kernel_process_maps_unchanged_implies_u_process_map(before, after);
     assert(kernel_k_to_nonlock_kernel_u(*before).endpoint_map.dom().contains(endpoint_ptr) && !kernel_k_to_nonlock_kernel_u(*after).endpoint_map.dom().contains(endpoint_ptr)) by {
         reveal(kernel_k_to_nonlock_kernel_u);
     };

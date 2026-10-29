@@ -301,16 +301,20 @@ pub proof fn kernel_cpu_went_off_fields_implies_u_thread_map(pre: &KernelK, post
 {
     hide(kernel_k_user_projection);
     reveal(kernel_cpu_went_off_fields);
+    kernel_u_user_domains_projection(pre, include_lock_state); kernel_u_user_domains_projection(post, include_lock_state); kernel_cpu_user_projection_at(pre, include_lock_state, cpu_id);
     let pre_u = kernel_k_user_projection(*pre, include_lock_state);
     let post_u = kernel_k_user_projection(*post, include_lock_state);
-    assert(post_u.thread_map.dom() == post.thr_mp.dom() && pre_u.thread_map.dom() == pre.thr_mp.dom() && pre_u.cpu_array[cpu_id as int].current_thread == pre.cpu_arr.spec_index(cpu_id).value.view().view().current_thread) by { reveal(kernel_k_user_projection); };
     match pre_u.cpu_array[cpu_id as int].current_thread {
         Some(prev) => {
             assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(prev, ThreadU {
                 state: ThreadState::SCHEDULED { cpu_id }, error_code: None, trap_frame: Some(regs), ..pre_u.thread_map.spec_index(prev)
-            }), t => { reveal(kernel_k_user_projection); });
+            }), t => { if pre.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, include_lock_state, t); kernel_thread_user_projection_at(post, include_lock_state, t); } });
         },
-        None => { assert_maps_equal!(post_u.thread_map, pre_u.thread_map, t => { reveal(kernel_k_user_projection); }); },
+        None => {
+            assert_maps_equal!(post_u.thread_map, pre_u.thread_map, t => {
+                if pre.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, include_lock_state, t); kernel_thread_user_projection_at(post, include_lock_state, t); }
+            });
+        },
     }
 }
 
@@ -567,5 +571,85 @@ pub proof fn kernel_endpoint_lock_mode_changed_implies_u_endpoint_map(pre: &Kern
             if pre.ep_mp.dom().contains(p) { kernel_endpoint_projection_at(pre, p); } if post.ep_mp.dom().contains(p) { kernel_endpoint_projection_at(post, p); }
         }); },
     }
+}
+
+/// Changing only the lock mode and op of cpu `cpu_id` projects to that cpu slot taking its new lock mode and op.
+pub proof fn kernel_cpu_lock_and_op_changed_implies_u_cpu_array(pre: &KernelK, post: &KernelK, cpu_id: CpuId)
+    requires
+        index_valid(NUM_CPUS, cpu_id),
+        post.cpu_arr.entries_unchanged_except(&pre.cpu_arr, cpu_id),
+        post.cpu_arr.spec_index(cpu_id).view().view().view() == pre.cpu_arr.spec_index(cpu_id).view().view().view(),
+        forall|i: CpuId| #![trigger post.cpu_op.view().view()[i as int]] index_valid(NUM_CPUS, i) && i != cpu_id ==> post.cpu_op.view().view()[i as int] == pre.cpu_op.view().view()[i as int],
+        post.cpu_arr.spec_index(cpu_id).value.being_killed() == pre.cpu_arr.spec_index(cpu_id).value.being_killed(),
+    ensures
+        ({
+            let pre_u = kernel_k_to_kernel_u(*pre);
+            kernel_k_to_kernel_u(*post).cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU {
+                lock_state: post.cpu_arr.spec_index(cpu_id).value.lock_state_u(), op: post.cpu_op.view().view()[cpu_id as int], ..pre_u.cpu_array[cpu_id as int]
+            })
+        }),
+{
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    let pre_u = kernel_k_to_kernel_u(*pre);
+    let post_u = kernel_k_to_kernel_u(*post);
+    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU {
+        lock_state: post.cpu_arr.spec_index(cpu_id).value.lock_state_u(), op: post.cpu_op.view().view()[cpu_id as int], ..pre_u.cpu_array[cpu_id as int]
+    }), i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); } });
+}
+
+/// Changing only the lock mode and lock owner of container `container_ptr` projects to that container taking its new
+/// lock mode and lock owner.
+pub proof fn kernel_container_lock_changed_implies_u_container_map(pre: &KernelK, post: &KernelK, container_ptr: RwLockContainerPtr)
+    requires
+        post.cpu_set_mp == pre.cpu_set_mp,
+        post.cpu_offline_mp == pre.cpu_offline_mp,
+        post.sched_mp == pre.sched_mp,
+        post.pcid_allc_mp == pre.pcid_allc_mp,
+        post.allc_4k_mp == pre.allc_4k_mp,
+        post.allc_2m_mp == pre.allc_2m_mp,
+        post.allc_1g_mp == pre.allc_1g_mp,
+        post.ctn_mp.unchanged_except(&pre.ctn_mp, container_ptr),
+        post.ctn_mp.spec_index(container_ptr).view() == pre.ctn_mp.spec_index(container_ptr).view(),
+        post.ctn_mp.spec_index(container_ptr).view_rodata() == pre.ctn_mp.spec_index(container_ptr).view_rodata(),
+        post.ctn_mp.spec_index(container_ptr).view_ghost() == pre.ctn_mp.spec_index(container_ptr).view_ghost(),
+        post.ctn_mp.spec_index(container_ptr).being_killed() == pre.ctn_mp.spec_index(container_ptr).being_killed(),
+    ensures
+        ({
+            let pre_u = kernel_k_to_kernel_u(*pre);
+            kernel_k_to_kernel_u(*post).container_map == pre_u.container_map.insert(container_ptr, ContainerU {
+                lock_state: post.ctn_mp.spec_index(container_ptr).lock_state_u(), lock_process_owner: post.ctn_mp.spec_index(container_ptr).lock_process_owner_u(), ..pre_u.container_map.spec_index(container_ptr)
+            })
+        }),
+{
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    let pre_u = kernel_k_to_kernel_u(*pre);
+    let post_u = kernel_k_to_kernel_u(*post);
+    assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(container_ptr, ContainerU {
+        lock_state: post.ctn_mp.spec_index(container_ptr).lock_state_u(), lock_process_owner: post.ctn_mp.spec_index(container_ptr).lock_process_owner_u(), ..pre_u.container_map.spec_index(container_ptr)
+    }), c => { if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); kernel_container_projection_at(post, c); } });
+}
+
+/// Changing only the lock mode and syscall progress of thread `thread_ptr` projects to that thread taking its new lock
+/// mode and progress.
+pub proof fn kernel_thread_lock_and_progress_changed_implies_u_thread_map(pre: &KernelK, post: &KernelK, thread_ptr: RwLockThreadPtr)
+    requires
+        pre.thr_mp.dom().contains(thread_ptr),
+        post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr),
+        post.thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: post.thr_mp.spec_index(thread_ptr).view().syscall_progress, ..pre.thr_mp.spec_index(thread_ptr).view() }),
+        post.thr_mp.spec_index(thread_ptr).being_killed() == pre.thr_mp.spec_index(thread_ptr).being_killed(),
+    ensures
+        ({
+            let pre_u = kernel_k_to_kernel_u(*pre);
+            kernel_k_to_kernel_u(*post).thread_map == pre_u.thread_map.insert(thread_ptr, ThreadU {
+                lock_state: post.thr_mp.spec_index(thread_ptr).lock_state_u(), syscall_progress: post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view(), ..pre_u.thread_map.spec_index(thread_ptr)
+            })
+        }),
+{
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    let pre_u = kernel_k_to_kernel_u(*pre);
+    let post_u = kernel_k_to_kernel_u(*post);
+    assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thread_ptr, ThreadU {
+        lock_state: post.thr_mp.spec_index(thread_ptr).lock_state_u(), syscall_progress: post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view(), ..pre_u.thread_map.spec_index(thread_ptr)
+    }), t => { if pre.thr_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); kernel_thread_projection_at(post, t); } });
 }
 } // verus!

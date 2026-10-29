@@ -584,19 +584,82 @@ pub proof fn kernel_caller_woken_implies_u_step(before: &KernelK, after: &Kernel
             })
         }),
 {
-    reveal(kernel_k_to_kernel_u);
+    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    kernel_cpu_array_unchanged_implies_u_cpu_array(before, after);
+    kernel_process_maps_unchanged_implies_u_process_map(before, after);
+    kernel_endpoint_map_unchanged_implies_u_endpoint_map(before, after);
+    kernel_caller_woken_implies_u_container_map(before, after, cpu_id, caller_ptr);
+    kernel_caller_woken_implies_u_thread_map(before, after, cpu_id, thread_ptr, caller_ptr);
+}
+
+/// Waking the caller projects to the container map with the caller pushed on shard `cpu_id` of its container's scheduler.
+proof fn kernel_caller_woken_implies_u_container_map(before: &KernelK, after: &KernelK, cpu_id: CpuId, caller_ptr: RwLockThreadPtr)
+    requires
+        container_thread_wf(after.ctn_mp, after.thr_mp),
+        container_scheduler_wf(after.ctn_mp, after.sched_mp),
+        before.thr_mp.dom().contains(caller_ptr),
+        *after == (KernelK { thr_mp: after.thr_mp, sched_mp: after.sched_mp, ..*before }),
+        after.thr_mp.dom() == before.thr_mp.dom(),
+        after.thr_mp.spec_index(caller_ptr).view().owning_container == before.thr_mp.spec_index(caller_ptr).view().owning_container,
+        after.sched_mp.dom() == before.sched_mp.dom(),
+        forall|s: RwLockSchedulerPtr| #![trigger after.sched_mp.spec_index(s)] before.sched_mp.dom().contains(s) ==>
+            scheduler_shards_of(after.sched_mp.spec_index(s)) == if s == before.ctn_mp.spec_index(before.thr_mp.spec_index(caller_ptr).view().owning_container).view_rodata().view().scheduler {
+                scheduler_shards_of(before.sched_mp.spec_index(s)).update(cpu_id as int, scheduler_shards_of(before.sched_mp.spec_index(s))[cpu_id as int].push(caller_ptr))
+            } else { scheduler_shards_of(before.sched_mp.spec_index(s)) },
+    ensures
+        ({
+            let pre = kernel_k_to_kernel_u(*before);
+            let container = pre.thread_map[caller_ptr].owning_container;
+            kernel_k_to_kernel_u(*after).container_map == pre.container_map.insert(container, ContainerU {
+                scheduler: pre.container_map[container].scheduler.update(cpu_id as int, pre.container_map[container].scheduler[cpu_id as int].push(caller_ptr)), ..pre.container_map[container]
+            })
+        }),
+{
+    kernel_u_domains_projection(before); kernel_u_domains_projection(after); kernel_thread_projection_at(before, caller_ptr);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     let container = pre.thread_map[caller_ptr].owning_container;
-    assert_seqs_equal!(post.cpu_array == pre.cpu_array);
-    assert_maps_equal!(post.process_map, pre.process_map);
     assert_maps_equal!(post.container_map, pre.container_map.insert(container, ContainerU {
         scheduler: pre.container_map[container].scheduler.update(cpu_id as int, pre.container_map[container].scheduler[cpu_id as int].push(caller_ptr)), ..pre.container_map[container]
-    }), p => { reveal(container_thread_wf); reveal(container_scheduler_wf); });
+    }), p => {
+        if before.ctn_mp.dom().contains(p) { kernel_container_projection_at(before, p); kernel_container_projection_at(after, p); }
+        if before.ctn_mp.dom().contains(container) { kernel_container_projection_at(before, container); }
+        reveal(container_thread_wf); reveal(container_scheduler_wf);
+    });
+}
+
+/// Waking the caller projects to the thread map with the exiting thread's caller link dropped and the caller scheduled on
+/// `cpu_id` with `ErrorIpcCalleeExited`.
+proof fn kernel_caller_woken_implies_u_thread_map(before: &KernelK, after: &KernelK, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, caller_ptr: RwLockThreadPtr)
+    requires
+        before.thr_mp.dom().contains(thread_ptr),
+        before.thr_mp.dom().contains(caller_ptr),
+        after.thr_mp.dom() == before.thr_mp.dom(),
+        forall|t: RwLockThreadPtr| #![trigger after.thr_mp.spec_index(t)]
+            before.thr_mp.dom().contains(t) && t != thread_ptr && t != caller_ptr ==> after.thr_mp.spec_index(t) == before.thr_mp.spec_index(t),
+        after.thr_mp.spec_index(thread_ptr).view() == (Thread { caller: None, ..before.thr_mp.spec_index(thread_ptr).view() }),
+        after.thr_mp.spec_index(thread_ptr).locking_thread() == before.thr_mp.spec_index(thread_ptr).locking_thread(),
+        after.thr_mp.spec_index(thread_ptr).being_killed() == before.thr_mp.spec_index(thread_ptr).being_killed(),
+        after.thr_mp.spec_index(caller_ptr).view() == (Thread {
+            state: ThreadState::SCHEDULED { cpu_id }, callee: None, error_code: Some(RetValueType::ErrorIpcCalleeExited),
+            scheduler_linkedlist_node: after.thr_mp.spec_index(caller_ptr).view().scheduler_linkedlist_node, ..before.thr_mp.spec_index(caller_ptr).view()
+        }),
+        after.thr_mp.spec_index(caller_ptr).locking_thread() == before.thr_mp.spec_index(caller_ptr).locking_thread(),
+        after.thr_mp.spec_index(caller_ptr).being_killed() == before.thr_mp.spec_index(caller_ptr).being_killed(),
+    ensures
+        ({
+            let pre = kernel_k_to_kernel_u(*before);
+            kernel_k_to_kernel_u(*after).thread_map == pre.thread_map.insert(thread_ptr, ThreadU { caller: None, ..pre.thread_map[thread_ptr] }).insert(caller_ptr, ThreadU {
+                state: ThreadState::SCHEDULED { cpu_id }, callee: None, error_code: Some(RetValueType::ErrorIpcCalleeExited), ..pre.thread_map[caller_ptr]
+            })
+        }),
+{
+    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    let pre = kernel_k_to_kernel_u(*before);
+    let post = kernel_k_to_kernel_u(*after);
     assert_maps_equal!(post.thread_map, pre.thread_map.insert(thread_ptr, ThreadU { caller: None, ..pre.thread_map[thread_ptr] }).insert(caller_ptr, ThreadU {
         state: ThreadState::SCHEDULED { cpu_id }, callee: None, error_code: Some(RetValueType::ErrorIpcCalleeExited), ..pre.thread_map[caller_ptr]
-    }));
-    assert_maps_equal!(post.endpoint_map, pre.endpoint_map);
+    }), t => { if before.thr_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); } });
 }
 
 /// Dropping descriptor `endpoint_index` of an exiting thread clears that descriptor, records the thread's new

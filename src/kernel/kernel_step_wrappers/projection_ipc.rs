@@ -271,6 +271,7 @@ pub proof fn kernel_process_map_unchanged_implies_u_map(pre: &KernelK, post: &Ke
             after.process_map == before.process_map
         }),
 {
+    hide(Map::filter_keys);
     reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
     reveal(process_pagetable_match); reveal(process_iommu_table_match);
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
@@ -317,6 +318,7 @@ pub proof fn kernel_pagetable_pair_lock_modes_changed_implies_u_map(pre: &Kernel
             after.process_map == locked_processes
         }),
 {
+    hide(Map::filter_keys);
     post.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pre.prc_mp.spec_index(source).view().pagetable);
     post.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pre.prc_mp.spec_index(target).view().pagetable);
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);

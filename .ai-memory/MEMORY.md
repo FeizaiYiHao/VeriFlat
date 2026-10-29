@@ -23,6 +23,14 @@ captured by the repository instructions or obvious from one implementation.
 - [NUMA plan](project_numa_plan.md) — single-kernel NUMA design: node tags,
   per-node arrays/pools, per-node RwLock reader counts, lazy page-table replicas.
 
+## Open tasks
+
+- Rename existing lemmas whose names do not state what implies what (e.g.
+  `lemma_l4_index_path_le_successor` in `src/pagetable_seq/pagetable_range.rs`;
+  `kernel_walk_state_preserved_for_held_objects_unchanged`-style names are fine)
+  to the `<premise>_implies_<conclusion>` form, repo-wide, as a separate
+  rlimit-neutral rename round (user request 2026-10-29).
+
 ## Deliberately omitted
 
 Historical verification counters, timing snapshots, completed migration

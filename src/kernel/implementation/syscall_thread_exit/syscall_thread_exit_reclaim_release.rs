@@ -534,7 +534,7 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
         reclaim_unmapped_4k_page(krnl, pagetable, va, thread_ptr, cpu_id, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&pagetable_lock_perm), Tracked(thread_lock_perm));
         cursor = (next.0, next.1, next.2, next.3 + 1);
         proof {
-            pagetable_perms_wf_map(krnl.pt_mp);
+            lemma_l4_index_path_le_successor(next, cursor); pagetable_perms_wf_map(krnl.pt_mp);
             pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         }
         found = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_lock_perm)).next_mapped_4k_from(Tracked(krnl.pt_lower.borrow().tracked_borrow(pagetable)), cursor);
@@ -908,7 +908,7 @@ pub(super) fn thread_exit_reclaim_iommu_leaves(
             thread_exit_trace_push(&*steps, leaf_before, start, pre, kernel_k_to_kernel_u(leaf_pre), kernel_k_to_kernel_u(leaf_post), cpu_id);
         }
         cursor = (next.0, next.1, next.2, next.3 + 1);
-        proof { iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table); }
+        proof { lemma_l4_index_path_le_successor(next, cursor); iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table); }
         found = krnl.it_mp.borrow_typed(iommu_table, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(iommu_table_lock_perm)).next_mapped_4k_from(cursor);
     }
     proof {

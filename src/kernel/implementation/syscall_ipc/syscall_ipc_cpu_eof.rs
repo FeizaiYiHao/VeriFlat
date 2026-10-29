@@ -219,8 +219,8 @@ proof fn ipc_cpu_rendezvous_eof_memory_management_inv(
         assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
         assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
         assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
-        assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_2m_wf); };
-        assert(thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_1g_wf); };
+        assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
+        assert(thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
         assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp)) by {
             container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_4k_mp); reveal(container_thread_wf);
             lemma_thread_effective_quota_4k_fold_sum_eq_forall();
@@ -236,6 +236,99 @@ proof fn ipc_cpu_rendezvous_eof_memory_management_inv(
             lemma_thread_effective_quota_1g_fold_sum_eq_forall();
             lemma_thread_pending_1g_folds_eq_forall(post.ctn_mp, pre.thr_mp, post.thr_mp);
         };
+    };
+}
+
+/// The rendezvous fields of the step and the scheduler-shard push close after the transition.
+proof fn ipc_cpu_rendezvous_eof_rendezvous_fields(
+    pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
+    peer_scheduler_ptr: RwLockSchedulerPtr, wake_cpu: CpuId, source_container: RwLockContainerPtr, target_container: RwLockContainerPtr,
+    source_cpu_set: RwLockCpuSetPtr, target_cpu_set: RwLockCpuSetPtr, transfer_cpu_id: CpuId, transferred: bool, peer_result: RetValueType,
+    thread_id: LockThreadId, snapshot: KernelK, cpu_id: CpuId, process_ptr: RwLockProcessPtr, endpoint_index: EndpointIdx, waiting_state: ThreadState,
+    cpu_transfer: Option<(CpuId, RwLockThreadPtr)>,
+)
+    requires
+        pre.inv(),
+        index_valid(NUM_CPUS, transfer_cpu_id),
+        current_thread_ptr != peer_thread_ptr,
+        source_container != target_container,
+        pre.thr_mp.spec_index(peer_thread_ptr).view().owning_container != pre.thr_mp.spec_index(current_thread_ptr).view().owning_container,
+        index_valid(NUM_CPUS, wake_cpu),
+        wake_cpu == pre.thr_mp.spec_index(peer_thread_ptr).view().last_cpu,
+        source_cpu_set != target_cpu_set,
+        pre.ctn_mp.dom().contains(source_container),
+        pre.ctn_mp.dom().contains(target_container),
+        pre.thr_mp.dom().contains(current_thread_ptr),
+        pre.thr_mp.dom().contains(peer_thread_ptr),
+        pre.ep_mp.dom().contains(endpoint_ptr),
+        pre.sched_mp.dom().contains(peer_scheduler_ptr),
+        pre.cpu_set_mp.dom().contains(source_cpu_set),
+        pre.cpu_set_mp.dom().contains(target_cpu_set),
+        !pre.cpu_set_mp.spec_index(source_cpu_set).being_killed() && !pre.cpu_set_mp.spec_index(target_cpu_set).being_killed(),
+        pre.ctn_mp.spec_index(source_container).view_rodata().view().cpu_set == source_cpu_set,
+        pre.ctn_mp.spec_index(target_container).view_rodata().view().cpu_set == target_cpu_set,
+        pre.ctn_mp.spec_index(pre.thr_mp.spec_index(peer_thread_ptr).view().owning_container).view_rodata().view().scheduler == peer_scheduler_ptr,
+        pre.thr_mp.spec_index(peer_thread_ptr).view().state.is_endpoint_waiting(),
+        pre.thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr),
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().len() > 0,
+        pre.ep_mp.spec_index(endpoint_ptr).view().queue.view().spec_index(0) == peer_thread_ptr,
+        transferred ==> {
+            &&& pre.cpu_set_mp.spec_index(source_cpu_set).view().owned_cpus.view().contains(transfer_cpu_id)
+            &&& pre.cpu_set_mp.spec_index(source_cpu_set).view().owned_cpus.closed_view().contains(transfer_cpu_id)
+            &&& !pre.cpu_set_mp.spec_index(target_cpu_set).view().owned_cpus.view().contains(transfer_cpu_id)
+            &&& pre.cpu_arr.spec_index(transfer_cpu_id).view().view().view().state is Off
+            &&& pre.cpu_arr.spec_index(transfer_cpu_id).view().view().view().owning_container == source_container
+        },
+        !pre.sched_mp.spec_index(peer_scheduler_ptr).shards.spec_index(wake_cpu).view().view().queue.dom().contains(pre.thr_mp.spec_index(peer_thread_ptr).view().scheduler_linkedlist_node.addr()),
+        ipc_cpu_rendezvous_eof_transition_framing(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id),
+        post.sched_mp.spec_index(peer_scheduler_ptr).shards.inv(),
+        post.sched_mp.spec_index(peer_scheduler_ptr).shard(wake_cpu).queue.wf(),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(&snapshot, &pre),
+        kernel_endpoint_nonlock_fields_unchanged(snapshot.ep_mp, pre.ep_mp),
+        kernel_container_nonlock_fields_and_quotas_unchanged(&snapshot, &pre),
+        pre.irt.view().owners() == snapshot.irt.view().owners(),
+        pre.irt.view().iommu_roots() == snapshot.irt.view().iommu_roots(),
+        pre.cpu_tlb.view() == snapshot.cpu_tlb.view(),
+        pre.iommu_tlb.view() == snapshot.iommu_tlb.view(),
+        snapshot.cpu_arr.spec_index(cpu_id).value.locking_thread() is None,
+        snapshot.thr_mp.dom().contains(current_thread_ptr) ==> snapshot.thr_mp.spec_index(current_thread_ptr).locking_thread() is None,
+        snapshot.ep_mp.dom().contains(endpoint_ptr) ==> snapshot.ep_mp.spec_index(endpoint_ptr).locking_thread() is None,
+        snapshot.thr_mp.dom().contains(peer_thread_ptr) ==> snapshot.thr_mp.spec_index(peer_thread_ptr).locking_thread() is None,
+        transferred ==> snapshot.cpu_arr.spec_index(transfer_cpu_id).value.locking_thread() is None,
+        pre.thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is None,
+        index_valid(NUM_CPUS, cpu_id),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().state is Running,
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(current_thread_ptr),
+        pre.prc_mp.dom().contains(process_ptr),
+        pre.thr_mp.spec_index(current_thread_ptr).being_killed() == false,
+        pre.thr_mp.spec_index(current_thread_ptr).view().state == (ThreadState::RUNNING { cpu_id }),
+        pre.thr_mp.spec_index(current_thread_ptr).view().owning_proc == process_ptr,
+        pre.thr_mp.spec_index(peer_thread_ptr).being_killed() == false,
+        pre.ctn_mp.dom().contains(pre.thr_mp.spec_index(current_thread_ptr).view().owning_container),
+        pre.ctn_mp.dom().contains(pre.thr_mp.spec_index(peer_thread_ptr).view().owning_container),
+        edp_idx_valid(endpoint_index),
+        pre.thr_mp.spec_index(current_thread_ptr).view().endpoint_descriptors.view()[endpoint_index as int] == Some(endpoint_ptr),
+        waiting_state is SENDING || waiting_state is RECEIVING,
+        (pre.ep_mp.spec_index(endpoint_ptr).view().queue_state is SEND) != (waiting_state is SENDING),
+        (cpu_transfer is Some) == transferred,
+        cpu_transfer is Some ==> {
+            &&& cpu_transfer.unwrap().0 == transfer_cpu_id
+            &&& pre.thr_mp.dom().contains(cpu_transfer.unwrap().1)
+            &&& pre.thr_mp.spec_index(cpu_transfer.unwrap().1).view().owning_container == target_container
+        },
+    ensures kernel_ipc_rendezvous_fields(&snapshot, &post, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer, None),
+{
+    reveal(ipc_cpu_rendezvous_eof_transition_framing);
+    assert(scheduler_shards_of(post.sched_mp.spec_index(peer_scheduler_ptr)) =~= scheduler_shards_of(pre.sched_mp.spec_index(peer_scheduler_ptr)).update(wake_cpu as int, scheduler_shards_of(pre.sched_mp.spec_index(peer_scheduler_ptr))[wake_cpu as int].push(peer_thread_ptr))) by {
+        reveal(scheduler_shards_of);
+    };
+    assert(kernel_ipc_rendezvous_fields(&snapshot, &post, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer, None)) by {
+        running_thread_not_in_endpoint_queue(&pre, endpoint_ptr, current_thread_ptr);
+        reveal(kernel_ipc_rendezvous_fields); reveal(container_scheduler_wf);
+        reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
+        reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
+        reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged);
     };
 }
 
@@ -345,15 +438,7 @@ pub(super) proof fn ipc_cpu_rendezvous_eof(
     ipc_cpu_rendezvous_eof_memory_management_inv(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id);
     ipc_cpu_rendezvous_eof_process_management_inv(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result, thread_id);
     assert(post.inv()) by { reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(tlb_wf_spec); };
-    assert(scheduler_shards_of(post.sched_mp.spec_index(peer_scheduler_ptr)) =~= scheduler_shards_of(pre.sched_mp.spec_index(peer_scheduler_ptr)).update(wake_cpu as int, scheduler_shards_of(pre.sched_mp.spec_index(peer_scheduler_ptr))[wake_cpu as int].push(peer_thread_ptr))) by {
-        reveal(scheduler_shards_of);
-    };
-    assert(kernel_ipc_rendezvous_fields(&snapshot, &post, cpu_id, current_thread_ptr, endpoint_ptr, endpoint_index, waiting_state, peer_thread_ptr, peer_result, cpu_transfer, None)) by {
-        running_thread_not_in_endpoint_queue(&pre, endpoint_ptr, current_thread_ptr);
-        reveal(kernel_ipc_rendezvous_fields); reveal(container_scheduler_wf);
-        reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
-        reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
-        reveal(kernel_container_nonlock_fields_and_quotas_unchanged); reveal(kernel_endpoint_nonlock_fields_unchanged);
-    };
+    ipc_cpu_rendezvous_eof_rendezvous_fields(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, source_container, target_container, source_cpu_set, target_cpu_set, transfer_cpu_id, transferred, peer_result,
+        thread_id, snapshot, cpu_id, process_ptr, endpoint_index, waiting_state, cpu_transfer);
 }
 }
