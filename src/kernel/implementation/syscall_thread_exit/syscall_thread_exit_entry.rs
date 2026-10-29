@@ -128,6 +128,7 @@ pub(super) fn thread_exit_lock_entry(krnl: &mut KernelK, Tracked(lctx): Tracked<
     }
     let (dangling, dangling_lock_perm) = entered.unwrap();
     let Tracked(dangling_lock_perm) = dangling_lock_perm;
+    proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
     if let Some(dangling_ptr) = dangling {
         let tracked dangling_perm = dangling_lock_perm.tracked_unwrap();
         thread_exit_reclaim_dangling_caller(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, thread_ptr, dangling_ptr, Tracked(dangling_perm),
@@ -184,6 +185,7 @@ fn thread_exit_reclaim_dangling_caller(
         old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExit { next: 0 }),
         0 <= start <= old(steps).view().len(),
         thread_exit_partial_trace(old(steps).view().subrange(start, old(steps).view().len() as int), pre, cpu_id),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),

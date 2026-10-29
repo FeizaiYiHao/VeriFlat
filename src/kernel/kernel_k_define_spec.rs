@@ -210,8 +210,11 @@ verus! {
         ///   - each held 2M window keeps its L2 entry, lock owner, linked L1 page,
         ///     and leaves; nothing is said about the window half of a page table
         ///     beyond its held windows;
-        ///   - the local CPU's hardware CR3/PCID and hardware cr3/pcid word stay
-        ///     unchanged even without its CPU lock;
+        ///   - while the local cpu is inside a kernel step (this thread holds it),
+        ///     its hardware cr3/pcid word stays unchanged; its running state stays
+        ///     put or drops to Idle (a killer's running-to-idle IPI, a wake IPI);
+        ///   - owners of held objects keep their read-only data: their pointers
+        ///     cannot be freed and reused between sections;
         ///   - needflush entries are independent of the CPU lock: only entries
         ///     held in the typed needflush map are preserved;
         ///   - everything else may change arbitrarily, including map
@@ -270,15 +273,15 @@ verus! {
     }
 
     /// What the trusted step boundary `KernelK::kernel_step_boundary_raw` keeps from `pre` to `post` for the thread whose
-    /// local context across the boundary is `lctx`: the local cpu's hardware CR3/PCID, hardware cr3/pcid word, and
-    /// running state, the re-established invariant, every object `lctx` holds, lock-id alignment, the default page table,
-    /// and global read-only data. Part of the boundary's TCB contract.
+    /// local context across the boundary is `lctx`: the local cpu's hardware cr3/pcid word while that cpu is inside a
+    /// kernel step, and its running state unless an IPI drops it to Idle, the re-established invariant, every object
+    /// `lctx` holds, lock-id alignment, the default page table, and the read-only data of the owners of held objects.
+    /// Part of the boundary's TCB contract.
     pub open spec fn kernel_step_boundary_framing(pre: KernelK, post: KernelK, lctx: LocalContext) -> bool {
         &&& index_valid(NUM_CPUS, lctx.cpu_id()) ==> {
-            &&& post.cpu_arr.spec_index(lctx.cpu_id()).view().view().view().current_cr3 == pre.cpu_arr.spec_index(lctx.cpu_id()).view().view().view().current_cr3
-            &&& post.cpu_arr.spec_index(lctx.cpu_id()).view().view().view().current_pcid == pre.cpu_arr.spec_index(lctx.cpu_id()).view().view().view().current_pcid
-            &&& post.cpu_hw_cr3_pcid[lctx.cpu_id() as int].view() == pre.cpu_hw_cr3_pcid[lctx.cpu_id() as int].view()
-            &&& post.cpu_op.view().view()[lctx.cpu_id() as int] == pre.cpu_op.view().view()[lctx.cpu_id() as int]
+            let own = lctx.cpu_id() as int;
+            &&& pre.cpu_op.view().view()[own] is InStep ==> post.cpu_hw_cr3_pcid[own].view() == pre.cpu_hw_cr3_pcid[own].view()
+            &&& post.cpu_op.view().view()[own] == pre.cpu_op.view().view()[own] || post.cpu_op.view().view()[own] is Idle
         }
         &&& post.inv()
         &&& forall|cpu_id: CpuId, pcid: Pcid|
@@ -335,13 +338,12 @@ verus! {
                     &&& post.pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map.spec_index(lctx.thread_id()) == pre.pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map.spec_index(lctx.thread_id())
                 }
             }
-        // Deliberately omitted: root-container equality across interleaving. The default page table is read-only and is
-        // framed directly. Global rodata immutability and final lock-id alignment remain explicit because both are common
-        // next-section framing facts.
+        // Deliberately omitted: root-container equality across interleaving, and rodata of objects that are neither held
+        // nor owners of held objects, whose pointers may be freed and reused. The default page table is read-only and is
+        // framed directly. Final lock-id alignment remains explicit because it is a common next-section framing fact.
         &&& typed_lock_maps_aligned(&post, &lctx)
         &&& post.dflt_pt == pre.dflt_pt
-        &&& containers_rodata_unchanged(pre.ctn_mp, post.ctn_mp)
-        &&& processes_rodata_unchanged(pre.prc_mp, post.prc_mp)
+        &&& held_owner_rodata_unchanged(pre, post, lctx)
         // The krnl lock state is the anchor: every object held before interleaving is still present and bit-for-bit
         // unchanged afterwards.
         &&& held_containers_unchanged(pre.ctn_mp, post.ctn_mp, &lctx)
@@ -366,14 +368,13 @@ verus! {
                 ==> iommu_table_tlb_entries_present(post.iommu_tlb, post.irt.view(), post.it_mp, it)
     }
 
-    /// The step-boundary framing composes for one thread, provided no container or process present in both `a` and `c`
-    /// was absent in `b`: the global read-only-data clauses only relate objects present at both ends.
+    /// The step-boundary framing composes for one thread, provided the thread holds its own cpu whenever that cpu is
+    /// inside a kernel step at `a`: only then does the cpu stay inside the step, keeping its hardware cr3/pcid word, at `b`.
     pub proof fn kernel_step_boundary_framing_trans(a: KernelK, b: KernelK, c: KernelK, lctx: LocalContext)
         requires
             kernel_step_boundary_framing(a, b, lctx),
             kernel_step_boundary_framing(b, c, lctx),
-            forall|x: RwLockContainerPtr| #![trigger a.ctn_mp.dom().contains(x), c.ctn_mp.dom().contains(x)] a.ctn_mp.dom().contains(x) && c.ctn_mp.dom().contains(x) ==> b.ctn_mp.dom().contains(x),
-            forall|x: RwLockProcessPtr| #![trigger a.prc_mp.dom().contains(x), c.prc_mp.dom().contains(x)] a.prc_mp.dom().contains(x) && c.prc_mp.dom().contains(x) ==> b.prc_mp.dom().contains(x),
+            index_valid(NUM_CPUS, lctx.cpu_id()) && a.cpu_op.view().view()[lctx.cpu_id() as int] is InStep ==> lctx.cpu_lock_map().dom().contains(lctx.cpu_id()),
         ensures
             kernel_step_boundary_framing(a, c, lctx),
     {

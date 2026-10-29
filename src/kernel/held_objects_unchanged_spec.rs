@@ -24,18 +24,35 @@ pub open spec fn held_processes_unchanged(pre: ProcessLockedMap, post: ProcessLo
         }
 }
 
-pub open spec fn containers_rodata_unchanged(pre: ContainerLockedMap, post: ContainerLockedMap) -> bool {
-    forall|c: RwLockContainerPtr|
-        #![trigger pre.spec_index(c).view_rodata()]
-        #![trigger post.spec_index(c).view_rodata()]
-        pre.dom().contains(c) && post.dom().contains(c) ==> pre.spec_index(c).view_rodata() == post.spec_index(c).view_rodata()
-}
-
-pub open spec fn processes_rodata_unchanged(pre: ProcessLockedMap, post: ProcessLockedMap) -> bool {
-    forall|p: RwLockProcessPtr|
-        #![trigger pre.spec_index(p).view_rodata()]
-        #![trigger post.spec_index(p).view_rodata()]
-        pre.dom().contains(p) && post.dom().contains(p) ==> pre.spec_index(p).view_rodata() == post.spec_index(p).view_rodata()
+/// Owners of what this context holds cannot be freed between its sections, so their pointers are not reused: the owner
+/// container of a held thread, process, or page, every container on a held thread's upper-container chain, the process of
+/// a held thread that has not left it, and the process whose page table this context holds all stay present with their
+/// rodata unchanged.
+pub open spec fn held_owner_rodata_unchanged(pre: KernelK, post: KernelK, lctx: LocalContext) -> bool {
+    &&& forall|t: RwLockThreadPtr| #![trigger lctx.thread_lock_map().dom().contains(t)] lctx.thread_lock_map().dom().contains(t) ==> {
+        let thread = pre.thr_mp.spec_index(t).view();
+        let uppers = thread.upper_container_seq.view();
+        &&& post.ctn_mp.dom().contains(thread.owning_container)
+        &&& post.ctn_mp.spec_index(thread.owning_container).view_rodata() == pre.ctn_mp.spec_index(thread.owning_container).view_rodata()
+        &&& forall|i: int| #![trigger uppers[i]] 0 <= i < uppers.len() ==> post.ctn_mp.dom().contains(uppers[i]) && post.ctn_mp.spec_index(uppers[i]).view_rodata() == pre.ctn_mp.spec_index(uppers[i]).view_rodata()
+        &&& !thread_is_dangling(pre.thr_mp.spec_index(t)) ==> post.prc_mp.dom().contains(thread.owning_proc)
+        &&& !thread_is_dangling(pre.thr_mp.spec_index(t)) ==> post.prc_mp.spec_index(thread.owning_proc).view_rodata() == pre.prc_mp.spec_index(thread.owning_proc).view_rodata()
+    }
+    &&& forall|p: RwLockProcessPtr| #![trigger lctx.process_lock_map().dom().contains(p)] lctx.process_lock_map().dom().contains(p) ==> {
+        let owner = pre.prc_mp.spec_index(p).view_rodata().view().owning_container;
+        &&& post.ctn_mp.dom().contains(owner)
+        &&& post.ctn_mp.spec_index(owner).view_rodata() == pre.ctn_mp.spec_index(owner).view_rodata()
+    }
+    &&& forall|i: PageIndex| #![trigger lctx.page_lock_map().dom().contains(i)] lctx.page_lock_map().dom().contains(i) ==> {
+        let owner = pre.pg_arr.spec_index(i).view().view().owning_container;
+        &&& post.ctn_mp.dom().contains(owner)
+        &&& post.ctn_mp.spec_index(owner).view_rodata() == pre.ctn_mp.spec_index(owner).view_rodata()
+    }
+    &&& forall|p: RwLockProcessPtr| #![trigger pre.prc_mp.spec_index(p).view_rodata()]
+        pre.prc_mp.dom().contains(p) && lctx.pagetable_lock_map().dom().contains(pre.prc_mp.spec_index(p).view_rodata().view().pagetable) ==> {
+            &&& post.prc_mp.dom().contains(p)
+            &&& post.prc_mp.spec_index(p).view_rodata() == pre.prc_mp.spec_index(p).view_rodata()
+        }
 }
 
 pub open spec fn held_threads_unchanged(pre: ThreadLockedMap, post: ThreadLockedMap, lctx: &LocalContext) -> bool {

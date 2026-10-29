@@ -148,6 +148,8 @@ pub(super) fn reclaim_dangling_thread_drain_full_cache(
         old(lctx).allocator_global_pool_4k_lock_map().dom().is_empty(),
         old(lctx).holds_no_allocator_locks(PageSize::SZ2m),
         old(lctx).holds_no_allocator_locks(PageSize::SZ1g),
+        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep,
+        old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()),
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),

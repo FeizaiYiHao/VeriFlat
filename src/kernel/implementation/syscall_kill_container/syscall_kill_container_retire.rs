@@ -61,6 +61,7 @@ pub(crate) fn kill_container_retire(
             &&& target.view_ghost().retire_ready
             &&& old(krnl).cpu_set_mp.spec_index(cpu_set_ptr).view().owned_cpus.view().is_empty()
         }),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -148,6 +149,7 @@ pub(crate) fn kill_container_retire(
         kernel_thread_syscall_progress_changed_implies_u_step(&retired_k, &*krnl, thread_ptr);
         kill_container_retire_step_from_u(pre_u, kernel_k_to_kernel_u(retired_k), post_u, cpu_id, thread_ptr, container_ptr, parent_ptr, owner_ptr,
             retired_k.allc_4k_mp.spec_index(owner_ro.allocator_ptr_4k).quota.view().view(), retired_k.allc_2m_mp.spec_index(owner_ro.allocator_ptr_2m).quota.view().view());
+        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         kill_container_trace_push(&*steps, base_steps, start, pre, pre_u, post_u, cpu_id, ctx);
     }

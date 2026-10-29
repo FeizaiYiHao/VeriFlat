@@ -19,6 +19,7 @@ pub(super) fn reclaim_killed_thread_link(
         cpu_id == old(lctx).cpu_id(),
         old(steps).snapshot_k() == *old(krnl),
         killed_thread_reclaim_lock_context(*old(krnl), *old(lctx)),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
         old(krnl).thr_mp.dom().contains(thread_ptr),
         old(krnl).thr_mp.spec_index(thread_ptr).view().state is KILLED,
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
@@ -107,6 +108,7 @@ pub(super) fn reclaim_killed_thread_link(
     let ghost iter_steps = steps.view();
     proof {
         thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id);
+        assert(lctx.cpu_lock_map().dom().contains(cpu_id));
         assert(kernel_steps_prefix_unchanged(iter_steps, iter_steps)) by { reveal(kernel_steps_prefix_unchanged); };
     }
     release_killed_thread_descriptors(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, thread_ptr, Tracked(&thread_lock_perm));

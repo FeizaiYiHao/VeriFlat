@@ -491,6 +491,7 @@ fn commit_new_container_publish(
         krnl, Tracked(&mut *lctx), Tracked(&mut *steps), caller_cpu_id, parent_container_ptr, parent_process_ptr, current_thread_ptr, source_pagetable_ptr,
         source_range, funding_page_count, process_quota_4k, transfer_cpu_id, parent_cpu_set, endpoint, endpoint_index, Tracked(current_thread_lock_perm), Ghost(regs),
     );
+    proof { assert(krnl.cpu_op.view().view()[caller_cpu_id as int] is InStep) by { cpu_op_wf_at(old(krnl).cpu_op.view().view(), old(krnl).cpu_arr, caller_cpu_id); cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, caller_cpu_id); }; }
     let (pages_4k, container_page, pcid_allocator_page, Tracked(page_4k_lock_perms), Tracked(container_page_lock_perm), Tracked(pcid_allocator_page_lock_perm)) =
         allocate_new_container_pages(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), current_thread_ptr, parent_container_ptr, caller_cpu_id, Tracked(current_thread_lock_perm));
     let (funding_page_head, Ghost(funding_pages), Tracked(funding_page_lock_perms)) = allocate_staged_4k_page_chain(krnl, funding_page_count, current_thread_ptr, parent_container_ptr, caller_cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(current_thread_lock_perm));
@@ -533,6 +534,7 @@ fn commit_new_container_publish_staged(
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         index_valid(NUM_CPUS, caller_cpu_id),
         caller_cpu_id == old(lctx).cpu_id(),
+        old(krnl).cpu_op.view().view()[caller_cpu_id as int] is InStep,
         old(krnl).cpu_hw_cr3_pcid[caller_cpu_id as int].view() == (old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_cr3, old(krnl).cpu_arr.spec_index(caller_cpu_id).view().view().view().current_pcid),
         old(krnl).pt_mp.spec_index(source_pagetable_ptr).view().kernel_l4_end <= spec_v2l4index(source_range.start),
         process_quota_4k <= funding_page_count,
@@ -879,6 +881,7 @@ fn commit_new_container_publish_staged(
         Tracked(parent_container_lock_perm), Tracked(current_thread_lock_perm), Ghost(regs), Ghost(endpoint_index_opt),
     );
     let ghost published_k = *krnl;
+    proof { assert(krnl.cpu_op.view().view()[caller_cpu_id as int] is InStep) by { cpu_op_wf_at(old(krnl).cpu_op.view().view(), old(krnl).cpu_arr, caller_cpu_id); cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, caller_cpu_id); }; }
     end_new_container_created_step(
         krnl, Tracked(&mut *lctx), Tracked(&mut *steps), caller_cpu_id, transfer_cpu_id, parent_cpu_set, child_cpu_set,
         parent_container_ptr, parent_process_ptr, current_thread_ptr, source_pagetable_ptr, container_page, child_process_ptr,

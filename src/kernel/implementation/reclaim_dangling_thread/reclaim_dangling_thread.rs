@@ -20,6 +20,7 @@ pub fn reclaim_dangling_thread(
         index_valid(NUM_CPUS, cpu_id),
         old(steps).snapshot_k() == *old(krnl),
         killed_thread_reclaim_lock_context(*old(krnl), *old(lctx)),
+        old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep,
         old(krnl).thr_mp.dom().contains(dangling_ptr),
         old(krnl).thr_mp.spec_index(dangling_ptr).view().state is KILLED,
         old(krnl).thr_mp.spec_index(dangling_ptr).view().proc_linkedlist_node.is_init(),

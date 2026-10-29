@@ -56,6 +56,7 @@ pub(super) fn thread_exit_drop_descriptors(
         old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
         old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
         old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExit { next: 0 }),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -142,6 +143,7 @@ pub(super) fn thread_exit_drop_descriptors(
             thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id),
             krnl.cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
             krnl.cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
+            krnl.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
             krnl.ctn_mp.dom().contains(container_ptr),
             krnl.ctn_mp.spec_index(container_ptr).view() == old(krnl).ctn_mp.spec_index(container_ptr).view(),
             krnl.ctn_mp.spec_index(container_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(container_ptr).view_rodata(),
@@ -173,6 +175,7 @@ pub(super) fn thread_exit_drop_descriptors(
             krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::ThreadExit { next: (index + 1) as EndpointIdx })), Tracked(&*lctx), Tracked(thread_lock_perm));
             proof {
                 let drop_post = *krnl;
+                assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
                 krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
                 assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
                     thread_exit_drop_step_pre_from_k(&drop_pre, &drop_lctx, cpu_id, container_ptr, process_ptr, thread_ptr, recorded);

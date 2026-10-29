@@ -131,6 +131,7 @@ pub(crate) fn kill_retire_structure_pages(
     proof {
         thread_perms_wf_at(krnl.thr_mp, thread_ptr);
         kill_step_pre_from_k(&refund_k, &refund_lctx, cpu_id, process_ptr, thread_ptr, target, KillStage::Retire, scope); kill_refund_pre_from_k(&refund_k, target, entry_thread.owning_container);
+        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
     }
     refund_unmap_4k_quota(krnl, thread_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_perm));
     proof {
@@ -344,6 +345,7 @@ pub(crate) fn kill_retire_table_pages(
         let ghost closure = if iommu { krnl.it_mp.spec_index(table).view().page_closure() } else { pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), table).page_closure() };
         let ghost iter_k = *krnl;
         let ghost iter_lctx = *lctx;
+        proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
         if same {
             kill_retire_next_table_page(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, thread_ptr, target, iommu, table, scan, page_ptr, Tracked(table_perm), Tracked(thread_perm),
                 direct);
@@ -412,6 +414,8 @@ pub(crate) fn kill_retire_next_table_page(
         thread_perm.thread_id() == old(lctx).thread_id(),
         thread_perm.lock_id() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
         *old(direct) == old(krnl).thr_mp.spec_index(thread_ptr).view().direct_free_quota_pending_4k.view(),
+        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep,
+        old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()),
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -569,6 +573,7 @@ pub(crate) fn kill_retire_table_page_and_unlock(
             &&& window_perm->Some_0.thread_id() == old(lctx).thread_id()
             &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.l2_lock_of(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).window_l2_page(scan->L1_l4i, scan->L1_l3i)).lock_perm_match(scan->L1_l2i, &window_perm->Some_0)
         },
+        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep,
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -645,6 +650,8 @@ pub(crate) fn kill_retire_lock_cache(
         held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         index_valid(NUM_PAGES, page_index),
         old(lctx).page_lock_map().dom().contains(page_index),
+        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep,
+        old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()),
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -664,6 +671,7 @@ pub(crate) fn kill_retire_lock_cache(
         final(krnl).ctn_mp.spec_index(old(krnl).pg_arr.spec_index(page_index).view().view().owning_container).view_rodata()
             == old(krnl).ctn_mp.spec_index(old(krnl).pg_arr.spec_index(page_index).view().view().owning_container).view_rodata(),
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
+        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] == old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int],
         held_containers_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp, old(lctx)),
         held_processes_unchanged(old(krnl).prc_mp, final(krnl).prc_mp, old(lctx)),
         held_threads_unchanged(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx)),

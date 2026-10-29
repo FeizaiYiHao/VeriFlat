@@ -58,6 +58,7 @@ pub(super) fn thread_exit_reclaim_return_quota_size(
         old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
         old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
         old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(thread_exit_quota_progress_before(size)),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -102,6 +103,7 @@ pub(super) fn thread_exit_reclaim_return_quota_size(
     thread_exit_return_quota(krnl, Tracked(&mut *lctx), container_ptr, process_ptr, thread_ptr, size, Tracked(process_lock_perm), Tracked(thread_lock_perm));
     proof {
         let returned_k = *krnl;
+        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
             thread_exit_quota_step_pre_from_k(&size_k, &size_lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, size);
@@ -179,6 +181,7 @@ pub(super) fn thread_exit_reclaim_release_tables(
             &&& iommu_table_lock_perm->Some_0.thread_id() == old(lctx).thread_id()
             &&& iommu_table_lock_perm->Some_0.lock_id() == it.locking_thread()->Write_lock_id
         },
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -235,6 +238,7 @@ pub(super) fn thread_exit_reclaim_release_tables(
     proof {
         let unlocked_k = *krnl;
         let unlocked_lctx = *lctx;
+        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
             thread_exit_unlock_table_step_pre_from_k(&unlock_k, &unlock_lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, iommu_table);

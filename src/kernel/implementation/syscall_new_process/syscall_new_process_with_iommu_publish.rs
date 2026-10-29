@@ -22,6 +22,7 @@ pub(super) fn publish_staged_process_with_iommu(
         old(steps).snapshot_k() == *old(krnl),
         index_valid(NUM_CPUS, cpu_id),
         old(krnl).inv(),
+        index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep,
         old(lctx).kernel_view_locking_state() is Acquire,
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         cpu_lock_perm.state() is WriteLock,

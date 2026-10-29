@@ -58,6 +58,7 @@ pub(crate) fn kill_container_cpus(
         killer_info.process == process_ptr,
         old(krnl).ctn_mp.spec_index(container_ptr).view().children.view().len() == 0,
         old(lctx).cpu_set_lock_map().dom().is_empty(),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -130,6 +131,7 @@ pub(crate) fn kill_container_cpus(
     while i < NUM_CPUS
         invariant
             krnl.cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
+            krnl.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
             krnl.cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
             krnl.thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
             krnl.thr_mp.spec_index(thread_ptr).locking_thread() == old(krnl).thr_mp.spec_index(thread_ptr).locking_thread(),
@@ -254,6 +256,7 @@ fn kill_container_cpus_enter(
         killer_info.process == process_ptr,
         old(krnl).ctn_mp.spec_index(container_ptr).view().children.view().len() == 0,
         old(lctx).cpu_set_lock_map().dom().is_empty(),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -334,6 +337,7 @@ fn kill_container_cpus_enter(
         kernel_cpu_set_locked_and_marked_implies_u_step(&before, &marked_k, container_ptr);
         kernel_thread_syscall_progress_changed_implies_u_step(&marked_k, &entered_k, thread_ptr);
         kill_container_cpus_step_from_u(kernel_k_to_kernel_u(before), kernel_k_to_kernel_u(marked_k), kernel_k_to_kernel_u(entered_k), cpu_id, thread_ptr, container_ptr);
+        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         kill_container_trace_push(&*steps, before_steps, start, pre, kernel_k_to_kernel_u(before), kernel_k_to_kernel_u(entered_k), cpu_id, ctx);
     }
@@ -388,6 +392,7 @@ fn kill_container_pages_enter(
         set_perm.thread_id() == old(lctx).thread_id(),
         set_perm.lock_id() == old(krnl).cpu_set_mp.spec_index(set_ptr).locking_thread()->Write_lock_id,
         old(krnl).cpu_set_mp.spec_index(set_ptr).view().owned_cpus.view().is_empty(),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -459,6 +464,7 @@ fn kill_container_pages_enter(
         kernel_container_without_cpus_implies_u(&before, container_ptr);
         kernel_thread_syscall_progress_changed_implies_u_step(&before, &entered_k, thread_ptr);
         kill_container_pages_step_from_u(kernel_k_to_kernel_u(before), kernel_k_to_kernel_u(entered_k), cpu_id, thread_ptr, container_ptr);
+        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         kill_container_trace_push(&*steps, before_steps, start, pre, kernel_k_to_kernel_u(before), kernel_k_to_kernel_u(entered_k), cpu_id, ctx);
     }
@@ -514,6 +520,7 @@ fn kill_container_move_cpu(
         index_valid(NUM_CPUS, cpu_i),
         old(krnl).cpu_set_mp.spec_index(set_ptr).view().owned_cpus.view().contains(cpu_i),
         closed == old(krnl).cpu_set_mp.spec_index(set_ptr).view().owned_cpus.closed_view().contains(cpu_i),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -608,6 +615,7 @@ fn kill_container_move_cpu(
         kill_container_move_cpu_pre_from_k(&base, cpu_i, container_ptr);
         kernel_cpu_moved_to_container_implies_u_step(&base, &moved_k, cpu_i, container_ptr, owner_ptr);
         kill_container_move_cpu_step_from_u(kernel_k_to_kernel_u(base), kernel_k_to_kernel_u(moved_k), cpu_id, container_ptr, owner_ptr, cpu_i);
+        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
         kill_container_trace_push(&*steps, base_steps, start, pre, kernel_k_to_kernel_u(base), kernel_k_to_kernel_u(moved_k), cpu_id, ctx);
     }

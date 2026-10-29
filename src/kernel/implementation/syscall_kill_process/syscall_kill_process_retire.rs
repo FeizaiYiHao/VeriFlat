@@ -169,6 +169,7 @@ pub(crate) fn kill_retire_hold_tables(
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
         kernel_lock_states_unchanged_except_tables_of_implies_u_eq(&steps.snapshot_k(), &*krnl, Some(target));
+        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
         assert(held.view().to_set() =~= kill_retire_held_pages(*krnl, target)) by { broadcast use vstd::seq_lib::lemma_seq_contains_after_push; };
         assert(lctx.page_lock_map().dom() =~= held.view().to_set() && lctx.pagetable_lock_map().dom() =~= set![pagetable]
@@ -269,6 +270,7 @@ pub(crate) fn kill_retire_process(
     proof {
         assert(krnl.pt_mp.spec_index(pagetable).view().kernel_l4_end == KERNEL_MEM_END_L4INDEX) by { krnl.default_pagetable_wf_at(pagetable); };
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr);
+        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
     }
     let Tracked(cache_lock_perm) = kill_retire_lock_cache(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), allocator_ptr, cpu_id, pages.len(), Ghost(pages.view()[0]));
     let ghost base = steps.snapshot_k();
@@ -367,6 +369,7 @@ pub(crate) fn kill_retire_end_step(
             old(krnl).pt_mp.dom().contains(t) ==> old(krnl).pt_mp.spec_index(t) == base.pt_mp.spec_index(t) && old(krnl).pt_lower.view().spec_index(t) == base.pt_lower.view().spec_index(t),
         old(krnl).it_mp.dom() == match base.prc_mp.spec_index(target).view().iommu_table { Some(it) => base.it_mp.dom().remove(it), None => base.it_mp.dom() },
         forall|t: RwLockPageTableRoot| #![trigger old(krnl).it_mp.spec_index(t)] old(krnl).it_mp.dom().contains(t) ==> old(krnl).it_mp.spec_index(t) == base.it_mp.spec_index(t),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -398,6 +401,7 @@ pub(crate) fn kill_retire_end_step(
         kernel_zombie_process_retired_implies_u_step(&base, &retired, target, parent_ptr, container_ptr, allocator_ptr);
         kernel_thread_syscall_progress_changed_implies_u_step(&retired, &*krnl, thread_ptr);
         kill_retire_step_from_u(pre_u, kernel_k_to_kernel_u(retired), post_u, cpu_id, thread_ptr, target, parent_ptr, retired.allc_4k_mp.spec_index(allocator_ptr).quota.view().view(), scope);
+        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         kill_trace_push(&*steps, before, start, pre, pre_u, post_u, cpu_id, ctx);
     }

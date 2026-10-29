@@ -80,6 +80,7 @@ pub(super) fn thread_exit_reclaim(
         old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
         old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
         old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() matches Some(SyscallProgress::ThreadExit { .. }),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -220,6 +221,7 @@ fn thread_exit_reclaim_lock_table(
         cr3 == old(krnl).prc_mp.spec_index(process_ptr).view_rodata().view().cr3,
         pcid == old(krnl).prc_mp.spec_index(process_ptr).view_rodata().view().pcid,
         iommu_table == old(krnl).prc_mp.spec_index(process_ptr).view().iommu_table,
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -358,6 +360,7 @@ fn thread_exit_reclaim_lock_table(
         let did = match iommu_table { Some(it) => lock_k.it_mp.spec_index(it).view().did, None => None };
         assert(lctx.iommu_root_table_lock_map() =~= table_lctx.iommu_root_table_lock_map());
         assert(lctx.pagetable_lock_map().dom().contains(pagetable));
+        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
             thread_exit_lock_table_step_pre_from_k(&lock_k, &lock_lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable);
@@ -497,6 +500,7 @@ fn thread_exit_reclaim_clear_leaves(
         old(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress, ..entry_k.thr_mp.spec_index(thread_ptr).view() }),
         old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: false }),
         0 <= start <= old(steps).view().len(),
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -597,6 +601,7 @@ fn thread_exit_reclaim_clear_leaves(
             steps.snapshot_k() == *krnl,
             thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id),
             krnl.cpu_arr.spec_index(cpu_id).view().view() == entry_k.cpu_arr.spec_index(cpu_id).view().view(),
+            krnl.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
             krnl.cpu_arr.spec_index(cpu_id).view().locking_thread() == entry_k.cpu_arr.spec_index(cpu_id).view().locking_thread(),
             krnl.cpu_arr.spec_index(cpu_id).view().being_killed() == entry_k.cpu_arr.spec_index(cpu_id).view().being_killed(),
             krnl.cpu_arr.spec_index(cpu_id).view().killer_info() == entry_k.cpu_arr.spec_index(cpu_id).view().killer_info(),

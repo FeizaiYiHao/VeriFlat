@@ -164,6 +164,7 @@ pub(super) fn iommu_map_4k_map_range_and_exit(
             forall|j: int| #![trigger iova_range.view()[j]] i <= j < range ==> !krnl.it_mp.spec_index(iommu_table_ptr).view().mapping_4k().dom().contains(iova_range.view()[j]),
         decreases range - i,
     {
+        proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
         iommu_map_4k_map_one_page(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va_range, iova_range, i, thread_ptr, process_ptr, container_ptr, pagetable_ptr, iommu_table_ptr,
             Ghost(*old(krnl)), Ghost(*old(lctx)), Tracked(&pagetable_lock_perm), Tracked(&thread_lock_perm), Tracked(&iommu_table_lock_perm));
         i = i + 1;

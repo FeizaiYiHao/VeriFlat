@@ -45,6 +45,7 @@ pub(crate) fn kill_container_pages_move_4k(
         ctx is Container,
         old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == kill_container_progress(container_ptr, ContainerKillStage::Pages),
         !old(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited,
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -98,6 +99,7 @@ pub(crate) fn kill_container_pages_move_4k(
             lctx.cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
             lctx.container_lock_map() == old(lctx).container_lock_map(),
             krnl.cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
+            krnl.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
             krnl.cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
             krnl.prc_mp.spec_index(process_ptr) == old(krnl).prc_mp.spec_index(process_ptr),
             krnl.thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
@@ -172,6 +174,7 @@ pub(crate) fn kill_container_pages_move_4k(
             kernel_container_free_4k_page_moved_implies_u_step(&before, &moved_k, container_ptr, owner_ptr, set![page_ptr]);
             kill_container_pages_pre_from_k(&before, &before_lctx, cpu_id, process_ptr, thread_ptr, container_ptr);
             kill_container_move_page_step_from_u(kernel_k_to_kernel_u(before), kernel_k_to_kernel_u(moved_k), cpu_id, container_ptr, owner_ptr, set![page_ptr], PageSize::SZ4k);
+            assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
             krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
             kill_container_trace_push(&*steps, base_steps, start, pre, kernel_k_to_kernel_u(before), kernel_k_to_kernel_u(moved_k), cpu_id, ctx);
         }
@@ -203,6 +206,7 @@ pub(crate) fn kill_container_pages_move_2m(
         ctx is Container,
         old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == kill_container_progress(container_ptr, ContainerKillStage::Pages),
         !old(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited,
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -256,6 +260,7 @@ pub(crate) fn kill_container_pages_move_2m(
             lctx.cpu_set_lock_map() == old(lctx).cpu_set_lock_map(),
             lctx.container_lock_map() == old(lctx).container_lock_map(),
             krnl.cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
+            krnl.cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
             krnl.cpu_hw_cr3_pcid[cpu_id as int].view() == old(krnl).cpu_hw_cr3_pcid[cpu_id as int].view(),
             krnl.prc_mp.spec_index(process_ptr) == old(krnl).prc_mp.spec_index(process_ptr),
             krnl.thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
@@ -337,6 +342,7 @@ pub(crate) fn kill_container_pages_move_2m(
             kernel_container_free_2m_page_moved_implies_u_step(&before, &moved_k, container_ptr, owner_ptr, page_2m_all_ptrs(page_index));
             kill_container_pages_pre_from_k(&before, &before_lctx, cpu_id, process_ptr, thread_ptr, container_ptr);
             kill_container_move_page_step_from_u(kernel_k_to_kernel_u(before), kernel_k_to_kernel_u(moved_k), cpu_id, container_ptr, owner_ptr, page_2m_all_ptrs(page_index), PageSize::SZ2m);
+            assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
             krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
             kill_container_trace_push(&*steps, base_steps, start, pre, kernel_k_to_kernel_u(before), kernel_k_to_kernel_u(moved_k), cpu_id, ctx);
         }

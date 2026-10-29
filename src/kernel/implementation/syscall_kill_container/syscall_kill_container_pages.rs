@@ -47,6 +47,7 @@ pub(crate) fn kill_container_pages(
         old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == kill_container_progress(container_ptr, ContainerKillStage::Pages),
         !old(krnl).thr_mp.spec_index(thread_ptr).view_ghost().exited,
         old(krnl).ctn_mp.spec_index(container_ptr).view().children.view().len() == 0,
+        old(krnl).cpu_arr.spec_index(cpu_id).view().view().kernel_call_perm() is None,
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -136,6 +137,7 @@ pub(crate) fn kill_container_pages(
         kernel_thread_syscall_progress_changed_implies_u_step(&base, &*krnl, thread_ptr);
         kill_container_retire_stage_step_from_u(pre_u, post_u, cpu_id, thread_ptr, container_ptr);
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
+        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         kill_container_trace_push(&*steps, base_steps, start, pre, pre_u, post_u, cpu_id, ctx);
     }
@@ -144,6 +146,7 @@ pub(crate) fn kill_container_pages(
         Tracked(quotas_4k), Tracked(quotas_2m));
     proof {
         kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&retired, &*krnl);
+        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
     }
 }

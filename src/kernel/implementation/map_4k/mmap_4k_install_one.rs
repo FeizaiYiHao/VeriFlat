@@ -28,6 +28,8 @@ verus! {
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             index_valid(NUM_CPUS, cpu_id),
             typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
+            index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep,
+            old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()),
             old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
             old(krnl).ctn_mp.dom().contains(container_ptr),
             old(krnl).ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
@@ -136,6 +138,7 @@ verus! {
             final(krnl).cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
+            index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] == old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int],
             final(krnl).inv(),
             final(lctx).kernel_view_locking_state() is Acquire,
             typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -615,6 +618,8 @@ verus! {
             typed_lock_maps_aligned(old(krnl), old(lctx)),
             kernel_thread_quota_4k_changed(&old(steps).snapshot_k(), old(krnl), quota_thread_ptr, -1),
             index_valid(NUM_CPUS, cpu_id),
+            index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep,
+            old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()),
             write_held ==> typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Write),
             mmap_guard || share_guard ==> {
                 let pre = old(steps).snapshot_k();
@@ -733,6 +738,7 @@ verus! {
             kernel_container_nonlock_fields_and_quotas_unchanged(&final(steps).snapshot_k(), final(krnl)),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
+            index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] == old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int],
             final(krnl).inv(),
             final(lctx).kernel_view_locking_state() is Acquire,
             final(lctx).thread_id() == old(lctx).thread_id(),
@@ -778,8 +784,7 @@ verus! {
                     }
                 },
             held_pagetable_windows_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), final(krnl).pt_mp, final(krnl).pt_lower.view(), old(lctx)),
-            containers_rodata_unchanged(old(krnl).ctn_mp, final(krnl).ctn_mp),
-            processes_rodata_unchanged(old(krnl).prc_mp, final(krnl).prc_mp),
+            held_owner_rodata_unchanged(*old(krnl), *final(krnl), *old(lctx)),
             held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
             held_schedulers_unchanged(old(krnl).sched_mp, final(krnl).sched_mp, old(lctx)),
             held_pcid_allocators_unchanged(old(krnl).pcid_allc_mp, final(krnl).pcid_allc_mp, old(lctx)),

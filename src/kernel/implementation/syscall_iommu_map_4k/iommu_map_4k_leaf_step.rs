@@ -29,6 +29,7 @@ pub(super) fn iommu_map_4k_map_one_page(
         forall|j: int| #![trigger old(steps).view()[j]] 0 < j < old(steps).view().len() ==> iommu_map_4k_range_step(old(steps).view()[j], cpu_id),
         held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         index_valid(NUM_CPUS, cpu_id) && cpu_id == lctx0.cpu_id(),
+        old(krnl).cpu_op.view().view()[cpu_id as int] is InStep,
         typed_lock_map_contains_mode(lctx0.cpu_lock_map(), cpu_id, TypedLockMode::Write),
         typed_lock_map_contains_mode(lctx0.process_lock_map(), process_ptr, TypedLockMode::Write),
         typed_lock_map_contains_mode(lctx0.thread_lock_map(), thread_ptr, TypedLockMode::Write),

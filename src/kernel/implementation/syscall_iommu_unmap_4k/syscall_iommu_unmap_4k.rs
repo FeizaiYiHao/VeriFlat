@@ -51,7 +51,10 @@ pub fn syscall_iommu_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
     let (container_ptr, process_ptr, thread_ptr) = (locked.container_ptr, locked.process_ptr, locked.thread_ptr);
     let iova_range = VaRange4K::new(iova, range);
     let ghost r = iommu_unmap_4k_iova_range(iova, range);
-    proof { assert(iova_range == r) by { iova_range.va_range_lemma(); }; }
+    proof {
+        assert(iova_range == r) by { iova_range.va_range_lemma(); };
+        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
+    }
     iommu_unmap_4k_hide_range(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, thread_ptr, iommu_table, &iova_range, Tracked(&iommu_table_perm),
         Tracked(&thread_perm));
     let ghost flush_pre = *krnl;
@@ -62,6 +65,7 @@ pub fn syscall_iommu_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
     proof {
         let flush_post = *krnl;
         let before = steps.view();
+        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         iommu_unmap_4k_flush_step_from_k(&flush_pre, &flush_mid, &flush_post, cpu_id, container_ptr, process_ptr, thread_ptr, iommu_table, r);
         iommu_unmap_4k_trace_range_steps(before, steps.view(), cpu_id, r);
@@ -74,6 +78,7 @@ pub fn syscall_iommu_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
     let ghost refund_before = steps.view();
     let ghost refund_k = *krnl;
     let ghost refund_lctx = *lctx;
+    proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
     refund_unmap_4k_quota(krnl, thread_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&thread_perm));
     proof { iommu_unmap_4k_trace_refund_steps(refund_before, steps.view(), &refund_k, &refund_lctx, cpu_id, thread_ptr, r); }
     let ghost exit_start = *krnl;
