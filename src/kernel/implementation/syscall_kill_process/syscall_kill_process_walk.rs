@@ -5,6 +5,8 @@ use super::syscall_kill_process_trace::*;
 use super::syscall_kill_process_victim::*;
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_process_victim_spec::*;
+#[cfg(verus_keep_ghost)]
+use super::syscall_kill_process_state_lemma::*;
 
 verus! {
 /// What a kill reaches: the subtree below the killer's process `process`, or every process of the victim container
@@ -217,7 +219,14 @@ pub(crate) fn kill_mark_child(
     let ghost marked_k = *krnl;
     krnl.set_thread_syscall_progress(thread_ptr, Ghost(kill_scope_progress(scope, child_ptr, KillStage::Walk)), Tracked(&*lctx), Tracked(thread_perm));
     let ghost entered_k = *krnl;
+    let ghost entered_lctx = *lctx;
     proof {
+        chain_perms.tracked_insert(child_ptr, child_perm);
+        if scope is Subtree {
+            assert(kill_walk_state(entered_k, entered_lctx, cpu_id, scope, process_ptr, thread_ptr, chain.push(child_ptr), None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *chain_perms));
+        } else {
+            assert(kill_walk_state(entered_k, entered_lctx, cpu_id, scope, process_ptr, thread_ptr, chain.push(child_ptr), None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *chain_perms));
+        }
         assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         let before_u = kernel_k_to_kernel_u(before);
@@ -226,12 +235,7 @@ pub(crate) fn kill_mark_child(
         kernel_thread_syscall_progress_changed_implies_u_step(&marked_k, &entered_k, thread_ptr);
         kill_mark_child_step_from_u(before_u, kernel_k_to_kernel_u(marked_k), kernel_k_to_kernel_u(entered_k), cpu_id, thread_ptr, target, child_ptr, scope);
         kill_trace_push(&*steps, before_steps, start, pre, before_u, kernel_k_to_kernel_u(entered_k), cpu_id, ctx);
-        chain_perms.tracked_insert(child_ptr, child_perm);
-        if scope is Subtree {
-            assert(kill_walk_state(*krnl, *lctx, cpu_id, scope, process_ptr, thread_ptr, chain.push(child_ptr), None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *chain_perms));
-        } else {
-            assert(kill_walk_state(*krnl, *lctx, cpu_id, scope, process_ptr, thread_ptr, chain.push(child_ptr), None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *chain_perms));
-        }
+        kill_walk_state_preserved_for_held_objects_unchanged(entered_k, *krnl, entered_lctx, *lctx, cpu_id, scope, process_ptr, thread_ptr, chain.push(child_ptr), None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *chain_perms);
     }
     child_ptr
 }
