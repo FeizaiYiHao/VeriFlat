@@ -34,7 +34,7 @@ args=()
 if ((${#normalized_args[@]} > 0)); then
     args=("${normalized_args[@]}")
 fi
-export RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-1.98.1-x86_64-unknown-linux-gnu}"
+export RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-1.99.1-x86_64-unknown-linux-gnu}"
 export PATH="$HOME/.cargo/bin:$PATH"
 cd "$CURRENT_DIR"
 if "$cold"; then

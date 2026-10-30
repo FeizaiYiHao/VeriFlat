@@ -480,6 +480,7 @@ pub(super) fn publish_staged_container_root_mutation(
         Ghost(child_pagetable_ptr), Ghost(l4_page), Ghost(bootstrap_seq), Ghost(funding_pages), Ghost(funding_indices), Ghost(pool_page_locks),
         Ghost(cpu_set_page_locks), Tracked(&mut *lctx), Tracked(pcid_allocator_perm), Tracked(container_perm),
     );
+    proof { assert(lctx.container_lock_map().dom().contains(parent_container_ptr)); }
     link_new_container_into_tree(
         &mut krnl.ctn_mp, krnl.rt_ctn, parent_container_ptr, child_container_ptr, child_process_ptr, child_scheduler_ptr,
         child_pcid_allocator_ptr, child_cpu_set_ptr, child_allocator_4k_ptr, child_allocator_2m_ptr, child_allocator_1g_ptr, child_depth,

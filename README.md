@@ -25,7 +25,7 @@ follow the dependency boundaries in the
 The `verus` submodule tracks the `veriflat-verus-perf-series` branch of
 [FeizaiYiHao/verus](https://github.com/FeizaiYiHao/verus), upstream Verus plus
 front-end, SMT-scheduling, and pipelined-erasure performance changes. It needs
-Rust 1.98.1 and Z3 4.16.0 at `verus/source/z3`:
+Rust 1.99.1 and Z3 4.16.0 at `verus/source/z3`:
 
 ```sh
 git submodule update --init verus
