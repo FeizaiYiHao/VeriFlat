@@ -62,6 +62,8 @@ pub mod ipc_pages_tables;
 pub mod iommu_table_steps;
 /// K->U lemmas of hardware TLB, IOTLB, and context-cache fills and of the TLB contents a CPU or the IOTLB may hold.
 pub mod env_steps;
+/// K->U lemma of a step that changes only one live process's page-table window locks.
+pub mod pagetable_window_locks;
 
 pub use projection::*;
 pub use projection_at::*;
@@ -91,6 +93,7 @@ pub use new_process_read_mode::*;
 pub use ipc_pages_tables::*;
 pub use iommu_table_steps::*;
 pub use env_steps::*;
+pub use pagetable_window_locks::*;
 
 verus! {
 /// Each boundary refreshes both stored snapshots after recording its own section.

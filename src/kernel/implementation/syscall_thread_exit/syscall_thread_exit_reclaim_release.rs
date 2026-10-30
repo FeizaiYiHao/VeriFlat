@@ -554,7 +554,7 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
             let unlock_pre = steps.snapshot_k();
             if !(steps.view() == leaf_before && unlock_pre == leaf_k) {
                 thread_exit_window_locks_changed_implies_windows_changed_step(&leaf_k, &window_locked, cpu_id, process_ptr, pagetable, thread_ptr, window_of(va), LockStateU::WriteLocked);
-                thread_exit_trace_from_recorded_step(&*steps, leaf_before, start, pre, kernel_k_to_kernel_u(leaf_k), kernel_k_to_kernel_u(window_locked), cpu_id);
+                recorded_step_implies_thread_exit_trace(&*steps, leaf_before, start, pre, kernel_k_to_kernel_u(leaf_k), kernel_k_to_kernel_u(window_locked), cpu_id);
             }
             let unlock_before = steps.view();
             let unlocked = *krnl;
@@ -562,7 +562,7 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
             thread_exit_reclaim_flushed_step_pre_from_k(&unlocked, &*lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable);
             thread_exit_window_locks_changed_implies_windows_changed_step(&unlock_pre, &unlocked, cpu_id, process_ptr, pagetable, thread_ptr, window_of(va), LockStateU::Unlocked);
             krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-            thread_exit_trace_from_recorded_step(&*steps, unlock_before, start, pre, kernel_k_to_kernel_u(unlock_pre), kernel_k_to_kernel_u(unlocked), cpu_id);
+            recorded_step_implies_thread_exit_trace(&*steps, unlock_before, start, pre, kernel_k_to_kernel_u(unlock_pre), kernel_k_to_kernel_u(unlocked), cpu_id);
         }
         cursor = (next.0, next.1, next.2, next.3 + 1);
         proof {

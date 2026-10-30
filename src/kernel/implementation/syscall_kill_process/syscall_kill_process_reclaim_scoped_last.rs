@@ -144,7 +144,7 @@ pub(crate) fn kill_reclaim_last_4k_mapping_scoped(
     let ghost snap_lctx = *lctx;
     let ghost drained = steps.snapshot_k() == *krnl;
     proof {
-        if drained { kill_trace_from_recorded_step(&*steps, before_cache, start, pre, kernel_k_to_kernel_u(s_entry), kernel_k_to_kernel_u(cache_k), cpu_id, ctx); }
+        if drained { recorded_step_implies_kill_trace(&*steps, before_cache, start, pre, kernel_k_to_kernel_u(s_entry), kernel_k_to_kernel_u(cache_k), cpu_id, ctx); }
         assert(cache_lctx.page_lock_map().dom().contains(page_index) && cache_lctx.pagetable_lock_map().dom().contains(pagetable) && cache_lctx.process_lock_map().dom().contains(target));
         assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable)) by {
             old(krnl).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable);
@@ -185,7 +185,7 @@ pub(crate) fn kill_reclaim_last_4k_mapping_scoped(
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&s_entry, &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
             kernel_page_freed_to_owner_quota_implies_u_step(&s_entry, &*krnl, false, pagetable, owner, allocator_ptr, origin);
             krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
-            kill_trace_from_page_freed_credit(&*steps, before, start, pre, &s_entry, post_u, cpu_id, ctx, target);
+            page_freed_credit_implies_kill_trace(&*steps, before, start, pre, &s_entry, post_u, cpu_id, ctx, target);
         }
     }
 }

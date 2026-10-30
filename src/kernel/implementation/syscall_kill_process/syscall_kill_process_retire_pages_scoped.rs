@@ -115,12 +115,6 @@ pub(crate) fn kill_retire_next_table_page_scoped(
                     assert(spec_va_2m_valid(spec_index2va((l4i, l3i, l2i, 0usize)))) by (bit_vector) requires KERNEL_MEM_END_L4INDEX <= l4i < 512, l3i < 512, l2i < 512;
                 }
                 let Tracked(perm) = krnl.lock_pagetable_window(table, l4i, l3i, l2i, Tracked(table_perm), Tracked(&mut *lctx));
-                proof {
-                    let pre_c = pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), table);
-                    let c = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), table);
-                    assert forall|i: L1Index| #![trigger c.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, i)] pei_valid(i) implies c.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, i) == pre_c.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, i) by {};
-                    assert(c.spec_structure_scan_wf(scan));
-                }
                 Tracked(Some(perm))
             },
             _ => Tracked(None),

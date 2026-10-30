@@ -59,6 +59,8 @@ impl KernelK {
             forall|p: PageMapPtr, i: L2Index| #![trigger pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_page(p).entry_lock(i)]
                 pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_entry(p, i) == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_entry(p, i)
                     && pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_page(p).entry_lock(i).l1() == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_page(p).entry_lock(i).l1(),
+            forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).spec_resolve_mapping_4k_l1(i4, i3, i2, i1)]
+                pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).spec_resolve_mapping_4k_l1(i4, i3, i2, i1) == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).spec_resolve_mapping_4k_l1(i4, i3, i2, i1),
             pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l1_rev_map == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l1_rev_map,
             pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).lower.window_stale_cpus == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.window_stale_cpus,
             pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).lower.pagetable_window_locks == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks.insert(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }, LockStateU::WriteLocked),
@@ -183,6 +185,8 @@ impl KernelK {
             forall|p: PageMapPtr, i: L2Index| #![trigger pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_page(p).entry_lock(i)]
                 pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_entry(p, i) == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_entry(p, i)
                     && pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_page(p).entry_lock(i).l1() == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_page(p).entry_lock(i).l1(),
+            forall|i4: L4Index, i3: L3Index, i2: L2Index, i1: L1Index| #![trigger pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).spec_resolve_mapping_4k_l1(i4, i3, i2, i1)]
+                pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).spec_resolve_mapping_4k_l1(i4, i3, i2, i1) == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).spec_resolve_mapping_4k_l1(i4, i3, i2, i1),
             pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l1_rev_map == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l1_rev_map,
             pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).lower.window_stale_cpus == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.window_stale_cpus,
             pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).lower.pagetable_window_locks == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks.insert(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }, LockStateU::Unlocked),

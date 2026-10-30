@@ -1,5 +1,4 @@
 use vstd::prelude::*;
-use vstd::{assert_maps_equal, assert_maps_equal_internal};
 use crate::*;
 use super::syscall_kill_process_spec::*;
 #[cfg(verus_keep_ghost)]
@@ -1118,62 +1117,6 @@ pub(crate) proof fn kill_trace_from_scoped_credit(
     kill_refund_step_from_u(kernel_k_to_kernel_u(*krnl), post_u, cpu_id); kill_trace_push(steps, before, start, pre, kernel_k_to_kernel_u(*krnl), post_u, cpu_id, ctx);
 }
 
-/// Changing kernel-only state, the killer `thread_ptr`'s kernel-only fields, and the window locks of the live target's page
-/// table `pagetable`, while every non-lock field and every lock mode stays, replaces only those window locks in the
-/// projection.
-pub(crate) proof fn kill_target_window_locks_changed_implies_u_window_locks_replaced(
-    pre: &KernelK, post: &KernelK, target: RwLockProcessPtr, pagetable: RwLockPageTableRoot, thread_ptr: RwLockThreadPtr,
-)
-    requires
-        process_pagetable_match(post.prc_mp, post.pt_mp),
-        post.prc_mp.dom().contains(target),
-        !post.prc_mp.spec_index(target).view().zombie,
-        post.prc_mp.spec_index(target).view().pagetable == pagetable,
-        *post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, pg_arr: post.pg_arr, thr_mp: post.thr_mp, allc_4k_mp: post.allc_4k_mp, ..*pre }),
-        post.pt_mp.unchanged_except(&pre.pt_mp, pagetable),
-        post.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread(),
-        post.pt_lower.view() == pre.pt_lower.view().insert(pagetable, post.pt_lower.view().spec_index(pagetable)),
-        post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr),
-        post.thr_mp.spec_index(thread_ptr).locking_thread() == pre.thr_mp.spec_index(thread_ptr).locking_thread(),
-        kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
-        kernel_container_nonlock_fields_and_quotas_unchanged(pre, post),
-    ensures
-        ({
-            let a = kernel_k_to_kernel_u(*pre);
-            let table = a.process_map[target].pagetable->Some_0;
-            &&& a.process_map.dom().contains(target)
-            &&& a.process_map[target].pagetable is Some
-            &&& table.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks
-            &&& kernel_k_to_kernel_u(*post) == (KernelU {
-                process_map: a.process_map.insert(target, ProcessU {
-                    pagetable: Some(PageTableU { pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks, ..table }), ..a.process_map[target]
-                }),
-                ..a
-            })
-        }),
-{
-    let a = kernel_k_to_kernel_u(*pre);
-    let b = kernel_k_to_kernel_u(*post);
-    let windows = pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks;
-    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
-    process_pagetable_match_process_at(post.prc_mp, post.pt_mp, target); kernel_process_projection_at(pre, target); kernel_process_projection_at(post, target);
-    assert(post.irt.view().user_view() == pre.irt.view().user_view() && post.dflt_pt == pre.dflt_pt) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-    kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
-    assert_maps_equal!(b.container_map, a.container_map, c => {
-        if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); kernel_container_projection_at(post, c); }
-        reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
-    });
-    assert_maps_equal!(b.thread_map, a.thread_map, t => {
-        if pre.thr_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); kernel_thread_projection_at(post, t); }
-        reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
-    });
-    let table = a.process_map[target].pagetable->Some_0;
-    assert_maps_equal!(b.process_map, a.process_map.insert(target, ProcessU { pagetable: Some(PageTableU { pagetable_window_locks: windows, ..table }), ..a.process_map[target] }), p => {
-        if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); kernel_process_projection_at(post, p); process_pagetable_match_process_at(post.prc_mp, post.pt_mp, p); }
-        reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged);
-    });
-}
-
 /// Replacing the window locks of the target's page table by `windows`, which differ from them only at `locked`, now
 /// write-locked from unlocked, and at `unlocked`, now unlocked from write-locked, is a middle step.
 pub(crate) proof fn kill_pagetable_windows_changed_step_from_u(
@@ -1252,7 +1195,7 @@ pub(crate) proof fn kill_window_locks_changed_implies_windows_changed_step(
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged); };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(pre, post)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
     }
-    kill_target_window_locks_changed_implies_u_window_locks_replaced(pre, post, target, pagetable, thread_ptr);
+    kernel_pagetable_window_locks_changed_implies_u_window_locks_replaced(pre, post, target, pagetable, thread_ptr);
     process_pagetable_match_process_at(post.prc_mp, post.pt_mp, target); kernel_process_projection_at(pre, target);
     assert(pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom() =~= pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom());
     reveal(kill_process_step_pre);
@@ -1328,7 +1271,7 @@ pub(crate) proof fn kill_page_freed_then_window_unlocked_implies_refund_step(
 {
     let a = kernel_k_to_kernel_u(*snap);
     let m = kernel_k_to_kernel_u(*mid);
-    kill_target_window_locks_changed_implies_u_window_locks_replaced(mid, post, target, pagetable, thread_ptr);
+    kernel_pagetable_window_locks_changed_implies_u_window_locks_replaced(mid, post, target, pagetable, thread_ptr);
     kernel_process_projection_at(snap, target); process_pagetable_match_process_at(post.prc_mp, post.pt_mp, target); kernel_process_projection_at(mid, target);
     assert(pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom() =~= pagetable_c(mid.pt_mp, mid.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom());
     kill_unlocking_refund_step_from_u(a, m, kernel_k_to_kernel_u(*post), cpu_id, target, pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks, w);
@@ -1336,7 +1279,7 @@ pub(crate) proof fn kill_page_freed_then_window_unlocked_implies_refund_step(
 }
 
 /// A middle step recorded, if it changes the projection, after the partial trace that starts at `start` extends it.
-pub(crate) proof fn kill_trace_from_recorded_step(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, step_pre: KernelU, step_post: KernelU, cpu_id: CpuId, ctx: KillTraceCtx)
+pub(crate) proof fn recorded_step_implies_kill_trace(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, step_pre: KernelU, step_post: KernelU, cpu_id: CpuId, ctx: KillTraceCtx)
     requires
         0 <= start <= before.len(),
         kill_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id, ctx),
@@ -1356,7 +1299,7 @@ pub(crate) proof fn kill_trace_from_recorded_step(steps: &KernelSteps, before: S
 
 /// One step pushed after the partial trace that starts at `start`, from the projection of `snap`, where the kill meets
 /// its step precondition, that grows the 4K quota of the target's container or of one of its ancestors, extends it.
-pub(crate) proof fn kill_trace_from_page_freed_credit(
+pub(crate) proof fn page_freed_credit_implies_kill_trace(
     steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, snap: &KernelK, post_u: KernelU, cpu_id: CpuId, ctx: KillTraceCtx, target: RwLockProcessPtr,
 )
     requires
