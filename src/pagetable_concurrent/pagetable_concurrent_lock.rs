@@ -24,7 +24,7 @@ impl PageTableHigher<PT_TYPE> {
             lock_window_eof_transition_framing(PageTableC { higher: *self, lower: *old(lower) }, PageTableC { higher: *self, lower: *final(lower) }, l4i, l3i, l2i,
                 final(lctx).thread_id(), ret.view().lock_id()),
             (PageTableC { higher: *self, lower: *final(lower) }).window_locked_by_thread(l4i, l3i, l2i, final(lctx).thread_id()),
-            final(lower).l2_lock_of((PageTableC { higher: *self, lower: *final(lower) }).window_l2_page(l4i, l3i)).lock_perm_match(l2i, &ret.view()),
+            final(lower).l2_owner((PageTableC { higher: *self, lower: *final(lower) }).window_l2_page(l4i, l3i), l2i) == (SpinLockState::Some { thread_id: ret.view().thread_id(), lock_id: ret.view().lock_id() }),
             ret.view().state() is WriteLock,
             ret.view().ordering_lock_id() == window_lock_id(root, l4i, l3i, l2i),
             ret.view().thread_id() == final(lctx).thread_id(),
@@ -36,14 +36,14 @@ impl PageTableHigher<PT_TYPE> {
         proof {
             self.wf_l4_at(l4i);
             pre.wf_l3_at(l4_entry.addr, l3i);
-            pre.l2_tokens_paired_at(l3_entry.addr);
+            pre.wf_l2_at(l3_entry.addr, l2i);
         }
-        let tracked l2_perm = lower.l2_perms.tracked_borrow(l3_entry.addr);
-        let l2_tbl: &L2PageMap = PPtr::<L2PageMap>::from_usize(l3_entry.addr).borrow(Tracked(l2_perm));
-        let tracked l2_lk = lower.l2_lock.tracked_borrow_mut(l3_entry.addr);
-        let ret = l2_tbl.lock(Tracked(l2_lk), l2i, Tracked(&mut *lctx), Ghost(window_lock_id(root, l4i, l3i, l2i)), Ghost(window_obj_id(root, l4i, l3i, l2i)));
+        let tracked mut l2_perm = lower.l2_perms.tracked_remove(l3_entry.addr);
+        let l2_tbl: &mut L2PageMap = PPtr::<L2PageMap>::from_usize(l3_entry.addr).borrow_mut(Tracked(&mut l2_perm));
+        let ret = l2_tbl.borrow_entry_lock_mut(l2i).lock(Tracked(&mut *lctx), Ghost(window_lock_id(root, l4i, l3i, l2i)), Ghost(window_obj_id(root, l4i, l3i, l2i)));
         proof {
-            lower.locked_windows = lower.locked_windows.insert(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) });
+            lower.l2_perms.tracked_insert(l3_entry.addr, l2_perm);
+            lower.pagetable_window_locks = lower.pagetable_window_locks.insert(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }, LockStateU::WriteLocked);
             lock_window_eof(pre, PageTableC { higher: *self, lower: *lower }, l4i, l3i, l2i, lctx.thread_id(), ret.view().lock_id());
         }
         ret
@@ -60,7 +60,7 @@ impl PageTableHigher<PT_TYPE> {
             (PageTableC { higher: *self, lower: *old(lower) }).window_locked_by_thread(l4i, l3i, l2i, old(lctx).thread_id()),
             lp.view().state() is WriteLock,
             lp.view().thread_id() == old(lctx).thread_id(),
-            old(lower).l2_lock_of((PageTableC { higher: *self, lower: *old(lower) }).window_l2_page(l4i, l3i)).lock_perm_match(l2i, &lp.view()),
+            old(lower).l2_owner((PageTableC { higher: *self, lower: *old(lower) }).window_l2_page(l4i, l3i), l2i) == (SpinLockState::Some { thread_id: lp.view().thread_id(), lock_id: lp.view().lock_id() }),
             old(lctx).lock_entry_contains(window_lock_id(root, l4i, l3i, l2i), window_obj_id(root, l4i, l3i, l2i)),
         ensures
             (PageTableC { higher: *self, lower: *final(lower) }).wf(),
@@ -73,14 +73,14 @@ impl PageTableHigher<PT_TYPE> {
         proof {
             self.wf_l4_at(l4i);
             pre.wf_l3_at(l4_entry.addr, l3i);
-            pre.l2_tokens_paired_at(l3_entry.addr);
+            pre.wf_l2_at(l3_entry.addr, l2i);
         }
-        let tracked l2_perm = lower.l2_perms.tracked_borrow(l3_entry.addr);
-        let l2_tbl: &L2PageMap = PPtr::<L2PageMap>::from_usize(l3_entry.addr).borrow(Tracked(l2_perm));
-        let tracked l2_lk = lower.l2_lock.tracked_borrow_mut(l3_entry.addr);
-        l2_tbl.unlock(Tracked(l2_lk), l2i, Tracked(&mut *lctx), lp, Ghost(window_lock_id(root, l4i, l3i, l2i)), Ghost(window_obj_id(root, l4i, l3i, l2i)));
+        let tracked mut l2_perm = lower.l2_perms.tracked_remove(l3_entry.addr);
+        let l2_tbl: &mut L2PageMap = PPtr::<L2PageMap>::from_usize(l3_entry.addr).borrow_mut(Tracked(&mut l2_perm));
+        l2_tbl.borrow_entry_lock_mut(l2i).unlock(Tracked(&mut *lctx), lp, Ghost(window_lock_id(root, l4i, l3i, l2i)), Ghost(window_obj_id(root, l4i, l3i, l2i)));
         proof {
-            lower.locked_windows = lower.locked_windows.remove(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) });
+            lower.l2_perms.tracked_insert(l3_entry.addr, l2_perm);
+            lower.pagetable_window_locks = lower.pagetable_window_locks.insert(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }, LockStateU::Unlocked);
             unlock_window_eof(pre, PageTableC { higher: *self, lower: *lower }, l4i, l3i, l2i);
         }
     }

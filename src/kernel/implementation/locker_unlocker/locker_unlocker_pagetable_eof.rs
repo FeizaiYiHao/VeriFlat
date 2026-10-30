@@ -74,9 +74,9 @@ broadcast proof fn pagetable_unlocked_stale_key_absent_at(pre: KernelK, pagetabl
     if c.lower.window_stale_cpus.dom().contains(k) {
         pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr);
         pagetable_window_stale_cpus_only_when_locked_at(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr, k.0, k.1);
-        reveal(PageTableC::l2_tokens_paired); reveal(PageTableC::tables_reachable_wf);
+        reveal(PageTableC::tables_reachable_wf);
         let (l4i, l3i) = c.higher.l2_rev_map.view().spec_index(k.0);
-        pagetable_window_holders_hold_pagetable_at(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr, l4i, l3i, k.1, c.lower.l2_lock_of(k.0).lock_state(k.1)->Some_thread_id);
+        pagetable_window_holders_hold_pagetable_at(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr, l4i, l3i, k.1, c.lower.l2_owner(k.0, k.1)->Some_thread_id);
     }
 }
 

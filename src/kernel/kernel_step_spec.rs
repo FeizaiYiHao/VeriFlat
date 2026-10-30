@@ -244,6 +244,8 @@ pub open spec fn kernel_new_thread_fields(
     &&& post.dflt_pt == pre.dflt_pt
     &&& post.pt_mp.dom() == pre.pt_mp.dom()
     &&& kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view())
+    &&& forall|p: RwLockPageTableRoot| #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), p)]
+        pre.pt_mp.dom().contains(p) ==> pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks
     &&& post.it_mp.dom() == pre.it_mp.dom()
     &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
         pre.it_mp.dom().contains(p) ==> {
@@ -422,6 +424,7 @@ pub open spec fn kernel_process_quota_4k_changed(pre: &KernelK, post: &KernelK, 
             let before = pagetable_c(pre.pt_mp, pre.pt_lower.view(), p);
             let after = pagetable_c(post.pt_mp, post.pt_lower.view(), p);
             &&& post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
+            &&& after.lower.pagetable_window_locks == before.lower.pagetable_window_locks
             &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
             &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
             &&& after.mapping_1g().filter_keys(|va: VAddr| after.mapping_1g().spec_index(va).present) == before.mapping_1g().filter_keys(|va: VAddr| before.mapping_1g().spec_index(va).present)
@@ -567,6 +570,7 @@ pub open spec fn kernel_process_quota_2m_changed(pre: &KernelK, post: &KernelK, 
             let before = pagetable_c(pre.pt_mp, pre.pt_lower.view(), p);
             let after = pagetable_c(post.pt_mp, post.pt_lower.view(), p);
             &&& post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
+            &&& after.lower.pagetable_window_locks == before.lower.pagetable_window_locks
             &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
             &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
             &&& after.mapping_1g().filter_keys(|va: VAddr| after.mapping_1g().spec_index(va).present) == before.mapping_1g().filter_keys(|va: VAddr| before.mapping_1g().spec_index(va).present)
@@ -944,7 +948,10 @@ pub open spec fn kernel_cpu_went_off_fields(pre: &KernelK, post: &KernelK, cpu_i
     &&& forall|p: RwLockEndpointPtr| #![trigger post.ep_mp.spec_index(p)]
         pre.ep_mp.dom().contains(p) ==> post.ep_mp.spec_index(p).locking_thread() == pre.ep_mp.spec_index(p).locking_thread()
     &&& forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
-        pre.pt_mp.dom().contains(p) ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
+        pre.pt_mp.dom().contains(p) ==> {
+            &&& post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
+            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks
+        }
     &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
         pre.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread()
     &&& forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]

@@ -373,6 +373,7 @@ impl KernelSteps {
                     let after = krnl.pt_mp.spec_index(p).locking_thread();
                     &&& (after is Write) == (before is Write)
                     &&& (after is Read) == (before is Read)
+                    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).lower.pagetable_window_locks
                 },
             forall|p: RwLockPageTableRoot| #![trigger krnl.it_mp.spec_index(p)]
                 krnl.it_mp.dom().contains(p) && old(self).snapshot_k().it_mp.dom().contains(p) ==> {

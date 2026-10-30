@@ -336,7 +336,8 @@ impl KernelSteps {
             forall|p: RwLockEndpointPtr| #![trigger krnl.ep_mp.spec_index(p)]
                 old(self).snapshot_k().ep_mp.dom().contains(p) && krnl.ep_mp.dom().contains(p) ==> krnl.ep_mp.spec_index(p).locking_thread() == old(self).snapshot_k().ep_mp.spec_index(p).locking_thread(),
             forall|p: RwLockPageTableRoot| #![trigger krnl.pt_mp.spec_index(p)]
-                old(self).snapshot_k().pt_mp.dom().contains(p) && krnl.pt_mp.dom().contains(p) ==> krnl.pt_mp.spec_index(p).locking_thread() == old(self).snapshot_k().pt_mp.spec_index(p).locking_thread(),
+                old(self).snapshot_k().pt_mp.dom().contains(p) && krnl.pt_mp.dom().contains(p) ==> krnl.pt_mp.spec_index(p).locking_thread() == old(self).snapshot_k().pt_mp.spec_index(p).locking_thread()
+                    && pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).lower.pagetable_window_locks,
             forall|p: RwLockPageTableRoot| #![trigger krnl.it_mp.spec_index(p)]
                 old(self).snapshot_k().it_mp.dom().contains(p) && krnl.it_mp.dom().contains(p) ==> krnl.it_mp.spec_index(p).locking_thread() == old(self).snapshot_k().it_mp.spec_index(p).locking_thread(),
             forall|i: CpuId| #![trigger krnl.cpu_arr.spec_index(i)]

@@ -8,8 +8,8 @@ verus! {
 /// the table's big read lock and that window lock; only the window half `pt_lower[pagetable_ptr]` changes.
 pub fn pagetable_map_insert_4k(
     pagetable_map: &PageTableLockedMap, Tracked(pt_lower): Tracked<&mut PageTableLowerMap>, pagetable_ptr: RwLockPageTableRoot,
-    indices: (L4Index, L3Index, L2Index, L1Index), target_l1_ptr: PageMapPtr, target_entry: &MapEntry,
-    Tracked(lctx): Tracked<&mut LocalContext>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
+    indices: (L4Index, L3Index, L2Index, L1Index), target_l2_ptr: PageMapPtr, target_l1_ptr: PageMapPtr, target_entry: &MapEntry,
+    Tracked(window_perm): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
 )
     requires
         pagetable_perms_wf(*pagetable_map),
@@ -32,6 +32,9 @@ pub fn pagetable_map_insert_4k(
         pei_valid(indices.3),
         page_table_key_4k_valid::<PT_TYPE>(spec_index2va(indices)),
         pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).window_locked_by_thread(indices.0, indices.1, indices.2, old(lctx).thread_id()),
+        pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).lower.l2_owner(pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).window_l2_page(indices.0, indices.1), indices.2) == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
+        pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l3(indices.0, indices.1) is Some,
+        pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l3(indices.0, indices.1)->0.addr == target_l2_ptr,
         pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some,
         pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == target_l1_ptr,
         pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).spec_resolve_mapping_4k_l1(indices.0, indices.1, indices.2, indices.3) is None
@@ -54,7 +57,7 @@ pub fn pagetable_map_insert_4k(
         pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).page_closure() == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).page_closure(),
         pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).mapping_4k() == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).mapping_4k().insert(spec_index2va(indices), *target_entry),
         pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).mapping_2m() == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).mapping_2m(),
-        pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).lower.l2_lock == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).lower.l2_lock,
+        pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).lower.pagetable_window_locks == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).lower.pagetable_window_locks,
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
             #![trigger pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).spec_resolve_mapping_l2(l4i, l3i, l2i)]
             pagetable_map.spec_index(pagetable_ptr).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
@@ -62,12 +65,14 @@ pub fn pagetable_map_insert_4k(
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
             #![trigger pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
             pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id) == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id),
+        forall|p: PageMapPtr, i: L2Index| #![trigger pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).lower.l2_owner(p, i)]
+            pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).lower.l2_owner(p, i) == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).lower.l2_owner(p, i),
 {
     assert(pagetable_map.perms_wf() && pagetable_map.spec_index(pagetable_ptr).is_init()) by { pagetable_perms_wf_map(*pagetable_map); pagetable_perms_wf_at(*pagetable_map, pagetable_ptr); };
     assert(pt_lower.dom().contains(pagetable_ptr) && pagetable_c(*pagetable_map, *pt_lower, pagetable_ptr).wf()) by { pagetable_lower_wf_at(*pagetable_map, *pt_lower, pagetable_ptr); };
     let pagetable = pagetable_map.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
     let tracked lower = pt_lower.tracked_borrow_mut(pagetable_ptr);
-    pagetable.map_4k_page(Tracked(lower), indices.0, indices.1, indices.2, indices.3, target_l1_ptr, target_entry, Tracked(&mut *lctx));
+    pagetable.map_4k_page(Tracked(lower), indices.0, indices.1, indices.2, indices.3, target_l2_ptr, target_l1_ptr, target_entry, Tracked(window_perm), Tracked(&mut *lctx));
     proof {
         let post_c = PageTableC { higher: *pagetable, lower: *lower };
         assert(pagetable_c(*pagetable_map, *pt_lower, pagetable_ptr) == post_c);
@@ -85,8 +90,8 @@ pub fn pagetable_map_insert_4k(
 /// ghost slot keeps a copy of it.
 pub fn pagetable_map_insert_4k_wlocked(
     pagetable_map: &mut PageTableLockedMap, Tracked(pt_lower): Tracked<&mut PageTableLowerMap>, pagetable_ptr: RwLockPageTableRoot,
-    indices: (L4Index, L3Index, L2Index, L1Index), target_l1_ptr: PageMapPtr, target_entry: &MapEntry,
-    Tracked(lctx): Tracked<&mut LocalContext>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
+    indices: (L4Index, L3Index, L2Index, L1Index), target_l2_ptr: PageMapPtr, target_l1_ptr: PageMapPtr, target_entry: &MapEntry,
+    Tracked(window_perm): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
 )
     requires
         pagetable_perms_wf(*old(pagetable_map)),
@@ -109,6 +114,10 @@ pub fn pagetable_map_insert_4k_wlocked(
         pei_valid(indices.3),
         page_table_key_4k_valid::<PT_TYPE>(spec_index2va(indices)),
         pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_locked_by_thread(indices.0, indices.1, indices.2, old(lctx).thread_id()),
+        pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_owner(pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_l2_page(indices.0, indices.1), indices.2)
+            == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
+        pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l3(indices.0, indices.1) is Some,
+        pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l3(indices.0, indices.1)->0.addr == target_l2_ptr,
         pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some,
         pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == target_l1_ptr,
         pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_resolve_mapping_4k_l1(indices.0, indices.1, indices.2, indices.3) is None
@@ -139,7 +148,7 @@ pub fn pagetable_map_insert_4k_wlocked(
         pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).page_closure() == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).page_closure(),
         pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).mapping_4k() == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).mapping_4k().insert(spec_index2va(indices), *target_entry),
         pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).mapping_2m() == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).mapping_2m(),
-        pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_lock == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_lock,
+        pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.pagetable_window_locks == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.pagetable_window_locks,
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
             #![trigger pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).spec_resolve_mapping_l2(l4i, l3i, l2i)]
             old(pagetable_map).spec_index(pagetable_ptr).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
@@ -147,12 +156,14 @@ pub fn pagetable_map_insert_4k_wlocked(
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
             #![trigger pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
             pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id) == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id),
+        forall|p: PageMapPtr, i: L2Index| #![trigger pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_owner(p, i)]
+            pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_owner(p, i) == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_owner(p, i),
 {
     assert(pagetable_map.perms_wf() && pagetable_map.spec_index(pagetable_ptr).is_init()) by { pagetable_perms_wf_map(*pagetable_map); pagetable_perms_wf_at(*pagetable_map, pagetable_ptr); };
     assert(pt_lower.dom().contains(pagetable_ptr) && pagetable_c(*pagetable_map, *pt_lower, pagetable_ptr).wf()) by { pagetable_lower_wf_at(*pagetable_map, *pt_lower, pagetable_ptr); };
     let pagetable = pagetable_map.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
     let tracked lower = pt_lower.tracked_borrow_mut(pagetable_ptr);
-    pagetable.map_4k_page(Tracked(lower), indices.0, indices.1, indices.2, indices.3, target_l1_ptr, target_entry, Tracked(&mut *lctx));
+    pagetable.map_4k_page(Tracked(lower), indices.0, indices.1, indices.2, indices.3, target_l2_ptr, target_l1_ptr, target_entry, Tracked(window_perm), Tracked(&mut *lctx));
     proof {
         let post_c = PageTableC { higher: *pagetable, lower: *lower };
         assert(old(pagetable_map).spec_index(pagetable_ptr).locking_thread() is Write) by {
@@ -174,7 +185,7 @@ pub fn pagetable_map_insert_4k_wlocked(
 pub fn pagetable_map_create_entry_l2(
     pagetable_map: &PageTableLockedMap, Tracked(pt_lower): Tracked<&mut PageTableLowerMap>, pagetable_ptr: RwLockPageTableRoot,
     indices: (L4Index, L3Index, L2Index, L1Index), target_l2_ptr: PageMapPtr, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<PageMap>>,
-    Tracked(lctx): Tracked<&mut LocalContext>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
+    Tracked(window_perm): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
 )
     requires
         pagetable_perms_wf(*pagetable_map),
@@ -195,6 +206,7 @@ pub fn pagetable_map_create_entry_l2(
         pei_valid(indices.1),
         pei_valid(indices.2),
         pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).window_locked_by_thread(indices.0, indices.1, indices.2, old(lctx).thread_id()),
+        pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).lower.l2_owner(pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).window_l2_page(indices.0, indices.1), indices.2) == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
         pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l3(indices.0, indices.1) is Some,
         pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l3(indices.0, indices.1)->0.addr == target_l2_ptr,
         pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is None,
@@ -226,7 +238,7 @@ pub fn pagetable_map_create_entry_l2(
         pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).page_closure() == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).page_closure().insert(page_map_ptr),
         pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).mapping_4k() == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).mapping_4k(),
         pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).mapping_2m() == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).mapping_2m(),
-        pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).lower.l2_lock == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).lower.l2_lock,
+        pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).lower.pagetable_window_locks == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).lower.pagetable_window_locks,
         pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some,
         pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == page_map_ptr,
         pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).spec_resolve_mapping_2m_l2(indices.0, indices.1, indices.2) is None,
@@ -236,12 +248,14 @@ pub fn pagetable_map_create_entry_l2(
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
             #![trigger pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
             pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id) == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id),
+        forall|p: PageMapPtr, i: L2Index| #![trigger pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).lower.l2_owner(p, i)]
+            pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).lower.l2_owner(p, i) == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).lower.l2_owner(p, i),
 {
     assert(pagetable_map.perms_wf() && pagetable_map.spec_index(pagetable_ptr).is_init()) by { pagetable_perms_wf_map(*pagetable_map); pagetable_perms_wf_at(*pagetable_map, pagetable_ptr); };
     assert(pt_lower.dom().contains(pagetable_ptr) && pagetable_c(*pagetable_map, *pt_lower, pagetable_ptr).wf()) by { pagetable_lower_wf_at(*pagetable_map, *pt_lower, pagetable_ptr); };
     let pagetable = pagetable_map.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
     let tracked lower = pt_lower.tracked_borrow_mut(pagetable_ptr);
-    pagetable.create_entry_l2(Tracked(lower), indices.0, indices.1, indices.2, target_l2_ptr, page_map_ptr, Tracked(page_map_perm), Tracked(&mut *lctx));
+    pagetable.create_entry_l2(Tracked(lower), indices.0, indices.1, indices.2, target_l2_ptr, page_map_ptr, Tracked(page_map_perm), Tracked(window_perm), Tracked(&mut *lctx));
     proof {
         let post_c = PageTableC { higher: *pagetable, lower: *lower };
         assert(pagetable_c(*pagetable_map, *pt_lower, pagetable_ptr) == post_c);
@@ -259,7 +273,7 @@ pub fn pagetable_map_create_entry_l2(
 pub fn pagetable_map_create_entry_l2_wlocked(
     pagetable_map: &mut PageTableLockedMap, Tracked(pt_lower): Tracked<&mut PageTableLowerMap>, pagetable_ptr: RwLockPageTableRoot,
     indices: (L4Index, L3Index, L2Index, L1Index), target_l2_ptr: PageMapPtr, page_map_ptr: PageMapPtr, Tracked(page_map_perm): Tracked<PointsTo<PageMap>>,
-    Tracked(lctx): Tracked<&mut LocalContext>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
+    Tracked(window_perm): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
 )
     requires
         pagetable_perms_wf(*old(pagetable_map)),
@@ -280,6 +294,8 @@ pub fn pagetable_map_create_entry_l2_wlocked(
         pei_valid(indices.1),
         pei_valid(indices.2),
         pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_locked_by_thread(indices.0, indices.1, indices.2, old(lctx).thread_id()),
+        pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_owner(pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_l2_page(indices.0, indices.1), indices.2)
+            == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
         pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l3(indices.0, indices.1) is Some,
         pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l3(indices.0, indices.1)->0.addr == target_l2_ptr,
         pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is None,
@@ -319,7 +335,7 @@ pub fn pagetable_map_create_entry_l2_wlocked(
         pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).page_closure() == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).page_closure().insert(page_map_ptr),
         pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).mapping_4k() == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).mapping_4k(),
         pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).mapping_2m() == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).mapping_2m(),
-        pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_lock == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_lock,
+        pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.pagetable_window_locks == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.pagetable_window_locks,
         pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some,
         pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == page_map_ptr,
         pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).spec_resolve_mapping_2m_l2(indices.0, indices.1, indices.2) is None,
@@ -329,12 +345,14 @@ pub fn pagetable_map_create_entry_l2_wlocked(
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
             #![trigger pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
             pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id) == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id),
+        forall|p: PageMapPtr, i: L2Index| #![trigger pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_owner(p, i)]
+            pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_owner(p, i) == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_owner(p, i),
 {
     assert(pagetable_map.perms_wf() && pagetable_map.spec_index(pagetable_ptr).is_init()) by { pagetable_perms_wf_map(*pagetable_map); pagetable_perms_wf_at(*pagetable_map, pagetable_ptr); };
     assert(pt_lower.dom().contains(pagetable_ptr) && pagetable_c(*pagetable_map, *pt_lower, pagetable_ptr).wf()) by { pagetable_lower_wf_at(*pagetable_map, *pt_lower, pagetable_ptr); };
     let pagetable = pagetable_map.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
     let tracked lower = pt_lower.tracked_borrow_mut(pagetable_ptr);
-    pagetable.create_entry_l2(Tracked(lower), indices.0, indices.1, indices.2, target_l2_ptr, page_map_ptr, Tracked(page_map_perm), Tracked(&mut *lctx));
+    pagetable.create_entry_l2(Tracked(lower), indices.0, indices.1, indices.2, target_l2_ptr, page_map_ptr, Tracked(page_map_perm), Tracked(window_perm), Tracked(&mut *lctx));
     proof {
         let post_c = PageTableC { higher: *pagetable, lower: *lower };
         assert(old(pagetable_map).spec_index(pagetable_ptr).locking_thread() is Write) by {
@@ -527,14 +545,14 @@ pub fn pagetable_map_create_entry_l3(
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).spec_resolve_mapping_l2(l4i, l3i, l2i)]
             pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l2(l4i, l3i, l2i) is Some
                 ==> pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).spec_resolve_mapping_l2(l4i, l3i, l2i) is Some,
-        pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_lock
-            == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_lock.insert(page_map_ptr, pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_lock_of(page_map_ptr)),
-        forall|i: L2Index|
-            #![trigger pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_lock_of(page_map_ptr).lock_state(i)]
-            pei_valid(i) && !(lo <= i <= hi) ==> pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_lock_of(page_map_ptr).lock_state(i) is None,
+        forall|i: L2Index| #![trigger pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_owner(page_map_ptr, i)] pei_valid(i) && !(lo <= i <= hi) ==> pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_owner(page_map_ptr, i) is None,
+        pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.pagetable_window_locks == Map::new(
+            pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.pagetable_window_locks.dom() + Set::<usize>::range(0, 512).map_by(|i: usize| WindowVa { va: spec_index2va((indices.0, indices.1, i, 0usize)) }, |w: WindowVa| spec_v2l2index(w.va)),
+            |w: WindowVa| if pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.pagetable_window_locks.dom().contains(w) { pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.pagetable_window_locks[w] }
+                else if lo <= spec_v2l2index(w.va) <= hi { LockStateU::WriteLocked } else { LockStateU::Unlocked }),
         forall|i: L2Index| #![trigger ret.view().dom().contains(i)] ret.view().dom().contains(i) == (lo <= i <= hi),
         forall|i: L2Index| #![trigger ret.view().index(i)] lo <= i <= hi ==> {
-            &&& pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_lock_of(page_map_ptr).lock_perm_match(i, &ret.view().index(i))
+            &&& pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_owner(page_map_ptr, i) == (SpinLockState::Some { thread_id: ret.view().index(i).thread_id(), lock_id: ret.view().index(i).lock_id() })
             &&& ret.view().index(i).state() is WriteLock
             &&& ret.view().index(i).ordering_lock_id() == window_lock_id(pagetable_ptr, indices.0, indices.1, i)
             &&& ret.view().index(i).thread_id() == final(lctx).thread_id()
@@ -548,11 +566,11 @@ pub fn pagetable_map_create_entry_l3(
                 ==> pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)
                     == (pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)
                         || (l4i == indices.0 && l3i == indices.1 && lo <= l2i <= hi && thread_id == final(lctx).thread_id())),
-        forall|l4i: L4Index, l3i: L3Index|
-            #![trigger pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_lock_of(pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).window_l2_page(l4i, l3i))]
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
+            #![trigger pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_owner(pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).window_l2_page(l4i, l3i), l2i)]
             old(pagetable_map).spec_index(pagetable_ptr).view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_exists(l4i, l3i)
-                ==> pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_lock_of(pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).window_l2_page(l4i, l3i))
-                    == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_lock_of(pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_l2_page(l4i, l3i)),
+                ==> pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_owner(pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).window_l2_page(l4i, l3i), l2i)
+                    == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_owner(pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_l2_page(l4i, l3i), l2i),
 {
     assert(pagetable_map.perms_wf() && pagetable_map.spec_index(pagetable_ptr).is_init()) by { pagetable_perms_wf_map(*pagetable_map); pagetable_perms_wf_at(*pagetable_map, pagetable_ptr); };
     assert(pt_lower.dom().contains(pagetable_ptr) && pagetable_c(*pagetable_map, *pt_lower, pagetable_ptr).wf()) by { pagetable_lower_wf_at(*pagetable_map, *pt_lower, pagetable_ptr); };
@@ -582,7 +600,7 @@ pub fn pagetable_map_create_entry_l3(
 /// copy of the new window half.
 pub fn pagetable_map_clear_4k_present(
     pagetable_map: &mut PageTableLockedMap, Tracked(pt_lower): Tracked<&mut PageTableLowerMap>, pagetable_ptr: RwLockPageTableRoot,
-    indices: (L4Index, L3Index, L2Index, L1Index), target_l1_ptr: PageMapPtr, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
+    indices: (L4Index, L3Index, L2Index, L1Index), target_l2_ptr: PageMapPtr, target_l1_ptr: PageMapPtr, Tracked(window_perm): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
 )
     requires
         pagetable_perms_wf(*old(pagetable_map)),
@@ -604,6 +622,10 @@ pub fn pagetable_map_clear_4k_present(
         pei_valid(indices.2),
         pei_valid(indices.3),
         pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_locked_by_thread(indices.0, indices.1, indices.2, old(lctx).thread_id()),
+        pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_owner(pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_l2_page(indices.0, indices.1), indices.2)
+            == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
+        pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l3(indices.0, indices.1) is Some,
+        pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l3(indices.0, indices.1)->0.addr == target_l2_ptr,
         pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some,
         pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == target_l1_ptr,
         pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).mapping_4k().dom().contains(spec_index2va(indices)),
@@ -632,16 +654,18 @@ pub fn pagetable_map_clear_4k_present(
         pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).mapping_4k() == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).mapping_4k().insert(spec_index2va(indices),
             MapEntry { present: false, ..pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).mapping_4k().spec_index(spec_index2va(indices)) }),
         pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).mapping_2m() == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).mapping_2m(),
-        pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_lock == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_lock,
+        pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.pagetable_window_locks == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.pagetable_window_locks,
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
             #![trigger pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
             pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id) == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id),
+        forall|p: PageMapPtr, i: L2Index| #![trigger pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_owner(p, i)]
+            pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_owner(p, i) == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_owner(p, i),
 {
     assert(pagetable_map.perms_wf() && pagetable_map.spec_index(pagetable_ptr).is_init()) by { pagetable_perms_wf_map(*pagetable_map); pagetable_perms_wf_at(*pagetable_map, pagetable_ptr); };
     assert(pt_lower.dom().contains(pagetable_ptr) && pagetable_c(*pagetable_map, *pt_lower, pagetable_ptr).wf()) by { pagetable_lower_wf_at(*pagetable_map, *pt_lower, pagetable_ptr); };
     let pagetable = pagetable_map.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
     let tracked lower = pt_lower.tracked_borrow_mut(pagetable_ptr);
-    pagetable.unmap_4k_page_user_view(Tracked(lower), indices.0, indices.1, indices.2, indices.3, target_l1_ptr, Tracked(&mut *lctx));
+    pagetable.unmap_4k_page_user_view(Tracked(lower), indices.0, indices.1, indices.2, indices.3, target_l2_ptr, target_l1_ptr, Tracked(window_perm), Tracked(&mut *lctx));
     proof {
         let post_c = PageTableC { higher: *pagetable, lower: *lower };
         assert(old(pagetable_map).spec_index(pagetable_ptr).locking_thread() is Write) by {
@@ -662,7 +686,7 @@ pub fn pagetable_map_clear_4k_present(
 /// window half.
 pub fn pagetable_map_unmap_4k_kernel(
     pagetable_map: &mut PageTableLockedMap, Tracked(pt_lower): Tracked<&mut PageTableLowerMap>, pagetable_ptr: RwLockPageTableRoot,
-    indices: (L4Index, L3Index, L2Index, L1Index), target_l1_ptr: PageMapPtr, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
+    indices: (L4Index, L3Index, L2Index, L1Index), target_l2_ptr: PageMapPtr, target_l1_ptr: PageMapPtr, Tracked(window_perm): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
 )
     requires
         pagetable_perms_wf(*old(pagetable_map)),
@@ -684,6 +708,10 @@ pub fn pagetable_map_unmap_4k_kernel(
         pei_valid(indices.2),
         pei_valid(indices.3),
         pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_locked_by_thread(indices.0, indices.1, indices.2, old(lctx).thread_id()),
+        pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_owner(pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_l2_page(indices.0, indices.1), indices.2)
+            == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
+        pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l3(indices.0, indices.1) is Some,
+        pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l3(indices.0, indices.1)->0.addr == target_l2_ptr,
         pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some,
         pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == target_l1_ptr,
         pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).mapping_4k().dom().contains(spec_index2va(indices)),
@@ -712,16 +740,18 @@ pub fn pagetable_map_unmap_4k_kernel(
         pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).page_closure() == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).page_closure(),
         pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).mapping_4k() == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).mapping_4k().remove(spec_index2va(indices)),
         pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).mapping_2m() == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).mapping_2m(),
-        pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_lock == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_lock,
+        pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.pagetable_window_locks == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.pagetable_window_locks,
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
             #![trigger pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
             pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id) == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id),
+        forall|p: PageMapPtr, i: L2Index| #![trigger pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_owner(p, i)]
+            pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_owner(p, i) == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_owner(p, i),
 {
     assert(pagetable_map.perms_wf() && pagetable_map.spec_index(pagetable_ptr).is_init()) by { pagetable_perms_wf_map(*pagetable_map); pagetable_perms_wf_at(*pagetable_map, pagetable_ptr); };
     assert(pt_lower.dom().contains(pagetable_ptr) && pagetable_c(*pagetable_map, *pt_lower, pagetable_ptr).wf()) by { pagetable_lower_wf_at(*pagetable_map, *pt_lower, pagetable_ptr); };
     let pagetable = pagetable_map.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
     let tracked lower = pt_lower.tracked_borrow_mut(pagetable_ptr);
-    pagetable.unmap_4k_page_kernel(Tracked(lower), indices.0, indices.1, indices.2, indices.3, target_l1_ptr, Tracked(&mut *lctx));
+    pagetable.unmap_4k_page_kernel(Tracked(lower), indices.0, indices.1, indices.2, indices.3, target_l2_ptr, target_l1_ptr, Tracked(window_perm), Tracked(&mut *lctx));
     proof {
         let post_c = PageTableC { higher: *pagetable, lower: *lower };
         assert(old(pagetable_map).spec_index(pagetable_ptr).locking_thread() is Write) by {
@@ -741,7 +771,7 @@ pub fn pagetable_map_unmap_4k_kernel(
 /// read lock and the 2M window lock of `indices`; only the window half `pt_lower[pagetable_ptr]` changes.
 pub fn pagetable_map_clear_4k_present_rlocked(
     pagetable_map: &PageTableLockedMap, Tracked(pt_lower): Tracked<&mut PageTableLowerMap>, pagetable_ptr: RwLockPageTableRoot,
-    indices: (L4Index, L3Index, L2Index, L1Index), target_l1_ptr: PageMapPtr, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
+    indices: (L4Index, L3Index, L2Index, L1Index), target_l2_ptr: PageMapPtr, target_l1_ptr: PageMapPtr, Tracked(window_perm): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
 )
     requires
         pagetable_perms_wf(*pagetable_map),
@@ -763,6 +793,9 @@ pub fn pagetable_map_clear_4k_present_rlocked(
         pei_valid(indices.2),
         pei_valid(indices.3),
         pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).window_locked_by_thread(indices.0, indices.1, indices.2, old(lctx).thread_id()),
+        pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).lower.l2_owner(pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).window_l2_page(indices.0, indices.1), indices.2) == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
+        pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l3(indices.0, indices.1) is Some,
+        pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l3(indices.0, indices.1)->0.addr == target_l2_ptr,
         pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some,
         pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == target_l1_ptr,
         pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).mapping_4k().dom().contains(spec_index2va(indices)),
@@ -783,16 +816,18 @@ pub fn pagetable_map_clear_4k_present_rlocked(
         pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).mapping_4k() == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).mapping_4k().insert(spec_index2va(indices),
             MapEntry { present: false, ..pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).mapping_4k().spec_index(spec_index2va(indices)) }),
         pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).mapping_2m() == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).mapping_2m(),
-        pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).lower.l2_lock == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).lower.l2_lock,
+        pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).lower.pagetable_window_locks == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).lower.pagetable_window_locks,
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
             #![trigger pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
             pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id) == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id),
+        forall|p: PageMapPtr, i: L2Index| #![trigger pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).lower.l2_owner(p, i)]
+            pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).lower.l2_owner(p, i) == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).lower.l2_owner(p, i),
 {
     assert(pagetable_map.perms_wf() && pagetable_map.spec_index(pagetable_ptr).is_init()) by { pagetable_perms_wf_map(*pagetable_map); pagetable_perms_wf_at(*pagetable_map, pagetable_ptr); };
     assert(pt_lower.dom().contains(pagetable_ptr) && pagetable_c(*pagetable_map, *pt_lower, pagetable_ptr).wf()) by { pagetable_lower_wf_at(*pagetable_map, *pt_lower, pagetable_ptr); };
     let pagetable = pagetable_map.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
     let tracked lower = pt_lower.tracked_borrow_mut(pagetable_ptr);
-    pagetable.unmap_4k_page_user_view(Tracked(lower), indices.0, indices.1, indices.2, indices.3, target_l1_ptr, Tracked(&mut *lctx));
+    pagetable.unmap_4k_page_user_view(Tracked(lower), indices.0, indices.1, indices.2, indices.3, target_l2_ptr, target_l1_ptr, Tracked(window_perm), Tracked(&mut *lctx));
     proof {
         let post_c = PageTableC { higher: *pagetable, lower: *lower };
         assert(pagetable_c(*pagetable_map, *pt_lower, pagetable_ptr) == post_c);
@@ -808,7 +843,7 @@ pub fn pagetable_map_clear_4k_present_rlocked(
 /// holds the table's big read lock and the 2M window lock of `indices`; only the window half `pt_lower[pagetable_ptr]` changes.
 pub fn pagetable_map_unmap_4k_kernel_rlocked(
     pagetable_map: &PageTableLockedMap, Tracked(pt_lower): Tracked<&mut PageTableLowerMap>, pagetable_ptr: RwLockPageTableRoot,
-    indices: (L4Index, L3Index, L2Index, L1Index), target_l1_ptr: PageMapPtr, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
+    indices: (L4Index, L3Index, L2Index, L1Index), target_l2_ptr: PageMapPtr, target_l1_ptr: PageMapPtr, Tracked(window_perm): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
 )
     requires
         pagetable_perms_wf(*pagetable_map),
@@ -830,6 +865,9 @@ pub fn pagetable_map_unmap_4k_kernel_rlocked(
         pei_valid(indices.2),
         pei_valid(indices.3),
         pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).window_locked_by_thread(indices.0, indices.1, indices.2, old(lctx).thread_id()),
+        pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).lower.l2_owner(pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).window_l2_page(indices.0, indices.1), indices.2) == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
+        pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l3(indices.0, indices.1) is Some,
+        pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l3(indices.0, indices.1)->0.addr == target_l2_ptr,
         pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l2(indices.0, indices.1, indices.2) is Some,
         pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).spec_resolve_mapping_l2(indices.0, indices.1, indices.2)->0.addr == target_l1_ptr,
         pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).mapping_4k().dom().contains(spec_index2va(indices)),
@@ -850,16 +888,18 @@ pub fn pagetable_map_unmap_4k_kernel_rlocked(
         pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).page_closure() == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).page_closure(),
         pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).mapping_4k() == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).mapping_4k().remove(spec_index2va(indices)),
         pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).mapping_2m() == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).mapping_2m(),
-        pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).lower.l2_lock == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).lower.l2_lock,
+        pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).lower.pagetable_window_locks == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).lower.pagetable_window_locks,
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
             #![trigger pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
             pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id) == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id),
+        forall|p: PageMapPtr, i: L2Index| #![trigger pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).lower.l2_owner(p, i)]
+            pagetable_c(*pagetable_map, *final(pt_lower), pagetable_ptr).lower.l2_owner(p, i) == pagetable_c(*pagetable_map, *old(pt_lower), pagetable_ptr).lower.l2_owner(p, i),
 {
     assert(pagetable_map.perms_wf() && pagetable_map.spec_index(pagetable_ptr).is_init()) by { pagetable_perms_wf_map(*pagetable_map); pagetable_perms_wf_at(*pagetable_map, pagetable_ptr); };
     assert(pt_lower.dom().contains(pagetable_ptr) && pagetable_c(*pagetable_map, *pt_lower, pagetable_ptr).wf()) by { pagetable_lower_wf_at(*pagetable_map, *pt_lower, pagetable_ptr); };
     let pagetable = pagetable_map.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
     let tracked lower = pt_lower.tracked_borrow_mut(pagetable_ptr);
-    pagetable.unmap_4k_page_kernel(Tracked(lower), indices.0, indices.1, indices.2, indices.3, target_l1_ptr, Tracked(&mut *lctx));
+    pagetable.unmap_4k_page_kernel(Tracked(lower), indices.0, indices.1, indices.2, indices.3, target_l2_ptr, target_l1_ptr, Tracked(window_perm), Tracked(&mut *lctx));
     proof {
         let post_c = PageTableC { higher: *pagetable, lower: *lower };
         assert(pagetable_c(*pagetable_map, *pt_lower, pagetable_ptr) == post_c);
@@ -877,7 +917,7 @@ pub fn pagetable_map_unmap_4k_kernel_rlocked(
 /// 512 of its windows unlocked.
 pub fn pagetable_map_remove_table_page(
     pagetable_map: &mut PageTableLockedMap, Tracked(pt_lower): Tracked<&mut PageTableLowerMap>, pagetable_ptr: RwLockPageTableRoot, scan: StructureScan,
-    Tracked(lctx): Tracked<&mut LocalContext>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
+    Tracked(window_perm): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
 ) -> (ret: Tracked<PagePerm4k>)
     requires
         pagetable_perms_wf(*old(pagetable_map)),
@@ -897,6 +937,8 @@ pub fn pagetable_map_remove_table_page(
         pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).spec_structure_scan_wf(scan),
         scan.spec_table_page() is Some,
         scan is L1 ==> pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_locked_by_thread(scan->L1_l4i, scan->L1_l3i, scan->L1_l2i, old(lctx).thread_id()),
+        scan is L1 ==> pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_owner(pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_l2_page(scan->L1_l4i, scan->L1_l3i), scan->L1_l2i)
+            == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
         scan is L2 ==> old(lctx).pagetable_window_lock_map().dom().is_empty(),
     ensures
         final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -929,7 +971,9 @@ pub fn pagetable_map_remove_table_page(
         final(pagetable_map).spec_index(pagetable_ptr).view().pcid == old(pagetable_map).spec_index(pagetable_ptr).view().pcid,
         final(pagetable_map).spec_index(pagetable_ptr).view().did == old(pagetable_map).spec_index(pagetable_ptr).view().did,
         final(pagetable_map).spec_index(pagetable_ptr).view().proc_ptr == old(pagetable_map).spec_index(pagetable_ptr).view().proc_ptr,
-        scan is L1 ==> pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_lock == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_lock,
+        !(scan is L2) ==> pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.pagetable_window_locks == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.pagetable_window_locks,
+        scan is L2 ==> pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.pagetable_window_locks == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.pagetable_window_locks.remove_keys(
+            pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.pagetable_window_locks.dom().filter(|w: WindowVa| spec_v2l4index(w.va) == scan->L2_l4i && spec_v2l3index(w.va) == scan->L2_l3i)),
         scan is L1 ==> pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).higher == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).higher,
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
             #![trigger pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
@@ -937,6 +981,8 @@ pub fn pagetable_map_remove_table_page(
                 ==> pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id) == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).window_locked_by_thread(l4i, l3i, l2i, thread_id),
         ret.view().is_init(),
         ret.view().addr() == scan.spec_table_page()->Some_0,
+        scan is L1 ==> forall|p: PageMapPtr, i: L2Index| #![trigger pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_owner(p, i)]
+            pagetable_c(*final(pagetable_map), *final(pt_lower), pagetable_ptr).lower.l2_owner(p, i) == pagetable_c(*old(pagetable_map), *old(pt_lower), pagetable_ptr).lower.l2_owner(p, i),
 {
     assert(pagetable_map.perms_wf() && pagetable_map.spec_index(pagetable_ptr).is_init()) by { pagetable_perms_wf_map(*pagetable_map); pagetable_perms_wf_at(*pagetable_map, pagetable_ptr); };
     assert(pt_lower.dom().contains(pagetable_ptr) && pagetable_c(*pagetable_map, *pt_lower, pagetable_ptr).wf()) by { pagetable_lower_wf_at(*pagetable_map, *pt_lower, pagetable_ptr); };
@@ -945,13 +991,13 @@ pub fn pagetable_map_remove_table_page(
             assert(pagetable_map.spec_index(pagetable_ptr).wlocked_by_thread(lctx.thread_id())) by {
                 pagetable_map.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr);
             };
-            pagetable_l2_windows_unlocked_when_wlocker_holds_no_windows(*pagetable_map, *pt_lower, lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr,
+            wlocker_holds_no_windows_implies_l2_windows_unlocked(*pagetable_map, *pt_lower, lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr,
                 scan->L2_l4i, scan->L2_l3i, scan->L2_l2_p);
         }
     }
     let pagetable = pagetable_map.borrow_mut_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_lock_perm));
     let tracked lower = pt_lower.tracked_borrow_mut(pagetable_ptr);
-    let ret = pagetable.remove_structure_page(Tracked(lower), scan, Tracked(&mut *lctx));
+    let ret = pagetable.remove_structure_page(Tracked(lower), scan, Tracked(window_perm), Tracked(&mut *lctx));
     proof {
         let post_c = PageTableC { higher: *pagetable, lower: *lower };
         assert(old(pagetable_map).spec_index(pagetable_ptr).locking_thread() is Write) by {

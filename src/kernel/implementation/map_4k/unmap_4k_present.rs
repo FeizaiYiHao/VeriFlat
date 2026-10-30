@@ -53,6 +53,7 @@ pub fn clear_4k_mapping_present(krnl: &mut KernelK, pagetable: RwLockPageTableRo
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_1g() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g(),
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus.insert((
             pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va)), Set::range(0usize, NUM_CPUS)),
+        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks,
 {
     let indices = va2index(va);
     let ghost window_va = WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0usize)) };
@@ -72,6 +73,7 @@ pub fn clear_4k_mapping_present(krnl: &mut KernelK, pagetable: RwLockPageTableRo
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).wf_mapping_4k_at(indices.0, indices.1, indices.2, indices.3);
     }
+    let l2_ptr;
     let l1_ptr;
     {
         let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), pagetable_perm);
@@ -79,9 +81,10 @@ pub fn clear_4k_mapping_present(krnl: &mut KernelK, pagetable: RwLockPageTableRo
         let l4 = pt.get_entry_l4(indices.0).unwrap();
         let l3 = pt.get_entry_l3(indices.0, indices.1, &l4).unwrap();
         let l2 = pt.get_entry_l2(Tracked(lower), indices.0, indices.1, indices.2, &l3).unwrap();
+        l2_ptr = l3.addr;
         l1_ptr = l2.addr;
     }
-    pagetable_map_clear_4k_present(&mut krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), pagetable, indices, l1_ptr, Tracked(&mut *lctx), pagetable_perm);
+    pagetable_map_clear_4k_present(&mut krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), pagetable, indices, l2_ptr, l1_ptr, Tracked(&window_perm), Tracked(&mut *lctx), pagetable_perm);
     proof {
         assert(clear_4k_mapping_present_eof_transition_framing(locked, *krnl, pagetable, va)) by { reveal(clear_4k_mapping_present_eof_transition_framing); };
         clear_4k_mapping_present_eof(locked, *krnl, pagetable, va);
@@ -92,12 +95,18 @@ pub fn clear_4k_mapping_present(krnl: &mut KernelK, pagetable: RwLockPageTableRo
             map_insert_remove_absent_lemma(old(lctx).pagetable_window_lock_map(), (pagetable, window_va), TypedHeldLock { lock_id: window_lock_id_of(pagetable, window_va), mode: TypedLockMode::Write });
         };
         assert(krnl.pt_lower.view() =~= old(krnl).pt_lower.view().insert(pagetable, krnl.pt_lower.view().spec_index(pagetable)));
+        let old_c = pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable);
+        wlocker_holds_no_windows_implies_l2_windows_unlocked(old(krnl).pt_mp, old(krnl).pt_lower.view(), old(lctx).pagetable_window_lock_map(), old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable,
+            indices.0, indices.1, old_c.window_l2_page(indices.0, indices.1));
+        old_c.wf_window_locks_va_at(window_va);
+        assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).lower.pagetable_window_locks =~= old_c.lower.pagetable_window_locks);
     }
 }
 
 /// Clear the user present bit of the 4K leaf `va` of the read-held `pagetable`, listing every CPU stale for its window first;
 /// the caller holds the leaf's 2M window. Only the window half of the table changes.
-pub fn clear_4k_mapping_present_in_window(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, va: VAddr, Tracked(lctx): Tracked<&mut LocalContext>, pagetable_perm: Tracked<&LockPerm>)
+pub fn clear_4k_mapping_present_in_window(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, va: VAddr, Tracked(lctx): Tracked<&mut LocalContext>, pagetable_perm: Tracked<&LockPerm>,
+    Tracked(window_perm): Tracked<&LockPerm>)
     requires
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
@@ -114,6 +123,8 @@ pub fn clear_4k_mapping_present_in_window(krnl: &mut KernelK, pagetable: RwLockP
         pagetable_perm.view().thread_id() == old(lctx).thread_id(),
         old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Read_reader_map.contains_pair(old(lctx).thread_id(), pagetable_perm.view().lock_id()),
         typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (pagetable, window_of(va)), TypedLockMode::Write),
+        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va))
+            == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
     ensures
         final(krnl).inv(),
         typed_lock_maps_aligned(final(krnl), final(lctx)),
@@ -138,7 +149,8 @@ pub fn clear_4k_mapping_present_in_window(krnl: &mut KernelK, pagetable: RwLockP
         },
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_2m() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m(),
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_1g() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g(),
-        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_lock == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_lock,
+        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks,
+        forall|p: PageMapPtr, i: L2Index| #![trigger pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i)] pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i),
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus.insert((
             pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va)), Set::range(0usize, NUM_CPUS)),
 {
@@ -154,6 +166,7 @@ pub fn clear_4k_mapping_present_in_window(krnl: &mut KernelK, pagetable: RwLockP
         pagetable_window_typed_lock_map_aligned_at(krnl.pt_mp, krnl.pt_lower.view(), lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), pagetable, window_of(va));
         pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).wf_mapping_4k_at(indices.0, indices.1, indices.2, indices.3);
     }
+    let l2_ptr;
     let l1_ptr;
     {
         let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), pagetable_perm);
@@ -161,9 +174,10 @@ pub fn clear_4k_mapping_present_in_window(krnl: &mut KernelK, pagetable: RwLockP
         let l4 = pt.get_entry_l4(indices.0).unwrap();
         let l3 = pt.get_entry_l3(indices.0, indices.1, &l4).unwrap();
         let l2 = pt.get_entry_l2(Tracked(lower), indices.0, indices.1, indices.2, &l3).unwrap();
+        l2_ptr = l3.addr;
         l1_ptr = l2.addr;
     }
-    pagetable_map_clear_4k_present_rlocked(&krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), pagetable, indices, l1_ptr, Tracked(&mut *lctx), pagetable_perm);
+    pagetable_map_clear_4k_present_rlocked(&krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), pagetable, indices, l2_ptr, l1_ptr, Tracked(window_perm), Tracked(&mut *lctx), pagetable_perm);
     proof {
         assert(clear_4k_mapping_present_eof_transition_framing(locked, *krnl, pagetable, va)) by { reveal(clear_4k_mapping_present_eof_transition_framing); };
         clear_4k_mapping_present_eof(locked, *krnl, pagetable, va);

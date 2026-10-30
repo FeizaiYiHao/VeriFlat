@@ -240,11 +240,10 @@ pub open spec fn boot_page_array_ready(
 ///
 /// The L4 and L3 pages stay plain `PageMap`s in the big-lock half. Each L2 page
 /// is reinterpreted in place as an `L2PageMap` (the same 512 words, accessed
-/// atomically) together with its two ghost tokens, the entry view and the
-/// per-entry window locks. This assumes that the bootloader leaves bit 9 (the
-/// window lock bit) of every L2 word clear, so that no window lock is held and
-/// every window-lock ghost is `None`; the window half therefore starts with no
-/// locked window and no stale CPU. L1 pages move to the window half unchanged.
+/// atomically) whose entries own the L1 pages they link. This assumes that the
+/// bootloader leaves bit 9 (the window lock bit) of every L2 word clear, so that
+/// no window lock is held; the window half therefore starts with every window
+/// unlocked and no stale CPU.
 #[verifier::external_body]
 pub fn adopt_boot_dom0_pagetable(
     raw_cr3: PageTableRoot, pagetable_ptr: RwLockPageTableRoot, process_ptr: RwLockProcessPtr, kernel_l4_end: usize,
@@ -273,7 +272,7 @@ pub fn adopt_boot_dom0_pagetable(
         boot_dom0_pagetable_model(raw_cr3, process_ptr, kernel_l4_end, kernel_entries.view(), manifest_4k.view(), l4_tables, l3_tables, l2_tables, l1_tables, rev_maps.view()).wf(),
     ensures
         (PageTableC { higher: ret.0, lower: ret.1.view() }).wf(),
-        ret.1.view().locked_windows == Set::<WindowVa>::empty(),
+        forall|p: PageMapPtr, i: L2Index| #![trigger ret.1.view().l2_owner(p, i)] ret.1.view().l2_owner(p, i) is None,
         ret.1.view().window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
         ret.0.cr3 == raw_cr3,
         ret.0.pcid == Some(1usize),
@@ -285,7 +284,7 @@ pub fn adopt_boot_dom0_pagetable(
         ret.0.l4_table.view() == l4_tables,
         ret.0.l3_tables.view() == l3_tables,
         ret.1.view().l2_perms.dom() == l2_tables.dom(),
-        ret.1.view().l1_tables == l1_tables,
+        ret.1.view().l1_rev_map.dom() == l1_tables.dom(),
         (PageTableC { higher: ret.0, lower: ret.1.view() }).page_closure() =~= l4_tables.dom() + l3_tables.dom() + l2_tables.dom() + l1_tables.dom(),
         (PageTableC { higher: ret.0, lower: ret.1.view() }).mapping_4k() == manifest_4k.view(),
         (PageTableC { higher: ret.0, lower: ret.1.view() }).mapping_2m() == Map::<VAddr, MapEntry>::empty(),
@@ -637,7 +636,8 @@ pub open spec fn boot_kernel_state(
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).locking_thread() is None
     &&& krnl.pt_lower.view().dom() =~= set![layout.cpu_pagetable]
     &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).wf()
-    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.locked_windows == Set::<WindowVa>::empty()
+    &&& forall|p: PageMapPtr, i: L2Index| #![trigger pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.l2_owner(p, i)]
+        pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.l2_owner(p, i) is None
     &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty()
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().cr3 == layout.cpu_cr3
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().pcid == Some(1usize)

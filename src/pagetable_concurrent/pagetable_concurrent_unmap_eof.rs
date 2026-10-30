@@ -8,18 +8,26 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
     #[verifier::opaque]
     pub open spec fn unmap_4k_page_user_view_eof_transition_framing(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index,
         target_l1_p: PageMapPtr) -> bool {
+        let l2_p = pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr;
         &&& post.higher == pre.higher
-        &&& post.lower == (PageTableLower { l1_tables: post.lower.l1_tables, mapping_4k: post.lower.mapping_4k, ..pre.lower })
-        &&& post.lower.l1_tables.dom() == pre.lower.l1_tables.dom()
-        &&& forall|p: PageMapPtr| #![trigger post.lower.l1_tables.spec_index(p)] pre.lower.l1_tables.dom().contains(p) && p != target_l1_p ==> post.lower.l1_tables.spec_index(p) == pre.lower.l1_tables.spec_index(p)
-        &&& post.lower.l1_tables.spec_index(target_l1_p).addr() == target_l1_p
-        &&& post.lower.l1_tables.spec_index(target_l1_p).is_init()
-        &&& post.lower.l1_tables.spec_index(target_l1_p).value().wf()
-        &&& forall|i: usize|
-            #![trigger post.lower.l1_tables.spec_index(target_l1_p).value().spec_index(i)]
-            pei_valid(i) && i != target_l1i ==> post.lower.l1_tables.spec_index(target_l1_p).value().spec_index(i) =~= pre.lower.l1_tables.spec_index(target_l1_p).value().spec_index(i)
-        &&& post.lower.l1_tables.spec_index(target_l1_p).value().spec_index(target_l1i)
-            =~= (PageEntry { perm: PageEntryPerm { present: false, ..pre.lower.l1_tables.spec_index(target_l1_p).value().spec_index(target_l1i).perm }, ..pre.lower.l1_tables.spec_index(target_l1_p).value().spec_index(target_l1i) })
+        &&& post.lower == (PageTableLower { l2_perms: post.lower.l2_perms, mapping_4k: post.lower.mapping_4k, ..pre.lower })
+        &&& post.lower.l2_perms.dom() == pre.lower.l2_perms.dom()
+        &&& forall|p: PageMapPtr| #![trigger post.lower.l2_perms.spec_index(p)] p != l2_p ==> post.lower.l2_perms.spec_index(p) == pre.lower.l2_perms.spec_index(p)
+        &&& post.lower.l2_perms.spec_index(l2_p).addr() == l2_p && post.lower.l2_perms.spec_index(l2_p).is_init()
+        &&& post.lower.l2_page(l2_p).addr() == l2_p
+        &&& forall|p: PageMapPtr, i: L2Index| #![trigger post.lower.l2_page(p).entry_lock(i)]
+            p == l2_p && i != target_l2i ==> post.lower.l2_page(p).entry_lock(i) == pre.lower.l2_page(p).entry_lock(i)
+        &&& post.lower.l2_entry(l2_p, target_l2i) == pre.lower.l2_entry(l2_p, target_l2i)
+        &&& post.lower.l2_owner(l2_p, target_l2i) == pre.lower.l2_owner(l2_p, target_l2i)
+        &&& pre.lower.l2_page(l2_p).entry_lock(target_l2i).l1() is Some && pre.lower.l1_perm(l2_p, target_l2i).addr() == target_l1_p
+        &&& post.lower.l2_page(l2_p).entry_lock(target_l2i).l1() is Some
+        &&& post.lower.l1_perm(l2_p, target_l2i).addr() == target_l1_p
+        &&& post.lower.l1_perm(l2_p, target_l2i).is_init()
+        &&& post.lower.l1_page(l2_p, target_l2i).wf()
+        &&& forall|p: PageMapPtr, i: L2Index, j: L1Index| #![trigger post.lower.l1_page(p, i).spec_index(j)]
+            p == l2_p && i == target_l2i && pei_valid(j) && j != target_l1i ==> post.lower.l1_page(p, i).spec_index(j) =~= pre.lower.l1_page(p, i).spec_index(j)
+        &&& post.lower.l1_page(l2_p, target_l2i).spec_index(target_l1i)
+            =~= (PageEntry { perm: PageEntryPerm { present: false, ..pre.lower.l1_page(l2_p, target_l2i).spec_index(target_l1i).perm }, ..pre.lower.l1_page(l2_p, target_l2i).spec_index(target_l1i) })
         &&& post.lower.mapping_4k == pre.lower.mapping_4k.insert(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)),
             MapEntry { present: false, ..pre.lower.mapping_4k.spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))) })
     }
@@ -58,7 +66,6 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             post.higher.inv(),
             post.va_addr_valid(),
             post.wf_l3(),
-            post.l2_tokens_paired(),
             post.wf_l2(),
             post.disjoint_l2(),
             post.wf_mapping_2m(),
@@ -69,7 +76,6 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
     {
         reveal(PageTableC::unmap_4k_page_user_view_eof_transition_framing);
         assert(post.wf_l3()) by { reveal(PageTableC::wf_l3); };
-        assert(post.l2_tokens_paired()) by { reveal(PageTableC::l2_tokens_paired); };
         assert(post.wf_l2()) by { reveal(PageTableC::wf_l2); };
         assert(post.disjoint_l2()) by { reveal(PageTableC::disjoint_l2); };
         assert(post.wf_mapping_2m()) by { reveal(PageTableC::wf_mapping_2m); };

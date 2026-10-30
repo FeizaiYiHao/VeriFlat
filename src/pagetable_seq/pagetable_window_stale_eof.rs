@@ -12,7 +12,7 @@ pub open spec fn window_stale_cpus_after_set(stale: Map<(PageMapPtr, L2Index), S
 pub open spec fn window_stale_cpus_after_remove_cpu(stale: Map<(PageMapPtr, L2Index), Set<CpuId>>, lower: PageTableLower<PT_TYPE>, root_write_held: bool, thread_id: LockThreadId, cpu_id: CpuId)
     -> Map<(PageMapPtr, L2Index), Set<CpuId>>
 {
-    Map::new(stale.dom(), |k: (PageMapPtr, L2Index)| if root_write_held || (lower.l2_lock.dom().contains(k.0) && pei_valid(k.1) && lower.l2_lock_of(k.0).locked_by_thread(k.1, thread_id)) {
+    Map::new(stale.dom(), |k: (PageMapPtr, L2Index)| if root_write_held || (lower.l2_perms.dom().contains(k.0) && pei_valid(k.1) && (lower.l2_owner(k.0, k.1) is Some && lower.l2_owner(k.0, k.1)->Some_thread_id == thread_id)) {
         stale.spec_index(k).remove(cpu_id)
     } else {
         stale.spec_index(k)
@@ -22,7 +22,7 @@ pub open spec fn window_stale_cpus_after_remove_cpu(stale: Map<(PageMapPtr, L2In
 /// The stale-CPU map after the empty records the thread may change are deleted: all of them while it write-holds the table,
 /// otherwise those of the windows it holds in `lower`.
 pub open spec fn window_stale_cpus_after_clear_empty(stale: Map<(PageMapPtr, L2Index), Set<CpuId>>, lower: PageTableLower<PT_TYPE>, root_write_held: bool, thread_id: LockThreadId) -> Map<(PageMapPtr, L2Index), Set<CpuId>> {
-    stale.filter_keys(|k: (PageMapPtr, L2Index)| !(stale.spec_index(k) == Set::<CpuId>::empty() && (root_write_held || (lower.l2_lock.dom().contains(k.0) && pei_valid(k.1) && lower.l2_lock_of(k.0).locked_by_thread(k.1, thread_id)))))
+    stale.filter_keys(|k: (PageMapPtr, L2Index)| !(stale.spec_index(k) == Set::<CpuId>::empty() && (root_write_held || (lower.l2_perms.dom().contains(k.0) && pei_valid(k.1) && (lower.l2_owner(k.0, k.1) is Some && lower.l2_owner(k.0, k.1)->Some_thread_id == thread_id)))))
 }
 
 /// One update of a page table's stale-CPU map by `KernelK::replace_window_stale_cpus`.
@@ -86,9 +86,10 @@ pub(super) proof fn window_stale_cpus_update_eof(pre: KernelK, post: KernelK, ro
         update is Set ==> root_write_held || ({
             let before = pagetable_c(pre.pt_mp, pre.pt_lower.view(), root);
             let l2_page = before.window_l2_page(spec_v2l4index(update->Set_window.va), spec_v2l3index(update->Set_window.va));
-            &&& before.lower.l2_lock.dom().contains(l2_page)
+            &&& before.lower.l2_perms.dom().contains(l2_page)
             &&& pei_valid(spec_v2l2index(update->Set_window.va))
-            &&& before.lower.l2_lock_of(l2_page).locked_by_thread(spec_v2l2index(update->Set_window.va), thread_id)
+            &&& before.lower.l2_owner(l2_page, spec_v2l2index(update->Set_window.va)) is Some
+            &&& before.lower.l2_owner(l2_page, spec_v2l2index(update->Set_window.va))->Some_thread_id == thread_id
         }),
         update is Set ==> (pagetable_c(pre.pt_mp, pre.pt_lower.view(), root).window_view(update->Set_window).stale_cpus is Some
             ==> pagetable_c(pre.pt_mp, pre.pt_lower.view(), root).window_view(update->Set_window).stale_cpus->Some_0.subset_of(update->Set_cpus))
@@ -151,14 +152,15 @@ pub(super) proof fn window_stale_cpus_update_eof_held_windows(pre: KernelK, root
         forall|w: WindowVa| #![trigger window_lock_map.dom().contains((root, w))] window_lock_map.dom().contains((root, w)) ==> {
             let before = pagetable_c(pre.pt_mp, pre.pt_lower.view(), root);
             let l2_page = before.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va));
-            &&& before.lower.l2_lock.dom().contains(l2_page)
+            &&& before.lower.l2_perms.dom().contains(l2_page)
             &&& pei_valid(spec_v2l2index(w.va))
-            &&& before.lower.l2_lock_of(l2_page).locked_by_thread(spec_v2l2index(w.va), thread_id)
+            &&& before.lower.l2_owner(l2_page, spec_v2l2index(w.va)) is Some
+            &&& before.lower.l2_owner(l2_page, spec_v2l2index(w.va))->Some_thread_id == thread_id
         },
 {
     broadcast use spec_va_2m_valid_index_roundtrip;
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), root);
-    reveal(pagetable_window_typed_lock_map_aligned); reveal(PageTableHigher::wf_l4); reveal(PageTableC::wf_l3); reveal(PageTableC::l2_tokens_paired);
+    reveal(pagetable_window_typed_lock_map_aligned); reveal(PageTableHigher::wf_l4); reveal(PageTableC::wf_l3);
 }
 
 /// EOF closure of `KernelK::replace_window_stale_cpus` for the table itself: no table invariant reads the stale-CPU map.
@@ -171,7 +173,6 @@ proof fn window_stale_cpus_update_eof_table_wf(pre: PageTableC<PT_TYPE>, post: P
         post.wf(),
 {
     assert(post.wf_l3()) by { reveal(PageTableC::wf_l3); };
-    assert(post.l2_tokens_paired()) by { reveal(PageTableC::l2_tokens_paired); };
     assert(post.wf_l2()) by { reveal(PageTableC::wf_l2); };
     assert(post.wf_l1()) by { reveal(PageTableC::wf_l1); };
     assert(post.disjoint_l2()) by { reveal(PageTableC::disjoint_l2); };
@@ -181,7 +182,10 @@ proof fn window_stale_cpus_update_eof_table_wf(pre: PageTableC<PT_TYPE>, post: P
     assert(post.rwx_upper_level_entries()) by { reveal(PageTableC::rwx_upper_level_entries); };
     assert(post.table_pages_wf()) by { reveal(PageTableC::table_pages_wf); };
     assert(post.tables_reachable_wf()) by { reveal(PageTableC::tables_reachable_wf); };
-    assert(post.wf_window_locks()) by { reveal(PageTableC::wf_window_locks); };
+    assert(post.wf_window_locks()) by {
+        assert(post.lower.pagetable_window_locks == pre.lower.pagetable_window_locks && post.lower.l2_perms == pre.lower.l2_perms);
+        reveal(PageTableC::wf_window_locks);
+    };
 }
 
 /// EOF closure of `KernelK::replace_window_stale_cpus` for an update that keeps every listed CPU listed: the TLB

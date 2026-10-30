@@ -351,9 +351,10 @@ impl KernelK {
             forall|w: WindowVa| #![trigger lctx.pagetable_window_lock_map().dom().contains((root, w))] lctx.pagetable_window_lock_map().dom().contains((root, w)) ==> {
                 let before = pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root);
                 let l2_page = before.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va));
-                &&& before.lower.l2_lock.dom().contains(l2_page)
+                &&& before.lower.l2_perms.dom().contains(l2_page)
                 &&& pei_valid(spec_v2l2index(w.va))
-                &&& before.lower.l2_lock_of(l2_page).locked_by_thread(spec_v2l2index(w.va), lctx.thread_id())
+                &&& before.lower.l2_owner(l2_page, spec_v2l2index(w.va)) is Some
+                &&& before.lower.l2_owner(l2_page, spec_v2l2index(w.va))->Some_thread_id == lctx.thread_id()
             },
     {
         proof { window_stale_cpus_update_eof_held_windows(*old(self), root, lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id()); }

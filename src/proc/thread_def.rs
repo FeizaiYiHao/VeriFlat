@@ -79,8 +79,9 @@ pub ghost enum SyscallProgress {
     NewProcess(NewProcessProgress),
     /// Container creation before its range is shared into the child container's root process.
     NewContainer(NewContainerProgress),
-    /// Sharing the first `shared` pages of `source_range` into `target_range` for `origin`.
-    Share4k { source_range: VaRange4K, target_range: VaRange4K, shared: usize, origin: Share4kOrigin },
+    /// Sharing the first `shared` pages of `source_range` into `target_range` for `origin`; `directory` is the
+    /// target-table directory level installed for the next page.
+    Share4k { source_range: VaRange4K, target_range: VaRange4K, shared: usize, directory: Mmap4kDirectory, origin: Share4kOrigin },
     /// A pages rendezvous with `peer` before its checks, with both page tables locked as `tables`, or
     /// after its page tables are released with the recorded result.
     IpcPages { source_range: VaRange4K, target_range: VaRange4K, peer: RwLockThreadPtr, tables: IpcPagesTables, released: Option<RetValueType> },

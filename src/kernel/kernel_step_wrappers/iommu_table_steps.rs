@@ -192,7 +192,10 @@ pub proof fn kernel_cpu_process_thread_pagetable_iommu_table_lock_states_and_pro
                 cpu_array: pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: post.cpu_arr.spec_index(cpu_id).value.lock_state_u(), op: post.cpu_op.view().view()[cpu_id as int], ..pre_u.cpu_array[cpu_id as int] }),
                 process_map: pre_u.process_map.insert(process_ptr, ProcessU {
                     lock_state: post.prc_mp.spec_index(process_ptr).lock_state_u(),
-                    pagetable: Some(PageTableU { lock_state: post.pt_mp.spec_index(pagetable_ptr).lock_state_u(), ..process.pagetable->Some_0 }),
+                    pagetable: Some(PageTableU {
+                        lock_state: post.pt_mp.spec_index(pagetable_ptr).lock_state_u(), pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
+                        ..process.pagetable->Some_0
+                    }),
                     iommu_table: Some(PageTableU { lock_state: post.it_mp.spec_index(iommu_table_ptr).lock_state_u(), ..process.iommu_table->Some_0 }), ..process
                 }),
                 thread_map: pre_u.thread_map.insert(thread_ptr, ThreadU {
@@ -218,7 +221,10 @@ pub proof fn kernel_cpu_process_thread_pagetable_iommu_table_lock_states_and_pro
     });
     assert_maps_equal!(post_u.process_map, pre_u.process_map.insert(process_ptr, ProcessU {
         lock_state: post.prc_mp.spec_index(process_ptr).lock_state_u(),
-        pagetable: Some(PageTableU { lock_state: post.pt_mp.spec_index(pagetable_ptr).lock_state_u(), ..process.pagetable->Some_0 }),
+        pagetable: Some(PageTableU {
+            lock_state: post.pt_mp.spec_index(pagetable_ptr).lock_state_u(), pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
+            ..process.pagetable->Some_0
+        }),
         iommu_table: Some(PageTableU { lock_state: post.it_mp.spec_index(iommu_table_ptr).lock_state_u(), ..process.iommu_table->Some_0 }), ..process
     }), p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }

@@ -83,7 +83,6 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.va_addr_valid(),
             post.wf_l3(),
-            post.l2_tokens_paired(),
             post.wf_l2(),
             post.wf_l1(),
             post.disjoint_l2(),
@@ -94,7 +93,6 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
     {
         reveal(PageTableC::remove_l4_entry_eof_transition_framing);
         assert(post.wf_l3()) by { reveal(PageTableC::wf_l3); };
-        assert(post.l2_tokens_paired()) by { reveal(PageTableC::l2_tokens_paired); };
         assert(post.wf_l2()) by { reveal(PageTableC::wf_l2); };
         assert(post.wf_l1()) by { reveal(PageTableC::wf_l1); };
         assert(post.disjoint_l2()) by { reveal(PageTableC::disjoint_l2); };

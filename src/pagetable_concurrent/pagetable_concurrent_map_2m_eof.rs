@@ -8,17 +8,18 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
     #[verifier::opaque]
     pub open spec fn map_2m_page_eof_transition_framing(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_entry: MapEntry) -> bool {
         &&& post.higher == pre.higher
-        &&& post.lower == (PageTableLower { l2_ghost: post.lower.l2_ghost, mapping_2m: post.lower.mapping_2m, ..pre.lower })
-        &&& post.lower.l2_ghost =~= pre.lower.l2_ghost.insert(target_l2_p, post.lower.l2_page(target_l2_p))
-        &&& post.lower.l2_ghost.dom() =~= pre.lower.l2_ghost.dom()
+        &&& post.lower == (PageTableLower { l2_perms: post.lower.l2_perms, mapping_2m: post.lower.mapping_2m, ..pre.lower })
+        &&& post.lower.l2_perms.dom() == pre.lower.l2_perms.dom()
+        &&& forall|p: PageMapPtr| #![trigger post.lower.l2_perms.spec_index(p)] p != target_l2_p ==> post.lower.l2_perms.spec_index(p) == pre.lower.l2_perms.spec_index(p)
+        &&& post.lower.l2_perms.spec_index(target_l2_p).addr() == target_l2_p && post.lower.l2_perms.spec_index(target_l2_p).is_init()
         &&& post.lower.l2_page(target_l2_p).addr() == target_l2_p
         &&& post.lower.l2_page(target_l2_p).wf()
-        &&& forall|i: usize|
-            #![trigger pre.lower.l2_page(target_l2_p).spec_index(i)]
-            #![trigger post.lower.l2_page(target_l2_p).spec_index(i)]
-            pei_valid(i) && i != target_l2i ==> post.lower.l2_page(target_l2_p).spec_index(i) =~= pre.lower.l2_page(target_l2_p).spec_index(i)
-        &&& post.lower.l2_page(target_l2_p).spec_index(target_l2i) =~= (PageEntry { addr: target_entry.addr,
+        &&& forall|p: PageMapPtr, i: L2Index| #![trigger post.lower.l2_page(p).entry_lock(i)]
+            p == target_l2_p && i != target_l2i ==> post.lower.l2_page(p).entry_lock(i) == pre.lower.l2_page(p).entry_lock(i)
+        &&& post.lower.l2_entry(target_l2_p, target_l2i) == (PageEntry { addr: target_entry.addr,
             perm: PageEntryPerm { present: true, ps: true, write: target_entry.write, execute_disable: target_entry.execute_disable, user: true, kernel_present: true } })
+        &&& post.lower.l2_owner(target_l2_p, target_l2i) == pre.lower.l2_owner(target_l2_p, target_l2i)
+        &&& post.lower.l2_page(target_l2_p).entry_lock(target_l2i).l1() == pre.lower.l2_page(target_l2_p).entry_lock(target_l2i).l1()
         &&& post.lower.mapping_2m == pre.lower.mapping_2m.insert(spec_index2va((target_l4i, target_l3i, target_l2i, 0)), target_entry)
     }
 
@@ -42,7 +43,6 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
     {
         Self::map_2m_page_eof_va_addr_valid(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry);
         Self::map_2m_page_eof_wf_l3(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry);
-        Self::map_2m_page_eof_l2_tokens_paired(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry);
         Self::map_2m_page_eof_wf_l2(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry);
         Self::map_2m_page_eof_wf_l1(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry);
         Self::map_2m_page_eof_disjoint_l2(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry);
@@ -79,18 +79,6 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         reveal(PageTableC::wf_l3);
     }
 
-    /// EOF closure of `map_2m_page`: `l2_tokens_paired`.
-    proof fn map_2m_page_eof_l2_tokens_paired(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_entry: MapEntry)
-        requires
-            pre.l2_tokens_paired(),
-            pre.lower.l2_perms.dom().contains(target_l2_p),
-            Self::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry),
-        ensures
-            post.l2_tokens_paired(),
-    {
-        reveal(PageTableC::map_2m_page_eof_transition_framing);
-        reveal(PageTableC::l2_tokens_paired);
-    }
 
     /// EOF closure of `map_2m_page`: `wf_l2`.
     proof fn map_2m_page_eof_wf_l2(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_entry: MapEntry)

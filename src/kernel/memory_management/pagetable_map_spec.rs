@@ -38,9 +38,9 @@ verus! {
             pt_mp.dom().contains(pagetable_p) && !(pt_mp.spec_index(pagetable_p).locking_thread() is Write) ==> forall|p: PageMapPtr, i: L2Index|
                 #![trigger pagetable_c(pt_mp, pt_lower, pagetable_p).lower.window_stale_cpus.dom().contains((p, i))]
                 pagetable_c(pt_mp, pt_lower, pagetable_p).lower.window_stale_cpus.dom().contains((p, i)) ==> {
-                    &&& pagetable_c(pt_mp, pt_lower, pagetable_p).lower.l2_lock.dom().contains(p)
+                    &&& pagetable_c(pt_mp, pt_lower, pagetable_p).lower.l2_perms.dom().contains(p)
                     &&& pei_valid(i)
-                    &&& pagetable_c(pt_mp, pt_lower, pagetable_p).lower.l2_lock_of(p).locked(i)
+                    &&& pagetable_c(pt_mp, pt_lower, pagetable_p).lower.l2_owner(p, i) is Some
                 }
     }
 
@@ -50,9 +50,9 @@ verus! {
             pt_mp.dom().contains(pagetable_ptr),
         ensures
             !(pt_mp.spec_index(pagetable_ptr).locking_thread() is Write) && pagetable_c(pt_mp, pt_lower, pagetable_ptr).lower.window_stale_cpus.dom().contains((p, i)) ==> {
-                &&& pagetable_c(pt_mp, pt_lower, pagetable_ptr).lower.l2_lock.dom().contains(p)
+                &&& pagetable_c(pt_mp, pt_lower, pagetable_ptr).lower.l2_perms.dom().contains(p)
                 &&& pei_valid(i)
-                &&& pagetable_c(pt_mp, pt_lower, pagetable_ptr).lower.l2_lock_of(p).locked(i)
+                &&& pagetable_c(pt_mp, pt_lower, pagetable_ptr).lower.l2_owner(p, i) is Some
             },
     { reveal(pagetable_window_stale_cpus_only_when_locked); }
 

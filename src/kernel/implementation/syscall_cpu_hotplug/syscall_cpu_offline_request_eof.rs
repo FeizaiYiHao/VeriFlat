@@ -14,6 +14,8 @@ pub(super) open spec fn cpu_offline_request_eof_transition_framing(pre: KernelK,
     &&& new_table.owning_container == old_table.owning_container
     &&& new_table.container_depth == old_table.container_depth
     &&& new_table.flags.entries_unchanged_except(&old_table.flags, target)
+    &&& forall|fp: RwLockCpuOfflineFlagsPtr, c: CpuId| #![trigger post.cpu_offline_mp.spec_index(fp).flags.spec_index(c)]
+        pre.cpu_offline_mp.dom().contains(fp) && index_valid(NUM_CPUS, c) && (fp != flags_ptr || c != target) ==> post.cpu_offline_mp.spec_index(fp).flags.spec_index(c).view().view() == pre.cpu_offline_mp.spec_index(fp).flags.spec_index(c).view().view()
     &&& new_cell.view().requested
     &&& new_cell.view().index() == old_cell.view().index()
     &&& new_cell.is_init()

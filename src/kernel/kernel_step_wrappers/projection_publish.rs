@@ -95,7 +95,7 @@ pub proof fn kernel_process_published_and_parent_unlocked_implies_u_step(
             let pre = kernel_k_to_kernel_u(*before);
             let post = kernel_k_to_kernel_u(*after);
             let ancestors = pre.process_map[parent].uppertree_seq.push(parent);
-            let empty_table = PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty() };
+            let empty_table = PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() };
             let cost: usize = if (iommu is Some) { 5 } else { 3 };
             &&& pre.process_map.dom().contains(parent)
             &&& !pre.process_map.dom().contains(child)
@@ -266,7 +266,7 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_process_map(
             let pre = kernel_k_to_kernel_u(*before);
             let post = kernel_k_to_kernel_u(*after);
             let ancestors = pre.process_map[parent].uppertree_seq.push(parent);
-            let empty_table = PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty() };
+            let empty_table = PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() };
             &&& post.process_map.dom() == pre.process_map.dom().insert(child)
             &&& forall|p: RwLockProcessPtr| #![trigger post.process_map[p]] pre.process_map.dom().contains(p) ==> post.process_map[p] == (ProcessU {
                 lock_state: if p == parent { LockStateU::Unlocked } else { pre.process_map[p].lock_state },
@@ -344,6 +344,7 @@ pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_step(pre: &Ker
         ({
             let a = kernel_k_to_kernel_u(*pre);
             let b = kernel_k_to_kernel_u(*post);
+            let owner = pre.pt_mp.spec_index(table).view().proc_ptr;
             &&& a.thread_map.dom().contains(thread)
             &&& a.thread_map[thread].lock_state is WriteLocked
             &&& a.thread_map[thread].quota_4k > 0
@@ -355,6 +356,12 @@ pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_step(pre: &Ker
                 thread_map: a.thread_map.insert(thread, ThreadU { quota_4k: (a.thread_map[thread].quota_4k - 1) as usize, ..a.thread_map[thread] }),
                 container_map: a.container_map.insert(source, ContainerU { owned_pages: a.container_map[source].owned_pages.remove(page), ..a.container_map[source] })
                     .insert(target, ContainerU { owned_pages: a.container_map[target].owned_pages.insert(page), ..a.container_map[target] }),
+                process_map: if a.process_map.dom().contains(owner) && a.process_map[owner].pagetable is Some {
+                    a.process_map.insert(owner, ProcessU {
+                        pagetable: Some(PageTableU { pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), table).lower.pagetable_window_locks, ..a.process_map[owner].pagetable->Some_0 }),
+                        ..a.process_map[owner]
+                    })
+                } else { a.process_map },
                 ..a
             })
         }),
@@ -406,6 +413,7 @@ pub proof fn kernel_4k_mapping_copied_implies_u_step(
         post.pt_mp.unchanged_except(&pre.pt_mp, target_table),
         post.pt_mp.spec_index(target_table).locking_thread() == pre.pt_mp.spec_index(target_table).locking_thread(),
         post.pt_lower.view() == pre.pt_lower.view().insert(target_table, post.pt_lower.view().spec_index(target_table)),
+        pagetable_c(post.pt_mp, post.pt_lower.view(), target_table).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), target_table).lower.pagetable_window_locks,
         pagetable_c(post.pt_mp, post.pt_lower.view(), target_table).mapping_4k() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_4k().insert(target_va, pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_table).mapping_4k()[source_va]),
         pagetable_c(post.pt_mp, post.pt_lower.view(), target_table).mapping_2m() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_2m(),
         pagetable_c(post.pt_mp, post.pt_lower.view(), target_table).mapping_1g() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_1g(),

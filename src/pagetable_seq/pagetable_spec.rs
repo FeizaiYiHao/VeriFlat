@@ -55,13 +55,32 @@ pub struct PageTable<const TABLE_TYPE: PTType> {
 /// Directory topology, backing page-map pages, CR3/PCID bookkeeping, and the
 /// owning process pointer are kernel implementation state. A CPU table never has a domain id.  Publishing or
 /// removing an abstract mapping changes this view; preparing an empty walk
-/// does not.
+/// does not. `pagetable_window_locks` holds the lock mode of every 2M window of an existing L2 page of a split CPU
+/// table; it is empty for an IOMMU table.
 pub ghost struct PageTableU {
     pub lock_state: LockStateU,
     pub did: Option<VtdDomainId>,
     pub mapping_4k: Map<VAddr, MapEntry>,
     pub mapping_2m: Map<VAddr, MapEntry>,
     pub mapping_1g: Map<VAddr, MapEntry>,
+    pub pagetable_window_locks: Map<WindowVa, LockStateU>,
+}
+
+/// `m` with every window of `range` that it holds write-locked.
+pub open spec fn pagetable_window_locks_after_locking_range(m: Map<WindowVa, LockStateU>, range: VaRange4K) -> Map<WindowVa, LockStateU> {
+    Map::new(m.dom(), |w: WindowVa| if va_range_2m_windows(range).contains(w) { LockStateU::WriteLocked } else { m[w] })
+}
+
+/// `m` with every window of `range` that it holds unlocked.
+pub open spec fn pagetable_window_locks_after_unlocking_range(m: Map<WindowVa, LockStateU>, range: VaRange4K) -> Map<WindowVa, LockStateU> {
+    Map::new(m.dom(), |w: WindowVa| if va_range_2m_windows(range).contains(w) { LockStateU::Unlocked } else { m[w] })
+}
+
+/// `m` plus the 512 windows of a new L2 page under L3 entry `(l4i, l3i)`: those in `locked_range` start
+/// write-locked, the others unlocked.
+pub open spec fn pagetable_window_locks_after_new_l2_page(m: Map<WindowVa, LockStateU>, l4i: L4Index, l3i: L3Index, locked_range: VaRange4K) -> Map<WindowVa, LockStateU> {
+    Map::new(m.dom() + Set::<usize>::range(0, 512).map_by(|i: usize| WindowVa { va: spec_index2va((l4i, l3i, i, 0usize)) }, |w: WindowVa| spec_v2l2index(w.va)),
+        |w: WindowVa| if m.dom().contains(w) { m[w] } else if va_range_2m_windows(locked_range).contains(w) { LockStateU::WriteLocked } else { LockStateU::Unlocked })
 }
 
 impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
@@ -73,6 +92,7 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             mapping_4k: self.mapping_4k().filter_keys(|va: VAddr| self.mapping_4k().spec_index(va).present),
             mapping_2m: self.mapping_2m().filter_keys(|va: VAddr| self.mapping_2m().spec_index(va).present),
             mapping_1g: self.mapping_1g().filter_keys(|va: VAddr| self.mapping_1g().spec_index(va).present),
+            pagetable_window_locks: Map::empty(),
         }
     }
 

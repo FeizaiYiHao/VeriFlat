@@ -62,6 +62,7 @@ pub proof fn kernel_snapshot_nonlock_fields_and_lock_states_unchanged_implies_u_
                 let after = krnl.pt_mp.spec_index(p).locking_thread();
                 &&& (after is Write) == (before is Write)
                 &&& (after is Read) == (before is Read)
+                &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(steps.snapshot_k().pt_mp, steps.snapshot_k().pt_lower.view(), p).lower.pagetable_window_locks
             },
         forall|p: RwLockPageTableRoot| #![trigger krnl.it_mp.spec_index(p)]
             krnl.it_mp.dom().contains(p) && steps.snapshot_k().it_mp.dom().contains(p) ==> {

@@ -59,6 +59,7 @@ pub proof fn kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(pre: &
                 let after = post.pt_mp.spec_index(p).locking_thread();
                 &&& (after is Write) == (before is Write)
                 &&& (after is Read) == (before is Read)
+                &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks
             },
         forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
             post.it_mp.dom().contains(p) && pre.it_mp.dom().contains(p) ==> {
@@ -130,6 +131,7 @@ pub proof fn kernel_lock_states_unchanged_except_tables_of_implies_u_eq(pre: &Ke
                 let after = post.pt_mp.spec_index(p).locking_thread();
                 &&& (after is Write) == (before is Write)
                 &&& (after is Read) == (before is Read)
+                &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks
             },
         forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
             post.it_mp.dom().contains(p) && pre.it_mp.dom().contains(p) && (zombie is Some ==> Some(p) != post.prc_mp.spec_index(zombie->Some_0).view().iommu_table) ==> {
@@ -241,6 +243,7 @@ proof fn kernel_lock_states_unchanged_except_tables_of_implies_u_process_map(pre
                 let after = post.pt_mp.spec_index(p).locking_thread();
                 &&& (after is Write) == (before is Write)
                 &&& (after is Read) == (before is Read)
+                &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks
             },
         forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
             post.it_mp.dom().contains(p) && pre.it_mp.dom().contains(p) && (zombie is Some ==> Some(p) != post.prc_mp.spec_index(zombie->Some_0).view().iommu_table) ==> {
@@ -629,6 +632,8 @@ pub proof fn kernel_restored_locks_implies_u_eq(pre: &KernelK, post: &KernelK, c
         (post.cpu_arr.spec_index(cpu).value.locking_thread() is Write) == (pre.cpu_arr.spec_index(cpu).value.locking_thread() is Write),
         (post.cpu_arr.spec_index(cpu).value.locking_thread() is Read) == (pre.cpu_arr.spec_index(cpu).value.locking_thread() is Read),
         post.it_mp == pre.it_mp,
+        forall|p: RwLockPageTableRoot| #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), p)]
+            pre.pt_mp.dom().contains(p) ==> pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks,
         match container {
             Some(p) => {
                 &&& post.ctn_mp.unchanged_except(&pre.ctn_mp, p)
@@ -916,7 +921,7 @@ proof fn kernel_container_root_published_implies_u_process_map(before: &KernelK,
             let post = kernel_k_to_kernel_u(*after);
             post.process_map == pre.process_map.insert(process, ProcessU {
                 lock_state: LockStateU::WriteLocked, zombie: false,
-                pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty() }),
+                pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() }),
                 iommu_table: None, pcid: post.process_map[process].pcid, owning_container: child, owned_pci_functions: Set::empty(), quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
                 parent: None, children: Seq::empty(), depth: 0, uppertree_seq: Seq::empty(), subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
             })
@@ -931,7 +936,7 @@ proof fn kernel_container_root_published_implies_u_process_map(before: &KernelK,
     assert_seqs_equal!(post.process_map[process].owned_threads == Seq::empty());
     assert_maps_equal!(post.process_map, pre.process_map.insert(process, ProcessU {
         lock_state: LockStateU::WriteLocked, zombie: false,
-        pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty() }),
+        pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() }),
         iommu_table: None, pcid: post.process_map[process].pcid, owning_container: child, owned_pci_functions: Set::empty(), quota_4k: process_quota, quota_2m: 0, quota_1g: 0,
         parent: None, children: Seq::empty(), depth: 0, uppertree_seq: Seq::empty(), subtree_set: Set::empty(), owned_threads: Seq::empty(), killed: false,
     }), p => {

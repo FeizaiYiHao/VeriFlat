@@ -30,7 +30,8 @@ pub proof fn kernel_process_nonlock_fields_and_locks_unchanged_implies_u_process
         forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
             pre.prc_mp.dom().contains(p) && post.prc_mp.dom().contains(p) ==> post.prc_mp.spec_index(p).locking_thread() == pre.prc_mp.spec_index(p).locking_thread(),
         forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
-            pre.pt_mp.dom().contains(p) && post.pt_mp.dom().contains(p) ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread(),
+            pre.pt_mp.dom().contains(p) && post.pt_mp.dom().contains(p) ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
+                && pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks,
         forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
             pre.it_mp.dom().contains(p) && post.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread(),
     ensures kernel_k_user_projection(*post).process_map == kernel_k_user_projection(*pre).process_map,
@@ -313,7 +314,8 @@ pub proof fn kernel_cpu_went_off_fields_implies_u_thread_map(pre: &KernelK, post
     }
 }
 
-/// The page-owner move leaves the process map projection unchanged: only the write-held table `table` changed, with equal mappings.
+/// The page-owner move changes the process map projection at most in the window locks of the write-held table `table`, whose
+/// mappings are equal.
 pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_process_map(pre: &KernelK, post: &KernelK, lctx: &LocalContext, table: RwLockPageTableRoot)
     requires
         process_pagetable_match(pre.prc_mp, pre.pt_mp),
@@ -327,16 +329,34 @@ pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_process_map(pr
         pagetable_c(post.pt_mp, post.pt_lower.view(), table).mapping_4k() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).mapping_4k(),
         pagetable_c(post.pt_mp, post.pt_lower.view(), table).mapping_2m() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).mapping_2m(),
         pagetable_c(post.pt_mp, post.pt_lower.view(), table).mapping_1g() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).mapping_1g(),
-    ensures kernel_k_to_kernel_u(*post).process_map == kernel_k_to_kernel_u(*pre).process_map,
+    ensures
+        ({
+            let a = kernel_k_to_kernel_u(*pre);
+            let owner = pre.pt_mp.spec_index(table).view().proc_ptr;
+            kernel_k_to_kernel_u(*post).process_map == if a.process_map.dom().contains(owner) && a.process_map[owner].pagetable is Some {
+                a.process_map.insert(owner, ProcessU {
+                    pagetable: Some(PageTableU { pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), table).lower.pagetable_window_locks, ..a.process_map[owner].pagetable->Some_0 }),
+                    ..a.process_map[owner]
+                })
+            } else { a.process_map }
+        }),
 {
     pre.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), table);
     post.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), table);
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_pagetable_match);
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
-    assert_maps_equal!(b.process_map, a.process_map, p => {
-        if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }
-    });
+    let owner = pre.pt_mp.spec_index(table).view().proc_ptr;
+    if a.process_map.dom().contains(owner) && a.process_map[owner].pagetable is Some {
+        assert_maps_equal!(b.process_map, a.process_map.insert(owner, ProcessU {
+            pagetable: Some(PageTableU { pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), table).lower.pagetable_window_locks, ..a.process_map[owner].pagetable->Some_0 }),
+            ..a.process_map[owner]
+        }), p => { if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); } });
+    } else {
+        assert_maps_equal!(b.process_map, a.process_map, p => {
+            if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }
+        });
+    }
 }
 
 /// The write-held thread `thread` losing one 4K quota projects to that thread-map update.
@@ -493,6 +513,8 @@ pub proof fn kernel_process_lock_mode_changed_implies_u_process_map(pre: &Kernel
         post.prc_mp.spec_index(process_ptr).lock_state_u() == mode,
         kernel_process_nonlock_fields_unchanged(pre.prc_mp, post.prc_mp),
         kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view()),
+        forall|p: RwLockPageTableRoot| #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), p)]
+            pre.pt_mp.dom().contains(p) ==> pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks,
         if pagetable {
             let table = post.prc_mp.spec_index(process_ptr).view().pagetable;
             &&& !post.prc_mp.spec_index(process_ptr).view().zombie

@@ -8,17 +8,25 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
     #[verifier::opaque]
     pub open spec fn map_4k_page_eof_transition_framing(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index,
         target_l1_p: PageMapPtr, target_entry: MapEntry) -> bool {
+        let l2_p = pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr;
         &&& post.higher == pre.higher
-        &&& post.lower == (PageTableLower { l1_tables: post.lower.l1_tables, mapping_4k: post.lower.mapping_4k, ..pre.lower })
-        &&& post.lower.l1_tables.dom() == pre.lower.l1_tables.dom()
-        &&& post.lower.l1_tables =~= pre.lower.l1_tables.insert(target_l1_p, post.lower.l1_tables.spec_index(target_l1_p))
-        &&& post.lower.l1_tables.spec_index(target_l1_p).addr() == target_l1_p
-        &&& post.lower.l1_tables.spec_index(target_l1_p).is_init()
-        &&& post.lower.l1_tables.spec_index(target_l1_p).value().wf()
-        &&& forall|i: usize|
-            #![trigger post.lower.l1_tables.spec_index(target_l1_p).value().spec_index(i)]
-            pei_valid(i) && i != target_l1i ==> post.lower.l1_tables.spec_index(target_l1_p).value().spec_index(i) =~= pre.lower.l1_tables.spec_index(target_l1_p).value().spec_index(i)
-        &&& post.lower.l1_tables.spec_index(target_l1_p).value().spec_index(target_l1i) =~= (PageEntry { addr: target_entry.addr,
+        &&& post.lower == (PageTableLower { l2_perms: post.lower.l2_perms, mapping_4k: post.lower.mapping_4k, ..pre.lower })
+        &&& post.lower.l2_perms.dom() == pre.lower.l2_perms.dom()
+        &&& forall|p: PageMapPtr| #![trigger post.lower.l2_perms.spec_index(p)] p != l2_p ==> post.lower.l2_perms.spec_index(p) == pre.lower.l2_perms.spec_index(p)
+        &&& post.lower.l2_perms.spec_index(l2_p).addr() == l2_p && post.lower.l2_perms.spec_index(l2_p).is_init()
+        &&& post.lower.l2_page(l2_p).addr() == l2_p
+        &&& forall|p: PageMapPtr, i: L2Index| #![trigger post.lower.l2_page(p).entry_lock(i)]
+            p == l2_p && i != target_l2i ==> post.lower.l2_page(p).entry_lock(i) == pre.lower.l2_page(p).entry_lock(i)
+        &&& post.lower.l2_entry(l2_p, target_l2i) == pre.lower.l2_entry(l2_p, target_l2i)
+        &&& post.lower.l2_owner(l2_p, target_l2i) == pre.lower.l2_owner(l2_p, target_l2i)
+        &&& pre.lower.l2_page(l2_p).entry_lock(target_l2i).l1() is Some && pre.lower.l1_perm(l2_p, target_l2i).addr() == target_l1_p
+        &&& post.lower.l2_page(l2_p).entry_lock(target_l2i).l1() is Some
+        &&& post.lower.l1_perm(l2_p, target_l2i).addr() == target_l1_p
+        &&& post.lower.l1_perm(l2_p, target_l2i).is_init()
+        &&& post.lower.l1_page(l2_p, target_l2i).wf()
+        &&& forall|p: PageMapPtr, i: L2Index, j: L1Index| #![trigger post.lower.l1_page(p, i).spec_index(j)]
+            p == l2_p && i == target_l2i && pei_valid(j) && j != target_l1i ==> post.lower.l1_page(p, i).spec_index(j) =~= pre.lower.l1_page(p, i).spec_index(j)
+        &&& post.lower.l1_page(l2_p, target_l2i).spec_index(target_l1i) =~= (PageEntry { addr: target_entry.addr,
             perm: PageEntryPerm { present: true, ps: false, write: target_entry.write, execute_disable: target_entry.execute_disable, user: true, kernel_present: true } })
         &&& post.lower.mapping_4k == pre.lower.mapping_4k.insert(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)), target_entry)
     }
@@ -35,7 +43,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             page_table_key_4k_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
             pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
-            pre.lower.l1_tables.dom().contains(target_l1_p),
+            pre.lower.l1_rev_map.dom().contains(target_l1_p),
             page_ptr_valid(target_entry.addr),
             target_entry.present,
             Self::map_4k_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry),
@@ -44,7 +52,6 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
     {
         Self::map_4k_page_eof_va_addr_valid(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry);
         Self::map_4k_page_eof_wf_l3(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry);
-        Self::map_4k_page_eof_l2_tokens_paired(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry);
         Self::map_4k_page_eof_wf_l2(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry);
         Self::map_4k_page_eof_wf_l1(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry);
         Self::map_4k_page_eof_disjoint_l2(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry);
@@ -83,18 +90,6 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         reveal(PageTableC::wf_l3);
     }
 
-    /// EOF closure of `map_4k_page`: `l2_tokens_paired`.
-    proof fn map_4k_page_eof_l2_tokens_paired(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index, target_l1_p: PageMapPtr,
-        target_entry: MapEntry)
-        requires
-            pre.l2_tokens_paired(),
-            Self::map_4k_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry),
-        ensures
-            post.l2_tokens_paired(),
-    {
-        reveal(PageTableC::map_4k_page_eof_transition_framing);
-        reveal(PageTableC::l2_tokens_paired);
-    }
 
     /// EOF closure of `map_4k_page`: `wf_l2`.
     proof fn map_4k_page_eof_wf_l2(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index, target_l1_p: PageMapPtr,
@@ -114,7 +109,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         target_entry: MapEntry)
         requires
             pre.wf_l1(),
-            pre.lower.l1_tables.dom().contains(target_l1_p),
+            pre.lower.l1_rev_map.dom().contains(target_l1_p),
             Self::map_4k_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry),
         ensures
             post.wf_l1(),
@@ -220,7 +215,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         target_entry: MapEntry)
         requires
             pre.user_only(),
-            pre.lower.l1_tables.dom().contains(target_l1_p),
+            pre.lower.l1_rev_map.dom().contains(target_l1_p),
             Self::map_4k_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, target_entry),
         ensures
             post.user_only(),

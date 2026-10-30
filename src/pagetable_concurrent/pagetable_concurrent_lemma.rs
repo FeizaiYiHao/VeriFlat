@@ -128,40 +128,32 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
                 ==> self.lower.l2_perms.dom().contains(self.higher.l3_tables.view().spec_index(p).value().spec_index(i).addr),
     { reveal(PageTableC::wf_l3); }
 
-    pub proof fn l2_tokens_paired_at(&self, p: PageMapPtr)
-        requires
-            self.l2_tokens_paired(),
-            self.lower.l2_perms.dom().contains(p),
-        ensures
-            self.lower.l2_ghost.dom().contains(p),
-            self.lower.l2_lock.dom().contains(p),
-            self.lower.l2_perms.spec_index(p).addr() == p,
-            self.lower.l2_perms.spec_index(p).is_init(),
-            self.lower.l2_perms.spec_index(p).value().addr() == p,
-            self.lower.l2_page(p).addr() == p,
-            self.lower.l2_page(p).wf(),
-            self.lower.l2_lock_of(p).addr() == p,
-            self.lower.l2_lock_of(p).wf(),
-    { reveal(PageTableC::l2_tokens_paired); }
-
     pub proof fn wf_l2_at(&self, p: PageMapPtr, i: L2Index)
         requires
             self.wf_l2(),
             self.lower.l2_perms.dom().contains(p),
             pei_valid(i),
         ensures
-            self.lower.l2_page(p).spec_index(i).perm.ps && self.lower.l2_page(p).spec_index(i).perm.present ==> self.lower.l2_page(p).spec_index(i).perm.kernel_present,
-            self.lower.l2_page(p).spec_index(i).perm.present && self.lower.l2_page(p).spec_index(i).perm.ps == false ==> self.lower.l1_tables.dom().contains(self.lower.l2_page(p).spec_index(i).addr),
+            self.lower.l2_perms.spec_index(p).addr() == p,
+            self.lower.l2_perms.spec_index(p).is_init(),
+            self.lower.l2_page(p).addr() == p,
+            self.lower.l2_page(p).wf(),
+            self.lower.l2_page(p).entry_lock(i).inv(),
+            self.lower.l2_entry(p, i).perm.ps && self.lower.l2_entry(p, i).perm.present ==> self.lower.l2_entry(p, i).perm.kernel_present,
+            (self.lower.l2_entry(p, i).perm.present && !self.lower.l2_entry(p, i).perm.ps) == (self.lower.l2_page(p).entry_lock(i).l1() is Some),
+            self.lower.l2_page(p).entry_lock(i).l1() is Some
+                ==> self.lower.l1_perm(p, i).addr() == self.lower.l2_entry(p, i).addr && self.lower.l1_rev_map.dom().contains(self.lower.l2_entry(p, i).addr),
     { reveal(PageTableC::wf_l2); }
 
-    pub proof fn wf_l1_at(&self, p: PageMapPtr)
+    pub proof fn wf_l1_at(&self, p: PageMapPtr, i: L2Index)
         requires
             self.wf_l1(),
-            self.lower.l1_tables.dom().contains(p),
+            self.lower.l2_perms.dom().contains(p),
+            pei_valid(i),
+            self.lower.l2_page(p).entry_lock(i).l1() is Some,
         ensures
-            self.lower.l1_tables.spec_index(p).addr() == p,
-            self.lower.l1_tables.spec_index(p).is_init(),
-            self.lower.l1_tables.spec_index(p).value().wf(),
+            self.lower.l1_perm(p, i).is_init(),
+            self.lower.l1_page(p, i).wf(),
     { reveal(PageTableC::wf_l1); }
 
     pub proof fn tables_reachable_wf_l2_at(&self, p: PageMapPtr)
@@ -178,7 +170,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
     pub proof fn tables_reachable_wf_l1_at(&self, p: PageMapPtr)
         requires
             self.tables_reachable_wf(),
-            self.lower.l1_tables.dom().contains(p),
+            self.lower.l1_rev_map.dom().contains(p),
         ensures
             self.kernel_l4_end() <= self.lower.l1_rev_map.spec_index(p).0 && pei_valid(self.lower.l1_rev_map.spec_index(p).0),
             pei_valid(self.lower.l1_rev_map.spec_index(p).1) && pei_valid(self.lower.l1_rev_map.spec_index(p).2),
@@ -220,12 +212,16 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
     pub proof fn wf_window_locks_va_at(&self, w: WindowVa)
         requires
             self.wf_window_locks(),
-            self.lower.locked_windows.contains(w),
+            self.lower.pagetable_window_locks.dom().contains(w),
         ensures
             page_table_key_2m_valid::<TABLE_TYPE>(w.va),
             self.kernel_l4_end() <= spec_v2l4index(w.va),
             self.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va)),
-            self.lower.l2_lock_of(self.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va))).locked(spec_v2l2index(w.va)),
+            self.lower.pagetable_window_locks.spec_index(w) == if self.lower.l2_owner(self.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) is Some {
+                LockStateU::WriteLocked
+            } else {
+                LockStateU::Unlocked
+            },
     { reveal(PageTableC::wf_window_locks); }
 
     pub proof fn wf_window_locks_slot_at(&self, p: PageMapPtr, i: L2Index)
@@ -233,9 +229,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             self.wf_window_locks(),
             self.lower.l2_perms.dom().contains(p),
             pei_valid(i),
-            self.lower.l2_lock_of(p).locked(i),
         ensures
-            self.lower.locked_windows.contains(WindowVa { va: spec_index2va((self.higher.l2_rev_map.view().spec_index(p).0, self.higher.l2_rev_map.view().spec_index(p).1, i, 0)) }),
+            self.lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((self.higher.l2_rev_map.view().spec_index(p).0, self.higher.l2_rev_map.view().spec_index(p).1, i, 0)) }),
     { reveal(PageTableC::wf_window_locks); }
 
     pub broadcast proof fn resolve_l2_addr_unique_at(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, l4j: L4Index, l3j: L3Index, l2j: L2Index)
@@ -271,10 +266,10 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             pei_valid(l2i),
             pei_valid(l2j),
         ensures
-            #![trigger self.disjoint_l2(), self.lower.l2_page(pi).spec_index(l2i).addr, self.lower.l2_page(pj).spec_index(l2j).addr]
-            (pi, l2i) != (pj, l2j) && self.lower.l2_page(pi).spec_index(l2i).perm.present
-                && self.lower.l2_page(pj).spec_index(l2j).perm.present && !self.lower.l2_page(pi).spec_index(l2i).perm.ps && !self.lower.l2_page(pj).spec_index(l2j).perm.ps
-                    ==> self.lower.l2_page(pi).spec_index(l2i).addr != self.lower.l2_page(pj).spec_index(l2j).addr,
+            #![trigger self.disjoint_l2(), self.lower.l2_entry(pi, l2i).addr, self.lower.l2_entry(pj, l2j).addr]
+            (pi, l2i) != (pj, l2j) && self.lower.l2_entry(pi, l2i).perm.present
+                && self.lower.l2_entry(pj, l2j).perm.present && !self.lower.l2_entry(pi, l2i).perm.ps && !self.lower.l2_entry(pj, l2j).perm.ps
+                    ==> self.lower.l2_entry(pi, l2i).addr != self.lower.l2_entry(pj, l2j).addr,
     { reveal(PageTableC::disjoint_l2); }
 
     pub broadcast proof fn resolve_l2_target_exists(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index)
@@ -287,7 +282,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             pei_valid(l2i),
         ensures
             #![trigger self.spec_resolve_mapping_l2(l4i, l3i, l2i)]
-            self.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some ==> self.lower.l1_tables.dom().contains(self.spec_resolve_mapping_l2(l4i, l3i, l2i)->0.addr),
+            self.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some ==> self.lower.l1_rev_map.dom().contains(self.spec_resolve_mapping_l2(l4i, l3i, l2i)->0.addr),
     {
         reveal(PageTableHigher::wf_l4);
         reveal(PageTableC::wf_l3);
@@ -300,7 +295,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             self.cr3() == other.cr3(),
             self.higher.l4_table.view() == other.higher.l4_table.view(),
             self.higher.l3_tables.view() == other.higher.l3_tables.view(),
-            self.lower.l2_ghost == other.lower.l2_ghost,
+            forall|p: PageMapPtr, i: L2Index| #![trigger self.lower.l2_entry(p, i)] self.lower.l2_entry(p, i) == other.lower.l2_entry(p, i),
         ensures
             forall|l4i: L4Index|
                 #![trigger pei_valid(l4i)]

@@ -36,7 +36,7 @@ proof fn kernel_thread_dequeued_implies_u_process_map(before: &KernelK, entry: &
         forall|p: RwLockProcessPtr| #![trigger after.prc_mp.spec_index(p)] before.prc_mp.dom().contains(p) && after.prc_mp.dom().contains(p) ==>
             after.prc_mp.spec_index(p).locking_thread() == before.prc_mp.spec_index(p).locking_thread(),
         forall|p: RwLockPageTableRoot| #![trigger after.pt_mp.spec_index(p)] before.pt_mp.dom().contains(p) && after.pt_mp.dom().contains(p) ==>
-            after.pt_mp.spec_index(p).locking_thread() == before.pt_mp.spec_index(p).locking_thread(),
+            after.pt_mp.spec_index(p).locking_thread() == before.pt_mp.spec_index(p).locking_thread() && pagetable_c(after.pt_mp, after.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(before.pt_mp, before.pt_lower.view(), p).lower.pagetable_window_locks,
         forall|p: RwLockPageTableRoot| #![trigger after.it_mp.spec_index(p)] before.it_mp.dom().contains(p) && after.it_mp.dom().contains(p) ==>
             after.it_mp.spec_index(p).locking_thread() == before.it_mp.spec_index(p).locking_thread(),
     ensures
@@ -111,7 +111,7 @@ pub proof fn kernel_thread_dequeued_and_locks_changed_implies_u_step(
             after.ep_mp.spec_index(p).locking_thread() == before.ep_mp.spec_index(p).locking_thread(),
         channel_held ==> typed_lock_map_contains_mode(lctx.endpoint_lock_map(), channel_endpoint_ptr, TypedLockMode::Write),
         forall|p: RwLockPageTableRoot| #![trigger after.pt_mp.spec_index(p)] before.pt_mp.dom().contains(p) && after.pt_mp.dom().contains(p) ==>
-            after.pt_mp.spec_index(p).locking_thread() == before.pt_mp.spec_index(p).locking_thread(),
+            after.pt_mp.spec_index(p).locking_thread() == before.pt_mp.spec_index(p).locking_thread() && pagetable_c(after.pt_mp, after.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(before.pt_mp, before.pt_lower.view(), p).lower.pagetable_window_locks,
         forall|p: RwLockPageTableRoot| #![trigger after.it_mp.spec_index(p)] before.it_mp.dom().contains(p) && after.it_mp.dom().contains(p) ==>
             after.it_mp.spec_index(p).locking_thread() == before.it_mp.spec_index(p).locking_thread(),
         forall|i: CpuId| #![trigger after.cpu_arr.spec_index(i)] index_valid(NUM_CPUS, i) && i != cpu_id ==>
@@ -263,7 +263,8 @@ pub proof fn kernel_process_map_unchanged_implies_u_map(pre: &KernelK, post: &Ke
         forall|p: RwLockPageTableRoot| #![trigger pre.it_mp.spec_index(p)] #![trigger post.it_mp.spec_index(p)]
             pre.it_mp.dom().contains(p) && post.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread(),
         forall|p: RwLockPageTableRoot| #![trigger pre.pt_mp.spec_index(p)] #![trigger post.pt_mp.spec_index(p)]
-            pre.pt_mp.dom().contains(p) && post.pt_mp.dom().contains(p) ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread(),
+            pre.pt_mp.dom().contains(p) && post.pt_mp.dom().contains(p) ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
+                && pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks,
     ensures
         ({
             let before = kernel_k_to_kernel_u(*pre);
@@ -297,7 +298,8 @@ pub proof fn kernel_pagetable_pair_lock_modes_changed_implies_u_map(pre: &Kernel
         forall|p: RwLockPageTableRoot| #![trigger pre.it_mp.spec_index(p)] #![trigger post.it_mp.spec_index(p)]
             pre.it_mp.dom().contains(p) && post.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread(),
         forall|p: RwLockPageTableRoot| #![trigger pre.pt_mp.spec_index(p)] #![trigger post.pt_mp.spec_index(p)]
-            pre.pt_mp.dom().contains(p) && post.pt_mp.dom().contains(p) && (p != pre.prc_mp.spec_index(source).view().pagetable && p != pre.prc_mp.spec_index(target).view().pagetable) ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread(),
+            pre.pt_mp.dom().contains(p) && post.pt_mp.dom().contains(p) && (p != pre.prc_mp.spec_index(source).view().pagetable && p != pre.prc_mp.spec_index(target).view().pagetable) ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
+                && pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks,
         source != target,
         pre.prc_mp.dom().contains(source),
         pre.prc_mp.dom().contains(target),
@@ -311,9 +313,15 @@ pub proof fn kernel_pagetable_pair_lock_modes_changed_implies_u_map(pre: &Kernel
             let after = kernel_k_to_kernel_u(*post);
             let processes = before.process_map;
             let locked_processes = processes.insert(source, ProcessU {
-                pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..processes[source].pagetable->Some_0 }), ..processes[source]
+                pagetable: Some(PageTableU {
+                    lock_state: LockStateU::WriteLocked, pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks,
+                    ..processes[source].pagetable->Some_0
+                }), ..processes[source]
             }).insert(target, ProcessU {
-                pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..processes[target].pagetable->Some_0 }), ..processes[target]
+                pagetable: Some(PageTableU {
+                    lock_state: LockStateU::WriteLocked, pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(target).view().pagetable).lower.pagetable_window_locks,
+                    ..processes[target].pagetable->Some_0
+                }), ..processes[target]
             });
             after.process_map == locked_processes
         }),
@@ -326,9 +334,15 @@ pub proof fn kernel_pagetable_pair_lock_modes_changed_implies_u_map(pre: &Kernel
     let after = kernel_k_to_kernel_u(*post);
     let processes = before.process_map;
     let locked_processes = processes.insert(source, ProcessU {
-        pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..processes[source].pagetable->Some_0 }), ..processes[source]
+        pagetable: Some(PageTableU {
+            lock_state: LockStateU::WriteLocked, pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks,
+            ..processes[source].pagetable->Some_0
+        }), ..processes[source]
     }).insert(target, ProcessU {
-        pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..processes[target].pagetable->Some_0 }), ..processes[target]
+        pagetable: Some(PageTableU {
+            lock_state: LockStateU::WriteLocked, pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(target).view().pagetable).lower.pagetable_window_locks,
+            ..processes[target].pagetable->Some_0
+        }), ..processes[target]
     });
     reveal(kernel_process_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
     reveal(process_pagetable_match); reveal(process_iommu_table_match);
@@ -383,7 +397,7 @@ pub proof fn kernel_cpu_and_two_threads_lock_modes_changed_implies_u_step(
             pre.it_mp.dom().contains(p) && post.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread(),
         forall|p: RwLockPageTableRoot| #![trigger pre.pt_mp.spec_index(p)] #![trigger post.pt_mp.spec_index(p)]
             pre.pt_mp.dom().contains(p) && post.pt_mp.dom().contains(p) && (tables is None || p != pre.prc_mp.spec_index(tables->Some_0.0).view().pagetable && p != pre.prc_mp.spec_index(tables->Some_0.1).view().pagetable)
-                ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread(),
+                ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread() && pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks,
     ensures
         kernel_k_to_kernel_u(*pre).thread_map[caller].owning_proc == pre.thr_mp.spec_index(caller).view().owning_proc,
         kernel_k_to_kernel_u(*pre).thread_map[peer].owning_proc == pre.thr_mp.spec_index(peer).view().owning_proc,
@@ -397,9 +411,15 @@ pub proof fn kernel_cpu_and_two_threads_lock_modes_changed_implies_u_step(
             let locked_processes = match tables {
                 None => processes,
                 Some((source, target)) => processes.insert(source, ProcessU {
-                    pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..processes[source].pagetable->Some_0 }), ..processes[source]
+                    pagetable: Some(PageTableU {
+                        lock_state: LockStateU::WriteLocked, pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks,
+                        ..processes[source].pagetable->Some_0
+                    }), ..processes[source]
                 }).insert(target, ProcessU {
-                    pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..processes[target].pagetable->Some_0 }), ..processes[target]
+                    pagetable: Some(PageTableU {
+                        lock_state: LockStateU::WriteLocked, pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(target).view().pagetable).lower.pagetable_window_locks,
+                        ..processes[target].pagetable->Some_0
+                    }), ..processes[target]
                 }),
             };
             kernel_k_to_kernel_u(*post) == (KernelU {
@@ -423,9 +443,15 @@ pub proof fn kernel_cpu_and_two_threads_lock_modes_changed_implies_u_step(
     let locked_processes = match tables {
         None => processes,
         Some((source, target)) => processes.insert(source, ProcessU {
-            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..processes[source].pagetable->Some_0 }), ..processes[source]
+            pagetable: Some(PageTableU {
+                lock_state: LockStateU::WriteLocked, pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks,
+                ..processes[source].pagetable->Some_0
+            }), ..processes[source]
         }).insert(target, ProcessU {
-            pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..processes[target].pagetable->Some_0 }), ..processes[target]
+            pagetable: Some(PageTableU {
+                lock_state: LockStateU::WriteLocked, pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(target).view().pagetable).lower.pagetable_window_locks,
+                ..processes[target].pagetable->Some_0
+            }), ..processes[target]
         }),
     };
     if index_valid(NUM_CPUS, cpu) { kernel_cpu_projection_at(pre, cpu); } if index_valid(NUM_CPUS, cpu) { kernel_cpu_projection_at(post, cpu); }
@@ -882,7 +908,8 @@ pub(super) proof fn kernel_ipc_rendezvous_fields_implies_u_step(
         forall|p: RwLockEndpointPtr| #![trigger post.ep_mp.spec_index(p)]
             pre.ep_mp.dom().contains(p) && post.ep_mp.dom().contains(p) ==> post.ep_mp.spec_index(p).locking_thread() == pre.ep_mp.spec_index(p).locking_thread(),
         forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
-            pre.pt_mp.dom().contains(p) && post.pt_mp.dom().contains(p) ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread(),
+            pre.pt_mp.dom().contains(p) && post.pt_mp.dom().contains(p) ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
+                && pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks,
         forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
             pre.it_mp.dom().contains(p) && post.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread(),
         forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]
@@ -1055,7 +1082,8 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_process_map(
         forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
             pre.prc_mp.dom().contains(p) && post.prc_mp.dom().contains(p) ==> post.prc_mp.spec_index(p).locking_thread() == pre.prc_mp.spec_index(p).locking_thread(),
         forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
-            pre.pt_mp.dom().contains(p) && post.pt_mp.dom().contains(p) ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread(),
+            pre.pt_mp.dom().contains(p) && post.pt_mp.dom().contains(p) ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
+                && pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks,
         forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
             pre.it_mp.dom().contains(p) && post.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread(),
     ensures
@@ -1126,7 +1154,8 @@ proof fn kernel_ipc_rendezvous_fields_implies_u_process_map_pci_moved(
         forall|p: RwLockProcessPtr| #![trigger post.prc_mp.spec_index(p)]
             pre.prc_mp.dom().contains(p) && post.prc_mp.dom().contains(p) ==> post.prc_mp.spec_index(p).locking_thread() == pre.prc_mp.spec_index(p).locking_thread(),
         forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
-            pre.pt_mp.dom().contains(p) && post.pt_mp.dom().contains(p) ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread(),
+            pre.pt_mp.dom().contains(p) && post.pt_mp.dom().contains(p) ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
+                && pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks,
         forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
             pre.it_mp.dom().contains(p) && post.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread(),
     ensures

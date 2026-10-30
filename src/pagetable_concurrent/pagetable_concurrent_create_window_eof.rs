@@ -44,8 +44,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
                 #![trigger post.window_locked_by_thread(l4i, l3i, l2i, tid)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
                     ==> post.window_locked_by_thread(l4i, l3i, l2i, tid) == (pre.window_locked_by_thread(l4i, l3i, l2i, tid) || (l4i == target_l4i && l3i == target_l3i && lo <= l2i <= hi && tid == thread_id)),
-            forall|l4i: L4Index, l3i: L3Index| #![trigger post.lower.l2_lock_of(post.window_l2_page(l4i, l3i))]
-                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pre.window_exists(l4i, l3i) ==> post.lower.l2_lock_of(post.window_l2_page(l4i, l3i)) == pre.lower.l2_lock_of(pre.window_l2_page(l4i, l3i)),
+            forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.lower.l2_owner(post.window_l2_page(l4i, l3i), l2i)]
+                pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pre.window_exists(l4i, l3i) ==> post.lower.l2_owner(post.window_l2_page(l4i, l3i), l2i) == pre.lower.l2_owner(pre.window_l2_page(l4i, l3i), l2i),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index| #![trigger post.spec_resolve_mapping_l2(l4i, l3i, l2i)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pre.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some
                     ==> post.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some,
@@ -71,7 +71,6 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         reveal(PageTableC::create_entry_l2_eof_transition_framing);
         reveal(PageTableHigher::wf_l4);
         reveal(PageTableC::wf_l3);
-        reveal(PageTableC::l2_tokens_paired);
     }
 }
 } // verus!

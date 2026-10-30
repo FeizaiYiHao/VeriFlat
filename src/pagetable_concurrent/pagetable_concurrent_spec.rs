@@ -22,18 +22,16 @@ pub struct PageTableHigher<const TABLE_TYPE: PTType> {
     pub proc_ptr: RwLockProcessPtr,
 }
 
-/// Window half: L2 pages (each entry a 2M-window spin lock) with their two ghost tokens, L1 pages, 4K and 2M
-/// leaves, the base addresses of the currently locked 2M windows, and for each 2M window `(L2 page, L2 index)` that
-/// still hides cleared leaves from some TLB, the CPUs that have neither flushed nor skipped it yet.
+/// Window half: L2 pages (each entry a 2M-window spin lock that also owns the L1 page it links), the L1 reverse
+/// map, 4K and 2M leaves, the lock mode of every window of an existing L2 page, and for each 2M window
+/// `(L2 page, L2 index)` that still hides cleared leaves from some TLB, the CPUs that have neither flushed nor
+/// skipped it yet.
 pub tracked struct PageTableLower<const TABLE_TYPE: PTType> {
     pub tracked l2_perms: Map<PageMapPtr, PointsTo<L2PageMap>>,
-    pub tracked l2_ghost: Map<PageMapPtr, L2PageGhost>,
-    pub tracked l2_lock: Map<PageMapPtr, L2LockGhost>,
     pub ghost l1_rev_map: Map<PageMapPtr, (L4Index, L3Index, L2Index)>,
-    pub tracked l1_tables: Map<PageMapPtr, PointsTo<PageMap>>,
     pub ghost mapping_4k: Map<VAddr, MapEntry>,
     pub ghost mapping_2m: Map<VAddr, MapEntry>,
-    pub ghost locked_windows: Set<WindowVa>,
+    pub ghost pagetable_window_locks: Map<WindowVa, LockStateU>,
     pub ghost window_stale_cpus: Map<(PageMapPtr, L2Index), Set<CpuId>>,
 }
 
@@ -53,8 +51,8 @@ pub ghost struct PageTableWindowView {
     pub stale_cpus: Option<Set<CpuId>>,
 }
 
-/// Base address of one 2M window. Alignment is `wf`, not a type invariant: the window lock map and `locked_windows`
-/// carry it in their invariants.
+/// Base address of one 2M window. Alignment is `wf`, not a type invariant: the window lock map and
+/// `pagetable_window_locks` carry it in their invariants.
 pub ghost struct WindowVa { pub va: VAddr }
 
 impl WindowVa {
@@ -316,10 +314,19 @@ impl<const TABLE_TYPE: PTType> LockOwnerIdTrait for PageTableHigher<TABLE_TYPE> 
 
 impl<const TABLE_TYPE: PTType> PageTableLower<TABLE_TYPE> {
     #[verifier::inline]
-    pub open spec fn l2_page(&self, p: PageMapPtr) -> L2PageGhost { self.l2_ghost.spec_index(p) }
+    pub open spec fn l2_page(&self, p: PageMapPtr) -> L2PageMap { self.l2_perms.spec_index(p).value() }
 
     #[verifier::inline]
-    pub open spec fn l2_lock_of(&self, p: PageMapPtr) -> L2LockGhost { self.l2_lock.spec_index(p) }
+    pub open spec fn l2_entry(&self, p: PageMapPtr, i: L2Index) -> PageEntry { self.l2_page(p).entry_lock(i).view() }
+
+    #[verifier::inline]
+    pub open spec fn l2_owner(&self, p: PageMapPtr, i: L2Index) -> SpinLockState { self.l2_page(p).entry_lock(i).owner() }
+
+    #[verifier::inline]
+    pub open spec fn l1_perm(&self, p: PageMapPtr, i: L2Index) -> PointsTo<PageMap> { self.l2_page(p).entry_lock(i).l1()->Some_0 }
+
+    #[verifier::inline]
+    pub open spec fn l1_page(&self, p: PageMapPtr, i: L2Index) -> PageMap { self.l1_perm(p, i).value() }
 }
 
 impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
@@ -338,6 +345,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             mapping_4k: self.mapping_4k().filter_keys(|va: VAddr| self.mapping_4k().spec_index(va).present),
             mapping_2m: self.mapping_2m().filter_keys(|va: VAddr| self.mapping_2m().spec_index(va).present),
             mapping_1g: self.mapping_1g().filter_keys(|va: VAddr| self.mapping_1g().spec_index(va).present),
+            pagetable_window_locks: self.lower.pagetable_window_locks,
         }
     }
 
@@ -354,16 +362,16 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             self.kernel_l4_end() <= i && pei_valid(i) ==> self.higher.l4_table.view().spec_index(self.cr3()).value().spec_index(i).is_empty()
         &&& self.higher.l3_tables.view().dom() == Set::<PageMapPtr>::empty()
         &&& self.lower.l2_perms.dom() == Set::<PageMapPtr>::empty()
-        &&& self.lower.l1_tables.dom() == Set::<PageMapPtr>::empty()
+        &&& self.lower.l1_rev_map.dom() == Set::<PageMapPtr>::empty()
         &&& self.mapping_4k() == Map::<VAddr, MapEntry>::empty()
         &&& self.mapping_2m() == Map::<VAddr, MapEntry>::empty()
         &&& self.mapping_1g() == Map::<VAddr, MapEntry>::empty()
-        &&& self.lower.locked_windows == Set::<WindowVa>::empty()
+        &&& self.lower.pagetable_window_locks == Map::<WindowVa, LockStateU>::empty()
         &&& self.lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty()
     }
 
     pub open spec fn page_closure(&self) -> Set<PagePtr> {
-        self.higher.l3_tables.view().dom() + self.lower.l2_perms.dom() + self.lower.l1_tables.dom() + self.higher.l4_table.view().dom()
+        self.higher.l3_tables.view().dom() + self.lower.l2_perms.dom() + self.lower.l1_rev_map.dom() + self.higher.l4_table.view().dom()
     }
 
     // The L4/L3 walk belongs to the big-lock payload; inline so both levels share one trigger term.
@@ -381,9 +389,9 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             pei_valid(l2i),
     {
         if self.spec_resolve_mapping_l3(l4i, l3i) is Some
-            && self.lower.l2_page(self.spec_resolve_mapping_l3(l4i, l3i)->0.addr).spec_index(l2i).perm.kernel_present
-            && self.lower.l2_page(self.spec_resolve_mapping_l3(l4i, l3i)->0.addr).spec_index(l2i).perm.ps {
-            Some(self.lower.l2_page(self.spec_resolve_mapping_l3(l4i, l3i)->0.addr).spec_index(l2i))
+            && self.lower.l2_entry(self.spec_resolve_mapping_l3(l4i, l3i)->0.addr, l2i).perm.kernel_present
+            && self.lower.l2_entry(self.spec_resolve_mapping_l3(l4i, l3i)->0.addr, l2i).perm.ps {
+            Some(self.lower.l2_entry(self.spec_resolve_mapping_l3(l4i, l3i)->0.addr, l2i))
         } else {
             None
         }
@@ -396,9 +404,9 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             pei_valid(l2i),
     {
         if self.spec_resolve_mapping_l3(l4i, l3i) is Some
-            && self.lower.l2_page(self.spec_resolve_mapping_l3(l4i, l3i)->0.addr).spec_index(l2i).perm.present
-            && self.lower.l2_page(self.spec_resolve_mapping_l3(l4i, l3i)->0.addr).spec_index(l2i).perm.ps == false {
-            Some(self.lower.l2_page(self.spec_resolve_mapping_l3(l4i, l3i)->0.addr).spec_index(l2i))
+            && self.lower.l2_entry(self.spec_resolve_mapping_l3(l4i, l3i)->0.addr, l2i).perm.present
+            && self.lower.l2_entry(self.spec_resolve_mapping_l3(l4i, l3i)->0.addr, l2i).perm.ps == false {
+            Some(self.lower.l2_entry(self.spec_resolve_mapping_l3(l4i, l3i)->0.addr, l2i))
         } else {
             None
         }
@@ -411,8 +419,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             pei_valid(l2i),
             pei_valid(l1i),
     {
-        if self.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some && self.lower.l1_tables.spec_index(self.spec_resolve_mapping_l2(l4i, l3i, l2i)->0.addr).value().spec_index(l1i).perm.kernel_present {
-            Some(self.lower.l1_tables.spec_index(self.spec_resolve_mapping_l2(l4i, l3i, l2i)->0.addr).value().spec_index(l1i))
+        if self.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some && self.lower.l1_page(self.spec_resolve_mapping_l3(l4i, l3i)->0.addr, l2i).spec_index(l1i).perm.kernel_present {
+            Some(self.lower.l1_page(self.spec_resolve_mapping_l3(l4i, l3i)->0.addr, l2i).spec_index(l1i))
         } else {
             None
         }
@@ -436,13 +444,14 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
 
     pub open spec fn window_locked_by_thread(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId) -> bool {
         &&& self.window_exists(l4i, l3i)
-        &&& self.lower.l2_lock_of(self.window_l2_page(l4i, l3i)).locked_by_thread(l2i, thread_id)
+        &&& self.lower.l2_owner(self.window_l2_page(l4i, l3i), l2i) is Some
+        &&& self.lower.l2_owner(self.window_l2_page(l4i, l3i), l2i)->Some_thread_id == thread_id
     }
 
     /// Window `(l4i, l3i, l2i)` exists and some thread holds its lock; that holder is named so the window-holder
     /// invariant can fire on it.
     pub open spec fn window_locked(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index) -> bool {
-        self.window_locked_by_thread(l4i, l3i, l2i, self.lower.l2_lock_of(self.window_l2_page(l4i, l3i)).lock_state(l2i)->Some_thread_id)
+        self.window_locked_by_thread(l4i, l3i, l2i, self.lower.l2_owner(self.window_l2_page(l4i, l3i), l2i)->Some_thread_id)
     }
 
     /// Every 4K leaf the user cannot see lies in a locked 2M window; every 2M and 1G leaf is present.
@@ -465,20 +474,20 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
     pub open spec fn window_view(&self, w: WindowVa) -> PageTableWindowView {
         let l2_page = self.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va));
         let l2i = spec_v2l2index(w.va);
-        let l2_entry = self.lower.l2_page(l2_page).spec_index(l2i);
+        let l2_entry = self.lower.l2_entry(l2_page, l2i);
         PageTableWindowView {
             l2_page,
             l2_entry,
-            lock_state: self.lower.l2_lock_of(l2_page).lock_state(l2i),
-            l1_table: if l2_entry.perm.present && !l2_entry.perm.ps && self.lower.l1_tables.dom().contains(l2_entry.addr) { Some(self.lower.l1_tables.spec_index(l2_entry.addr)) } else { None },
+            lock_state: self.lower.l2_owner(l2_page, l2i),
+            l1_table: self.lower.l2_page(l2_page).entry_lock(l2i).l1(),
             stale_cpus: if self.lower.window_stale_cpus.dom().contains((l2_page, l2i)) { Some(self.lower.window_stale_cpus.spec_index((l2_page, l2i))) } else { None },
         }
     }
 
     /// No thread other than `thread_id` holds window `(l4i, l3i, l2i)`.
     pub open spec fn window_free_for(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId) -> bool {
-        self.window_exists(l4i, l3i) && self.lower.l2_lock_of(self.window_l2_page(l4i, l3i)).locked(l2i)
-            ==> self.lower.l2_lock_of(self.window_l2_page(l4i, l3i)).locked_by_thread(l2i, thread_id)
+        self.window_exists(l4i, l3i) && self.lower.l2_owner(self.window_l2_page(l4i, l3i), l2i) is Some
+            ==> self.lower.l2_owner(self.window_l2_page(l4i, l3i), l2i)->Some_thread_id == thread_id
     }
 
     /// Every present non-huge L3 entry links an L2 page of the window half.
@@ -492,37 +501,32 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
                     ==> self.lower.l2_perms.dom().contains(self.higher.l3_tables.view().spec_index(p).value().spec_index(i).addr)
     }
 
-    /// Each L2 page comes with its exec page and both ghost tokens, all at its address.
+    /// Each L2 page sits at its address with every entry `inv`; a huge present entry is kernel-present; a present
+    /// non-huge entry, and only such an entry, owns the L1 page at its address, which the L1 reverse map records.
     #[verifier::opaque]
-    pub open spec fn l2_tokens_paired(&self) -> bool {
-        &&& self.lower.l2_ghost.dom() == self.lower.l2_perms.dom()
-        &&& self.lower.l2_lock.dom() == self.lower.l2_perms.dom()
+    pub open spec fn wf_l2(&self) -> bool {
         &&& forall|p: PageMapPtr|
             #![trigger self.lower.l2_perms.dom().contains(p)]
             self.lower.l2_perms.dom().contains(p) ==> {
                 &&& self.lower.l2_perms.spec_index(p).addr() == p
                 &&& self.lower.l2_perms.spec_index(p).is_init()
-                &&& self.lower.l2_perms.spec_index(p).value().addr() == p
                 &&& self.lower.l2_page(p).addr() == p
                 &&& self.lower.l2_page(p).wf()
-                &&& self.lower.l2_lock_of(p).addr() == p
-                &&& self.lower.l2_lock_of(p).wf()
             }
-    }
-
-    #[verifier::opaque]
-    pub open spec fn wf_l2(&self) -> bool {
         &&& forall|p: PageMapPtr|
             #![trigger self.lower.l2_perms.dom().contains(p)]
             self.lower.l2_perms.dom().contains(p) ==> forall|i: L2Index|
-                #![trigger self.lower.l2_page(p).spec_index(i)]
-                pei_valid(i) && self.lower.l2_page(p).spec_index(i).perm.ps && self.lower.l2_page(p).spec_index(i).perm.present ==> self.lower.l2_page(p).spec_index(i).perm.kernel_present
+                #![trigger self.lower.l2_entry(p, i)]
+                pei_valid(i) && self.lower.l2_entry(p, i).perm.ps && self.lower.l2_entry(p, i).perm.present ==> self.lower.l2_entry(p, i).perm.kernel_present
         &&& forall|p: PageMapPtr|
             #![trigger self.lower.l2_perms.dom().contains(p)]
             self.lower.l2_perms.dom().contains(p) ==> forall|i: L2Index|
-                #![trigger self.lower.l2_page(p).spec_index(i)]
-                pei_valid(i) && self.lower.l2_page(p).spec_index(i).perm.present && self.lower.l2_page(p).spec_index(i).perm.ps == false
-                    ==> self.lower.l1_tables.dom().contains(self.lower.l2_page(p).spec_index(i).addr)
+                #![trigger self.lower.l2_page(p).entry_lock(i).l1()]
+                pei_valid(i) ==> {
+                    &&& (self.lower.l2_entry(p, i).perm.present && !self.lower.l2_entry(p, i).perm.ps) == (self.lower.l2_page(p).entry_lock(i).l1() is Some)
+                    &&& self.lower.l2_page(p).entry_lock(i).l1() is Some
+                        ==> self.lower.l1_perm(p, i).addr() == self.lower.l2_entry(p, i).addr && self.lower.l1_rev_map.dom().contains(self.lower.l2_entry(p, i).addr)
+                }
     }
 
     #[verifier::opaque]
@@ -530,37 +534,41 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         forall|pi: PageMapPtr, pj: PageMapPtr|
             #![trigger self.lower.l2_perms.dom().contains(pi), self.lower.l2_perms.dom().contains(pj)]
             self.lower.l2_perms.dom().contains(pi) && self.lower.l2_perms.dom().contains(pj) ==> forall|l2i: L2Index, l2j: L2Index|
-                #![trigger pei_valid(l2i), pei_valid(l2j), self.lower.l2_page(pi).spec_index(l2i), self.lower.l2_page(pj).spec_index(l2j)]
-                pei_valid(l2i) && pei_valid(l2j) && self.lower.l2_page(pi).spec_index(l2i).perm.present && !self.lower.l2_page(pi).spec_index(l2i).perm.ps
-                && self.lower.l2_page(pj).spec_index(l2j).perm.present && !self.lower.l2_page(pj).spec_index(l2j).perm.ps ==> {
-                    &&& pi != pj ==> self.lower.l2_page(pi).spec_index(l2i).addr != self.lower.l2_page(pj).spec_index(l2j).addr
-                    &&& pi == pj && l2i != l2j ==> self.lower.l2_page(pi).spec_index(l2i).addr != self.lower.l2_page(pj).spec_index(l2j).addr
+                #![trigger pei_valid(l2i), pei_valid(l2j), self.lower.l2_entry(pi, l2i), self.lower.l2_entry(pj, l2j)]
+                pei_valid(l2i) && pei_valid(l2j) && self.lower.l2_entry(pi, l2i).perm.present && !self.lower.l2_entry(pi, l2i).perm.ps
+                && self.lower.l2_entry(pj, l2j).perm.present && !self.lower.l2_entry(pj, l2j).perm.ps ==> {
+                    &&& pi != pj ==> self.lower.l2_entry(pi, l2i).addr != self.lower.l2_entry(pj, l2j).addr
+                    &&& pi == pj && l2i != l2j ==> self.lower.l2_entry(pi, l2i).addr != self.lower.l2_entry(pj, l2j).addr
                 }
     }
 
+    /// Every L1 page that an L2 entry owns is initialized and well formed, and its present entries are 4K leaves.
     #[verifier::opaque]
     pub open spec fn wf_l1(&self) -> bool {
         &&& forall|p: PageMapPtr|
-            #![trigger self.lower.l1_tables.dom().contains(p)]
-            self.lower.l1_tables.dom().contains(p) ==> self.lower.l1_tables.spec_index(p).addr() == p && self.lower.l1_tables.spec_index(p).is_init() && self.lower.l1_tables.spec_index(p).value().wf()
+            #![trigger self.lower.l2_perms.dom().contains(p)]
+            self.lower.l2_perms.dom().contains(p) ==> forall|i: L2Index|
+                #![trigger self.lower.l1_perm(p, i)]
+                pei_valid(i) && self.lower.l2_page(p).entry_lock(i).l1() is Some ==> self.lower.l1_perm(p, i).is_init() && self.lower.l1_page(p, i).wf()
         &&& forall|p: PageMapPtr|
-            #![trigger self.lower.l1_tables.dom().contains(p)]
-            self.lower.l1_tables.dom().contains(p) ==> forall|i: L1Index|
-                #![trigger self.lower.l1_tables.spec_index(p).value().spec_index(i)]
-                pei_valid(i) && self.lower.l1_tables.spec_index(p).value().spec_index(i).perm.present
-                    ==> self.lower.l1_tables.spec_index(p).value().spec_index(i).perm.ps == false && self.lower.l1_tables.spec_index(p).value().spec_index(i).perm.kernel_present
+            #![trigger self.lower.l2_perms.dom().contains(p)]
+            self.lower.l2_perms.dom().contains(p) ==> forall|i: L2Index, j: L1Index|
+                #![trigger self.lower.l1_page(p, i).spec_index(j)]
+                pei_valid(i) && self.lower.l2_page(p).entry_lock(i).l1() is Some && pei_valid(j) && self.lower.l1_page(p, i).spec_index(j).perm.present
+                    ==> self.lower.l1_page(p, i).spec_index(j).perm.ps == false && self.lower.l1_page(p, i).spec_index(j).perm.kernel_present
     }
 
     #[verifier::opaque]
     pub open spec fn user_only(&self) -> bool {
         &&& forall|p: PageMapPtr|
             #![trigger self.lower.l2_perms.dom().contains(p)]
-            self.lower.l2_perms.dom().contains(p) ==> forall|i: L2Index| #![trigger self.lower.l2_page(p).spec_index(i)] pei_valid(i) && self.lower.l2_page(p).spec_index(i).perm.present ==> self.lower.l2_page(p).spec_index(i).perm.user
+            self.lower.l2_perms.dom().contains(p) ==> forall|i: L2Index| #![trigger self.lower.l2_entry(p, i)] pei_valid(i) && self.lower.l2_entry(p, i).perm.present ==> self.lower.l2_entry(p, i).perm.user
         &&& forall|p: PageMapPtr|
-            #![trigger self.lower.l1_tables.dom().contains(p)]
-            self.lower.l1_tables.dom().contains(p) ==> forall|i: L1Index|
-                #![trigger self.lower.l1_tables.spec_index(p).value().spec_index(i)]
-                pei_valid(i) && self.lower.l1_tables.spec_index(p).value().spec_index(i).perm.present ==> self.lower.l1_tables.spec_index(p).value().spec_index(i).perm.user
+            #![trigger self.lower.l2_perms.dom().contains(p)]
+            self.lower.l2_perms.dom().contains(p) ==> forall|i: L2Index, j: L1Index|
+                #![trigger self.lower.l1_page(p, i).spec_index(j)]
+                pei_valid(i) && self.lower.l2_page(p).entry_lock(i).l1() is Some && pei_valid(j) && self.lower.l1_page(p, i).spec_index(j).perm.present
+                    ==> self.lower.l1_page(p, i).spec_index(j).perm.user
     }
 
     #[verifier::opaque]
@@ -568,20 +576,20 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         forall|p: PageMapPtr|
             #![trigger self.lower.l2_perms.dom().contains(p)]
             self.lower.l2_perms.dom().contains(p) ==> forall|i: L2Index|
-                #![trigger self.lower.l2_page(p).spec_index(i)]
-                pei_valid(i) && self.lower.l2_page(p).spec_index(i).perm.present && !self.lower.l2_page(p).spec_index(i).perm.ps
-                    ==> self.lower.l2_page(p).spec_index(i).perm.write && !self.lower.l2_page(p).spec_index(i).perm.execute_disable
+                #![trigger self.lower.l2_entry(p, i)]
+                pei_valid(i) && self.lower.l2_entry(p, i).perm.present && !self.lower.l2_entry(p, i).perm.ps
+                    ==> self.lower.l2_entry(p, i).perm.write && !self.lower.l2_entry(p, i).perm.execute_disable
     }
 
     #[verifier::opaque]
     pub open spec fn table_pages_wf(&self) -> bool {
         &&& forall|p: PageMapPtr| #![trigger self.lower.l2_perms.dom().contains(p), page_ptr_valid(p)] self.lower.l2_perms.dom().contains(p) ==> page_ptr_valid(p)
-        &&& forall|p: PageMapPtr| #![trigger self.lower.l1_tables.dom().contains(p), page_ptr_valid(p)] self.lower.l1_tables.dom().contains(p) ==> page_ptr_valid(p)
+        &&& forall|p: PageMapPtr| #![trigger self.lower.l1_rev_map.dom().contains(p), page_ptr_valid(p)] self.lower.l1_rev_map.dom().contains(p) ==> page_ptr_valid(p)
         &&& self.higher.l4_table.view().dom().disjoint(self.lower.l2_perms.dom())
-        &&& self.higher.l4_table.view().dom().disjoint(self.lower.l1_tables.dom())
+        &&& self.higher.l4_table.view().dom().disjoint(self.lower.l1_rev_map.dom())
         &&& self.higher.l3_tables.view().dom().disjoint(self.lower.l2_perms.dom())
-        &&& self.higher.l3_tables.view().dom().disjoint(self.lower.l1_tables.dom())
-        &&& self.lower.l2_perms.dom().disjoint(self.lower.l1_tables.dom())
+        &&& self.higher.l3_tables.view().dom().disjoint(self.lower.l1_rev_map.dom())
+        &&& self.lower.l2_perms.dom().disjoint(self.lower.l1_rev_map.dom())
     }
 
     /// Every L2 and L1 page hangs under the user part of the root at the path its reverse map records.
@@ -595,8 +603,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
                 &&& self.spec_resolve_mapping_l3(l4i, l3i) is Some && self.spec_resolve_mapping_l3(l4i, l3i)->0.addr == p
             }
         &&& forall|p: PageMapPtr|
-            #![trigger self.lower.l1_tables.dom().contains(p)]
-            self.lower.l1_tables.dom().contains(p) ==> {
+            #![trigger self.lower.l1_rev_map.dom().contains(p)]
+            self.lower.l1_rev_map.dom().contains(p) ==> {
                 let (l4i, l3i, l2i) = self.lower.l1_rev_map.spec_index(p);
                 &&& self.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
                 &&& self.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some && self.spec_resolve_mapping_l2(l4i, l3i, l2i)->0.addr == p
@@ -646,22 +654,28 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
                     && self.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0))).present == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.present)
     }
 
-    /// `locked_windows` holds exactly the base addresses of the windows whose lock bit has an owner.
+    /// `pagetable_window_locks` records, for every window it holds, an existing user window and the mode of that
+    /// window's lock bit; it holds every window of every L2 page.
     #[verifier::opaque]
     pub open spec fn wf_window_locks(&self) -> bool {
         &&& forall|w: WindowVa|
-            #![trigger self.lower.locked_windows.contains(w)]
-            self.lower.locked_windows.contains(w) ==> {
+            #![trigger self.lower.pagetable_window_locks.dom().contains(w)]
+            self.lower.pagetable_window_locks.dom().contains(w) ==> {
                 &&& page_table_key_2m_valid::<TABLE_TYPE>(w.va)
                 &&& self.kernel_l4_end() <= spec_v2l4index(w.va)
                 &&& self.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
-                &&& self.lower.l2_lock_of(self.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va))).locked(spec_v2l2index(w.va))
+                &&& self.lower.pagetable_window_locks.spec_index(w) == if self.lower.l2_owner(self.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) is Some {
+                    LockStateU::WriteLocked
+                } else {
+                    LockStateU::Unlocked
+                }
             }
         &&& forall|p: PageMapPtr, i: L2Index|
-            #![trigger self.lower.l2_lock_of(p).lock_state(i)]
-            self.lower.l2_perms.dom().contains(p) && pei_valid(i) && self.lower.l2_lock_of(p).locked(i) ==> {
+            #![trigger self.lower.l2_owner(p, i)]
+            #![trigger self.lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((self.higher.l2_rev_map.view().spec_index(p).0, self.higher.l2_rev_map.view().spec_index(p).1, i, 0)) })]
+            self.lower.l2_perms.dom().contains(p) && pei_valid(i) ==> {
                 let (l4i, l3i) = self.higher.l2_rev_map.view().spec_index(p);
-                self.lower.locked_windows.contains(WindowVa { va: spec_index2va((l4i, l3i, i, 0)) })
+                self.lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((l4i, l3i, i, 0)) })
             }
     }
 
@@ -669,7 +683,6 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         &&& self.higher.inv()
         &&& self.va_addr_valid()
         &&& self.wf_l3()
-        &&& self.l2_tokens_paired()
         &&& self.wf_l2()
         &&& self.wf_l1()
         &&& self.disjoint_l2()

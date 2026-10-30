@@ -111,12 +111,11 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             let c = PageTableC { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
             c.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
-            c.l2_tokens_paired_at(l3_entry.addr);
+            c.wf_l2_at(l3_entry.addr, target_l2i);
         }
         let tracked l2_perm = lower.l2_perms.tracked_borrow(l3_entry.addr);
-        let tracked l2_ghost = lower.l2_ghost.tracked_borrow(l3_entry.addr);
         let l2_tbl: &L2PageMap = PPtr::<L2PageMap>::from_usize(l3_entry.addr).borrow(Tracked(l2_perm));
-        let l2_entry = l2_tbl.get(Tracked(l2_ghost), target_l2i);
+        let l2_entry = l2_tbl.borrow_entry_lock(target_l2i).get();
         if l2_entry.perm.present && !l2_entry.perm.ps { Some(l2_entry) } else { None }
     }
 
@@ -134,23 +133,23 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             let c = PageTableC { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
             c.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
-            c.l2_tokens_paired_at(l3_entry.addr);
+            c.wf_l2_at(l3_entry.addr, target_l2i);
         }
         let tracked l2_perm = lower.l2_perms.tracked_borrow(l3_entry.addr);
-        let tracked l2_ghost = lower.l2_ghost.tracked_borrow(l3_entry.addr);
         let l2_tbl: &L2PageMap = PPtr::<L2PageMap>::from_usize(l3_entry.addr).borrow(Tracked(l2_perm));
-        let l2_entry = l2_tbl.get(Tracked(l2_ghost), target_l2i);
+        let l2_entry = l2_tbl.borrow_entry_lock(target_l2i).get();
         if l2_entry.perm.kernel_present && l2_entry.perm.ps { Some(l2_entry) } else { None }
     }
 
     pub fn get_entry_l1(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index,
-        l2_entry: &PageEntry) -> (ret: Option<PageEntry>)
+        l3_entry: &PageEntry, l2_entry: &PageEntry) -> (ret: Option<PageEntry>)
         requires
             (PageTableC { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pei_valid(target_l1i),
+            self.spec_resolve_mapping_l3(target_l4i, target_l3i) =~= Some(*l3_entry),
             (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) =~= Some(*l2_entry),
         ensures
             (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) =~= ret,
@@ -162,11 +161,14 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             let c = PageTableC { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
             c.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
-            c.wf_l2_at(self.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr, target_l2i);
-            c.wf_l1_at(l2_entry.addr);
+            c.wf_l2_at(l3_entry.addr, target_l2i);
+            c.wf_l1_at(l3_entry.addr, target_l2i);
             c.wf_mapping_4k_at(target_l4i, target_l3i, target_l2i, target_l1i);
         }
-        let tracked l1_perm = lower.l1_tables.tracked_borrow(l2_entry.addr);
+        let tracked l2_perm = lower.l2_perms.tracked_borrow(l3_entry.addr);
+        let l2_tbl: &L2PageMap = PPtr::<L2PageMap>::from_usize(l3_entry.addr).borrow(Tracked(l2_perm));
+        let l1_slot = l2_tbl.borrow_entry_lock(target_l2i).borrow_l1();
+        let tracked l1_perm = l1_slot.borrow().tracked_borrow();
         let l1_tbl: &PageMap = PPtr::<PageMap>::from_usize(l2_entry.addr).borrow(Tracked(l1_perm));
         let l1_entry = l1_tbl.get(target_l1i);
         if l1_entry.perm.kernel_present { Some(l1_entry) } else { None }
@@ -174,11 +176,11 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
 }
 
 impl<const TABLE_TYPE: PTType> PageTableLower<TABLE_TYPE> {
-    /// The window half of a table without L2 pages: every map and the locked-window set are empty.
+    /// The window half of a table without L2 pages: every map is empty.
     pub open spec fn spec_empty() -> Self {
         PageTableLower {
-            l2_perms: Map::empty(), l2_ghost: Map::empty(), l2_lock: Map::empty(), l1_rev_map: Map::empty(), l1_tables: Map::empty(),
-            mapping_4k: Map::empty(), mapping_2m: Map::empty(), locked_windows: Set::empty(), window_stale_cpus: Map::empty(),
+            l2_perms: Map::empty(), l1_rev_map: Map::empty(), mapping_4k: Map::empty(), mapping_2m: Map::empty(), pagetable_window_locks: Map::empty(),
+            window_stale_cpus: Map::empty(),
         }
     }
 
@@ -189,20 +191,19 @@ impl<const TABLE_TYPE: PTType> PageTableLower<TABLE_TYPE> {
             higher.l3_tables.view().dom() == Set::<PageMapPtr>::empty(),
         ensures
             ret.l2_perms.dom() == Set::<PageMapPtr>::empty(),
-            ret.l1_tables.dom() == Set::<PageMapPtr>::empty(),
+            ret.l1_rev_map.dom() == Set::<PageMapPtr>::empty(),
             ret.mapping_4k == Map::<VAddr, MapEntry>::empty(),
             ret.mapping_2m == Map::<VAddr, MapEntry>::empty(),
-            ret.locked_windows == Set::<WindowVa>::empty(),
+            ret.pagetable_window_locks == Map::<WindowVa, LockStateU>::empty(),
             ret == Self::spec_empty(),
             (PageTableC { higher, lower: ret }).wf(),
     {
         let tracked ret = PageTableLower {
-            l2_perms: Map::tracked_empty(), l2_ghost: Map::tracked_empty(), l2_lock: Map::tracked_empty(), l1_rev_map: Map::empty(), l1_tables: Map::tracked_empty(),
-            mapping_4k: Map::empty(), mapping_2m: Map::empty(), locked_windows: Set::empty(), window_stale_cpus: Map::empty(),
+            l2_perms: Map::tracked_empty(), l1_rev_map: Map::empty(), mapping_4k: Map::empty(), mapping_2m: Map::empty(), pagetable_window_locks: Map::empty(),
+            window_stale_cpus: Map::empty(),
         };
         let c = PageTableC { higher, lower: ret };
         assert(c.wf_l3()) by { reveal(PageTableC::wf_l3); };
-        assert(c.l2_tokens_paired()) by { reveal(PageTableC::l2_tokens_paired); };
         assert(c.wf_l2()) by { reveal(PageTableC::wf_l2); };
         assert(c.wf_l1()) by { reveal(PageTableC::wf_l1); };
         assert(c.disjoint_l2()) by { reveal(PageTableC::disjoint_l2); };
@@ -324,14 +325,20 @@ impl PageTableHigher<PT_TYPE> {
             ret.1 != PageTableErrorCode::EntryTakenBy1g && ret.1 != PageTableErrorCode::EntryTakenBy2m && ret.1 != PageTableErrorCode::NoError
                 ==> (PageTableC { higher: *self, lower: *lower }).spec_4k_entry_usable(l4i, l3i, l2i, l1i),
     {
-        match self.resolve_mapping_4k_l2(Tracked(lower), l4i, l3i, l2i) {
+        match self.resolve_mapping_4k_l3(l4i, l3i) {
             (None, error_code) => { (None, error_code, None) },
-            (Some(l2_entry), _) => {
-                match self.get_entry_l1(Tracked(lower), l4i, l3i, l2i, l1i, &l2_entry) {
-                    None => { (None, PageTableErrorCode::L1EntryNotExist, None) },
-                    Some(l1_entry) => {
-                        let map_entry = page_entry_to_map_entry(&l1_entry, Ghost(lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).owning_container.view()));
-                        (Some(l1_entry), PageTableErrorCode::NoError, Some(map_entry))
+            (Some(l3_entry), _) => {
+                match self.get_entry_2m_l2(Tracked(lower), l4i, l3i, l2i, &l3_entry) {
+                    Some(_) => { (None, PageTableErrorCode::EntryTakenBy2m, None) },
+                    None => match self.get_entry_l2(Tracked(lower), l4i, l3i, l2i, &l3_entry) {
+                        None => { (None, PageTableErrorCode::L2EntryNotExist, None) },
+                        Some(l2_entry) => match self.get_entry_l1(Tracked(lower), l4i, l3i, l2i, l1i, &l3_entry, &l2_entry) {
+                            None => { (None, PageTableErrorCode::L1EntryNotExist, None) },
+                            Some(l1_entry) => {
+                                let map_entry = page_entry_to_map_entry(&l1_entry, Ghost(lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).owning_container.view()));
+                                (Some(l1_entry), PageTableErrorCode::NoError, Some(map_entry))
+                            },
+                        },
                     },
                 }
             },

@@ -54,6 +54,8 @@ pub proof fn kernel_cpu_process_thread_endpoint_wlocked_pagetable_rlocked_implie
             None => kernel_container_nonlock_fields_and_quotas_unchanged(pre, post),
         },
         kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
+        forall|p: RwLockPageTableRoot| #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), p)]
+            pre.pt_mp.dom().contains(p) ==> pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks,
         kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp),
     ensures
         forall|c: CpuId| #![trigger kernel_k_to_kernel_u(*pre).cpu_array[c as int]] index_valid(NUM_CPUS, c) ==> kernel_k_to_kernel_u(*pre).cpu_array[c as int] == (CpuU {

@@ -7,7 +7,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     /// Install a 4K leaf at entry `target_l1i` of the existing L1 page `target_l1_p`. The lower half changes only under its window
     /// lock, so this thread must hold the lock of window `(target_l4i, target_l3i, target_l2i)` that links `target_l1_p`.
     pub fn map_4k_page(&self, Tracked(lower): Tracked<&mut PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index,
-        target_l1_p: PageMapPtr, target_entry: &MapEntry, Tracked(lctx): Tracked<&mut LocalContext>)
+        target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, target_entry: &MapEntry, Tracked(window_perm): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             (PageTableC { higher: *self, lower: *old(lower) }).wf(),
             self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
@@ -22,6 +22,9 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             page_ptr_valid(target_entry.addr),
             target_entry.present,
             (PageTableC { higher: *self, lower: *old(lower) }).window_locked_by_thread(target_l4i, target_l3i, target_l2i, old(lctx).thread_id()),
+            self.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
+            self.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
+            old(lower).l2_owner(target_l2_p, target_l2i) == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -42,21 +45,30 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
                         #![trigger (PageTableC { higher: *self, lower: *final(lower) }).spec_resolve_mapping_l2(l4i, l3i, l2i)]
                         pei_valid(l2i) ==> (PageTableC { higher: *self, lower: *final(lower) }).spec_resolve_mapping_l2(l4i, l3i, l2i)
                             == (PageTableC { higher: *self, lower: *old(lower) }).spec_resolve_mapping_l2(l4i, l3i, l2i),
-            final(lower).l2_perms == old(lower).l2_perms,
-            final(lower).l2_lock == old(lower).l2_lock,
-            final(lower).locked_windows == old(lower).locked_windows,
+            final(lower).l2_perms.dom() == old(lower).l2_perms.dom(),
+            forall|p: PageMapPtr, i: L2Index| #![trigger final(lower).l2_entry(p, i)] final(lower).l2_entry(p, i) == old(lower).l2_entry(p, i),
+            forall|p: PageMapPtr, i: L2Index| #![trigger final(lower).l2_owner(p, i)] final(lower).l2_owner(p, i) == old(lower).l2_owner(p, i),
+            final(lower).pagetable_window_locks == old(lower).pagetable_window_locks,
             final(lower).window_stale_cpus == old(lower).window_stale_cpus,
     {
         proof {
             let c = PageTableC { higher: *self, lower: *lower };
-            c.resolve_l2_target_exists(target_l4i, target_l3i, target_l2i);
-            c.wf_l1_at(target_l1_p);
+            self.wf_l4_at(target_l4i);
+            c.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
+            c.wf_l2_at(target_l2_p, target_l2i);
+            c.wf_l1_at(target_l2_p, target_l2i);
             page_ptr_valid_imply_mem_valid(target_entry.addr);
         }
-        page_map_set_published_in_map(target_l1_p, Tracked(&mut lower.l1_tables), target_l1i,
+        let tracked mut l2_perm = lower.l2_perms.tracked_remove(target_l2_p);
+        let l2_tbl: &mut L2PageMap = PPtr::<L2PageMap>::from_usize(target_l2_p).borrow_mut(Tracked(&mut l2_perm));
+        let l1_slot = l2_tbl.borrow_entry_lock_mut(target_l2i).borrow_l1_mut(Tracked(window_perm));
+        let tracked mut l1_perm = l1_slot.borrow_mut().tracked_take();
+        page_map_set_published(target_l1_p, Tracked(&mut l1_perm), target_l1i,
             PageEntry { addr: target_entry.addr, perm: PageEntryPerm { present: true, ps: false, write: target_entry.write, execute_disable: target_entry.execute_disable, user: true, kernel_present: true } },
             Tracked(&mut *lctx));
+        *l1_slot = Tracked(Some(l1_perm));
         proof {
+            lower.l2_perms.tracked_insert(target_l2_p, l2_perm);
             lower.mapping_4k = lower.mapping_4k.insert(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)), *target_entry);
             let pre = PageTableC { higher: *self, lower: *old(lower) };
             let post = PageTableC { higher: *self, lower: *lower };
@@ -70,7 +82,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     /// Install a 2M leaf at entry `target_l2i` of the L2 page `target_l2_p`. The entry is the window's spin lock word, so this
     /// thread must hold that window lock; the published word keeps the lock bit.
     pub fn map_2m_page(&self, Tracked(lower): Tracked<&mut PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr,
-        target_entry: &MapEntry, Tracked(lctx): Tracked<&mut LocalContext>)
+        target_entry: &MapEntry, Tracked(window_perm): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             (PageTableC { higher: *self, lower: *old(lower) }).wf(),
             self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
@@ -86,6 +98,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             page_table_key_2m_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0))),
             target_entry.present,
             (PageTableC { higher: *self, lower: *old(lower) }).window_locked_by_thread(target_l4i, target_l3i, target_l2i, old(lctx).thread_id()),
+            old(lower).l2_owner(target_l2_p, target_l2i) == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -96,27 +109,25 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             (PageTableC { higher: *self, lower: *final(lower) }).page_closure() == (PageTableC { higher: *self, lower: *old(lower) }).page_closure(),
             final(lower).mapping_2m == old(lower).mapping_2m.insert(spec_index2va((target_l4i, target_l3i, target_l2i, 0)), *target_entry),
             final(lower).mapping_4k == old(lower).mapping_4k,
-            final(lower).l2_perms == old(lower).l2_perms,
-            final(lower).l2_lock == old(lower).l2_lock,
-            final(lower).locked_windows == old(lower).locked_windows,
+            final(lower).l2_perms.dom() == old(lower).l2_perms.dom(),
+            forall|p: PageMapPtr, i: L2Index| #![trigger final(lower).l2_owner(p, i)] final(lower).l2_owner(p, i) == old(lower).l2_owner(p, i),
+            final(lower).pagetable_window_locks == old(lower).pagetable_window_locks,
             final(lower).window_stale_cpus == old(lower).window_stale_cpus,
     {
         proof {
             let c = PageTableC { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
             c.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
-            c.l2_tokens_paired_at(target_l2_p);
+            c.wf_l2_at(target_l2_p, target_l2i);
             page_ptr_valid_imply_mem_valid(target_entry.addr);
         }
-        let tracked l2_perm = lower.l2_perms.tracked_borrow(target_l2_p);
-        let tracked l2_lock = lower.l2_lock.tracked_borrow(target_l2_p);
-        let tracked mut l2_ghost = lower.l2_ghost.tracked_remove(target_l2_p);
-        let l2_tbl: &L2PageMap = PPtr::<L2PageMap>::from_usize(target_l2_p).borrow(Tracked(l2_perm));
-        l2_tbl.set_published_locked(Tracked(&mut l2_ghost), Tracked(l2_lock), target_l2i,
+        let tracked mut l2_perm = lower.l2_perms.tracked_remove(target_l2_p);
+        let l2_tbl: &mut L2PageMap = PPtr::<L2PageMap>::from_usize(target_l2_p).borrow_mut(Tracked(&mut l2_perm));
+        l2_tbl.borrow_entry_lock_mut(target_l2i).set_published_locked(Tracked(window_perm),
             PageEntry { addr: target_entry.addr, perm: PageEntryPerm { present: true, ps: true, write: target_entry.write, execute_disable: target_entry.execute_disable, user: true, kernel_present: true } },
             Tracked(&mut *lctx));
         proof {
-            lower.l2_ghost.tracked_insert(target_l2_p, l2_ghost);
+            lower.l2_perms.tracked_insert(target_l2_p, l2_perm);
             lower.mapping_2m = lower.mapping_2m.insert(spec_index2va((target_l4i, target_l3i, target_l2i, 0)), *target_entry);
             let pre = PageTableC { higher: *self, lower: *old(lower) };
             let post = PageTableC { higher: *self, lower: *lower };

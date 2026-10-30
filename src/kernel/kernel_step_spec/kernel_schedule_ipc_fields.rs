@@ -33,7 +33,10 @@ pub open spec fn kernel_context_switch_fields(pre: &KernelK, post: &KernelK, cpu
     &&& forall|p: RwLockEndpointPtr| #![trigger post.ep_mp.spec_index(p)]
         pre.ep_mp.dom().contains(p) ==> post.ep_mp.spec_index(p).locking_thread() == pre.ep_mp.spec_index(p).locking_thread()
     &&& forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
-        pre.pt_mp.dom().contains(p) ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
+        pre.pt_mp.dom().contains(p) ==> {
+            &&& post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
+            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks
+        }
     &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
         pre.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread()
     &&& forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]
@@ -225,7 +228,10 @@ pub open spec fn kernel_ipc_block_fields(
     &&& forall|p: RwLockEndpointPtr| #![trigger post.ep_mp.spec_index(p)]
         pre.ep_mp.dom().contains(p) ==> post.ep_mp.spec_index(p).locking_thread() == pre.ep_mp.spec_index(p).locking_thread()
     &&& forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
-        pre.pt_mp.dom().contains(p) ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
+        pre.pt_mp.dom().contains(p) ==> {
+            &&& post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
+            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks
+        }
     &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
         pre.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread()
     &&& forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]
@@ -331,7 +337,10 @@ pub open spec fn kernel_ipc_call_handoff_fields(
     &&& forall|p: RwLockEndpointPtr| #![trigger post.ep_mp.spec_index(p)]
         pre.ep_mp.dom().contains(p) ==> post.ep_mp.spec_index(p).locking_thread() == pre.ep_mp.spec_index(p).locking_thread()
     &&& forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
-        pre.pt_mp.dom().contains(p) ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
+        pre.pt_mp.dom().contains(p) ==> {
+            &&& post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
+            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks
+        }
     &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
         pre.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread()
     &&& forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]
@@ -545,7 +554,10 @@ pub open spec fn kernel_ipc_reply_handoff_fields(
     &&& forall|p: RwLockEndpointPtr| #![trigger post.ep_mp.spec_index(p)]
         pre.ep_mp.dom().contains(p) ==> post.ep_mp.spec_index(p).locking_thread() == pre.ep_mp.spec_index(p).locking_thread()
     &&& forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
-        pre.pt_mp.dom().contains(p) ==> post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
+        pre.pt_mp.dom().contains(p) ==> {
+            &&& post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
+            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks
+        }
     &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
         pre.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread()
     &&& forall|i: CpuId| #![trigger post.cpu_arr.spec_index(i)]

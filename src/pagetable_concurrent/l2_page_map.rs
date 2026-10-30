@@ -14,208 +14,126 @@ pub ghost enum SpinLockState {
 }
 
 /// Two L2 words that the kernel cannot tell apart: they decode to the same entry. Hardware may set the A/D bits of
-/// a published word and the lock bit belongs to `L2LockGhost`; decoding ignores all three.
+/// a published word and the lock bit belongs to the entry's owner; decoding ignores all three.
 pub open spec fn l2_word_hw_equiv(a: usize, b: usize) -> bool { usize2page_entry(a) == usize2page_entry(b) }
 
-/// Concrete L2 page-table page whose 512 entries double as the 2M-window spin locks.
+/// One entry of an L2 page-table page; its word doubles as the spin lock of the entry's 2M window.
 ///
-/// Every word is atomic, so all accesses go through `&self`. The decoded contents live in the separate
-/// `L2PageGhost` token and the window-lock owners in the `L2LockGhost` token; both carry the page address.
-/// Fields stay private: published writes go only through `set_published_locked` under the window lock, and the
-/// lock bit only through `lock`/`unlock`.
+/// `entry` is the decoded word and `owner` the holder of the lock bit; the TCB word primitives keep both in step
+/// with `word`. `l1` owns the L1 page that a present non-huge entry links. Fields stay private: the word changes
+/// only through `lock`, `unlock` and `set_published_locked`, and `l1` only through `borrow_l1_mut`.
+#[repr(C)]
+pub struct L2EntryLock {
+    word: AtomicUsize,
+    l1: Tracked<Option<PointsTo<PageMap>>>,
+    entry: Ghost<PageEntry>,
+    owner: Ghost<SpinLockState>,
+}
+
+/// Concrete L2 page-table page whose 512 entries double as the 2M-window spin locks.
 #[repr(C)]
 pub struct L2PageMap {
-    ar: [AtomicUsize; 512],
+    ar: [L2EntryLock; 512],
     addr: Ghost<PageMapPtr>,
 }
 
-/// Raw words and decoded entries of one `L2PageMap`. The lock bit of `words` is not tracked here.
-pub tracked struct L2PageGhost {
-    ghost addr: PageMapPtr,
-    ghost words: Seq<usize>,
-    ghost spec_seq: Seq<PageEntry>,
-}
+impl L2EntryLock {
+    pub closed spec fn view(&self) -> PageEntry { self.entry.view() }
+    pub closed spec fn owner(&self) -> SpinLockState { self.owner.view() }
+    pub closed spec fn l1(&self) -> Option<PointsTo<PageMap>> { self.l1.view() }
 
-/// Owner of each window lock bit of one `L2PageMap`. Only `lock`/`unlock` change it.
-pub tracked struct L2LockGhost {
-    ghost addr: PageMapPtr,
-    ghost lock_states: Seq<SpinLockState>,
-}
-
-impl L2PageGhost {
-    pub closed spec fn addr(&self) -> PageMapPtr { self.addr }
-
-    pub closed spec fn wf(&self) -> bool {
-        &&& self.words.len() == 512
-        &&& self.spec_seq.len() == 512
-        &&& forall|i: usize| #![trigger usize2page_entry(self.words.spec_index(i as int))] pei_valid(i) ==> (usize2page_entry(self.words.spec_index(i as int)) =~= self.spec_seq.spec_index(i as int))
-        &&& forall|i: usize| #![trigger self.spec_seq.spec_index(i as int).perm.kernel_present] pei_valid(i) && self.spec_seq.spec_index(i as int).perm.kernel_present ==> mem_valid(self.spec_seq.spec_index(i as int).addr)
+    /// A kernel-present entry holds a valid frame, and an owned L1 page is the one a present non-huge entry links.
+    pub open spec fn inv(&self) -> bool {
+        &&& self.view().perm.kernel_present ==> mem_valid(self.view().addr)
+        &&& self.l1() is Some ==> self.l1()->Some_0.addr() == self.view().addr && self.view().perm.present && !self.view().perm.ps
     }
 
-    pub closed spec fn view(&self) -> Seq<PageEntry> { self.spec_seq }
-
-    pub open spec fn spec_index(&self, index: usize) -> PageEntry
-        recommends
-            pei_valid(index),
-    {
-        self.view().spec_index(index as int)
-    }
-
-    pub open spec fn is_empty(&self) -> bool
-        recommends
-            self.wf(),
-    {
-        forall|i: usize| #![trigger self.spec_index(i)] pei_valid(i) ==> self.spec_index(i).is_empty()
-    }
-}
-
-impl L2LockGhost {
-    pub closed spec fn addr(&self) -> PageMapPtr { self.addr }
-    pub closed spec fn wf(&self) -> bool { self.lock_states.len() == 512 }
-
-    pub closed spec fn lock_state(&self, index: usize) -> SpinLockState
-        recommends
-            pei_valid(index),
-    {
-        self.lock_states.spec_index(index as int)
-    }
-
-    pub open spec fn locked(&self, index: usize) -> bool { self.lock_state(index) is Some }
-
-    pub open spec fn locked_by_thread(&self, index: usize, thread_id: LockThreadId) -> bool {
-        &&& self.lock_state(index) is Some
-        &&& self.lock_state(index)->Some_thread_id == thread_id
-    }
-
-    pub open spec fn locked_by(&self, index: usize, lctx: &LocalContext) -> bool { self.locked_by_thread(index, lctx.thread_id()) }
-
-    pub open spec fn lock_perm_match(&self, index: usize, lock_perm: &LockPerm) -> bool {
-        &&& self.lock_state(index) is Some
-        &&& self.lock_state(index)->Some_thread_id == lock_perm.thread_id()
-        &&& self.lock_state(index)->Some_lock_id == lock_perm.lock_id()
-    }
-}
-
-impl L2PageMap {
-    pub closed spec fn addr(&self) -> PageMapPtr { self.addr.view() }
-
-    pub fn get(&self, Tracked(g): Tracked<&L2PageGhost>, index: usize) -> (ret: PageEntry)
-        requires
-            g.wf(),
-            g.addr() == self.addr(),
-            pei_valid(index),
-        ensures
-            ret =~= g.spec_index(index),
-    {
-        usize2page_entry(self.load_word_acquire(Tracked(g), index))
-    }
-
-    /// TCB: acquire-load of one entry word; pairs with the release stores and CAS of other threads. The loaded word
+    /// TCB: acquire-load of the entry word; pairs with the release stores and CAS of other threads. The loaded word
     /// may differ from the recorded one only in bits that decoding ignores.
     #[verifier::external_body]
-    fn load_word_acquire(&self, Tracked(g): Tracked<&L2PageGhost>, index: usize) -> (ret: usize)
-        requires
-            g.addr() == self.addr(),
-            g.wf(),
-            pei_valid(index),
+    fn load_acquire(&self) -> (w: usize)
         ensures
-            l2_word_hw_equiv(ret, g.words.spec_index(index as int)),
+            usize2page_entry(w) == self.view(),
     {
-        self.ar[index].load(Ordering::Acquire)
+        self.word.load(Ordering::Acquire)
     }
 
-    /// TCB: release-store of one entry word. The stored lock bit must match the recorded lock owner, so a store
-    /// never takes or drops a window lock.
+    /// TCB: release-store of the entry word. The stored lock bit must match the recorded owner, so a store never
+    /// takes or drops the window lock.
     #[verifier::external_body]
-    fn store_word_release(&self, Tracked(g): Tracked<&mut L2PageGhost>, Tracked(lk): Tracked<&L2LockGhost>, index: usize, word: usize)
+    fn store_release(&mut self, w: usize)
         requires
-            old(g).addr() == self.addr(),
-            old(g).wf(),
-            lk.addr() == self.addr(),
-            lk.wf(),
-            pei_valid(index),
-            (word & L2_ENTRY_LOCK_MASK != 0) == lk.locked(index),
+            (w & L2_ENTRY_LOCK_MASK != 0) == (old(self).owner() is Some),
         ensures
-            final(g).addr == old(g).addr,
-            final(g).words =~= old(g).words.update(index as int, word),
-            final(g).spec_seq == old(g).spec_seq,
+            final(self).view() == usize2page_entry(w),
+            final(self).owner() == old(self).owner(),
+            final(self).l1() == old(self).l1(),
     {
-        self.ar[index].store(word, Ordering::Release)
+        self.word.store(w, Ordering::Release)
     }
 
-    /// TCB: spin until this thread owns the window lock bit of entry `index`; the bit is free when this thread takes it.
+    /// TCB: spin until this thread owns the lock bit; the bit is free when this thread takes it.
     #[verifier::external_body]
-    pub(super) fn lock(&self, Tracked(lk): Tracked<&mut L2LockGhost>, index: usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>) -> (ret: Tracked<LockPerm>)
+    pub fn lock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, Ghost(lock_id): Ghost<LockId>, Ghost(obj_id): Ghost<KernelObjId>) -> (lp: Tracked<LockPerm>)
         requires
-            old(lk).wf(),
-            old(lk).addr() == self.addr(),
-            pei_valid(index),
-            !old(lk).locked_by(index, old(lctx)),
+            !(old(self).owner() is Some && old(self).owner()->Some_thread_id == old(lctx).thread_id()),
             old(lctx).kernel_view_locking_state() is Acquire,
-            old(lctx).lock_id_acyclic(lock_id.view()),
         ensures
-            final(lk).wf(),
-            final(lk).addr() == old(lk).addr(),
-            old(lk).lock_state(index) is None,
-            forall|i: usize| #![trigger final(lk).lock_state(i)] pei_valid(i) && i != index ==> final(lk).lock_state(i) == old(lk).lock_state(i),
-            final(lk).lock_state(index) == (SpinLockState::Some { thread_id: final(lctx).thread_id(), lock_id: ret.view().lock_id() }),
-            ret.view().state() is WriteLock,
-            ret.view().ordering_lock_id() == lock_id.view(),
-            ret.view().thread_id() == final(lctx).thread_id(),
-            lock_ensures(old(lctx), final(lctx), lock_id.view(), obj_id.view()),
+            old(self).owner() is None,
+            final(self).view() == old(self).view(),
+            final(self).l1() == old(self).l1(),
+            final(self).owner() == (SpinLockState::Some { thread_id: final(lctx).thread_id(), lock_id: lp.view().lock_id() }),
+            lp.view().state() is WriteLock,
+            lp.view().ordering_lock_id() == lock_id,
+            lp.view().thread_id() == final(lctx).thread_id(),
+            lock_ensures(old(lctx), final(lctx), lock_id, obj_id),
     {
-        let slot = &self.ar[index];
         loop {
-            let v = slot.load(Ordering::Relaxed);
-            if v & L2_ENTRY_LOCK_MASK == 0 && slot.compare_exchange_weak(v, v | L2_ENTRY_LOCK_MASK, Ordering::Acquire, Ordering::Relaxed).is_ok() { break; }
+            let v = self.word.load(Ordering::Relaxed);
+            if v & L2_ENTRY_LOCK_MASK == 0 && self.word.compare_exchange_weak(v, v | L2_ENTRY_LOCK_MASK, Ordering::Acquire, Ordering::Relaxed).is_ok() { break; }
             core::hint::spin_loop();
         }
         Tracked::assume_new()
     }
 
-    /// TCB: release the window lock bit of entry `index`; the entry otherwise stays as published.
+    /// TCB: release the lock bit; the entry otherwise stays as published.
     #[verifier::external_body]
-    pub(super) fn unlock(&self, Tracked(lk): Tracked<&mut L2LockGhost>, index: usize, Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>)
+    pub fn unlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(lp): Tracked<LockPerm>, Ghost(lock_id): Ghost<LockId>, Ghost(obj_id): Ghost<KernelObjId>)
         requires
-            old(lk).wf(),
-            old(lk).addr() == self.addr(),
-            pei_valid(index),
-            old(lk).locked_by(index, old(lctx)),
-            lp.view().state() is WriteLock,
-            lp.view().thread_id() == old(lctx).thread_id(),
-            old(lk).lock_perm_match(index, &lp.view()),
-            old(lctx).lock_entry_contains(lock_id.view(), obj_id.view()),
+            old(self).owner() == (SpinLockState::Some { thread_id: old(lctx).thread_id(), lock_id: lp.lock_id() }),
+            lp.state() is WriteLock,
+            lp.thread_id() == old(lctx).thread_id(),
+            old(lctx).lock_entry_contains(lock_id, obj_id),
         ensures
-            final(lk).wf(),
-            final(lk).addr() == old(lk).addr(),
-            forall|i: usize| #![trigger final(lk).lock_state(i)] pei_valid(i) && i != index ==> final(lk).lock_state(i) == old(lk).lock_state(i),
-            final(lk).lock_state(index) is None,
-            unlock_ensures(old(lctx), final(lctx), obj_id.view(), lock_id.view()),
+            final(self).view() == old(self).view(),
+            final(self).l1() == old(self).l1(),
+            final(self).owner() is None,
+            unlock_ensures(old(lctx), final(lctx), obj_id, lock_id),
     {
-        self.ar[index].fetch_and(!L2_ENTRY_LOCK_MASK, Ordering::Release);
+        self.word.fetch_and(!L2_ENTRY_LOCK_MASK, Ordering::Release);
     }
 
-    /// Publish a new entry while this thread holds the window lock of `index`; the stored word keeps the lock bit.
-    pub(super) fn set_published_locked(&self, Tracked(g): Tracked<&mut L2PageGhost>, Tracked(lk): Tracked<&L2LockGhost>, index: usize, value: PageEntry, Tracked(lctx): Tracked<&mut LocalContext>)
+    pub fn get(&self) -> (e: PageEntry)
+        ensures
+            e == self.view(),
+    {
+        usize2page_entry(self.load_acquire())
+    }
+
+    /// Publish a new entry while this thread holds the lock; the stored word keeps the lock bit.
+    pub fn set_published_locked(&mut self, Tracked(lp): Tracked<&LockPerm>, value: PageEntry, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
-            old(g).wf(),
-            old(g).addr() == self.addr(),
-            lk.wf(),
-            lk.addr() == self.addr(),
-            pei_valid(index),
-            lk.locked_by(index, old(lctx)),
+            old(self).owner() == (SpinLockState::Some { thread_id: lp.thread_id(), lock_id: lp.lock_id() }),
             mem_valid(value.addr),
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
+            final(self).view() == value,
+            final(self).owner() == old(self).owner(),
+            final(self).l1() == old(self).l1(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
-            final(g).wf(),
-            final(g).addr() == old(g).addr(),
-            final(g).view() =~= old(g).view().update(index as int, value),
-            forall|i: usize| #![trigger final(g).spec_index(i)] pei_valid(i) && i != index ==> final(g).spec_index(i) =~= old(g).spec_index(i),
-            final(g).spec_index(index) =~= value,
     {
         proof { lctx.enter_kernel_view_release(); }
         let u = page_entry2usize(&value);
@@ -233,82 +151,91 @@ impl L2PageMap {
             requires
                 w == u | L2_ENTRY_LOCK_MASK,
         ;
-        self.store_word_release(Tracked(&mut *g), Tracked(lk), index, w);
-        proof { g.spec_seq = g.spec_seq.update(index as int, value); }
+        self.store_release(w);
+    }
+
+    /// The L1 page slot of this entry, for reading.
+    pub fn borrow_l1(&self) -> (r: &Tracked<Option<PointsTo<PageMap>>>)
+        ensures
+            r.view() == self.l1(),
+    {
+        &self.l1
+    }
+
+    /// The L1 page slot of this entry, while this thread holds the lock.
+    pub fn borrow_l1_mut(&mut self, Tracked(lp): Tracked<&LockPerm>) -> (r: &mut Tracked<Option<PointsTo<PageMap>>>)
+        requires
+            old(self).owner() == (SpinLockState::Some { thread_id: lp.thread_id(), lock_id: lp.lock_id() }),
+        ensures
+            r.view() == old(self).l1(),
+            final(self).view() == old(self).view(),
+            final(self).owner() == old(self).owner(),
+            final(self).l1() == final(r).view(),
+    {
+        &mut self.l1
     }
 }
 
-/// TCB: retype a free 4K page into an all-empty L2 page and mint its two ghost tokens. Windows `lo..=hi` start locked by this
-/// thread with the ordering ids of windows `(l4i, l3i, lo..=hi)` of `root`; every other window starts unlocked. Their lock bits
-/// are set before the page is published. No `lock_id_acyclic` is needed: the page is reachable only through the L3 entry that
-/// this thread publishes under the big write lock, so no thread can wait on these windows before that lock is downgraded.
+impl L2PageMap {
+    pub closed spec fn addr(&self) -> PageMapPtr { self.addr.view() }
+    pub closed spec fn entry_lock(&self, i: L2Index) -> L2EntryLock { self.ar.view().spec_index(i as int) }
+
+    pub open spec fn wf(&self) -> bool { forall|i: L2Index| #![trigger self.entry_lock(i)] pei_valid(i) ==> self.entry_lock(i).inv() }
+
+    pub fn borrow_entry_lock(&self, i: L2Index) -> (r: &L2EntryLock)
+        requires
+            pei_valid(i),
+        ensures
+            *r == self.entry_lock(i),
+    {
+        &self.ar[i]
+    }
+
+    pub fn borrow_entry_lock_mut(&mut self, i: L2Index) -> (r: &mut L2EntryLock)
+        requires
+            pei_valid(i),
+        ensures
+            *r == old(self).entry_lock(i),
+            final(self).addr() == old(self).addr(),
+            final(self).entry_lock(i) == *final(r),
+            forall|j: L2Index| #![trigger final(self).entry_lock(j)] j != i ==> final(self).entry_lock(j) == old(self).entry_lock(j),
+    {
+        &mut self.ar[i]
+    }
+}
+
+/// TCB: retype a free 4K page into an L2 page whose 512 entries are empty, unlocked and own no L1 page.
 #[verifier::external_body]
-pub fn page_perm_to_l2_page_map(page_ptr: PagePtr, Tracked(page_perm): Tracked<PagePerm4k>, lo: L2Index, hi: L2Index, Tracked(lctx): Tracked<&mut LocalContext>,
-    Ghost(root): Ghost<RwLockPageTableRoot>, Ghost(l4i): Ghost<L4Index>, Ghost(l3i): Ghost<L3Index>)
-    -> (ret: (PageMapPtr, Tracked<PointsTo<L2PageMap>>, Tracked<L2PageGhost>, Tracked<L2LockGhost>, Tracked<Map<L2Index, LockPerm>>))
+pub fn page_perm_to_l2_page_map(page_ptr: PagePtr, Tracked(page_perm): Tracked<PagePerm4k>) -> (ret: Tracked<PointsTo<L2PageMap>>)
     requires
         page_perm.is_init(),
         page_perm.addr() == page_ptr,
-        pei_valid(lo) && pei_valid(hi) && lo <= hi,
-        old(lctx).kernel_view_locking_state() is Acquire,
     ensures
-        ret.0 == page_ptr,
-        ret.1.view().addr() == ret.0,
-        ret.1.view().is_init(),
-        ret.1.view().value().addr() == ret.0,
-        ret.2.view().addr() == ret.0,
-        ret.2.view().wf(),
-        forall|i: usize|
-            #![trigger ret.2.view().spec_index(i).is_empty()]
-            #![trigger ret.2.view().spec_index(i).perm.present]
-            #![trigger ret.2.view().spec_index(i).perm.ps]
-            #![trigger ret.2.view().spec_index(i).perm.kernel_present]
-            pei_valid(i) ==> ret.2.view().spec_index(i).is_empty(),
-        ret.3.view().addr() == ret.0,
-        ret.3.view().wf(),
-        forall|i: usize| #![trigger ret.3.view().lock_state(i)] pei_valid(i) && !(lo <= i <= hi) ==> ret.3.view().lock_state(i) is None,
-        forall|i: usize| #![trigger ret.4.view().dom().contains(i)] ret.4.view().dom().contains(i) == (lo <= i <= hi),
-        forall|i: usize| #![trigger ret.4.view().index(i)] #![trigger ret.3.view().lock_state(i)] lo <= i <= hi ==> {
-            &&& ret.3.view().lock_state(i) == (SpinLockState::Some { thread_id: final(lctx).thread_id(), lock_id: ret.4.view().index(i).lock_id() })
-            &&& ret.4.view().index(i).state() is WriteLock
-            &&& ret.4.view().index(i).ordering_lock_id() == window_lock_id(root, l4i, l3i, i)
-            &&& ret.4.view().index(i).thread_id() == final(lctx).thread_id()
+        ret.view().addr() == page_ptr,
+        ret.view().is_init(),
+        ret.view().value().addr() == page_ptr,
+        ret.view().value().wf(),
+        forall|i: L2Index| #![trigger ret.view().value().entry_lock(i)] pei_valid(i) ==> {
+            &&& ret.view().value().entry_lock(i).view().is_empty()
+            &&& ret.view().value().entry_lock(i).owner() is None
+            &&& ret.view().value().entry_lock(i).l1() is None
         },
-        final(lctx).cpu_id() == old(lctx).cpu_id(),
-        final(lctx).thread_id() == old(lctx).thread_id(),
-        final(lctx).kernel_view_locking_state() is Acquire,
-        nonwindow_typed_lock_maps_unchanged(old(lctx), final(lctx)),
-        forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger final(lctx).pagetable_window_lock_map().dom().contains((p, w))]
-            final(lctx).pagetable_window_lock_map().dom().contains((p, w)) == (old(lctx).pagetable_window_lock_map().dom().contains((p, w))
-                || (p == root && w.wf() && spec_v2l4index(w.va) == l4i && spec_v2l3index(w.va) == l3i && lo <= spec_v2l2index(w.va) <= hi)),
-        forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger final(lctx).pagetable_window_lock_map().index((p, w))]
-            old(lctx).pagetable_window_lock_map().dom().contains((p, w)) && !(p == root && w.wf() && spec_v2l4index(w.va) == l4i && spec_v2l3index(w.va) == l3i && lo <= spec_v2l2index(w.va) <= hi)
-                ==> final(lctx).pagetable_window_lock_map().index((p, w)) == old(lctx).pagetable_window_lock_map().index((p, w)),
-        forall|w: WindowVa| #![trigger final(lctx).pagetable_window_lock_map().index((root, w))]
-            w.wf() && spec_v2l4index(w.va) == l4i && spec_v2l3index(w.va) == l3i && lo <= spec_v2l2index(w.va) <= hi
-                ==> final(lctx).pagetable_window_lock_map().index((root, w)) == (TypedHeldLock { lock_id: window_lock_id_of(root, w), mode: TypedLockMode::Write }),
 {
-    unsafe {
-        core::ptr::write_bytes(page_ptr as *mut u8, 0u8, PAGE_SZ_4K);
-        core::slice::from_raw_parts_mut((page_ptr as *mut usize).add(lo), hi - lo + 1).fill(L2_ENTRY_LOCK_MASK);
-    }
-    (page_ptr, Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new(), Tracked::assume_new())
+    unsafe { core::ptr::write_bytes(page_ptr as *mut u8, 0u8, PAGE_SZ_4K); }
+    Tracked::assume_new()
 }
 
-/// TCB: an unlocked L2 page that its page table no longer links is an ordinary 4K page again; its bytes stay
-/// as they are. The inverse of `page_perm_to_l2_page_map`.
+/// TCB: an unlocked L2 page that its page table no longer links and that owns no L1 page is an ordinary 4K page
+/// again; its bytes stay as they are, and the next retype zeroes them. The inverse of `page_perm_to_l2_page_map`.
 #[verifier::external_body]
-pub fn l2_page_map_to_page_perm(page_map_ptr: PageMapPtr, Tracked(perm): Tracked<PointsTo<L2PageMap>>, Tracked(g): Tracked<L2PageGhost>, Tracked(lk): Tracked<L2LockGhost>) -> (ret: Tracked<PagePerm4k>)
+pub fn l2_page_map_to_page_perm(Tracked(perm): Tracked<PointsTo<L2PageMap>>) -> (ret: Tracked<PagePerm4k>)
     requires
-        perm.addr() == page_map_ptr,
         perm.is_init(),
-        g.addr() == page_map_ptr,
-        g.wf(),
-        lk.addr() == page_map_ptr,
-        forall|i: usize| #![trigger lk.lock_state(i)] pei_valid(i) ==> lk.lock_state(i) is None,
+        perm.value().addr() == perm.addr(),
+        forall|i: L2Index| #![trigger perm.value().entry_lock(i)] pei_valid(i) ==> perm.value().entry_lock(i).owner() is None && perm.value().entry_lock(i).l1() is None,
     ensures
         ret.view().is_init(),
-        ret.view().addr() == page_map_ptr,
+        ret.view().addr() == perm.addr(),
 {
     Tracked::assume_new()
 }

@@ -91,6 +91,8 @@ impl KernelK {
                 &&& pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), pt).mapping_4k() == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).mapping_4k()
                 &&& pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), pt).mapping_2m() == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).mapping_2m()
                 &&& pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), pt).mapping_1g() == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).mapping_1g()
+                &&& pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), pt).lower.pagetable_window_locks
+                    == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pt).lower.pagetable_window_locks
             },
             old(self).inv(),
             kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(self)),

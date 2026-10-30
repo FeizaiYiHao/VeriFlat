@@ -12,6 +12,7 @@ verus! {
 fn clear_4k_range_present(
     krnl: &mut KernelK, range: &VaRange4K, pagetable: RwLockPageTableRoot, thread_ptr: RwLockThreadPtr, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, Ghost(checked_table): Ghost<PageTableC<PT_TYPE>>,
     Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_perm: Tracked<&LockPerm>, thread_perm: Tracked<&LockPerm>, pagetable_perm: Tracked<&LockPerm>,
+    Tracked(window_perms): Tracked<&Map<WindowVa, LockPerm>>,
 )
     requires
         old(krnl).inv(),
@@ -66,6 +67,12 @@ fn clear_4k_range_present(
             va_range_2m_windows(*range).contains(w) && pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some
             ==> typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (pagetable, w), TypedLockMode::Write),
         forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w))] old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w)) ==> pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_view(w).stale_cpus is None,
+        forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len ==> {
+            let w = window_of(range.view().spec_index(j));
+            &&& window_perms.dom().contains(w)
+            &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                == (SpinLockState::Some { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
+        },
         typed_lock_map_contains_mode(old(lctx).container_lock_map(), old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container, TypedLockMode::Write),
         typed_lock_map_contains_mode(old(lctx).process_lock_map(), old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc, TypedLockMode::Write),
         old(krnl).prc_mp.spec_index(old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc).view_rodata().view().pcid == pcid,
@@ -161,6 +168,12 @@ fn clear_4k_range_present(
     let mut i = 0usize;
     while i < range.len
         invariant
+            forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len ==> {
+                let w = window_of(range.view().spec_index(j));
+                &&& window_perms.dom().contains(w)
+                &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                    == (SpinLockState::Some { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
+            },
             process_ptr == old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc,
             container_ptr == old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container,
             old(krnl).prc_mp.dom().contains(process_ptr),
@@ -271,10 +284,15 @@ fn clear_4k_range_present(
                 spec_va_4k_index_roundtrip_at(va, spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
                 checked_table.wf_mapping_4k_at(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
             };
+            assert(old(lctx).pagetable_window_lock_map().dom().contains((pagetable, window_of(va)))
+                && pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).window_view(window_of(va)).lock_state == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_view(window_of(va)).lock_state
+                && window_perms.dom().contains(window_of(range.view().spec_index(i as int)))) by {
+                spec_va_4k_index_roundtrip_at(window_of(va).va, spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), 0usize);
+            };
         }
         let ghost leaf_pre = *krnl;
         let ghost leaf_lctx = *lctx;
-        clear_4k_mapping_present_in_window(krnl, pagetable, va, Tracked(&mut *lctx), pagetable_perm);
+        clear_4k_mapping_present_in_window(krnl, pagetable, va, Tracked(&mut *lctx), pagetable_perm, Tracked(window_perms.tracked_borrow(window_of(va))));
         krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::Unmap4k { range: *range, unmapped: (i + 1) as usize, flushed: false })), Tracked(&*lctx), thread_perm);
         proof {
             assert(kernel_process_4k_mapping_changed(&steps.snapshot_k(), &*krnl, process_ptr, pagetable, va)) by { reveal(kernel_process_4k_mapping_changed); };
@@ -295,6 +313,7 @@ fn clear_4k_range_present(
 pub fn unmap_4k_range(
     krnl: &mut KernelK, range: &VaRange4K, pagetable: RwLockPageTableRoot, thread_ptr: RwLockThreadPtr, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, Ghost(checked_table): Ghost<PageTableC<PT_TYPE>>,
     Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_perm: Tracked<&LockPerm>, thread_perm: Tracked<&LockPerm>, pagetable_perm: Tracked<&LockPerm>,
+    Tracked(window_perms): Tracked<&Map<WindowVa, LockPerm>>,
 )
     requires
         old(krnl).inv(),
@@ -349,6 +368,12 @@ pub fn unmap_4k_range(
             va_range_2m_windows(*range).contains(w) && pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some
             ==> typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (pagetable, w), TypedLockMode::Write),
         forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w))] old(lctx).pagetable_window_lock_map().dom().contains((pagetable, w)) ==> pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_view(w).stale_cpus is None,
+        forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len ==> {
+            let w = window_of(range.view().spec_index(j));
+            &&& window_perms.dom().contains(w)
+            &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                == (SpinLockState::Some { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
+        },
         typed_lock_map_contains_mode(old(lctx).container_lock_map(), old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container, TypedLockMode::Write),
         typed_lock_map_contains_mode(old(lctx).process_lock_map(), old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc, TypedLockMode::Write),
         old(krnl).prc_mp.spec_index(old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc).view_rodata().view().pcid == pcid,
@@ -404,7 +429,8 @@ pub fn unmap_4k_range(
 {
     let ghost process_ptr = krnl.thr_mp.spec_index(thread_ptr).view().owning_proc;
     let ghost container_ptr = krnl.thr_mp.spec_index(thread_ptr).view().owning_container;
-    clear_4k_range_present(krnl, range, pagetable, thread_ptr, cpu_id, cr3, pcid, Ghost(checked_table), Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm, thread_perm, pagetable_perm);
+    clear_4k_range_present(krnl, range, pagetable, thread_ptr, cpu_id, cr3, pcid, Ghost(checked_table), Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm, thread_perm, pagetable_perm,
+        Tracked(window_perms));
     let ghost flush_before = steps.view();
     let ghost flush_entry = *krnl;
     let ghost flush_lctx = *lctx;
@@ -430,6 +456,12 @@ pub fn unmap_4k_range(
     let mut i = 0usize;
     while i < range.len
         invariant
+            forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len ==> {
+                let w = window_of(range.view().spec_index(j));
+                &&& window_perms.dom().contains(w)
+                &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                    == (SpinLockState::Some { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
+            },
             forall|j: int| #![trigger steps.view()[j]] 0 <= j < old(steps).view().len() ==> steps.view()[j] == old(steps).view()[j],
             forall|j: int| #![trigger steps.view()[j]] old(steps).view().len() <= j < steps.view().len() ==> unmap_4k_range_step(steps.view()[j], cpu_id),
             steps.snapshot_k() == *krnl,
@@ -526,8 +558,14 @@ pub fn unmap_4k_range(
         proof {
             assert(va_4k_valid(va) && range.start <= va && spec_va_4k_valid(range.start) && spec_va_4k_valid(va)) by { range.va_range_lemma(); };
             assert(krnl.pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_va2index(va).0) by { spec_v2l4index_monotonic(start, va); };
+            assert(old(lctx).pagetable_window_lock_map().dom().contains((pagetable, window_of(va)))
+                && pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).window_view(window_of(va)).lock_state == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_view(window_of(va)).lock_state
+                && window_perms.dom().contains(window_of(range.view().spec_index(i as int)))) by {
+                spec_va_4k_index_roundtrip_at(window_of(va).va, spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), 0usize);
+            };
         }
-        reclaim_unmapped_4k_page_in_window(krnl, pagetable, va, thread_ptr, cpu_id, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), pagetable_perm, thread_perm);
+        reclaim_unmapped_4k_page_in_window(krnl, pagetable, va, thread_ptr, cpu_id, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), pagetable_perm, thread_perm,
+            Tracked(window_perms.tracked_borrow(window_of(va))));
         i = i + 1;
     }
     let ghost refund_before = steps.view();

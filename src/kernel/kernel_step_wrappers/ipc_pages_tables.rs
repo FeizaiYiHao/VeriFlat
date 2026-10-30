@@ -44,9 +44,11 @@ pub proof fn kernel_pagetable_pair_lock_modes_and_progress_changed_implies_u_ste
             &&& kernel_k_to_kernel_u(*post) == (KernelU {
                 thread_map: a.thread_map.insert(thread, ThreadU { syscall_progress: post.thr_mp.spec_index(thread).view().syscall_progress.view(), ..a.thread_map[thread] }),
                 process_map: a.process_map.insert(source, ProcessU {
-                    pagetable: Some(PageTableU { lock_state: post.pt_mp.spec_index(source_table).lock_state_u(), ..a.process_map[source].pagetable->Some_0 }), ..a.process_map[source]
+                    pagetable: Some(PageTableU { lock_state: post.pt_mp.spec_index(source_table).lock_state_u(),
+                        pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), source_table).lower.pagetable_window_locks, ..a.process_map[source].pagetable->Some_0 }), ..a.process_map[source]
                 }).insert(target, ProcessU {
-                    pagetable: Some(PageTableU { lock_state: post.pt_mp.spec_index(target_table).lock_state_u(), ..a.process_map[target].pagetable->Some_0 }), ..a.process_map[target]
+                    pagetable: Some(PageTableU { lock_state: post.pt_mp.spec_index(target_table).lock_state_u(),
+                        pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), target_table).lower.pagetable_window_locks, ..a.process_map[target].pagetable->Some_0 }), ..a.process_map[target]
                 }),
                 ..a
             })
@@ -60,9 +62,9 @@ pub proof fn kernel_pagetable_pair_lock_modes_and_progress_changed_implies_u_ste
         if pre.thr_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thr_mp.dom().contains(t) { kernel_thread_projection_at(post, t); }
     });
     assert_maps_equal!(b.process_map, a.process_map.insert(source, ProcessU {
-        pagetable: Some(PageTableU { lock_state: post.pt_mp.spec_index(source_table).lock_state_u(), ..a.process_map[source].pagetable->Some_0 }), ..a.process_map[source]
+        pagetable: Some(PageTableU { lock_state: post.pt_mp.spec_index(source_table).lock_state_u(), pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), source_table).lower.pagetable_window_locks, ..a.process_map[source].pagetable->Some_0 }), ..a.process_map[source]
     }).insert(target, ProcessU {
-        pagetable: Some(PageTableU { lock_state: post.pt_mp.spec_index(target_table).lock_state_u(), ..a.process_map[target].pagetable->Some_0 }), ..a.process_map[target]
+        pagetable: Some(PageTableU { lock_state: post.pt_mp.spec_index(target_table).lock_state_u(), pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), target_table).lower.pagetable_window_locks, ..a.process_map[target].pagetable->Some_0 }), ..a.process_map[target]
     }), p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); } reveal(process_pagetable_match);
     });
