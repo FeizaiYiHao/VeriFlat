@@ -104,15 +104,22 @@ pub(super) proof fn mmap_4k_enter_step_pre_from_k(krnl: &KernelK, cpu_id: CpuId,
 { kernel_cpu_thread_projection_at(krnl, cpu_id, process_ptr, thread_ptr, None); }
 
 /// Write-locking the caller's cpu and thread, which entering to fill already holds, with the cpu inside its kernel step, locking
-/// its pagetable for `phase`, and recording the first page is the enter step on `pre`/`post` when the syscall succeeds on `pre`.
-pub(super) proof fn mmap_4k_enter_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, va: VAddr, len: usize,
-    range: VaRange4K, phase: Mmap4kPhase)
+/// its pagetable `pagetable_ptr` for `phase`, setting its range windows to `windows`, the window locks of `krnl` after locking
+/// `range`, and recording the first page is the enter step from `krnl`'s projection to `post` when the syscall succeeds there.
+pub(super) proof fn mmap_4k_enter_step_from_u(krnl: &KernelK, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
+    pagetable_ptr: RwLockPageTableRoot, va: VAddr, len: usize, range: VaRange4K, phase: Mmap4kPhase, windows: Map<WindowVa, LockStateU>)
     requires
         index_valid(NUM_CPUS, cpu_id),
         range == mmap_4k_syscall_va_range(va, len),
         range.wf(),
-        mmap_4k_syscall_result(pre, cpu_id, va, len) is Success,
+        mmap_4k_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, va, len) is Success,
+        krnl.prc_mp.dom().contains(process_ptr),
+        !krnl.prc_mp.spec_index(process_ptr).view().zombie,
+        krnl.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr,
+        krnl.pt_mp.dom().contains(pagetable_ptr),
+        windows == pagetable_window_locks_after_locking_range(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, range),
         {
+            let pre = kernel_k_to_kernel_u(*krnl);
             let cpu = pre.cpu_array[cpu_id as int];
             let thread = pre.thread_map.spec_index(thread_ptr);
             let process = pre.process_map.spec_index(process_ptr);
@@ -121,28 +128,87 @@ pub(super) proof fn mmap_4k_enter_step_from_u(pre: KernelU, post: KernelU, cpu_i
             &&& pre.thread_map.dom().contains(thread_ptr)
             &&& thread.syscall_progress is None
             &&& thread.owning_proc == process_ptr
-            &&& pre.process_map.dom().contains(process_ptr)
             &&& pre.container_map.dom().contains(thread.owning_container)
-            &&& process.pagetable is Some
             &&& !(phase is Filled)
             &&& phase is Read ==> cpu.lock_state is Unlocked && thread.lock_state is Unlocked && !(pagetable.lock_state is WriteLocked)
             &&& phase is Fill ==> cpu.lock_state is WriteLocked && thread.lock_state is WriteLocked && pagetable.lock_state is Unlocked
+            &&& post == (KernelU {
+                cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
+                thread_map: pre.thread_map.insert(thread_ptr, ThreadU {
+                    lock_state: LockStateU::WriteLocked, syscall_progress: Some(SyscallProgress::Mmap4k { range, mapped: 0, directory: Mmap4kDirectory::None, phase }), ..thread
+                }),
+                process_map: pre.process_map.insert(process_ptr, ProcessU {
+                    pagetable: Some(PageTableU { lock_state: if phase is Read { LockStateU::ReadLocked } else { LockStateU::WriteLocked }, pagetable_window_locks: windows, ..pagetable }),
+                    ..process
+                }),
+                ..pre
+            })
         },
+    ensures
+        mmap_4k_enter_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id, range, phase),
+        mmap_4k_enter_step(kernel_k_to_kernel_u(*krnl), post, cpu_id, range, phase),
+{ kernel_process_projection_at(krnl, process_ptr); reveal(mmap_4k_enter_step_pre); reveal(mmap_4k_enter_step); }
+
+/// Entering to fill in two sections, first locking the pagetable `pagetable_ptr` and recording the first page from `krnl`'s
+/// projection to `mid`, then locking the range's existing windows from `mid` to `post` with the thread's quota and progress kept,
+/// is the enter step from `krnl`'s projection to `post`.
+pub(super) proof fn mmap_4k_fill_enter_step_from_u(krnl: &KernelK, mid: KernelU, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
+    pagetable_ptr: RwLockPageTableRoot, va: VAddr, len: usize, range: VaRange4K, windows: Map<WindowVa, LockStateU>, quota: usize, progress: Option<SyscallProgress>,
+    owner: RwLockProcessPtr)
+    requires
+        index_valid(NUM_CPUS, cpu_id),
+        range == mmap_4k_syscall_va_range(va, len),
+        range.wf(),
+        mmap_4k_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, va, len) is Success,
+        krnl.prc_mp.dom().contains(process_ptr),
+        !krnl.prc_mp.spec_index(process_ptr).view().zombie,
+        krnl.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr,
+        krnl.pt_mp.dom().contains(pagetable_ptr),
+        windows == pagetable_window_locks_after_locking_range(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, range),
+        owner == process_ptr,
+        {
+            let pre = kernel_k_to_kernel_u(*krnl);
+            let cpu = pre.cpu_array[cpu_id as int];
+            let thread = pre.thread_map.spec_index(thread_ptr);
+            let process = pre.process_map.spec_index(process_ptr);
+            &&& cpu.current_thread == Some(thread_ptr)
+            &&& pre.thread_map.dom().contains(thread_ptr)
+            &&& thread.syscall_progress is None
+            &&& thread.owning_proc == process_ptr
+            &&& pre.container_map.dom().contains(thread.owning_container)
+            &&& cpu.lock_state is WriteLocked && thread.lock_state is WriteLocked && process.pagetable->Some_0.lock_state is Unlocked
+            &&& mid == (KernelU {
+                cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
+                thread_map: pre.thread_map.insert(thread_ptr, ThreadU {
+                    lock_state: LockStateU::WriteLocked, syscall_progress: Some(SyscallProgress::Mmap4k { range, mapped: 0, directory: Mmap4kDirectory::None, phase: Mmap4kPhase::Fill }),
+                    ..thread
+                }),
+                process_map: pre.process_map.insert(process_ptr, ProcessU { pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..process.pagetable->Some_0 }), ..process }),
+                ..pre
+            })
+        },
+        mid.thread_map.spec_index(thread_ptr).quota_4k == quota,
+        mid.thread_map.spec_index(thread_ptr).syscall_progress == progress,
         post == (KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
-            thread_map: pre.thread_map.insert(thread_ptr, ThreadU {
-                lock_state: LockStateU::WriteLocked, syscall_progress: Some(SyscallProgress::Mmap4k { range, mapped: 0, directory: Mmap4kDirectory::None, phase }), ..pre.thread_map.spec_index(thread_ptr)
-            }),
-            process_map: pre.process_map.insert(process_ptr, ProcessU {
-                pagetable: Some(PageTableU { lock_state: if phase is Read { LockStateU::ReadLocked } else { LockStateU::WriteLocked }, ..pre.process_map.spec_index(process_ptr).pagetable->Some_0 }),
-                ..pre.process_map.spec_index(process_ptr)
-            }),
-            ..pre
+            thread_map: mid.thread_map.insert(thread_ptr, ThreadU { quota_4k: quota, syscall_progress: progress, ..mid.thread_map.spec_index(thread_ptr) }),
+            process_map: if mid.process_map.dom().contains(owner) && mid.process_map[owner].pagetable is Some {
+                mid.process_map.insert(owner, ProcessU { pagetable: Some(PageTableU { pagetable_window_locks: windows, ..mid.process_map[owner].pagetable->Some_0 }), ..mid.process_map[owner] })
+            } else { mid.process_map },
+            ..mid
         }),
     ensures
-        mmap_4k_enter_step_pre(pre, cpu_id, range, phase),
-        mmap_4k_enter_step(pre, post, cpu_id, range, phase),
-{ reveal(mmap_4k_enter_step_pre); reveal(mmap_4k_enter_step); }
+        mmap_4k_enter_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id, range, Mmap4kPhase::Fill),
+        mmap_4k_enter_step(kernel_k_to_kernel_u(*krnl), post, cpu_id, range, Mmap4kPhase::Fill),
+{
+    let pre = kernel_k_to_kernel_u(*krnl);
+    let process = pre.process_map.spec_index(process_ptr);
+    kernel_process_projection_at(krnl, process_ptr);
+    assert(post.thread_map =~= mid.thread_map);
+    assert(post.process_map =~= pre.process_map.insert(process_ptr, ProcessU {
+        pagetable: Some(PageTableU { lock_state: LockStateU::WriteLocked, pagetable_window_locks: windows, ..process.pagetable->Some_0 }), ..process
+    }));
+    mmap_4k_enter_step_from_u(krnl, post, cpu_id, process_ptr, thread_ptr, pagetable_ptr, va, len, range, Mmap4kPhase::Fill, windows);
+}
 
 /// The entry state's K facts on the running cpu and its current thread, both unlocked, with the syscall result success or in
 /// use there, give the hold step's precondition.
@@ -197,11 +263,19 @@ pub(super) proof fn mmap_4k_release_step_from_u(pre: KernelU, post: KernelU, cpu
         mmap_4k_release_step(pre, post, cpu_id),
 { reveal(mmap_4k_release_step_pre); reveal(mmap_4k_release_step); }
 
-/// Turning the fill phase's write lock on the pagetable into a read lock is the downgrade step on `pre`/`post`.
-pub(super) proof fn mmap_4k_downgrade_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr)
+/// Turning the fill phase's write lock on the pagetable `pagetable_ptr` into a read lock with its window locks kept as `windows` is
+/// the downgrade step from `krnl`'s projection to `post`.
+pub(super) proof fn mmap_4k_downgrade_step_from_u(krnl: &KernelK, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
+    pagetable_ptr: RwLockPageTableRoot, windows: Map<WindowVa, LockStateU>)
     requires
         index_valid(NUM_CPUS, cpu_id),
+        krnl.prc_mp.dom().contains(process_ptr),
+        !krnl.prc_mp.spec_index(process_ptr).view().zombie,
+        krnl.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr,
+        krnl.pt_mp.dom().contains(pagetable_ptr),
+        windows == pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
         {
+            let pre = kernel_k_to_kernel_u(*krnl);
             let thread = pre.thread_map.spec_index(thread_ptr);
             let process = pre.process_map.spec_index(process_ptr);
             let progress = thread.syscall_progress->Some_0;
@@ -211,22 +285,22 @@ pub(super) proof fn mmap_4k_downgrade_step_from_u(pre: KernelU, post: KernelU, c
             &&& pre.thread_map.dom().contains(thread_ptr)
             &&& thread.lock_state is WriteLocked
             &&& thread.owning_proc == process_ptr
-            &&& pre.process_map.dom().contains(process_ptr)
-            &&& process.pagetable is Some
             &&& process.pagetable->Some_0.lock_state is WriteLocked
             &&& thread.syscall_progress is Some
             &&& progress is Mmap4k
             &&& progress->Mmap4k_phase is Fill
             &&& post == (KernelU {
                 thread_map: pre.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(filled), ..thread }),
-                process_map: pre.process_map.insert(process_ptr, ProcessU { pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..process.pagetable->Some_0 }), ..process }),
+                process_map: pre.process_map.insert(process_ptr, ProcessU {
+                    pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, pagetable_window_locks: windows, ..process.pagetable->Some_0 }), ..process
+                }),
                 ..pre
             })
         },
     ensures
-        mmap_4k_downgrade_step_pre(pre, cpu_id),
-        mmap_4k_downgrade_step(pre, post, cpu_id),
-{ reveal(mmap_4k_downgrade_step_pre); reveal(mmap_4k_downgrade_step); }
+        mmap_4k_downgrade_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
+        mmap_4k_downgrade_step(kernel_k_to_kernel_u(*krnl), post, cpu_id),
+{ kernel_process_projection_at(krnl, process_ptr); reveal(mmap_4k_downgrade_step_pre); reveal(mmap_4k_downgrade_step); }
 
 /// Publishing the next recorded page under the mmap locks is the leaf step from `krnl`'s projection to `post`. The published
 /// page is `Owned4k` in `krnl`, so no IOMMU table of `krnl` maps it.
@@ -281,12 +355,20 @@ pub(super) proof fn mmap_4k_leaf_step_from_u(krnl: &KernelK, post: KernelU, cpu_
     reveal(mmap_4k_leaf_step_pre); reveal(mmap_4k_leaf_step);
 }
 
-/// Clearing the progress and releasing the mmap locks after the whole range is mapped, returning the cpu to its trap path and
-/// leaving the pagetable in `table_lock`, is the exit step on `pre`/`post`.
-pub(super) proof fn mmap_4k_exit_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, table_lock: LockStateU)
+/// Clearing the progress and releasing the mmap locks after the whole recorded range `range` is mapped, setting the window locks
+/// of pagetable `pagetable_ptr` to `windows`, those of `krnl` after unlocking `range`, returning the cpu to its trap path, and
+/// leaving the pagetable in `table_lock`, is the exit step from `krnl`'s projection to `post`.
+pub(super) proof fn mmap_4k_exit_step_from_u(krnl: &KernelK, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
+    pagetable_ptr: RwLockPageTableRoot, range: VaRange4K, table_lock: LockStateU, windows: Map<WindowVa, LockStateU>)
     requires
         index_valid(NUM_CPUS, cpu_id),
+        krnl.prc_mp.dom().contains(process_ptr),
+        !krnl.prc_mp.spec_index(process_ptr).view().zombie,
+        krnl.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr,
+        krnl.pt_mp.dom().contains(pagetable_ptr),
+        windows == pagetable_window_locks_after_unlocking_range(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, range),
         {
+            let pre = kernel_k_to_kernel_u(*krnl);
             let thread = pre.thread_map.spec_index(thread_ptr);
             let process = pre.process_map.spec_index(process_ptr);
             let progress = thread.syscall_progress->Some_0;
@@ -295,29 +377,27 @@ pub(super) proof fn mmap_4k_exit_step_from_u(pre: KernelU, post: KernelU, cpu_id
             &&& pre.thread_map.dom().contains(thread_ptr)
             &&& thread.lock_state is WriteLocked
             &&& thread.owning_proc == process_ptr
-            &&& pre.process_map.dom().contains(process_ptr)
-            &&& process.pagetable is Some
             &&& !(process.pagetable->Some_0.lock_state is Unlocked)
             &&& thread.syscall_progress is Some
             &&& progress is Mmap4k
             &&& !(progress->Mmap4k_phase is Fill)
-            &&& progress->Mmap4k_mapped == progress->Mmap4k_range.len
+            &&& progress->Mmap4k_range == range
+            &&& progress->Mmap4k_mapped == range.len
             &&& progress->Mmap4k_directory is None
+            &&& post == (KernelU {
+                cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: CpuOpState::Trap, ..pre.cpu_array[cpu_id as int] }),
+                thread_map: pre.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..thread }),
+                process_map: pre.process_map.insert(process_ptr, ProcessU {
+                    pagetable: Some(PageTableU { lock_state: table_lock, pagetable_window_locks: windows, ..process.pagetable->Some_0 }), ..process
+                }),
+                ..pre
+            })
         },
         table_lock is Unlocked || table_lock is ReadLocked,
-        post == (KernelU {
-            cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: CpuOpState::Trap, ..pre.cpu_array[cpu_id as int] }),
-            thread_map: pre.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..pre.thread_map.spec_index(thread_ptr) }),
-            process_map: pre.process_map.insert(process_ptr, ProcessU {
-                pagetable: Some(PageTableU { lock_state: table_lock, ..pre.process_map.spec_index(process_ptr).pagetable->Some_0 }),
-                ..pre.process_map.spec_index(process_ptr)
-            }),
-            ..pre
-        }),
     ensures
-        mmap_4k_exit_step_pre(pre, cpu_id),
-        mmap_4k_exit_step(pre, post, cpu_id),
-{ reveal(mmap_4k_exit_step_pre); reveal(mmap_4k_exit_step); }
+        mmap_4k_exit_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id),
+        mmap_4k_exit_step(kernel_k_to_kernel_u(*krnl), post, cpu_id),
+{ kernel_process_projection_at(krnl, process_ptr); reveal(mmap_4k_exit_step_pre); reveal(mmap_4k_exit_step); }
 
 /// Directory steps appended after range steps that start at `start` are range steps.
 pub(super) proof fn mmap_4k_range_steps_from_directory(steps: &KernelSteps, before: Seq<KernelStep>, start: int, cpu_id: CpuId)

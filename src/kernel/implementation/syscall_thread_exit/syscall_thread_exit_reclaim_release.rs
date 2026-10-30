@@ -531,7 +531,39 @@ pub(super) fn thread_exit_reclaim_unmap_leaves(
             assert(spec_va_4k_valid(va) && spec_va2index(va) == next) by { spec_va_4k_index_roundtrip_at(va, next.0, next.1, next.2, next.3); };
             assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
         }
-        reclaim_unmapped_4k_page(krnl, pagetable, va, thread_ptr, cpu_id, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&pagetable_lock_perm), Tracked(thread_lock_perm));
+        let ghost leaf_k = *krnl;
+        let ghost leaf_before = steps.view();
+        proof {
+            let c = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
+            thread_exit_reclaim_flushed_step_pre_from_k(&*krnl, &*lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable);
+            kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl);
+            krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
+            pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); assert(krnl.pt_lower.view() =~= krnl.pt_lower.view().insert(pagetable, krnl.pt_lower.view().spec_index(pagetable)));
+            assert(c.lower.pagetable_window_locks.dom().contains(window_of(va)) && c.lower.pagetable_window_locks[window_of(va)] is Unlocked) by {
+                broadcast use PageTableHigher::resolve_l3_addr_unique_at;
+                c.wf_mapping_4k_at(next.0, next.1, next.2, next.3); c.higher.wf_l4_at(next.0); c.wf_l3_at(c.spec_resolve_mapping_l4(next.0)->0.addr, next.1);
+                c.tables_reachable_wf_l2_at(c.window_l2_page(next.0, next.1)); c.wf_window_locks_slot_at(c.window_l2_page(next.0, next.1), next.2);
+                wlocker_holds_no_windows_implies_l2_windows_unlocked(krnl.pt_mp, krnl.pt_lower.view(), lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), pagetable, next.0, next.1,
+                    c.window_l2_page(next.0, next.1));
+                spec_index2va_2m_valid(next.0, next.1, next.2); c.wf_window_locks_va_at(window_of(va));
+            };
+        }
+        let Ghost(window_locked) = reclaim_unmapped_4k_page(krnl, pagetable, va, thread_ptr, cpu_id, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&pagetable_lock_perm),
+            Tracked(thread_lock_perm));
+        proof {
+            let unlock_pre = steps.snapshot_k();
+            if !(steps.view() == leaf_before && unlock_pre == leaf_k) {
+                thread_exit_window_locks_changed_implies_windows_changed_step(&leaf_k, &window_locked, cpu_id, process_ptr, pagetable, thread_ptr, window_of(va), LockStateU::WriteLocked);
+                thread_exit_trace_from_recorded_step(&*steps, leaf_before, start, pre, kernel_k_to_kernel_u(leaf_k), kernel_k_to_kernel_u(window_locked), cpu_id);
+            }
+            let unlock_before = steps.view();
+            let unlocked = *krnl;
+            assert(pagetable_c(unlocked.pt_mp, unlocked.pt_lower.view(), pagetable).lower.pagetable_window_locks =~= pagetable_c(unlock_pre.pt_mp, unlock_pre.pt_lower.view(), pagetable).lower.pagetable_window_locks.insert(window_of(va), LockStateU::Unlocked));
+            thread_exit_reclaim_flushed_step_pre_from_k(&unlocked, &*lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable);
+            thread_exit_window_locks_changed_implies_windows_changed_step(&unlock_pre, &unlocked, cpu_id, process_ptr, pagetable, thread_ptr, window_of(va), LockStateU::Unlocked);
+            krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
+            thread_exit_trace_from_recorded_step(&*steps, unlock_before, start, pre, kernel_k_to_kernel_u(unlock_pre), kernel_k_to_kernel_u(unlocked), cpu_id);
+        }
         cursor = (next.0, next.1, next.2, next.3 + 1);
         proof {
             lemma_l4_index_path_le_successor(next, cursor); pagetable_perms_wf_map(krnl.pt_mp);

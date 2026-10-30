@@ -73,13 +73,18 @@ pub open spec fn mmap_4k_directory_step_pre(old_u: KernelU, cpu_id: CpuId) -> bo
 }
 
 /// A directory page consumes one 4K quota and records its level in the same phase: an L4 or L3 directory
-/// while filling, and a deeper level than the last recorded one otherwise.
+/// while filling, and a deeper level than the last recorded one otherwise. A new L2 page adds its windows to
+/// the table, those of the recorded range held.
 #[verifier::opaque]
 pub open spec fn mmap_4k_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let thread = old_u.thread_map.spec_index(thread_ptr);
     let progress = thread.syscall_progress->Some_0;
     let new_progress = new_u.thread_map.spec_index(thread_ptr).syscall_progress->Some_0;
+    let process = old_u.process_map[thread.owning_proc];
+    let table = process.pagetable->Some_0;
+    let old_windows = table.pagetable_window_locks;
+    let new_windows = new_u.process_map[thread.owning_proc].pagetable->Some_0.pagetable_window_locks;
     &&& new_u.thread_map.spec_index(thread_ptr).syscall_progress is Some
     &&& new_progress is Mmap4k
     &&& new_progress->Mmap4k_range == progress->Mmap4k_range
@@ -87,6 +92,14 @@ pub open spec fn mmap_4k_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: 
     &&& new_progress->Mmap4k_phase == progress->Mmap4k_phase
     &&& progress->Mmap4k_phase is Fill ==> new_progress->Mmap4k_directory is L4 || new_progress->Mmap4k_directory is L3
     &&& !(progress->Mmap4k_phase is Fill) ==> mmap_4k_directory_rank(progress->Mmap4k_directory) < mmap_4k_directory_rank(new_progress->Mmap4k_directory)
-    &&& new_u == (KernelU { thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { quota_4k: (thread.quota_4k - 1) as usize, syscall_progress: Some(new_progress), ..thread }), ..old_u })
+    &&& new_progress->Mmap4k_directory is L3 ==> !new_windows.dom().subset_of(old_windows.dom())
+    &&& new_progress->Mmap4k_directory is L3 ==> forall|w: WindowVa| #![trigger new_windows.dom().contains(w)] new_windows.dom().contains(w) && !old_windows.dom().contains(w)
+        ==> new_windows == pagetable_window_locks_after_new_l2_page(old_windows, spec_v2l4index(w.va), spec_v2l3index(w.va), progress->Mmap4k_range)
+    &&& !(new_progress->Mmap4k_directory is L3) ==> new_windows == old_windows
+    &&& new_u == (KernelU {
+        thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { quota_4k: (thread.quota_4k - 1) as usize, syscall_progress: Some(new_progress), ..thread }),
+        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { pagetable_window_locks: new_windows, ..table }), ..process }),
+        ..old_u
+    })
 }
 } // verus!

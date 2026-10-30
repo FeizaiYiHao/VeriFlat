@@ -122,6 +122,7 @@ pub(super) proof fn iommu_map_4k_enter_step_from_k(
         pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k(),
         pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m(),
         pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g(),
+        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == pagetable_window_locks_after_locking_range(pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, iommu_map_4k_syscall_range(va, range)),
         !pre.it_mp.spec_index(iommu_table_ptr).locked(),
         post.it_mp.unchanged_except(&pre.it_mp, iommu_table_ptr),
         post.it_mp.spec_index(iommu_table_ptr).view() == pre.it_mp.spec_index(iommu_table_ptr).view(),
@@ -190,6 +191,8 @@ pub(super) proof fn iommu_map_4k_exit_step_from_k(
         pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k(),
         pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m(),
         pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g(),
+        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == pagetable_window_locks_after_unlocking_range(
+            pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view()->Some_0->IommuMap4k_va_range),
         post.it_mp.unchanged_except(&pre.it_mp, iommu_table_ptr),
         post.it_mp.spec_index(iommu_table_ptr).view() == pre.it_mp.spec_index(iommu_table_ptr).view(),
         post.it_mp.spec_index(iommu_table_ptr).locking_thread() is None,
@@ -199,9 +202,10 @@ pub(super) proof fn iommu_map_4k_exit_step_from_k(
 {
     reveal(iommu_map_4k_exit_step_pre); reveal(iommu_map_4k_exit_step);
     assert(pre.prc_mp.dom().contains(process_ptr) && !pre.prc_mp.spec_index(process_ptr).view().zombie) by { reveal(process_cpu_wf); };
+    process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, process_ptr);
     kernel_cpu_process_thread_pagetable_iommu_table_lock_states_and_progress_changed_implies_u_step(pre, post, cpu_id, process_ptr, thread_ptr, pagetable_ptr, iommu_table_ptr);
     iommu_map_4k_locked_from_k(pre, lctx, cpu_id, process_ptr, thread_ptr, pagetable_ptr, iommu_table_ptr);
-    kernel_cpu_projection_at(pre, cpu_id); kernel_thread_projection_at(pre, thread_ptr);
+    kernel_cpu_projection_at(pre, cpu_id); kernel_thread_projection_at(pre, thread_ptr); kernel_process_projection_at(pre, process_ptr);
 }
 
 /// The running thread holding its cpu, process, and thread write locks, its page table's read lock, and its IOMMU table's

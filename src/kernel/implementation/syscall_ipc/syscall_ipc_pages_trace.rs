@@ -357,7 +357,7 @@ pub(super) proof fn ipc_pages_unlock_tables_step_pre_from_k(
         krnl.cpu_arr.spec_index(cpu_id).value.view().view().current_process is Some,
         krnl.cpu_arr.spec_index(cpu_id).value.view().view().current_thread == Some(thread_ptr),
         krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k {
-            source_range, target_range, shared: source_range.len, origin: Share4kOrigin::IpcPages { peer: peer_ptr },
+            source_range, target_range, shared: source_range.len, directory: krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view()->Some_0->Share4k_directory, origin: Share4kOrigin::IpcPages { peer: peer_ptr },
         }),
         source_thread == thread_ptr && target_thread == peer_ptr || source_thread == peer_ptr && target_thread == thread_ptr,
         krnl.thr_mp.spec_index(peer_ptr).view().state == (ThreadState::IPC_TRANSIT { partner: thread_ptr, wait: if source_thread == thread_ptr { IpcWait::Receive } else { IpcWait::Send } }),
@@ -488,13 +488,32 @@ pub(super) proof fn ipc_pages_lock_tables_step_pre_from_u(pre: KernelU, cpu_id: 
     ensures ipc_pages_lock_tables_step_pre(pre, cpu_id, endpoint_index, tables),
 { reveal(ipc_pages_lock_tables_step_pre); }
 
-/// Read-locking the sender's page table, read-locking or write-locking the receiver's as `tables` records, and recording `tables` is the
+/// Read-locking the sender's page table, read-locking or write-locking the receiver's as `tables` records, leaving `source_windows` and
+/// `target_windows` the K-state window locks after locking both ranges' windows when both are user ranges, and recording `tables` is the
 /// lock-tables step on `pre`/`post`.
 pub(super) proof fn ipc_pages_lock_tables_step_from_u(
-    pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, source_range: VaRange4K, target_range: VaRange4K, peer_ptr: RwLockThreadPtr,
-    source: RwLockProcessPtr, target: RwLockProcessPtr, tables: IpcPagesTables,
+    pre: KernelU, post: KernelU, pre_k: &KernelK, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, source_range: VaRange4K, target_range: VaRange4K, peer_ptr: RwLockThreadPtr,
+    source: RwLockProcessPtr, target: RwLockProcessPtr, source_table: RwLockPageTableRoot, target_table: RwLockPageTableRoot, tables: IpcPagesTables,
+    source_windows: Map<WindowVa, LockStateU>, target_windows: Map<WindowVa, LockStateU>,
 )
     requires
+        pre == kernel_k_to_kernel_u(*pre_k),
+        pre_k.inv(),
+        pre_k.prc_mp.dom().contains(source),
+        pre_k.prc_mp.dom().contains(target),
+        !pre_k.prc_mp.spec_index(source).view().zombie,
+        !pre_k.prc_mp.spec_index(target).view().zombie,
+        pre_k.prc_mp.spec_index(source).view().pagetable == source_table,
+        pre_k.prc_mp.spec_index(target).view().pagetable == target_table,
+        pre_k.pt_mp.dom().contains(source_table),
+        pre_k.pt_mp.dom().contains(target_table),
+        {
+            let source_c = pagetable_c(pre_k.pt_mp, pre_k.pt_lower.view(), source_table);
+            let target_c = pagetable_c(pre_k.pt_mp, pre_k.pt_lower.view(), target_table);
+            let user = source_c.kernel_l4_end() <= spec_va2index(source_range.start).0 && target_c.kernel_l4_end() <= spec_va2index(target_range.start).0;
+            &&& source_windows == if user { pagetable_window_locks_after_locking_range(source_c.lower.pagetable_window_locks, source_range) } else { source_c.lower.pagetable_window_locks }
+            &&& target_windows == if user { pagetable_window_locks_after_locking_range(target_c.lower.pagetable_window_locks, target_range) } else { target_c.lower.pagetable_window_locks }
+        },
         pre.cpu_array[cpu_id as int].current_thread == Some(thread_ptr),
         pre.thread_map[thread_ptr].syscall_progress == Some(SyscallProgress::IpcPages { source_range, target_range, peer: peer_ptr, tables: IpcPagesTables::Unlocked, released: None }),
         pre.thread_map[ipc_pages_sender(pre, cpu_id)].owning_proc == source,
@@ -502,15 +521,14 @@ pub(super) proof fn ipc_pages_lock_tables_step_from_u(
         post == (KernelU {
             thread_map: pre.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(SyscallProgress::IpcPages { source_range, target_range, peer: peer_ptr, tables, released: None }), ..pre.thread_map[thread_ptr] }),
             process_map: pre.process_map.insert(source, ProcessU {
-                pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..pre.process_map[source].pagetable->Some_0 }), ..pre.process_map[source]
+                pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, pagetable_window_locks: source_windows, ..pre.process_map[source].pagetable->Some_0 }), ..pre.process_map[source]
             }).insert(target, ProcessU {
-                pagetable: Some(PageTableU { lock_state: if tables is Fill { LockStateU::WriteLocked } else { LockStateU::ReadLocked }, ..pre.process_map[target].pagetable->Some_0 }),
-                ..pre.process_map[target]
+                pagetable: Some(PageTableU { lock_state: if tables is Fill { LockStateU::WriteLocked } else { LockStateU::ReadLocked }, pagetable_window_locks: target_windows, ..pre.process_map[target].pagetable->Some_0 }), ..pre.process_map[target]
             }),
             ..pre
         }),
     ensures ipc_pages_lock_tables_step(pre, post, cpu_id, tables),
-{ reveal(ipc_pages_lock_tables_step); }
+{ reveal(ipc_pages_lock_tables_step); kernel_process_projection_at(pre_k, source); kernel_process_projection_at(pre_k, target); kernel_l4_end_projection_at(pre_k, source_table); kernel_l4_end_projection_at(pre_k, target_table); }
 
 /// The held pages context on `pre` with the sender's page table read-locked, the receiver's held as the recorded tables mode asks, and
 /// nothing released is the check pre.
@@ -540,7 +558,7 @@ pub(super) proof fn ipc_pages_passed_check_step_from_u(
         ipc_pages_check_result(pre, cpu_id) is Success,
         post == (KernelU {
             thread_map: pre.thread_map.insert(thread_ptr, ThreadU {
-                syscall_progress: Some(SyscallProgress::Share4k { source_range, target_range, shared: 0, origin: Share4kOrigin::IpcPages { peer: peer_ptr } }),
+                syscall_progress: Some(SyscallProgress::Share4k { source_range, target_range, shared: 0, directory: Mmap4kDirectory::None, origin: Share4kOrigin::IpcPages { peer: peer_ptr } }),
                 ..pre.thread_map[thread_ptr]
             }),
             ..pre
@@ -563,7 +581,7 @@ pub(super) proof fn ipc_pages_passed_check_step_from_k(
         index_valid(NUM_CPUS, cpu_id),
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
         pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::IpcPages { source_range, target_range, peer: peer_ptr, tables, released: None }),
-        post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k { source_range, target_range, shared: 0, origin: Share4kOrigin::IpcPages { peer: peer_ptr } }),
+        post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k { source_range, target_range, shared: 0, directory: Mmap4kDirectory::None, origin: Share4kOrigin::IpcPages { peer: peer_ptr } }),
         ipc_pages_check_result(kernel_k_to_kernel_u(*pre), cpu_id) is Success,
     ensures ipc_pages_check_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id),
 {
@@ -571,12 +589,32 @@ pub(super) proof fn ipc_pages_passed_check_step_from_k(
     ipc_pages_passed_check_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, thread_ptr, source_range, target_range, peer_ptr, tables);
 }
 
-/// Recording a failed check while releasing both page tables, which other readers may still hold, is the check step on `pre`/`post`.
+/// Recording a failed check while releasing both page tables, which other readers may still hold, and leaving `source_windows` and
+/// `target_windows` the K-state window locks after unlocking both ranges' windows when both are user ranges, is the check step on
+/// `pre`/`post`.
 pub(super) proof fn ipc_pages_failed_check_step_from_u(
-    pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, source_range: VaRange4K, target_range: VaRange4K, peer_ptr: RwLockThreadPtr,
-    tables: IpcPagesTables, result: RetValueType, source: RwLockProcessPtr, target: RwLockProcessPtr, source_state: LockStateU, target_state: LockStateU,
+    pre: KernelU, post: KernelU, pre_k: &KernelK, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, source_range: VaRange4K, target_range: VaRange4K, peer_ptr: RwLockThreadPtr,
+    tables: IpcPagesTables, result: RetValueType, source: RwLockProcessPtr, target: RwLockProcessPtr, source_table: RwLockPageTableRoot, target_table: RwLockPageTableRoot,
+    source_state: LockStateU, target_state: LockStateU, source_windows: Map<WindowVa, LockStateU>, target_windows: Map<WindowVa, LockStateU>,
 )
     requires
+        pre == kernel_k_to_kernel_u(*pre_k),
+        pre_k.inv(),
+        pre_k.prc_mp.dom().contains(source),
+        pre_k.prc_mp.dom().contains(target),
+        !pre_k.prc_mp.spec_index(source).view().zombie,
+        !pre_k.prc_mp.spec_index(target).view().zombie,
+        pre_k.prc_mp.spec_index(source).view().pagetable == source_table,
+        pre_k.prc_mp.spec_index(target).view().pagetable == target_table,
+        pre_k.pt_mp.dom().contains(source_table),
+        pre_k.pt_mp.dom().contains(target_table),
+        {
+            let source_c = pagetable_c(pre_k.pt_mp, pre_k.pt_lower.view(), source_table);
+            let target_c = pagetable_c(pre_k.pt_mp, pre_k.pt_lower.view(), target_table);
+            let user = source_c.kernel_l4_end() <= spec_va2index(source_range.start).0 && target_c.kernel_l4_end() <= spec_va2index(target_range.start).0;
+            &&& source_windows == if user { pagetable_window_locks_after_unlocking_range(source_c.lower.pagetable_window_locks, source_range) } else { source_c.lower.pagetable_window_locks }
+            &&& target_windows == if user { pagetable_window_locks_after_unlocking_range(target_c.lower.pagetable_window_locks, target_range) } else { target_c.lower.pagetable_window_locks }
+        },
         pre.cpu_array[cpu_id as int].current_thread == Some(thread_ptr),
         pre.thread_map[thread_ptr].syscall_progress == Some(SyscallProgress::IpcPages { source_range, target_range, peer: peer_ptr, tables, released: None }),
         result == ipc_pages_check_result(pre, cpu_id),
@@ -589,14 +627,14 @@ pub(super) proof fn ipc_pages_failed_check_step_from_u(
         post == (KernelU {
             thread_map: pre.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(SyscallProgress::IpcPages { source_range, target_range, peer: peer_ptr, tables: IpcPagesTables::Unlocked, released: Some(result) }), ..pre.thread_map[thread_ptr] }),
             process_map: pre.process_map.insert(source, ProcessU {
-                pagetable: Some(PageTableU { lock_state: source_state, ..pre.process_map[source].pagetable->Some_0 }), ..pre.process_map[source]
+                pagetable: Some(PageTableU { lock_state: source_state, pagetable_window_locks: source_windows, ..pre.process_map[source].pagetable->Some_0 }), ..pre.process_map[source]
             }).insert(target, ProcessU {
-                pagetable: Some(PageTableU { lock_state: target_state, ..pre.process_map[target].pagetable->Some_0 }), ..pre.process_map[target]
+                pagetable: Some(PageTableU { lock_state: target_state, pagetable_window_locks: target_windows, ..pre.process_map[target].pagetable->Some_0 }), ..pre.process_map[target]
             }),
             ..pre
         }),
     ensures ipc_pages_check_step(pre, post, cpu_id),
-{ reveal(ipc_pages_check_step); }
+{ reveal(ipc_pages_check_step); kernel_process_projection_at(pre_k, source); kernel_process_projection_at(pre_k, target); kernel_l4_end_projection_at(pre_k, source_table); kernel_l4_end_projection_at(pre_k, target_table); }
 
 /// The fully shared pages context on `pre` with both page tables read-locked is the unlock-tables pre.
 pub(super) proof fn ipc_pages_unlock_tables_step_pre_from_u(pre: KernelU, cpu_id: CpuId)
@@ -620,15 +658,28 @@ pub(super) proof fn ipc_pages_unlock_tables_step_pre_from_u(pre: KernelU, cpu_id
     ensures ipc_pages_unlock_tables_step_pre(pre, cpu_id),
 { reveal(ipc_pages_unlock_tables_step_pre); }
 
-/// Releasing both page tables after sharing, which other readers may still hold, and recording Success is the unlock-tables step on
-/// `pre`/`post`.
+/// Releasing both page tables after sharing, which other readers may still hold, leaving `source_windows` and `target_windows` the K-state
+/// window locks after unlocking both ranges' windows, and recording Success is the unlock-tables step on `pre`/`post`.
 pub(super) proof fn ipc_pages_unlock_tables_step_from_u(
-    pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, source_range: VaRange4K, target_range: VaRange4K, peer_ptr: RwLockThreadPtr,
-    source: RwLockProcessPtr, target: RwLockProcessPtr, source_state: LockStateU, target_state: LockStateU,
+    pre: KernelU, post: KernelU, pre_k: &KernelK, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, source_range: VaRange4K, target_range: VaRange4K, peer_ptr: RwLockThreadPtr,
+    source: RwLockProcessPtr, target: RwLockProcessPtr, source_table: RwLockPageTableRoot, target_table: RwLockPageTableRoot, source_state: LockStateU, target_state: LockStateU,
+    source_windows: Map<WindowVa, LockStateU>, target_windows: Map<WindowVa, LockStateU>,
 )
     requires
+        pre == kernel_k_to_kernel_u(*pre_k),
+        pre_k.inv(),
+        pre_k.prc_mp.dom().contains(source),
+        pre_k.prc_mp.dom().contains(target),
+        !pre_k.prc_mp.spec_index(source).view().zombie,
+        !pre_k.prc_mp.spec_index(target).view().zombie,
+        pre_k.prc_mp.spec_index(source).view().pagetable == source_table,
+        pre_k.prc_mp.spec_index(target).view().pagetable == target_table,
+        pre_k.pt_mp.dom().contains(source_table),
+        pre_k.pt_mp.dom().contains(target_table),
+        source_windows == pagetable_window_locks_after_unlocking_range(pagetable_c(pre_k.pt_mp, pre_k.pt_lower.view(), source_table).lower.pagetable_window_locks, source_range),
+        target_windows == pagetable_window_locks_after_unlocking_range(pagetable_c(pre_k.pt_mp, pre_k.pt_lower.view(), target_table).lower.pagetable_window_locks, target_range),
         pre.cpu_array[cpu_id as int].current_thread == Some(thread_ptr),
-        pre.thread_map[thread_ptr].syscall_progress == Some(SyscallProgress::Share4k { source_range, target_range, shared: source_range.len, origin: Share4kOrigin::IpcPages { peer: peer_ptr } }),
+        pre.thread_map[thread_ptr].syscall_progress == Some(SyscallProgress::Share4k { source_range, target_range, shared: source_range.len, directory: pre.thread_map[thread_ptr].syscall_progress->Some_0->Share4k_directory, origin: Share4kOrigin::IpcPages { peer: peer_ptr } }),
         share_4k_objects(pre, cpu_id).target == target,
         pre.thread_map[share_4k_objects(pre, cpu_id).source_thread].owning_proc == source,
         source != target,
@@ -640,14 +691,14 @@ pub(super) proof fn ipc_pages_unlock_tables_step_from_u(
                 ..pre.thread_map[thread_ptr]
             }),
             process_map: pre.process_map.insert(source, ProcessU {
-                pagetable: Some(PageTableU { lock_state: source_state, ..pre.process_map[source].pagetable->Some_0 }), ..pre.process_map[source]
+                pagetable: Some(PageTableU { lock_state: source_state, pagetable_window_locks: source_windows, ..pre.process_map[source].pagetable->Some_0 }), ..pre.process_map[source]
             }).insert(target, ProcessU {
-                pagetable: Some(PageTableU { lock_state: target_state, ..pre.process_map[target].pagetable->Some_0 }), ..pre.process_map[target]
+                pagetable: Some(PageTableU { lock_state: target_state, pagetable_window_locks: target_windows, ..pre.process_map[target].pagetable->Some_0 }), ..pre.process_map[target]
             }),
             ..pre
         }),
     ensures ipc_pages_unlock_tables_step(pre, post, cpu_id),
-{ reveal(ipc_pages_unlock_tables_step); }
+{ reveal(ipc_pages_unlock_tables_step); kernel_process_projection_at(pre_k, source); kernel_process_projection_at(pre_k, target); }
 
 /// Scheduling the transit peer with the released result while releasing the pages context is the pages
 /// finish step on `pre`/`post`.
@@ -811,7 +862,7 @@ pub(super) proof fn ipc_pages_downgrade_step_pre_from_k(
         krnl.cpu_arr.spec_index(cpu_id).value.view().view().current_process is Some,
         krnl.cpu_arr.spec_index(cpu_id).value.view().view().current_thread == Some(thread_ptr),
         krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k {
-            source_range, target_range, shared: 0, origin: Share4kOrigin::IpcPages { peer: peer_ptr },
+            source_range, target_range, shared: 0, directory: krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view()->Some_0->Share4k_directory, origin: Share4kOrigin::IpcPages { peer: peer_ptr },
         }),
         source_thread == thread_ptr && target_thread == peer_ptr || source_thread == peer_ptr && target_thread == thread_ptr,
         krnl.thr_mp.spec_index(peer_ptr).view().state == (ThreadState::IPC_TRANSIT { partner: thread_ptr, wait: if source_thread == thread_ptr { IpcWait::Receive } else { IpcWait::Send } }),
@@ -866,8 +917,20 @@ pub(super) proof fn ipc_pages_downgrade_step_pre_from_u(pre: KernelU, cpu_id: Cp
 
 /// Turning the write lock on the receiver's page table into a read lock while the sender's page table and the running thread keep their
 /// state is the downgrade step on `pre`/`post`.
-pub(super) proof fn ipc_pages_downgrade_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, source: RwLockProcessPtr, target: RwLockProcessPtr, source_state: LockStateU)
+pub(super) proof fn ipc_pages_downgrade_step_from_u(
+    pre: KernelU, post: KernelU, pre_k: &KernelK, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, source: RwLockProcessPtr, target: RwLockProcessPtr, source_table: RwLockPageTableRoot,
+    target_table: RwLockPageTableRoot, source_state: LockStateU,
+)
     requires
+        pre == kernel_k_to_kernel_u(*pre_k),
+        pre_k.prc_mp.dom().contains(source),
+        pre_k.prc_mp.dom().contains(target),
+        !pre_k.prc_mp.spec_index(source).view().zombie,
+        !pre_k.prc_mp.spec_index(target).view().zombie,
+        pre_k.prc_mp.spec_index(source).view().pagetable == source_table,
+        pre_k.prc_mp.spec_index(target).view().pagetable == target_table,
+        pre_k.pt_mp.dom().contains(source_table),
+        pre_k.pt_mp.dom().contains(target_table),
         share_4k_objects(pre, cpu_id).target == target,
         source != target,
         pre.thread_map.dom().contains(thread_ptr),
@@ -877,15 +940,15 @@ pub(super) proof fn ipc_pages_downgrade_step_from_u(pre: KernelU, post: KernelU,
         post == (KernelU {
             thread_map: pre.thread_map.insert(thread_ptr, ThreadU { syscall_progress: pre.thread_map[thread_ptr].syscall_progress, ..pre.thread_map[thread_ptr] }),
             process_map: pre.process_map.insert(source, ProcessU {
-                pagetable: Some(PageTableU { lock_state: source_state, ..pre.process_map[source].pagetable->Some_0 }), ..pre.process_map[source]
+                pagetable: Some(PageTableU { lock_state: source_state, pagetable_window_locks: pagetable_c(pre_k.pt_mp, pre_k.pt_lower.view(), source_table).lower.pagetable_window_locks, ..pre.process_map[source].pagetable->Some_0 }), ..pre.process_map[source]
             }).insert(target, ProcessU {
-                pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..pre.process_map[target].pagetable->Some_0 }), ..pre.process_map[target]
+                pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, pagetable_window_locks: pagetable_c(pre_k.pt_mp, pre_k.pt_lower.view(), target_table).lower.pagetable_window_locks, ..pre.process_map[target].pagetable->Some_0 }), ..pre.process_map[target]
             }),
             ..pre
         }),
     ensures ipc_pages_downgrade_step(pre, post, cpu_id),
 {
-    reveal(ipc_pages_downgrade_step);
+    reveal(ipc_pages_downgrade_step); kernel_process_projection_at(pre_k, source); kernel_process_projection_at(pre_k, target);
     assert_maps_equal!(post.thread_map, pre.thread_map);
     assert_maps_equal!(post.process_map, pre.process_map.insert(target, ProcessU {
         pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..pre.process_map[target].pagetable->Some_0 }), ..pre.process_map[target]

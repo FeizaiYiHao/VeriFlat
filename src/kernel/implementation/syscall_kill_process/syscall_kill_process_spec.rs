@@ -526,11 +526,52 @@ pub open spec fn kill_process_retire_step(old_u: KernelU, new_u: KernelU, cpu_id
     })
 }
 
+/// A step that write-locks at most one window of the target's page table and unlocks at most one other, and changes
+/// nothing else.
+#[verifier::opaque]
+pub open spec fn kill_process_pagetable_windows_changed_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    let process_ptr = kill_target(old_u, cpu_id);
+    let target = old_u.process_map[process_ptr];
+    let o = target.pagetable->Some_0.pagetable_window_locks;
+    let n = new_u.process_map[process_ptr].pagetable->Some_0.pagetable_window_locks;
+    let locked = o.dom().filter(|w: WindowVa| o[w] is Unlocked && n[w] is WriteLocked);
+    let unlocked = o.dom().filter(|w: WindowVa| o[w] is WriteLocked && n[w] is Unlocked);
+    &&& target.pagetable is Some
+    &&& n.dom() == o.dom()
+    &&& forall|w: WindowVa| #![trigger n[w]] o.dom().contains(w) && !locked.contains(w) && !unlocked.contains(w) ==> n[w] == o[w]
+    &&& locked.len() <= 1
+    &&& unlocked.len() <= 1
+    &&& new_u == (KernelU {
+        process_map: old_u.process_map.insert(process_ptr, ProcessU { pagetable: Some(PageTableU { pagetable_window_locks: n, ..target.pagetable->Some_0 }), ..target }),
+        ..old_u
+    })
+}
+
+/// A refund grows the 4K quota of the target's container or of one of its ancestors and unlocks at most one window of
+/// the target's page table.
+#[verifier::opaque]
+pub open spec fn kill_process_refund_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    let process_ptr = kill_target(old_u, cpu_id);
+    let target = old_u.process_map[process_ptr];
+    let o = target.pagetable->Some_0.pagetable_window_locks;
+    let n = new_u.process_map[process_ptr].pagetable->Some_0.pagetable_window_locks;
+    let unlocked = o.dom().filter(|w: WindowVa| o[w] is WriteLocked && n[w] is Unlocked);
+    &&& new_u.process_map == old_u.process_map || {
+        &&& target.pagetable is Some
+        &&& n.dom() == o.dom()
+        &&& forall|w: WindowVa| #![trigger n[w]] o.dom().contains(w) && !unlocked.contains(w) ==> n[w] == o[w]
+        &&& unlocked.len() <= 1
+        &&& new_u.process_map == old_u.process_map.insert(process_ptr, ProcessU { pagetable: Some(PageTableU { pagetable_window_locks: n, ..target.pagetable->Some_0 }), ..target })
+    }
+    &&& kernel_u_container_quota_4k_increased(KernelU { process_map: new_u.process_map, ..old_u }, new_u, target.owning_container)
+}
+
 /// A step between entering and finishing: descending into a child, turning a thread waiting for a reply into a dangling thread,
 /// marking, dequeuing, or unlinking a thread, forcing the cpu running a thread to idle, reclaiming killed threads of the target's
 /// container, and, for an empty target, reassigning its PCI functions, locking its tables, clearing one 4K leaf, flushing one cpu's
-/// TLB for its PCID, recording the flush, removing one IOMMU 4K leaf, returning quota of freed pages to the target's container chain,
-/// returning one size of its quota, unlocking its tables, making it a zombie, or retiring it.
+/// TLB for its PCID, recording the flush, removing one IOMMU 4K leaf, locking and unlocking windows of its page table, returning quota
+/// of freed pages to the target's container chain, returning one size of its quota, unlocking its tables, making it a zombie, or
+/// retiring it.
 pub open spec fn kill_process_middle_step(step: KernelStep, cpu_id: CpuId) -> bool {
     let old_u = step.old_u;
     let new_u = step.new_u;
@@ -551,7 +592,8 @@ pub open spec fn kill_process_middle_step(step: KernelStep, cpu_id: CpuId) -> bo
         ||| kill_process_flush_step_pre(old_u, cpu_id) && kernel_u_cpu_tlb_cleared(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].pcid)
         ||| kill_process_flush_step_pre(old_u, cpu_id) && kill_process_flushed_step(old_u, new_u, cpu_id)
         ||| kill_process_iommu_leaf_step(old_u, new_u, cpu_id)
-        ||| kernel_u_container_quota_4k_increased(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].owning_container)
+        ||| kill_process_pagetable_windows_changed_step(old_u, new_u, cpu_id)
+        ||| kill_process_refund_step(old_u, new_u, cpu_id)
         ||| kill_process_quota_step(old_u, new_u, cpu_id)
         ||| kill_process_unlock_table_step(old_u, new_u, cpu_id)
         ||| kill_process_zombify_step(old_u, new_u, cpu_id)

@@ -784,38 +784,78 @@ pub proof fn kill_process_iommu_leaf_step_iso(old_u: KernelU, new_u: KernelU, cp
     reveal(kill_process_step_pre); reveal(kill_process_iommu_leaf_step);
 }
 
-/// Refunding 4K quota of a process kill on a cpu of `a` raises the quota of the target's container, which lies in `a`, or
-/// of an ancestor of it, neither of which lies in `b`.
+/// A process kill window step on a cpu of `a` changes only window locks of the target's page table, and the target lies
+/// in `a`, so it leaves the view of `b` unchanged.
+pub proof fn kill_process_pagetable_windows_changed_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+    requires
+        kernel_u_ownership_wf(old_u),
+        isolated(old_u, a, b),
+        steps_in_domain(old_u, cpu_id, a),
+        kill_process_step_pre(old_u, cpu_id),
+        kill_process_pagetable_windows_changed_step(old_u, new_u, cpu_id),
+    ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
+{
+    reveal(kill_process_step_pre); reveal(kill_process_pagetable_windows_changed_step);
+    let owner = old_u.cpu_array[cpu_id as int].owning_container;
+    let target = old_u.process_map[kill_target(old_u, cpu_id)];
+    assert(in_domain(old_u, a, target.owning_container)) by {
+        reveal(kernel_u_container_tree_wf); reveal(kernel_u_process_ownership_wf);
+        if target.owning_container != owner {
+            if owner != a { assert(old_u.container_map[owner].uppertree_seq.contains(a)); }
+            assert(old_u.container_map[target.owning_container].uppertree_seq.contains(a));
+        }
+    };
+}
+
+/// The step of `kill_process_pagetable_windows_changed_step_lr` preserves isolation: it changes no mapping.
+pub proof fn kill_process_pagetable_windows_changed_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+    requires
+        kernel_u_ownership_wf(old_u),
+        isolated(old_u, a, b),
+        steps_in_domain(old_u, cpu_id, a),
+        kill_process_step_pre(old_u, cpu_id),
+        kill_process_pagetable_windows_changed_step(old_u, new_u, cpu_id),
+    ensures isolated(new_u, a, b),
+{ reveal(kill_process_step_pre); reveal(kill_process_pagetable_windows_changed_step); }
+
+/// Refunding 4K quota of a process kill on a cpu of `a` may unlock a window of the target, which lies in `a`, and raises the
+/// quota of the target's container or of an ancestor of it, neither of which lies in `b`.
 pub proof fn kill_process_refund_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         kill_process_step_pre(old_u, cpu_id),
-        kernel_u_container_quota_4k_increased(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].owning_container),
+        kill_process_refund_step(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
 {
-    reveal(kill_process_step_pre); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_container_tree_wf);
+    reveal(kill_process_step_pre); reveal(kill_process_refund_step); reveal(kernel_u_container_quota_4k_increased); reveal(kernel_u_container_tree_wf);
     let owner = old_u.cpu_array[cpu_id as int].owning_container;
     let container = old_u.process_map[kill_target(old_u, cpu_id)].owning_container;
+    let mid = KernelU { process_map: new_u.process_map, ..old_u };
     assert(in_domain(old_u, a, container)) by {
+        reveal(kernel_u_process_ownership_wf);
         if container != owner {
             if owner != a { assert(old_u.container_map[owner].uppertree_seq.contains(a)); }
             assert(old_u.container_map[container].uppertree_seq.contains(a));
         }
     };
+    assert(domain_view(mid, b) =~~= domain_view(old_u, b));
 }
 
-/// The step of `kill_process_refund_step_lr` preserves isolation.
+/// The step of `kill_process_refund_step_lr` preserves isolation: it changes no mapping.
 pub proof fn kill_process_refund_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         kill_process_step_pre(old_u, cpu_id),
-        kernel_u_container_quota_4k_increased(old_u, new_u, old_u.process_map[kill_target(old_u, cpu_id)].owning_container),
+        kill_process_refund_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kernel_u_container_quota_4k_increased); }
+{
+    reveal(kill_process_step_pre); reveal(kill_process_refund_step); reveal(kernel_u_container_quota_4k_increased);
+    assert(isolated(KernelU { process_map: new_u.process_map, ..old_u }, a, b));
+}
 
 /// Returning one size of the quota of the target of a process kill on a cpu of `a`, which lies in `a`, to its container
 /// changes only the target, its container, and the killer, so it leaves the view of `b` unchanged.

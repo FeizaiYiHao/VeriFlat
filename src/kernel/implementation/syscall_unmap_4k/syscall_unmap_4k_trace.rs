@@ -78,10 +78,20 @@ pub(super) proof fn unmap_4k_lock_rejected_result_from_k(krnl: &KernelK, cpu_id:
         unmap_4k_syscall_result(kernel_k_to_kernel_u(*krnl), cpu_id, va, range) == ret,
 { unmap_4k_result_from_k(krnl, cpu_id, va, range, ret); }
 
-/// Write-locking the caller's context under its process depth and recording the first page is the enter step on `pre`/`post`.
-pub(super) proof fn unmap_4k_enter_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, range: VaRange4K)
+/// Write-locking the caller's context under its process depth, with `windows` the K-state window locks of its page table
+/// `pagetable_ptr` after locking the range's windows, and recording the first page is the enter step on `pre`/`post`.
+pub(super) proof fn unmap_4k_enter_step_from_u(
+    pre: KernelU, post: KernelU, pre_k: &KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
+    pagetable_ptr: RwLockPageTableRoot, windows: Map<WindowVa, LockStateU>, range: VaRange4K,
+)
     requires
         index_valid(NUM_CPUS, cpu_id),
+        pre == kernel_k_to_kernel_u(*pre_k),
+        process_cpu_wf(pre_k.prc_mp, pre_k.cpu_arr),
+        process_pagetable_match(pre_k.prc_mp, pre_k.pt_mp),
+        pre_k.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
+        pre_k.prc_mp.spec_index(process_ptr).view_rodata().view().pagetable == pagetable_ptr,
+        windows == pagetable_window_locks_after_locking_range(pagetable_c(pre_k.pt_mp, pre_k.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, range),
         {
             let cpu = pre.cpu_array[cpu_id as int];
             let thread = pre.thread_map.spec_index(thread_ptr);
@@ -118,7 +128,7 @@ pub(super) proof fn unmap_4k_enter_step_from_u(pre: KernelU, post: KernelU, cpu_
             }),
             process_map: pre.process_map.insert(process_ptr, ProcessU {
                 lock_state: LockStateU::WriteLocked,
-                pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..pre.process_map.spec_index(process_ptr).pagetable->Some_0 }),
+                pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, pagetable_window_locks: windows, ..pre.process_map.spec_index(process_ptr).pagetable->Some_0 }),
                 ..pre.process_map.spec_index(process_ptr)
             }),
             thread_map: pre.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(SyscallProgress::Unmap4k { range, unmapped: 0, flushed: false }), ..pre.thread_map.spec_index(thread_ptr) }),
@@ -127,15 +137,25 @@ pub(super) proof fn unmap_4k_enter_step_from_u(pre: KernelU, post: KernelU, cpu_
     ensures
         unmap_4k_enter_step_pre(pre, cpu_id, range),
         unmap_4k_enter_step(pre, post, cpu_id, range),
-{ reveal(unmap_4k_enter_step_pre); reveal(unmap_4k_enter_step); }
+{
+    reveal(unmap_4k_enter_step_pre); reveal(unmap_4k_enter_step);
+    process_cpu_wf_at(pre_k.prc_mp, pre_k.cpu_arr, cpu_id); process_pagetable_match_process_at(pre_k.prc_mp, pre_k.pt_mp, process_ptr); kernel_process_projection_at(pre_k, process_ptr);
+}
 
-/// Clearing the progress and releasing the unmap locks after the flushed range, leaving the pagetable in `table_lock`, is the
-/// exit step on `pre`/`post`.
+/// Clearing the progress and releasing the unmap locks after the flushed range, leaving the pagetable `pagetable_ptr` in
+/// `table_lock` with `windows` the K-state window locks after unlocking the range's windows, is the exit step on `pre`/`post`.
 pub(super) proof fn unmap_4k_exit_step_from_u(
-    pre: KernelU, post: KernelU, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, table_lock: LockStateU,
+    pre: KernelU, post: KernelU, pre_k: &KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
+    pagetable_ptr: RwLockPageTableRoot, table_lock: LockStateU, windows: Map<WindowVa, LockStateU>, range: VaRange4K,
 )
     requires
         index_valid(NUM_CPUS, cpu_id),
+        pre == kernel_k_to_kernel_u(*pre_k),
+        process_cpu_wf(pre_k.prc_mp, pre_k.cpu_arr),
+        process_pagetable_match(pre_k.prc_mp, pre_k.pt_mp),
+        pre_k.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
+        pre_k.prc_mp.spec_index(process_ptr).view_rodata().view().pagetable == pagetable_ptr,
+        windows == pagetable_window_locks_after_unlocking_range(pagetable_c(pre_k.pt_mp, pre_k.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, range),
         {
             let thread = pre.thread_map.spec_index(thread_ptr);
             let process = pre.process_map.spec_index(process_ptr);
@@ -154,6 +174,7 @@ pub(super) proof fn unmap_4k_exit_step_from_u(
             &&& pre.container_map.spec_index(container_ptr).lock_state is WriteLocked
             &&& thread.syscall_progress is Some
             &&& progress is Unmap4k
+            &&& progress->Unmap4k_range == range
             &&& progress->Unmap4k_unmapped == progress->Unmap4k_range.len
             &&& progress->Unmap4k_flushed
         },
@@ -163,7 +184,7 @@ pub(super) proof fn unmap_4k_exit_step_from_u(
             container_map: pre.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..pre.container_map.spec_index(container_ptr) }),
             process_map: pre.process_map.insert(process_ptr, ProcessU {
                 lock_state: LockStateU::Unlocked,
-                pagetable: Some(PageTableU { lock_state: table_lock, ..pre.process_map.spec_index(process_ptr).pagetable->Some_0 }),
+                pagetable: Some(PageTableU { lock_state: table_lock, pagetable_window_locks: windows, ..pre.process_map.spec_index(process_ptr).pagetable->Some_0 }),
                 ..pre.process_map.spec_index(process_ptr)
             }),
             thread_map: pre.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..pre.thread_map.spec_index(thread_ptr) }),
@@ -172,7 +193,10 @@ pub(super) proof fn unmap_4k_exit_step_from_u(
     ensures
         unmap_4k_exit_step_pre(pre, cpu_id),
         unmap_4k_exit_step(pre, post, cpu_id),
-{ reveal(unmap_4k_exit_step_pre); reveal(unmap_4k_exit_step); }
+{
+    reveal(unmap_4k_exit_step_pre); reveal(unmap_4k_exit_step);
+    process_cpu_wf_at(pre_k.prc_mp, pre_k.cpu_arr, cpu_id); process_pagetable_match_process_at(pre_k.prc_mp, pre_k.pt_mp, process_ptr); kernel_process_projection_at(pre_k, process_ptr);
+}
 
 /// The enter step pushed onto an empty trace is the partial trace after entering.
 pub(super) proof fn unmap_4k_trace_enter_step(steps: &KernelSteps, before: Seq<KernelStep>, pre: KernelU, post: KernelU, cpu_id: CpuId, range: VaRange4K)

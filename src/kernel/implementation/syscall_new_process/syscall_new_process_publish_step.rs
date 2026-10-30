@@ -121,7 +121,7 @@ pub(super) fn end_new_process_publish_step(
         final(krnl).thr_mp.spec_index(current_thread_ptr).view() == (Thread {
             syscall_progress: Ghost(Some(SyscallProgress::Share4k {
                 source_range: *source_range, target_range: *source_range, shared: 0,
-                origin: Share4kOrigin::NewProcess(NewProcessProgress { range: *source_range, regs, endpoint_index, with_iommu: iommu_table is Some, child: Some(child_ptr) }),
+                directory: Mmap4kDirectory::None, origin: Share4kOrigin::NewProcess(NewProcessProgress { range: *source_range, regs, endpoint_index, with_iommu: iommu_table is Some, child: Some(child_ptr) }),
             })),
             ..old(krnl).thr_mp.spec_index(current_thread_ptr).view()
         }),
@@ -138,7 +138,7 @@ pub(super) fn end_new_process_publish_step(
 {
     let ghost sharing = Some(SyscallProgress::Share4k {
         source_range: *source_range, target_range: *source_range, shared: 0,
-        origin: Share4kOrigin::NewProcess(NewProcessProgress { range: *source_range, regs, endpoint_index, with_iommu: iommu_table is Some, child: Some(child_ptr) }),
+        directory: Mmap4kDirectory::None, origin: Share4kOrigin::NewProcess(NewProcessProgress { range: *source_range, regs, endpoint_index, with_iommu: iommu_table is Some, child: Some(child_ptr) }),
     });
     krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(sharing), Tracked(&*lctx), Tracked(current_thread_lock_perm));
     proof {

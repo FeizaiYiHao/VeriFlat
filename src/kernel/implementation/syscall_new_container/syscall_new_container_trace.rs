@@ -8,12 +8,12 @@ use veriflat_kernel_core::kernel_u_new_thread_changed;
 #[cfg(verus_keep_ghost)]
 use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
 verus! {
-/// Acquiring the caller's context locks, the container under the owner `locked_k` records for it, and recording the
-/// progress is the enter step on `pre`/`post`.
+/// Acquiring the caller's context locks, the container under the owner `locked_k` records for it, and the source windows
+/// over `range`, which turn `old_windows` into `windows`, and recording the progress is the enter step on `pre`/`post`.
 pub(super) proof fn new_container_enter_step_from_u(
     pre: KernelU, locked: KernelU, post: KernelU, locked_k: &KernelK, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
     container_ptr: RwLockContainerPtr, endpoint_ptr: Option<RwLockEndpointPtr>, range: VaRange4K, funding: usize, process_quota: usize, transfer_cpu: CpuId, regs: Registers,
-    endpoint_index: Option<EndpointIdx>,
+    endpoint_index: Option<EndpointIdx>, old_windows: Map<WindowVa, LockStateU>, windows: Map<WindowVa, LockStateU>,
 )
     requires
         index_valid(NUM_CPUS, cpu_id),
@@ -60,6 +60,8 @@ pub(super) proof fn new_container_enter_step_from_u(
             &&& (endpoint_index is None ==> endpoint_ptr is None)
             &&& (endpoint_ptr is Some ==> pre.endpoint_map.dom().contains(endpoint_ptr->Some_0) && pre.endpoint_map.spec_index(endpoint_ptr->Some_0).lock_state is Unlocked)
         },
+        pre.process_map[process_ptr].pagetable->Some_0.pagetable_window_locks == old_windows,
+        windows == pagetable_window_locks_after_locking_range(old_windows, range),
         locked == (KernelU {
             cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..pre.cpu_array[cpu_id as int] }),
             container_map: pre.container_map.insert(container_ptr, ContainerU {
@@ -68,7 +70,7 @@ pub(super) proof fn new_container_enter_step_from_u(
             }),
             process_map: pre.process_map.insert(process_ptr, ProcessU {
                 lock_state: LockStateU::WriteLocked,
-                pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..pre.process_map[process_ptr].pagetable->Some_0 }),
+                pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, pagetable_window_locks: windows, ..pre.process_map[process_ptr].pagetable->Some_0 }),
                 ..pre.process_map[process_ptr]
             }),
             thread_map: pre.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, ..pre.thread_map.spec_index(thread_ptr) }),
@@ -135,7 +137,7 @@ pub(super) proof fn new_container_publish_step_from_u(pre: KernelU, post: Kernel
         pre.thread_map.spec_index(thread_ptr).syscall_progress == Some(SyscallProgress::NewContainer(record)),
         pre.thread_map.spec_index(thread_ptr).owning_container == container_ptr,
         kernel_u_container_root_created(pre, post, container_ptr, child_ptr, root_ptr, thread_ptr, record.transfer_cpu, record.funding, record.process_quota,
-            Some(SyscallProgress::Share4k { source_range: record.range, target_range: record.range, shared: 0, origin: Share4kOrigin::NewContainer(NewContainerProgress { child_container: Some(child_ptr), ..record }) })),
+            Some(SyscallProgress::Share4k { source_range: record.range, target_range: record.range, shared: 0, directory: Mmap4kDirectory::None, origin: Share4kOrigin::NewContainer(NewContainerProgress { child_container: Some(child_ptr), ..record }) })),
         post.container_map[container_ptr].children.last() == child_ptr,
         post.container_map[child_ptr].root_process == root_ptr,
     ensures
@@ -190,10 +192,13 @@ pub(super) proof fn new_container_finish_step_pre_from_k(
     reveal(new_container_finish_step_pre);
 }
 
-/// Creating the root process's first thread while releasing every retained lock is the finish step on `pre`/`post`.
+/// Creating the root process's first thread while releasing every retained lock, which turns the window maps
+/// `old_source_windows` and `old_root_windows` into `source_windows` and `root_windows`, is the finish step on `pre`/`post`.
 pub(super) proof fn new_container_finish_step_from_u(
     pre: KernelU, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr,
     child_ptr: RwLockContainerPtr, root_ptr: RwLockProcessPtr, new_thread_ptr: RwLockThreadPtr, endpoint_ptr: Option<RwLockEndpointPtr>, regs: Registers,
+    old_source_windows: Map<WindowVa, LockStateU>, source_windows: Map<WindowVa, LockStateU>, old_root_windows: Map<WindowVa, LockStateU>,
+    root_windows: Map<WindowVa, LockStateU>,
 )
     requires
         index_valid(NUM_CPUS, cpu_id),
@@ -217,16 +222,22 @@ pub(super) proof fn new_container_finish_step_from_u(
         },
         post.process_map.spec_index(root_ptr).owned_threads.last() == new_thread_ptr,
         post.process_map[process_ptr].pagetable->Some_0.lock_state is Unlocked || post.process_map[process_ptr].pagetable->Some_0.lock_state is ReadLocked,
+        pre.process_map[process_ptr].pagetable->Some_0.pagetable_window_locks == old_source_windows,
+        pre.process_map[root_ptr].pagetable->Some_0.pagetable_window_locks == old_root_windows,
+        source_windows == pagetable_window_locks_after_unlocking_range(old_source_windows, pre.thread_map[thread_ptr].syscall_progress->Some_0->Share4k_origin->NewContainer_0.range),
+        root_windows == pagetable_window_locks_after_unlocking_range(old_root_windows, pre.thread_map[thread_ptr].syscall_progress->Some_0->Share4k_origin->NewContainer_0.range),
         kernel_u_new_thread_changed(KernelU {
             cpu_array: pre.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: cpu_op_after_step(pre.cpu_array[cpu_id as int].state), ..pre.cpu_array[cpu_id as int] }),
             container_map: pre.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..pre.container_map[container_ptr] })
                 .insert(child_ptr, ContainerU { lock_state: LockStateU::Unlocked, lock_process_owner: None, ..pre.container_map[child_ptr] }),
             process_map: pre.process_map.insert(process_ptr, ProcessU {
                 lock_state: LockStateU::Unlocked,
-                pagetable: Some(PageTableU { lock_state: post.process_map[process_ptr].pagetable->Some_0.lock_state, ..pre.process_map[process_ptr].pagetable->Some_0 }),
-                ..pre.process_map[process_ptr]
+                pagetable: Some(PageTableU {
+                    lock_state: post.process_map[process_ptr].pagetable->Some_0.lock_state, pagetable_window_locks: source_windows, ..pre.process_map[process_ptr].pagetable->Some_0
+                }), ..pre.process_map[process_ptr]
             }).insert(root_ptr, ProcessU {
-                lock_state: LockStateU::Unlocked, pagetable: Some(PageTableU { lock_state: LockStateU::Unlocked, ..pre.process_map[root_ptr].pagetable->Some_0 }),
+                lock_state: LockStateU::Unlocked,
+                pagetable: Some(PageTableU { lock_state: LockStateU::Unlocked, pagetable_window_locks: root_windows, ..pre.process_map[root_ptr].pagetable->Some_0 }),
                 iommu_table: None, ..pre.process_map[root_ptr]
             }),
             thread_map: pre.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..pre.thread_map.spec_index(thread_ptr) }),

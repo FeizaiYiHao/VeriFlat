@@ -155,7 +155,7 @@ pub(super) fn publish_new_container_base(
         ret.6.view().2.thr_mp.spec_index(current_thread_ptr).view() == (Thread { syscall_progress: ret.6.view().2.thr_mp.spec_index(current_thread_ptr).view().syscall_progress,
             ..ret.6.view().1.thr_mp.spec_index(current_thread_ptr).view() }),
         ret.6.view().2.thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k { source_range: *source_range,
-            target_range: *source_range, shared: 0, origin: Share4kOrigin::NewContainer(NewContainerProgress {
+            target_range: *source_range, shared: 0, directory: Mmap4kDirectory::None, origin: Share4kOrigin::NewContainer(NewContainerProgress {
                 range: *source_range, funding: funding_page_count, process_quota: process_quota_4k, transfer_cpu: transfer_cpu_id, regs,
                 endpoint_index, child_container: Some(container_page),
             }) }),
@@ -257,7 +257,7 @@ pub(super) fn publish_new_container_base(
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().proc_pagetable_ptr == source_pagetable_ptr,
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().state == old(krnl).thr_mp.spec_index(current_thread_ptr).view().state,
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k {
-            source_range: *source_range, target_range: *source_range, shared: 0, origin: Share4kOrigin::NewContainer(NewContainerProgress {
+            source_range: *source_range, target_range: *source_range, shared: 0, directory: Mmap4kDirectory::None, origin: Share4kOrigin::NewContainer(NewContainerProgress {
                 range: *source_range, funding: funding_page_count, process_quota: process_quota_4k, transfer_cpu: transfer_cpu_id, regs,
                 endpoint_index, child_container: Some(container_page),
             }),
@@ -381,7 +381,7 @@ pub(super) fn publish_new_container_base(
         range: *source_range, funding: funding_page_count, process_quota: process_quota_4k, transfer_cpu: transfer_cpu_id, regs,
         endpoint_index, child_container: Some(container_page),
     });
-    let ghost sharing = Some(SyscallProgress::Share4k { source_range: *source_range, target_range: *source_range, shared: 0, origin });
+    let ghost sharing = Some(SyscallProgress::Share4k { source_range: *source_range, target_range: *source_range, shared: 0, directory: Mmap4kDirectory::None, origin });
     let (Tracked(child_container_lock_perm), Tracked(child_process_lock_perm), Tracked(child_pagetable_lock_perm), Tracked(thread_page_lock_perm), Ghost(progressed_k)) =
         release_new_container_publish_staging(
             krnl, Tracked(&mut *lctx), current_thread_ptr, pages_4k, container_page, pcid_allocator_page, funding_page_count, funding_page_head, Ghost(funding_pages),

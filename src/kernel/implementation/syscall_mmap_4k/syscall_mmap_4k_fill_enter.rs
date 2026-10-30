@@ -131,22 +131,26 @@ pub(super) fn mmap_4k_fill_enter(
     krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::Mmap4k { range: *va_range, mapped: 0, directory: Mmap4kDirectory::None, phase: Mmap4kPhase::Fill })),
         Tracked(&*lctx), Tracked(&thread_lock_perm));
     let ghost entered_k = *krnl;
+    proof { process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, process_ptr); }
+    let Tracked(existing_perms) = krnl.lock_pagetable_range_existing_windows(pagetable_ptr, va_range, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx));
+    let ghost locked_k = *krnl;
+    let ghost locked_lctx = *lctx;
     proof {
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         assert(mmap_4k_trace_after_enter(steps.view(), cpu_id, *va_range, Mmap4kPhase::Fill)) by {
             kernel_cpu_thread_pagetable_lock_states_and_progress_changed_implies_u_step(&old(steps).snapshot_k(), &entered_k, &entry_lctx, cpu_id, thread_ptr, process_ptr, pagetable_ptr);
+            kernel_thread_quota_4k_and_progress_changed_implies_u_step(&entered_k, &locked_k, &locked_lctx, cpu_id, thread_ptr, process_ptr, pagetable_ptr);
             mmap_4k_enter_step_pre_from_k(&old(steps).snapshot_k(), cpu_id, process_ptr, thread_ptr);
-            mmap_4k_enter_step_from_u(kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(entered_k), cpu_id, process_ptr, thread_ptr, va, range, *va_range,
-                Mmap4kPhase::Fill);
-            mmap_4k_trace_enter_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(entered_k), cpu_id, *va_range, Mmap4kPhase::Fill);
+            mmap_4k_fill_enter_step_from_u(&old(steps).snapshot_k(), kernel_k_to_kernel_u(entered_k), kernel_k_to_kernel_u(locked_k), cpu_id, process_ptr, thread_ptr, pagetable_ptr, va,
+                range, *va_range, pagetable_c(locked_k.pt_mp, locked_k.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, locked_k.thr_mp.spec_index(thread_ptr).view().quota_4k,
+                locked_k.thr_mp.spec_index(thread_ptr).view().syscall_progress.view(), entered_k.pt_mp.spec_index(pagetable_ptr).view().proc_ptr);
+            mmap_4k_trace_enter_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(locked_k), cpu_id, *va_range, Mmap4kPhase::Fill);
         };
         container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
-        container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr);
+        container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr); cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id);
     }
     let ghost entered = steps.view();
-    let Tracked(existing_perms) = krnl.lock_pagetable_range_existing_windows(pagetable_ptr, va_range, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx));
-    proof { kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl); steps.rebase_snapshot_k_if_unchanged(&*krnl); cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }
     let Tracked(window_perms) = mmap_4k_fill_range_structure(krnl, va_range, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, Tracked(&mut *lctx),
         Tracked(&mut *steps), Tracked(&thread_lock_perm), Tracked(&pagetable_lock_perm), Tracked(existing_perms));
     proof { krnl.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr); cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }
@@ -163,7 +167,9 @@ pub(super) fn mmap_4k_fill_enter(
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         kernel_pagetable_downgraded_and_progress_changed_implies_u_step(&filled_k, &downgraded_k, &filled_lctx, cpu_id, thread_ptr, process_ptr, pagetable_ptr);
-        mmap_4k_downgrade_step_from_u(kernel_k_to_kernel_u(filled_k), kernel_k_to_kernel_u(downgraded_k), cpu_id, process_ptr, thread_ptr);
+        process_cpu_wf_at(filled_k.prc_mp, filled_k.cpu_arr, cpu_id); process_pagetable_match_process_at(filled_k.prc_mp, filled_k.pt_mp, process_ptr);
+        mmap_4k_downgrade_step_from_u(&filled_k, kernel_k_to_kernel_u(downgraded_k), cpu_id, process_ptr, thread_ptr, pagetable_ptr,
+            pagetable_c(downgraded_k.pt_mp, downgraded_k.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks);
         mmap_4k_range_steps_from_downgrade(&*steps, filled_steps, entered.len() as int, cpu_id);
         container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
         container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr);

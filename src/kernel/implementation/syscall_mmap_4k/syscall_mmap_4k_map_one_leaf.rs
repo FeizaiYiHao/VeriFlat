@@ -6,13 +6,13 @@ use super::syscall_mmap_4k_spec::*;
 use super::syscall_mmap_4k_trace::{mmap_4k_leaf_step_from_u, mmap_4k_range_steps_from_directory, mmap_4k_range_steps_from_leaf};
 
 verus! {
-/// Map `va`, page `mapped` of `range`, under the pagetable's big read lock and the held 2M window of `va`: install the
-/// window's L1 table when it is missing, then allocate a page and publish its present, writable, executable leaf. The L1
-/// table, if installed, is one directory step and the leaf is one leaf step; inside the held windows only `va` changes.
+/// Map `va`, page `mapped` of `range`, under the pagetable's big read lock and the 2M window of `va` held through `window_perm`:
+/// install the window's L1 table when it is missing, then allocate a page and publish its present, writable, executable leaf.
+/// The L1 table, if installed, is one directory step and the leaf is one leaf step; inside the held windows only `va` changes.
 pub(super) fn map_one_mmap_4k_page(
     krnl: &mut KernelK, alloc_ptr_4k: RwLockPageAllocatorPtr, thread_ptr: RwLockThreadPtr, process_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr, cpu_id: CpuId,
     pagetable_ptr: RwLockPageTableRoot, va: VAddr, Ghost(range): Ghost<VaRange4K>, Ghost(mapped): Ghost<usize>, Ghost(phase): Ghost<Mmap4kPhase>, Tracked(lctx): Tracked<&mut LocalContext>,
-    Tracked(steps): Tracked<&mut KernelSteps>, Tracked(thread_lock_perm): Tracked<&LockPerm>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
+    Tracked(steps): Tracked<&mut KernelSteps>, Tracked(thread_lock_perm): Tracked<&LockPerm>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>, Tracked(window_perm): Tracked<&LockPerm>,
 )
     requires
         old(krnl).inv(),
@@ -62,6 +62,7 @@ pub(super) fn map_one_mmap_4k_page(
         va_4k_valid(va),
         pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() <= spec_v2l4index(va),
         old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, window_of(va))),
+        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_view(window_of(va)).lock_state == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
         pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some,
         !pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_2m().dom().contains(window_of(va).va),
         !pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(va),
@@ -148,7 +149,8 @@ pub(super) fn map_one_mmap_4k_page(
     if !l2_present {
         let _ = install_one_mmap_4k_directory_page(
             krnl, MissingPageTableLevel::L2, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, (indices.0, indices.1, indices.2), indices.2, indices.2, false, None,
-            Ghost(thread_ptr), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(None), Tracked(None),
+            thread_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(None), Tracked(None),
+            Tracked(Some(window_perm)),
         );
         proof { mmap_4k_range_steps_from_directory(&*steps, entry_steps, entry_steps.len() as int, cpu_id); }
     }
@@ -162,7 +164,8 @@ pub(super) fn map_one_mmap_4k_page(
     proof {
         pagetable_window_typed_lock_map_aligned_at(krnl.pt_mp, krnl.pt_lower.view(), lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr, window);
     }
-    map_owned_4k_page(krnl, page_ptr, thread_ptr, pagetable_ptr, va, Tracked(&mut *lctx), Tracked(&page_lock_perm), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm));
+    map_owned_4k_page(krnl, page_ptr, thread_ptr, pagetable_ptr, va, Tracked(&mut *lctx), Tracked(&page_lock_perm), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm),
+        Tracked(window_perm));
     krnl.wunlock_page(page_index, Tracked(&mut *lctx), Tracked(page_lock_perm));
     proof {
         let leaf_k = *krnl;

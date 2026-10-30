@@ -32,6 +32,9 @@ pub(super) fn commit_new_container(
         old(krnl).prc_mp.unchanged_except(&old(steps).snapshot_k().prc_mp, parent_process_ptr),
         old(krnl).thr_mp.unchanged_except(&old(steps).snapshot_k().thr_mp, current_thread_ptr),
         old(krnl).pt_mp.unchanged_except(&old(steps).snapshot_k().pt_mp, source_pagetable_ptr),
+        old(krnl).pt_lower.view() =~= old(steps).snapshot_k().pt_lower.view().insert(source_pagetable_ptr, old(krnl).pt_lower.view().spec_index(source_pagetable_ptr)),
+        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).lower.pagetable_window_locks
+            == pagetable_window_locks_after_locking_range(pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), source_pagetable_ptr).lower.pagetable_window_locks, *source_range),
         old(steps).snapshot_k().cpu_arr.spec_index(caller_cpu_id).value.locking_thread() is None,
         old(steps).snapshot_k().ctn_mp.spec_index(parent_container_ptr).locking_thread() is None,
         old(steps).snapshot_k().prc_mp.spec_index(parent_process_ptr).locking_thread() is None,
@@ -79,8 +82,8 @@ pub(super) fn commit_new_container(
             &&& typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (source_pagetable_ptr, w), TypedLockMode::Write)
             &&& source_window_perms.view().index(w).state() is WriteLock
             &&& source_window_perms.view().index(w).thread_id() == old(lctx).thread_id()
-            &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).lower.l2_lock_of(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)))
-                .lock_perm_match(spec_v2l2index(w.va), &source_window_perms.view().index(w))
+            &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).lower.l2_owner(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                == (SpinLockState::Some { thread_id: source_window_perms.view().index(w).thread_id(), lock_id: source_window_perms.view().index(w).lock_id() })
             &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).window_leaves_present(w)
             &&& !pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).lower.window_stale_cpus.dom().contains((pagetable_c(old(krnl).pt_mp,
                 old(krnl).pt_lower.view(), source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
@@ -230,6 +233,9 @@ fn commit_new_container_publish(
         old(krnl).prc_mp.unchanged_except(&old(steps).snapshot_k().prc_mp, parent_process_ptr),
         old(krnl).thr_mp.unchanged_except(&old(steps).snapshot_k().thr_mp, current_thread_ptr),
         old(krnl).pt_mp.unchanged_except(&old(steps).snapshot_k().pt_mp, source_pagetable_ptr),
+        old(krnl).pt_lower.view() =~= old(steps).snapshot_k().pt_lower.view().insert(source_pagetable_ptr, old(krnl).pt_lower.view().spec_index(source_pagetable_ptr)),
+        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).lower.pagetable_window_locks
+            == pagetable_window_locks_after_locking_range(pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), source_pagetable_ptr).lower.pagetable_window_locks, *source_range),
         old(steps).snapshot_k().cpu_arr.spec_index(caller_cpu_id).value.locking_thread() is None,
         old(steps).snapshot_k().ctn_mp.spec_index(parent_container_ptr).locking_thread() is None,
         old(steps).snapshot_k().prc_mp.spec_index(parent_process_ptr).locking_thread() is None,
@@ -454,7 +460,7 @@ fn commit_new_container_publish(
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_1g.view().is_empty(),
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k {
             source_range: *source_range, target_range: *source_range, shared: 0,
-            origin: Share4kOrigin::NewContainer(NewContainerProgress {
+            directory: Mmap4kDirectory::None, origin: Share4kOrigin::NewContainer(NewContainerProgress {
                 range: *source_range, funding: funding_page_count, process_quota: process_quota_4k, transfer_cpu: transfer_cpu_id, regs,
                 endpoint_index: if endpoint is Some { Some(endpoint_index) } else { None }, child_container: Some(ret.0),
             }),
@@ -771,7 +777,7 @@ fn commit_new_container_publish_staged(
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_cache_1g.view().is_empty(),
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k {
             source_range: *source_range, target_range: *source_range, shared: 0,
-            origin: Share4kOrigin::NewContainer(NewContainerProgress {
+            directory: Mmap4kDirectory::None, origin: Share4kOrigin::NewContainer(NewContainerProgress {
                 range: *source_range, funding: funding_page_count, process_quota: process_quota_4k, transfer_cpu: transfer_cpu_id, regs,
                 endpoint_index: if endpoint is Some { Some(endpoint_index) } else { None }, child_container: Some(ret.0),
             }),
@@ -887,7 +893,7 @@ fn commit_new_container_publish_staged(
         assert(new_container_trace_after_publish(steps.view().subrange(start, steps.view().len() as int), pre, caller_cpu_id,
             *source_range, funding_page_count, process_quota_4k, transfer_cpu_id, regs, endpoint_index_opt)) by {
             let progress = Some(SyscallProgress::Share4k { source_range: *source_range, target_range: *source_range, shared: 0,
-                origin: Share4kOrigin::NewContainer(NewContainerProgress { child_container: Some(container_page), ..record }) });
+                directory: Mmap4kDirectory::None, origin: Share4kOrigin::NewContainer(NewContainerProgress { child_container: Some(container_page), ..record }) });
             new_container_root_published_from_k(&publish_k, &publish_ks.0, &publish_ks.1, &publish_ks.2, parent_container_ptr, current_thread_ptr, transfer_cpu_id,
                 container_page, pcid_allocator_page, pages_4k.view(), funding_page_count, funding_pages, allocator_quota_4k, process_quota_4k, progress);
             kernel_container_publication_composes(steps.view().last().old_u, kernel_k_to_kernel_u(published_k), steps.view().last().new_u,

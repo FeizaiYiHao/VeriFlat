@@ -1,5 +1,6 @@
 use vstd::prelude::*;
 use vstd::assert_seqs_equal;
+use vstd::{assert_maps_equal, assert_maps_equal_internal};
 use crate::*;
 use super::syscall_thread_exit_spec::*;
 verus! {
@@ -879,11 +880,214 @@ pub(super) proof fn thread_exit_trace_from_refund(
         thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id),
 {
     reveal(thread_exit_partial_trace); reveal(thread_exit_reclaim_step_pre);
+    assert forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() implies thread_exit_refund_step(steps.view()[j].old_u, steps.view()[j].new_u, cpu_id) by { thread_exit_refund_step_from_u(steps.view()[j].old_u, steps.view()[j].new_u, cpu_id); };
     let trace = steps.view().subrange(start, steps.view().len() as int);
     let old_trace = before.subrange(start, before.len() as int);
     assert forall|j: int| #![trigger trace[j]] 0 < j < trace.len() implies thread_exit_middle_step(trace[j], cpu_id) by {
         if start + j < before.len() { assert(trace[j] == old_trace[j]); } else { assert(trace[j] == steps.view()[start + j]); }
     };
+}
+
+/// A state holding the cpu, `container_ptr`, `process_ptr` with its page table `pagetable`, and the running `thread_ptr`
+/// that records flushed reclaim progress gives the reclaim precondition after the flush.
+pub(super) proof fn thread_exit_reclaim_flushed_step_pre_from_k(
+    krnl: &KernelK, lctx: &LocalContext, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot,
+)
+    requires
+        index_valid(NUM_CPUS, cpu_id),
+        typed_lock_maps_aligned(krnl, lctx),
+        typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.container_lock_map(), container_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.process_lock_map(), process_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write),
+        krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
+        krnl.prc_mp.dom().contains(process_ptr),
+        !krnl.prc_mp.spec_index(process_ptr).view().zombie,
+        krnl.prc_mp.spec_index(process_ptr).view().pagetable == pagetable,
+        krnl.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
+        krnl.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
+        krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: true }),
+    ensures
+        thread_exit_reclaim_step_pre(kernel_k_to_kernel_u(*krnl), cpu_id, true),
+        kernel_k_to_kernel_u(*krnl).cpu_array[cpu_id as int].current_thread == Some(thread_ptr),
+        kernel_k_to_kernel_u(*krnl).thread_map[thread_ptr].owning_proc == process_ptr,
+{
+    kernel_write_held_context_projection(krnl, lctx, cpu_id, process_ptr, thread_ptr, None);
+    reveal(thread_exit_reclaim_step_pre);
+}
+
+/// Changing kernel-only state, the running thread `thread_ptr`'s kernel-only fields, and the window locks of the page
+/// table `pagetable` of its live process `process_ptr`, while every non-lock field and every lock mode stays, replaces
+/// only those window locks in the projection.
+pub(super) proof fn thread_exit_window_locks_changed_implies_u_window_locks_replaced(
+    pre: &KernelK, post: &KernelK, process_ptr: RwLockProcessPtr, pagetable: RwLockPageTableRoot, thread_ptr: RwLockThreadPtr,
+)
+    requires
+        process_pagetable_match(post.prc_mp, post.pt_mp),
+        post.prc_mp.dom().contains(process_ptr),
+        !post.prc_mp.spec_index(process_ptr).view().zombie,
+        post.prc_mp.spec_index(process_ptr).view().pagetable == pagetable,
+        *post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, pg_arr: post.pg_arr, thr_mp: post.thr_mp, allc_4k_mp: post.allc_4k_mp, ..*pre }),
+        post.pt_mp.unchanged_except(&pre.pt_mp, pagetable),
+        post.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread(),
+        post.pt_lower.view() == pre.pt_lower.view().insert(pagetable, post.pt_lower.view().spec_index(pagetable)),
+        post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr),
+        post.thr_mp.spec_index(thread_ptr).locking_thread() == pre.thr_mp.spec_index(thread_ptr).locking_thread(),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
+        kernel_container_nonlock_fields_and_quotas_unchanged(pre, post),
+    ensures
+        ({
+            let a = kernel_k_to_kernel_u(*pre);
+            let table = a.process_map[process_ptr].pagetable->Some_0;
+            &&& a.process_map.dom().contains(process_ptr)
+            &&& a.process_map[process_ptr].pagetable is Some
+            &&& table.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks
+            &&& kernel_k_to_kernel_u(*post) == (KernelU {
+                process_map: a.process_map.insert(process_ptr, ProcessU {
+                    pagetable: Some(PageTableU { pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks, ..table }),
+                    ..a.process_map[process_ptr]
+                }),
+                ..a
+            })
+        }),
+{
+    let a = kernel_k_to_kernel_u(*pre);
+    let b = kernel_k_to_kernel_u(*post);
+    let windows = pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks;
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    process_pagetable_match_process_at(post.prc_mp, post.pt_mp, process_ptr); kernel_process_projection_at(pre, process_ptr); kernel_process_projection_at(post, process_ptr);
+    assert(post.irt.view().user_view() == pre.irt.view().user_view() && post.dflt_pt == pre.dflt_pt) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
+    kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
+    assert_maps_equal!(b.container_map, a.container_map, c => {
+        if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); kernel_container_projection_at(post, c); }
+        reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
+    });
+    assert_maps_equal!(b.thread_map, a.thread_map, t => {
+        if pre.thr_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); kernel_thread_projection_at(post, t); }
+        reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged);
+    });
+    let table = a.process_map[process_ptr].pagetable->Some_0;
+    assert_maps_equal!(b.process_map, a.process_map.insert(process_ptr, ProcessU { pagetable: Some(PageTableU { pagetable_window_locks: windows, ..table }), ..a.process_map[process_ptr] }), p => {
+        if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); kernel_process_projection_at(post, p); process_pagetable_match_process_at(post.prc_mp, post.pt_mp, p); }
+        reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged);
+    });
+}
+
+/// Replacing the window locks of the page table of the running thread's process `process_ptr` by `windows`, which differ
+/// from them only at `locked`, now write-locked from unlocked, and at `unlocked`, now unlocked from write-locked, after the
+/// flush is a middle step.
+pub(super) proof fn thread_exit_pagetable_windows_changed_step_from_u(
+    pre: KernelU, post: KernelU, cpu_id: CpuId, process_ptr: RwLockProcessPtr, windows: Map<WindowVa, LockStateU>, locked: WindowVa, unlocked: WindowVa,
+)
+    requires
+        thread_exit_reclaim_step_pre(pre, cpu_id, true),
+        pre.thread_map[pre.cpu_array[cpu_id as int].current_thread->Some_0].owning_proc == process_ptr,
+        pre.process_map[process_ptr].pagetable is Some,
+        windows.dom() == pre.process_map[process_ptr].pagetable->Some_0.pagetable_window_locks.dom(),
+        forall|w: WindowVa| #![trigger windows[w]] windows.dom().contains(w) && windows[w] != pre.process_map[process_ptr].pagetable->Some_0.pagetable_window_locks[w] ==> {
+            let o = pre.process_map[process_ptr].pagetable->Some_0.pagetable_window_locks[w];
+            ||| w == locked && o is Unlocked && windows[w] is WriteLocked
+            ||| w == unlocked && o is WriteLocked && windows[w] is Unlocked
+        },
+        post == (KernelU {
+            process_map: pre.process_map.insert(process_ptr, ProcessU {
+                pagetable: Some(PageTableU { pagetable_window_locks: windows, ..pre.process_map[process_ptr].pagetable->Some_0 }), ..pre.process_map[process_ptr]
+            }),
+            ..pre
+        }),
+    ensures thread_exit_middle_step(KernelStep { old_u: pre, new_u: post }, cpu_id),
+{
+    reveal(thread_exit_pagetable_windows_changed_step);
+    let o = pre.process_map[process_ptr].pagetable->Some_0.pagetable_window_locks;
+    let locked_set = o.dom().filter(|w: WindowVa| o[w] is Unlocked && windows[w] is WriteLocked);
+    let unlocked_set = o.dom().filter(|w: WindowVa| o[w] is WriteLocked && windows[w] is Unlocked);
+    assert(post.process_map[process_ptr].pagetable->Some_0.pagetable_window_locks == windows);
+    assert(locked_set.subset_of(set![locked]) && unlocked_set.subset_of(set![unlocked]));
+    vstd::set_lib::lemma_len_subset(locked_set, set![locked]); vstd::set_lib::lemma_len_subset(unlocked_set, set![unlocked]);
+}
+
+/// From `pre` to `post`, only kernel-only state, the running thread `thread_ptr`'s kernel-only fields, and the window locks
+/// of the page table `pagetable` of its live process `process_ptr` change, and those window locks change only at `w`, to
+/// `v`: write-locked from unlocked, or unlocked from write-locked or unlocked. Either side meets the reclaim precondition
+/// after the flush; then both do and the step is a middle step. When the non-lock fields are not known unchanged, `post`
+/// changes only the page table maps and keeps the process's mappings.
+pub(super) proof fn thread_exit_window_locks_changed_implies_windows_changed_step(
+    pre: &KernelK, post: &KernelK, cpu_id: CpuId, process_ptr: RwLockProcessPtr, pagetable: RwLockPageTableRoot, thread_ptr: RwLockThreadPtr, w: WindowVa, v: LockStateU,
+)
+    requires
+        thread_exit_reclaim_step_pre(kernel_k_to_kernel_u(*pre), cpu_id, true) && kernel_k_to_kernel_u(*pre).cpu_array[cpu_id as int].current_thread == Some(thread_ptr)
+            && kernel_k_to_kernel_u(*pre).thread_map[thread_ptr].owning_proc == process_ptr
+            || thread_exit_reclaim_step_pre(kernel_k_to_kernel_u(*post), cpu_id, true) && kernel_k_to_kernel_u(*post).cpu_array[cpu_id as int].current_thread == Some(thread_ptr)
+                && kernel_k_to_kernel_u(*post).thread_map[thread_ptr].owning_proc == process_ptr,
+        process_pagetable_match(post.prc_mp, post.pt_mp),
+        post.prc_mp.dom().contains(process_ptr),
+        !post.prc_mp.spec_index(process_ptr).view().zombie,
+        post.prc_mp.spec_index(process_ptr).view().pagetable == pagetable,
+        pre.thr_mp.dom().contains(thread_ptr),
+        *post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, pg_arr: post.pg_arr, thr_mp: post.thr_mp, allc_4k_mp: post.allc_4k_mp, ..*pre }),
+        post.pt_mp.unchanged_except(&pre.pt_mp, pagetable),
+        post.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread(),
+        post.pt_lower.view() == pre.pt_lower.view().insert(pagetable, post.pt_lower.view().spec_index(pagetable)),
+        post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr),
+        post.thr_mp.spec_index(thread_ptr).locking_thread() == pre.thr_mp.spec_index(thread_ptr).locking_thread(),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post) && kernel_container_nonlock_fields_and_quotas_unchanged(pre, post) || {
+            &&& *post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, ..*pre })
+            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).mapping_4k() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k()
+            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).mapping_2m() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m()
+            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).mapping_1g() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g()
+        },
+        pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom().contains(w),
+        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks.insert(w, v),
+        v is WriteLocked && pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks[w] is Unlocked
+            || v is Unlocked && (pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks[w] is WriteLocked
+                || pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks[w] is Unlocked),
+    ensures
+        thread_exit_reclaim_step_pre(kernel_k_to_kernel_u(*pre), cpu_id, true),
+        thread_exit_reclaim_step_pre(kernel_k_to_kernel_u(*post), cpu_id, true),
+        thread_exit_middle_step(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*post) }, cpu_id),
+{
+    if !(kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post) && kernel_container_nonlock_fields_and_quotas_unchanged(pre, post)) {
+        broadcast use kernel_iommu_table_nonlock_fields_unchanged_for_equal, kernel_cpu_nonlock_fields_unchanged_for_equal, kernel_process_nonlock_fields_unchanged_for_equal,
+            kernel_thread_nonlock_fields_unchanged_for_equal;
+        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged); };
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(pre, post)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
+    }
+    thread_exit_window_locks_changed_implies_u_window_locks_replaced(pre, post, process_ptr, pagetable, thread_ptr);
+    process_pagetable_match_process_at(post.prc_mp, post.pt_mp, process_ptr); kernel_process_projection_at(pre, process_ptr);
+    assert(pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom() =~= pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom());
+    reveal(thread_exit_reclaim_step_pre);
+    thread_exit_pagetable_windows_changed_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, process_ptr,
+        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks, w, w);
+}
+
+/// Growing the 4K quota of the running thread's container or of one of its ancestors, and nothing else, is a refund step.
+pub(super) proof fn thread_exit_refund_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId)
+    requires kernel_u_container_quota_4k_increased(pre, post, pre.thread_map.spec_index(pre.cpu_array[cpu_id as int].current_thread->Some_0).owning_container),
+    ensures thread_exit_refund_step(pre, post, cpu_id),
+{
+    reveal(thread_exit_refund_step);
+    assert(post.process_map == pre.process_map) by { reveal(kernel_u_container_quota_4k_increased); };
+    assert((KernelU { process_map: post.process_map, ..pre }) == pre);
+}
+
+/// A middle step recorded, if it changes the projection, after the partial trace that starts at `start` extends it.
+pub(super) proof fn thread_exit_trace_from_recorded_step(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, step_pre: KernelU, step_post: KernelU, cpu_id: CpuId)
+    requires
+        0 <= start <= before.len(),
+        thread_exit_partial_trace(before.subrange(start, before.len() as int), pre, cpu_id),
+        steps.view() == record_user_view_change(before, step_pre, step_post),
+        thread_exit_middle_step(KernelStep { old_u: step_pre, new_u: step_post }, cpu_id),
+    ensures
+        thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id),
+        forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, before) ==> #[trigger] kernel_steps_prefix_unchanged(base, steps.view()),
+{
+    reveal(kernel_steps_prefix_unchanged);
+    if step_pre == step_post { assert(steps.view().subrange(start, steps.view().len() as int) =~= before.subrange(start, before.len() as int)); }
+    else {
+        thread_exit_trace_push(steps, before, start, pre, step_pre, step_post, cpu_id);
+        assert forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, before) implies #[trigger] kernel_steps_prefix_unchanged(base, steps.view()) by { assert(steps.view().subrange(0, base.len() as int) =~= before.subrange(0, base.len() as int)); };
+    }
 }
 
 /// The finish step pushed after the partial trace that starts at `start` completes the trace of an exit.

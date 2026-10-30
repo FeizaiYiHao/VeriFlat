@@ -16,6 +16,9 @@ pub(super) open spec fn create_initial_thread_and_finish_new_process_eof_transit
         cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, ..mid })
     &&& post.pt_mp.dom() == mid.pt_mp.dom()
     &&& kernel_pagetable_nonlock_fields_unchanged(mid.pt_mp, mid.pt_lower.view(), post.pt_mp, post.pt_lower.view())
+    &&& forall|p: RwLockPageTableRoot| #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), p)]
+        pre.pt_mp.dom().contains(p) && p != pre.prc_mp.spec_index(child_ptr).view().pagetable && p != pre.prc_mp.spec_index(pre.thr_mp.spec_index(current_thread_ptr).view().owning_proc).view().pagetable
+        ==> pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(mid.pt_mp, mid.pt_lower.view(), p).lower.pagetable_window_locks
     &&& post.it_mp.dom() == mid.it_mp.dom()
     &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)] mid.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).view() == mid.it_mp.spec_index(p).view()
     &&& kernel_cpu_nonlock_fields_unchanged(mid.cpu_arr, post.cpu_arr)
@@ -54,7 +57,9 @@ pub(super) proof fn create_initial_thread_and_finish_new_process_eof(
     pre: KernelK, mid: KernelK, post: KernelK, child_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr,
     cpu_id: CpuId, new_thread_ptr: RwLockThreadPtr, initial_regs: Registers, endpoint: Option<RwLockEndpointPtr>,
 )
-    requires create_initial_thread_and_finish_new_process_eof_transition_framing(pre, mid, post, child_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, endpoint),
+    requires
+        create_initial_thread_and_finish_new_process_eof_transition_framing(pre, mid, post, child_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, endpoint),
+        pre.thr_mp.spec_index(current_thread_ptr).view().owning_proc != child_ptr,
     ensures kernel_new_thread_fields(&pre, &post, child_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, endpoint, None),
 {
     reveal(create_initial_thread_and_finish_new_process_eof_transition_framing); reveal(kernel_new_thread_fields);

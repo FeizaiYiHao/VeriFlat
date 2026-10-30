@@ -13,8 +13,8 @@ pub(super) struct IommuMap4kLocked {
 }
 
 /// With `cpu_id`, its current `process_ptr` and `thread_ptr`, and the IOMMU table `iommu_table_ptr` write-held and
-/// `pagetable_ptr` read-held by `pagetable_lock_perm` since the entry snapshot, with no window held: releases all five and
-/// finishes the call without recording a step.
+/// `pagetable_ptr` read-held by `pagetable_lock_perm` since the entry snapshot, with no window held and its window locks as at
+/// the snapshot: releases all five and finishes the call without recording a step.
 fn iommu_map_4k_unlock_rejected(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
     pagetable_ptr: RwLockPageTableRoot, iommu_table_ptr: RwLockPageTableRoot, Tracked(iommu_table_lock_perm): Tracked<LockPerm>, Tracked(pagetable_lock_perm): Tracked<LockPerm>,
@@ -58,6 +58,7 @@ fn iommu_map_4k_unlock_rejected(
         pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k() == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).mapping_4k(),
         pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_2m() == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).mapping_2m(),
         pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_1g() == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).mapping_1g(),
+        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
         pagetable_lock_perm.state() is ReadLock,
         pagetable_lock_perm.thread_id() == old(lctx).thread_id(),
         !old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed(),
@@ -275,7 +276,7 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
                 &&& typed_lock_map_contains_mode(final(lctx).pagetable_window_lock_map(), (ptp, w), TypedLockMode::Write)
                 &&& wp.index(w).state() is WriteLock
                 &&& wp.index(w).thread_id() == final(lctx).thread_id()
-                &&& pt.lower.l2_lock_of(pt.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va))).lock_perm_match(spec_v2l2index(w.va), &wp.index(w))
+                &&& pt.lower.l2_owner(pt.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) == (SpinLockState::Some { thread_id: wp.index(w).thread_id(), lock_id: wp.index(w).lock_id() })
                 &&& pt.window_leaves_present(w)
                 &&& !pt.lower.window_stale_cpus.dom().contains((pt.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
             }
@@ -311,6 +312,7 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
             &&& pt.mapping_4k() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), ptp).mapping_4k()
             &&& pt.mapping_2m() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), ptp).mapping_2m()
             &&& pt.mapping_1g() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), ptp).mapping_1g()
+            &&& pt.lower.pagetable_window_locks == pagetable_window_locks_after_locking_range(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), ptp).lower.pagetable_window_locks, va_range)
             &&& !old(krnl).it_mp.spec_index(e.iommu_table_ptr).locked()
             &&& final(krnl).it_mp.unchanged_except(&old(krnl).it_mp, e.iommu_table_ptr)
             &&& it == old(krnl).it_mp.spec_index(e.iommu_table_ptr).view()
@@ -407,6 +409,9 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
     }
     if !success {
         if user_range { krnl.unlock_pagetable_range_existing_windows(pagetable_ptr, &va_range, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx), Tracked(window_perms)); }
+        proof {
+            assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks =~= pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks);
+        }
         iommu_map_4k_unlock_rejected(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, pagetable_ptr, iommu_table_ptr, Tracked(iommu_table_lock_perm),
             Tracked(pagetable_lock_perm), Tracked(thread_lock_perm), Tracked(process_lock_perm), Tracked(cpu_lock_perm));
         return Err(ret);

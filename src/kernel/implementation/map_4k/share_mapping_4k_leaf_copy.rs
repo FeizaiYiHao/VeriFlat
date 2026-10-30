@@ -11,7 +11,7 @@ verus! {
 pub(super) fn share_one_mapping_4k_copy_leaf(
     krnl: &mut KernelK, target_thread: RwLockThreadPtr, target_process: RwLockProcessPtr, target_container: RwLockContainerPtr, source_pagetable: RwLockPageTableRoot,
     target_pagetable: RwLockPageTableRoot, target_write_held: bool, source_va: VAddr, target_va: VAddr, Tracked(lctx): Tracked<&mut LocalContext>,
-    Tracked(source_pagetable_lock_perm): Tracked<&LockPerm>, Tracked(target_pagetable_lock_perm): Tracked<&LockPerm>,
+    Tracked(source_pagetable_lock_perm): Tracked<&LockPerm>, Tracked(target_pagetable_lock_perm): Tracked<&LockPerm>, Tracked(window_perm): Tracked<&LockPerm>,
 )
     requires
         old(krnl).inv(),
@@ -53,6 +53,8 @@ pub(super) fn share_one_mapping_4k_copy_leaf(
         target_pagetable_lock_perm.state() is WriteLock ==> typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), target_pagetable, TypedLockMode::Write),
         target_pagetable_lock_perm.state() is WriteLock ==> target_pagetable_lock_perm.lock_id() == old(krnl).pt_mp.spec_index(target_pagetable).locking_thread()->Write_lock_id,
         old(lctx).pagetable_window_lock_map().dom().contains((target_pagetable, window_of(target_va))),
+        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.l2_owner(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).window_l2_page(spec_v2l4index(target_va), spec_v2l3index(target_va)), spec_v2l2index(target_va))
+            == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
         share_mapping_4k_leaf_ready(old(krnl), source_pagetable, target_pagetable, target_container, source_va, target_va),
     ensures
         final(krnl).inv(),
@@ -73,7 +75,9 @@ pub(super) fn share_one_mapping_4k_copy_leaf(
                 pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).user_view(LockStateU::Unlocked).mapping_4k.spec_index(source_va)),
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).mapping_2m() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).mapping_2m(),
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).mapping_1g() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).mapping_1g(),
-        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.l2_lock == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.l2_lock,
+        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.pagetable_window_locks == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.pagetable_window_locks,
+        forall|p: PageMapPtr, i: L2Index| #![trigger pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.l2_owner(p, i)]
+            pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.l2_owner(p, i) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.l2_owner(p, i),
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.window_stale_cpus == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.window_stale_cpus,
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index|
             #![trigger pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).spec_resolve_mapping_l2(l4i, l3i, l2i)]
@@ -119,12 +123,15 @@ pub(super) fn share_one_mapping_4k_copy_leaf(
             spec_va_4k_index_roundtrip_at(window_of(target_va).va, target_indices.0, target_indices.1, target_indices.2, 0);
         };
     }
+    let target_l2_ptr;
     let target_l1_ptr;
     proof { pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable); }
     {
         let target = krnl.pt_mp.borrow_typed(target_pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(target_pagetable_lock_perm));
         let tracked target_lower = krnl.pt_lower.borrow().tracked_borrow(target_pagetable);
-        target_l1_ptr = target.resolve_mapping_4k_l2(Tracked(target_lower), target_indices.0, target_indices.1, target_indices.2).0.unwrap().addr;
+        let target_l3_entry = target.resolve_mapping_4k_l3(target_indices.0, target_indices.1).0.unwrap();
+        target_l2_ptr = target_l3_entry.addr;
+        target_l1_ptr = target.get_entry_l2(Tracked(target_lower), target_indices.0, target_indices.1, target_indices.2, &target_l3_entry).unwrap().addr;
     }
     let Tracked(page_lock_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));
     let ghost locked_k = *krnl;
@@ -143,11 +150,11 @@ pub(super) fn share_one_mapping_4k_copy_leaf(
     }
     page_array_add_4k_mapping(&mut krnl.pg_arr, page_index, target_pagetable, target_va, Tracked(&*lctx), Tracked(&page_lock_perm));
     if target_write_held {
-        pagetable_map_insert_4k_wlocked(&mut krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), target_pagetable, target_indices, target_l1_ptr, &source_entry, Tracked(&mut *lctx),
-            Tracked(target_pagetable_lock_perm));
+        pagetable_map_insert_4k_wlocked(&mut krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), target_pagetable, target_indices, target_l2_ptr, target_l1_ptr, &source_entry,
+            Tracked(window_perm), Tracked(&mut *lctx), Tracked(target_pagetable_lock_perm));
     } else {
-        pagetable_map_insert_4k(&krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), target_pagetable, target_indices, target_l1_ptr, &source_entry, Tracked(&mut *lctx),
-            Tracked(target_pagetable_lock_perm));
+        pagetable_map_insert_4k(&krnl.pt_mp, Tracked(krnl.pt_lower.borrow_mut()), target_pagetable, target_indices, target_l2_ptr, target_l1_ptr, &source_entry,
+            Tracked(window_perm), Tracked(&mut *lctx), Tracked(target_pagetable_lock_perm));
     }
     proof {
         assert(share_one_mapping_4k_eof_transition_framing(locked_k, *krnl, page_index, source_pagetable, source_va, target_pagetable, target_va)) by {

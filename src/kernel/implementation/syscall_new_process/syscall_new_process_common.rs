@@ -79,6 +79,9 @@ fn new_process_lock_entry(
             &&& final(krnl).prc_mp.unchanged_except(&old(krnl).prc_mp, x.parent_ptr)
             &&& final(krnl).thr_mp.unchanged_except(&old(krnl).thr_mp, x.current_thread_ptr)
             &&& final(krnl).pt_mp.unchanged_except(&old(krnl).pt_mp, x.source_pagetable_ptr)
+            &&& final(krnl).pt_lower.view() =~= old(krnl).pt_lower.view().insert(x.source_pagetable_ptr, final(krnl).pt_lower.view().spec_index(x.source_pagetable_ptr))
+            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), x.source_pagetable_ptr).lower.pagetable_window_locks
+                == pagetable_window_locks_after_locking_range(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), x.source_pagetable_ptr).lower.pagetable_window_locks, x.source_range)
             &&& old(krnl).cpu_arr.spec_index(cpu_id).value.locking_thread() is None
             &&& old(krnl).prc_mp.spec_index(x.parent_ptr).locking_thread() is None
             &&& old(krnl).thr_mp.spec_index(x.current_thread_ptr).locking_thread() is None
@@ -197,8 +200,9 @@ fn new_process_lock_entry(
             &&& typed_lock_map_contains_mode(final(lctx).pagetable_window_lock_map(), (ret->Ok_0.source_pagetable_ptr, w), TypedLockMode::Write)
             &&& ret->Ok_0.source_window_perms.view().index(w).state() is WriteLock
             &&& ret->Ok_0.source_window_perms.view().index(w).thread_id() == final(lctx).thread_id()
-            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), ret->Ok_0.source_pagetable_ptr).lower.l2_lock_of(pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(),
-                ret->Ok_0.source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va))).lock_perm_match(spec_v2l2index(w.va), &ret->Ok_0.source_window_perms.view().index(w))
+            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), ret->Ok_0.source_pagetable_ptr).lower.l2_owner(pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(),
+                ret->Ok_0.source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                    == (SpinLockState::Some { thread_id: ret->Ok_0.source_window_perms.view().index(w).thread_id(), lock_id: ret->Ok_0.source_window_perms.view().index(w).lock_id() })
             &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), ret->Ok_0.source_pagetable_ptr).window_leaves_present(w)
             &&& !pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), ret->Ok_0.source_pagetable_ptr).lower.window_stale_cpus.dom().contains((pagetable_c(final(krnl).pt_mp,
                 final(krnl).pt_lower.view(), ret->Ok_0.source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))

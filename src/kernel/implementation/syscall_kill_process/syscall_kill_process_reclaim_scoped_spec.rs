@@ -53,7 +53,8 @@ pub(crate) open spec fn kill_reclaim_unmapped_4k_page_scoped_eof_transition_fram
     &&& new_c.mapping_2m() == old_c.mapping_2m()
     &&& new_c.mapping_1g() == old_c.mapping_1g()
     &&& new_c.page_closure() == old_c.page_closure()
-    &&& new_c.lower.l2_lock == old_c.lower.l2_lock
+    &&& new_c.lower.pagetable_window_locks == old_c.lower.pagetable_window_locks
+    &&& forall|p: PageMapPtr, i: L2Index| #![trigger new_c.lower.l2_owner(p, i)] new_c.lower.l2_owner(p, i) == old_c.lower.l2_owner(p, i)
     &&& new_table.view() == old_table.view()
     &&& forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId| #![trigger new_c.window_locked_by_thread(l4i, l3i, l2i, thread_id)]
         old_table.view().kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> new_c.window_locked_by_thread(l4i, l3i, l2i, thread_id) == old_c.window_locked_by_thread(l4i, l3i, l2i, thread_id)

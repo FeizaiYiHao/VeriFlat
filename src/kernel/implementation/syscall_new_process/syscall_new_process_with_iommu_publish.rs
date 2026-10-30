@@ -180,7 +180,7 @@ pub(super) fn publish_staged_process_with_iommu(
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_clean(),
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k {
             source_range: *source_range, target_range: *source_range, shared: 0,
-            origin: Share4kOrigin::NewProcess(NewProcessProgress { range: *source_range, regs, endpoint_index, with_iommu: true, child: Some(ret.0) }),
+            directory: Mmap4kDirectory::None, origin: Share4kOrigin::NewProcess(NewProcessProgress { range: *source_range, regs, endpoint_index, with_iommu: true, child: Some(ret.0) }),
         }),
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().free_quota_pending_clean(),
         final(krnl).thr_mp.spec_index(current_thread_ptr).view().quota_4k == old(krnl).thr_mp.spec_index(current_thread_ptr).view().quota_4k - 5,

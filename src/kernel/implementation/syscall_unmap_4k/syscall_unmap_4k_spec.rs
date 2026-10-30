@@ -58,19 +58,24 @@ pub open spec fn unmap_4k_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: V
 }
 
 /// Entering write-locks the cpu, which enters its kernel step, its running thread, and the thread's process and container,
-/// recording the process depth as the container's lock owner, read-locks the pagetable, and starts progress at the first page.
+/// recording the process depth as the container's lock owner, read-locks the pagetable, write-locks the existing 2M windows
+/// of the range, and starts progress at the first page.
 #[verifier::opaque]
 pub open spec fn unmap_4k_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, range: VaRange4K) -> bool {
     let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let thread = old_u.thread_map.spec_index(thread_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
     let progress = SyscallProgress::Unmap4k { range, unmapped: 0, flushed: false };
+    let pagetable = process.pagetable->Some_0;
+    let windows = pagetable_window_locks_after_locking_range(pagetable.pagetable_window_locks, range);
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..old_u.cpu_array[cpu_id as int] }),
         container_map: old_u.container_map.insert(thread.owning_container, ContainerU {
             lock_state: LockStateU::WriteLocked, lock_process_owner: Some(LockOwnerId::Some(process.depth)), ..old_u.container_map.spec_index(thread.owning_container)
         }),
-        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { lock_state: LockStateU::WriteLocked, pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..process.pagetable->Some_0 }), ..process }),
+        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
+            lock_state: LockStateU::WriteLocked, pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, pagetable_window_locks: windows, ..pagetable }), ..process
+        }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(progress), ..thread }),
         ..old_u
     })
@@ -89,22 +94,26 @@ pub open spec fn unmap_4k_exit_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     &&& progress->Unmap4k_flushed
 }
 
-/// Exiting clears unmap progress, unlocks the cpu, which leaves its kernel step for its trap path, its running thread, and
-/// the thread's process and container, clearing the container's lock owner, and drops the thread's read lock on the
-/// pagetable, which other readers may still hold.
+/// Exiting clears unmap progress, unlocks the cpu, which leaves its kernel step for its trap path, its running thread, the
+/// thread's process and container, clearing the container's lock owner, and the existing 2M windows of the recorded range,
+/// and drops the thread's read lock on the pagetable, which other readers may still hold.
 #[verifier::opaque]
 pub open spec fn unmap_4k_exit_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let thread = old_u.thread_map.spec_index(thread_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
+    let pagetable = process.pagetable->Some_0;
     let table_lock = new_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.lock_state;
+    let windows = pagetable_window_locks_after_unlocking_range(pagetable.pagetable_window_locks, thread.syscall_progress->Some_0->Unmap4k_range);
     &&& table_lock is Unlocked || table_lock is ReadLocked
     &&& new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: CpuOpState::Trap, ..old_u.cpu_array[cpu_id as int] }),
         container_map: old_u.container_map.insert(thread.owning_container, ContainerU {
             lock_state: LockStateU::Unlocked, lock_process_owner: None, ..old_u.container_map.spec_index(thread.owning_container)
         }),
-        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { lock_state: LockStateU::Unlocked, pagetable: Some(PageTableU { lock_state: table_lock, ..process.pagetable->Some_0 }), ..process }),
+        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
+            lock_state: LockStateU::Unlocked, pagetable: Some(PageTableU { lock_state: table_lock, pagetable_window_locks: windows, ..pagetable }), ..process
+        }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..thread }),
         ..old_u
     })

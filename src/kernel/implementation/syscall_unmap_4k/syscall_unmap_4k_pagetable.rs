@@ -174,11 +174,15 @@ pub(super) fn unmap_4k_lock_pagetable_and_unmap(
     if l4_ok {
         let Tracked(window_perms) = krnl.lock_pagetable_range_existing_windows(pagetable, &va_range, Tracked(&pagetable_perm), Tracked(&mut *lctx));
         if share_mapping_4k_source_precheck(krnl, &va_range, pagetable, Tracked(&*lctx), Tracked(&pagetable_perm)) {
+            proof { va_range_2m_windows_contains_window_of_first_n_pages(va_range, range as int); }
             unmap_4k_unmap_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, &va_range, container_ptr, process_ptr, thread_ptr, pagetable, cr3, pcid,
                 Ghost(entry_lctx), Tracked(cpu_perm), Tracked(container_perm), Tracked(process_perm), Tracked(thread_perm), Tracked(pagetable_perm), Tracked(window_perms));
             return RetValueType::Success;
         }
         krnl.unlock_pagetable_range_existing_windows(pagetable, &va_range, Tracked(&pagetable_perm), Tracked(&mut *lctx), Tracked(window_perms));
+        proof {
+            assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).lower.pagetable_window_locks =~= pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable).lower.pagetable_window_locks);
+        }
     }
     unmap_4k_unlock_all_rejected(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, Ghost(entry_lctx),
         Tracked(cpu_perm), Tracked(container_perm), Tracked(process_perm), Tracked(thread_perm), Tracked(pagetable_perm));
@@ -187,8 +191,8 @@ pub(super) fn unmap_4k_lock_pagetable_and_unmap(
 }
 
 /// With cpu `cpu_id`, its container, process, and running thread write-held and the process pagetable `pagetable` read-held
-/// since the entry snapshot `entry_lctx` was aligned with, no window held, and no mapping changed: releases all five locks and
-/// records no step.
+/// since the entry snapshot `entry_lctx` was aligned with, no window held, and no mapping or window lock changed: releases all
+/// five locks and records no step.
 fn unmap_4k_unlock_all_rejected(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId,
     container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot, Ghost(entry_lctx): Ghost<LocalContext>,
@@ -252,6 +256,7 @@ fn unmap_4k_unlock_all_rejected(
         pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k() == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable).mapping_4k(),
         pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_2m() == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable).mapping_2m(),
         pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g() == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable).mapping_1g(),
+        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable).lower.pagetable_window_locks,
         pagetable_perm.state() is ReadLock,
         pagetable_perm.thread_id() == old(lctx).thread_id(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().state is Running,

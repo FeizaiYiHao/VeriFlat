@@ -187,7 +187,8 @@ pub open spec fn kernel_container_quota_4k_changed(pre: &KernelK, post: &KernelK
 }
 
 /// One staging-thread quota funds a new scheduled thread of `process_ptr` and `container_ptr`,
-/// and the staging thread's progress becomes `staging_progress`.
+/// and the staging thread's progress becomes `staging_progress`. When the staging thread belongs to another process,
+/// the window locks of that process's and `process_ptr`'s page tables may change.
 #[verifier::opaque]
 pub open spec fn kernel_new_thread_fields(
     pre: &KernelK, post: &KernelK, process_ptr: RwLockProcessPtr, staging_thread_ptr: RwLockThreadPtr,
@@ -245,7 +246,9 @@ pub open spec fn kernel_new_thread_fields(
     &&& post.pt_mp.dom() == pre.pt_mp.dom()
     &&& kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view())
     &&& forall|p: RwLockPageTableRoot| #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), p)]
-        pre.pt_mp.dom().contains(p) ==> pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks
+        pre.pt_mp.dom().contains(p) && (pre.thr_mp.spec_index(staging_thread_ptr).view().owning_proc == process_ptr || p != pre.prc_mp.spec_index(process_ptr).view().pagetable
+            && p != pre.prc_mp.spec_index(pre.thr_mp.spec_index(staging_thread_ptr).view().owning_proc).view().pagetable)
+        ==> pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks
     &&& post.it_mp.dom() == pre.it_mp.dom()
     &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
         pre.it_mp.dom().contains(p) ==> {

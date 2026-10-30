@@ -111,7 +111,7 @@ pub(super) fn share_and_finish_new_process(
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().temp_alloc_clean(),
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k {
             source_range: *source_range, target_range: *source_range, shared: 0,
-            origin: Share4kOrigin::NewProcess(NewProcessProgress {
+            directory: Mmap4kDirectory::None, origin: Share4kOrigin::NewProcess(NewProcessProgress {
                 range: *source_range, regs: *initial_regs, endpoint_index: if endpoint is Some { Some(endpoint_index) } else { None }, with_iommu: iommu_table is Some, child: Some(child_ptr),
             }),
         }),
@@ -143,8 +143,8 @@ pub(super) fn share_and_finish_new_process(
             &&& typed_lock_map_contains_mode(entry_lctx.pagetable_window_lock_map(), (source_pagetable_ptr, w), TypedLockMode::Write)
             &&& source_window_perms.index(w).state() is WriteLock
             &&& source_window_perms.index(w).thread_id() == entry_lctx.thread_id()
-            &&& pagetable_c(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).lower.l2_lock_of(pagetable_c(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)))
-                .lock_perm_match(spec_v2l2index(w.va), &source_window_perms.index(w))
+            &&& pagetable_c(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).lower.l2_owner(pagetable_c(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                == (SpinLockState::Some { thread_id: source_window_perms.index(w).thread_id(), lock_id: source_window_perms.index(w).lock_id() })
             &&& pagetable_c(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_leaves_present(w)
             &&& !pagetable_c(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).lower.window_stale_cpus.dom().contains((pagetable_c(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
         },
@@ -208,18 +208,16 @@ pub(super) fn share_and_finish_new_process(
             process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, parent_ptr);
             share_mapping_4k_range_owner_compatible_own_container(krnl, source_pagetable_ptr, container_ptr, source_range);
         };
-        assert(held_pagetable_windows_unchanged(entry_k.pt_mp, entry_k.pt_lower.view(), krnl.pt_mp, krnl.pt_lower.view(), &entry_lctx));
     }
     share_mapping_4k_build_and_share(
         krnl, source_range, source_range, allocator_ptr, current_thread_ptr, current_thread_ptr, current_thread_ptr, child_ptr, container_ptr, cpu_id,
         source_pagetable_ptr, target_pagetable_ptr, true, None, Ghost(origin), Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(&current_thread_lock_perm),
-        Tracked(&current_thread_lock_perm), Tracked(&source_pagetable_lock_perm), Tracked(&target_pagetable_lock_perm), Tracked(None), Tracked(None),
+        Tracked(&current_thread_lock_perm), Tracked(&source_pagetable_lock_perm), Tracked(&target_pagetable_lock_perm), Tracked(None), Tracked(None), Tracked(&target_window_perms),
     );
     proof {
         assert(new_process_trace_after_share(steps.view(), start, pre, cpu_id, *source_range, *initial_regs, endpoint_index_opt, iommu_table is Some)) by {
             new_process_trace_share_steps(&*steps, old(steps).view(), start, pre, cpu_id, *source_range, *initial_regs, endpoint_index_opt, iommu_table is Some);
         };
-        assert(held_pagetable_windows_unchanged(entry_k.pt_mp, entry_k.pt_lower.view(), krnl.pt_mp, krnl.pt_lower.view(), &entry_lctx));
         assert(krnl.sched_mp.dom().contains(scheduler_ptr) && krnl.sched_mp.spec_index(scheduler_ptr).shards.lock_id_by_index(cpu_id).major == SCHEDULER_LOCK_MAJOR) by { container_scheduler_wf_at(krnl.ctn_mp, krnl.sched_mp, container_ptr); };
     }
     let Tracked(scheduler_lock_perm) = krnl.wlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx));

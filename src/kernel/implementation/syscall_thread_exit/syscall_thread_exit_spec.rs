@@ -386,11 +386,51 @@ pub open spec fn thread_exit_unlock_table_step(old_u: KernelU, new_u: KernelU, c
     })
 }
 
+/// A step that write-locks at most one window of the page table of the running thread's process and unlocks at most one
+/// other, and changes nothing else.
+#[verifier::opaque]
+pub open spec fn thread_exit_pagetable_windows_changed_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    let process_ptr = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0).owning_proc;
+    let process = old_u.process_map[process_ptr];
+    let o = process.pagetable->Some_0.pagetable_window_locks;
+    let n = new_u.process_map[process_ptr].pagetable->Some_0.pagetable_window_locks;
+    let locked = o.dom().filter(|w: WindowVa| o[w] is Unlocked && n[w] is WriteLocked);
+    let unlocked = o.dom().filter(|w: WindowVa| o[w] is WriteLocked && n[w] is Unlocked);
+    &&& process.pagetable is Some
+    &&& n.dom() == o.dom()
+    &&& forall|w: WindowVa| #![trigger n[w]] o.dom().contains(w) && !locked.contains(w) && !unlocked.contains(w) ==> n[w] == o[w]
+    &&& locked.len() <= 1
+    &&& unlocked.len() <= 1
+    &&& new_u == (KernelU {
+        process_map: old_u.process_map.insert(process_ptr, ProcessU { pagetable: Some(PageTableU { pagetable_window_locks: n, ..process.pagetable->Some_0 }), ..process }),
+        ..old_u
+    })
+}
+
+/// A refund grows the 4K quota of the running thread's container or of one of its ancestors and unlocks at most one window
+/// of the page table of the thread's process.
+#[verifier::opaque]
+pub open spec fn thread_exit_refund_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
+    let process = old_u.process_map[thread.owning_proc];
+    let o = process.pagetable->Some_0.pagetable_window_locks;
+    let n = new_u.process_map[thread.owning_proc].pagetable->Some_0.pagetable_window_locks;
+    let unlocked = o.dom().filter(|w: WindowVa| o[w] is WriteLocked && n[w] is Unlocked);
+    &&& new_u.process_map == old_u.process_map || {
+        &&& process.pagetable is Some
+        &&& n.dom() == o.dom()
+        &&& forall|w: WindowVa| #![trigger n[w]] o.dom().contains(w) && !unlocked.contains(w) ==> n[w] == o[w]
+        &&& unlocked.len() <= 1
+        &&& new_u.process_map == old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { pagetable_window_locks: n, ..process.pagetable->Some_0 }), ..process })
+    }
+    &&& kernel_u_container_quota_4k_increased(KernelU { process_map: new_u.process_map, ..old_u }, new_u, thread.owning_container)
+}
+
 /// A step between entering and finishing: reclaiming the dangling thread of a killed caller and the killed callers it takes over,
 /// changing or removing only threads of the exiting thread's container, releasing a descriptor, releasing an endpoint with
 /// its last descriptor, or, for a process's last thread, locking the process's tables, clearing one user 4K leaf, flushing
-/// one cpu's TLB for the process's PCID, recording the flush, removing one IOMMU 4K leaf, refunding 4K quota to the
-/// thread's container chain, returning one size of quota, or unlocking the tables.
+/// one cpu's TLB for the process's PCID, recording the flush, removing one IOMMU 4K leaf, locking and unlocking windows of
+/// the page table, refunding 4K quota to the thread's container chain, returning one size of quota, or unlocking the tables.
 pub open spec fn thread_exit_middle_step(step: KernelStep, cpu_id: CpuId) -> bool {
     let old_u = step.old_u;
     let new_u = step.new_u;
@@ -404,7 +444,8 @@ pub open spec fn thread_exit_middle_step(step: KernelStep, cpu_id: CpuId) -> boo
     ||| thread_exit_flush_step_pre(old_u, cpu_id) && kernel_u_cpu_tlb_cleared(old_u, new_u, old_u.process_map.spec_index(thread.owning_proc).pcid)
     ||| thread_exit_flush_step_pre(old_u, cpu_id) && thread_exit_flushed_step(old_u, new_u, cpu_id)
     ||| thread_exit_reclaim_step_pre(old_u, cpu_id, true) && thread_exit_iommu_leaf_step(old_u, new_u, cpu_id)
-    ||| thread_exit_reclaim_step_pre(old_u, cpu_id, true) && kernel_u_container_quota_4k_increased(old_u, new_u, thread.owning_container)
+    ||| thread_exit_reclaim_step_pre(old_u, cpu_id, true) && thread_exit_pagetable_windows_changed_step(old_u, new_u, cpu_id)
+    ||| thread_exit_reclaim_step_pre(old_u, cpu_id, true) && thread_exit_refund_step(old_u, new_u, cpu_id)
     ||| thread_exit_quota_step_pre(old_u, cpu_id) && thread_exit_quota_step(old_u, new_u, cpu_id)
     ||| thread_exit_unlock_table_step_pre(old_u, cpu_id) && thread_exit_unlock_table_step(old_u, new_u, cpu_id)
 }

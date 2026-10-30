@@ -4,14 +4,42 @@ use super::syscall_ipc_spec::*;
 use super::syscall_ipc_trace::*;
 
 verus! {
+/// The L2 index bounds `lo..=hi` of `range` inside the L3 entry of `cur_va`: an existing window under that entry lies in `range` exactly
+/// when its L2 index is between them.
+fn ipc_pages_fill_l2_bounds(range: &VaRange4K, cur_va: VAddr, cur: (L4Index, L3Index, L2Index, L1Index), start_indices: (L4Index, L3Index, L2Index, L1Index),
+    end_indices: (L4Index, L3Index, L2Index, L1Index)) -> (ret: (L2Index, L2Index))
+    requires
+        range.wf(),
+        range.len > 0,
+        spec_va_4k_valid(cur_va),
+        range.start <= cur_va <= range.view()[range.len - 1],
+        cur == spec_va2index(cur_va),
+        start_indices == spec_va2index(range.start),
+        end_indices == spec_va2index(range.view()[range.len - 1]),
+    ensures
+        pei_valid(ret.0) && pei_valid(ret.1),
+        ret.0 <= cur.2 <= ret.1,
+        forall|w: WindowVa| #![trigger va_range_2m_windows(*range).contains(w)] w.wf() && spec_v2l4index(w.va) == cur.0 && spec_v2l3index(w.va) == cur.1
+            ==> va_range_2m_windows(*range).contains(w) == (ret.0 <= spec_v2l2index(w.va) <= ret.1),
+{
+    let lo = if cur.0 == start_indices.0 && cur.1 == start_indices.1 { start_indices.2 } else { 0 };
+    let hi = if cur.0 == end_indices.0 && cur.1 == end_indices.1 { end_indices.2 } else { 511 };
+    proof {
+        broadcast use spec_va_2m_valid_index_roundtrip, spec_index2va_2m_valid;
+        spec_va_4k_valid_index_roundtrip(cur_va); spec_va_4k_valid_index_roundtrip(range.start); spec_va_4k_valid_index_roundtrip(range.view()[range.len - 1]);
+        spec_index2va_le_implies_4k_indices_lex_le(start_indices, cur); spec_index2va_le_implies_4k_indices_lex_le(cur, end_indices);
+    }
+    (lo, hi)
+}
+
 /// Builds the missing L4, L3 and L2 directories of target page `i` of a pages rendezvous under the write-held target page table,
 /// one `Share4kDirectory` step per new directory, and adds the windows minted with a new L2 page to the held target windows.
 pub(super) fn ipc_pages_fill_target_page(
     krnl: &mut KernelK, target_range: &VaRange4K, i: usize, start_indices: (L4Index, L3Index, L2Index, L1Index), end_indices: (L4Index, L3Index, L2Index, L1Index),
     target_allocator: RwLockPageAllocatorPtr, target_thread: RwLockThreadPtr, target_process: RwLockProcessPtr, target_container: RwLockContainerPtr, cpu_id: CpuId,
-    target_pagetable: RwLockPageTableRoot, Ghost(current_thread_ptr): Ghost<RwLockThreadPtr>, Ghost(start): Ghost<int>, Tracked(lctx): Tracked<&mut LocalContext>,
-    Tracked(steps): Tracked<&mut KernelSteps>, Tracked(target_thread_lock_perm): Tracked<&LockPerm>, Tracked(target_pagetable_lock_perm): Tracked<&LockPerm>,
-    Tracked(window_perms): Tracked<&mut Map<WindowVa, LockPerm>>,
+    target_pagetable: RwLockPageTableRoot, current_thread_ptr: RwLockThreadPtr, Ghost(start): Ghost<int>, Tracked(lctx): Tracked<&mut LocalContext>,
+    Tracked(steps): Tracked<&mut KernelSteps>, Tracked(target_thread_lock_perm): Tracked<&LockPerm>, Tracked(current_thread_lock_perm): Tracked<&LockPerm>,
+    Tracked(target_pagetable_lock_perm): Tracked<&LockPerm>, Tracked(window_perms): Tracked<&mut Map<WindowVa, LockPerm>>,
 )
     requires
         old(krnl).inv(),
@@ -29,10 +57,15 @@ pub(super) fn ipc_pages_fill_target_page(
         old(krnl).cpu_arr.spec_index(cpu_id).view().being_killed() == false,
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(current_thread_ptr),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), current_thread_ptr, TypedLockMode::Write),
+        old(krnl).thr_mp.dom().contains(current_thread_ptr),
+        current_thread_lock_perm.state() is WriteLock,
+        current_thread_lock_perm.thread_id() == old(lctx).thread_id(),
+        current_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view()->Some_0->Share4k_origin matches Share4kOrigin::IpcPages { peer }
             ==> old(krnl).thr_mp.spec_index(peer).view().state is IPC_TRANSIT && old(krnl).thr_mp.spec_index(peer).view().state->IPC_TRANSIT_partner == current_thread_ptr,
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view() is Some,
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view()->Some_0 is Share4k,
+        old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view()->Some_0->Share4k_target_range == *target_range,
         old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view()->Some_0->Share4k_shared < old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view()->Some_0->Share4k_source_range.len,
         current_thread_ptr == target_thread || old(krnl).thr_mp.spec_index(target_thread).view().syscall_progress.view() is None,
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), share_4k_objects_k(*old(krnl), cpu_id).source_thread, TypedLockMode::Write),
@@ -86,8 +119,8 @@ pub(super) fn ipc_pages_fill_target_page(
             &&& old(window_perms).index(w).state() is WriteLock
             &&& old(window_perms).index(w).thread_id() == old(lctx).thread_id()
             &&& typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (target_pagetable, w), TypedLockMode::Write)
-            &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.l2_lock_of(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)))
-                .lock_perm_match(spec_v2l2index(w.va), &old(window_perms).index(w))
+            &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.l2_owner(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                == (SpinLockState::Some { thread_id: old(window_perms).index(w).thread_id(), lock_id: old(window_perms).index(w).lock_id() })
         },
         forall|w: WindowVa| #![trigger old(window_perms).dom().contains(w)]
             old(window_perms).dom().contains(w) ==> old(lctx).pagetable_window_lock_map().dom().contains((target_pagetable, w)),
@@ -119,7 +152,7 @@ pub(super) fn ipc_pages_fill_target_page(
         final(krnl).prc_mp.spec_index(target_process).view_rodata().view().owning_container == target_container,
         final(krnl).prc_mp.spec_index(target_process).view_rodata().view().pagetable == target_pagetable,
         held_endpoints_unchanged(old(krnl).ep_mp, final(krnl).ep_mp, old(lctx)),
-        held_threads_unchanged_except(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx), set![target_thread]),
+        held_threads_unchanged_except(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx), set![target_thread, current_thread_ptr]),
         held_pagetables_unchanged_except(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx), set![target_pagetable]),
         forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))]
             old(lctx).pagetable_window_lock_map().dom().contains((p, w)) && old(lctx).pagetable_lock_map().dom().contains(p) && p != target_pagetable ==> {
@@ -146,7 +179,18 @@ pub(super) fn ipc_pages_fill_target_page(
         final(krnl).thr_mp.spec_index(target_thread).view().state == old(krnl).thr_mp.spec_index(target_thread).view().state,
         final(krnl).thr_mp.spec_index(target_thread).view().endpoint_descriptors.view() == old(krnl).thr_mp.spec_index(target_thread).view().endpoint_descriptors.view(),
         final(krnl).thr_mp.spec_index(target_thread).view().upper_container_seq == old(krnl).thr_mp.spec_index(target_thread).view().upper_container_seq,
-        final(krnl).thr_mp.spec_index(target_thread).view().syscall_progress.view() == old(krnl).thr_mp.spec_index(target_thread).view().syscall_progress.view(),
+        current_thread_ptr != target_thread ==> final(krnl).thr_mp.spec_index(target_thread).view().syscall_progress.view() == old(krnl).thr_mp.spec_index(target_thread).view().syscall_progress.view(),
+        final(krnl).thr_mp.dom().contains(current_thread_ptr),
+        current_thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
+        final(krnl).thr_mp.spec_index(current_thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(current_thread_ptr).being_killed(),
+        final(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(current_thread_ptr).view_ghost(),
+        current_thread_ptr != target_thread ==> final(krnl).thr_mp.spec_index(current_thread_ptr).view() == (Thread { syscall_progress: final(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress, ..old(krnl).thr_mp.spec_index(current_thread_ptr).view() }),
+        ({
+            let progress = old(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view()->Some_0;
+            let final_progress = final(krnl).thr_mp.spec_index(current_thread_ptr).view().syscall_progress.view();
+            final_progress == Some(SyscallProgress::Share4k { source_range: progress->Share4k_source_range, target_range: progress->Share4k_target_range, shared: progress->Share4k_shared,
+                directory: final_progress->Some_0->Share4k_directory, origin: progress->Share4k_origin })
+        }),
         final(krnl).thr_mp.spec_index(target_thread).view().temp_alloc_clean(),
         final(krnl).thr_mp.spec_index(target_thread).view().free_quota_pending_clean(),
         old(krnl).thr_mp.spec_index(target_thread).view().quota_4k - 3 <= final(krnl).thr_mp.spec_index(target_thread).view().quota_4k,
@@ -189,19 +233,19 @@ pub(super) fn ipc_pages_fill_target_page(
             &&& final(window_perms).index(w).state() is WriteLock
             &&& final(window_perms).index(w).thread_id() == final(lctx).thread_id()
             &&& typed_lock_map_contains_mode(final(lctx).pagetable_window_lock_map(), (target_pagetable, w), TypedLockMode::Write)
-            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.l2_lock_of(pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)))
-                .lock_perm_match(spec_v2l2index(w.va), &final(window_perms).index(w))
+            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.l2_owner(pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                == (SpinLockState::Some { thread_id: final(window_perms).index(w).thread_id(), lock_id: final(window_perms).index(w).lock_id() })
         },
         forall|w: WindowVa| #![trigger final(window_perms).dom().contains(w)]
             final(window_perms).dom().contains(w) ==> final(lctx).pagetable_window_lock_map().dom().contains((target_pagetable, w)),
 {
     let cur_va = target_range.index(i);
     let cur = va2index(cur_va);
-    let lo = if cur.0 == start_indices.0 && cur.1 == start_indices.1 { start_indices.2 } else { 0 };
-    let hi = if cur.0 == end_indices.0 && cur.1 == end_indices.1 { end_indices.2 } else { 511 };
+    proof { target_range.va_range_lemma(); }
+    let (lo, hi) = ipc_pages_fill_l2_bounds(target_range, cur_va, cur, start_indices, end_indices);
     proof {
         broadcast use spec_va_2m_valid_index_roundtrip, spec_index2va_2m_valid;
-        target_range.va_range_lemma(); va_range_2m_windows_contains_window_of_first_n_pages(*target_range, target_range.len as int);
+        va_range_2m_windows_contains_window_of_first_n_pages(*target_range, target_range.len as int);
         spec_va_4k_valid_index_roundtrip(cur_va); spec_va_4k_valid_index_roundtrip(target_range.start); spec_va_4k_valid_index_roundtrip(target_range.view()[target_range.len - 1]);
         spec_v2l4index_monotonic(target_range.start, cur_va);
         spec_index2va_le_implies_4k_indices_lex_le(start_indices, cur); spec_index2va_le_implies_4k_indices_lex_le(cur, end_indices);
@@ -212,8 +256,9 @@ pub(super) fn ipc_pages_fill_target_page(
     }
     let ghost before = steps.view();
     let Tracked(minted) = mmap_4k_build_one_structure(
-        krnl, cur_va, lo, hi, target_allocator, target_thread, target_process, target_container, cpu_id, target_pagetable, None, Ghost(current_thread_ptr),
-        Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(target_thread_lock_perm), Tracked(target_pagetable_lock_perm), Tracked(None), Tracked(None),
+        krnl, cur_va, lo, hi, target_allocator, target_thread, target_process, target_container, cpu_id, target_pagetable, None, current_thread_ptr,
+        Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(target_thread_lock_perm), Tracked(current_thread_lock_perm), Tracked(target_pagetable_lock_perm), Tracked(None), Tracked(None),
+        Tracked(&*window_perms),
     );
     proof {
         share_4k_range_steps_from_directory(&*steps, before, before.len() as int, cpu_id);

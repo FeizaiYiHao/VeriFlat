@@ -24,6 +24,9 @@ pub(super) open spec fn create_new_container_root_thread_and_unlock_eof_transiti
         }
     &&& post.pt_mp.dom() == mid.pt_mp.dom()
     &&& kernel_pagetable_nonlock_fields_unchanged(mid.pt_mp, mid.pt_lower.view(), post.pt_mp, post.pt_lower.view())
+    &&& forall|p: RwLockPageTableRoot| #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), p)]
+        pre.pt_mp.dom().contains(p) && p != pre.prc_mp.spec_index(child_process_ptr).view().pagetable && p != pre.prc_mp.spec_index(pre.thr_mp.spec_index(current_thread_ptr).view().owning_proc).view().pagetable
+        ==> pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(mid.pt_mp, mid.pt_lower.view(), p).lower.pagetable_window_locks
     &&& kernel_cpu_nonlock_fields_unchanged(mid.cpu_arr, post.cpu_arr)
     &&& kernel_process_nonlock_fields_unchanged(mid.prc_mp, post.prc_mp)
     &&& post.sched_mp.dom() == mid.sched_mp.dom()
@@ -60,7 +63,9 @@ pub(super) proof fn create_new_container_root_thread_and_unlock_eof(
     pre: KernelK, mid: KernelK, post: KernelK, child_process_ptr: RwLockProcessPtr, current_thread_ptr: RwLockThreadPtr,
     child_container_ptr: RwLockContainerPtr, caller_cpu_id: CpuId, new_thread_ptr: RwLockThreadPtr, initial_regs: Registers, endpoint: Option<RwLockEndpointPtr>,
 )
-    requires create_new_container_root_thread_and_unlock_eof_transition_framing(pre, mid, post, child_process_ptr, current_thread_ptr, child_container_ptr, caller_cpu_id, new_thread_ptr, initial_regs, endpoint),
+    requires
+        create_new_container_root_thread_and_unlock_eof_transition_framing(pre, mid, post, child_process_ptr, current_thread_ptr, child_container_ptr, caller_cpu_id, new_thread_ptr, initial_regs, endpoint),
+        pre.thr_mp.spec_index(current_thread_ptr).view().owning_proc != child_process_ptr,
     ensures kernel_new_thread_fields(&pre, &post, child_process_ptr, current_thread_ptr, child_container_ptr, caller_cpu_id, new_thread_ptr, initial_regs, endpoint, None),
 {
     reveal(create_new_container_root_thread_and_unlock_eof_transition_framing); reveal(kernel_new_thread_fields);

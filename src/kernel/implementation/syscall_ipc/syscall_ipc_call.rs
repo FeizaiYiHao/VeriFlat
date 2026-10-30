@@ -48,6 +48,7 @@ verus! {
                 old(steps).snapshot_k().pt_mp.dom().contains(p) && old(krnl).pt_mp.dom().contains(p) ==> if old(lctx).pagetable_lock_map().dom().contains(p) {
                     old(steps).snapshot_k().pt_mp.spec_index(p).locking_thread() is None
                 } else { old(krnl).pt_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().pt_mp.spec_index(p).locking_thread() },
+            old(krnl).pt_lower == old(steps).snapshot_k().pt_lower,
             forall|p: RwLockPageTableRoot| #![trigger old(krnl).it_mp.spec_index(p)] #![trigger old(steps).snapshot_k().it_mp.spec_index(p)]
                 old(steps).snapshot_k().it_mp.dom().contains(p) && old(krnl).it_mp.dom().contains(p) ==> if old(lctx).iommu_table_lock_map().dom().contains(p) {
                     old(steps).snapshot_k().it_mp.spec_index(p).locking_thread() is None
@@ -262,6 +263,7 @@ verus! {
                 old(steps).snapshot_k().pt_mp.dom().contains(p) && old(krnl).pt_mp.dom().contains(p) ==> if old(lctx).pagetable_lock_map().dom().contains(p) {
                     old(steps).snapshot_k().pt_mp.spec_index(p).locking_thread() is None
                 } else { old(krnl).pt_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().pt_mp.spec_index(p).locking_thread() },
+            old(krnl).pt_lower == old(steps).snapshot_k().pt_lower,
             forall|p: RwLockPageTableRoot| #![trigger old(krnl).it_mp.spec_index(p)] #![trigger old(steps).snapshot_k().it_mp.spec_index(p)]
                 old(steps).snapshot_k().it_mp.dom().contains(p) && old(krnl).it_mp.dom().contains(p) ==> if old(lctx).iommu_table_lock_map().dom().contains(p) {
                     old(steps).snapshot_k().it_mp.spec_index(p).locking_thread() is None
@@ -451,6 +453,7 @@ verus! {
                 old(steps).snapshot_k().pt_mp.dom().contains(p) && old(krnl).pt_mp.dom().contains(p) ==> if old(lctx).pagetable_lock_map().dom().contains(p) {
                     old(steps).snapshot_k().pt_mp.spec_index(p).locking_thread() is None
                 } else { old(krnl).pt_mp.spec_index(p).locking_thread() == old(steps).snapshot_k().pt_mp.spec_index(p).locking_thread() },
+            old(krnl).pt_lower == old(steps).snapshot_k().pt_lower,
             forall|p: RwLockPageTableRoot| #![trigger old(krnl).it_mp.spec_index(p)] #![trigger old(steps).snapshot_k().it_mp.spec_index(p)]
                 old(steps).snapshot_k().it_mp.dom().contains(p) && old(krnl).it_mp.dom().contains(p) ==> if old(lctx).iommu_table_lock_map().dom().contains(p) {
                     old(steps).snapshot_k().it_mp.spec_index(p).locking_thread() is None

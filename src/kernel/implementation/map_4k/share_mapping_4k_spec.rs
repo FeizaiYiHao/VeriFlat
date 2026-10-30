@@ -1,11 +1,22 @@
 use vstd::prelude::*;
 use crate::*;
+use super::mmap_4k_build_structure_spec::*;
 
 verus! {
-/// Sharing a leaf advances share progress to the next page of the recorded ranges.
+/// Sharing a leaf advances share progress to the next page of the recorded ranges, before any of its directories.
 pub open spec fn share_4k_progress_after_leaf(progress: Option<SyscallProgress>) -> Option<SyscallProgress> {
     match progress {
-        Some(SyscallProgress::Share4k { source_range, target_range, shared, origin }) => Some(SyscallProgress::Share4k { source_range, target_range, shared: (shared + 1) as usize, origin }),
+        Some(SyscallProgress::Share4k { source_range, target_range, shared, directory: _, origin }) =>
+            Some(SyscallProgress::Share4k { source_range, target_range, shared: (shared + 1) as usize, directory: Mmap4kDirectory::None, origin }),
+        _ => progress,
+    }
+}
+
+/// Installing a target directory records its level in share progress and leaves other progress unchanged.
+pub open spec fn share_4k_progress_after_directory(progress: Option<SyscallProgress>, level: MissingPageTableLevel) -> Option<SyscallProgress> {
+    match progress {
+        Some(SyscallProgress::Share4k { source_range, target_range, shared, directory: _, origin }) =>
+            Some(SyscallProgress::Share4k { source_range, target_range, shared, directory: mmap_4k_installed_directory(level), origin }),
         _ => progress,
     }
 }
@@ -21,24 +32,51 @@ pub open spec fn share_4k_directory_pre_at(old_u: KernelU, progress_thread: RwLo
     &&& old_u.thread_map[quota_thread].quota_4k > 0
 }
 
-/// Allocating one target directory consumes one quota-thread quota; a child container may receive its backing page.
+/// Allocating one target directory consumes one quota-thread quota and records its level in `progress_thread`'s share; a child
+/// container may receive its backing page. A new L2 page adds its windows to the target table, those of the target range held.
 #[verifier::opaque]
-pub open spec fn share_4k_directory_at(pre: KernelU, post: KernelU, quota_thread: RwLockThreadPtr, target: RwLockContainerPtr, source: Option<RwLockContainerPtr>) -> bool {
+pub open spec fn share_4k_directory_at(
+    pre: KernelU, post: KernelU, progress_thread: RwLockThreadPtr, quota_thread: RwLockThreadPtr, target: RwLockProcessPtr, target_container: RwLockContainerPtr,
+    source: Option<RwLockContainerPtr>,
+) -> bool {
+    let progress = pre.thread_map[progress_thread].syscall_progress->Some_0;
+    let new_progress = post.thread_map[progress_thread].syscall_progress->Some_0;
+    let funded = pre.thread_map.insert(quota_thread, ThreadU { quota_4k: (pre.thread_map[quota_thread].quota_4k - 1) as usize, ..pre.thread_map[quota_thread] });
+    let process = pre.process_map[target];
+    let table = process.pagetable->Some_0;
+    let old_windows = table.pagetable_window_locks;
+    let new_windows = post.process_map[target].pagetable->Some_0.pagetable_window_locks;
     let containers = match source {
         None => pre.container_map,
         Some(parent) => pre.container_map.insert(parent, ContainerU { owned_pages: post.container_map[parent].owned_pages, ..pre.container_map[parent] })
-            .insert(target, ContainerU { owned_pages: post.container_map[target].owned_pages, ..pre.container_map[target] }),
+            .insert(target_container, ContainerU { owned_pages: post.container_map[target_container].owned_pages, ..pre.container_map[target_container] }),
     };
     &&& source matches Some(parent) ==> {
         let moved = pre.container_map[parent].owned_pages.difference(post.container_map[parent].owned_pages);
-        &&& parent != target
+        &&& parent != target_container
         &&& pre.container_map.dom().contains(parent)
-        &&& pre.container_map.dom().contains(target)
+        &&& pre.container_map.dom().contains(target_container)
         &&& moved.len() == 1
         &&& post.container_map[parent].owned_pages.subset_of(pre.container_map[parent].owned_pages)
-        &&& post.container_map[target].owned_pages == pre.container_map[target].owned_pages.union(moved)
+        &&& post.container_map[target_container].owned_pages == pre.container_map[target_container].owned_pages.union(moved)
     }
-    &&& post == (KernelU { thread_map: pre.thread_map.insert(quota_thread, ThreadU { quota_4k: (pre.thread_map[quota_thread].quota_4k - 1) as usize, ..pre.thread_map[quota_thread] }), container_map: containers, ..pre })
+    &&& post.thread_map[progress_thread].syscall_progress is Some
+    &&& new_progress is Share4k
+    &&& new_progress->Share4k_source_range == progress->Share4k_source_range
+    &&& new_progress->Share4k_target_range == progress->Share4k_target_range
+    &&& new_progress->Share4k_shared == progress->Share4k_shared
+    &&& new_progress->Share4k_origin == progress->Share4k_origin
+    &&& !(new_progress->Share4k_directory is None)
+    &&& new_progress->Share4k_directory is L3 ==> !new_windows.dom().subset_of(old_windows.dom())
+    &&& new_progress->Share4k_directory is L3 ==> forall|w: WindowVa| #![trigger new_windows.dom().contains(w)] new_windows.dom().contains(w) && !old_windows.dom().contains(w)
+        ==> new_windows == pagetable_window_locks_after_new_l2_page(old_windows, spec_v2l4index(w.va), spec_v2l3index(w.va), progress->Share4k_target_range)
+    &&& !(new_progress->Share4k_directory is L3) ==> new_windows == old_windows
+    &&& post == (KernelU {
+        thread_map: funded.insert(progress_thread, ThreadU { syscall_progress: Some(new_progress), ..funded[progress_thread] }),
+        container_map: containers,
+        process_map: pre.process_map.insert(target, ProcessU { pagetable: Some(PageTableU { pagetable_window_locks: new_windows, ..table }), ..process }),
+        ..pre
+    })
 }
 
 /// The next recorded source page of `progress_thread`'s share is mapped and the next recorded target
@@ -106,12 +144,13 @@ pub open spec fn share_4k_directory_step_pre(old_u: KernelU, cpu_id: CpuId) -> b
     }
 }
 
-/// Allocating one target directory consumes one quota-thread quota; a child container may receive
-/// its backing page.
+/// Allocating one target directory consumes one quota-thread quota and records its level in the caller's share; a child
+/// container may receive its backing page, and a new L2 page adds its windows to the target table.
 #[verifier::opaque]
 pub open spec fn share_4k_directory_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    let caller = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let objects = share_4k_objects(old_u, cpu_id);
-    share_4k_directory_at(old_u, new_u, objects.quota_thread, objects.target_container, objects.transfer_source)
+    share_4k_directory_at(old_u, new_u, caller, objects.quota_thread, objects.target, objects.target_container, objects.transfer_source)
 }
 
 /// A leaf step shares the next recorded source page into the next recorded target address of a

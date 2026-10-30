@@ -98,7 +98,7 @@ fn build_new_child_page_structure(
         old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_1g.view().len() == 0,
         old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
         thread_effective_quota_4k(old(krnl).thr_mp.spec_index(thread_ptr)) >= 3,
-        old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k { source_range: *range, target_range: *range, shared: 0, origin }),
+        old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k { source_range: *range, target_range: *range, shared: 0, directory: old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view()->Some_0->Share4k_directory, origin }),
         origin is NewProcess || origin is NewContainer,
         thread_lock_perm.state() is WriteLock,
         thread_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -132,8 +132,8 @@ fn build_new_child_page_structure(
             &&& old(window_perms).index(w).state() is WriteLock
             &&& old(window_perms).index(w).thread_id() == old(lctx).thread_id()
             &&& typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (pagetable_ptr, w), TypedLockMode::Write)
-            &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.l2_lock_of(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr)
-                .window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va))).lock_perm_match(spec_v2l2index(w.va), &old(window_perms).index(w))
+            &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.l2_owner(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                == (SpinLockState::Some { thread_id: old(window_perms).index(w).thread_id(), lock_id: old(window_perms).index(w).lock_id() })
         },
         forall|w: WindowVa| #![trigger old(window_perms).dom().contains(w)] old(window_perms).dom().contains(w) ==> old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)),
         0 <= start <= old(steps).view().len(),
@@ -207,7 +207,8 @@ fn build_new_child_page_structure(
         final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_1g.view().len() == 0,
         final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
         old(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k - 3 <= final(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k,
-        final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view(),
+        final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k { source_range: *range, target_range: *range, shared: 0,
+            directory: final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view()->Some_0->Share4k_directory, origin }),
         thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
         final(krnl).pt_mp.dom().contains(pagetable_ptr),
         final(krnl).pt_mp.spec_index(pagetable_ptr).view().proc_ptr == child_ptr,
@@ -247,8 +248,8 @@ fn build_new_child_page_structure(
             &&& final(window_perms).index(w).state() is WriteLock
             &&& final(window_perms).index(w).thread_id() == final(lctx).thread_id()
             &&& typed_lock_map_contains_mode(final(lctx).pagetable_window_lock_map(), (pagetable_ptr, w), TypedLockMode::Write)
-            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_lock_of(pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr)
-                .window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va))).lock_perm_match(spec_v2l2index(w.va), &final(window_perms).index(w))
+            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_owner(pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                == (SpinLockState::Some { thread_id: final(window_perms).index(w).thread_id(), lock_id: final(window_perms).index(w).lock_id() })
         },
         forall|w: WindowVa| #![trigger final(window_perms).dom().contains(w)] final(window_perms).dom().contains(w) ==> final(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)),
 {
@@ -267,8 +268,9 @@ fn build_new_child_page_structure(
     }
     let ghost before = steps.view();
     let Tracked(minted) = mmap_4k_build_one_structure(
-        krnl, cur_va, lo, hi, allocator_ptr, thread_ptr, child_ptr, container_ptr, cpu_id, pagetable_ptr, transfer_source, Ghost(thread_ptr), Tracked(&mut *lctx),
-        Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(transfer_source_lock_perm), Tracked(transfer_target_lock_perm),
+        krnl, cur_va, lo, hi, allocator_ptr, thread_ptr, child_ptr, container_ptr, cpu_id, pagetable_ptr, transfer_source, thread_ptr, Tracked(&mut *lctx),
+        Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(transfer_source_lock_perm),
+        Tracked(transfer_target_lock_perm), Tracked(&*window_perms),
     );
     proof {
         share_4k_range_steps_from_directory(&*steps, before, start, cpu_id);
@@ -338,7 +340,7 @@ pub fn build_new_child_structure(
         old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_1g.view().len() == 0,
         old(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
         old(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k >= 1 + 3 * range.len,
-        old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k { source_range: *range, target_range: *range, shared: 0, origin }),
+        old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k { source_range: *range, target_range: *range, shared: 0, directory: old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view()->Some_0->Share4k_directory, origin }),
         origin is NewProcess || origin is NewContainer,
         thread_lock_perm.state() is WriteLock,
         thread_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -425,7 +427,8 @@ pub fn build_new_child_structure(
         final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_1g.view().len() == 0,
         final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
         old(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k - 3 * range.len <= final(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k,
-        final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view(),
+        final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k { source_range: *range, target_range: *range, shared: 0,
+            directory: final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view()->Some_0->Share4k_directory, origin }),
         thread_lock_perm.lock_id() == final(krnl).thr_mp.spec_index(thread_ptr).locking_thread()->Write_lock_id,
         final(krnl).pt_mp.dom().contains(pagetable_ptr),
         final(krnl).pt_mp.spec_index(pagetable_ptr).view().proc_ptr == child_ptr,
@@ -450,8 +453,8 @@ pub fn build_new_child_structure(
             &&& typed_lock_map_contains_mode(final(lctx).pagetable_window_lock_map(), (pagetable_ptr, w), TypedLockMode::Write)
             &&& ret.view().index(w).state() is WriteLock
             &&& ret.view().index(w).thread_id() == final(lctx).thread_id()
-            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_lock_of(pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr)
-                .window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va))).lock_perm_match(spec_v2l2index(w.va), &ret.view().index(w))
+            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_owner(pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                == (SpinLockState::Some { thread_id: ret.view().index(w).thread_id(), lock_id: ret.view().index(w).lock_id() })
         },
         forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len ==> {
             &&& spec_va2index(window_of(range.view().spec_index(j)).va) == (spec_v2l4index(range.view().spec_index(j)), spec_v2l3index(range.view().spec_index(j)), spec_v2l2index(range.view().spec_index(j)), 0usize)
@@ -567,8 +570,9 @@ pub fn build_new_child_structure(
             krnl.thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
             old(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k >= 1 + 3 * range_len,
             old(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k - 3 * i <= krnl.thr_mp.spec_index(thread_ptr).view().quota_4k,
-            krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view(),
-            old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k { source_range: *range, target_range: *range, shared: 0, origin }),
+            krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k { source_range: *range, target_range: *range, shared: 0, directory: krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view()->Some_0->Share4k_directory, origin }),
+            old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Share4k { source_range: *range, target_range: *range, shared: 0,
+                directory: old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress.view()->Some_0->Share4k_directory, origin }),
             origin is NewProcess || origin is NewContainer,
             thread_lock_perm.state() is WriteLock,
             thread_lock_perm.thread_id() == old(lctx).thread_id(),
@@ -620,8 +624,8 @@ pub fn build_new_child_structure(
                 &&& window_perms.index(w).state() is WriteLock
                 &&& window_perms.index(w).thread_id() == lctx.thread_id()
                 &&& typed_lock_map_contains_mode(lctx.pagetable_window_lock_map(), (pagetable_ptr, w), TypedLockMode::Write)
-                &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.l2_lock_of(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr)
-                    .window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va))).lock_perm_match(spec_v2l2index(w.va), &window_perms.index(w))
+                &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.l2_owner(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                    == (SpinLockState::Some { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
             },
             forall|w: WindowVa| #![trigger window_perms.dom().contains(w)] window_perms.dom().contains(w) ==> lctx.pagetable_window_lock_map().dom().contains((pagetable_ptr, w)),
             forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len ==> {

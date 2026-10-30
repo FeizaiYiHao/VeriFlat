@@ -63,6 +63,7 @@ impl KernelK {
             pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).lower.window_stale_cpus == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.window_stale_cpus,
             pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).lower.pagetable_window_locks == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks.insert(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }, LockStateU::WriteLocked),
             pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }),
+            pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.pagetable_window_locks[WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }] is Unlocked,
             pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).page_closure() == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).page_closure(),
             pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).window_locked_by_thread(l4i, l3i, l2i, final(lctx).thread_id()),
             forall|w: WindowVa|
@@ -121,6 +122,7 @@ impl KernelK {
                 reveal(lock_pagetable_window_eof_transition_framing); broadcast use PageTableHigher::resolve_l3_addr_unique_at, spec_va_2m_valid_index_roundtrip;
                 pagetable_lock_op_preserves_invariant_fields(old(self).pt_mp, self.pt_mp, self.pt_lower.view(), root);
             };
+            assert(pre_c.lower.pagetable_window_locks[w] is Unlocked) by { reveal(lock_pagetable_window_eof_transition_framing); pre_c.wf_window_locks_va_at(w); };
             assert(typed_lock_maps_aligned(self, &*lctx)) by {
                 reveal(lock_pagetable_window_eof_transition_framing); reveal(pagetable_window_typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
                 broadcast use spec_va_2m_valid_index_roundtrip; spec_index2va_injective();

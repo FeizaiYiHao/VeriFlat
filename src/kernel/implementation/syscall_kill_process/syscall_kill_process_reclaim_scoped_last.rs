@@ -13,8 +13,9 @@ use super::syscall_kill_process_reclaim_scoped_spec::*;
 verus! {
 /// Free the page `page_ptr` whose last mapping is the hidden 4K leaf at `va` of the write-held page table `pagetable` of
 /// the target: return it through the cache shard `cpu_id` of its owner `owner`'s 4K allocator, credit that allocator's
-/// quota by one, and release the write-held page, in one step that extends the kill's partial trace. The killer held
-/// `entry_lctx` before it write-locked the page.
+/// quota by one, and release the write-held page and the leaf's window, in one step that extends the kill's partial trace.
+/// The killer held `entry_lctx` before it write-locked the page; the window lock taken since the snapshot is the pending
+/// step, recorded first when the cache shard must drain.
 pub(crate) fn kill_reclaim_last_4k_mapping_scoped(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
     thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, pagetable: RwLockPageTableRoot, va: VAddr, page_ptr: PagePtr, owner: RwLockContainerPtr,
@@ -58,6 +59,7 @@ pub(crate) fn kill_reclaim_last_4k_mapping_scoped(
         typed_lock_map_contains_mode(entry_lctx.process_lock_map(), target, TypedLockMode::Write),
         old(krnl).prc_mp.dom().contains(target),
         old(krnl).prc_mp.spec_index(target).being_killed(),
+        !old(krnl).prc_mp.spec_index(target).view().zombie,
         old(krnl).prc_mp.spec_index(target).view().pagetable == pagetable,
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
@@ -79,8 +81,11 @@ pub(crate) fn kill_reclaim_last_4k_mapping_scoped(
         typed_lock_map_contains_mode(entry_lctx.pagetable_window_lock_map(), (pagetable, WindowVa { va: spec_index2va((spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), 0)) }), TypedLockMode::Write),
         window_perm.state() is WriteLock,
         window_perm.thread_id() == entry_lctx.thread_id(),
-        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_lock_of(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va),
-            spec_v2l3index(va))).lock_perm_match(spec_v2l2index(va), &window_perm),
+        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va))
+            == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
+        pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable).lower.pagetable_window_locks.dom().contains(window_of(va)),
+        pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable).lower.pagetable_window_locks[window_of(va)] is Unlocked,
+        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks == pagetable_c(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable).lower.pagetable_window_locks.insert(window_of(va), LockStateU::WriteLocked),
         pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr == page_ptr,
         page_ptr_valid(page_ptr),
         !(old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().ref_count > 1 || old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().is_io_page),
@@ -119,27 +124,27 @@ pub(crate) fn kill_reclaim_last_4k_mapping_scoped(
 {
     let page_index = page_ptr2page_index(page_ptr);
     let ghost origin = krnl.prc_mp.spec_index(target).view_rodata().view().owning_container;
+    let ghost w = window_of(va);
+    let ghost s_entry = steps.snapshot_k();
+    let ghost before_cache = steps.view();
     proof {
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target);
         page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, page_index);
-    }
-    let ghost held_lctx = *lctx;
-    proof {
-        enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
-        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-        kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl);
-        krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-        assert(held_lctx.page_lock_map().dom().contains(page_index) && krnl.ctn_mp.dom().contains(owner));
+        krnl.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr);
+        kill_step_pre_from_k(&*krnl, &*lctx, cpu_id, process_ptr, thread_ptr, target, stage, scope);
+        kill_window_locks_changed_implies_windows_changed_step(&s_entry, &*krnl, cpu_id, target, pagetable, thread_ptr, w, LockStateU::WriteLocked);
+        container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_index); mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, va);
         container_perms_wf_at(krnl.ctn_mp, owner); container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner);
     }
     let allocator_ptr = krnl.ctn_mp.borrow_rodata(owner).borrow().allocator_ptr_4k;
+    let ghost cache_k = *krnl;
     let ghost cache_lctx = *lctx;
     let Tracked(cache_perm) = kill_retire_lock_cache(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), allocator_ptr, cpu_id, 1, Ghost(page_index));
     let ghost snap = *krnl;
     let ghost snap_lctx = *lctx;
+    let ghost drained = steps.snapshot_k() == *krnl;
     proof {
-        assert(held_lctx.page_lock_map().dom().contains(page_index) && held_lctx.pagetable_lock_map().dom().contains(pagetable) && held_lctx.process_lock_map().dom().contains(target));
+        if drained { kill_trace_from_recorded_step(&*steps, before_cache, start, pre, kernel_k_to_kernel_u(s_entry), kernel_k_to_kernel_u(cache_k), cpu_id, ctx); }
         assert(cache_lctx.page_lock_map().dom().contains(page_index) && cache_lctx.pagetable_lock_map().dom().contains(pagetable) && cache_lctx.process_lock_map().dom().contains(target));
         assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable)) by {
             old(krnl).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable);
@@ -155,20 +160,33 @@ pub(crate) fn kill_reclaim_last_4k_mapping_scoped(
     let ghost before = steps.view();
     let Tracked(quota_perm) = krnl.wlock_allocator_quota_4k(allocator_ptr, Tracked(&mut *lctx));
     kill_reclaim_last_4k_mapping_scoped_to_cache(krnl, Tracked(&mut *lctx), pagetable, va, page_ptr, owner, allocator_ptr, cpu_id, Tracked(pagetable_perm), Tracked(&page_perm),
-        Tracked(&cache_perm), Tracked(&quota_perm));
+        Tracked(&cache_perm), Tracked(&quota_perm), Tracked(&window_perm));
     krnl.wunlock_allocator_quota_4k(allocator_ptr, Tracked(&mut *lctx), Tracked(quota_perm));
     krnl.wunlock_allocator_cache_4k(allocator_ptr, cpu_id, Tracked(&mut *lctx), Tracked(cache_perm));
     krnl.wunlock_page(page_index, Tracked(&mut *lctx), Tracked(page_perm));
+    let ghost mid = *krnl;
     let window = va2index(va);
     krnl.unlock_pagetable_window(pagetable, window.0, window.1, window.2, Tracked(pagetable_perm), Tracked(&mut *lctx), Tracked(window_perm));
     proof {
         assert(lctx.page_lock_map() =~= entry_lctx.page_lock_map() && lctx.allocator_cache_4k_lock_map() =~= entry_lctx.allocator_cache_4k_lock_map()
             && lctx.allocator_quota_4k_lock_map() =~= entry_lctx.allocator_quota_4k_lock_map());
-        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&snap, &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-        kernel_page_freed_to_owner_quota_implies_u_step(&snap, &*krnl, false, pagetable, owner, allocator_ptr, origin);
         let post_u = kernel_k_to_kernel_u(*krnl);
-        krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
-        kill_trace_from_scoped_credit(&*steps, before, start, pre, post_u, &snap, &snap_lctx, cpu_id, ctx, process_ptr, thread_ptr, target, stage, scope);
+        if drained {
+            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&snap, &mid)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+            kernel_page_freed_to_owner_quota_implies_u_step(&snap, &mid, false, pagetable, owner, allocator_ptr, origin);
+            snap.thr_mp.typed_lock_map_aligned_write_at(snap_lctx.thread_lock_map(), snap_lctx.thread_id(), thread_ptr);
+            kill_step_pre_from_k(&snap, &snap_lctx, cpu_id, process_ptr, thread_ptr, target, stage, scope);
+            kill_page_freed_then_window_unlocked_implies_refund_step(&snap, &mid, &*krnl, cpu_id, target, pagetable, thread_ptr, w);
+            krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
+            kill_trace_push(&*steps, before, start, pre, kernel_k_to_kernel_u(snap), post_u, cpu_id, ctx);
+        } else {
+            assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).lower.pagetable_window_locks =~= pagetable_c(s_entry.pt_mp, s_entry.pt_lower.view(), pagetable).lower.pagetable_window_locks);
+            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&cache_k, &snap)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
+            assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&s_entry, &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
+            kernel_page_freed_to_owner_quota_implies_u_step(&s_entry, &*krnl, false, pagetable, owner, allocator_ptr, origin);
+            krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
+            kill_trace_from_page_freed_credit(&*steps, before, start, pre, &s_entry, post_u, cpu_id, ctx, target);
+        }
     }
 }
 

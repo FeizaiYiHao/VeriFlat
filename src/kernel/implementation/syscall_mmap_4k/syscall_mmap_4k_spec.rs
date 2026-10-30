@@ -89,7 +89,8 @@ pub open spec fn mmap_4k_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range: Va
 
 /// Entering write-locks the cpu and its running thread, which entering to fill already holds, with
 /// the cpu inside its kernel step, read-locks the thread's pagetable to read or write-locks it to
-/// fill, and starts progress in that phase at the first page.
+/// fill, write-locks the range's existing 2M windows, and starts progress in that phase at the
+/// first page.
 #[verifier::opaque]
 pub open spec fn mmap_4k_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, range: VaRange4K, phase: Mmap4kPhase) -> bool {
     let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
@@ -100,7 +101,12 @@ pub open spec fn mmap_4k_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuI
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..old_u.cpu_array[cpu_id as int] }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(progress), ..thread }),
-        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { lock_state: table_lock, ..process.pagetable->Some_0 }), ..process }),
+        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
+            pagetable: Some(PageTableU {
+                lock_state: table_lock, pagetable_window_locks: pagetable_window_locks_after_locking_range(process.pagetable->Some_0.pagetable_window_locks, range), ..process.pagetable->Some_0
+            }),
+            ..process
+        }),
         ..old_u
     })
 }
@@ -251,8 +257,9 @@ pub open spec fn mmap_4k_exit_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     &&& progress->Mmap4k_directory is None
 }
 
-/// Exiting clears mmap progress, unlocks the cpu and its running thread, returns the cpu to its trap
-/// path, and drops the thread's read lock on its pagetable, which other readers may still hold.
+/// Exiting clears mmap progress, unlocks the cpu, its running thread, and the recorded range's 2M
+/// windows, returns the cpu to its trap path, and drops the thread's read lock on its pagetable,
+/// which other readers may still hold.
 #[verifier::opaque]
 pub open spec fn mmap_4k_exit_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
@@ -263,7 +270,13 @@ pub open spec fn mmap_4k_exit_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId
     &&& new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: CpuOpState::Trap, ..old_u.cpu_array[cpu_id as int] }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..thread }),
-        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { pagetable: Some(PageTableU { lock_state: table_lock, ..process.pagetable->Some_0 }), ..process }),
+        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
+            pagetable: Some(PageTableU {
+                lock_state: table_lock, pagetable_window_locks: pagetable_window_locks_after_unlocking_range(process.pagetable->Some_0.pagetable_window_locks, thread.syscall_progress->Some_0->Mmap4k_range),
+                ..process.pagetable->Some_0
+            }),
+            ..process
+        }),
         ..old_u
     })
 }

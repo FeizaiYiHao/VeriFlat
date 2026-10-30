@@ -5,14 +5,14 @@ use super::syscall_mmap_4k_spec::*;
 use super::syscall_mmap_4k_trace::*;
 
 verus! {
-/// Under the pagetable's big read lock, holding exactly the 2M windows of `range`, publish a present, writable, executable
+/// Under the pagetable's big read lock, holding exactly the 2M windows of `range` through `window_perms`, publish a present, writable, executable
 /// leaf for every page of `range` in order, installing a missing L1 table first; each page records its L1 table, if
 /// installed, as a directory step and its leaf as a leaf step. Every held window keeps its lock state and stale CPUs, and
 /// its leaves stay present.
 pub(super) fn mmap_4k_map_leaf_range(
     krnl: &mut KernelK, range: &VaRange4K, alloc_ptr_4k: RwLockPageAllocatorPtr, thread_ptr: RwLockThreadPtr, process_ptr: RwLockProcessPtr, container_ptr: RwLockContainerPtr,
     cpu_id: CpuId, pagetable_ptr: RwLockPageTableRoot, Ghost(phase): Ghost<Mmap4kPhase>, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>,
-    Tracked(thread_lock_perm): Tracked<&LockPerm>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>,
+    Tracked(thread_lock_perm): Tracked<&LockPerm>, Tracked(pagetable_lock_perm): Tracked<&LockPerm>, Tracked(window_perms): Tracked<&Map<WindowVa, LockPerm>>,
 )
     requires
         old(krnl).inv(),
@@ -63,8 +63,12 @@ pub(super) fn mmap_4k_map_leaf_range(
         pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).higher.spec_mapping_4k_va_range_windows_exist(range),
         forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))]
             old(lctx).pagetable_window_lock_map().dom().contains((p, w)) == (p == pagetable_ptr && va_range_2m_windows(*range).contains(w)),
-        forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w))]
-            old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)) ==> pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_leaves_present(w),
+        forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w))] old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)) ==> {
+            let table = pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr);
+            &&& table.window_leaves_present(w)
+            &&& window_perms.dom().contains(w)
+            &&& table.window_view(w).lock_state == (SpinLockState::Some { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
+        },
         forall|w: WindowVa, j: int| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)), range.view()[j]]
             old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)) && 0 <= j < range.len && spec_v2l4index(range.view()[j]) == spec_v2l4index(w.va)
                 && spec_v2l3index(range.view()[j]) == spec_v2l3index(w.va) && spec_v2l2index(range.view()[j]) == spec_v2l2index(w.va) ==> {
@@ -187,6 +191,8 @@ pub(super) fn mmap_4k_map_leaf_range(
             },
             forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w))] old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)) ==> {
                 let cur = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
+                &&& window_perms.dom().contains(w)
+                &&& entry.window_view(w).lock_state == (SpinLockState::Some { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
                 &&& cur.window_view(w).lock_state == entry.window_view(w).lock_state
                 &&& cur.window_view(w).stale_cpus == entry.window_view(w).stale_cpus
                 &&& cur.mapping_2m().dom().contains(w.va) == entry.mapping_2m().dom().contains(w.va)
@@ -223,7 +229,7 @@ pub(super) fn mmap_4k_map_leaf_range(
             };
         }
         map_one_mmap_4k_page(krnl, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, va, Ghost(*range), Ghost(i), Ghost(phase), Tracked(&mut *lctx),
-            Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm));
+            Tracked(&mut *steps), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(window_perms.tracked_borrow(win)));
         i = i + 1;
     }
 }
@@ -299,7 +305,7 @@ pub(super) fn mmap_4k_map_leaves_and_finish(
             &&& window_perms.index(w).state() is WriteLock
             &&& window_perms.index(w).thread_id() == old(lctx).thread_id()
             &&& typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (pagetable_ptr, w), TypedLockMode::Write)
-            &&& table.lower.l2_lock_of(table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va))).lock_perm_match(spec_v2l2index(w.va), &window_perms.index(w))
+            &&& table.lower.l2_owner(table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) == (SpinLockState::Some { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
             &&& table.window_leaves_present(w)
             &&& !table.lower.window_stale_cpus.dom().contains((table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
         },
@@ -351,7 +357,7 @@ pub(super) fn mmap_4k_map_leaves_and_finish(
 {
     let ghost leaf_phase = if enter_phase is Read { Mmap4kPhase::Read } else { Mmap4kPhase::Filled };
     mmap_4k_map_leaf_range(krnl, va_range, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, cpu_id, pagetable_ptr, Ghost(leaf_phase), Tracked(&mut *lctx), Tracked(&mut *steps),
-        Tracked(&thread_lock_perm), Tracked(&pagetable_lock_perm));
+        Tracked(&thread_lock_perm), Tracked(&pagetable_lock_perm), Tracked(&window_perms));
     let ghost range_steps = steps.view();
     let ghost exit_start = *krnl;
     let ghost exit_lctx = *lctx;
@@ -368,7 +374,9 @@ pub(super) fn mmap_4k_map_leaves_and_finish(
         steps.end_kernel_step_thread_syscall_progress_changed(&*krnl, &*lctx, thread_ptr);
         assert(mmap_4k_syscall_trace(steps.view(), cpu_id, va, range, enter_phase)) by {
             kernel_cpu_thread_unlocked_pagetable_runlocked_and_progress_changed_implies_u_step(&exit_start, &exit_k, &exit_lctx, cpu_id, thread_ptr, process_ptr, pagetable_ptr);
-            mmap_4k_exit_step_from_u(kernel_k_to_kernel_u(exit_start), kernel_k_to_kernel_u(exit_k), cpu_id, process_ptr, thread_ptr, exit_k.pt_mp.spec_index(pagetable_ptr).lock_state_u());
+            process_cpu_wf_at(exit_start.prc_mp, exit_start.cpu_arr, cpu_id); process_pagetable_match_process_at(exit_start.prc_mp, exit_start.pt_mp, process_ptr);
+            mmap_4k_exit_step_from_u(&exit_start, kernel_k_to_kernel_u(exit_k), cpu_id, process_ptr, thread_ptr, pagetable_ptr, *va_range, exit_k.pt_mp.spec_index(pagetable_ptr).lock_state_u(),
+                pagetable_c(exit_k.pt_mp, exit_k.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks);
             mmap_4k_trace_exit_step(&*steps, range_steps, kernel_k_to_kernel_u(exit_start), kernel_k_to_kernel_u(exit_k), cpu_id, va, range, enter_phase);
         };
         assert(mmap_4k_syscall_success_mapped(krnl, cpu_id, va, range)) by { va_range.va_range_lemma(); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, process_ptr); };

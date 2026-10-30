@@ -74,7 +74,8 @@ pub open spec fn new_process_enter_step_pre(old_u: KernelU, cpu_id: CpuId, range
 }
 
 /// Entering write-locks the cpu, the process, the thread, and the endpoint at `endpoint_index`,
-/// read-locks the process's page table, and records the call's arguments in the thread's progress.
+/// read-locks the process's page table and write-locks its existing windows over `range`, and records the call's arguments in
+/// the thread's progress.
 #[verifier::opaque]
 pub open spec fn new_process_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, range: VaRange4K, regs: Registers, endpoint_index: Option<EndpointIdx>, with_iommu: bool) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -84,7 +85,12 @@ pub open spec fn new_process_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: 
     let progress = SyscallProgress::NewProcess(NewProcessProgress { range, regs, endpoint_index, with_iommu, child: None });
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..cpu }),
-        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU { lock_state: LockStateU::WriteLocked, pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..process.pagetable->Some_0 }), ..process }),
+        process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
+            lock_state: LockStateU::WriteLocked, pagetable: Some(PageTableU {
+                lock_state: LockStateU::ReadLocked, pagetable_window_locks: pagetable_window_locks_after_locking_range(process.pagetable->Some_0.pagetable_window_locks, range),
+                ..process.pagetable->Some_0
+            }), ..process
+        }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(progress), ..thread }),
         endpoint_map: match endpoint_index {
             Some(i) => old_u.endpoint_map.insert(thread.endpoint_descriptors[i as int]->Some_0, EndpointU { lock_state: LockStateU::WriteLocked, ..old_u.endpoint_map[thread.endpoint_descriptors[i as int]->Some_0] }),
@@ -127,11 +133,11 @@ pub open spec fn new_process_publish_step(old_u: KernelU, new_u: KernelU, cpu_id
     let progress = thread.syscall_progress->Some_0;
     let child = new_u.process_map[parent].children.last();
     let ancestors = old_u.process_map[parent].uppertree_seq.push(parent);
-    let empty_table = PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty() };
+    let empty_table = PageTableU { lock_state: LockStateU::WriteLocked, did: None, mapping_4k: Map::empty(), mapping_2m: Map::empty(), mapping_1g: Map::empty(), pagetable_window_locks: Map::empty() };
     let cost: usize = if progress->NewProcess_0.with_iommu { 5 } else { 3 };
     let range = progress->NewProcess_0.range;
     let origin = Share4kOrigin::NewProcess(NewProcessProgress { child: Some(child), ..progress->NewProcess_0 });
-    let sharing = SyscallProgress::Share4k { source_range: range, target_range: range, shared: 0, origin };
+    let sharing = SyscallProgress::Share4k { source_range: range, target_range: range, shared: 0, directory: Mmap4kDirectory::None, origin };
     &&& !old_u.process_map.dom().contains(child)
     &&& thread.quota_4k >= cost
     &&& new_u.container_map[container].free_pcids.subset_of(old_u.container_map[container].free_pcids)
@@ -199,8 +205,8 @@ pub open spec fn new_process_finish_step_pre(old_u: KernelU, cpu_id: CpuId) -> b
 }
 
 /// The last step creates the child's first thread with the recorded registers and endpoint,
-/// clears the caller's progress, and releases every retained observable lock; other readers may
-/// still hold the parent's page table.
+/// clears the caller's progress, and releases every retained observable lock, including the windows over the recorded range
+/// of both page tables; other readers may still hold the parent's page table.
 #[verifier::opaque]
 pub open spec fn new_process_finish_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let cpu = old_u.cpu_array[cpu_id as int];
@@ -212,13 +218,20 @@ pub open spec fn new_process_finish_step(old_u: KernelU, new_u: KernelU, cpu_id:
     let child = old_u.process_map[child_ptr];
     let endpoint = match origin->NewProcess_0.endpoint_index { Some(i) => thread.endpoint_descriptors[i as int], None => None };
     let table_lock = new_u.process_map[parent].pagetable->Some_0.lock_state;
+    let range = origin->NewProcess_0.range;
+    let parent_table = old_u.process_map[parent].pagetable->Some_0;
+    let child_table = child.pagetable->Some_0;
     &&& table_lock is Unlocked || table_lock is ReadLocked
     &&& kernel_u_new_thread_changed(KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::Unlocked, op: cpu_op_after_step(cpu.state), ..cpu }),
         process_map: old_u.process_map.insert(parent, ProcessU {
-            pagetable: Some(PageTableU { lock_state: table_lock, ..old_u.process_map[parent].pagetable->Some_0 }), ..old_u.process_map[parent]
+            pagetable: Some(PageTableU {
+                lock_state: table_lock, pagetable_window_locks: pagetable_window_locks_after_unlocking_range(parent_table.pagetable_window_locks, range), ..parent_table
+            }), ..old_u.process_map[parent]
         }).insert(child_ptr, ProcessU {
-            lock_state: LockStateU::Unlocked, pagetable: Some(PageTableU { lock_state: LockStateU::Unlocked, ..child.pagetable->Some_0 }),
+            lock_state: LockStateU::Unlocked, pagetable: Some(PageTableU {
+                lock_state: LockStateU::Unlocked, pagetable_window_locks: pagetable_window_locks_after_unlocking_range(child_table.pagetable_window_locks, range), ..child_table
+            }),
             iommu_table: match child.iommu_table { Some(t) => Some(PageTableU { lock_state: LockStateU::Unlocked, ..t }), None => None }, ..child
         }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, ..thread }),

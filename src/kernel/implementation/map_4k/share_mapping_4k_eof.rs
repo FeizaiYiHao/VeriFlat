@@ -232,7 +232,7 @@ pub(super) open spec fn share_mapping_4k_build_and_share_eol_loop_framing(
         &&& new_target.mapping_2m() == old_target.mapping_2m()
         &&& new_target.mapping_1g() == old_target.mapping_1g()
         &&& old_target.leaves_present() ==> new_target.leaves_present()
-        &&& new_target.lower.l2_lock == old_target.lower.l2_lock
+        &&& new_target.lower.pagetable_window_locks == old_target.lower.pagetable_window_locks
         &&& new_target.lower.window_stale_cpus == old_target.lower.window_stale_cpus
         &&& new_target.mapping_4k() == expected
         &&& new_target.user_view(LockStateU::Unlocked).mapping_4k
@@ -339,7 +339,7 @@ pub(super) proof fn share_mapping_4k_build_and_share_eol_step(
                     pagetable_c(mid.pt_mp, mid.pt_lower.view(), source_pagetable).user_view(LockStateU::Unlocked).mapping_4k.spec_index(source_va))
             &&& pagetable_c(post.pt_mp, post.pt_lower.view(), target_pagetable).mapping_2m() == pagetable_c(mid.pt_mp, mid.pt_lower.view(), target_pagetable).mapping_2m()
             &&& pagetable_c(post.pt_mp, post.pt_lower.view(), target_pagetable).mapping_1g() == pagetable_c(mid.pt_mp, mid.pt_lower.view(), target_pagetable).mapping_1g()
-            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), target_pagetable).lower.l2_lock == pagetable_c(mid.pt_mp, mid.pt_lower.view(), target_pagetable).lower.l2_lock
+            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), target_pagetable).lower.pagetable_window_locks == pagetable_c(mid.pt_mp, mid.pt_lower.view(), target_pagetable).lower.pagetable_window_locks
             &&& pagetable_c(post.pt_mp, post.pt_lower.view(), target_pagetable).lower.window_stale_cpus == pagetable_c(mid.pt_mp, mid.pt_lower.view(), target_pagetable).lower.window_stale_cpus
         },
     ensures

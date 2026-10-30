@@ -85,19 +85,21 @@ pub open spec fn iommu_map_4k_enter_step_pre(old_u: KernelU, cpu_id: CpuId, va_r
     &&& forall|i: int| #![trigger process.iommu_table->Some_0.mapping_4k.dom().contains(iova_range.view()[i])] 0 <= i < iova_range.len ==> !process.iommu_table->Some_0.mapping_4k.dom().contains(iova_range.view()[i])
 }
 
-/// Entering write-locks the cpu, its running thread, and its process, read-locks the page table, write-locks the IOMMU table, and starts
-/// progress at the first page with no directory installed.
+/// Entering write-locks the cpu, its running thread, and its process, read-locks the page table and write-locks its existing
+/// 2M windows of the va range, write-locks the IOMMU table, and starts progress at the first page with no directory installed.
 #[verifier::opaque]
 pub open spec fn iommu_map_4k_enter_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, va_range: VaRange4K, iova_range: VaRange4K) -> bool {
     let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let thread = old_u.thread_map.spec_index(thread_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
     let progress = SyscallProgress::IommuMap4k { va_range, iova_range, mapped: 0, directory: Mmap4kDirectory::None };
+    let pagetable = process.pagetable->Some_0;
+    let windows = pagetable_window_locks_after_locking_range(pagetable.pagetable_window_locks, va_range);
     new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU { lock_state: LockStateU::WriteLocked, op: CpuOpState::InStep, ..old_u.cpu_array[cpu_id as int] }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, syscall_progress: Some(progress), ..thread }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
-            lock_state: LockStateU::WriteLocked, pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, ..process.pagetable->Some_0 }),
+            lock_state: LockStateU::WriteLocked, pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, pagetable_window_locks: windows, ..pagetable }),
             iommu_table: Some(PageTableU { lock_state: LockStateU::WriteLocked, ..process.iommu_table->Some_0 }), ..process
         }),
         ..old_u
@@ -184,14 +186,16 @@ pub open spec fn iommu_map_4k_exit_step_pre(old_u: KernelU, cpu_id: CpuId) -> bo
     &&& progress->IommuMap4k_directory is None
 }
 
-/// Exiting clears progress, unlocks the cpu, its running thread, its process, and the IOMMU table, and drops the thread's read lock on
-/// its page table, which other readers may still hold.
+/// Exiting clears progress, unlocks the cpu, its running thread, its process, the IOMMU table, and the page table's existing 2M
+/// windows of the recorded va range, and drops the thread's read lock on its page table, which other readers may still hold.
 #[verifier::opaque]
 pub open spec fn iommu_map_4k_exit_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let thread = old_u.thread_map.spec_index(thread_ptr);
     let process = old_u.process_map.spec_index(thread.owning_proc);
+    let pagetable = process.pagetable->Some_0;
     let table_lock = new_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.lock_state;
+    let windows = pagetable_window_locks_after_unlocking_range(pagetable.pagetable_window_locks, thread.syscall_progress->Some_0->IommuMap4k_va_range);
     &&& table_lock is Unlocked || table_lock is ReadLocked
     &&& new_u == (KernelU {
         cpu_array: old_u.cpu_array.update(cpu_id as int, CpuU {
@@ -199,7 +203,7 @@ pub open spec fn iommu_map_4k_exit_step(old_u: KernelU, new_u: KernelU, cpu_id: 
         }),
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::Unlocked, syscall_progress: None, ..thread }),
         process_map: old_u.process_map.insert(thread.owning_proc, ProcessU {
-            lock_state: LockStateU::Unlocked, pagetable: Some(PageTableU { lock_state: table_lock, ..process.pagetable->Some_0 }),
+            lock_state: LockStateU::Unlocked, pagetable: Some(PageTableU { lock_state: table_lock, pagetable_window_locks: windows, ..pagetable }),
             iommu_table: Some(PageTableU { lock_state: LockStateU::Unlocked, ..process.iommu_table->Some_0 }), ..process
         }),
         ..old_u
