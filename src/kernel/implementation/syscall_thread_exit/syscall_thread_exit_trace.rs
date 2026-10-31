@@ -618,6 +618,48 @@ pub(super) proof fn thread_exit_flushed_step_from_u(pre: KernelU, post: KernelU,
         thread_exit_flushed_step(pre, post, cpu_id),
 { reveal(thread_exit_flushed_step); }
 
+/// Recording the flush (`pre` to `post`) by the running thread `thread_ptr` of the process `process_ptr` with PCID `pcid`,
+/// once no user 4K leaf of its page table `pagetable` is left, is a middle step on `pre`/`post`.
+pub(super) proof fn thread_exit_flush_recorded_implies_flushed_step(
+    pre: &KernelK, lctx: &LocalContext, post: &KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
+    pagetable: RwLockPageTableRoot, pcid: Pcid,
+)
+    requires
+        pre.inv(),
+        index_valid(NUM_CPUS, cpu_id),
+        typed_lock_maps_aligned(pre, lctx),
+        typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.container_lock_map(), container_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.process_lock_map(), process_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.thread_lock_map(), thread_ptr, TypedLockMode::Write),
+        typed_lock_map_contains_mode(lctx.pagetable_lock_map(), pagetable, TypedLockMode::Write),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
+        pre.prc_mp.dom().contains(process_ptr),
+        !pre.prc_mp.spec_index(process_ptr).view().zombie,
+        pre.prc_mp.spec_index(process_ptr).view().pagetable == pagetable,
+        pre.prc_mp.spec_index(process_ptr).view_rodata().view().pcid == pcid,
+        pre.pt_mp.dom().contains(pagetable),
+        pre.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
+        pre.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
+        pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: false }),
+        forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index| #![trigger pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
+            pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && KERNEL_MEM_END_L4INDEX <= l4i && pre.pt_mp.spec_index(pagetable).view().kernel_l4_end <= l4i
+                && pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
+                ==> !pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present,
+        *post == (KernelK { thr_mp: post.thr_mp, ..*pre }),
+        pre.thr_mp.dom().contains(thread_ptr),
+        post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr),
+        post.thr_mp.spec_index(thread_ptr).view() == (Thread { syscall_progress: post.thr_mp.spec_index(thread_ptr).view().syscall_progress, ..pre.thr_mp.spec_index(thread_ptr).view() }),
+        post.thr_mp.spec_index(thread_ptr).locking_thread() == pre.thr_mp.spec_index(thread_ptr).locking_thread(),
+        post.thr_mp.spec_index(thread_ptr).being_killed() == pre.thr_mp.spec_index(thread_ptr).being_killed(),
+        post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: true }),
+    ensures thread_exit_middle_step(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*post) }, cpu_id),
+{
+    thread_exit_flush_step_pre_from_k(pre, lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, pcid);
+    kernel_thread_syscall_progress_changed_implies_u_step(pre, post, thread_ptr);
+    thread_exit_flushed_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, thread_ptr);
+}
+
 /// A state holding the cpu, `container_ptr`, `process_ptr` with its page table `pagetable`, and the running `thread_ptr`
 /// that records the progress before returning its `size` quota gives the quota step precondition.
 pub(super) proof fn thread_exit_quota_step_pre_from_k(

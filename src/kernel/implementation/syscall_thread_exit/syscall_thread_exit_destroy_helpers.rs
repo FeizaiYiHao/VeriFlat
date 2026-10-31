@@ -187,6 +187,7 @@ pub(super) fn thread_exit_destroy_remove_thread(
         !old(krnl).allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(old(krnl).pg_arr.spec_index(page_ptr2page_index(thread_ptr)).view().view().free_list_node_storage.addr()),
         old(krnl).pcid_allc_mp.dom().contains(pcid_allocator_ptr),
 {
+    hide(Set::is_empty);
     let page_index = page_ptr2page_index(thread_ptr);
     let ghost uppers = krnl.ctn_mp.spec_index(container_ptr).view_ghost().uppertree_seq.view();
     let ghost proc_node_addr = krnl.thr_mp.spec_index(thread_ptr).view().proc_linkedlist_node.addr();

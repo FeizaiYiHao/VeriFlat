@@ -52,6 +52,98 @@ pub(super) open spec fn create_endpoint_from_staged_page_eof_transition_framing(
     &&& endpoint.view().owning_container == container_ptr
 }
 
+proof fn create_endpoint_from_staged_page_eof_allocator_quota_wf(
+    pre: KernelK, post: KernelK, page_ptr: PagePtr, container_ptr: RwLockContainerPtr, staging_thread_ptr: RwLockThreadPtr, endpoint_index: EndpointIdx,
+)
+    requires
+        pre.inv(),
+        page_ptr_valid(page_ptr),
+        pre.ctn_mp.dom().contains(container_ptr),
+        pre.thr_mp.dom().contains(staging_thread_ptr),
+        pre.thr_mp.spec_index(staging_thread_ptr).view().temp_alloc_cache_4k.view() =~= Set::<PagePtr>::empty().insert(page_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thread_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == container_ptr,
+        create_endpoint_from_staged_page_eof_transition_framing(pre, post, page_ptr, container_ptr, staging_thread_ptr, endpoint_index),
+        page_array_wf(post.pg_arr),
+        container_perms_wf(post.ctn_mp),
+        thread_perms_wf(post.thr_mp),
+        endpoint_perms_wf(post.ep_mp),
+    ensures
+        container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp),
+{
+    reveal(create_endpoint_from_staged_page_eof_transition_framing);
+    assert(container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
+        assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp)) by {
+            container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(pre.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, pre.allc_4k_mp);
+            container_process_allocator_quota_4k_wf_preserved_for_container_allocator_eq(pre.ctn_mp, post.ctn_mp, post.prc_mp, post.thr_mp, pre.allc_4k_mp, post.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp);
+            reveal(container_thread_wf);
+            lemma_thread_effective_quota_4k_fold_sum_eq_forall();
+            lemma_thread_pending_4k_folds_eq_forall(post.ctn_mp, pre.thr_mp, post.thr_mp);
+        };
+        assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp)) by {
+            container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(pre.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, pre.allc_2m_mp);
+            container_process_allocator_quota_2m_wf_preserved_for_container_allocator_eq(pre.ctn_mp, post.ctn_mp, post.prc_mp, post.thr_mp, pre.allc_2m_mp, post.allc_2m_mp, pre.allc_4k_mp, pre.allc_1g_mp);
+            reveal(container_thread_wf);
+            lemma_thread_effective_quota_2m_fold_sum_eq_forall();
+            lemma_thread_pending_2m_folds_eq_forall(post.ctn_mp, pre.thr_mp, post.thr_mp);
+        };
+        assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp)) by {
+            reveal(container_process_allocator_quota_1g_wf); reveal(container_thread_wf);
+            lemma_thread_effective_quota_1g_fold_sum_eq_forall();
+            lemma_thread_pending_1g_folds_eq_forall(post.ctn_mp, pre.thr_mp, post.thr_mp);
+        };
+    };
+}
+
+proof fn create_endpoint_from_staged_page_eof_page_object_owner_wf(
+    pre: KernelK, post: KernelK, page_ptr: PagePtr, container_ptr: RwLockContainerPtr, staging_thread_ptr: RwLockThreadPtr, endpoint_index: EndpointIdx,
+)
+    requires
+        pre.inv(),
+        page_ptr_valid(page_ptr),
+        pre.ctn_mp.dom().contains(container_ptr),
+        pre.thr_mp.dom().contains(staging_thread_ptr),
+        pre.thr_mp.spec_index(staging_thread_ptr).view().temp_alloc_cache_4k.view() =~= Set::<PagePtr>::empty().insert(page_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thread_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == container_ptr,
+        create_endpoint_from_staged_page_eof_transition_framing(pre, post, page_ptr, container_ptr, staging_thread_ptr, endpoint_index),
+        page_array_wf(post.pg_arr),
+        container_perms_wf(post.ctn_mp),
+        thread_perms_wf(post.thr_mp),
+        endpoint_perms_wf(post.ep_mp),
+        container_page_owner_wf(post.ctn_mp, post.pg_arr),
+    ensures
+        page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp),
+{
+    reveal(create_endpoint_from_staged_page_eof_transition_framing);
+    reveal(page_object_owner_wf); reveal(container_page_owner_wf);
+}
+
+proof fn create_endpoint_from_staged_page_eof_object_pages_wf(
+    pre: KernelK, post: KernelK, page_ptr: PagePtr, container_ptr: RwLockContainerPtr, staging_thread_ptr: RwLockThreadPtr, endpoint_index: EndpointIdx,
+)
+    requires
+        pre.inv(),
+        page_ptr_valid(page_ptr),
+        pre.ctn_mp.dom().contains(container_ptr),
+        pre.thr_mp.dom().contains(staging_thread_ptr),
+        pre.thr_mp.spec_index(staging_thread_ptr).view().temp_alloc_cache_4k.view() =~= Set::<PagePtr>::empty().insert(page_ptr),
+        pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: staging_thread_ptr }),
+        pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == container_ptr,
+        create_endpoint_from_staged_page_eof_transition_framing(pre, post, page_ptr, container_ptr, staging_thread_ptr, endpoint_index),
+        page_array_wf(post.pg_arr),
+        container_perms_wf(post.ctn_mp),
+        thread_perms_wf(post.thr_mp),
+        endpoint_perms_wf(post.ep_mp),
+    ensures
+        thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr),
+        endpoint_pages_wf(post.ep_mp, post.pg_arr),
+{
+    reveal(create_endpoint_from_staged_page_eof_transition_framing);
+    assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_4k_wf); };
+    assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { reveal(endpoint_pages_wf); };
+}
+
 proof fn create_endpoint_from_staged_page_eof_memory_management_inv(
     pre: KernelK, post: KernelK, page_ptr: PagePtr, container_ptr: RwLockContainerPtr, staging_thread_ptr: RwLockThreadPtr, endpoint_index: EndpointIdx,
 )
@@ -80,7 +172,7 @@ proof fn create_endpoint_from_staged_page_eof_memory_management_inv(
     };
     assert(container_page_owner_wf(post.ctn_mp, post.pg_arr)) by { container_page_owner_wf_preserved_for_owned_pages_and_owning_container_eq(pre.ctn_mp, post.ctn_mp, pre.pg_arr, post.pg_arr); };
     assert(process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp)) by { process_kernel_pages_owner_wf_preserved_for_page_state_eq(pre, post); };
-    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
+    create_endpoint_from_staged_page_eof_page_object_owner_wf(pre, post, page_ptr, container_ptr, staging_thread_ptr, endpoint_index);
     assert(hugepage_2m_wf(post.pg_arr)) by { hugepage_2m_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); };
     assert(hugepage_1g_wf(post.pg_arr)) by { hugepage_1g_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr); };
     assert(page_pagetable_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { page_pagetable_wf_preserved_for_nonmapped_page_change(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr, page_index); };
@@ -97,31 +189,10 @@ proof fn create_endpoint_from_staged_page_eof_memory_management_inv(
     assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { scheduler_pages_wf_preserved_for_page_state_eq(pre.sched_mp, post.sched_mp, pre.pg_arr, post.pg_arr); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { cpu_set_pages_wf_preserved_for_page_state_eq(pre.cpu_set_mp, post.cpu_set_mp, pre.pg_arr, post.pg_arr); };
     assert(pcid_allocator_pages_wf(post.pg_arr, post.pcid_allc_mp)) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.pcid_allc_mp, post.pcid_allc_mp); };
-    assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_4k_wf); };
+    create_endpoint_from_staged_page_eof_object_pages_wf(pre, post, page_ptr, container_ptr, staging_thread_ptr, endpoint_index);
     assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
     assert(thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
-    assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { reveal(endpoint_pages_wf); };
-    assert(container_process_allocator_quota_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
-        assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp)) by {
-            container_process_allocator_quota_4k_wf_preserved_for_thread_4k_fields(pre.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, pre.allc_4k_mp);
-            container_process_allocator_quota_4k_wf_preserved_for_container_allocator_eq(pre.ctn_mp, post.ctn_mp, post.prc_mp, post.thr_mp, pre.allc_4k_mp, post.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp);
-            reveal(container_thread_wf);
-            lemma_thread_effective_quota_4k_fold_sum_eq_forall();
-            lemma_thread_pending_4k_folds_eq_forall(post.ctn_mp, pre.thr_mp, post.thr_mp);
-        };
-        assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp)) by {
-            container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(pre.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, pre.allc_2m_mp);
-            container_process_allocator_quota_2m_wf_preserved_for_container_allocator_eq(pre.ctn_mp, post.ctn_mp, post.prc_mp, post.thr_mp, pre.allc_2m_mp, post.allc_2m_mp, pre.allc_4k_mp, pre.allc_1g_mp);
-            reveal(container_thread_wf);
-            lemma_thread_effective_quota_2m_fold_sum_eq_forall();
-            lemma_thread_pending_2m_folds_eq_forall(post.ctn_mp, pre.thr_mp, post.thr_mp);
-        };
-        assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp)) by {
-            reveal(container_process_allocator_quota_1g_wf); reveal(container_thread_wf);
-            lemma_thread_effective_quota_1g_fold_sum_eq_forall();
-            lemma_thread_pending_1g_folds_eq_forall(post.ctn_mp, pre.thr_mp, post.thr_mp);
-        };
-    };
+    create_endpoint_from_staged_page_eof_allocator_quota_wf(pre, post, page_ptr, container_ptr, staging_thread_ptr, endpoint_index);
     assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { container_allocator_wf_preserved_for_owner_depth_eq(pre.ctn_mp, post.ctn_mp, pre.allc_4k_mp, post.allc_4k_mp, pre.allc_2m_mp, post.allc_2m_mp, pre.allc_1g_mp, post.allc_1g_mp); };
     assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(container_kill_retire_wf); };
     assert(container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by { container_allocator_free_4k_page_wf_preserved_for_nonfree_page_change(post.allc_4k_mp, pre.pg_arr, post.pg_arr, page_index); };

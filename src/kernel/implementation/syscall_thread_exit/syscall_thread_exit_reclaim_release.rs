@@ -198,9 +198,7 @@ pub(super) fn thread_exit_reclaim_flush(
         enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
-            thread_exit_flush_step_pre_from_k(&flush_k, &flush_lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, pcid);
-            kernel_thread_syscall_progress_changed_implies_u_step(&flush_k, &flushed_k, thread_ptr);
-            thread_exit_flushed_step_from_u(kernel_k_to_kernel_u(flush_k), kernel_k_to_kernel_u(flushed_k), cpu_id, thread_ptr);
+            thread_exit_flush_recorded_implies_flushed_step(&flush_k, &flush_lctx, &flushed_k, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, pcid);
             thread_exit_trace_push(&*steps, flushed_before, start, pre, kernel_k_to_kernel_u(flush_k), kernel_k_to_kernel_u(flushed_k), cpu_id);
         };
         assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable) == pagetable_c(flush_k.pt_mp, flush_k.pt_lower.view(), pagetable)) by {

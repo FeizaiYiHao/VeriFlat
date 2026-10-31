@@ -75,13 +75,111 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             post.page_closure() =~= pre.page_closure(),
     {
         reveal(PageTableC::unmap_4k_page_user_view_eof_transition_framing);
-        assert(post.wf_l3()) by { reveal(PageTableC::wf_l3); };
-        assert(post.wf_l2()) by { reveal(PageTableC::wf_l2); };
-        assert(post.disjoint_l2()) by { reveal(PageTableC::disjoint_l2); };
-        assert(post.wf_mapping_2m()) by { reveal(PageTableC::wf_mapping_2m); };
-        assert(post.rwx_upper_level_entries()) by { reveal(PageTableC::rwx_upper_level_entries); };
-        assert(post.table_pages_wf()) by { reveal(PageTableC::table_pages_wf); };
-        assert(post.wf_window_locks()) by { reveal(PageTableC::wf_window_locks); };
+        Self::unmap_4k_page_user_view_eof_wf_l3(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
+        Self::unmap_4k_page_user_view_eof_wf_l2(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
+        Self::unmap_4k_page_user_view_eof_disjoint_l2(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
+        Self::unmap_4k_page_user_view_eof_wf_mapping_2m(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
+        Self::unmap_4k_page_user_view_eof_rwx_upper_level_entries(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
+        Self::unmap_4k_page_user_view_eof_table_pages_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
+        Self::unmap_4k_page_user_view_eof_wf_window_locks(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
+    }
+
+    /// EOF closure of `unmap_4k_page_user_view` for `wf_l3`.
+    proof fn unmap_4k_page_user_view_eof_wf_l3(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index, target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pei_valid(target_l1i),
+            pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
+            Self::unmap_4k_page_user_view_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
+        ensures
+            post.wf_l3(),
+    {
+        reveal(PageTableC::unmap_4k_page_user_view_eof_transition_framing);
+        reveal(PageTableC::wf_l3);
+    }
+
+    /// EOF closure of `unmap_4k_page_user_view` for `wf_l2`.
+    proof fn unmap_4k_page_user_view_eof_wf_l2(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index, target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pei_valid(target_l1i),
+            pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
+            Self::unmap_4k_page_user_view_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
+        ensures
+            post.wf_l2(),
+    {
+        reveal(PageTableC::unmap_4k_page_user_view_eof_transition_framing);
+        reveal(PageTableC::wf_l2);
+    }
+
+    /// EOF closure of `unmap_4k_page_user_view` for `disjoint_l2`.
+    proof fn unmap_4k_page_user_view_eof_disjoint_l2(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index, target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pei_valid(target_l1i),
+            pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
+            Self::unmap_4k_page_user_view_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
+        ensures
+            post.disjoint_l2(),
+    {
+        reveal(PageTableC::unmap_4k_page_user_view_eof_transition_framing);
+        reveal(PageTableC::disjoint_l2);
+    }
+
+    /// EOF closure of `unmap_4k_page_user_view` for `wf_mapping_2m`.
+    proof fn unmap_4k_page_user_view_eof_wf_mapping_2m(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index, target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pei_valid(target_l1i),
+            pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
+            Self::unmap_4k_page_user_view_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
+        ensures
+            post.wf_mapping_2m(),
+    {
+        reveal(PageTableC::unmap_4k_page_user_view_eof_transition_framing);
+        reveal(PageTableC::wf_mapping_2m);
+    }
+
+    /// EOF closure of `unmap_4k_page_user_view` for `rwx_upper_level_entries`.
+    proof fn unmap_4k_page_user_view_eof_rwx_upper_level_entries(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index, target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pei_valid(target_l1i),
+            pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
+            Self::unmap_4k_page_user_view_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
+        ensures
+            post.rwx_upper_level_entries(),
+    {
+        reveal(PageTableC::unmap_4k_page_user_view_eof_transition_framing);
+        reveal(PageTableC::rwx_upper_level_entries);
+    }
+
+    /// EOF closure of `unmap_4k_page_user_view` for `table_pages_wf`.
+    proof fn unmap_4k_page_user_view_eof_table_pages_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index, target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pei_valid(target_l1i),
+            pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
+            Self::unmap_4k_page_user_view_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
+        ensures
+            post.table_pages_wf(),
+    {
+        reveal(PageTableC::unmap_4k_page_user_view_eof_transition_framing);
+        reveal(PageTableC::table_pages_wf);
+    }
+
+    /// EOF closure of `unmap_4k_page_user_view` for `wf_window_locks`.
+    proof fn unmap_4k_page_user_view_eof_wf_window_locks(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index, target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pei_valid(target_l1i),
+            pre.mapping_4k().dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
+            Self::unmap_4k_page_user_view_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p),
+        ensures
+            post.wf_window_locks(),
+    {
+        reveal(PageTableC::unmap_4k_page_user_view_eof_transition_framing);
+        reveal(PageTableC::wf_window_locks);
     }
 
     /// EOF closure of `unmap_4k_page_user_view`: the L1 leaves `wf_l1` and `user_only`.

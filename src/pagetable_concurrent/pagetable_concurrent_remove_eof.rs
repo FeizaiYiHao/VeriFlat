@@ -77,14 +77,121 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.window_locked_by_thread(l4i, l3i, l2i, thread_id) == pre.window_locked_by_thread(l4i, l3i, l2i, thread_id),
     {
         reveal(PageTableC::remove_l2_entry_eof_transition_framing);
-        assert(post.wf_l3()) by { reveal(PageTableC::wf_l3); };
-        assert(post.wf_l1()) by { reveal(PageTableC::wf_l1); };
-        assert(post.disjoint_l2()) by { reveal(PageTableC::disjoint_l2); };
-        assert(post.user_only()) by { reveal(PageTableC::user_only); };
-        assert(post.rwx_upper_level_entries()) by { reveal(PageTableC::rwx_upper_level_entries); };
-        assert(post.table_pages_wf()) by { reveal(PageTableC::table_pages_wf); };
-        assert(post.wf_window_locks()) by { reveal(PageTableC::wf_window_locks); };
+        Self::remove_l2_entry_eof_wf_l3(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
+        Self::remove_l2_entry_eof_wf_l1(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
+        Self::remove_l2_entry_eof_disjoint_l2(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
+        Self::remove_l2_entry_eof_user_only(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
+        Self::remove_l2_entry_eof_rwx_upper_level_entries(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
+        Self::remove_l2_entry_eof_table_pages_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
+        Self::remove_l2_entry_eof_wf_window_locks(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
         assert(post.page_closure() =~= pre.page_closure().remove(target_l1_p)) by { reveal(PageTableC::table_pages_wf); };
+    }
+
+    /// EOF closure of `remove_l2_entry` for `wf_l3`.
+    proof fn remove_l2_entry_eof_wf_l3(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pei_valid(target_l2i),
+            pre.lower.l2_perms.dom().contains(target_l2_p),
+            pre.lower.l1_rev_map.dom().contains(target_l1_p),
+            Self::remove_l2_entry_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p),
+        ensures
+            post.wf_l3(),
+    {
+        reveal(PageTableC::remove_l2_entry_eof_transition_framing);
+        reveal(PageTableC::wf_l3);
+    }
+
+    /// EOF closure of `remove_l2_entry` for `wf_l1`.
+    proof fn remove_l2_entry_eof_wf_l1(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pei_valid(target_l2i),
+            pre.lower.l2_perms.dom().contains(target_l2_p),
+            pre.lower.l1_rev_map.dom().contains(target_l1_p),
+            Self::remove_l2_entry_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p),
+        ensures
+            post.wf_l1(),
+    {
+        reveal(PageTableC::remove_l2_entry_eof_transition_framing);
+        reveal(PageTableC::wf_l1);
+    }
+
+    /// EOF closure of `remove_l2_entry` for `disjoint_l2`.
+    proof fn remove_l2_entry_eof_disjoint_l2(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pei_valid(target_l2i),
+            pre.lower.l2_perms.dom().contains(target_l2_p),
+            pre.lower.l1_rev_map.dom().contains(target_l1_p),
+            Self::remove_l2_entry_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p),
+        ensures
+            post.disjoint_l2(),
+    {
+        reveal(PageTableC::remove_l2_entry_eof_transition_framing);
+        reveal(PageTableC::disjoint_l2);
+    }
+
+    /// EOF closure of `remove_l2_entry` for `user_only`.
+    proof fn remove_l2_entry_eof_user_only(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pei_valid(target_l2i),
+            pre.lower.l2_perms.dom().contains(target_l2_p),
+            pre.lower.l1_rev_map.dom().contains(target_l1_p),
+            Self::remove_l2_entry_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p),
+        ensures
+            post.user_only(),
+    {
+        assert forall|p: PageMapPtr, i: L2Index, j: L1Index| #![trigger post.lower.l1_page(p, i).spec_index(j)]
+            post.lower.l2_perms.dom().contains(p) && pei_valid(i) && post.lower.l2_page(p).entry_lock(i).l1() is Some
+            implies pre.lower.l2_perms.dom().contains(p) && pre.lower.l2_page(p).entry_lock(i).l1() is Some && post.lower.l1_page(p, i).spec_index(j) == pre.lower.l1_page(p, i).spec_index(j) by { reveal(PageTableC::remove_l2_entry_eof_transition_framing); };
+        reveal(PageTableC::remove_l2_entry_eof_transition_framing); reveal(PageTableC::user_only);
+    }
+
+    /// EOF closure of `remove_l2_entry` for `rwx_upper_level_entries`.
+    proof fn remove_l2_entry_eof_rwx_upper_level_entries(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pei_valid(target_l2i),
+            pre.lower.l2_perms.dom().contains(target_l2_p),
+            pre.lower.l1_rev_map.dom().contains(target_l1_p),
+            Self::remove_l2_entry_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p),
+        ensures
+            post.rwx_upper_level_entries(),
+    {
+        reveal(PageTableC::remove_l2_entry_eof_transition_framing);
+        reveal(PageTableC::rwx_upper_level_entries);
+    }
+
+    /// EOF closure of `remove_l2_entry` for `table_pages_wf`.
+    proof fn remove_l2_entry_eof_table_pages_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pei_valid(target_l2i),
+            pre.lower.l2_perms.dom().contains(target_l2_p),
+            pre.lower.l1_rev_map.dom().contains(target_l1_p),
+            Self::remove_l2_entry_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p),
+        ensures
+            post.table_pages_wf(),
+    {
+        reveal(PageTableC::remove_l2_entry_eof_transition_framing);
+        reveal(PageTableC::table_pages_wf);
+    }
+
+    /// EOF closure of `remove_l2_entry` for `wf_window_locks`.
+    proof fn remove_l2_entry_eof_wf_window_locks(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pei_valid(target_l2i),
+            pre.lower.l2_perms.dom().contains(target_l2_p),
+            pre.lower.l1_rev_map.dom().contains(target_l1_p),
+            Self::remove_l2_entry_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p),
+        ensures
+            post.wf_window_locks(),
+    {
+        reveal(PageTableC::remove_l2_entry_eof_transition_framing);
+        reveal(PageTableC::wf_window_locks);
     }
 
     /// EOF closure of `remove_l2_entry`: `wf_l2`.
@@ -274,9 +381,48 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             post.wf_mapping_4k(),
             post.wf_mapping_2m(),
     {
+        Self::remove_l3_entry_eof_wf_mapping_4k(pre, post, target_l4i, target_l3i, target_l3_p, target_l2_p);
+        Self::remove_l3_entry_eof_wf_mapping_2m(pre, post, target_l4i, target_l3i, target_l3_p, target_l2_p);
+    }
+
+    /// EOF closure of `remove_l3_entry` for `wf_mapping_4k`.
+    proof fn remove_l3_entry_eof_wf_mapping_4k(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, target_l2_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pre.spec_resolve_mapping_l4(target_l4i) is Some,
+            pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
+            forall|i: L2Index| #![trigger pre.spec_resolve_mapping_l2(target_l4i, target_l3i, i)] pei_valid(i) ==> pre.spec_resolve_mapping_l2(target_l4i, target_l3i, i) is None,
+            forall|i: L2Index| #![trigger pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, i)] pei_valid(i) ==> pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, i) is None,
+            Self::remove_l3_entry_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, target_l2_p),
+        ensures
+            post.wf_mapping_4k(),
+    {
         reveal(PageTableC::remove_l3_entry_eof_transition_framing);
-        assert(post.wf_mapping_4k()) by { reveal(PageTableC::wf_mapping_4k); broadcast use PageTableHigher::resolve_l3_addr_unique_at; };
-        assert(post.wf_mapping_2m()) by { reveal(PageTableC::wf_mapping_2m); broadcast use PageTableHigher::resolve_l3_addr_unique_at; };
+        reveal(PageTableC::wf_mapping_4k); broadcast use PageTableHigher::resolve_l3_addr_unique_at;
+    }
+
+    /// EOF closure of `remove_l3_entry` for `wf_mapping_2m`.
+    proof fn remove_l3_entry_eof_wf_mapping_2m(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, target_l2_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pre.spec_resolve_mapping_l4(target_l4i) is Some,
+            pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
+            forall|i: L2Index| #![trigger pre.spec_resolve_mapping_l2(target_l4i, target_l3i, i)] pei_valid(i) ==> pre.spec_resolve_mapping_l2(target_l4i, target_l3i, i) is None,
+            forall|i: L2Index| #![trigger pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, i)] pei_valid(i) ==> pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, i) is None,
+            Self::remove_l3_entry_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l3_p, target_l2_p),
+        ensures
+            post.wf_mapping_2m(),
+    {
+        reveal(PageTableC::remove_l3_entry_eof_transition_framing);
+        reveal(PageTableC::wf_mapping_2m); broadcast use PageTableHigher::resolve_l3_addr_unique_at;
     }
 
     /// EOF closure of `remove_l3_entry`: `tables_reachable_wf`.

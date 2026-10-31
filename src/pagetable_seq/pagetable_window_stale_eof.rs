@@ -107,15 +107,8 @@ pub(super) proof fn window_stale_cpus_update_eof(pre: KernelK, post: KernelK, ro
     ensures
         post.inv(),
 {
+    window_stale_cpus_update_eof_tlb_wf_new_map(pre, post, root, update, root_write_held, thread_id);
     reveal(window_stale_cpus_update_eof_transition_framing);
-    if update is RemoveCpu {
-        assert(tlb_wf_spec(pre.cpu_tlb, pre.pt_mp, post.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush)) by {
-            reveal(tlb_wf_spec);
-            reveal(cpu_dirty_map_contains_pagetable_pcid_match);
-        };
-    } else if !tlb_wf_spec(pre.cpu_tlb, pre.pt_mp, post.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush) {
-        window_stale_cpus_update_eof_tlb_wf(pre.cpu_tlb, pre.pt_mp, pre.pt_lower.view(), post.pt_lower.view(), root, pre.cpu_arr, pre.pcid_needflush);
-    }
     pagetable_perms_wf_at(pre.pt_mp, root);
     pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), root);
     window_stale_cpus_update_eof_table_wf(pagetable_c(pre.pt_mp, pre.pt_lower.view(), root), pagetable_c(post.pt_mp, post.pt_lower.view(), root));
@@ -203,4 +196,44 @@ pub(super) proof fn window_stale_cpus_update_eof_tlb_wf(
     ensures
         tlb_wf_spec(cpu_tlb, pt_mp, post_lower, cpu_arr, needflush),
 { reveal(tlb_wf_spec); }
+
+/// EOF closure of `KernelK::replace_window_stale_cpus` for the TLB invariant over the new stale-CPU map.
+proof fn window_stale_cpus_update_eof_tlb_wf_new_map(pre: KernelK, post: KernelK, root: RwLockPageTableRoot, update: WindowStaleUpdate, root_write_held: bool, thread_id: LockThreadId)
+    requires
+        pre.inv(),
+        pre.pt_mp.dom().contains(root),
+        window_stale_cpus_update_eof_transition_framing(pre, post, root),
+        pagetable_c(post.pt_mp, post.pt_lower.view(), root).lower.window_stale_cpus == window_stale_cpus_after(update, pagetable_c(pre.pt_mp, pre.pt_lower.view(), root), root_write_held, thread_id),
+        root_write_held ==> pre.pt_mp.spec_index(root).locking_thread() is Write,
+        update is Set ==> root_write_held || ({
+            let before = pagetable_c(pre.pt_mp, pre.pt_lower.view(), root);
+            let l2_page = before.window_l2_page(spec_v2l4index(update->Set_window.va), spec_v2l3index(update->Set_window.va));
+            &&& before.lower.l2_perms.dom().contains(l2_page)
+            &&& pei_valid(spec_v2l2index(update->Set_window.va))
+            &&& before.lower.l2_owner(l2_page, spec_v2l2index(update->Set_window.va)) is Some
+            &&& before.lower.l2_owner(l2_page, spec_v2l2index(update->Set_window.va))->Some_thread_id == thread_id
+        }),
+        update is Set ==> (pagetable_c(pre.pt_mp, pre.pt_lower.view(), root).window_view(update->Set_window).stale_cpus is Some
+            ==> pagetable_c(pre.pt_mp, pre.pt_lower.view(), root).window_view(update->Set_window).stale_cpus->Some_0.subset_of(update->Set_cpus))
+            || tlb_wf_spec(pre.cpu_tlb, pre.pt_mp, post.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
+        update is RemoveCpu ==> ({
+            let cpu_id = update->RemoveCpu_cpu_id;
+            let pcid = pre.pt_mp.spec_index(root).view().pcid->Some_0;
+            &&& pre.pt_mp.spec_index(root).view().pcid is Some
+            &&& index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) && pcid != KERNEL_DEFAULT_PCID
+            &&& pre.cpu_tlb.spec_index((cpu_id, pcid)).is_empty()
+                || (pre.pcid_needflush.spec_index(cpu_id, pcid).view().needflush && pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid)
+                || (pre.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some && pre.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr != root)
+            || single_cpu_single_pcid_tlb_subset_of_present_pagetable(pre.cpu_tlb.spec_index((cpu_id, pcid)), pagetable_c(pre.pt_mp, pre.pt_lower.view(), root))
+        }) || tlb_wf_spec(pre.cpu_tlb, pre.pt_mp, post.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
+    ensures
+        tlb_wf_spec(pre.cpu_tlb, pre.pt_mp, post.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush),
+{
+    reveal(window_stale_cpus_update_eof_transition_framing);
+    if update is RemoveCpu {
+        assert(tlb_wf_spec(pre.cpu_tlb, pre.pt_mp, post.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush)) by { reveal(tlb_wf_spec); reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
+    } else if !tlb_wf_spec(pre.cpu_tlb, pre.pt_mp, post.pt_lower.view(), pre.cpu_arr, pre.pcid_needflush) {
+        window_stale_cpus_update_eof_tlb_wf(pre.cpu_tlb, pre.pt_mp, pre.pt_lower.view(), post.pt_lower.view(), root, pre.cpu_arr, pre.pcid_needflush);
+    }
+}
 } // verus!

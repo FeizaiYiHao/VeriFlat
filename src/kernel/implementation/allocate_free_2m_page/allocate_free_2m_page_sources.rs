@@ -3,6 +3,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::allocate_free_2m_page_pop_impl::pop_stage_2m_page;
 use super::allocate_free_2m_impl_base::alloc_2m_scan_all_caches_and_pool;
+use super::allocate_free_2m_page_pool_branch::allocate_free_2m_page_pool_branch;
 
 verus! {
     /// Pops the head 2m page of the write-locked CPU cache, releases the cache, and crosses the step boundary.
@@ -235,34 +236,15 @@ verus! {
             final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_fields_unchanged(&entry_krnl.thr_mp.spec_index(thread_ptr).view()),
             final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors == entry_krnl.thr_mp.spec_index(thread_ptr).view().endpoint_descriptors,
     {
+        let ghost cache_krnl = *krnl;
+        let ghost cache_lctx = *lctx;
         let Tracked(gp_lock_perm) = krnl.wlock_allocator_global_pool_2m(alloc_ptr_2m, Tracked(&mut *lctx));
         let pool_ref = krnl.allc_2m_mp.borrow_global_pool_typed(alloc_ptr_2m, Ghost(lctx.allocator_global_pool_2m_lock_map()), Tracked(&*lctx), Tracked(&gp_lock_perm));
         let pool_len = pool_ref.len();
 
         if pool_len > 0 {
-            let (page_ptr, Tracked(page_lock_perm)) = pop_stage_2m_page(krnl, alloc_ptr_2m, None, thread_ptr, container_ptr, Tracked(&mut *lctx), Tracked(&gp_lock_perm), Tracked(thread_lock_perm));
-            krnl.wunlock_allocator_global_pool_2m(alloc_ptr_2m, Tracked(&mut *lctx), Tracked(gp_lock_perm));
-            krnl.wunlock_allocator_cache_2m(alloc_ptr_2m, cpu_id, Tracked(&mut *lctx), Tracked(cache_lock_perm));
-            proof {
-                assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-                assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-                assert(kernel_k_to_kernel_u(*krnl) == kernel_k_to_kernel_u(entry_krnl)) by {
-                    broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive, kernel_container_nonlock_fields_and_quotas_unchanged_transitive;
-                    kernel_thread_write_held_section_implies_u_eq(&entry_krnl, &*krnl, &entry_lctx, &*lctx, thread_ptr);
-                };
-                krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-                assert(typed_lock_maps_inserted(&entry_lctx, lctx, KernelObjId::Page(page_ptr2page_index(page_ptr)), TypedHeldLock { lock_id: krnl.pg_arr.lock_id_by_index(page_ptr2page_index(page_ptr)), mode: TypedLockMode::Write })
-                    && entry_lctx.page_lock_map().dom().subset_of(lctx.page_lock_map().dom())) by {
-                    map_insert_remove_absent_lemma(entry_lctx.allocator_cache_2m_lock_map(), (alloc_ptr_2m, cpu_id), TypedHeldLock { lock_id: allocator_cache_lock_id(ALLOCATOR_SIZE_2M, cpu_id), mode: TypedLockMode::Write });
-                    map_insert_remove_absent_lemma(entry_lctx.allocator_global_pool_2m_lock_map(), alloc_ptr_2m, TypedHeldLock { lock_id: entry_krnl.allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.lock_id(), mode: TypedLockMode::Write });
-                };
-                assert({
-                    &&& krnl.ctn_mp.dom().contains(container_ptr)
-                    &&& krnl.thr_mp.spec_index(thread_ptr).view().state == entry_krnl.thr_mp.spec_index(thread_ptr).view().state
-                    &&& krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress == entry_krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress
-                }) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); };
-            }
-            return (page_ptr, Tracked(page_lock_perm));
+            return allocate_free_2m_page_pool_branch(krnl, alloc_ptr_2m, cpu_id, thread_ptr, container_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(cache_lock_perm),
+                Tracked(gp_lock_perm), Tracked(thread_lock_perm), Ghost(entry_krnl), Ghost(entry_lctx), Ghost(cache_krnl), Ghost(cache_lctx));
         }
 
         krnl.wunlock_allocator_global_pool_2m(alloc_ptr_2m, Tracked(&mut *lctx), Tracked(gp_lock_perm));

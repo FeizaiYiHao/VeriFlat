@@ -140,6 +140,85 @@ pub(super) fn flush_pagetable_tlb_on_cpu(krnl: &mut KernelK, pagetable: RwLockPa
     proof { krnl.kernel_step_boundary_cpu_tlb_updated(&mut *lctx, &mut *steps, cpu_id, pcid, cpu_id == local_cpu || (hw_cr3_pcid.0 == cr3 && hw_cr3_pcid.1 == pcid)); }
 }
 
+/// Under the needflush lock of (`cpu_id`, `pcid`), marks the pair for flushing, loads the hardware cr3/pcid word of `cpu_id`,
+/// and flushes `pcid` on `cpu_id` when it is the local cpu or currently runs `cr3` with `pcid`; returns that word.
+fn flush_pcid_on_cpu_with_needflush_lock(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, cr3: PageTableRoot, pcid: Pcid, cpu_id: usize, local_cpu: CpuId,
+    Tracked(lctx): Tracked<&mut LocalContext>, cpu_perm: Tracked<&LockPerm>) -> (hw_cr3_pcid: (PageTableRoot, Pcid))
+    requires
+        old(krnl).inv(),
+        typed_lock_maps_aligned(old(krnl), old(lctx)),
+        old(lctx).kernel_view_locking_state() is Acquire,
+        index_valid(NUM_CPUS, cpu_id),
+        index_valid(NUM_CPUS, local_cpu),
+        old(lctx).cpu_id() == local_cpu,
+        typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), local_cpu, TypedLockMode::Write),
+        cpu_perm.view().state() is WriteLock,
+        cpu_perm.view().thread_id() == old(lctx).thread_id(),
+        cpu_perm.view().lock_id() == old(krnl).cpu_arr.spec_index(local_cpu).view().locking_thread()->Write_lock_id,
+        old(krnl).cpu_arr.spec_index(local_cpu).view().view().view().current_cr3 == cr3,
+        old(krnl).cpu_arr.spec_index(local_cpu).view().view().view().current_pcid == pcid,
+        old(krnl).cpu_hw_cr3_pcid[local_cpu as int].view() == (cr3, pcid),
+        old(krnl).pt_mp.dom().contains(pagetable),
+        old(krnl).pt_mp.spec_index(pagetable).view().pcid == Some(pcid),
+        old(krnl).pt_mp.spec_index(pagetable).view().cr3 == cr3,
+        page_ptr_valid(cr3),
+        pcid_valid(pcid),
+        pcid != KERNEL_DEFAULT_PCID,
+        old(lctx).pcid_needflush_lock_map().dom().is_empty(),
+        forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
+    ensures
+        final(krnl).inv(),
+        typed_lock_maps_aligned(final(krnl), final(lctx)),
+        typed_lock_maps_unchanged(old(lctx), final(lctx)),
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() is Release,
+        *final(krnl) == (KernelK { cpu_arr: final(krnl).cpu_arr, cpu_tlb: final(krnl).cpu_tlb, pcid_needflush: final(krnl).pcid_needflush, ..*old(krnl) }),
+        forall|cpu: CpuId| #![trigger final(krnl).cpu_arr.spec_index(cpu)] index_valid(NUM_CPUS, cpu) ==> {
+            &&& final(krnl).cpu_arr.spec_index(cpu).value.locking_thread() == old(krnl).cpu_arr.spec_index(cpu).value.locking_thread()
+            &&& final(krnl).cpu_arr.spec_index(cpu).view().view() == old(krnl).cpu_arr.spec_index(cpu).view().view()
+        },
+        final(krnl).cpu_arr.spec_index(local_cpu).view().locking_thread() == old(krnl).cpu_arr.spec_index(local_cpu).view().locking_thread(),
+        final(krnl).cpu_arr.spec_index(local_cpu).view().being_killed() == old(krnl).cpu_arr.spec_index(local_cpu).view().being_killed(),
+        final(krnl).cpu_arr.spec_index(local_cpu).view().killer_info() == old(krnl).cpu_arr.spec_index(local_cpu).view().killer_info(),
+        kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
+        kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
+        final(krnl).cpu_tlb.view() == if cpu_id == local_cpu || (hw_cr3_pcid.0 == cr3 && hw_cr3_pcid.1 == pcid) {
+            old(krnl).cpu_tlb.view().insert((cpu_id, pcid), final(krnl).cpu_tlb.spec_index((cpu_id, pcid)))
+        } else { old(krnl).cpu_tlb.view() },
+        cpu_id == local_cpu || (hw_cr3_pcid.0 == cr3 && hw_cr3_pcid.1 == pcid) ==> cpu_tlb_within_may_cache(*final(krnl), cpu_id, pcid, final(krnl).cpu_tlb.spec_index((cpu_id, pcid))),
+        final(krnl).cpu_tlb.spec_index((cpu_id, pcid)).is_empty()
+            || (final(krnl).pcid_needflush.spec_index(cpu_id, pcid).view().needflush && final(krnl).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid)
+            || (final(krnl).cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some
+                && final(krnl).cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr != pagetable)
+            || single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(krnl).cpu_tlb.spec_index((cpu_id, pcid)), pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable)),
+{
+    let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx));
+    let hw_cr3_pcid = mark_pcid_needflush_and_load(krnl, cpu_id, pcid, Tracked(&mut *lctx), Tracked(&needflush_perm));
+    if cpu_id == local_cpu {
+        flush_local_pcid_and_clear(krnl, cpu_id, pcid, cr3, Tracked(&*lctx), Tracked(&needflush_perm), cpu_perm);
+    } else if hw_cr3_pcid.0 == cr3 && hw_cr3_pcid.1 == pcid {
+        flush_remote_pcid_and_clear(krnl, cpu_id, pcid, Tracked(&*lctx), Tracked(&needflush_perm));
+    }
+    assert(krnl.cpu_tlb.spec_index((cpu_id, pcid)).is_empty()
+        || (krnl.pcid_needflush.spec_index(cpu_id, pcid).view().needflush && krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid)
+        || (krnl.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some
+            && krnl.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr != pagetable)
+        || single_cpu_single_pcid_tlb_subset_of_present_pagetable(krnl.cpu_tlb.spec_index((cpu_id, pcid)), pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable))) by {
+        cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
+        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap());
+    };
+    krnl.wunlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx), Tracked(needflush_perm));
+    proof {
+        assert(typed_lock_maps_unchanged(old(lctx), lctx)) by { map_insert_remove_absent_lemma(old(lctx).pcid_needflush_lock_map(), (cpu_id, pcid), TypedHeldLock { lock_id: krnl.pcid_needflush.lock_id_by_index(cpu_id, pcid), mode: TypedLockMode::Write }); };
+        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by {
+            broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
+        };
+        assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+    }
+    hw_cr3_pcid
+}
+
 /// Flushes `pcid` on cpu `cpu_id` under its needflush lock and drops `cpu_id` from the stale-CPU records of `pagetable` the
 /// thread may change, deleting those records after the last cpu; returns the hardware cr3/pcid word of `cpu_id`. Every such record
 /// lists exactly the cpus from `cpu_id` up on entry and from `cpu_id + 1` up on return.
@@ -219,29 +298,8 @@ fn flush_pcid_and_drop_stale_cpu(krnl: &mut KernelK, pagetable: RwLockPageTableR
                 || (cpu_id + 1 < NUM_CPUS && pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).window_view(w).stale_cpus == Some(Set::range((cpu_id + 1) as usize, NUM_CPUS)))
         },
 {
-    let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx));
-    let hw_cr3_pcid = mark_pcid_needflush_and_load(krnl, cpu_id, pcid, Tracked(&mut *lctx), Tracked(&needflush_perm));
-    if cpu_id == local_cpu {
-        flush_local_pcid_and_clear(krnl, cpu_id, pcid, cr3, Tracked(&*lctx), Tracked(&needflush_perm), cpu_perm);
-    } else if hw_cr3_pcid.0 == cr3 && hw_cr3_pcid.1 == pcid {
-        flush_remote_pcid_and_clear(krnl, cpu_id, pcid, Tracked(&*lctx), Tracked(&needflush_perm));
-    }
+    let hw_cr3_pcid = flush_pcid_on_cpu_with_needflush_lock(krnl, pagetable, cr3, pcid, cpu_id, local_cpu, Tracked(&mut *lctx), cpu_perm);
     let ghost flushed = *krnl;
-    assert(krnl.cpu_tlb.spec_index((cpu_id, pcid)).is_empty()
-        || (krnl.pcid_needflush.spec_index(cpu_id, pcid).view().needflush && krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid)
-        || (krnl.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some
-            && krnl.cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr != pagetable)
-        || single_cpu_single_pcid_tlb_subset_of_present_pagetable(krnl.cpu_tlb.spec_index((cpu_id, pcid)), pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable))) by {
-        cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
-        process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process.unwrap());
-    };
-    krnl.wunlock_pcid_needflush(cpu_id, pcid, Tracked(&mut *lctx), Tracked(needflush_perm));
-    proof {
-        assert(typed_lock_maps_unchanged(old(lctx), lctx)) by { map_insert_remove_absent_lemma(old(lctx).pcid_needflush_lock_map(), (cpu_id, pcid), TypedHeldLock { lock_id: krnl.pcid_needflush.lock_id_by_index(cpu_id, pcid), mode: TypedLockMode::Write }); };
-        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by {
-            broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
-        };
-    }
     assert(Set::range(cpu_id, NUM_CPUS).remove(cpu_id) =~= Set::range((cpu_id + 1) as usize, NUM_CPUS));
     krnl.replace_window_stale_cpus(pagetable, Ghost(WindowStaleUpdate::RemoveCpu { cpu_id }), Tracked(&*lctx));
     if cpu_id + 1 == NUM_CPUS {

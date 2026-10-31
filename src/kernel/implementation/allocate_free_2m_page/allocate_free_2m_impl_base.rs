@@ -121,7 +121,6 @@ verus! {
         Tracked(steps): Tracked<&mut KernelSteps>, Tracked(thread_lock_perm): Tracked<&LockPerm>,
     ) -> (ret: (PagePtr, Tracked<LockPerm>))
         requires
-            old(steps).snapshot_k() == *old(krnl),
             old(krnl).inv(),
             old(lctx).kernel_view_locking_state() is Acquire,
             old(krnl).thr_mp.dom().contains(thread_ptr),
@@ -135,26 +134,18 @@ verus! {
             held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
             index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep,
             old(lctx).cpu_lock_map().dom().contains(old(lctx).cpu_id()),
-            kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
-            kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
-            old(krnl).irt.view().owners() == old(steps).snapshot_k().irt.view().owners(),
-            old(krnl).irt.view().iommu_roots() == old(steps).snapshot_k().irt.view().iommu_roots(),
-            old(krnl).cpu_tlb.view() == old(steps).snapshot_k().cpu_tlb.view(),
-            old(krnl).iommu_tlb.view() == old(steps).snapshot_k().iommu_tlb.view(),
-            kernel_container_nonlock_fields_and_quotas_unchanged(&old(steps).snapshot_k(), old(krnl)),
+            old(steps).snapshot_k() == *old(krnl),
             thread_effective_quota_2m(old(krnl).thr_mp.spec_index(thread_ptr)) >= 1,
         ensures
-            final(steps).view() == old(steps).view(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
-            index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
-            index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] == old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int],
             final(krnl).inv(),
             final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == false,
+            final(krnl).thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
+            final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { temp_alloc_cache_2m: final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
             final(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc == old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc,
             final(krnl).thr_mp.spec_index(thread_ptr).view().owning_container == old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container,
             final(krnl).thr_mp.spec_index(thread_ptr).view().upper_container_seq == old(krnl).thr_mp.spec_index(thread_ptr).view().upper_container_seq,
             final(krnl).thr_mp.spec_index(thread_ptr).view().state == old(krnl).thr_mp.spec_index(thread_ptr).view().state,
-            final(krnl).thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
             final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress == old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress,
             final(krnl).thr_mp.spec_index(thread_ptr).view().blocking_endpoint_ptr == old(krnl).thr_mp.spec_index(thread_ptr).view().blocking_endpoint_ptr,
             final(krnl).thr_mp.spec_index(thread_ptr).view().proc_pagetable_ptr == old(krnl).thr_mp.spec_index(thread_ptr).view().proc_pagetable_ptr,
@@ -164,6 +155,7 @@ verus! {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Page(page_ptr2page_index(ret.0)), TypedHeldLock { lock_id: final(krnl).pg_arr.lock_id_by_index(page_ptr2page_index(ret.0)), mode: TypedLockMode::Write }),
             typed_lock_maps_aligned(final(krnl), final(lctx)),
             held_threads_unchanged_except(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx), set![thread_ptr]),
+            final(steps).view() == old(steps).view(),
             final(steps).snapshot_k() == *final(krnl),
             page_ptr_valid(ret.0),
             final(krnl).pg_arr.spec_index(page_ptr2page_index(ret.0)).view().being_killed() == false,
@@ -187,18 +179,13 @@ verus! {
             held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
             held_pages_unchanged_except(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx), set![page_ptr2page_index(ret.0)]),
             held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
+            index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
+            index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] == old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int],
             final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m.view() =~= old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m.view().insert(ret.0),
             !old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m.view().contains(ret.0),
             thread_effective_quota_2m(final(krnl).thr_mp.spec_index(thread_ptr)) == thread_effective_quota_2m(old(krnl).thr_mp.spec_index(thread_ptr)) - 1,
             final(krnl).pg_arr.spec_index(page_ptr2page_index(ret.0)).view().view().state == (PageState::Owned2m { thread_ptr }),
             final(krnl).pg_arr.spec_index(page_ptr2page_index(ret.0)).view().view().owning_container == container_ptr,
-            final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k == old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k,
-            final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_1g == old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_1g,
-            final(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k == old(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k,
-            final(krnl).thr_mp.spec_index(thread_ptr).view().quota_2m == old(krnl).thr_mp.spec_index(thread_ptr).view().quota_2m,
-            final(krnl).thr_mp.spec_index(thread_ptr).view().quota_1g == old(krnl).thr_mp.spec_index(thread_ptr).view().quota_1g,
-            final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_fields_unchanged(&old(krnl).thr_mp.spec_index(thread_ptr).view()),
-            final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors == old(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors,
     {
         hide(Seq::contains);
 
@@ -579,6 +566,8 @@ verus! {
             kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), final(krnl)),
             kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp),
             kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), final(krnl)),
+            final(krnl).thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost(),
+            final(krnl).thr_mp.spec_index(thread_ptr).view() == (Thread { temp_alloc_cache_2m: final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m, ..old(krnl).thr_mp.spec_index(thread_ptr).view() }),
             ret is None ==> {
                 &&& *final(krnl) == *old(krnl)
                 &&& *final(lctx) == *old(lctx)
@@ -607,7 +596,6 @@ verus! {
                 &&& final(krnl).thr_mp.spec_index(thread_ptr).view().owning_container == old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container
                 &&& final(krnl).thr_mp.spec_index(thread_ptr).view().upper_container_seq == old(krnl).thr_mp.spec_index(thread_ptr).view().upper_container_seq
                 &&& final(krnl).thr_mp.spec_index(thread_ptr).view().state == old(krnl).thr_mp.spec_index(thread_ptr).view().state
-                &&& final(krnl).thr_mp.spec_index(thread_ptr).view_ghost() == old(krnl).thr_mp.spec_index(thread_ptr).view_ghost()
                 &&& final(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress == old(krnl).thr_mp.spec_index(thread_ptr).view().syscall_progress
                 &&& final(krnl).thr_mp.spec_index(thread_ptr).view().blocking_endpoint_ptr == old(krnl).thr_mp.spec_index(thread_ptr).view().blocking_endpoint_ptr
                 &&& final(krnl).thr_mp.spec_index(thread_ptr).view().proc_pagetable_ptr == old(krnl).thr_mp.spec_index(thread_ptr).view().proc_pagetable_ptr
@@ -615,13 +603,6 @@ verus! {
                 &&& final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m.view() =~= old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_2m.view().insert(ret.unwrap().0)
                 &&& final(krnl).pg_arr.spec_index(page_ptr2page_index(ret.unwrap().0)).view().view().state == (PageState::Owned2m { thread_ptr })
                 &&& final(krnl).pg_arr.spec_index(page_ptr2page_index(ret.unwrap().0)).view().view().owning_container == container_ptr
-                &&& final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k == old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k
-                &&& final(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_1g == old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_1g
-                &&& final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_fields_unchanged(&old(krnl).thr_mp.spec_index(thread_ptr).view())
-                &&& final(krnl).thr_mp.spec_index(thread_ptr).view().quota_2m == old(krnl).thr_mp.spec_index(thread_ptr).view().quota_2m
-                &&& final(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k == old(krnl).thr_mp.spec_index(thread_ptr).view().quota_4k
-                &&& final(krnl).thr_mp.spec_index(thread_ptr).view().quota_1g == old(krnl).thr_mp.spec_index(thread_ptr).view().quota_1g
-                &&& final(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors == old(krnl).thr_mp.spec_index(thread_ptr).view().endpoint_descriptors
             },
     {
         let mut cpu: CpuId = 0;

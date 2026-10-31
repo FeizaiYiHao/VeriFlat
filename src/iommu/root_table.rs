@@ -460,26 +460,8 @@ impl IommuRootTable {
         self.clear_context_entry(Self::pci_bdf_slot(bus, device, function));
         assert(0usize & 1usize != 1usize) by (bit_vector);
         proof {
-            let pre = old(self).iommu_roots();
-            let pre_dids = old(self).iommu_dids();
-            let post = seq3_update(pre, bus as int, device as int, function as int, None);
-            let post_dids = seq3_update(pre_dids, bus as int, device as int, function as int, None);
-            assert_seqs_equal!(self.iommu_roots() == post, b => {
-                assert_seqs_equal!(self.iommu_roots()[b] == post[b], d => {
-                    assert_seqs_equal!(self.iommu_roots()[b][d] == post[b][d], f => {
-                        assert(pci_bdf_of_did(pci_bdf_did(b as usize, d as usize, f as usize)) == (b as usize, d as usize, f as usize)
-                            && vtd_domain_id_valid(pci_bdf_did(b as usize, d as usize, f as usize))) by (nonlinear_arith) requires pci_bdf_valid(b as usize, d as usize, f as usize);
-                    });
-                });
-            });
-            assert_seqs_equal!(self.iommu_dids() == post_dids, b => {
-                assert_seqs_equal!(self.iommu_dids()[b] == post_dids[b], d => {
-                    assert_seqs_equal!(self.iommu_dids()[b][d] == post_dids[b][d], f => {
-                        assert(pci_bdf_of_did(pci_bdf_did(b as usize, d as usize, f as usize)) == (b as usize, d as usize, f as usize)
-                            && vtd_domain_id_valid(pci_bdf_did(b as usize, d as usize, f as usize))) by (nonlinear_arith) requires pci_bdf_valid(b as usize, d as usize, f as usize);
-                    });
-                });
-            });
+            Self::detach_eof_iommu_roots(*old(self), *self, bus, device, function);
+            Self::detach_eof_iommu_dids(*old(self), *self, bus, device, function);
         }
     }
 
@@ -520,27 +502,99 @@ impl IommuRootTable {
         ;
         self.publish_context_entry(Self::pci_bdf_slot(bus, device, function), root | 1, (did << 8) | VTD_CONTEXT_AW_4_LEVEL);
         proof {
-            let pre = old(self).iommu_roots();
-            let pre_dids = old(self).iommu_dids();
-            let post = seq3_update(pre, bus as int, device as int, function as int, Some(root));
-            let post_dids = seq3_update(pre_dids, bus as int, device as int, function as int, Some(did));
-            assert_seqs_equal!(self.iommu_roots() == post, b => {
-                assert_seqs_equal!(self.iommu_roots()[b] == post[b], d => {
-                    assert_seqs_equal!(self.iommu_roots()[b][d] == post[b][d], f => {
-                        assert(pci_bdf_of_did(pci_bdf_did(b as usize, d as usize, f as usize)) == (b as usize, d as usize, f as usize)
-                            && vtd_domain_id_valid(pci_bdf_did(b as usize, d as usize, f as usize))) by (nonlinear_arith) requires pci_bdf_valid(b as usize, d as usize, f as usize);
-                    });
-                });
-            });
-            assert_seqs_equal!(self.iommu_dids() == post_dids, b => {
-                assert_seqs_equal!(self.iommu_dids()[b] == post_dids[b], d => {
-                    assert_seqs_equal!(self.iommu_dids()[b][d] == post_dids[b][d], f => {
-                        assert(pci_bdf_of_did(pci_bdf_did(b as usize, d as usize, f as usize)) == (b as usize, d as usize, f as usize)
-                            && vtd_domain_id_valid(pci_bdf_did(b as usize, d as usize, f as usize))) by (nonlinear_arith) requires pci_bdf_valid(b as usize, d as usize, f as usize);
-                    });
-                });
-            });
+            Self::attach_eof_iommu_roots(*old(self), *self, bus, device, function, root, did);
+            Self::attach_eof_iommu_dids(*old(self), *self, bus, device, function, root, did);
         }
+    }
+
+    /// EOF closure of `detach` for the root view: only the cleared B/D/F slot lost its root.
+    proof fn detach_eof_iommu_roots(pre: Self, post: Self, bus: usize, device: usize, function: usize)
+        requires
+            pci_bdf_valid(bus, device, function),
+            pci_bdf_of_did(pci_bdf_did(bus, device, function)) == (bus, device, function),
+            pre.context_entries.view().len() == PCI_BDF_COUNT,
+            post.context_entries.view() == pre.context_entries.view().update(pci_bdf_did(bus, device, function) as int, VtdLegacyEntry { lower: 0, upper: 0 }),
+        ensures
+            post.iommu_roots() == seq3_update(pre.iommu_roots(), bus as int, device as int, function as int, None),
+    {
+        assert(0usize & 1usize != 1usize) by (bit_vector);
+        let roots = seq3_update(pre.iommu_roots(), bus as int, device as int, function as int, None);
+        assert_seqs_equal!(post.iommu_roots() == roots, b => {
+            assert_seqs_equal!(post.iommu_roots()[b] == roots[b], d => {
+                assert_seqs_equal!(post.iommu_roots()[b][d] == roots[b][d], f => {
+                    assert(pci_bdf_of_did(pci_bdf_did(b as usize, d as usize, f as usize)) == (b as usize, d as usize, f as usize)
+                        && vtd_domain_id_valid(pci_bdf_did(b as usize, d as usize, f as usize))) by (nonlinear_arith) requires pci_bdf_valid(b as usize, d as usize, f as usize);
+                });
+            });
+        });
+    }
+
+    /// EOF closure of `detach` for the domain-ID view: only the cleared B/D/F slot lost its domain ID.
+    proof fn detach_eof_iommu_dids(pre: Self, post: Self, bus: usize, device: usize, function: usize)
+        requires
+            pci_bdf_valid(bus, device, function),
+            pci_bdf_of_did(pci_bdf_did(bus, device, function)) == (bus, device, function),
+            pre.context_entries.view().len() == PCI_BDF_COUNT,
+            post.context_entries.view() == pre.context_entries.view().update(pci_bdf_did(bus, device, function) as int, VtdLegacyEntry { lower: 0, upper: 0 }),
+        ensures
+            post.iommu_dids() == seq3_update(pre.iommu_dids(), bus as int, device as int, function as int, None),
+    {
+        assert(0usize & 1usize != 1usize) by (bit_vector);
+        let dids = seq3_update(pre.iommu_dids(), bus as int, device as int, function as int, None);
+        assert_seqs_equal!(post.iommu_dids() == dids, b => {
+            assert_seqs_equal!(post.iommu_dids()[b] == dids[b], d => {
+                assert_seqs_equal!(post.iommu_dids()[b][d] == dids[b][d], f => {
+                    assert(pci_bdf_of_did(pci_bdf_did(b as usize, d as usize, f as usize)) == (b as usize, d as usize, f as usize)
+                        && vtd_domain_id_valid(pci_bdf_did(b as usize, d as usize, f as usize))) by (nonlinear_arith) requires pci_bdf_valid(b as usize, d as usize, f as usize);
+                });
+            });
+        });
+    }
+
+    /// EOF closure of `attach` for the root view: only the published B/D/F slot gained `root`.
+    proof fn attach_eof_iommu_roots(pre: Self, post: Self, bus: usize, device: usize, function: usize, root: PageTableRoot, did: VtdDomainId)
+        requires
+            pci_bdf_valid(bus, device, function),
+            pci_bdf_of_did(pci_bdf_did(bus, device, function)) == (bus, device, function),
+            pre.context_entries.view().len() == PCI_BDF_COUNT,
+            post.context_entries.view() == pre.context_entries.view().update(pci_bdf_did(bus, device, function) as int, VtdLegacyEntry { lower: root | 1, upper: (did << 8) | VTD_CONTEXT_AW_4_LEVEL }),
+            (root | 1) & 1 == 1,
+            (root | 1) & VTD_CONTEXT_ADDRESS_MASK == root,
+        ensures
+            post.iommu_roots() == seq3_update(pre.iommu_roots(), bus as int, device as int, function as int, Some(root)),
+    {
+        let roots = seq3_update(pre.iommu_roots(), bus as int, device as int, function as int, Some(root));
+        assert_seqs_equal!(post.iommu_roots() == roots, b => {
+            assert_seqs_equal!(post.iommu_roots()[b] == roots[b], d => {
+                assert_seqs_equal!(post.iommu_roots()[b][d] == roots[b][d], f => {
+                    assert(pci_bdf_of_did(pci_bdf_did(b as usize, d as usize, f as usize)) == (b as usize, d as usize, f as usize)
+                        && vtd_domain_id_valid(pci_bdf_did(b as usize, d as usize, f as usize))) by (nonlinear_arith) requires pci_bdf_valid(b as usize, d as usize, f as usize);
+                });
+            });
+        });
+    }
+
+    /// EOF closure of `attach` for the domain-ID view: only the published B/D/F slot gained `did`.
+    proof fn attach_eof_iommu_dids(pre: Self, post: Self, bus: usize, device: usize, function: usize, root: PageTableRoot, did: VtdDomainId)
+        requires
+            pci_bdf_valid(bus, device, function),
+            pci_bdf_of_did(pci_bdf_did(bus, device, function)) == (bus, device, function),
+            pre.context_entries.view().len() == PCI_BDF_COUNT,
+            post.context_entries.view() == pre.context_entries.view().update(pci_bdf_did(bus, device, function) as int, VtdLegacyEntry { lower: root | 1, upper: (did << 8) | VTD_CONTEXT_AW_4_LEVEL }),
+            (root | 1) & 1 == 1,
+            (((did << 8) | VTD_CONTEXT_AW_4_LEVEL) >> 8) & VTD_CONTEXT_DID_MASK == did,
+        ensures
+            post.iommu_dids() == seq3_update(pre.iommu_dids(), bus as int, device as int, function as int, Some(did)),
+    {
+        let dids = seq3_update(pre.iommu_dids(), bus as int, device as int, function as int, Some(did));
+        assert_seqs_equal!(post.iommu_dids() == dids, b => {
+            assert_seqs_equal!(post.iommu_dids()[b] == dids[b], d => {
+                assert_seqs_equal!(post.iommu_dids()[b][d] == dids[b][d], f => {
+                    assert(pci_bdf_of_did(pci_bdf_did(b as usize, d as usize, f as usize)) == (b as usize, d as usize, f as usize)
+                        && vtd_domain_id_valid(pci_bdf_did(b as usize, d as usize, f as usize))) by (nonlinear_arith) requires pci_bdf_valid(b as usize, d as usize, f as usize);
+                });
+            });
+        });
     }
 
     /// The lexicographically first B/D/F other than `removed` that `owner` owns and whose present context entry carries `did`.

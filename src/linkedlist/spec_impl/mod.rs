@@ -338,17 +338,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             self.map = Ghost(self.map.view().insert(addr, perm.view().value().view()));
             proof { self.perms.borrow_mut().tracked_insert(addr, perm.get()); }
 
-            proof { seq_push_head_lemma::<usize>(); seq_push_head_lemma::<T>(); seq_push_head_unique_lemma::<usize>(); }
-
-            assert(self.wf()) by {
-                assert({
-                    &&& !old(self).dom().contains(addr)
-                    &&& !old(self).addr_list.view().contains(addr)
-                    &&& self.addr_list.view().spec_index(self.length - 1) == self.tail.unwrap()
-                    &&& self.perms.view().spec_index(self.tail.unwrap()).value().next is None
-                }) by { reveal(LinkedList::wf_tail); };
-                reveal(LinkedList::wf_tail); reveal(LinkedList::wf_prev); reveal(LinkedList::wf_next); reveal(LinkedList::value_list_unique);
-            };
+            proof { Self::push_head_eof_wf(*old(self), *self, addr, old_head_addr); }
         }
     }
 
@@ -458,7 +448,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             self.value_list = Ghost(self.value_list.view().skip(1));
             self.map = Ghost(self.map.view().remove(old_head_addr));
 
-            assert(self.wf()) by { reveal(LinkedList::wf_tail); reveal(LinkedList::wf_prev); reveal(LinkedList::value_list_unique); };
+            proof { Self::pop_head_eof_wf(*old(self), *self, old_head_addr, new_head_addr); }
 
             (old_head_addr, Tracked(old_head_perm))
         } else {
@@ -481,3 +471,4 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
 
 mod remove_impl;
 mod unlink_interior_node_eof;
+mod push_pop_eof;

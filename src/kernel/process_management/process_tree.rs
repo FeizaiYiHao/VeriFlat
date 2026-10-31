@@ -311,26 +311,174 @@ verus! {
             && child_uppers.subrange(0, parent_depth as int) =~= parent_uppers) by { seq_push_lemma::<RwLockProcessPtr>(); seq_push_unique_lemma::<RwLockProcessPtr>(); };
         child_uppers.to_set_ensures();
         assert(process_tree_fields_wf(old_process_perms) && process_tree_fields_wf(new_process_perms)) by { reveal(process_perms_wf); };
-        assert(process_uppertree_seq_wf(root_process, process_tree_dom.insert(child_ptr), new_process_perms)) by {
-            seq_push_lemma::<RwLockProcessPtr>(); seq_push_unique_lemma::<RwLockProcessPtr>(); reveal(process_uppertree_seq_wf);
-        };
-        assert(process_root_wf(root_process, process_tree_dom.insert(child_ptr), new_process_perms)) by { reveal(process_root_wf); };
-        assert(process_children_parent_wf(root_process, process_tree_dom.insert(child_ptr), new_process_perms)) by { reveal(process_children_parent_wf); seq_push_lemma::<RwLockProcessPtr>(); };
-        assert(process_linkedlist_wf(root_process, process_tree_dom.insert(child_ptr), new_process_perms)) by {
-            reveal(process_root_wf); reveal(process_children_parent_wf); reveal(process_linkedlist_wf); seq_push_lemma::<RwLockProcessPtr>();
-        };
-        assert(process_children_depth_wf(root_process, process_tree_dom.insert(child_ptr), new_process_perms)) by {
-            reveal(process_children_depth_wf);
-            seq_push_lemma::<RwLockProcessPtr>(); seq_push_unique_lemma::<RwLockProcessPtr>();
-        };
-        assert(process_subtree_set_wf(root_process, process_tree_dom.insert(child_ptr), new_process_perms)) by {
-            reveal(process_subtree_set_wf); reveal(process_uppertree_seq_wf);
-            seq_push_lemma::<RwLockProcessPtr>(); seq_push_unique_lemma::<RwLockProcessPtr>();
-        };
-        assert(process_subtree_set_exclusive(root_process, process_tree_dom.insert(child_ptr), new_process_perms)) by {
-            reveal(process_subtree_set_wf); reveal(process_uppertree_seq_wf); reveal(process_subtree_set_exclusive);
-            seq_push_lemma::<RwLockProcessPtr>(); seq_push_unique_lemma::<RwLockProcessPtr>();
-        };
+        process_add_child_ensures_implies_process_uppertree_seq_wf(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
+        process_add_child_ensures_implies_process_root_wf(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
+        process_add_child_ensures_implies_process_children_parent_wf(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
+        process_add_child_ensures_implies_process_linkedlist_wf(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
+        process_add_child_ensures_implies_process_children_depth_wf(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
+        process_add_child_ensures_implies_process_subtree_set_wf(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
+        process_add_child_ensures_implies_process_subtree_set_exclusive(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
+    }
+
+    /// Closure of `process_add_child_preserves_tree_wf` for `process_uppertree_seq_wf`.
+    proof fn process_add_child_ensures_implies_process_uppertree_seq_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_process_perms: ProcessLockedMap, new_process_perms: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
+        requires
+            process_add_child_ensures(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr),
+            ({
+                let parent_uppers = old_process_perms.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
+                let child_uppers = new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view();
+                let parent_depth = old_process_perms.spec_index(parent_ptr).view_rodata().view().depth;
+                &&& parent_uppers.len() == parent_depth && child_uppers == parent_uppers.push(parent_ptr) && child_uppers.no_duplicates()
+                &&& !parent_uppers.contains(parent_ptr)
+                &&& child_uppers.contains(parent_ptr) && child_uppers.spec_index(parent_depth as int) == parent_ptr && child_uppers.index_of(parent_ptr) == parent_depth
+                &&& child_uppers.subrange(0, parent_depth as int) =~= parent_uppers
+            }),
+            process_tree_fields_wf(old_process_perms),
+            process_tree_fields_wf(new_process_perms),
+        ensures
+            process_uppertree_seq_wf(root_process, process_tree_dom.insert(child_ptr), new_process_perms),
+    {
+        hide(Seq::no_duplicates);
+        new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
+        seq_push_lemma::<RwLockProcessPtr>(); seq_push_unique_lemma::<RwLockProcessPtr>(); reveal(process_uppertree_seq_wf);
+    }
+
+    /// Closure of `process_add_child_preserves_tree_wf` for `process_root_wf`.
+    proof fn process_add_child_ensures_implies_process_root_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_process_perms: ProcessLockedMap, new_process_perms: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
+        requires
+            process_add_child_ensures(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr),
+            ({
+                let parent_uppers = old_process_perms.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
+                let child_uppers = new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view();
+                let parent_depth = old_process_perms.spec_index(parent_ptr).view_rodata().view().depth;
+                &&& parent_uppers.len() == parent_depth && child_uppers == parent_uppers.push(parent_ptr) && child_uppers.no_duplicates()
+                &&& !parent_uppers.contains(parent_ptr)
+                &&& child_uppers.contains(parent_ptr) && child_uppers.spec_index(parent_depth as int) == parent_ptr && child_uppers.index_of(parent_ptr) == parent_depth
+                &&& child_uppers.subrange(0, parent_depth as int) =~= parent_uppers
+            }),
+            process_tree_fields_wf(old_process_perms),
+            process_tree_fields_wf(new_process_perms),
+        ensures
+            process_root_wf(root_process, process_tree_dom.insert(child_ptr), new_process_perms),
+    {
+        hide(Seq::no_duplicates);
+        new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
+        reveal(process_root_wf);
+    }
+
+    /// Closure of `process_add_child_preserves_tree_wf` for `process_children_parent_wf`.
+    proof fn process_add_child_ensures_implies_process_children_parent_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_process_perms: ProcessLockedMap, new_process_perms: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
+        requires
+            process_add_child_ensures(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr),
+            ({
+                let parent_uppers = old_process_perms.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
+                let child_uppers = new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view();
+                let parent_depth = old_process_perms.spec_index(parent_ptr).view_rodata().view().depth;
+                &&& parent_uppers.len() == parent_depth && child_uppers == parent_uppers.push(parent_ptr) && child_uppers.no_duplicates()
+                &&& !parent_uppers.contains(parent_ptr)
+                &&& child_uppers.contains(parent_ptr) && child_uppers.spec_index(parent_depth as int) == parent_ptr && child_uppers.index_of(parent_ptr) == parent_depth
+                &&& child_uppers.subrange(0, parent_depth as int) =~= parent_uppers
+            }),
+            process_tree_fields_wf(old_process_perms),
+            process_tree_fields_wf(new_process_perms),
+        ensures
+            process_children_parent_wf(root_process, process_tree_dom.insert(child_ptr), new_process_perms),
+    {
+        hide(Seq::no_duplicates);
+        new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
+        reveal(process_root_wf); reveal(process_children_parent_wf); seq_push_lemma::<RwLockProcessPtr>();
+    }
+
+    /// Closure of `process_add_child_preserves_tree_wf` for `process_linkedlist_wf`.
+    proof fn process_add_child_ensures_implies_process_linkedlist_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_process_perms: ProcessLockedMap, new_process_perms: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
+        requires
+            process_add_child_ensures(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr),
+            ({
+                let parent_uppers = old_process_perms.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
+                let child_uppers = new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view();
+                let parent_depth = old_process_perms.spec_index(parent_ptr).view_rodata().view().depth;
+                &&& parent_uppers.len() == parent_depth && child_uppers == parent_uppers.push(parent_ptr) && child_uppers.no_duplicates()
+                &&& !parent_uppers.contains(parent_ptr)
+                &&& child_uppers.contains(parent_ptr) && child_uppers.spec_index(parent_depth as int) == parent_ptr && child_uppers.index_of(parent_ptr) == parent_depth
+                &&& child_uppers.subrange(0, parent_depth as int) =~= parent_uppers
+            }),
+            process_tree_fields_wf(old_process_perms),
+            process_tree_fields_wf(new_process_perms),
+        ensures
+            process_linkedlist_wf(root_process, process_tree_dom.insert(child_ptr), new_process_perms),
+    {
+        hide(Seq::no_duplicates);
+        new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
+        reveal(process_root_wf); reveal(process_children_parent_wf); reveal(process_linkedlist_wf); seq_push_lemma::<RwLockProcessPtr>();
+    }
+
+    /// Closure of `process_add_child_preserves_tree_wf` for `process_children_depth_wf`.
+    proof fn process_add_child_ensures_implies_process_children_depth_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_process_perms: ProcessLockedMap, new_process_perms: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
+        requires
+            process_add_child_ensures(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr),
+            ({
+                let parent_uppers = old_process_perms.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
+                let child_uppers = new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view();
+                let parent_depth = old_process_perms.spec_index(parent_ptr).view_rodata().view().depth;
+                &&& parent_uppers.len() == parent_depth && child_uppers == parent_uppers.push(parent_ptr) && child_uppers.no_duplicates()
+                &&& !parent_uppers.contains(parent_ptr)
+                &&& child_uppers.contains(parent_ptr) && child_uppers.spec_index(parent_depth as int) == parent_ptr && child_uppers.index_of(parent_ptr) == parent_depth
+                &&& child_uppers.subrange(0, parent_depth as int) =~= parent_uppers
+            }),
+            process_tree_fields_wf(old_process_perms),
+            process_tree_fields_wf(new_process_perms),
+        ensures
+            process_children_depth_wf(root_process, process_tree_dom.insert(child_ptr), new_process_perms),
+    {
+        hide(Seq::no_duplicates);
+        new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
+        reveal(process_children_depth_wf); seq_push_lemma::<RwLockProcessPtr>(); seq_push_unique_lemma::<RwLockProcessPtr>();
+    }
+
+    /// Closure of `process_add_child_preserves_tree_wf` for `process_subtree_set_wf`.
+    proof fn process_add_child_ensures_implies_process_subtree_set_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_process_perms: ProcessLockedMap, new_process_perms: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
+        requires
+            process_add_child_ensures(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr),
+            ({
+                let parent_uppers = old_process_perms.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
+                let child_uppers = new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view();
+                let parent_depth = old_process_perms.spec_index(parent_ptr).view_rodata().view().depth;
+                &&& parent_uppers.len() == parent_depth && child_uppers == parent_uppers.push(parent_ptr) && child_uppers.no_duplicates()
+                &&& !parent_uppers.contains(parent_ptr)
+                &&& child_uppers.contains(parent_ptr) && child_uppers.spec_index(parent_depth as int) == parent_ptr && child_uppers.index_of(parent_ptr) == parent_depth
+                &&& child_uppers.subrange(0, parent_depth as int) =~= parent_uppers
+            }),
+            process_tree_fields_wf(old_process_perms),
+            process_tree_fields_wf(new_process_perms),
+        ensures
+            process_subtree_set_wf(root_process, process_tree_dom.insert(child_ptr), new_process_perms),
+    {
+        hide(Seq::no_duplicates);
+        new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
+        reveal(process_subtree_set_wf); reveal(process_uppertree_seq_wf); seq_push_lemma::<RwLockProcessPtr>(); seq_push_unique_lemma::<RwLockProcessPtr>();
+    }
+
+    /// Closure of `process_add_child_preserves_tree_wf` for `process_subtree_set_exclusive`.
+    proof fn process_add_child_ensures_implies_process_subtree_set_exclusive(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_process_perms: ProcessLockedMap, new_process_perms: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
+        requires
+            process_add_child_ensures(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr),
+            ({
+                let parent_uppers = old_process_perms.spec_index(parent_ptr).view_ghost().uppertree_seq.view();
+                let child_uppers = new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view();
+                let parent_depth = old_process_perms.spec_index(parent_ptr).view_rodata().view().depth;
+                &&& parent_uppers.len() == parent_depth && child_uppers == parent_uppers.push(parent_ptr) && child_uppers.no_duplicates()
+                &&& !parent_uppers.contains(parent_ptr)
+                &&& child_uppers.contains(parent_ptr) && child_uppers.spec_index(parent_depth as int) == parent_ptr && child_uppers.index_of(parent_ptr) == parent_depth
+                &&& child_uppers.subrange(0, parent_depth as int) =~= parent_uppers
+            }),
+            process_tree_fields_wf(old_process_perms),
+            process_tree_fields_wf(new_process_perms),
+        ensures
+            process_subtree_set_exclusive(root_process, process_tree_dom.insert(child_ptr), new_process_perms),
+    {
+        hide(Seq::no_duplicates);
+        new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
+        reveal(process_subtree_set_wf); reveal(process_uppertree_seq_wf); reveal(process_subtree_set_exclusive); seq_push_lemma::<RwLockProcessPtr>(); seq_push_unique_lemma::<RwLockProcessPtr>();
     }
 
     pub proof fn process_insert_child_into_ancestor_subtree_sets(tracked process_map: &mut ProcessLockedMap, ancestors: Seq<RwLockProcessPtr>, child_ptr: RwLockProcessPtr, held_locks: Map<RwLockProcessPtr, TypedHeldLock>, thread_id: LockThreadId)

@@ -111,6 +111,7 @@ pub(super) fn thread_exit_lock_running_thread(krnl: &mut KernelK, Tracked(lctx):
             &&& kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, final(krnl).ep_mp)
         }),
 {
+    hide(Set::is_empty);
     let cpu_lock_res = wlock_cpu_if_running(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id);
     if cpu_lock_res.is_none() {
         proof {

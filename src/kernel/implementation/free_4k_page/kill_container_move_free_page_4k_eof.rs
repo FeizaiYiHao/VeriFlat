@@ -148,6 +148,67 @@ proof fn kill_container_move_free_page_4k_eof_free_page_ptrs(
     reveal(allocator_free_page_ptrs_wf);
 }
 
+proof fn kill_container_move_free_page_4k_eof_global_free_pages_forward(
+    pre: KernelK, post: KernelK, src: RwLockContainerPtr, dst: RwLockContainerPtr, src_allocator: RwLockPageAllocatorPtr, dst_allocator: RwLockPageAllocatorPtr,
+    page_ptr: PagePtr, node: usize,
+)
+    requires
+        container_allocator_global_free_4k_forward_wf(pre.allc_4k_mp, pre.pg_arr),
+        allocator_free_page_ptrs_wf(pre.allc_4k_mp),
+        allocator_free_page_ptrs_wf(post.allc_4k_mp),
+        src != dst,
+        src_allocator != dst_allocator,
+        page_ptr_valid(page_ptr),
+        index_valid(NUM_PAGES, page_ptr2page_index(page_ptr)),
+        pre.allc_4k_mp.dom().contains(src_allocator),
+        pre.allc_4k_mp.dom().contains(dst_allocator),
+        pre.allc_4k_mp.spec_index(src_allocator).owning_container == src,
+        pre.allc_4k_mp.spec_index(dst_allocator).owning_container == dst,
+        pre.allc_4k_mp.spec_index(src_allocator).global_pool.view().view().len() > 0,
+        pre.allc_4k_mp.spec_index(src_allocator).global_pool.view().view().spec_index(0) == page_ptr,
+        pre.allc_4k_mp.spec_index(src_allocator).global_pool.view().view().no_duplicates(),
+        pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Free4k { allocator_ptr: Ghost(src_allocator), state: FreePageAllocatorState::GlobalList }),
+        !pre.allc_4k_mp.spec_index(dst_allocator).global_pool.view().view().contains(page_ptr),
+        node == pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().free_list_node_storage.addr(),
+        kill_container_move_free_page_4k_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, page_ptr, node),
+    ensures
+        container_allocator_global_free_4k_forward_wf(post.allc_4k_mp, post.pg_arr),
+{
+    reveal(kill_container_move_free_page_4k_eof_transition_framing);
+    seq_skip_lemma::<PagePtr>(); pre.allc_4k_mp.spec_index(dst_allocator).global_pool.view().view().insert_ensures(0, page_ptr);
+}
+
+proof fn kill_container_move_free_page_4k_eof_global_free_pages_backward(
+    pre: KernelK, post: KernelK, src: RwLockContainerPtr, dst: RwLockContainerPtr, src_allocator: RwLockPageAllocatorPtr, dst_allocator: RwLockPageAllocatorPtr,
+    page_ptr: PagePtr, node: usize,
+)
+    requires
+        container_allocator_global_free_4k_backward_wf(pre.allc_4k_mp, pre.pg_arr),
+        allocator_free_page_ptrs_wf(pre.allc_4k_mp),
+        allocator_free_page_ptrs_wf(post.allc_4k_mp),
+        src != dst,
+        src_allocator != dst_allocator,
+        page_ptr_valid(page_ptr),
+        index_valid(NUM_PAGES, page_ptr2page_index(page_ptr)),
+        pre.allc_4k_mp.dom().contains(src_allocator),
+        pre.allc_4k_mp.dom().contains(dst_allocator),
+        pre.allc_4k_mp.spec_index(src_allocator).owning_container == src,
+        pre.allc_4k_mp.spec_index(dst_allocator).owning_container == dst,
+        pre.allc_4k_mp.spec_index(src_allocator).global_pool.view().view().len() > 0,
+        pre.allc_4k_mp.spec_index(src_allocator).global_pool.view().view().spec_index(0) == page_ptr,
+        pre.allc_4k_mp.spec_index(src_allocator).global_pool.view().view().no_duplicates(),
+        pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Free4k { allocator_ptr: Ghost(src_allocator), state: FreePageAllocatorState::GlobalList }),
+        !pre.allc_4k_mp.spec_index(dst_allocator).global_pool.view().view().contains(page_ptr),
+        node == pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().free_list_node_storage.addr(),
+        kill_container_move_free_page_4k_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, page_ptr, node),
+    ensures
+        container_allocator_global_free_4k_backward_wf(post.allc_4k_mp, post.pg_arr),
+{
+    reveal(kill_container_move_free_page_4k_eof_transition_framing);
+    seq_skip_lemma::<PagePtr>(); pre.allc_4k_mp.spec_index(dst_allocator).global_pool.view().view().insert_ensures(0, page_ptr);
+    reveal(allocator_free_page_ptrs_wf);
+}
+
 proof fn kill_container_move_free_page_4k_eof_global_free_pages(
     pre: KernelK, post: KernelK, src: RwLockContainerPtr, dst: RwLockContainerPtr, src_allocator: RwLockPageAllocatorPtr, dst_allocator: RwLockPageAllocatorPtr,
     page_ptr: PagePtr, node: usize,
@@ -174,9 +235,12 @@ proof fn kill_container_move_free_page_4k_eof_global_free_pages(
     ensures
         container_allocator_global_free_4k_page_wf(post.allc_4k_mp, post.pg_arr),
 {
-    reveal(kill_container_move_free_page_4k_eof_transition_framing);
-    seq_skip_lemma::<PagePtr>(); pre.allc_4k_mp.spec_index(dst_allocator).global_pool.view().view().insert_ensures(0, page_ptr);
-    reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf);
+    assert(container_allocator_global_free_4k_forward_wf(pre.allc_4k_mp, pre.pg_arr) && container_allocator_global_free_4k_backward_wf(pre.allc_4k_mp, pre.pg_arr)) by {
+        reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf);
+    };
+    kill_container_move_free_page_4k_eof_global_free_pages_forward(pre, post, src, dst, src_allocator, dst_allocator, page_ptr, node);
+    kill_container_move_free_page_4k_eof_global_free_pages_backward(pre, post, src, dst, src_allocator, dst_allocator, page_ptr, node);
+    reveal(container_allocator_global_free_4k_page_wf);
 }
 
 proof fn kill_container_move_free_page_4k_eof_cpu_cache_free_pages(

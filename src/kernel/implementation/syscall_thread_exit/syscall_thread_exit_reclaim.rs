@@ -707,6 +707,7 @@ fn thread_exit_reclaim_clear_leaves(
             }
         }
         cursor = (next.0, next.1, next.2, next.3 + 1);
+        proof { lemma_l4_index_path_le_successor(next, cursor); }
         found = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_lock_perm)).next_mapped_4k_from(Tracked(krnl.pt_lower.borrow().tracked_borrow(pagetable)), cursor);
     }
 }

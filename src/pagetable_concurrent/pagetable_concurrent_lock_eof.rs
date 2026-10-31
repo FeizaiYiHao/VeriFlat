@@ -47,7 +47,7 @@ pub open spec fn unlock_window_eof_transition_framing(pre: PageTableC<PT_TYPE>, 
     &&& post.lower.window_stale_cpus == pre.lower.window_stale_cpus
 }
 
-/// EOF closure of `lock_window`: re-establishes `PageTableC::wf`, with `wf_window_locks` from `lock_window_eof_window_locks`.
+/// EOF closure of `lock_window`: re-establishes `PageTableC::wf` from its per-leaf `lock_window_eof_*` closures.
 pub(super) proof fn lock_window_eof(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId, lock_token: LockToken)
     requires
         pre.wf(),
@@ -60,17 +60,17 @@ pub(super) proof fn lock_window_eof(pre: PageTableC<PT_TYPE>, post: PageTableC<P
     ensures
         post.wf(),
 {
-    assert(post.wf_l3()) by { reveal(PageTableC::wf_l3); };
-    assert(post.wf_l2()) by { reveal(PageTableC::wf_l2); };
-    assert(post.wf_l1()) by { reveal(PageTableC::wf_l1); };
-    assert(post.disjoint_l2()) by { reveal(PageTableC::disjoint_l2); };
-    assert(post.wf_mapping_4k()) by { reveal(PageTableC::wf_mapping_4k); };
-    assert(post.wf_mapping_2m()) by { reveal(PageTableC::wf_mapping_2m); };
-    assert(post.user_only()) by { reveal(PageTableC::user_only); };
-    assert(post.rwx_upper_level_entries()) by { reveal(PageTableC::rwx_upper_level_entries); };
-    assert(post.table_pages_wf()) by { reveal(PageTableC::table_pages_wf); };
-    assert(post.tables_reachable_wf()) by { reveal(PageTableC::tables_reachable_wf); };
-    assert(post.wf_window_locks()) by { lock_window_eof_window_locks(pre, post, l4i, l3i, l2i, thread_id, lock_token); };
+    lock_window_eof_wf_l3(pre, post, l4i, l3i, l2i, thread_id, lock_token);
+    lock_window_eof_wf_l2(pre, post, l4i, l3i, l2i, thread_id, lock_token);
+    lock_window_eof_wf_l1(pre, post, l4i, l3i, l2i, thread_id, lock_token);
+    lock_window_eof_disjoint_l2(pre, post, l4i, l3i, l2i, thread_id, lock_token);
+    lock_window_eof_wf_mapping_4k(pre, post, l4i, l3i, l2i, thread_id, lock_token);
+    lock_window_eof_wf_mapping_2m(pre, post, l4i, l3i, l2i, thread_id, lock_token);
+    lock_window_eof_user_only(pre, post, l4i, l3i, l2i, thread_id, lock_token);
+    lock_window_eof_rwx_upper_level_entries(pre, post, l4i, l3i, l2i, thread_id, lock_token);
+    lock_window_eof_table_pages_wf(pre, post, l4i, l3i, l2i, thread_id, lock_token);
+    lock_window_eof_tables_reachable_wf(pre, post, l4i, l3i, l2i, thread_id, lock_token);
+    lock_window_eof_window_locks(pre, post, l4i, l3i, l2i, thread_id, lock_token);
 }
 
 /// EOF closure of `lock_window` for `wf_window_locks`: the new owner is the window the reverse map records for its
@@ -94,7 +94,7 @@ proof fn lock_window_eof_window_locks(pre: PageTableC<PT_TYPE>, post: PageTableC
     reveal(PageTableC::wf_window_locks);
 }
 
-/// EOF closure of `unlock_window`: re-establishes `PageTableC::wf`, with `wf_window_locks` from `unlock_window_eof_window_locks`.
+/// EOF closure of `unlock_window`: re-establishes `PageTableC::wf` from its per-leaf `unlock_window_eof_*` closures.
 pub(super) proof fn unlock_window_eof(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
     requires
         pre.wf(),
@@ -106,17 +106,17 @@ pub(super) proof fn unlock_window_eof(pre: PageTableC<PT_TYPE>, post: PageTableC
     ensures
         post.wf(),
 {
-    assert(post.wf_l3()) by { reveal(PageTableC::wf_l3); };
-    assert(post.wf_l2()) by { reveal(PageTableC::wf_l2); };
-    assert(post.wf_l1()) by { reveal(PageTableC::wf_l1); };
-    assert(post.disjoint_l2()) by { reveal(PageTableC::disjoint_l2); };
-    assert(post.wf_mapping_4k()) by { reveal(PageTableC::wf_mapping_4k); };
-    assert(post.wf_mapping_2m()) by { reveal(PageTableC::wf_mapping_2m); };
-    assert(post.user_only()) by { reveal(PageTableC::user_only); };
-    assert(post.rwx_upper_level_entries()) by { reveal(PageTableC::rwx_upper_level_entries); };
-    assert(post.table_pages_wf()) by { reveal(PageTableC::table_pages_wf); };
-    assert(post.tables_reachable_wf()) by { reveal(PageTableC::tables_reachable_wf); };
-    assert(post.wf_window_locks()) by { unlock_window_eof_window_locks(pre, post, l4i, l3i, l2i); };
+    unlock_window_eof_wf_l3(pre, post, l4i, l3i, l2i);
+    unlock_window_eof_wf_l2(pre, post, l4i, l3i, l2i);
+    unlock_window_eof_wf_l1(pre, post, l4i, l3i, l2i);
+    unlock_window_eof_disjoint_l2(pre, post, l4i, l3i, l2i);
+    unlock_window_eof_wf_mapping_4k(pre, post, l4i, l3i, l2i);
+    unlock_window_eof_wf_mapping_2m(pre, post, l4i, l3i, l2i);
+    unlock_window_eof_user_only(pre, post, l4i, l3i, l2i);
+    unlock_window_eof_rwx_upper_level_entries(pre, post, l4i, l3i, l2i);
+    unlock_window_eof_table_pages_wf(pre, post, l4i, l3i, l2i);
+    unlock_window_eof_tables_reachable_wf(pre, post, l4i, l3i, l2i);
+    unlock_window_eof_window_locks(pre, post, l4i, l3i, l2i);
 }
 
 /// EOF closure of `unlock_window` for `wf_window_locks`: the released base address belongs to no other locked
@@ -141,4 +141,184 @@ proof fn unlock_window_eof_window_locks(pre: PageTableC<PT_TYPE>, post: PageTabl
     spec_index2va_injective();
     reveal(PageTableC::wf_window_locks);
 }
+
+/// EOF closure of `lock_window` for `wf_l3`.
+proof fn lock_window_eof_wf_l3(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId, lock_token: LockToken)
+    requires
+        pre.wf(),
+        lock_window_eof_transition_framing(pre, post, l4i, l3i, l2i, thread_id, lock_token),
+    ensures
+        post.wf_l3(),
+{ reveal(PageTableC::wf_l3); }
+
+/// EOF closure of `lock_window` for `wf_l2`.
+proof fn lock_window_eof_wf_l2(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId, lock_token: LockToken)
+    requires
+        pre.wf(),
+        lock_window_eof_transition_framing(pre, post, l4i, l3i, l2i, thread_id, lock_token),
+    ensures
+        post.wf_l2(),
+{ reveal(PageTableC::wf_l2); }
+
+/// EOF closure of `lock_window` for `wf_l1`.
+proof fn lock_window_eof_wf_l1(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId, lock_token: LockToken)
+    requires
+        pre.wf(),
+        lock_window_eof_transition_framing(pre, post, l4i, l3i, l2i, thread_id, lock_token),
+    ensures
+        post.wf_l1(),
+{ reveal(PageTableC::wf_l1); }
+
+/// EOF closure of `lock_window` for `disjoint_l2`.
+proof fn lock_window_eof_disjoint_l2(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId, lock_token: LockToken)
+    requires
+        pre.wf(),
+        lock_window_eof_transition_framing(pre, post, l4i, l3i, l2i, thread_id, lock_token),
+    ensures
+        post.disjoint_l2(),
+{ reveal(PageTableC::disjoint_l2); }
+
+/// EOF closure of `lock_window` for `wf_mapping_4k`.
+proof fn lock_window_eof_wf_mapping_4k(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId, lock_token: LockToken)
+    requires
+        pre.wf(),
+        lock_window_eof_transition_framing(pre, post, l4i, l3i, l2i, thread_id, lock_token),
+    ensures
+        post.wf_mapping_4k(),
+{ reveal(PageTableC::wf_mapping_4k); }
+
+/// EOF closure of `lock_window` for `wf_mapping_2m`.
+proof fn lock_window_eof_wf_mapping_2m(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId, lock_token: LockToken)
+    requires
+        pre.wf(),
+        lock_window_eof_transition_framing(pre, post, l4i, l3i, l2i, thread_id, lock_token),
+    ensures
+        post.wf_mapping_2m(),
+{ reveal(PageTableC::wf_mapping_2m); }
+
+/// EOF closure of `lock_window` for `user_only`.
+proof fn lock_window_eof_user_only(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId, lock_token: LockToken)
+    requires
+        pre.wf(),
+        lock_window_eof_transition_framing(pre, post, l4i, l3i, l2i, thread_id, lock_token),
+    ensures
+        post.user_only(),
+{ reveal(PageTableC::user_only); }
+
+/// EOF closure of `lock_window` for `rwx_upper_level_entries`.
+proof fn lock_window_eof_rwx_upper_level_entries(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId, lock_token: LockToken)
+    requires
+        pre.wf(),
+        lock_window_eof_transition_framing(pre, post, l4i, l3i, l2i, thread_id, lock_token),
+    ensures
+        post.rwx_upper_level_entries(),
+{ reveal(PageTableC::rwx_upper_level_entries); }
+
+/// EOF closure of `lock_window` for `table_pages_wf`.
+proof fn lock_window_eof_table_pages_wf(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId, lock_token: LockToken)
+    requires
+        pre.wf(),
+        lock_window_eof_transition_framing(pre, post, l4i, l3i, l2i, thread_id, lock_token),
+    ensures
+        post.table_pages_wf(),
+{ reveal(PageTableC::table_pages_wf); }
+
+/// EOF closure of `lock_window` for `tables_reachable_wf`.
+proof fn lock_window_eof_tables_reachable_wf(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId, lock_token: LockToken)
+    requires
+        pre.wf(),
+        lock_window_eof_transition_framing(pre, post, l4i, l3i, l2i, thread_id, lock_token),
+    ensures
+        post.tables_reachable_wf(),
+{ reveal(PageTableC::tables_reachable_wf); }
+
+/// EOF closure of `unlock_window` for `wf_l3`.
+proof fn unlock_window_eof_wf_l3(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+    requires
+        pre.wf(),
+        unlock_window_eof_transition_framing(pre, post, l4i, l3i, l2i),
+    ensures
+        post.wf_l3(),
+{ reveal(PageTableC::wf_l3); }
+
+/// EOF closure of `unlock_window` for `wf_l2`.
+proof fn unlock_window_eof_wf_l2(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+    requires
+        pre.wf(),
+        unlock_window_eof_transition_framing(pre, post, l4i, l3i, l2i),
+    ensures
+        post.wf_l2(),
+{ reveal(PageTableC::wf_l2); }
+
+/// EOF closure of `unlock_window` for `wf_l1`.
+proof fn unlock_window_eof_wf_l1(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+    requires
+        pre.wf(),
+        unlock_window_eof_transition_framing(pre, post, l4i, l3i, l2i),
+    ensures
+        post.wf_l1(),
+{ reveal(PageTableC::wf_l1); }
+
+/// EOF closure of `unlock_window` for `disjoint_l2`.
+proof fn unlock_window_eof_disjoint_l2(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+    requires
+        pre.wf(),
+        unlock_window_eof_transition_framing(pre, post, l4i, l3i, l2i),
+    ensures
+        post.disjoint_l2(),
+{ reveal(PageTableC::disjoint_l2); }
+
+/// EOF closure of `unlock_window` for `wf_mapping_4k`.
+proof fn unlock_window_eof_wf_mapping_4k(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+    requires
+        pre.wf(),
+        unlock_window_eof_transition_framing(pre, post, l4i, l3i, l2i),
+    ensures
+        post.wf_mapping_4k(),
+{ reveal(PageTableC::wf_mapping_4k); }
+
+/// EOF closure of `unlock_window` for `wf_mapping_2m`.
+proof fn unlock_window_eof_wf_mapping_2m(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+    requires
+        pre.wf(),
+        unlock_window_eof_transition_framing(pre, post, l4i, l3i, l2i),
+    ensures
+        post.wf_mapping_2m(),
+{ reveal(PageTableC::wf_mapping_2m); }
+
+/// EOF closure of `unlock_window` for `user_only`.
+proof fn unlock_window_eof_user_only(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+    requires
+        pre.wf(),
+        unlock_window_eof_transition_framing(pre, post, l4i, l3i, l2i),
+    ensures
+        post.user_only(),
+{ reveal(PageTableC::user_only); }
+
+/// EOF closure of `unlock_window` for `rwx_upper_level_entries`.
+proof fn unlock_window_eof_rwx_upper_level_entries(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+    requires
+        pre.wf(),
+        unlock_window_eof_transition_framing(pre, post, l4i, l3i, l2i),
+    ensures
+        post.rwx_upper_level_entries(),
+{ reveal(PageTableC::rwx_upper_level_entries); }
+
+/// EOF closure of `unlock_window` for `table_pages_wf`.
+proof fn unlock_window_eof_table_pages_wf(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+    requires
+        pre.wf(),
+        unlock_window_eof_transition_framing(pre, post, l4i, l3i, l2i),
+    ensures
+        post.table_pages_wf(),
+{ reveal(PageTableC::table_pages_wf); }
+
+/// EOF closure of `unlock_window` for `tables_reachable_wf`.
+proof fn unlock_window_eof_tables_reachable_wf(pre: PageTableC<PT_TYPE>, post: PageTableC<PT_TYPE>, l4i: L4Index, l3i: L3Index, l2i: L2Index)
+    requires
+        pre.wf(),
+        unlock_window_eof_transition_framing(pre, post, l4i, l3i, l2i),
+    ensures
+        post.tables_reachable_wf(),
+{ reveal(PageTableC::tables_reachable_wf); }
 } // verus!

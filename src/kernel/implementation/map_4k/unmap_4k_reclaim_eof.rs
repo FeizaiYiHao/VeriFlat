@@ -247,14 +247,10 @@ proof fn reclaim_last_4k_mapping_to_cpu_cache_eof_allocator_quota_wf(
             lemma_thread_pending_4k_folds_change_by_forall(thread_ptr, if depth == pre.thr_mp.spec_index(thread_ptr).view().container_depth { 1int } else { 0int }, depth as int, if depth < pre.thr_mp.spec_index(thread_ptr).view().container_depth { 1int } else { 0int });
         };
         assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp)) by {
-            container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_2m_mp); reveal(container_thread_wf);
-            lemma_thread_effective_quota_2m_fold_sum_eq_forall();
-            lemma_thread_pending_2m_folds_eq_forall(post.ctn_mp, pre.thr_mp, post.thr_mp);
+            container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_2m_mp);
         };
         assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp)) by {
-            reveal(container_process_allocator_quota_1g_wf); reveal(container_thread_wf);
-            lemma_thread_effective_quota_1g_fold_sum_eq_forall();
-            lemma_thread_pending_1g_folds_eq_forall(post.ctn_mp, pre.thr_mp, post.thr_mp);
+            container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_1g_mp);
         };
     };
 }

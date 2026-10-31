@@ -117,10 +117,57 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             post.wf_mapping_2m(),
             post.tables_reachable_wf(),
     {
+        Self::remove_l4_entry_eof_wf_mapping_4k(pre, post, target_l4i, target_l3_p);
+        Self::remove_l4_entry_eof_wf_mapping_2m(pre, post, target_l4i, target_l3_p);
+        Self::remove_l4_entry_eof_tables_reachable_wf(pre, post, target_l4i, target_l3_p);
+    }
+
+    /// EOF closure of `remove_l4_entry` for `wf_mapping_4k`.
+    proof fn remove_l4_entry_eof_wf_mapping_4k(pre: Self, post: Self, target_l4i: L4Index, target_l3_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pre.spec_resolve_mapping_l4(target_l4i) is Some,
+            pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
+            forall|i: L3Index| #![trigger pre.spec_resolve_mapping_l3(target_l4i, i)] pei_valid(i) ==> pre.spec_resolve_mapping_l3(target_l4i, i) is None,
+            Self::remove_l4_entry_eof_transition_framing(pre, post, target_l4i, target_l3_p),
+        ensures
+            post.wf_mapping_4k(),
+    {
         reveal(PageTableC::remove_l4_entry_eof_transition_framing);
-        assert(post.wf_mapping_4k()) by { reveal(PageTableC::wf_mapping_4k); reveal(PageTableHigher::disjoint_l4); };
-        assert(post.wf_mapping_2m()) by { reveal(PageTableC::wf_mapping_2m); reveal(PageTableHigher::disjoint_l4); };
-        assert(post.tables_reachable_wf()) by { reveal(PageTableC::tables_reachable_wf); reveal(PageTableHigher::disjoint_l4); };
+        reveal(PageTableC::wf_mapping_4k); reveal(PageTableHigher::disjoint_l4);
+    }
+
+    /// EOF closure of `remove_l4_entry` for `wf_mapping_2m`.
+    proof fn remove_l4_entry_eof_wf_mapping_2m(pre: Self, post: Self, target_l4i: L4Index, target_l3_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pre.spec_resolve_mapping_l4(target_l4i) is Some,
+            pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
+            forall|i: L3Index| #![trigger pre.spec_resolve_mapping_l3(target_l4i, i)] pei_valid(i) ==> pre.spec_resolve_mapping_l3(target_l4i, i) is None,
+            Self::remove_l4_entry_eof_transition_framing(pre, post, target_l4i, target_l3_p),
+        ensures
+            post.wf_mapping_2m(),
+    {
+        reveal(PageTableC::remove_l4_entry_eof_transition_framing);
+        reveal(PageTableC::wf_mapping_2m); reveal(PageTableHigher::disjoint_l4);
+    }
+
+    /// EOF closure of `remove_l4_entry` for `tables_reachable_wf`.
+    proof fn remove_l4_entry_eof_tables_reachable_wf(pre: Self, post: Self, target_l4i: L4Index, target_l3_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end() <= target_l4i && pei_valid(target_l4i),
+            pre.spec_resolve_mapping_l4(target_l4i) is Some,
+            pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
+            forall|i: L3Index| #![trigger pre.spec_resolve_mapping_l3(target_l4i, i)] pei_valid(i) ==> pre.spec_resolve_mapping_l3(target_l4i, i) is None,
+            Self::remove_l4_entry_eof_transition_framing(pre, post, target_l4i, target_l3_p),
+        ensures
+            post.tables_reachable_wf(),
+    {
+        reveal(PageTableC::remove_l4_entry_eof_transition_framing);
+        reveal(PageTableC::tables_reachable_wf); reveal(PageTableHigher::disjoint_l4);
     }
 
     /// EOF closure of `remove_l4_entry`: `wf_window_locks`, kept apart from the walk leaves because its index roundtrip

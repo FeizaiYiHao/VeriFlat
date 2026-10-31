@@ -66,6 +66,136 @@ pub(crate) open spec fn kill_container_cpus_eof_transition_framing(
     &&& cpu_offline_requests_of(new_table) == cpu_offline_requests_of(old_table).update(moved as int, false)
 }
 
+proof fn kill_container_cpus_eof_subsystems_inv(
+    pre: KernelK, post: KernelK, source: RwLockContainerPtr, target: RwLockContainerPtr, source_set: RwLockCpuSetPtr, target_set: RwLockCpuSetPtr,
+    flags_ptr: RwLockCpuOfflineFlagsPtr, moved: CpuId, depth: usize, closed: bool,
+)
+    requires
+        pre.inv(),
+        kill_container_cpus_eof_transition_framing(pre, post, source_set, target_set, flags_ptr, moved, target, depth, closed),
+        index_valid(NUM_CPUS, moved),
+        source != target,
+        source_set != target_set,
+        pre.ctn_mp.dom().contains(source),
+        pre.ctn_mp.dom().contains(target),
+        pre.ctn_mp.spec_index(source).view_rodata().view().cpu_set == source_set,
+        pre.ctn_mp.spec_index(target).view_rodata().view().cpu_set == target_set,
+        pre.ctn_mp.spec_index(target).view_rodata().view().depth == depth,
+        pre.ctn_mp.spec_index(source).view_ghost().owned_processes.view().is_empty(),
+        pre.cpu_set_mp.dom().contains(source_set),
+        pre.cpu_set_mp.dom().contains(target_set),
+        pre.cpu_set_mp.spec_index(source_set).view().owned_cpus.view().contains(moved),
+        closed == pre.cpu_set_mp.spec_index(source_set).view().owned_cpus.closed_view().contains(moved),
+        !pre.cpu_set_mp.spec_index(target_set).view().owned_cpus.view().contains(moved),
+        pre.cpu_arr.spec_index(moved).view().view().view().owning_container == source,
+        closed == pre.cpu_arr.spec_index(moved).view().view().view().state is Off,
+        !(pre.cpu_arr.spec_index(moved).view().view().view().state is Running),
+        flags_ptr == cpu_offline_flags_ptr(source),
+        pre.cpu_offline_mp.dom().contains(flags_ptr),
+        post.cpu_arr.inv(),
+        post.cpu_set_mp.perms_wf(),
+        post.cpu_set_mp.spec_index(source_set).view().owned_cpus.wf(),
+        post.cpu_set_mp.spec_index(target_set).view().owned_cpus.wf(),
+        post.cpu_offline_mp.perms_wf(),
+        post.cpu_offline_mp.spec_index(flags_ptr).inv(),
+    ensures post.subsystems_inv(),
+{
+    reveal(kill_container_cpus_eof_transition_framing);
+    assert(post.cpu_arr.spec_index(moved).view().view().tlb_dirty_bitmap() == pre.cpu_arr.spec_index(moved).view().view().tlb_dirty_bitmap());
+    assert(post.subsystems_inv()) by {
+        reveal(cpu_set_perms_wf); reveal(cpu_array_wf); reveal(cpu_hw_cr3_pcid_wf); reveal(cpu_offline_flags_wf); reveal(container_cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf); reveal(cpu_op_wf);
+    };
+}
+
+proof fn kill_container_cpus_eof_process_management_inv(
+    pre: KernelK, post: KernelK, source: RwLockContainerPtr, target: RwLockContainerPtr, source_set: RwLockCpuSetPtr, target_set: RwLockCpuSetPtr,
+    flags_ptr: RwLockCpuOfflineFlagsPtr, moved: CpuId, depth: usize, closed: bool,
+)
+    requires
+        pre.inv(),
+        kill_container_cpus_eof_transition_framing(pre, post, source_set, target_set, flags_ptr, moved, target, depth, closed),
+        index_valid(NUM_CPUS, moved),
+        source != target,
+        source_set != target_set,
+        pre.ctn_mp.dom().contains(source),
+        pre.ctn_mp.dom().contains(target),
+        pre.ctn_mp.spec_index(source).view_rodata().view().cpu_set == source_set,
+        pre.ctn_mp.spec_index(target).view_rodata().view().cpu_set == target_set,
+        pre.ctn_mp.spec_index(target).view_rodata().view().depth == depth,
+        pre.ctn_mp.spec_index(source).view_ghost().owned_processes.view().is_empty(),
+        pre.cpu_set_mp.dom().contains(source_set),
+        pre.cpu_set_mp.dom().contains(target_set),
+        pre.cpu_set_mp.spec_index(source_set).view().owned_cpus.view().contains(moved),
+        closed == pre.cpu_set_mp.spec_index(source_set).view().owned_cpus.closed_view().contains(moved),
+        !pre.cpu_set_mp.spec_index(target_set).view().owned_cpus.view().contains(moved),
+        pre.cpu_arr.spec_index(moved).view().view().view().owning_container == source,
+        closed == pre.cpu_arr.spec_index(moved).view().view().view().state is Off,
+        !(pre.cpu_arr.spec_index(moved).view().view().view().state is Running),
+        flags_ptr == cpu_offline_flags_ptr(source),
+        pre.cpu_offline_mp.dom().contains(flags_ptr),
+        post.cpu_arr.inv(),
+        post.cpu_set_mp.perms_wf(),
+        post.cpu_set_mp.spec_index(source_set).view().owned_cpus.wf(),
+        post.cpu_set_mp.spec_index(target_set).view().owned_cpus.wf(),
+        post.cpu_offline_mp.perms_wf(),
+        post.cpu_offline_mp.spec_index(flags_ptr).inv(),
+        post.subsystems_inv(),
+    ensures post.process_management_inv(),
+{
+    reveal(kill_container_cpus_eof_transition_framing);
+    assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
+    assert(container_cpu_offline_flags_wf(post.ctn_mp, post.cpu_offline_mp)) by { reveal(container_cpu_offline_flags_wf); };
+    assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by { reveal(cpu_set_kill_mark_wf); };
+    assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); reveal(cpu_set_perms_wf); };
+    assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); };
+    assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { reveal(thread_cpu_wf); };
+}
+
+proof fn kill_container_cpus_eof_memory_and_tlb(
+    pre: KernelK, post: KernelK, source: RwLockContainerPtr, target: RwLockContainerPtr, source_set: RwLockCpuSetPtr, target_set: RwLockCpuSetPtr,
+    flags_ptr: RwLockCpuOfflineFlagsPtr, moved: CpuId, depth: usize, closed: bool,
+)
+    requires
+        pre.inv(),
+        kill_container_cpus_eof_transition_framing(pre, post, source_set, target_set, flags_ptr, moved, target, depth, closed),
+        index_valid(NUM_CPUS, moved),
+        source != target,
+        source_set != target_set,
+        pre.ctn_mp.dom().contains(source),
+        pre.ctn_mp.dom().contains(target),
+        pre.ctn_mp.spec_index(source).view_rodata().view().cpu_set == source_set,
+        pre.ctn_mp.spec_index(target).view_rodata().view().cpu_set == target_set,
+        pre.ctn_mp.spec_index(target).view_rodata().view().depth == depth,
+        pre.ctn_mp.spec_index(source).view_ghost().owned_processes.view().is_empty(),
+        pre.cpu_set_mp.dom().contains(source_set),
+        pre.cpu_set_mp.dom().contains(target_set),
+        pre.cpu_set_mp.spec_index(source_set).view().owned_cpus.view().contains(moved),
+        closed == pre.cpu_set_mp.spec_index(source_set).view().owned_cpus.closed_view().contains(moved),
+        !pre.cpu_set_mp.spec_index(target_set).view().owned_cpus.view().contains(moved),
+        pre.cpu_arr.spec_index(moved).view().view().view().owning_container == source,
+        closed == pre.cpu_arr.spec_index(moved).view().view().view().state is Off,
+        !(pre.cpu_arr.spec_index(moved).view().view().view().state is Running),
+        flags_ptr == cpu_offline_flags_ptr(source),
+        pre.cpu_offline_mp.dom().contains(flags_ptr),
+        post.cpu_arr.inv(),
+        post.cpu_set_mp.perms_wf(),
+        post.cpu_set_mp.spec_index(source_set).view().owned_cpus.wf(),
+        post.cpu_set_mp.spec_index(target_set).view().owned_cpus.wf(),
+        post.cpu_offline_mp.perms_wf(),
+        post.cpu_offline_mp.spec_index(flags_ptr).inv(),
+        post.subsystems_inv(),
+        post.process_management_inv(),
+    ensures post.inv(),
+{
+    reveal(kill_container_cpus_eof_transition_framing);
+    assert(post.cpu_arr.spec_index(moved).view().view().tlb_dirty_bitmap() == pre.cpu_arr.spec_index(moved).view().view().tlb_dirty_bitmap());
+    assert(post.memory_management_inv()) by { assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); }; };
+    assert(post.inv()) by {
+        reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match);
+        reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(tlb_wf_spec);
+    };
+}
+
 /// Closes every kernel invariant after one cpu move of the container kill from the entry invariants, the summary, and
 /// the representation facts the set, cell, and cpu updates guarantee.
 pub(crate) proof fn kill_container_cpus_eof(
@@ -100,26 +230,10 @@ pub(crate) proof fn kill_container_cpus_eof(
         post.cpu_set_mp.spec_index(target_set).view().owned_cpus.wf(),
         post.cpu_offline_mp.perms_wf(),
         post.cpu_offline_mp.spec_index(flags_ptr).inv(),
-    ensures
-        post.inv(),
+    ensures post.inv(),
 {
-    reveal(kill_container_cpus_eof_transition_framing);
-    assert(post.cpu_arr.spec_index(moved).view().view().tlb_dirty_bitmap() == pre.cpu_arr.spec_index(moved).view().view().tlb_dirty_bitmap());
-    assert(post.subsystems_inv()) by {
-        reveal(cpu_set_perms_wf); reveal(cpu_array_wf); reveal(cpu_hw_cr3_pcid_wf); reveal(cpu_offline_flags_wf); reveal(container_cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf); reveal(cpu_op_wf);
-    };
-    assert(post.memory_management_inv()) by { assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); }; };
-    assert(post.process_management_inv()) by {
-        assert(container_cpu_set_wf(post.ctn_mp, post.cpu_set_mp)) by { reveal(container_cpu_set_wf); };
-        assert(container_cpu_offline_flags_wf(post.ctn_mp, post.cpu_offline_mp)) by { reveal(container_cpu_offline_flags_wf); };
-        assert(cpu_set_kill_mark_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp)) by { reveal(cpu_set_kill_mark_wf); };
-        assert(container_cpu_wf(post.ctn_mp, post.cpu_set_mp, post.cpu_arr)) by { reveal(container_cpu_wf); reveal(container_cpu_set_wf); reveal(cpu_set_perms_wf); };
-        assert(process_cpu_wf(post.prc_mp, post.cpu_arr)) by { reveal(process_cpu_wf); };
-        assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { reveal(thread_cpu_wf); };
-    };
-    assert(post.inv()) by {
-        reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_not_in_dirty_map_imply_not_in_tlb); reveal(cpu_dirty_map_proc_pcid_match);
-        reveal(cpu_dirty_map_contains_pagetable_pcid_match); reveal(tlb_wf_spec);
-    };
+    kill_container_cpus_eof_subsystems_inv(pre, post, source, target, source_set, target_set, flags_ptr, moved, depth, closed);
+    kill_container_cpus_eof_process_management_inv(pre, post, source, target, source_set, target_set, flags_ptr, moved, depth, closed);
+    kill_container_cpus_eof_memory_and_tlb(pre, post, source, target, source_set, target_set, flags_ptr, moved, depth, closed);
 }
 } // verus!

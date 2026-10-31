@@ -2,6 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::unmap_4k_remove::{remove_4k_mapping_without_free, remove_4k_mapping_without_free_in_window};
 use super::unmap_4k_reclaim_last::reclaim_last_4k_mapping;
+use super::unmap_4k_mapped_page_ptr::unmap_4k_mapped_page_ptr;
 
 verus! {
 /// Reclaim the hidden 4K leaf `va` of the write-held `pagetable` after its stale TLB entries are flushed: lock its window
@@ -242,20 +243,8 @@ fn reclaim_unmapped_4k_page_under_window(
         final(krnl).pt_mp.spec_index(pagetable).view() == old(krnl).pt_mp.spec_index(pagetable).view(),
 {
     let indices = va2index(va);
-    proof {
-        spec_va_4k_index_roundtrip_at(va, indices.0, indices.1, indices.2, indices.3);
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
-        pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).wf_mapping_4k_at(indices.0, indices.1, indices.2, indices.3);
-    }
-    let page_ptr;
-    {
-        let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), pagetable_perm);
-        let tracked lower = krnl.pt_lower.borrow().tracked_borrow(pagetable);
-        let l4 = pt.get_entry_l4(indices.0).unwrap();
-        let l3 = pt.get_entry_l3(indices.0, indices.1, &l4).unwrap();
-        let l2 = pt.get_entry_l2(Tracked(lower), indices.0, indices.1, indices.2, &l3).unwrap();
-        page_ptr = pt.get_entry_l1(Tracked(lower), indices.0, indices.1, indices.2, indices.3, &l3, &l2).unwrap().addr;
-    }
+    proof { spec_va_4k_index_roundtrip_at(va, indices.0, indices.1, indices.2, indices.3); }
+    let page_ptr = unmap_4k_mapped_page_ptr(krnl, pagetable, va, indices, Tracked(&*lctx), pagetable_perm);
     let page_index = page_ptr2page_index(page_ptr);
     proof { mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, va); }
     let Tracked(page_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));
@@ -390,15 +379,7 @@ pub fn reclaim_unmapped_4k_page_in_window(
         pagetable_window_typed_lock_map_aligned_at(krnl.pt_mp, krnl.pt_lower.view(), lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id(), pagetable, window_of(va));
         pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).wf_mapping_4k_at(indices.0, indices.1, indices.2, indices.3);
     }
-    let page_ptr;
-    {
-        let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), pagetable_perm);
-        let tracked lower = krnl.pt_lower.borrow().tracked_borrow(pagetable);
-        let l4 = pt.get_entry_l4(indices.0).unwrap();
-        let l3 = pt.get_entry_l3(indices.0, indices.1, &l4).unwrap();
-        let l2 = pt.get_entry_l2(Tracked(lower), indices.0, indices.1, indices.2, &l3).unwrap();
-        page_ptr = pt.get_entry_l1(Tracked(lower), indices.0, indices.1, indices.2, indices.3, &l3, &l2).unwrap().addr;
-    }
+    let page_ptr = unmap_4k_mapped_page_ptr(krnl, pagetable, va, indices, Tracked(&*lctx), pagetable_perm);
     let page_index = page_ptr2page_index(page_ptr);
     proof { mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, va); }
     let Tracked(page_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));

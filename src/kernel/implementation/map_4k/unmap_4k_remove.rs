@@ -1,5 +1,6 @@
 use vstd::prelude::*;
 use crate::*;
+use super::unmap_4k_mapped_page_ptr::unmap_4k_leaf_table_ptrs;
 #[cfg(verus_keep_ghost)]
 use super::unmap_4k_remove_eof::*;
 
@@ -52,7 +53,8 @@ pub fn remove_4k_mapping_without_free(krnl: &mut KernelK, pagetable: RwLockPageT
         final(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end == old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end,
         final(krnl).pt_mp.spec_index(pagetable).view() == old(krnl).pt_mp.spec_index(pagetable).view(),
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks,
-        forall|p: PageMapPtr, i: L2Index| #![trigger pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i)] pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i),
+        forall|p: PageMapPtr, i: L2Index| #![trigger pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i)]
+            pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i),
         final(krnl).pg_arr.entries_unchanged_except(&old(krnl).pg_arr, page_ptr2page_index(page_ptr)),
         final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().ref_count == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().ref_count - 1,
         final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().mappings() == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().mappings().remove((pagetable, va)),
@@ -76,17 +78,7 @@ pub fn remove_4k_mapping_without_free(krnl: &mut KernelK, pagetable: RwLockPageT
             broadcast use spec_va_2m_valid_index_roundtrip; spec_index2va_injective();
         };
     }
-    let l2_ptr;
-    let l1_ptr;
-    {
-        let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), pagetable_perm);
-        let tracked lower = krnl.pt_lower.borrow().tracked_borrow(pagetable);
-        let l4 = pt.get_entry_l4(indices.0).unwrap();
-        let l3 = pt.get_entry_l3(indices.0, indices.1, &l4).unwrap();
-        let l2 = pt.get_entry_l2(Tracked(lower), indices.0, indices.1, indices.2, &l3).unwrap();
-        l2_ptr = l3.addr;
-        l1_ptr = l2.addr;
-    }
+    let (l2_ptr, l1_ptr) = unmap_4k_leaf_table_ptrs(krnl, pagetable, va, indices, Tracked(&*lctx), pagetable_perm);
     assert(index_valid(NUM_PAGES, page_index) && krnl.pg_arr.inv() && krnl.pg_arr.spec_index(page_index).view().inv() && krnl.pg_arr.spec_index(page_index).view().view().state is Mapped4k && krnl.pg_arr.spec_index(page_index).view().view().mappings().contains((pagetable, va))) by {
         page_ptr_valid_imply_page_index_valid(); page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, page_index); mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, va);
     };
@@ -156,7 +148,8 @@ pub fn remove_4k_mapping_without_free_in_window(krnl: &mut KernelK, pagetable: R
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).mapping_1g() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_1g(),
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).page_closure() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).page_closure(),
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks,
-        forall|p: PageMapPtr, i: L2Index| #![trigger pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i)] pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i),
+        forall|p: PageMapPtr, i: L2Index| #![trigger pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i)]
+            pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(p, i),
         final(krnl).pg_arr.entries_unchanged_except(&old(krnl).pg_arr, page_ptr2page_index(page_ptr)),
         final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().ref_count == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().ref_count - 1,
         final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().mappings() == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().mappings().remove((pagetable, va)),
@@ -180,17 +173,7 @@ pub fn remove_4k_mapping_without_free_in_window(krnl: &mut KernelK, pagetable: R
             broadcast use spec_va_2m_valid_index_roundtrip; spec_index2va_injective();
         };
     }
-    let l2_ptr;
-    let l1_ptr;
-    {
-        let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), pagetable_perm);
-        let tracked lower = krnl.pt_lower.borrow().tracked_borrow(pagetable);
-        let l4 = pt.get_entry_l4(indices.0).unwrap();
-        let l3 = pt.get_entry_l3(indices.0, indices.1, &l4).unwrap();
-        let l2 = pt.get_entry_l2(Tracked(lower), indices.0, indices.1, indices.2, &l3).unwrap();
-        l2_ptr = l3.addr;
-        l1_ptr = l2.addr;
-    }
+    let (l2_ptr, l1_ptr) = unmap_4k_leaf_table_ptrs(krnl, pagetable, va, indices, Tracked(&*lctx), pagetable_perm);
     assert(index_valid(NUM_PAGES, page_index) && krnl.pg_arr.inv() && krnl.pg_arr.spec_index(page_index).view().inv() && krnl.pg_arr.spec_index(page_index).view().view().state is Mapped4k && krnl.pg_arr.spec_index(page_index).view().view().mappings().contains((pagetable, va))) by {
         page_ptr_valid_imply_page_index_valid(); page_array_wf_map(krnl.pg_arr); page_array_wf_at(krnl.pg_arr, page_index); mapped_4k_page_pagetable_wf_pagetable_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable, va);
     };
