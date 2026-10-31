@@ -9,7 +9,7 @@ verus! {
     pub type PageTableLowerMap = Map<RwLockPageTableRoot, PageTableLower<PT_TYPE>>;
     pub type IommuTableLockedMap = LockedMap<RwLockPageTableRoot, PageTable<IOMMU_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE>;
     pub type PageLockedArray = LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE>;
-    pub type CpuLockedArray = LockedArray<Cpu, (), Option<CpuId>, NUM_CPUS, CPU_HAS_KILL_STATE>;
+    pub type CpuLockedArray = LockedArray<Cpu, (), Option<CpuId>, NUM_CPUS, CPU_HAS_KILL_STATE, TokenCells<Cpu, (), Option<CpuId>, NUM_CPUS, CPU_HAS_KILL_STATE>>;
     pub type ContainerLockedMap = LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhost, CONTAINER_HAS_KILL_STATE>;
     pub type CpuSetLockedMap = LockedMap<RwLockCpuSetPtr, CpuSet, (), (), CPU_SET_HAS_KILL_STATE>;
     pub type PcidAllocatorLockedMap = LockedMap<RwLockPcidAllocatorPtr, PcidAllocator, (), (), PCID_ALLOCATOR_HAS_KILL_STATE>;

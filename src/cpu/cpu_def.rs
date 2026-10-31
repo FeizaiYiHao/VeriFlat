@@ -2,6 +2,8 @@ use vstd::prelude::*;
 use crate::*;
 use super::cpu_cr3_pcid::CpuCr3Pcid;
 use super::cpu_def_eof::*;
+use super::cpu_cells_t::*;
+use vstd::simple_pptr::*;
 verus! {
 #[derive(Clone, Copy)]
 pub enum CpuState {
@@ -143,34 +145,39 @@ impl Cpu {
                     &&& ret.spec_index(cpu_id).view().view().view().current_pcid == KERNEL_DEFAULT_PCID
                 },
     {
-        let mut cpus: Array<RwLock<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>, NUM_CPUS> = Array::new();
+        let base = cpu_cells_base();
+        let tracked mut perms = Map::<int, PointsTo<RwLock<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>>>::tracked_empty();
         let mut cpu_id = 0;
         while cpu_id < NUM_CPUS
             invariant
                 0 <= cpu_id <= NUM_CPUS,
-                cpus.wf(),
+                base == cpu_cells_base_spec(),
                 page_ptr_valid(default_cr3),
-                forall|old_cpu: CpuId|
-                    #![trigger cpus.spec_index(old_cpu)]
-                    old_cpu < cpu_id ==> {
-                        &&& cpus.spec_index(old_cpu).inv()
-                        &&& !cpus.spec_index(old_cpu).locked()
-                        &&& !cpus.spec_index(old_cpu).being_killed()
-                        &&& cpus.spec_index(old_cpu).view_ghost() is None
-                        &&& cpus.spec_index(old_cpu).view().kernel_call_perm() == Some(old_cpu)
-                        &&& cpus.spec_index(old_cpu).view().view().owning_container == owning_container
-                        &&& cpus.spec_index(old_cpu).view().view().container_depth == 0
-                        &&& cpus.spec_index(old_cpu).view().view().state == if old_cpu == 0 { CpuState::Idle } else { CpuState::Off }
-                        &&& cpus.spec_index(old_cpu).view().view().current_cr3 == default_cr3
-                        &&& cpus.spec_index(old_cpu).view().view().current_pcid == KERNEL_DEFAULT_PCID
+                forall|i: int| #![trigger perms.dom().contains(i)] perms.dom().contains(i) <==> 0 <= i < cpu_id,
+                forall|old_cpu: int|
+                    #![trigger perms.index(old_cpu)]
+                    0 <= old_cpu < cpu_id ==> {
+                        &&& perms.index(old_cpu).is_init()
+                        &&& perms.index(old_cpu).addr() == lock_cell_addr::<RwLock<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>>(base, old_cpu)
+                        &&& perms.index(old_cpu).value().inv()
+                        &&& !perms.index(old_cpu).value().locked()
+                        &&& !perms.index(old_cpu).value().being_killed()
+                        &&& perms.index(old_cpu).value().view_ghost() is None
+                        &&& perms.index(old_cpu).value().view().kernel_call_perm() == Some(old_cpu as CpuId)
+                        &&& perms.index(old_cpu).value().view().view().owning_container == owning_container
+                        &&& perms.index(old_cpu).value().view().view().container_depth == 0
+                        &&& perms.index(old_cpu).value().view().view().state == if old_cpu == 0 { CpuState::Idle } else { CpuState::Off }
+                        &&& perms.index(old_cpu).value().view().view().current_cr3 == default_cr3
+                        &&& perms.index(old_cpu).value().view().view().current_pcid == KERNEL_DEFAULT_PCID
                     },
             decreases NUM_CPUS - cpu_id,
         {
             let cpu = if cpu_id == 0 { Self::new_idle(owning_container, 0, default_cr3, cpu_id) } else { Self::new_off(owning_container, 0, default_cr3, cpu_id) };
-            cpus.set(cpu_id, RwLock::new_unlocked(cpu, (), Ghost(None)));
+            let Tracked(cell) = cpu_cell_init(cpu_id, RwLock::new_unlocked(cpu, (), Ghost(None)));
+            proof { perms.tracked_insert(cpu_id as int, cell); }
             cpu_id = cpu_id + 1;
         }
-        LockedArray::from_array(cpus)
+        LockedArray::from_token_cells(TokenCells { base, perms: Tracked(perms) })
     }
 
     pub closed spec fn view(&self) -> CpuView {

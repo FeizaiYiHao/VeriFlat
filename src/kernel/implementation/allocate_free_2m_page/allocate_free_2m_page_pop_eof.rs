@@ -487,7 +487,19 @@ proof fn pop_stage_2m_page_eof_free_4k_pages(pre: KernelK, post: KernelK, page: 
         container_allocator_cpu_cache_free_4k_page_wf(post.allc_4k_mp, post.pg_arr),
 {
     assert(container_allocator_global_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf); };
-    assert(container_allocator_cpu_cache_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf); };
+    assert(container_allocator_cpu_cache_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by {
+        assert forall|k: PageIndex| index_valid(NUM_PAGES, k) && (post.pg_arr.spec_index(k).view().view().state matches PageState::Free4k { allocator_ptr: _, state: FreePageAllocatorState::PreCpuCache { .. } }) implies ({
+            let allocator_ptr_4k = post.pg_arr.spec_index(k).view().view().state->Free4k_allocator_ptr.view();
+            let cpu_id = post.pg_arr.spec_index(k).view().view().state->Free4k_state->PreCpuCache_cpu_id;
+            &&& index_valid(NUM_CPUS, cpu_id)
+            &&& post.allc_4k_mp.dom().contains(allocator_ptr_4k)
+            &&& post.allc_4k_mp.spec_index(allocator_ptr_4k).owning_container == post.pg_arr.spec_index(k).view().view().owning_container
+            &&& post.allc_4k_mp.spec_index(allocator_ptr_4k).cpu_caches.spec_index(cpu_id).view().view().view().contains(page_index2page_ptr(k))
+            &&& post.allc_4k_mp.spec_index(allocator_ptr_4k).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(post.pg_arr.spec_index(k).view().view().free_list_node_storage.addr())
+            &&& post.allc_4k_mp.spec_index(allocator_ptr_4k).cpu_caches.spec_index(cpu_id).view().view().map().spec_index(post.pg_arr.spec_index(k).view().view().free_list_node_storage.addr()) == page_index2page_ptr(k)
+        }) by { container_allocator_free_4k_page_wf_at(pre.allc_4k_mp, pre.pg_arr, k); };
+        reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf);
+    };
 }
 
 proof fn pop_stage_2m_page_eof_free_1g_pages(pre: KernelK, post: KernelK, page: PagePtr)
