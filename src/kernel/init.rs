@@ -978,7 +978,7 @@ pub fn finish_init_from_boot(
     let irt_addr = irt_cell_base();
     let irt_base = irt_addr + VTD_TABLE_SIZE;
     assert(VTD_TABLE_SIZE == 4096) by (compute);
-    let irt = TokenLock::from_token(irt_addr, irt_cell_init(RwLock::new_unlocked(IommuRootTable::new_disabled(irt_base, layout.root_process), (), Ghost(()))));
+    let irt = TokenLock::from_token(irt_cell_init(RwLock::new_unlocked(IommuRootTable::new_disabled(irt_base, layout.root_process), (), Ghost(()))));
 
     let process_rodata = ReadOnlyNode::new(ProcessRO {
         owning_container: layout.root_container, container_depth: 0, parent: None, depth: 0,

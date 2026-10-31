@@ -25,6 +25,11 @@ pub fn cpu_cells_base() -> (ret: usize)
     CPU_CELLS.0.get() as usize
 }
 
+impl TokenCellBase for RwLock<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE> {
+    open spec fn cell_base_spec() -> usize { cpu_cells_base_spec() }
+    fn cell_base() -> (ret: usize) { cpu_cells_base() }
+}
+
 /// TCB: write `lock` into cpu lock cell `i` and mint the cell's points-to token; init only, once per cell.
 #[verifier::external_body]
 pub(crate) fn cpu_cell_init(i: usize, lock: RwLock<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>) -> (ret: Tracked<PointsTo<RwLock<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>>>)

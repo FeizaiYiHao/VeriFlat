@@ -23,4 +23,9 @@ pub fn page_cells_base() -> (ret: usize)
 {
     PAGE_CELLS.0.get() as usize
 }
+
+impl TokenCellBase for RwLock<Page, (), (), NO_KILL_STATE> {
+    open spec fn cell_base_spec() -> usize { page_cells_base_spec() }
+    fn cell_base() -> (ret: usize) { page_cells_base() }
+}
 }

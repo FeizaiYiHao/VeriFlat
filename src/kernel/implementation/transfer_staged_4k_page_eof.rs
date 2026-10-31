@@ -71,10 +71,13 @@ proof fn staged_4k_page_container_transfer_eof_container_tree(pre: KernelK, post
 {
     hide(Seq::contains);
     reveal(transfer_staged_4k_page_to_child_container_eof_transition_framing);
-    assert(container_tree_wf(post.rt_ctn, post.ctn_mp)) by {
-        reveal(container_perms_wf); reveal(LinkedList::wf_value_list); reveal(container_root_wf); reveal(container_children_parent_wf); reveal(containers_linkedlist_wf);
-        reveal(container_children_depth_wf); reveal(container_subtree_set_wf); reveal(container_uppertree_seq_wf); reveal(container_subtree_set_exclusive);
-    };
+    assert(container_root_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_root_wf); };
+    assert(container_children_parent_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_children_parent_wf); };
+    assert(containers_linkedlist_wf(post.rt_ctn, post.ctn_mp)) by { reveal(containers_linkedlist_wf); };
+    assert(container_children_depth_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_children_depth_wf); };
+    assert(container_subtree_set_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_subtree_set_wf); };
+    assert(container_uppertree_seq_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_uppertree_seq_wf); };
+    assert(container_subtree_set_exclusive(post.rt_ctn, post.ctn_mp)) by { reveal(container_subtree_set_exclusive); };
     assert(post.ctn_mp.spec_index(post.rt_ctn).view_ghost().owned_processes.view().contains(post.ctn_mp.spec_index(post.rt_ctn).view().root_process)) by { reveal(container_root_wf); };
 }
 

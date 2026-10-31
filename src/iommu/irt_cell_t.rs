@@ -26,6 +26,11 @@ pub fn irt_cell_base() -> (ret: usize)
     IRT_CELL.0.get() as usize
 }
 
+impl TokenCellBase for RwLock<IommuRootTable, (), (), NO_KILL_STATE> {
+    open spec fn cell_base_spec() -> usize { irt_cell_base_spec() }
+    fn cell_base() -> (ret: usize) { irt_cell_base() }
+}
+
 /// TCB: write `lock` into the root-table lock cell and mint the cell's points-to token; init only, once.
 #[verifier::external_body]
 pub(crate) fn irt_cell_init(lock: RwLock<IommuRootTable, (), (), NO_KILL_STATE>) -> (ret: Tracked<PointsTo<RwLock<IommuRootTable, (), (), NO_KILL_STATE>>>)

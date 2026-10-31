@@ -65,7 +65,21 @@ pub(super) proof fn attach_endpoint_reference_and_unlock_eof(pre: KernelK, post:
         assert(thread_caller_callee_wf(post.thr_mp)) by { thread_caller_callee_wf_preserved_for_call_link_eq(pre.thr_mp, post.thr_mp); };
         assert(thread_dangling_chain_end_wf(post.thr_mp)) by { thread_dangling_chain_end_wf_from_dangling_chain_fields_unchanged(pre.thr_mp, post.thr_mp); };
         assert(container_endpoint_wf(post.ctn_mp, post.ep_mp)) by { container_endpoint_wf_preserved_for_endpoint_owner_eq(pre.ctn_mp, post.ctn_mp, pre.ep_mp, post.ep_mp); };
-        assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); };
+        assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by {
+            assert forall|t_ptr: RwLockThreadPtr, edp_index: EndpointIdx| #![trigger post.thr_mp.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int)]
+                post.thr_mp.dom().contains(t_ptr) && edp_idx_valid(edp_index) && post.thr_mp.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int) is Some implies ({
+                let e_ptr = post.thr_mp.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int).unwrap();
+                &&& post.ep_mp.dom().contains(e_ptr)
+                &&& post.ep_mp.spec_index(e_ptr).view().owning_threads.view().contains((t_ptr, edp_index))
+            }) by { thread_endpoint_ref_counter_wf_thread_at(pre.thr_mp, pre.ep_mp, t_ptr, edp_index); };
+            assert forall|e_ptr: RwLockEndpointPtr, t_ptr: RwLockThreadPtr, edp_index: EndpointIdx| #![trigger post.ep_mp.spec_index(e_ptr).view().owning_threads.view().contains((t_ptr, edp_index))]
+                post.ep_mp.dom().contains(e_ptr) && post.ep_mp.spec_index(e_ptr).view().owning_threads.view().contains((t_ptr, edp_index)) implies ({
+                &&& post.thr_mp.dom().contains(t_ptr)
+                &&& edp_idx_valid(edp_index)
+                &&& post.thr_mp.spec_index(t_ptr).view().endpoint_descriptors.view().spec_index(edp_index as int) == Some(e_ptr)
+            }) by { thread_endpoint_ref_counter_wf_endpoint_at(pre.thr_mp, pre.ep_mp, e_ptr, t_ptr, edp_index); };
+            reveal(thread_endpoint_ref_counter_wf);
+        };
         assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { thread_endpoint_queue_wf_preserved_for_queue_fields(pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
         assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { reveal(container_thread_endpoint_wf); reveal(thread_endpoint_ref_counter_wf); };
         assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { container_thread_scheduler_wf_preserved_for_scheduled_thread_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, post.sched_mp); };

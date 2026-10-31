@@ -382,24 +382,23 @@ pub fn has_kill_state_wunlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrai
     unsafe { (*p).lock.wunlock(); }
 }
 
-/// `RwLock::wlock_unless_killed` of the object at `pptr` under the caller's ordering id `lock_id`, for a lock array
-/// whose minor is the cell index; a marked object returns `None` with its token unchanged.
+/// `RwLock::wlock_unless_killed` of lock array cell `index` at `pptr`, under the ordering id derived from the cell: the
+/// object's owners, the major of its current state, and the cell index as minor; a marked object returns `None` with its
+/// token unchanged.
 #[verifier::external_body]
-pub fn wlock_unless_killed_with_lock_id<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>,
-    Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>)
+pub fn wlock_unless_killed_array_cell<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>,
+    Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, Ghost(index): Ghost<usize>, obj_id: Ghost<KernelObjId>)
     -> (ret: Option<Tracked<LockPerm>>)
+    where RwLock<T, ROT, GhostT, HAS_KILL_STATE>: TokenCellBase
     requires
         pptr.addr() == old(perm).addr(),
+        old(perm).addr() == lock_cell_addr::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>(RwLock::<T, ROT, GhostT, HAS_KILL_STATE>::cell_base_spec(), index as int),
         old(perm).is_init(),
         !(old(perm).value().view_rodata().container_source() is Dynamic),
         !(old(perm).value().view_rodata().process_source() is Dynamic),
         wlock_requires(old(perm).value(), old(lctx)),
-        !old(perm).value().being_killed() ==> {
-            &&& old(perm).value().view().container_depth() == lock_id.view().container
-            &&& old(perm).value().view().process_depth() == lock_id.view().process
-            &&& old(perm).value().view().lock_major_sat(lock_id.view().major)
-            &&& old(lctx).lock_id_acyclic(lock_id.view())
-        },
+        !old(perm).value().being_killed() ==> old(lctx).lock_id_acyclic(LockId {
+            container: old(perm).value().view().container_depth(), process: old(perm).value().view().process_depth(), major: old(perm).value().view().current_lock_major(), minor: seq![index] }),
     ensures
         final(perm).addr() == old(perm).addr(),
         final(perm).is_init(),
@@ -410,31 +409,33 @@ pub fn wlock_unless_killed_with_lock_id<T: LockInvTrait + LockMajorTrait + LockO
         },
         ret is Some ==> {
             &&& old(perm).value().being_killed() == false
-            &&& wlock_ensures(old(perm).value(), final(perm).value(), lock_id.view(), final(lctx), ret.unwrap().view())
-            &&& lock_ensures(old(lctx), final(lctx), lock_id.view(), obj_id.view())
+            &&& wlock_ensures(old(perm).value(), final(perm).value(), LockId {
+                container: old(perm).value().view().container_depth(), process: old(perm).value().view().process_depth(), major: old(perm).value().view().current_lock_major(), minor: seq![index] },
+                final(lctx), ret.unwrap().view())
+            &&& lock_ensures(old(lctx), final(lctx), LockId {
+                container: old(perm).value().view().container_depth(), process: old(perm).value().view().process_depth(), major: old(perm).value().view().current_lock_major(), minor: seq![index] },
+                obj_id.view())
         },
 {
     let p = pptr.addr() as *mut RwLock<T, ROT, GhostT, HAS_KILL_STATE>;
     if unsafe { (*p).lock.wlock_unless_killed() }.is_err() { None } else { Some(Tracked::assume_new()) }
 }
 
-/// `wlock_unless_killed_with_lock_id` that also clears the calling cpu's interrupt flag when it takes the lock.
+/// `wlock_unless_killed_array_cell` that also clears the calling cpu's interrupt flag when it takes the lock.
 #[verifier::external_body]
-pub fn wlock_unless_killed_cli<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>,
-    Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>)
+pub fn wlock_unless_killed_cli_array_cell<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>,
+    Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, Ghost(index): Ghost<usize>, obj_id: Ghost<KernelObjId>)
     -> (ret: Option<Tracked<LockPerm>>)
+    where RwLock<T, ROT, GhostT, HAS_KILL_STATE>: TokenCellBase
     requires
         pptr.addr() == old(perm).addr(),
+        old(perm).addr() == lock_cell_addr::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>(RwLock::<T, ROT, GhostT, HAS_KILL_STATE>::cell_base_spec(), index as int),
         old(perm).is_init(),
         !(old(perm).value().view_rodata().container_source() is Dynamic),
         !(old(perm).value().view_rodata().process_source() is Dynamic),
         wlock_requires(old(perm).value(), old(lctx)),
-        !old(perm).value().being_killed() ==> {
-            &&& old(perm).value().view().container_depth() == lock_id.view().container
-            &&& old(perm).value().view().process_depth() == lock_id.view().process
-            &&& old(perm).value().view().lock_major_sat(lock_id.view().major)
-            &&& old(lctx).lock_id_acyclic(lock_id.view())
-        },
+        !old(perm).value().being_killed() ==> old(lctx).lock_id_acyclic(LockId {
+            container: old(perm).value().view().container_depth(), process: old(perm).value().view().process_depth(), major: old(perm).value().view().current_lock_major(), minor: seq![index] }),
     ensures
         final(perm).addr() == old(perm).addr(),
         final(perm).is_init(),
@@ -445,21 +446,27 @@ pub fn wlock_unless_killed_cli<T: LockInvTrait + LockMajorTrait + LockOwnerIdTra
         },
         ret is Some ==> {
             &&& old(perm).value().being_killed() == false
-            &&& wlock_ensures(old(perm).value(), final(perm).value(), lock_id.view(), final(lctx), ret.unwrap().view())
-            &&& lock_ensures(old(lctx), final(lctx), lock_id.view(), obj_id.view())
+            &&& wlock_ensures(old(perm).value(), final(perm).value(), LockId {
+                container: old(perm).value().view().container_depth(), process: old(perm).value().view().process_depth(), major: old(perm).value().view().current_lock_major(), minor: seq![index] },
+                final(lctx), ret.unwrap().view())
+            &&& lock_ensures(old(lctx), final(lctx), LockId {
+                container: old(perm).value().view().container_depth(), process: old(perm).value().view().process_depth(), major: old(perm).value().view().current_lock_major(), minor: seq![index] },
+                obj_id.view())
         },
 {
     let p = pptr.addr() as *mut RwLock<T, ROT, GhostT, HAS_KILL_STATE>;
     if unsafe { (*p).lock.wlock_unless_killed_cli() }.is_err() { None } else { Some(Tracked::assume_new()) }
 }
 
-/// `RwLock::wunlock` of the object at `pptr`, registered under the caller's ordering id `lock_id`.
+/// `RwLock::wunlock` of lock array cell `index` at `pptr`, registered under the ordering id derived from the cell.
 #[verifier::external_body]
-pub fn wunlock_with_lock_id<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>,
-    Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, lock_id: Ghost<LockId>,
+pub fn has_kill_state_wunlock_array_cell<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>,
+    Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, Ghost(index): Ghost<usize>,
     obj_id: Ghost<KernelObjId>)
+    where RwLock<T, ROT, GhostT, HAS_KILL_STATE>: TokenCellBase
     requires
         pptr.addr() == old(perm).addr(),
+        old(perm).addr() == lock_cell_addr::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>(RwLock::<T, ROT, GhostT, HAS_KILL_STATE>::cell_base_spec(), index as int),
         old(perm).is_init(),
         !(old(perm).value().view_rodata().container_source() is Dynamic),
         !(old(perm).value().view_rodata().process_source() is Dynamic),
@@ -468,25 +475,30 @@ pub fn wunlock_with_lock_id<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
         lock_perm.view().state() is WriteLock,
         lock_perm.view().thread_id() == old(lctx).thread_id(),
         lock_perm.view().lock_id() == old(perm).value().locking_thread()->Write_lock_id,
-        old(lctx).lock_entry_contains(lock_id.view(), obj_id.view()),
+        old(lctx).lock_entry_contains(LockId {
+            container: old(perm).value().view().container_depth(), process: old(perm).value().view().process_depth(), major: old(perm).value().view().current_lock_major(), minor: seq![index] },
+            obj_id.view()),
     ensures
         final(perm).addr() == old(perm).addr(),
         final(perm).is_init(),
         old(perm).value().being_killed() == final(perm).value().being_killed(),
         wunlock_ensures(old(perm).value(), final(perm).value()),
-        unlock_ensures(old(lctx), final(lctx), obj_id.view(), lock_id.view()),
+        unlock_ensures(old(lctx), final(lctx), obj_id.view(), LockId {
+            container: old(perm).value().view().container_depth(), process: old(perm).value().view().process_depth(), major: old(perm).value().view().current_lock_major(), minor: seq![index] }),
 {
     let p = pptr.addr() as *mut RwLock<T, ROT, GhostT, HAS_KILL_STATE>;
     unsafe { (*p).lock.wunlock(); }
 }
 
-/// `wunlock_with_lock_id` that also sets the calling cpu's interrupt flag after the release.
+/// `has_kill_state_wunlock_array_cell` that also sets the calling cpu's interrupt flag after the release.
 #[verifier::external_body]
-pub fn wunlock_sti<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>,
-    Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, lock_id: Ghost<LockId>,
+pub fn wunlock_sti_array_cell<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>,
+    Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, Ghost(index): Ghost<usize>,
     obj_id: Ghost<KernelObjId>)
+    where RwLock<T, ROT, GhostT, HAS_KILL_STATE>: TokenCellBase
     requires
         pptr.addr() == old(perm).addr(),
+        old(perm).addr() == lock_cell_addr::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>(RwLock::<T, ROT, GhostT, HAS_KILL_STATE>::cell_base_spec(), index as int),
         old(perm).is_init(),
         !(old(perm).value().view_rodata().container_source() is Dynamic),
         !(old(perm).value().view_rodata().process_source() is Dynamic),
@@ -495,74 +507,110 @@ pub fn wunlock_sti<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: Loc
         lock_perm.view().state() is WriteLock,
         lock_perm.view().thread_id() == old(lctx).thread_id(),
         lock_perm.view().lock_id() == old(perm).value().locking_thread()->Write_lock_id,
-        old(lctx).lock_entry_contains(lock_id.view(), obj_id.view()),
+        old(lctx).lock_entry_contains(LockId {
+            container: old(perm).value().view().container_depth(), process: old(perm).value().view().process_depth(), major: old(perm).value().view().current_lock_major(), minor: seq![index] },
+            obj_id.view()),
     ensures
         final(perm).addr() == old(perm).addr(),
         final(perm).is_init(),
         old(perm).value().being_killed() == final(perm).value().being_killed(),
         wunlock_ensures(old(perm).value(), final(perm).value()),
-        unlock_ensures(old(lctx), final(lctx), obj_id.view(), lock_id.view()),
+        unlock_ensures(old(lctx), final(lctx), obj_id.view(), LockId {
+            container: old(perm).value().view().container_depth(), process: old(perm).value().view().process_depth(), major: old(perm).value().view().current_lock_major(), minor: seq![index] }),
 {
     let p = pptr.addr() as *mut RwLock<T, ROT, GhostT, HAS_KILL_STATE>;
     unsafe { (*p).lock.wunlock_sti(); }
 }
 
-/// `RwLock::wlock` of the object at `pptr` under the caller's ordering id `lock_id`, which names the object as
-/// `RwLock::wlock` requires: its owners, a major its state satisfies, and its own minor.
+/// `RwLock::wlock` of lock array cell `index` at `pptr`, under the ordering id derived from the cell: the object's
+/// owners, the major of its current state, and the cell index as minor.
 #[verifier::external_body]
-pub fn wlock_with_lock_id<T: LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, NO_KILL_STATE>>,
-    Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, NO_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>)
+pub fn wlock_array_cell<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, NO_KILL_STATE>>,
+    Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, NO_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, Ghost(index): Ghost<usize>, obj_id: Ghost<KernelObjId>)
     -> (ret: Tracked<LockPerm>)
+    where RwLock<T, ROT, GhostT, NO_KILL_STATE>: TokenCellBase
     requires
         pptr.addr() == old(perm).addr(),
+        old(perm).addr() == lock_cell_addr::<RwLock<T, ROT, GhostT, NO_KILL_STATE>>(RwLock::<T, ROT, GhostT, NO_KILL_STATE>::cell_base_spec(), index as int),
         old(perm).is_init(),
-        old(perm).value().view().container_depth() == lock_id.view().container,
-        old(perm).value().view().process_depth() == lock_id.view().process,
-        old(perm).value().view().lock_major_sat(lock_id.view().major),
-        old(perm).value().view().lock_minor() == lock_id.view().minor,
         wlock_requires(old(perm).value(), old(lctx)),
-        old(lctx).lock_id_acyclic(lock_id.view()),
+        old(lctx).lock_id_acyclic(LockId {
+            container: old(perm).value().view().container_depth(), process: old(perm).value().view().process_depth(), major: old(perm).value().view().current_lock_major(), minor: seq![index] }),
     ensures
         final(perm).addr() == old(perm).addr(),
         final(perm).is_init(),
-        wlock_ensures(old(perm).value(), final(perm).value(), lock_id.view(), final(lctx), ret.view()),
-        lock_ensures(old(lctx), final(lctx), lock_id.view(), obj_id.view()),
+        wlock_ensures(old(perm).value(), final(perm).value(), LockId {
+            container: old(perm).value().view().container_depth(), process: old(perm).value().view().process_depth(), major: old(perm).value().view().current_lock_major(), minor: seq![index] },
+            final(lctx), ret.view()),
+        lock_ensures(old(lctx), final(lctx), LockId {
+            container: old(perm).value().view().container_depth(), process: old(perm).value().view().process_depth(), major: old(perm).value().view().current_lock_major(), minor: seq![index] },
+            obj_id.view()),
 {
     let p = pptr.addr() as *mut RwLock<T, ROT, GhostT, NO_KILL_STATE>;
     unsafe { (*p).lock.wlock(); }
     Tracked::assume_new()
 }
 
-/// `RwLock::wlock` of the object at `pptr` under the caller's ordering id `lock_id`, for a lock array whose minor is
-/// the cell index: the id names the object's owners and, as `wlock` computes it, the major of its current state.
+/// `RwLock::wunlock` of lock array cell `index` at `pptr`, registered under the ordering id derived from the cell.
 #[verifier::external_body]
-pub fn wlock_array_cell_with_lock_id<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, NO_KILL_STATE>>,
-    Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, NO_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>)
-    -> (ret: Tracked<LockPerm>)
-    requires
-        pptr.addr() == old(perm).addr(),
-        old(perm).is_init(),
-        old(perm).value().view().container_depth() == lock_id.view().container,
-        old(perm).value().view().process_depth() == lock_id.view().process,
-        old(perm).value().view().current_lock_major() == lock_id.view().major,
-        wlock_requires(old(perm).value(), old(lctx)),
-        old(lctx).lock_id_acyclic(lock_id.view()),
-    ensures
-        final(perm).addr() == old(perm).addr(),
-        final(perm).is_init(),
-        wlock_ensures(old(perm).value(), final(perm).value(), lock_id.view(), final(lctx), ret.view()),
-        lock_ensures(old(lctx), final(lctx), lock_id.view(), obj_id.view()),
-{
-    let p = pptr.addr() as *mut RwLock<T, ROT, GhostT, NO_KILL_STATE>;
-    unsafe { (*p).lock.wlock(); }
-    Tracked::assume_new()
-}
-
-/// `RwLock::wunlock` of the object at `pptr`, registered under the caller's ordering id `lock_id`.
-#[verifier::external_body]
-pub fn no_kill_state_wunlock_with_lock_id<T: LockInvTrait, ROT, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, NO_KILL_STATE>>,
-    Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, NO_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, lock_id: Ghost<LockId>,
+pub fn wunlock_array_cell<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, NO_KILL_STATE>>,
+    Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, NO_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, Ghost(index): Ghost<usize>,
     obj_id: Ghost<KernelObjId>)
+    where RwLock<T, ROT, GhostT, NO_KILL_STATE>: TokenCellBase
+    requires
+        pptr.addr() == old(perm).addr(),
+        old(perm).addr() == lock_cell_addr::<RwLock<T, ROT, GhostT, NO_KILL_STATE>>(RwLock::<T, ROT, GhostT, NO_KILL_STATE>::cell_base_spec(), index as int),
+        old(perm).is_init(),
+        old(perm).value().wlocked_by(old(lctx)),
+        old(perm).value().inv(),
+        lock_perm.view().state() is WriteLock,
+        lock_perm.view().thread_id() == old(lctx).thread_id(),
+        lock_perm.view().lock_id() == old(perm).value().locking_thread()->Write_lock_id,
+        old(lctx).lock_entry_contains(LockId {
+            container: old(perm).value().view().container_depth(), process: old(perm).value().view().process_depth(), major: old(perm).value().view().current_lock_major(), minor: seq![index] },
+            obj_id.view()),
+    ensures
+        final(perm).addr() == old(perm).addr(),
+        final(perm).is_init(),
+        wunlock_ensures(old(perm).value(), final(perm).value()),
+        unlock_ensures(old(lctx), final(lctx), obj_id.view(), LockId {
+            container: old(perm).value().view().container_depth(), process: old(perm).value().view().process_depth(), major: old(perm).value().view().current_lock_major(), minor: seq![index] }),
+{
+    let p = pptr.addr() as *mut RwLock<T, ROT, GhostT, NO_KILL_STATE>;
+    unsafe { (*p).lock.wunlock(); }
+}
+
+/// `RwLock::wlock` of the object at `pptr`, under the ordering id derived from the object: its owners, the major of its
+/// current state, and its own minor.
+#[verifier::external_body]
+pub fn wlock_object_minor<T: LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, NO_KILL_STATE>>,
+    Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, NO_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>) -> (ret: Tracked<LockPerm>)
+    requires
+        pptr.addr() == old(perm).addr(),
+        old(perm).is_init(),
+        wlock_requires(old(perm).value(), old(lctx)),
+        old(lctx).lock_id_acyclic(LockId {
+            container: old(perm).value().view().container_depth(), process: old(perm).value().view().process_depth(), major: old(perm).value().view().current_lock_major(),
+            minor: old(perm).value().view().lock_minor() }),
+    ensures
+        final(perm).addr() == old(perm).addr(),
+        final(perm).is_init(),
+        wlock_ensures(old(perm).value(), final(perm).value(), LockId {
+            container: old(perm).value().view().container_depth(), process: old(perm).value().view().process_depth(), major: old(perm).value().view().current_lock_major(),
+            minor: old(perm).value().view().lock_minor() }, final(lctx), ret.view()),
+        lock_ensures(old(lctx), final(lctx), LockId {
+            container: old(perm).value().view().container_depth(), process: old(perm).value().view().process_depth(), major: old(perm).value().view().current_lock_major(),
+            minor: old(perm).value().view().lock_minor() }, obj_id.view()),
+{
+    let p = pptr.addr() as *mut RwLock<T, ROT, GhostT, NO_KILL_STATE>;
+    unsafe { (*p).lock.wlock(); }
+    Tracked::assume_new()
+}
+
+/// `RwLock::wunlock` of the object at `pptr`, registered under the ordering id derived from the object.
+#[verifier::external_body]
+pub fn wunlock_object_minor<T: LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, NO_KILL_STATE>>,
+    Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, NO_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, obj_id: Ghost<KernelObjId>)
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
@@ -571,12 +619,16 @@ pub fn no_kill_state_wunlock_with_lock_id<T: LockInvTrait, ROT, GhostT>(pptr: &P
         lock_perm.view().state() is WriteLock,
         lock_perm.view().thread_id() == old(lctx).thread_id(),
         lock_perm.view().lock_id() == old(perm).value().locking_thread()->Write_lock_id,
-        old(lctx).lock_entry_contains(lock_id.view(), obj_id.view()),
+        old(lctx).lock_entry_contains(LockId {
+            container: old(perm).value().view().container_depth(), process: old(perm).value().view().process_depth(), major: old(perm).value().view().current_lock_major(),
+            minor: old(perm).value().view().lock_minor() }, obj_id.view()),
     ensures
         final(perm).addr() == old(perm).addr(),
         final(perm).is_init(),
         wunlock_ensures(old(perm).value(), final(perm).value()),
-        unlock_ensures(old(lctx), final(lctx), obj_id.view(), lock_id.view()),
+        unlock_ensures(old(lctx), final(lctx), obj_id.view(), LockId {
+            container: old(perm).value().view().container_depth(), process: old(perm).value().view().process_depth(), major: old(perm).value().view().current_lock_major(),
+            minor: old(perm).value().view().lock_minor() }),
 {
     let p = pptr.addr() as *mut RwLock<T, ROT, GhostT, NO_KILL_STATE>;
     unsafe { (*p).lock.wunlock(); }

@@ -145,20 +145,18 @@ impl Cpu {
                     &&& ret.spec_index(cpu_id).view().view().view().current_pcid == KERNEL_DEFAULT_PCID
                 },
     {
-        let base = cpu_cells_base();
         let tracked mut perms = Map::<int, PointsTo<RwLock<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>>>::tracked_empty();
         let mut cpu_id = 0;
         while cpu_id < NUM_CPUS
             invariant
                 0 <= cpu_id <= NUM_CPUS,
-                base == cpu_cells_base_spec(),
                 page_ptr_valid(default_cr3),
                 forall|i: int| #![trigger perms.dom().contains(i)] perms.dom().contains(i) <==> 0 <= i < cpu_id,
                 forall|old_cpu: int|
                     #![trigger perms.index(old_cpu)]
                     0 <= old_cpu < cpu_id ==> {
                         &&& perms.index(old_cpu).is_init()
-                        &&& perms.index(old_cpu).addr() == lock_cell_addr::<RwLock<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>>(base, old_cpu)
+                        &&& perms.index(old_cpu).addr() == lock_cell_addr::<RwLock<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>>(cpu_cells_base_spec(), old_cpu)
                         &&& perms.index(old_cpu).value().inv()
                         &&& !perms.index(old_cpu).value().locked()
                         &&& !perms.index(old_cpu).value().being_killed()
@@ -177,7 +175,7 @@ impl Cpu {
             proof { perms.tracked_insert(cpu_id as int, cell); }
             cpu_id = cpu_id + 1;
         }
-        LockedArray::from_token_cells(TokenCells { base, perms: Tracked(perms) })
+        LockedArray::from_token_cells(TokenCells { perms: Tracked(perms) })
     }
 
     pub closed spec fn view(&self) -> CpuView {

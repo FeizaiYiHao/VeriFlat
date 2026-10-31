@@ -313,7 +313,7 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
             }
         }
     }
-    let page_array = PageLockedArray::from_token_cells(TokenCells { base: page_base, perms: Tracked::assume_new() });
+    let page_array = PageLockedArray::from_token_cells(TokenCells { perms: Tracked::assume_new() });
     log::info!("pages: {} free, {} free 2M blocks, {} dom0 tables, {} dom0 leaves", free_count, BOOT_FREE_2M_BLOCKS, tables, leaves);
 
     // 4. PCID needflush locks, written in place; cell `(cpu, pcid)` is cell `cpu * PCID_MAX + pcid`.
@@ -322,7 +322,7 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
         let lock_ptr = (needflush_base + k * size_of::<NeedFlushLock>()) as *mut NeedFlushLock;
         ptr::write(lock_ptr, RwLock::new_unlocked(PcidNeedFlush::new(Ghost::assume_new(), Ghost::assume_new()), (), Ghost::assume_new()));
     }
-    let pcid_needflush = PcidNeedFlushArray::from_token_cells(needflush_base, Tracked::assume_new());
+    let pcid_needflush = PcidNeedFlushArray::from_token_cells(Tracked::assume_new());
 
     // 5. Default page table and the per-cpu hardware cr3/pcid words.
     let default_pagetable = ReadOnlyNode::new(

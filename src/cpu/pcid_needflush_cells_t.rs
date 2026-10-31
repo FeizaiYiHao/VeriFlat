@@ -25,4 +25,9 @@ pub fn pcid_needflush_cells_base() -> (ret: usize)
 {
     PCID_NEEDFLUSH_CELLS.0.get() as usize
 }
+
+impl TokenCellBase for RwLock<PcidNeedFlush, (), Option<CpuId>, NO_KILL_STATE> {
+    open spec fn cell_base_spec() -> usize { pcid_needflush_cells_base_spec() }
+    fn cell_base() -> (ret: usize) { pcid_needflush_cells_base() }
+}
 }

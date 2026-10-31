@@ -474,6 +474,13 @@ pub fn build_new_child_structure(
         held_kernel_objects_unchanged_reflexive(krnl, lctx); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
         range.va_range_lemma();
         spec_va_4k_valid_index_roundtrip(range.start); spec_va_4k_valid_index_roundtrip(range.view()[range.len - 1]);
+        assert forall|w: WindowVa| #![trigger lctx.pagetable_window_lock_map().dom().contains((pagetable_ptr, w))]
+            lctx.pagetable_window_lock_map().dom().contains((pagetable_ptr, w)) == (va_range_2m_windows(*range).contains(w)
+                && pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some) by {
+            if va_range_2m_windows(*range).contains(w) {
+                assert(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).higher.l4_table.view().spec_index(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).cr3()).value().spec_index(spec_v2l4index(w.va)).is_empty());
+            }
+        };
     }
     let mut i: usize = 0;
     while i < range_len
