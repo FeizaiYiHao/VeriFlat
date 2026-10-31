@@ -41,7 +41,7 @@ unsafe impl GlobalAlloc for BumpAllocator {
         let mut allocated = ptr::null_mut();
 
         self.watermark
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |mut watermark| {
+            .try_update(Ordering::SeqCst, Ordering::SeqCst, |mut watermark| {
                 let mut required_size = layout.size();
                 let mut obj_start = self.base.addr() + watermark;
                 let mask = layout.align() - 1;
