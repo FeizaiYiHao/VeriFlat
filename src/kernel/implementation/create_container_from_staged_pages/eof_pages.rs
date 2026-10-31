@@ -51,7 +51,7 @@ pub(super) proof fn publish_staged_container_root_eof_page_fields_eq_outside_mov
         post.pg_arr.spec_index(page_index).view().view().free_list_node_storage == pre.pg_arr.spec_index(page_index).view().view().free_list_node_storage,
         post.pg_arr.spec_index(page_index).view().view().is_io_page == pre.pg_arr.spec_index(page_index).view().view().is_io_page,
 {
-    hide(Seq::contains); reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
+    hide(Seq::contains); reveal(publish_staged_container_root_eof_transition_framing);
     let container_head = page_ptr2page_index(container_page);
     let pcid_allocator_head = page_ptr2page_index(pcid_allocator_page);
     let allocator_4k_index = page_ptr2page_index(allocator_4k_page);
@@ -65,7 +65,7 @@ pub(super) proof fn publish_staged_container_root_eof_page_fields_eq_outside_mov
     let funding_indices = funding_pages.map_values(|page_ptr: PagePtr| page_ptr2page_index(page_ptr)).to_set();
     page_index_valid_imply_page_ptr_valid(); page_index_roundtrip();
     page_ptr_2m_valid_imply_page_index_2m_valid(container_page); page_ptr_2m_valid_imply_page_index_2m_valid(pcid_allocator_page);
-    page_ptr_seq_indices_excludes_page(funding_pages, page_index2page_ptr(page_index),);
+    assert(!funding_indices.contains(page_index)) by { reveal(publish_staged_container_root_eof_preconditions); page_ptr_seq_indices_excludes_page(funding_pages, page_index2page_ptr(page_index)); };
     assert(!page_2m_all_ptrs(container_head).contains(page_index2page_ptr(page_index))) by { reveal(new_container_moved_pages); };
     assert(!page_2m_all_ptrs(pcid_allocator_head).contains(page_index2page_ptr(page_index))) by { reveal(new_container_moved_pages); };
     assert(!page_2m_tail_indices(container_head).contains(page_index)) by {
@@ -197,12 +197,12 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_unmodified_objec
             &&& post.pg_arr.spec_index(page_index).view().view().is_io_page == pre.pg_arr.spec_index(page_index).view().view().is_io_page
         },
 {
-    reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
+    hide(Seq::contains); reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
     page_index_valid_imply_page_ptr_valid(); page_index_roundtrip();
     let page_ptr = page_index2page_ptr(page_index);
     assert(!funding_pages.to_set().contains(page_ptr)) by { reveal(thread_staged_pages_4k_wf); };
     assert(!new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page,).contains(page_ptr)) by {
-        reveal(thread_staged_pages_4k_wf); reveal(new_container_bootstrap_4k_pages);
+        reveal(Seq::contains); reveal(thread_staged_pages_4k_wf); reveal(new_container_bootstrap_4k_pages);
     };
     assert(page_ptr != container_page) by { if page_ptr == container_page { } };
     assert(page_ptr != pcid_allocator_page) by { if page_ptr == pcid_allocator_page { } };
@@ -830,7 +830,7 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_hugepage_2m_tail
         },
 {
     hide(Seq::contains);
-    reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
+    reveal(publish_staged_container_root_eof_transition_framing);
     let container_head = page_ptr2page_index(container_page);
     let pcid_allocator_head = page_ptr2page_index(pcid_allocator_page);
     let head_index = spec_page_index_truncate_2m(tail_index);
@@ -865,10 +865,10 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_hugepage_2m_tail
     let head_ptr = page_index2page_ptr(head_index);
     assert(!new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page,).contains(head_ptr)) by {
         if new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).contains(head_ptr) {
-            reveal(thread_staged_pages_4k_wf);
+            reveal(publish_staged_container_root_eof_preconditions); reveal(thread_staged_pages_4k_wf);
         }
     };
-    assert(!funding_pages.to_set().contains(head_ptr)) by { if funding_pages.to_set().contains(head_ptr) { reveal(thread_staged_pages_4k_wf); } };
+    assert(!funding_pages.to_set().contains(head_ptr)) by { if funding_pages.to_set().contains(head_ptr) { reveal(publish_staged_container_root_eof_preconditions); reveal(thread_staged_pages_4k_wf); } };
     assert(!new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).contains(head_ptr)) by { reveal(new_container_moved_pages); };
     publish_staged_container_root_eof_page_fields_eq_outside_moved_pages(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,

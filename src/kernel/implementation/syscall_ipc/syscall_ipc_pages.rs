@@ -14,7 +14,6 @@ use super::syscall_ipc_trace::*;
 use super::syscall_ipc_pages_check::ipc_pages_check_tables;
 use super::syscall_ipc_pages_lock::ipc_pages_lock_tables;
 use super::syscall_ipc_pages_share::{ipc_pages_release_tables_and_record, ipc_pages_share_locked};
-use vstd::{assert_maps_equal, assert_maps_equal_internal};
 
 verus! {
 /// After the pages enter step, locks both page tables and their windows of the two ranges (filling the target directories under a
@@ -183,8 +182,7 @@ fn ipc_lock_tables_and_share_pages(
         );
     }
     proof {
-        assert_maps_equal!(lctx.pagetable_lock_map(), old(lctx).pagetable_lock_map(), p => {});
-        assert_maps_equal!(lctx.pagetable_window_lock_map(), old(lctx).pagetable_window_lock_map(), p => {});
+        assert(lctx.pagetable_lock_map() =~= old(lctx).pagetable_lock_map() && lctx.pagetable_window_lock_map() =~= old(lctx).pagetable_window_lock_map());
     }
     result
 }

@@ -13,6 +13,7 @@ mod syscall_new_container_enter;
 mod syscall_new_container_commit_share;
 mod syscall_new_container_share;
 mod syscall_new_container_share_helpers;
+mod syscall_new_container_child_table_release;
 mod syscall_new_container_cpu;
 mod syscall_new_container_lock_owners;
 mod syscall_new_container_release_source;

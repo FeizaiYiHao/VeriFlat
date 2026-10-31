@@ -146,6 +146,36 @@ proof fn ipc_pci_rendezvous_eof_quota_wf(
     };
 }
 
+/// The page records of schedulers, threads, endpoints, and staged pages close after the transfer.
+proof fn ipc_pci_rendezvous_eof_object_pages_wf(
+    pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
+    peer_scheduler_ptr: RwLockSchedulerPtr, wake_cpu: CpuId, sender_proc: RwLockProcessPtr, receiver_proc: RwLockProcessPtr, bdf: PciBdf,
+    transferred: bool, peer_result: RetValueType, thread_id: LockThreadId, iommu_table: Option<RwLockPageTableRoot>, anchor: Option<PciBdf>,
+)
+    requires
+        pre.inv(),
+        ipc_pci_rendezvous_eof_transition_framing(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
+        post.subsystems_inv(),
+        iommu_table_perms_wf(post.it_mp),
+    ensures
+        scheduler_pages_wf(post.sched_mp, post.pg_arr),
+        thread_pages_wf(post.thr_mp, post.pg_arr),
+        page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp),
+        endpoint_pages_wf(post.ep_mp, post.pg_arr),
+        thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr),
+        thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr),
+        thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr),
+{
+    reveal(ipc_pci_rendezvous_eof_transition_framing);
+    assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { scheduler_pages_wf_preserved_for_page_state_eq(pre.sched_mp, post.sched_mp, pre.pg_arr, post.pg_arr); };
+    assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
+    assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
+    assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
+    assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
+    assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
+    assert(thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
+}
+
 proof fn ipc_pci_rendezvous_eof_memory_management_inv(
     pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
     peer_scheduler_ptr: RwLockSchedulerPtr, wake_cpu: CpuId, sender_proc: RwLockProcessPtr, receiver_proc: RwLockProcessPtr, bdf: PciBdf,
@@ -160,6 +190,7 @@ proof fn ipc_pci_rendezvous_eof_memory_management_inv(
 {
     reveal(ipc_pci_rendezvous_eof_transition_framing);
     ipc_pci_rendezvous_eof_quota_wf(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor);
+    ipc_pci_rendezvous_eof_object_pages_wf(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor);
     assert(post.memory_management_inv()) by {
         assert(container_process_page_pagetable_wf(post.ctn_mp, post.prc_mp, post.pt_mp, post.pg_arr)) by { reveal(container_process_page_pagetable_wf); };
         assert(page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr)) by { reveal(page_iommu_table_wf); reveal(iommu_table_perms_wf); };
@@ -170,13 +201,6 @@ proof fn ipc_pci_rendezvous_eof_memory_management_inv(
         assert(process_pagetable_match(post.prc_mp, post.pt_mp)) by { lemma_process_pagetable_match_preserved_for_process_pagetable_fields_forall(); };
         assert(process_iommu_table_match(post.prc_mp, post.it_mp)) by { reveal(process_iommu_table_match); };
         assert(process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp)) by { reveal(process_emptied_tables_wf); reveal(process_iommu_table_match); };
-        assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { scheduler_pages_wf_preserved_for_page_state_eq(pre.sched_mp, post.sched_mp, pre.pg_arr, post.pg_arr); };
-        assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { thread_pages_wf_preserved_for_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
-        assert(page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp)) by { reveal(page_object_owner_wf); reveal(container_page_owner_wf); };
-        assert(endpoint_pages_wf(post.ep_mp, post.pg_arr)) by { endpoint_pages_wf_preserved_for_page_state_eq(pre.ep_mp, post.ep_mp, pre.pg_arr, post.pg_arr); };
-        assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
-        assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
-        assert(thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
     };
 }
 
@@ -240,9 +264,9 @@ proof fn ipc_pci_rendezvous_eof_sender_table(
     }
 }
 
-/// A handed-over function keeps a unique owner in the receiver's reverse set and has no translation; a re-anchored table
-/// carries the candidate DID of `anchor`, whose functions now carry it; every other slot is unchanged.
-proof fn ipc_pci_rendezvous_eof_iommu_inv(
+/// A re-anchored table carries the candidate DID of `anchor`, whose functions now carry it; a handed-over function has no
+/// translation; every other slot is unchanged.
+proof fn ipc_pci_rendezvous_eof_iommu_root_table_wf(
     pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
     peer_scheduler_ptr: RwLockSchedulerPtr, wake_cpu: CpuId, sender_proc: RwLockProcessPtr, receiver_proc: RwLockProcessPtr, bdf: PciBdf,
     transferred: bool, peer_result: RetValueType, thread_id: LockThreadId, iommu_table: Option<RwLockPageTableRoot>, anchor: Option<PciBdf>,
@@ -258,13 +282,33 @@ proof fn ipc_pci_rendezvous_eof_iommu_inv(
         transferred ==> pre.irt.view().spec_index_owner(bdf.0, bdf.1, bdf.2) == sender_proc,
         ipc_pci_rendezvous_eof_transition_framing(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
         post.irt.view().wf(),
-    ensures
-        iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
-        process_pci_function_ownership_wf(post.irt.view(), post.prc_mp),
+    ensures iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp),
 {
     ipc_pci_rendezvous_eof_sender_table(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor);
     reveal(ipc_pci_rendezvous_eof_transition_framing);
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); reveal(process_iommu_table_match); };
+}
+
+/// A handed-over function keeps a unique owner in the receiver's reverse set.
+proof fn ipc_pci_rendezvous_eof_pci_ownership_wf(
+    pre: KernelK, post: KernelK, current_thread_ptr: RwLockThreadPtr, peer_thread_ptr: RwLockThreadPtr, endpoint_ptr: RwLockEndpointPtr,
+    peer_scheduler_ptr: RwLockSchedulerPtr, wake_cpu: CpuId, sender_proc: RwLockProcessPtr, receiver_proc: RwLockProcessPtr, bdf: PciBdf,
+    transferred: bool, peer_result: RetValueType, thread_id: LockThreadId, iommu_table: Option<RwLockPageTableRoot>, anchor: Option<PciBdf>,
+)
+    requires
+        pre.inv(),
+        pci_bdf_valid(bdf.0, bdf.1, bdf.2),
+        pre.prc_mp.dom().contains(sender_proc),
+        pre.prc_mp.dom().contains(receiver_proc),
+        sender_proc != receiver_proc,
+        !pre.prc_mp.spec_index(sender_proc).view().zombie,
+        !pre.prc_mp.spec_index(receiver_proc).view().zombie,
+        transferred ==> pre.irt.view().spec_index_owner(bdf.0, bdf.1, bdf.2) == sender_proc,
+        ipc_pci_rendezvous_eof_transition_framing(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor),
+        post.irt.view().wf(),
+    ensures process_pci_function_ownership_wf(post.irt.view(), post.prc_mp),
+{
+    reveal(ipc_pci_rendezvous_eof_transition_framing);
     assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
 }
 
@@ -530,7 +574,8 @@ pub(super) proof fn ipc_pci_rendezvous_eof(
     };
     ipc_pci_rendezvous_eof_memory_management_inv(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor);
     ipc_pci_rendezvous_eof_process_management_inv(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor);
-    ipc_pci_rendezvous_eof_iommu_inv(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor);
+    ipc_pci_rendezvous_eof_iommu_root_table_wf(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor);
+    ipc_pci_rendezvous_eof_pci_ownership_wf(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor);
     ipc_pci_rendezvous_eof_iotlb(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor);
     assert(post.inv()) by { reveal(cpu_dirty_map_proc_pcid_match); };
     ipc_pci_rendezvous_eof_rendezvous_fields(pre, post, current_thread_ptr, peer_thread_ptr, endpoint_ptr, peer_scheduler_ptr, wake_cpu, sender_proc, receiver_proc, bdf, transferred, peer_result, thread_id, iommu_table, anchor, snapshot, cpu_id, process_ptr, endpoint_index, waiting_state);

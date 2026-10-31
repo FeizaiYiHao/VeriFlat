@@ -657,7 +657,6 @@ pub(super) fn ipc_pages_check_tables(
                 &&& !pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).mapping_4k().dom().contains(target_range.view().spec_index(j))
             },
 {
-    hide(Seq::no_duplicates);
     let ghost mut found: Option<(L4Index, L3Index, L2Index, L1Index)> = None;
     proof {
         assert(krnl.ctn_mp.dom().contains(source_container) && krnl.ctn_mp.dom().contains(target_container)) by {

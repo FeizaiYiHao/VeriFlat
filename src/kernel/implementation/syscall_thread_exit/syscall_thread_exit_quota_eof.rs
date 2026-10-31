@@ -4,6 +4,41 @@ use crate::*;
 use super::syscall_thread_exit_quota_spec::thread_exit_quota_eof_transition_framing;
 
 verus! {
+/// EOF closure leaf: the thread permission invariant after the quota return.
+proof fn thread_exit_quota_eof_thread_perms(
+    pre: KernelK, post: KernelK, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, allocator_ptr: RwLockPageAllocatorPtr,
+    size: PageSize,
+)
+    requires
+        pre.inv(),
+        thread_exit_quota_eof_transition_framing(pre, post, process_ptr, thread_ptr, allocator_ptr, size),
+        !pre.prc_mp.spec_index(process_ptr).being_killed(),
+        pre.ctn_mp.dom().contains(container_ptr),
+        pre.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view().contains(process_ptr),
+        pre.ctn_mp.spec_index(container_ptr).view_ghost().owned_threads.view().contains(thread_ptr),
+        pre.prc_mp.dom().contains(process_ptr),
+        pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr,
+        pre.thr_mp.dom().contains(thread_ptr),
+        pre.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
+        pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_clean(),
+        allocator_ptr == match size {
+            PageSize::SZ4k => pre.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k,
+            PageSize::SZ2m => pre.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_2m,
+            PageSize::SZ1g => pre.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_1g,
+        },
+        match size {
+            PageSize::SZ4k => pre.allc_4k_mp.spec_index(allocator_ptr).quota.view().value + pre.prc_mp.spec_index(process_ptr).view().quota_4k + pre.thr_mp.spec_index(thread_ptr).view().quota_4k,
+            PageSize::SZ2m => pre.allc_2m_mp.spec_index(allocator_ptr).quota.view().value + pre.prc_mp.spec_index(process_ptr).view().quota_2m + pre.thr_mp.spec_index(thread_ptr).view().quota_2m,
+            PageSize::SZ1g => pre.allc_1g_mp.spec_index(allocator_ptr).quota.view().value + pre.prc_mp.spec_index(process_ptr).view().quota_1g + pre.thr_mp.spec_index(thread_ptr).view().quota_1g,
+        } <= usize::MAX,
+    ensures
+        thread_perms_wf(post.thr_mp),
+{
+    reveal(thread_exit_quota_eof_transition_framing);
+    reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
+    reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_ipc_transit_wf);
+}
+
 /// Returning the `size` quota of the exiting thread and of its process to their container's `size` allocator keeps the
 /// kernel invariant.
 pub(super) proof fn thread_exit_quota_eof_subsystems(
@@ -38,10 +73,7 @@ pub(super) proof fn thread_exit_quota_eof_subsystems(
     reveal(thread_exit_quota_eof_transition_framing);
     assert(pre.prc_mp.perms_wf() && pre.thr_mp.perms_wf() && pre.thr_mp.spec_index(thread_ptr).inv()) by { reveal(process_perms_wf); reveal(thread_perms_wf); };
     assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };
-    assert(thread_perms_wf(post.thr_mp)) by {
-        reveal(thread_perms_wf); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked); reveal(thread_exited_only_when_wlocked);
-        reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_ipc_transit_wf);
-    };
+    assert(thread_perms_wf(post.thr_mp)) by { thread_exit_quota_eof_thread_perms(pre, post, container_ptr, process_ptr, thread_ptr, allocator_ptr, size); };
     assert(allocator_perms_wf(post.allc_4k_mp) && allocator_perms_wf(post.allc_2m_mp) && allocator_perms_wf(post.allc_1g_mp)) by { reveal(allocator_perms_wf); };
     assert(post.subsystems_inv()) by { reveal(KernelK::default_pagetable_wf); };
 }

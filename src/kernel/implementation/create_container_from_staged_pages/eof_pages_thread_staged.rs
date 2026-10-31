@@ -49,7 +49,7 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_thread_staged_pa
             &&& post.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().contains(page_index2page_ptr(page_index))
         },
 {
-    reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
+    hide(Seq::contains); reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
     publish_staged_container_root_eof_unmodified_object_page_state_eq(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
@@ -62,7 +62,7 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_thread_staged_pa
     if thread_ptr == current_thread_ptr {
         assert(!funding_pages.to_set().contains(page_ptr)) by { page_index_roundtrip(); };
         assert(!new_container_bootstrap_4k_pages(allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page,).contains(page_ptr)) by {
-            reveal(new_container_bootstrap_4k_pages); page_index_roundtrip();
+            reveal(Seq::contains); reveal(new_container_bootstrap_4k_pages); page_index_roundtrip();
         };
     } else { }
 }
@@ -298,7 +298,7 @@ pub(super) proof fn publish_staged_container_root_eof_thread_staged_pages_wf(
     ensures
         thread_staged_pages_wf(post.thr_mp, post.pg_arr),
 {
-    reveal(publish_staged_container_root_eof_transition_framing);
+    hide(Seq::contains); reveal(publish_staged_container_root_eof_transition_framing);
     assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by { broadcast use publish_staged_container_root_eof_thread_staged_pages_4k_forward; broadcast use publish_staged_container_root_eof_thread_staged_pages_4k_backward; reveal(thread_staged_pages_4k_wf); };
     assert(thread_staged_pages_2m_backward_wf(post.thr_mp, post.pg_arr)) by { broadcast use publish_staged_container_root_eof_thread_staged_pages_2m_backward; };
     assert(thread_staged_pages_2m_forward_wf(post.thr_mp, post.pg_arr)) by { broadcast use publish_staged_container_root_eof_thread_staged_pages_2m_forward; };

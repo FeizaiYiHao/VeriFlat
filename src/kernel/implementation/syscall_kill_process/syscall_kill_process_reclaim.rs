@@ -220,6 +220,7 @@ fn kill_reassign_owned_functions(
         final(lctx).container_lock_map() == before_lctx.container_lock_map(),
         final(krnl).cpu_arr.spec_index(cpu_id) == before.cpu_arr.spec_index(cpu_id),
 {
+    hide(LockedMap::lock_id_by_key);
     let ghost before_steps = steps.view();
     proof { process_perms_wf_at(before.prc_mp, target); process_iommu_table_match_process_at(before.prc_mp, before.it_mp, target); }
     match iommu_table {
@@ -432,6 +433,7 @@ pub(crate) fn kill_reclaim_live(
         final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view(),
 {
+    hide(Set::is_empty);
     proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); }
     let target_container = krnl.prc_mp.borrow_rodata(target).borrow().owning_container;
     proof { thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, thread_ptr); }
@@ -529,6 +531,7 @@ pub(crate) fn kill_reclaim_lock_table(
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
 {
+    hide(RwLock::being_killed);
     let ghost before = *krnl;
     let ghost before_lctx = *lctx;
     let ghost before_steps = steps.view();

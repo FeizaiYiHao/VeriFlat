@@ -2,15 +2,9 @@ use vstd::prelude::*;
 use crate::*;
 use super::super::syscall_kill_process::syscall_kill_process_spec::*;
 use super::syscall_kill_container_retire_lock::*;
-use super::syscall_kill_container_retire_commit::kill_container_retire_commit;
+use super::syscall_kill_container_retire_record::kill_container_retire_commit_and_record;
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_container_spec::kill_container_progress;
-#[cfg(verus_keep_ghost)]
-use super::syscall_kill_container_trace::*;
-#[cfg(verus_keep_ghost)]
-use super::syscall_kill_container_retire_trace::*;
-#[cfg(verus_keep_ghost)]
-use super::syscall_kill_container_retire_spec::*;
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_container_pages_spec::kill_container_pages_killer_state;
 #[cfg(verus_keep_ghost)]
@@ -131,26 +125,9 @@ pub(crate) fn kill_container_retire(
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(&entry, &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
         kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&steps.snapshot_k(), &*krnl); steps.rebase_snapshot_k_if_unchanged(&*krnl);
     }
-    let ghost base = *krnl;
-    let ghost base_lctx = *lctx;
-    let ghost base_steps = steps.view();
-    kill_container_retire_commit(krnl, Tracked(&mut *lctx), container_ptr, parent_ptr, owner_ptr, Tracked(container_perm), Tracked(parent_perm), Tracked(owner_perm),
-        Tracked(cpu_set_perm), Tracked(flag_perms), Tracked(pcid_perm), Tracked(shard_perms), Tracked(caches_4k), Tracked(caches_2m), Tracked(caches_1g), Tracked(pools_4k),
-        Tracked(pools_2m), Tracked(pool_1g), Tracked(quotas_4k), Tracked(quotas_2m), Tracked(quota_1g), Tracked(page_perms), Tracked(tails_container), Tracked(tails_pcid));
-    let ghost retired_k = *krnl;
-    krnl.set_thread_syscall_progress(thread_ptr, Ghost(kill_container_progress(parent_ptr, ContainerKillStage::Walk)), Tracked(&*lctx), Tracked(thread_perm));
-    proof {
-        let pre_u = kernel_k_to_kernel_u(base);
-        let post_u = kernel_k_to_kernel_u(*krnl);
-        let owner_ro = base.ctn_mp.spec_index(owner_ptr).view_rodata().view();
-        kill_container_retire_pre_from_k(&base, &base_lctx, cpu_id, process_ptr, thread_ptr, container_ptr);
-        kernel_container_retired_implies_u_step(&base, &retired_k, container_ptr, parent_ptr, owner_ptr);
-        kernel_thread_syscall_progress_changed_implies_u_step(&retired_k, &*krnl, thread_ptr);
-        kill_container_retire_step_from_u(pre_u, kernel_k_to_kernel_u(retired_k), post_u, cpu_id, thread_ptr, container_ptr, parent_ptr, owner_ptr,
-            retired_k.allc_4k_mp.spec_index(owner_ro.allocator_ptr_4k).quota.view().view(), retired_k.allc_2m_mp.spec_index(owner_ro.allocator_ptr_2m).quota.view().view());
-        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
-        krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
-        kill_container_trace_push(&*steps, base_steps, start, pre, pre_u, post_u, cpu_id, ctx);
-    }
+    kill_container_retire_commit_and_record(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, container_ptr, parent_ptr, owner_ptr, cpu_set_ptr,
+        Tracked(thread_perm), Tracked(container_perm), Tracked(parent_perm), Tracked(owner_perm), Tracked(cpu_set_perm), Tracked(flag_perms), Tracked(pcid_perm), Tracked(shard_perms),
+        Tracked(caches_4k), Tracked(caches_2m), Tracked(caches_1g), Tracked(pools_4k), Tracked(pools_2m), Tracked(pool_1g), Tracked(quotas_4k), Tracked(quotas_2m), Tracked(quota_1g),
+        Tracked(page_perms), Tracked(tails_container), Tracked(tails_pcid), Ghost(start), Ghost(pre), Ghost(ctx));
 }
 } // verus!

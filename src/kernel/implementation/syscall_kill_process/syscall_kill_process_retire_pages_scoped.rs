@@ -5,7 +5,7 @@ use super::syscall_kill_process_trace::*;
 use super::syscall_kill_process_walk::KillScope;
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_process_walk::kill_scope_progress;
-use super::syscall_kill_process_retire_pages::kill_retire_lock_cache;
+use super::syscall_kill_process_retire_table_page_lock::kill_retire_lock_table_page;
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_process_reclaim_scoped_spec::kill_retire_table_page_scoped_eof_transition_framing;
 #[cfg(verus_keep_ghost)]
@@ -104,43 +104,8 @@ pub(crate) fn kill_retire_next_table_page_scoped(
         },
 {
     let ghost origin = krnl.prc_mp.spec_index(target).view_rodata().view().owning_container;
-    let page_index = page_ptr2page_index(page_ptr);
-    let Tracked(window_perm) = if iommu {
-        Tracked(None)
-    } else {
-        match scan {
-            StructureScan::L1 { l4i, l3i, l2i, .. } => {
-                proof {
-                    pagetable_perms_wf_at(krnl.pt_mp, table); krnl.default_pagetable_wf_at(table);
-                    assert(spec_va_2m_valid(spec_index2va((l4i, l3i, l2i, 0usize)))) by (bit_vector) requires KERNEL_MEM_END_L4INDEX <= l4i < 512, l3i < 512, l2i < 512;
-                }
-                let Tracked(perm) = krnl.lock_pagetable_window(table, l4i, l3i, l2i, Tracked(table_perm), Tracked(&mut *lctx));
-                Tracked(Some(perm))
-            },
-            _ => Tracked(None),
-        }
-    };
-    let ghost locked_k = *krnl;
-    let ghost locked_lctx = *lctx;
-    let Tracked(page_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));
-    proof {
-        enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
-        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-        kernel_lock_states_unchanged_except_tables_of_implies_u_eq(&steps.snapshot_k(), &*krnl, Some(target));
-        krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-        page_array_wf_map(krnl.pg_arr);
-        page_array_wf_at(krnl.pg_arr, page_index);
-    }
-    let owner = krnl.pg_arr.borrow_typed(page_index, Ghost(lctx.page_lock_map()), Tracked(&*lctx), Tracked(&page_perm)).owning_container;
-    proof {
-        assert(krnl.ctn_mp.dom().contains(owner)) by { container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_index); };
-        container_perms_wf_at(krnl.ctn_mp, owner);
-    }
-    let allocator_ptr = krnl.ctn_mp.borrow_rodata(owner).borrow().allocator_ptr_4k;
-    proof { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, owner); }
-    let ghost page_lctx = *lctx;
-    let Tracked(cache_perm) = kill_retire_lock_cache(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), allocator_ptr, cpu_id, 1, Ghost(page_index));
+    let (Tracked(window_perm), Tracked(page_perm), Tracked(cache_perm), owner, allocator_ptr, Ghost(entry_lctx), Ghost(page_lctx)) =
+        kill_retire_lock_table_page(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, target, iommu, table, scan, page_ptr, Tracked(table_perm));
     let ghost snap = *krnl;
     let ghost snap_lctx = *lctx;
     let ghost before = steps.view();
@@ -150,17 +115,13 @@ pub(crate) fn kill_retire_next_table_page_scoped(
             process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target);
             iommu_table_pages_wf_closure_entry_at(krnl.it_mp, krnl.pg_arr, table, page_ptr);
         } else {
-            assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), table) == pagetable_c(locked_k.pt_mp, locked_k.pt_lower.view(), table)) by {
-                locked_k.pt_mp.typed_lock_map_aligned_write_at(locked_lctx.pagetable_lock_map(), locked_lctx.thread_id(), table);
-                pagetable_lower_backup_wf_at(locked_k.pt_mp, locked_k.pt_lower.view(), table); pagetable_lower_backup_wf_at(krnl.pt_mp, krnl.pt_lower.view(), table);
-            };
             process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target);
             pagetable_pages_wf_closure_entry_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, table, page_ptr);
         }
-        assert(owner == origin) by { process_kernel_pages_owner_wf_at(krnl.pg_arr, krnl.prc_mp, krnl.pt_mp, krnl.it_mp, page_index); };
+        assert(owner == origin) by { process_kernel_pages_owner_wf_at(krnl.pg_arr, krnl.prc_mp, krnl.pt_mp, krnl.it_mp, page_ptr2page_index(page_ptr)); };
     }
     kill_retire_table_page_scoped_and_unlock(krnl, Tracked(&mut *lctx), iommu, table, scan, page_ptr, owner, allocator_ptr, cpu_id, Tracked(table_perm), Tracked(page_perm),
-        Tracked(cache_perm), Tracked(window_perm), Ghost(locked_lctx), Ghost(page_lctx));
+        Tracked(cache_perm), Tracked(window_perm), Ghost(entry_lctx), Ghost(page_lctx));
     proof {
         assert(lctx.pagetable_window_lock_map() =~= old(lctx).pagetable_window_lock_map());
         kernel_page_freed_to_owner_quota_implies_u_step(&snap, &*krnl, iommu, table, owner, allocator_ptr, origin);

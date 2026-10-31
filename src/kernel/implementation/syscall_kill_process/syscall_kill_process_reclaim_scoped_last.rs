@@ -122,6 +122,7 @@ pub(crate) fn kill_reclaim_last_4k_mapping_scoped(
         final(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end == old(krnl).pt_mp.spec_index(pagetable).view().kernel_l4_end,
         pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus,
 {
+    hide(LockedMap::lock_id_by_key);
     let page_index = page_ptr2page_index(page_ptr);
     let ghost origin = krnl.prc_mp.spec_index(target).view_rodata().view().owning_container;
     let ghost w = window_of(va);
@@ -293,6 +294,7 @@ pub(crate) fn kill_reclaim_last_iommu_4k_mapping_scoped(
         final(krnl).it_mp.spec_index(iommu_table).view().kernel_l4_end == old(krnl).it_mp.spec_index(iommu_table).view().kernel_l4_end,
         final(krnl).it_mp.spec_index(iommu_table).view().did == old(krnl).it_mp.spec_index(iommu_table).view().did,
 {
+    hide(Set::is_empty);
     let page_index = page_ptr2page_index(page_ptr);
     let ghost origin = krnl.prc_mp.spec_index(target).view_rodata().view().owning_container;
     let ghost iova = spec_index2va(indices);

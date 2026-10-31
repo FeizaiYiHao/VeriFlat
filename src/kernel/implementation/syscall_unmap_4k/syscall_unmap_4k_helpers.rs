@@ -2,6 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_unmap_4k_spec::*;
 use super::syscall_unmap_4k_trace::*;
+use super::syscall_unmap_4k_exit::unmap_4k_release_and_exit;
 
 verus! {
 /// With cpu `cpu_id`, its container, process, and running thread write-held and the process pagetable `pagetable` read-held
@@ -206,30 +207,9 @@ pub(super) fn unmap_4k_unmap_and_finish(
     let ghost entered = steps.view();
     unmap_4k_range(krnl, va_range, pagetable, thread_ptr, cpu_id, cr3, pcid, Ghost(checked_table), Tracked(&mut *lctx), Tracked(&mut *steps),
         Tracked(&cpu_perm), Tracked(&thread_perm), Tracked(&pagetable_perm), Tracked(&window_perms));
-    let ghost range_steps = steps.view();
-    let ghost exit_start = *krnl;
-    let ghost exit_lctx = *lctx;
-    proof { assert(unmap_4k_trace_after_range(range_steps, cpu_id, *va_range)) by { unmap_4k_trace_range_steps(&*steps, entered, cpu_id, *va_range); }; }
-    assert(va_range.view() =~= Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) by { va_range.va_range_lemma(); };
-    krnl.set_thread_syscall_progress(thread_ptr, Ghost(None), Tracked(&*lctx), Tracked(&thread_perm));
-    krnl.unlock_pagetable_range_existing_windows(pagetable, va_range, Tracked(&pagetable_perm), Tracked(&mut *lctx), Tracked(window_perms));
-    proof { krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable); }
-    krnl.runlock_pagetable(pagetable, Tracked(&mut *lctx), Tracked(pagetable_perm));
-    krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_perm));
-    krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_perm));
-    krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_perm));
-    assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
-    krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
-    proof {
-        let ghost exit_k = *krnl;
-        steps.end_kernel_step_thread_syscall_progress_changed(&*krnl, &*lctx, thread_ptr);
-        assert(unmap_4k_syscall_trace(steps.view(), cpu_id, va, range)) by {
-            kernel_thread_context_unlocked_pagetable_runlocked_and_progress_changed_implies_u_step(&exit_start, &exit_k, &exit_lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable);
-            unmap_4k_exit_step_from_u(kernel_k_to_kernel_u(exit_start), kernel_k_to_kernel_u(exit_k), &exit_start, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable,
-                exit_k.pt_mp.spec_index(pagetable).lock_state_u(), pagetable_c(exit_k.pt_mp, exit_k.pt_lower.view(), pagetable).lower.pagetable_window_locks, *va_range);
-            unmap_4k_trace_exit_step(&*steps, range_steps, kernel_k_to_kernel_u(exit_start), kernel_k_to_kernel_u(exit_k), cpu_id, va, range);
-        };
-        unmap_4k_result_from_k(&old(steps).snapshot_k(), cpu_id, va, range, RetValueType::Success);
-    }
+    proof { assert(unmap_4k_trace_after_range(steps.view(), cpu_id, *va_range)) by { unmap_4k_trace_range_steps(&*steps, entered, cpu_id, *va_range); }; }
+    unmap_4k_release_and_exit(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, va_range, container_ptr, process_ptr, thread_ptr, pagetable, Tracked(cpu_perm),
+        Tracked(container_perm), Tracked(process_perm), Tracked(thread_perm), Tracked(pagetable_perm), Tracked(window_perms));
+    proof { unmap_4k_result_from_k(&old(steps).snapshot_k(), cpu_id, va, range, RetValueType::Success); }
 }
 } // verus!

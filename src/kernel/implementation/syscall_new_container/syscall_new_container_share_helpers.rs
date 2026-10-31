@@ -2,6 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 #[cfg(not(feature = "split-crates"))]
 use crate::kernel::implementation::attach_endpoint_reference_and_unlock::attach_endpoint_reference_and_unlock;
+use super::syscall_new_container_child_table_release::release_new_container_child_table_locks;
 
 verus! {
 /// Release phase of the child's root-thread creation: unlocks the child's and the parent's held windows of the range, the child
@@ -469,14 +470,9 @@ fn release_new_container_child_side_locks_and_attach_endpoint(
                 &&& b.being_killed() == a.being_killed()
             },
 {
-    krnl.unlock_pagetable_range_existing_windows(child_pagetable_ptr, source_range, Tracked(&child_pagetable_lock_perm), Tracked(&mut *lctx), Tracked(child_window_perms));
-    proof { assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable_ptr) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr)); }
-    krnl.unlock_pagetable_range_existing_windows(source_pagetable_ptr, source_range, Tracked(&source_pagetable_lock_perm), Tracked(&mut *lctx), Tracked(source_window_perms));
-    krnl.wunlock_process(child_process_ptr, Tracked(&mut *lctx), Tracked(child_process_lock_perm));
-    krnl.runlock_pagetable(source_pagetable_ptr, Tracked(&mut *lctx), Tracked(source_pagetable_lock_perm));
-    krnl.wunlock_pagetable(child_pagetable_ptr, Tracked(&mut *lctx), Tracked(child_pagetable_lock_perm));
-    krnl.wunlock_page(page_ptr2page_index(new_thread_ptr), Tracked(&mut *lctx), Tracked(thread_page_lock_perm));
-    krnl.wunlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));
+    release_new_container_child_table_locks(krnl, Tracked(&mut *lctx), cpu_id, parent_process_ptr, child_process_ptr, new_thread_ptr, source_pagetable_ptr, child_pagetable_ptr,
+        scheduler_ptr, Tracked(child_process_lock_perm), Tracked(thread_page_lock_perm), Tracked(scheduler_lock_perm), Tracked(source_pagetable_lock_perm),
+        Tracked(child_pagetable_lock_perm), source_range, Tracked(source_window_perms), Tracked(child_window_perms), Ghost(entry_k), Ghost(entry_lctx));
     krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(None), Tracked(&*lctx), Tracked(current_thread_lock_perm));
     match endpoint {
         Some(endpoint_ptr) => {
@@ -484,12 +480,6 @@ fn release_new_container_child_side_locks_and_attach_endpoint(
             attach_endpoint_reference_and_unlock(krnl, new_thread_ptr, endpoint_ptr, current_thread_ptr, Tracked(&mut *lctx), Tracked(new_thread_lock_perm), Tracked(endpoint_lock_perm));
         },
         None => krnl.wunlock_thread(new_thread_ptr, Tracked(&mut *lctx), Tracked(new_thread_lock_perm)),
-    }
-    proof {
-        assert(kernel_process_nonlock_fields_unchanged(old(krnl).prc_mp, krnl.prc_mp)
-            && kernel_pagetable_nonlock_fields_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), krnl.pt_mp, krnl.pt_lower.view())) by {
-            reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); broadcast use kernel_pagetable_nonlock_fields_unchanged_transitive;
-        };
     }
 }
 

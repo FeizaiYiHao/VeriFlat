@@ -4,7 +4,7 @@ use super::syscall_kill_process_spec::*;
 use super::syscall_kill_process_trace::*;
 use super::syscall_kill_process_walk::KillScope;
 #[cfg(verus_keep_ghost)]
-use super::syscall_kill_process_walk::{kill_scope_progress, kill_walk_state};
+use super::syscall_kill_process_walk::{kill_chain_state, kill_scope_progress, kill_walk_state};
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_process_reclaim_spec::*;
 #[cfg(verus_keep_ghost)]
@@ -65,6 +65,7 @@ pub(crate) fn kill_reclaim_return_quota_and_zombify(
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
 {
+    hide(kill_chain_state);
     kill_reclaim_return_quota(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, Ghost(chain), Tracked(chain_perms), Tracked(cpu_perm),
         Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Tracked(&pagetable_perm), Tracked(&iommu_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
     kill_reclaim_unlock_table(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, Ghost(chain), Tracked(chain_perms), Tracked(cpu_perm),
@@ -124,6 +125,7 @@ pub(crate) fn kill_reclaim_return_quota(
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
 {
+    hide(kill_reclaim_state);
     kill_reclaim_return_quota_size(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, Ghost(chain), Tracked(chain_perms), Tracked(cpu_perm),
         Tracked(process_perm), Tracked(thread_perm), pagetable, iommu_table, Tracked(pagetable_perm), Tracked(iommu_perm), PageSize::SZ4k, Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
     kill_reclaim_return_quota_size(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, Ghost(chain), Tracked(chain_perms), Tracked(cpu_perm),
@@ -183,6 +185,7 @@ pub(crate) fn kill_reclaim_return_quota_size(
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
 {
+    hide(Seq::contains);
     let ghost entry_k = *krnl;
     let ghost entry_lctx = *lctx;
     let ghost entry_steps = steps.view();
@@ -652,6 +655,7 @@ pub(crate) fn kill_reclaim_zombify(
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
 {
+    hide(Seq::contains);
     let ghost entry_k = *krnl;
     let ghost entry_lctx = *lctx;
     let ghost entry_steps = steps.view();

@@ -33,6 +33,33 @@ pub(super) open spec fn return_free_quota_4k_eof_transition_framing(pre: KernelK
     &&& new_allocator.quota.being_killed() == old_allocator.quota.being_killed()
 }
 
+/// EOF closure leaf: the 4k allocator quota invariant after the pending quota returns to the allocator.
+proof fn return_free_quota_4k_eof_memory_quota_4k(pre: KernelK, post: KernelK, thread_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, depth: usize, allocator_ptr: RwLockPageAllocatorPtr, amount: usize)
+    requires
+        pre.inv(),
+        return_free_quota_4k_eof_transition_framing(pre, post, thread_ptr, depth, allocator_ptr, amount),
+        pre.thr_mp.dom().contains(thread_ptr),
+        pre.ctn_mp.dom().contains(owner),
+        pre.ctn_mp.spec_index(owner).view_rodata().view().depth == depth,
+        pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr,
+        depth <= pre.thr_mp.spec_index(thread_ptr).view().container_depth,
+        if depth == pre.thr_mp.spec_index(thread_ptr).view().container_depth { owner == pre.thr_mp.spec_index(thread_ptr).view().owning_container } else { pre.thr_mp.spec_index(thread_ptr).view().upper_container_seq.view().spec_index(depth as int) == owner },
+        amount == pre.thr_mp.spec_index(thread_ptr).view().free_quota_pending_4k_at_depth(depth),
+        pre.allc_4k_mp.spec_index(allocator_ptr).quota.view().value + amount <= pre.allc_4k_mp.spec_index(allocator_ptr).total_free_pages.view(),
+        thread_perms_wf(post.thr_mp),
+        post.thr_mp.spec_index(thread_ptr).inv(),
+        post.allc_4k_mp.perms_wf(),
+        post.subsystems_inv(),
+    ensures
+        container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp),
+{
+    reveal(return_free_quota_4k_eof_transition_framing);
+    reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf); reveal(container_thread_wf); reveal(container_uppertree_seq_wf);
+    lemma_thread_effective_quota_4k_fold_sum_eq_forall();
+    lemma_thread_pending_4k_folds_change_by_forall(thread_ptr, if depth == pre.thr_mp.spec_index(thread_ptr).view().container_depth { -(amount as int) } else { 0int },
+        depth as int, if depth < pre.thr_mp.spec_index(thread_ptr).view().container_depth { -(amount as int) } else { 0int });
+}
+
 proof fn return_free_quota_4k_eof_memory(pre: KernelK, post: KernelK, thread_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, depth: usize, allocator_ptr: RwLockPageAllocatorPtr, amount: usize)
     requires
         pre.inv(),
@@ -73,12 +100,7 @@ proof fn return_free_quota_4k_eof_memory(pre: KernelK, post: KernelK, thread_ptr
             thread_staged_pages_2m_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
             thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr);
         };
-        assert(container_process_allocator_quota_4k_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_4k_mp)) by {
-            reveal(container_process_allocator_quota_4k_wf); reveal(container_allocator_wf); reveal(container_thread_wf); reveal(container_uppertree_seq_wf);
-            lemma_thread_effective_quota_4k_fold_sum_eq_forall();
-            lemma_thread_pending_4k_folds_change_by_forall(thread_ptr, if depth == pre.thr_mp.spec_index(thread_ptr).view().container_depth { -(amount as int) } else { 0int },
-                depth as int, if depth < pre.thr_mp.spec_index(thread_ptr).view().container_depth { -(amount as int) } else { 0int });
-        };
+        return_free_quota_4k_eof_memory_quota_4k(pre, post, thread_ptr, owner, depth, allocator_ptr, amount);
         assert(container_process_allocator_quota_2m_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_2m_mp)) by { container_process_allocator_quota_2m_wf_preserved_for_thread_2m_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_2m_mp); };
         assert(container_process_allocator_quota_1g_wf(post.ctn_mp, post.prc_mp, post.thr_mp, post.allc_1g_mp)) by { container_process_allocator_quota_1g_wf_preserved_for_thread_1g_fields(post.ctn_mp, post.prc_mp, pre.thr_mp, post.thr_mp, post.allc_1g_mp); };
     };

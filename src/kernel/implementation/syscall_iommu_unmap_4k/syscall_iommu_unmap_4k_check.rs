@@ -2,6 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_iommu_unmap_4k_spec::*;
 use super::syscall_iommu_unmap_4k_trace::*;
+use super::syscall_iommu_unmap_4k_reject::{iommu_unmap_4k_unlock_rejected, iommu_unmap_4k_unlock_thread_rejected};
 
 verus! {
 /// Validates the arguments, write-locks cpu `cpu_id`, its running thread's container, process, and thread, and the process's
@@ -142,15 +143,9 @@ pub(super) fn iommu_unmap_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): T
     let iommu_table_opt = krnl.prc_mp.borrow_typed(process_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(&process_perm)).iommu_table;
     proof { process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, process_ptr); }
     if iommu_table_opt.is_none() {
-        krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_perm));
-        krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_perm));
-        krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_perm));
-        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
-        proof {
-            assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
-            steps.end_kernel_step_restored_locks(&*krnl, &*lctx, cpu_id, Some(container_ptr), Some(process_ptr), Some(thread_ptr), None, None, None);
-            iommu_unmap_4k_result_from_k(&*old(krnl), cpu_id, iova, range, RetValueType::ErrorPciNoIommuTable);
-        }
+        iommu_unmap_4k_unlock_thread_rejected(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, thread_ptr, Tracked(cpu_perm), Tracked(container_perm),
+            Tracked(process_perm), Tracked(thread_perm));
+        proof { iommu_unmap_4k_result_from_k(&*old(krnl), cpu_id, iova, range, RetValueType::ErrorPciNoIommuTable); }
         return Err(RetValueType::ErrorPciNoIommuTable);
     }
     let iommu_table = iommu_table_opt.unwrap();
@@ -165,16 +160,9 @@ pub(super) fn iommu_unmap_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): T
         it.mapping_4k_va_range_present(&iova_range)
     };
     if !present {
-        krnl.wunlock_iommu_table(iommu_table, Tracked(&mut *lctx), Tracked(iommu_table_perm));
-        krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_perm));
-        krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_perm));
-        krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_perm));
-        krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_perm));
-        proof {
-            assert(krnl.cpu_op.view().view() =~= steps.snapshot_k().cpu_op.view().view());
-            steps.end_kernel_step_restored_locks_with_iommu_table(&*krnl, &*lctx, cpu_id, Some(container_ptr), Some(process_ptr), Some(thread_ptr), None, None, None, Some(iommu_table));
-            iommu_unmap_4k_result_from_k(&*old(krnl), cpu_id, iova, range, RetValueType::ErrorIommuIovaNotMapped);
-        }
+        iommu_unmap_4k_unlock_rejected(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, container_ptr, process_ptr, thread_ptr, iommu_table, Tracked(cpu_perm),
+            Tracked(container_perm), Tracked(process_perm), Tracked(thread_perm), Tracked(iommu_table_perm));
+        proof { iommu_unmap_4k_result_from_k(&*old(krnl), cpu_id, iova, range, RetValueType::ErrorIommuIovaNotMapped); }
         return Err(RetValueType::ErrorIommuIovaNotMapped);
     }
     proof { iommu_unmap_4k_result_from_k(&*old(krnl), cpu_id, iova, range, RetValueType::Success); }

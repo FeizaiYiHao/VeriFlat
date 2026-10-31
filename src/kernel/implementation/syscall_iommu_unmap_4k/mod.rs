@@ -1,5 +1,6 @@
 pub mod syscall_iommu_unmap_4k;
 mod syscall_iommu_unmap_4k_check;
 mod syscall_iommu_unmap_4k_range;
+mod syscall_iommu_unmap_4k_reject;
 pub mod syscall_iommu_unmap_4k_spec;
 mod syscall_iommu_unmap_4k_trace;

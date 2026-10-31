@@ -81,6 +81,7 @@ pub(crate) fn kill_reclaim_clear_leaves(
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
 {
+    hide(Set::is_empty);
     proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable); }
     let mut cursor: (L4Index, L3Index, L2Index, L1Index) = (start_l4, 0, 0, 0);
     let mut found = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_perm)).next_mapped_4k_from(Tracked(krnl.pt_lower.borrow().tracked_borrow(pagetable)), cursor);
@@ -177,6 +178,7 @@ pub(crate) fn kill_reclaim_clear_leaves(
             proof { assert(!pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().dom().contains(va) || !pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k().spec_index(va).present) by { reveal(PageTableC::wf_mapping_4k); }; }
         }
         cursor = (next.0, next.1, next.2, next.3 + 1);
+        proof { lemma_l4_index_path_le_successor(next, cursor); }
         found = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(pagetable_perm)).next_mapped_4k_from(Tracked(krnl.pt_lower.borrow().tracked_borrow(pagetable)), cursor);
     }
 }
@@ -258,6 +260,7 @@ pub(crate) fn kill_reclaim_flush(
         final(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread() == old(krnl).cpu_arr.spec_index(cpu_id).view().locking_thread(),
         final(krnl).cpu_arr.spec_index(cpu_id).view().view().view() == old(krnl).cpu_arr.spec_index(cpu_id).view().view().view(),
 {
+    hide(Set::is_empty);
     proof {
         pagetable_perms_wf_at(krnl.pt_mp, pagetable); process_perms_wf_at(krnl.prc_mp, target);
         assert({
@@ -421,6 +424,7 @@ pub(crate) fn kill_reclaim_flush_cpu_tlb(
             pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus.dom().contains(k)
                 ==> c + 1 < NUM_CPUS && pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus.spec_index(k) == Set::range((c + 1) as usize, NUM_CPUS),
 {
+    hide(typed_lock_maps_aligned);
     let Tracked(needflush_perm) = krnl.wlock_pcid_needflush(c, pcid, Tracked(&mut *lctx));
     let hw_cr3_pcid = mark_pcid_needflush_and_load(krnl, c, pcid, Tracked(&mut *lctx), Tracked(&needflush_perm));
     let flushed = hw_cr3_pcid.0 == cr3 && hw_cr3_pcid.1 == pcid;
@@ -545,6 +549,7 @@ pub(crate) fn kill_reclaim_unmap_leaves(
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
 {
+    hide(LockedMap::lock_id_by_key);
     let ghost entry_thread = krnl.thr_mp.spec_index(thread_ptr).view();
     proof {
         pagetable_perms_wf_map(krnl.pt_mp);
@@ -761,6 +766,7 @@ pub(crate) fn kill_reclaim_iommu_leaves(
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
 {
+    hide(RwLock::being_killed);
     let ghost entry_thread = krnl.thr_mp.spec_index(thread_ptr).view();
     proof {
         iommu_table_perms_wf_map(krnl.it_mp);
@@ -872,7 +878,6 @@ pub(crate) fn kill_reclaim_iommu_leaves(
                 kill_iommu_leaf_step_from_u(kernel_k_to_kernel_u(leaf_k), kernel_k_to_kernel_u(leaf_post), cpu_id, target, iova);
                 krnl.kernel_step_boundary_user_view_changed(&mut *lctx, &mut *steps);
                 kill_trace_push(&*steps, leaf_before, start, pre, kernel_k_to_kernel_u(leaf_k), kernel_k_to_kernel_u(leaf_post), cpu_id, ctx);
-                iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table);
             }
             kill_reclaim_unmapped_iommu_4k_page_scoped(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, iommu_table, next, Tracked(iommu_perm),
                 Ghost(KillStage::Reclaim { flushed: true }), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));

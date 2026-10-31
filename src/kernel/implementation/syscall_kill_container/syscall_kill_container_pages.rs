@@ -1,25 +1,16 @@
 use vstd::prelude::*;
 use crate::*;
 use super::super::syscall_kill_process::syscall_kill_process_spec::KillTraceCtx;
-#[cfg(all(verus_keep_ghost, feature = "split-crates"))]
-use veriflat_alloc_page::free_4k_page::kill_container_quota_fold::lemma_container_allocator_quota_eq_total_free_without_users;
-#[cfg(all(verus_keep_ghost, not(feature = "split-crates")))]
-use crate::kernel::implementation::free_4k_page::kill_container_quota_fold::lemma_container_allocator_quota_eq_total_free_without_users;
-use super::syscall_kill_container_pages_lock::{kill_container_pages_lock, kill_container_pages_unlock};
+use super::syscall_kill_container_pages_lock::kill_container_pages_lock;
 use super::syscall_kill_container_pages_drain::kill_container_pages_drain;
 use super::syscall_kill_container_pages_move::{kill_container_pages_move_4k, kill_container_pages_move_2m};
+use super::syscall_kill_container_pages_finish::kill_container_pages_retire_and_unlock;
 #[cfg(verus_keep_ghost)]
 use super::super::syscall_kill_process::syscall_kill_process_spec::*;
 #[cfg(verus_keep_ghost)]
 use super::syscall_kill_container_spec::*;
 #[cfg(verus_keep_ghost)]
-use super::syscall_kill_container_trace::kill_container_trace_push;
-#[cfg(verus_keep_ghost)]
 use super::syscall_kill_container_pages_spec::*;
-#[cfg(verus_keep_ghost)]
-use super::syscall_kill_container_pages_trace::*;
-#[cfg(verus_keep_ghost)]
-use super::syscall_kill_container_pages_eof::kill_container_pages_eof_retire_ready;
 
 verus! {
 /// Move every free page of the marked container `container_ptr` to the killer's container `owner_ptr`: write-hold the
@@ -107,47 +98,8 @@ pub(crate) fn kill_container_pages(
     kill_container_pages_move_2m(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, container_ptr, owner_ptr, a4, o4, a2, o2, Tracked(cpu_perm),
         Tracked(process_perm), Tracked(thread_perm), Tracked(container_perm), Tracked(owner_perm), Tracked(&caches_4k), Tracked(&caches_2m), Tracked(&pools_4k), Tracked(&pools_2m),
         Tracked(&quotas_4k), Tracked(&quotas_2m), Ghost(start), Ghost(pre), Ghost(ctx));
-    proof {
-        let a4_caches = krnl.allc_4k_mp.spec_index(a4).cpu_caches;
-        let a2_caches = krnl.allc_2m_mp.spec_index(a2).cpu_caches;
-        allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, a4); allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, a2);
-        a4_caches.lemma_view_index(); lemma_cache_len_fold_all_zero(a4_caches.view()); a2_caches.lemma_view_index(); lemma_cache_len_fold_all_zero(a2_caches.view());
-        lemma_container_allocator_quota_eq_total_free_without_users(*krnl, container_ptr); krnl.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr);
-    }
-    let ghost drained = *krnl;
-    proof {
-        let target_ghost = krnl.ctn_mp.spec_index(container_ptr).view_ghost();
-        kernel_container_quotas_zero_projection(&drained, container_ptr); container_perms_wf_map(krnl.ctn_mp);
-        krnl.ctn_mp.update_ghost(container_ptr, ContainerGhost { retire_ready: true, ..target_ghost });
-        kill_container_pages_eof_retire_ready(drained, *krnl, container_ptr);
-        assert(typed_lock_maps_aligned(&*krnl, &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-        assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&drained, &*krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&drained, &*krnl)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
-        kernel_endpoint_nonlock_fields_unchanged_for_equal(drained.ep_mp, krnl.ep_mp);
-        kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&drained, &*krnl); steps.rebase_snapshot_k_if_unchanged(&*krnl);
-    }
-    let ghost base = *krnl;
-    let ghost base_lctx = *lctx;
-    let ghost base_steps = steps.view();
-    krnl.set_thread_syscall_progress(thread_ptr, Ghost(kill_container_progress(container_ptr, ContainerKillStage::Retire)), Tracked(&*lctx), Tracked(thread_perm));
-    proof {
-        let pre_u = kernel_k_to_kernel_u(base);
-        let post_u = kernel_k_to_kernel_u(*krnl);
-        kill_container_pages_pre_from_k(&base, &base_lctx, cpu_id, process_ptr, thread_ptr, container_ptr);
-        kernel_thread_syscall_progress_changed_implies_u_step(&base, &*krnl, thread_ptr);
-        kill_container_retire_stage_step_from_u(pre_u, post_u, cpu_id, thread_ptr, container_ptr);
-        enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
-        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
-        krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
-        kill_container_trace_push(&*steps, base_steps, start, pre, pre_u, post_u, cpu_id, ctx);
-    }
-    let ghost retired = *krnl;
-    kill_container_pages_unlock(krnl, Tracked(&mut *lctx), container_ptr, owner_ptr, a4, o4, a2, o2, Tracked(caches_4k), Tracked(caches_2m), Tracked(pools_4k), Tracked(pools_2m),
-        Tracked(quotas_4k), Tracked(quotas_2m));
-    proof {
-        kernel_nonlock_fields_and_lock_states_unchanged_implies_u_eq(&retired, &*krnl);
-        assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); };
-        krnl.kernel_step_boundary_nonlock_fields_unchanged(&mut *lctx, &mut *steps);
-    }
+    kill_container_pages_retire_and_unlock(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, container_ptr, owner_ptr, a4, o4, a2, o2,
+        Tracked(cpu_perm), Tracked(process_perm), Tracked(thread_perm), Tracked(container_perm), Tracked(owner_perm), Tracked(caches_4k), Tracked(caches_2m), Tracked(pools_4k),
+        Tracked(pools_2m), Tracked(quotas_4k), Tracked(quotas_2m), Ghost(start), Ghost(pre), Ghost(ctx));
 }
 } // verus!

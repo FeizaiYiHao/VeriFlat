@@ -783,7 +783,7 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_page_object_owne
             }
         }),
 {
-    reveal(publish_staged_container_root_eof_transition_framing);
+    hide(Seq::contains); reveal(publish_staged_container_root_eof_transition_framing);
     let page_ptr = page_index2page_ptr(page_index);
     let moved_pages = new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).union(funding_pages.to_set());
     if moved_pages.contains(page_ptr) {
@@ -800,7 +800,7 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_page_object_owne
                 page_ptr_2m_valid_imply_page_index_2m_valid(pcid_allocator_page);
                 page_2m_ptr_prefix_member_bounds(pcid_allocator_head, 512, page_ptr);
                 if page_index != pcid_allocator_head { }
-            } else { reveal(new_container_bootstrap_4k_pages); }
+            } else { reveal(Seq::contains); reveal(new_container_bootstrap_4k_pages); }
         }
     } else {
         publish_staged_container_root_eof_page_fields_eq_outside_moved_pages(
