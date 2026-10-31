@@ -210,6 +210,7 @@ fn new_process_lock_entry(
         ret is Ok ==> forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger final(lctx).pagetable_window_lock_map().dom().contains((p, w))]
             final(lctx).pagetable_window_lock_map().dom().contains((p, w)) == (p == ret->Ok_0.source_pagetable_ptr && ret->Ok_0.source_window_perms.view().dom().contains(w)),
 {
+    hide(Seq::contains);
     let owner = match new_process_lock_cpu_owner(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, endpoint_index, with_iommu, Ghost(*initial_regs)) {
         Ok(owner) => owner,
         Err(ret) => return Err(ret),
@@ -337,6 +338,7 @@ pub(super) fn syscall_new_process_common(krnl: &mut KernelK, Tracked(lctx): Trac
         (ret is SuccessPairUsize || ret is SuccessThreeUsize) == (new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, endpoint_index, with_iommu) is Success),
         !(ret is SuccessPairUsize || ret is SuccessThreeUsize) ==> ret == new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, endpoint_index, with_iommu),
 {
+    hide(LockedMap::spec_index);
     let entry = match new_process_lock_entry(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, endpoint_index, with_iommu, initial_regs) {
         Ok(entry) => entry,
         Err(ret) => return ret,

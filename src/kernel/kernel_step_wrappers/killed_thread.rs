@@ -222,15 +222,8 @@ pub proof fn kernel_cpu_and_thread_unlocked_implies_u_step(before: &KernelK, aft
         if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(before, i as usize); kernel_cpu_projection_at(after, i as usize); }
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_cpu_nonlock_fields_unchanged);
     });
-    assert_maps_equal!(post.container_map, pre.container_map, p => {
-        if before.ctn_mp.dom().contains(p) { kernel_container_projection_at(before, p); kernel_container_projection_at(after, p); }
-    });
-    assert_maps_equal!(post.process_map, pre.process_map, p => {
-        if before.prc_mp.dom().contains(p) { kernel_process_projection_at(before, p); kernel_process_projection_at(after, p); }
-    });
-    assert_maps_equal!(post.endpoint_map, pre.endpoint_map, e => {
-        if before.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(before, e); kernel_endpoint_projection_at(after, e); }
-    });
+    kernel_container_maps_unchanged_implies_u_container_map(before, after); kernel_process_maps_unchanged_implies_u_process_map(before, after);
+    kernel_endpoint_map_unchanged_implies_u_endpoint_map(before, after);
 }
 
 /// Reclaiming a killed dangling thread projects to `kernel_u_dangling_thread_reclaimed` and changes or removes no thread
@@ -266,13 +259,8 @@ pub proof fn kernel_dangling_thread_reclaimed_implies_u_step(before: &KernelK, a
     }), c => {
         if before.ctn_mp.dom().contains(c) { kernel_container_projection_at(before, c); kernel_container_projection_at(after, c); }
     });
-    assert_seqs_equal!(post.cpu_array == pre.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(before, i as usize); kernel_cpu_projection_at(after, i as usize); } });
-    assert_maps_equal!(post.process_map, pre.process_map, p => {
-        if before.prc_mp.dom().contains(p) { kernel_process_projection_at(before, p); kernel_process_projection_at(after, p); }
-    });
-    assert_maps_equal!(post.endpoint_map, pre.endpoint_map, e => {
-        if before.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(before, e); kernel_endpoint_projection_at(after, e); }
-    });
+    kernel_cpu_array_unchanged_implies_u_cpu_array(before, after); kernel_process_maps_unchanged_implies_u_process_map(before, after);
+    kernel_endpoint_map_unchanged_implies_u_endpoint_map(before, after);
     reveal(kernel_u_dangling_thread_reclaimed);
 }
 

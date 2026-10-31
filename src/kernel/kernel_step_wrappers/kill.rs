@@ -29,16 +29,8 @@ pub proof fn kernel_process_locked_and_marked_implies_u_step(before: &KernelK, a
     assert_maps_equal!(post.process_map, pre.process_map.insert(process_ptr, ProcessU { lock_state: LockStateU::WriteLocked, killed: true, ..pre.process_map[process_ptr] }), p => {
         if before.prc_mp.dom().contains(p) { kernel_process_projection_at(before, p); kernel_process_projection_at(after, p); }
     });
-    assert_seqs_equal!(post.cpu_array == pre.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(before, i as usize); kernel_cpu_projection_at(after, i as usize); } });
-    assert_maps_equal!(post.container_map, pre.container_map, c => {
-        if before.ctn_mp.dom().contains(c) { kernel_container_projection_at(before, c); kernel_container_projection_at(after, c); }
-    });
-    assert_maps_equal!(post.thread_map, pre.thread_map, t => {
-        if before.thr_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); }
-    });
-    assert_maps_equal!(post.endpoint_map, pre.endpoint_map, e => {
-        if before.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(before, e); kernel_endpoint_projection_at(after, e); }
-    });
+    kernel_cpu_array_unchanged_implies_u_cpu_array(before, after); kernel_container_maps_unchanged_implies_u_container_map(before, after);
+    kernel_thread_map_unchanged_implies_u_thread_map(before, after); kernel_endpoint_map_unchanged_implies_u_endpoint_map(before, after);
 }
 
 /// Write-locking and marking the unmarked thread `thread_ptr` changes only its lock mode and kill mark, and changes the
@@ -69,16 +61,8 @@ pub proof fn kernel_thread_locked_and_marked_implies_u_step(before: &KernelK, af
     assert_maps_equal!(post.thread_map, pre.thread_map.insert(thread_ptr, ThreadU { lock_state: LockStateU::WriteLocked, killed: true, ..pre.thread_map[thread_ptr] }), t => {
         if before.thr_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); }
     });
-    assert_seqs_equal!(post.cpu_array == pre.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(before, i as usize); kernel_cpu_projection_at(after, i as usize); } });
-    assert_maps_equal!(post.container_map, pre.container_map, c => {
-        if before.ctn_mp.dom().contains(c) { kernel_container_projection_at(before, c); kernel_container_projection_at(after, c); }
-    });
-    assert_maps_equal!(post.process_map, pre.process_map, p => {
-        if before.prc_mp.dom().contains(p) { kernel_process_projection_at(before, p); kernel_process_projection_at(after, p); }
-    });
-    assert_maps_equal!(post.endpoint_map, pre.endpoint_map, e => {
-        if before.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(before, e); kernel_endpoint_projection_at(after, e); }
-    });
+    kernel_cpu_array_unchanged_implies_u_cpu_array(before, after); kernel_container_maps_unchanged_implies_u_container_map(before, after);
+    kernel_process_maps_unchanged_implies_u_process_map(before, after); kernel_endpoint_map_unchanged_implies_u_endpoint_map(before, after);
 }
 
 /// The thread `thread_ptr` leaving the process `process_ptr`, which absorbs its quota, changes only that process's
@@ -137,6 +121,52 @@ pub proof fn kernel_thread_left_process_implies_u_step(before: &KernelK, after: 
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     kernel_process_projection_at(before, process_ptr); kernel_thread_projection_at(before, thread_ptr); kernel_thread_projection_at(after, thread_ptr);
+    kernel_thread_left_process_implies_u_process_map(before, after, process_ptr, thread_ptr); kernel_thread_left_process_implies_u_thread_map(before, after, thread_ptr);
+    assert_seqs_equal!(post.cpu_array == pre.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(before, i as usize); kernel_cpu_projection_at(after, i as usize); } });
+    assert_maps_equal!(post.container_map, pre.container_map, c => {
+        if before.ctn_mp.dom().contains(c) { kernel_container_projection_at(before, c); kernel_container_projection_at(after, c); }
+    });
+    assert_maps_equal!(post.endpoint_map, pre.endpoint_map, e => {
+        if before.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(before, e); kernel_endpoint_projection_at(after, e); }
+    });
+}
+
+/// The thread `thread_ptr` leaving the process `process_ptr`, which absorbs its quota, changes only that process's threads and
+/// quota in the process map projection.
+proof fn kernel_thread_left_process_implies_u_process_map(before: &KernelK, after: &KernelK, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr)
+    requires
+        after.pt_mp == before.pt_mp,
+        after.pt_lower == before.pt_lower,
+        after.it_mp == before.it_mp,
+        before.prc_mp.dom().contains(process_ptr),
+        before.thr_mp.dom().contains(thread_ptr),
+        after.prc_mp.unchanged_except(&before.prc_mp, process_ptr),
+        after.prc_mp.spec_index(process_ptr).view() == (Process {
+            quota_4k: (before.prc_mp.spec_index(process_ptr).view().quota_4k + before.thr_mp.spec_index(thread_ptr).view().quota_4k) as usize,
+            quota_2m: (before.prc_mp.spec_index(process_ptr).view().quota_2m + before.thr_mp.spec_index(thread_ptr).view().quota_2m) as usize,
+            quota_1g: (before.prc_mp.spec_index(process_ptr).view().quota_1g + before.thr_mp.spec_index(thread_ptr).view().quota_1g) as usize,
+            owned_threads: after.prc_mp.spec_index(process_ptr).view().owned_threads, ..before.prc_mp.spec_index(process_ptr).view()
+        }),
+        after.prc_mp.spec_index(process_ptr).view().owned_threads.view() == before.prc_mp.spec_index(process_ptr).view().owned_threads.view().remove_value(thread_ptr),
+        after.prc_mp.spec_index(process_ptr).view_rodata() == before.prc_mp.spec_index(process_ptr).view_rodata(),
+        after.prc_mp.spec_index(process_ptr).view_ghost() == before.prc_mp.spec_index(process_ptr).view_ghost(),
+        after.prc_mp.spec_index(process_ptr).locking_thread() == before.prc_mp.spec_index(process_ptr).locking_thread(),
+        after.prc_mp.spec_index(process_ptr).being_killed() == before.prc_mp.spec_index(process_ptr).being_killed(),
+    ensures
+        ({
+            let pre = kernel_k_to_kernel_u(*before);
+            let process = pre.process_map[process_ptr];
+            let thread = pre.thread_map[thread_ptr];
+            kernel_k_to_kernel_u(*after).process_map == pre.process_map.insert(process_ptr, ProcessU {
+                owned_threads: process.owned_threads.remove_value(thread_ptr), quota_4k: (process.quota_4k + thread.quota_4k) as usize,
+                quota_2m: (process.quota_2m + thread.quota_2m) as usize, quota_1g: (process.quota_1g + thread.quota_1g) as usize, ..process
+            })
+        }),
+{
+    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    let pre = kernel_k_to_kernel_u(*before);
+    let post = kernel_k_to_kernel_u(*after);
+    kernel_process_projection_at(before, process_ptr); kernel_thread_projection_at(before, thread_ptr);
     let process = pre.process_map[process_ptr];
     let thread = pre.thread_map[thread_ptr];
     assert_maps_equal!(post.process_map, pre.process_map.insert(process_ptr, ProcessU {
@@ -145,15 +175,40 @@ pub proof fn kernel_thread_left_process_implies_u_step(before: &KernelK, after: 
     }), p => {
         if before.prc_mp.dom().contains(p) { kernel_process_projection_at(before, p); kernel_process_projection_at(after, p); }
     });
+}
+
+/// The thread `thread_ptr` leaving its process, with its quota moved out and only its state otherwise changed, changes only
+/// that thread's state and quota in the thread map projection.
+proof fn kernel_thread_left_process_implies_u_thread_map(before: &KernelK, after: &KernelK, thread_ptr: RwLockThreadPtr)
+    requires
+        before.thr_mp.dom().contains(thread_ptr),
+        after.thr_mp.dom() == before.thr_mp.dom(),
+        forall|t: RwLockThreadPtr| #![trigger after.thr_mp.spec_index(t)] before.thr_mp.dom().contains(t) && t != thread_ptr ==> {
+            &&& after.thr_mp.spec_index(t).view() == before.thr_mp.spec_index(t).view()
+            &&& after.thr_mp.spec_index(t).locking_thread() == before.thr_mp.spec_index(t).locking_thread()
+            &&& after.thr_mp.spec_index(t).being_killed() == before.thr_mp.spec_index(t).being_killed()
+        },
+        after.thr_mp.spec_index(thread_ptr).view() == (Thread {
+            state: after.thr_mp.spec_index(thread_ptr).view().state, quota_4k: 0, quota_2m: 0, quota_1g: 0,
+            proc_linkedlist_node: after.thr_mp.spec_index(thread_ptr).view().proc_linkedlist_node, ..before.thr_mp.spec_index(thread_ptr).view()
+        }),
+        after.thr_mp.spec_index(thread_ptr).locking_thread() == before.thr_mp.spec_index(thread_ptr).locking_thread(),
+        after.thr_mp.spec_index(thread_ptr).being_killed() == before.thr_mp.spec_index(thread_ptr).being_killed(),
+    ensures
+        ({
+            let pre = kernel_k_to_kernel_u(*before);
+            kernel_k_to_kernel_u(*after).thread_map == pre.thread_map.insert(thread_ptr, ThreadU {
+                state: after.thr_mp.spec_index(thread_ptr).view().state, quota_4k: 0, quota_2m: 0, quota_1g: 0, ..pre.thread_map[thread_ptr]
+            })
+        }),
+{
+    kernel_u_domains_projection(before); kernel_u_domains_projection(after);
+    let pre = kernel_k_to_kernel_u(*before);
+    let post = kernel_k_to_kernel_u(*after);
+    kernel_thread_projection_at(before, thread_ptr);
+    let thread = pre.thread_map[thread_ptr];
     assert_maps_equal!(post.thread_map, pre.thread_map.insert(thread_ptr, ThreadU { state: after.thr_mp.spec_index(thread_ptr).view().state, quota_4k: 0, quota_2m: 0, quota_1g: 0, ..thread }), t => {
         if before.thr_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); }
-    });
-    assert_seqs_equal!(post.cpu_array == pre.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(before, i as usize); kernel_cpu_projection_at(after, i as usize); } });
-    assert_maps_equal!(post.container_map, pre.container_map, c => {
-        if before.ctn_mp.dom().contains(c) { kernel_container_projection_at(before, c); kernel_container_projection_at(after, c); }
-    });
-    assert_maps_equal!(post.endpoint_map, pre.endpoint_map, e => {
-        if before.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(before, e); kernel_endpoint_projection_at(after, e); }
     });
 }
 
@@ -210,13 +265,8 @@ pub proof fn kernel_scheduled_thread_killed_implies_u_step(
     assert_maps_equal!(post.thread_map, pre.thread_map.insert(thread_ptr, ThreadU { state: ThreadState::KILLED, error_code: None, ..pre.thread_map[thread_ptr] }), t => {
         if before.thr_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); }
     });
-    assert_seqs_equal!(post.cpu_array == pre.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(before, i as usize); kernel_cpu_projection_at(after, i as usize); } });
-    assert_maps_equal!(post.process_map, pre.process_map, p => {
-        if before.prc_mp.dom().contains(p) { kernel_process_projection_at(before, p); kernel_process_projection_at(after, p); }
-    });
-    assert_maps_equal!(post.endpoint_map, pre.endpoint_map, e => {
-        if before.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(before, e); kernel_endpoint_projection_at(after, e); }
-    });
+    kernel_cpu_array_unchanged_implies_u_cpu_array(before, after); kernel_process_maps_unchanged_implies_u_process_map(before, after);
+    kernel_endpoint_map_unchanged_implies_u_endpoint_map(before, after);
 }
 
 /// The thread `thread_ptr` leaving the queue of the endpoint `endpoint_ptr` it waits on and becoming killed changes only
@@ -264,13 +314,8 @@ pub proof fn kernel_endpoint_waiter_killed_implies_u_step(before: &KernelK, afte
     assert_maps_equal!(post.thread_map, pre.thread_map.insert(thread_ptr, ThreadU { state: ThreadState::KILLED, blocking_endpoint_ptr: None, ..pre.thread_map[thread_ptr] }), t => {
         if before.thr_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); }
     });
-    assert_seqs_equal!(post.cpu_array == pre.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(before, i as usize); kernel_cpu_projection_at(after, i as usize); } });
-    assert_maps_equal!(post.container_map, pre.container_map, c => {
-        if before.ctn_mp.dom().contains(c) { kernel_container_projection_at(before, c); kernel_container_projection_at(after, c); }
-    });
-    assert_maps_equal!(post.process_map, pre.process_map, p => {
-        if before.prc_mp.dom().contains(p) { kernel_process_projection_at(before, p); kernel_process_projection_at(after, p); }
-    });
+    kernel_cpu_array_unchanged_implies_u_cpu_array(before, after); kernel_container_maps_unchanged_implies_u_container_map(before, after);
+    kernel_process_maps_unchanged_implies_u_process_map(before, after);
 }
 
 /// Forcing the remote cpu `remote` running the thread `thread_ptr` from running to idle leaves it without a process or
@@ -316,14 +361,7 @@ pub proof fn kernel_running_thread_cpu_to_idle_implies_u_step(before: &KernelK, 
     assert_maps_equal!(post.thread_map, pre.thread_map.insert(thread_ptr, ThreadU { state: ThreadState::KILLED, ..pre.thread_map[thread_ptr] }), t => {
         if before.thr_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); }
     });
-    assert_maps_equal!(post.container_map, pre.container_map, c => {
-        if before.ctn_mp.dom().contains(c) { kernel_container_projection_at(before, c); kernel_container_projection_at(after, c); }
-    });
-    assert_maps_equal!(post.process_map, pre.process_map, p => {
-        if before.prc_mp.dom().contains(p) { kernel_process_projection_at(before, p); kernel_process_projection_at(after, p); }
-    });
-    assert_maps_equal!(post.endpoint_map, pre.endpoint_map, e => {
-        if before.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(before, e); kernel_endpoint_projection_at(after, e); }
-    });
+    kernel_container_maps_unchanged_implies_u_container_map(before, after); kernel_process_maps_unchanged_implies_u_process_map(before, after);
+    kernel_endpoint_map_unchanged_implies_u_endpoint_map(before, after);
 }
 } // verus!

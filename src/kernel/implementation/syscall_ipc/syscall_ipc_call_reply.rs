@@ -348,6 +348,7 @@ verus! {
                 &&& trace[last].new_u == kernel_k_to_kernel_u(*final(krnl))
             }),
     {
+        hide(Set::is_empty);
         proof { thread_perms_wf_at(krnl.thr_mp, caller_ptr); container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, callee_ptr); }
         let ghost locked_k = *krnl;
         let ghost locked_lctx = *lctx;

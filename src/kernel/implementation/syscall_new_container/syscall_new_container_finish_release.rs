@@ -166,6 +166,7 @@ pub(super) fn finish_staged_container_unlock_tails(
         typed_lock_map_contains_mode(final(lctx).page_lock_map(), page_ptr2page_index(pages_4k.view().spec_index(7)), TypedLockMode::Write),
         final(krnl).pg_arr.spec_index(page_ptr2page_index(pages_4k.view().spec_index(7))) == old(krnl).pg_arr.spec_index(page_ptr2page_index(pages_4k.view().spec_index(7))),
 {
+    hide(typed_lock_maps_aligned);
     let container_head = page_ptr2page_index(container_page);
     let pcid_allocator_head = page_ptr2page_index(pcid_allocator_page);
     wunlock_new_container_2m_page_tails(krnl, Tracked(&mut *lctx), container_head, pcid_allocator_head, Tracked(container_tail_lock_perms), Tracked(pcid_allocator_tail_lock_perms));

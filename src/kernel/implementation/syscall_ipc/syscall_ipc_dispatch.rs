@@ -704,6 +704,7 @@ verus! {
                 || ret is ErrorIpcTypeMismatch || ret is ErrorIpcEndpointSourceInvalid || ret is ErrorIpcEndpointTargetInUse || ret is ErrorIpcEndpointOwnerMismatch),
             ipc_rejection(ret) == ipc_entry_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, endpoint_index, waiting_state, blocking),
     {
+        hide(Set::is_empty);
         let entry = match ipc_lock_entry(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, endpoint_index, waiting_state, payload, blocking, false, &*pt_regs) { Ok(entry) => entry, Err(ret) => return ret };
         let IpcEntryLocked { process_ptr, current_thread_ptr, endpoint_ptr, queue_len, queue_is_send, cpu_lock_perm, current_thread_lock_perm, endpoint_lock_perm } = entry;
         let waiting_is_send = match waiting_state { ThreadState::SENDING => true, _ => false };

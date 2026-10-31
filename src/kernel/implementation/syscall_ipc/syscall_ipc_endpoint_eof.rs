@@ -22,6 +22,32 @@ proof fn ipc_copy_endpoint_reference_eof_thread_endpoint_ref_counter(
     assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); };
 }
 
+/// The thread and endpoint subsystem invariants close after the receiver's descriptor slot is bound to the payload endpoint.
+proof fn ipc_copy_endpoint_reference_eof_subsystems(
+    pre: KernelK, post: KernelK, receiver_thread_ptr: RwLockThreadPtr, target_endpoint_index: EndpointIdx, payload_endpoint_ptr: RwLockEndpointPtr,
+)
+    requires
+        pre.inv(),
+        edp_idx_valid(target_endpoint_index),
+        pre.thr_mp.dom().contains(receiver_thread_ptr),
+        pre.thr_mp.spec_index(receiver_thread_ptr).view().endpoint_descriptors.spec_index(target_endpoint_index) is None,
+        !(pre.thr_mp.spec_index(receiver_thread_ptr).view().state is DANGLING),
+        pre.ep_mp.dom().contains(payload_endpoint_ptr),
+        ipc_copy_endpoint_reference_eof_transition_framing(pre, post, receiver_thread_ptr, target_endpoint_index, payload_endpoint_ptr),
+        post.thr_mp.perms_wf(),
+        post.ep_mp.perms_wf(),
+    ensures post.subsystems_inv(),
+{
+    reveal(ipc_copy_endpoint_reference_eof_transition_framing);
+    thread_endpoint_ref_counter_wf_endpoint_at(pre.thr_mp, pre.ep_mp, payload_endpoint_ptr, receiver_thread_ptr, target_endpoint_index);
+    assert(thread_perms_wf(post.thr_mp)) by {
+        reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
+        reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
+    };
+    assert(endpoint_perms_wf(post.ep_mp)) by { reveal(endpoint_perms_wf); };
+    reveal(KernelK::default_pagetable_wf);
+}
+
 /// Closes every kernel invariant after the receiver's descriptor slot is bound to the payload endpoint.
 pub(super) proof fn ipc_copy_endpoint_reference_eof(
     pre: KernelK, post: KernelK, receiver_thread_ptr: RwLockThreadPtr, target_endpoint_index: EndpointIdx, payload_endpoint_ptr: RwLockEndpointPtr,
@@ -49,14 +75,7 @@ pub(super) proof fn ipc_copy_endpoint_reference_eof(
 {
     reveal(ipc_copy_endpoint_reference_eof_transition_framing);
     thread_endpoint_ref_counter_wf_endpoint_at(pre.thr_mp, pre.ep_mp, payload_endpoint_ptr, receiver_thread_ptr, target_endpoint_index);
-    assert(post.subsystems_inv()) by {
-        assert(thread_perms_wf(post.thr_mp)) by {
-            reveal(thread_perms_wf); reveal(thread_free_quota_pending_empty_unless_wlocked); reveal(thread_temp_alloc_empty_unless_wlocked); reveal(thread_syscall_progress_only_when_wlocked);
-            reveal(thread_exited_only_when_wlocked); reveal(thread_ipc_transit_wf);
-        };
-        assert(endpoint_perms_wf(post.ep_mp)) by { reveal(endpoint_perms_wf); };
-        reveal(KernelK::default_pagetable_wf);
-    };
+    ipc_copy_endpoint_reference_eof_subsystems(pre, post, receiver_thread_ptr, target_endpoint_index, payload_endpoint_ptr);
     assert(post.memory_management_inv()) by { memory_management_inv_preserved_for_thread_endpoint_memory_fields(pre, post); };
     assert(post.process_management_inv()) by {
         assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); };

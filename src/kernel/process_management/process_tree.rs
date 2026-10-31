@@ -311,17 +311,17 @@ verus! {
             && child_uppers.subrange(0, parent_depth as int) =~= parent_uppers) by { seq_push_lemma::<RwLockProcessPtr>(); seq_push_unique_lemma::<RwLockProcessPtr>(); };
         child_uppers.to_set_ensures();
         assert(process_tree_fields_wf(old_process_perms) && process_tree_fields_wf(new_process_perms)) by { reveal(process_perms_wf); };
-        process_add_child_ensures_implies_process_uppertree_seq_wf(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
-        process_add_child_ensures_implies_process_root_wf(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
-        process_add_child_ensures_implies_process_children_parent_wf(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
-        process_add_child_ensures_implies_process_linkedlist_wf(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
-        process_add_child_ensures_implies_process_children_depth_wf(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
-        process_add_child_ensures_implies_process_subtree_set_wf(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
-        process_add_child_ensures_implies_process_subtree_set_exclusive(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
+        process_add_child_eof_process_uppertree_seq_wf(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
+        process_add_child_eof_process_root_wf(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
+        process_add_child_eof_process_children_parent_wf(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
+        process_add_child_eof_process_linkedlist_wf(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
+        process_add_child_eof_process_children_depth_wf(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
+        process_add_child_eof_process_subtree_set_wf(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
+        process_add_child_eof_process_subtree_set_exclusive(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
     }
 
     /// Closure of `process_add_child_preserves_tree_wf` for `process_uppertree_seq_wf`.
-    proof fn process_add_child_ensures_implies_process_uppertree_seq_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_process_perms: ProcessLockedMap, new_process_perms: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
+    proof fn process_add_child_eof_process_uppertree_seq_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_process_perms: ProcessLockedMap, new_process_perms: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
         requires
             process_add_child_ensures(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr),
             ({
@@ -344,7 +344,7 @@ verus! {
     }
 
     /// Closure of `process_add_child_preserves_tree_wf` for `process_root_wf`.
-    proof fn process_add_child_ensures_implies_process_root_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_process_perms: ProcessLockedMap, new_process_perms: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
+    proof fn process_add_child_eof_process_root_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_process_perms: ProcessLockedMap, new_process_perms: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
         requires
             process_add_child_ensures(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr),
             ({
@@ -367,7 +367,7 @@ verus! {
     }
 
     /// Closure of `process_add_child_preserves_tree_wf` for `process_children_parent_wf`.
-    proof fn process_add_child_ensures_implies_process_children_parent_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_process_perms: ProcessLockedMap, new_process_perms: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
+    proof fn process_add_child_eof_process_children_parent_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_process_perms: ProcessLockedMap, new_process_perms: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
         requires
             process_add_child_ensures(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr),
             ({
@@ -390,7 +390,7 @@ verus! {
     }
 
     /// Closure of `process_add_child_preserves_tree_wf` for `process_linkedlist_wf`.
-    proof fn process_add_child_ensures_implies_process_linkedlist_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_process_perms: ProcessLockedMap, new_process_perms: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
+    proof fn process_add_child_eof_process_linkedlist_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_process_perms: ProcessLockedMap, new_process_perms: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
         requires
             process_add_child_ensures(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr),
             ({
@@ -413,7 +413,7 @@ verus! {
     }
 
     /// Closure of `process_add_child_preserves_tree_wf` for `process_children_depth_wf`.
-    proof fn process_add_child_ensures_implies_process_children_depth_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_process_perms: ProcessLockedMap, new_process_perms: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
+    proof fn process_add_child_eof_process_children_depth_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_process_perms: ProcessLockedMap, new_process_perms: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
         requires
             process_add_child_ensures(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr),
             ({
@@ -436,7 +436,7 @@ verus! {
     }
 
     /// Closure of `process_add_child_preserves_tree_wf` for `process_subtree_set_wf`.
-    proof fn process_add_child_ensures_implies_process_subtree_set_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_process_perms: ProcessLockedMap, new_process_perms: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
+    proof fn process_add_child_eof_process_subtree_set_wf(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_process_perms: ProcessLockedMap, new_process_perms: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
         requires
             process_add_child_ensures(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr),
             ({
@@ -459,7 +459,7 @@ verus! {
     }
 
     /// Closure of `process_add_child_preserves_tree_wf` for `process_subtree_set_exclusive`.
-    proof fn process_add_child_ensures_implies_process_subtree_set_exclusive(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_process_perms: ProcessLockedMap, new_process_perms: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
+    proof fn process_add_child_eof_process_subtree_set_exclusive(root_process: RwLockProcessPtr, process_tree_dom: Set<RwLockProcessPtr>, old_process_perms: ProcessLockedMap, new_process_perms: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
         requires
             process_add_child_ensures(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr),
             ({

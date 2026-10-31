@@ -731,12 +731,7 @@ pub proof fn kernel_descriptor_dropped_implies_u_step(
     assert_maps_equal!(post.endpoint_map, pre.endpoint_map.insert(endpoint_ptr, EndpointU {
         owning_threads: pre.endpoint_map[endpoint_ptr].owning_threads.remove((thread_ptr, endpoint_index)), ..pre.endpoint_map[endpoint_ptr]
     }), e => { if before.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(before, e); } if after.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(after, e); } });
-    assert_seqs_equal!(post.cpu_array == pre.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(before, i as usize); kernel_cpu_projection_at(after, i as usize); } });
-    assert_maps_equal!(post.container_map, pre.container_map, p => {
-        if before.ctn_mp.dom().contains(p) { kernel_container_projection_at(before, p); } if after.ctn_mp.dom().contains(p) { kernel_container_projection_at(after, p); }
-    });
-    assert_maps_equal!(post.process_map, pre.process_map, p => {
-        if before.prc_mp.dom().contains(p) { kernel_process_projection_at(before, p); } if after.prc_mp.dom().contains(p) { kernel_process_projection_at(after, p); }
-    });
+    kernel_cpu_array_unchanged_implies_u_cpu_array(before, after); kernel_container_maps_unchanged_implies_u_container_map(before, after);
+    kernel_process_maps_unchanged_implies_u_process_map(before, after);
 }
 } // verus!

@@ -129,16 +129,8 @@ pub proof fn kernel_iommu_table_4k_mapping_added_implies_u_step(pre: &KernelK, p
         iommu_table: Some(PageTableU { mapping_4k: before.process_map[process].iommu_table->Some_0.mapping_4k.insert(iova, entry), ..before.process_map[process].iommu_table->Some_0 }),
         ..before.process_map[process]
     }), p => { if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); } });
-    assert_maps_equal!(after.thread_map, before.thread_map, t => {
-        if pre.thr_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thr_mp.dom().contains(t) { kernel_thread_projection_at(post, t); }
-    });
-    assert_seqs_equal!(after.cpu_array == before.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); } });
-    assert_maps_equal!(after.container_map, before.container_map, p => {
-        if pre.ctn_mp.dom().contains(p) { kernel_container_projection_at(pre, p); } if post.ctn_mp.dom().contains(p) { kernel_container_projection_at(post, p); }
-    });
-    assert_maps_equal!(after.endpoint_map, before.endpoint_map, p => {
-        if pre.ep_mp.dom().contains(p) { kernel_endpoint_projection_at(pre, p); } if post.ep_mp.dom().contains(p) { kernel_endpoint_projection_at(post, p); }
-    });
+    kernel_thread_map_unchanged_implies_u_thread_map(pre, post); kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post);
+    kernel_container_maps_unchanged_implies_u_container_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
 }
 /// Setting the lock modes of the cpu, the live process `process_ptr`, the thread `thread_ptr`, the process's page table, and
 /// its IOMMU table and replacing the thread's progress changes only those lock states and that progress in the complete
@@ -216,9 +208,7 @@ pub proof fn kernel_cpu_process_thread_pagetable_iommu_table_lock_states_and_pro
     assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array.update(cpu_id as int, CpuU { lock_state: post.cpu_arr.spec_index(cpu_id).value.lock_state_u(), op: post.cpu_op.view().view()[cpu_id as int], ..pre_u.cpu_array[cpu_id as int] }), i => {
         if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); }
     });
-    assert_maps_equal!(post_u.container_map, pre_u.container_map, c => {
-        if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); } if post.ctn_mp.dom().contains(c) { kernel_container_projection_at(post, c); }
-    });
+    kernel_container_maps_unchanged_implies_u_container_map(pre, post);
     assert_maps_equal!(post_u.process_map, pre_u.process_map.insert(process_ptr, ProcessU {
         lock_state: post.prc_mp.spec_index(process_ptr).lock_state_u(),
         pagetable: Some(PageTableU {
@@ -233,9 +223,7 @@ pub proof fn kernel_cpu_process_thread_pagetable_iommu_table_lock_states_and_pro
     assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thread_ptr, ThreadU {
         lock_state: post.thr_mp.spec_index(thread_ptr).lock_state_u(), syscall_progress: post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view(), ..pre_u.thread_map.spec_index(thread_ptr)
     }), t => { if pre.thr_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thr_mp.dom().contains(t) { kernel_thread_projection_at(post, t); } });
-    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => {
-        if pre.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(pre, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(post, e); }
-    });
+    kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
 }
 
 /// Setting the lock modes of the cpu, the container `container_ptr`, the live process `process_ptr`, the thread
@@ -379,12 +367,7 @@ pub proof fn kernel_thread_quota_4k_progress_and_iommu_table_structure_changed_i
     assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thread_ptr, ThreadU {
         quota_4k: post.thr_mp.spec_index(thread_ptr).view().quota_4k, syscall_progress: post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view(), ..pre_u.thread_map[thread_ptr]
     }), t => { if pre.thr_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thr_mp.dom().contains(t) { kernel_thread_projection_at(post, t); } });
-    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); } });
-    assert_maps_equal!(post_u.container_map, pre_u.container_map, c => {
-        if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); } if post.ctn_mp.dom().contains(c) { kernel_container_projection_at(post, c); }
-    });
-    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => {
-        if pre.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(pre, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(post, e); }
-    });
+    kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post);
+    kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
 }
 } // verus!

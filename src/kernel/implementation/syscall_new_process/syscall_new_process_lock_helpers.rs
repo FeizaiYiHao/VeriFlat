@@ -366,6 +366,7 @@ pub(super) fn new_process_unlock_and_stutter(
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).no_locks_held(),
 {
+    hide(LockedMap::lock_id_by_key);
     if source_pagetable.is_some() {
         let tracked perm = source_pagetable_lock_perm.tracked_unwrap();
         proof {

@@ -753,8 +753,9 @@ pub(super) proof fn kernel_ipc_accept_call_fields_implies_u_step(
     let caller = pre_u.thread_map.spec_index(caller_ptr);
     let endpoint = pre_u.endpoint_map.spec_index(endpoint_ptr);
     assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_user_projection_at(pre, i as usize); kernel_cpu_user_projection_at(post, i as usize); } });
-    assert_maps_equal!(post_u.container_map, pre_u.container_map, c => { if pre.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(pre, c); } if post.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(post, c); } });
-    assert_maps_equal!(post_u.process_map, pre_u.process_map, p => { if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_user_projection_at(post, p); } });
+    assert(post_u.container_map == pre_u.container_map && post_u.process_map == pre_u.process_map) by {
+        reveal(kernel_k_to_kernel_u); kernel_container_maps_unchanged_implies_u_container_map(pre, post); kernel_process_maps_unchanged_implies_u_process_map(pre, post);
+    };
     assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(callee_ptr, ThreadU { caller: Some(caller_ptr), ..callee }).insert(caller_ptr, ThreadU {
         state: ThreadState::WAITING_REPLY, callee: Some(callee_ptr), blocking_endpoint_ptr: None, ..caller
     }), t => { if pre.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(pre, t); } if post.thr_mp.dom().contains(t) { kernel_thread_user_projection_at(post, t); } });

@@ -168,6 +168,7 @@ pub(super) fn end_new_container_created_step(
         final(krnl).pg_arr.spec_index(page_ptr2page_index(thread_page_ptr)).view().view().owning_container == child_container_ptr,
         thread_page_lock_perm.lock_id() == final(krnl).pg_arr.spec_index(page_ptr2page_index(thread_page_ptr)).view().locking_thread()->Write_lock_id,
 {
+    hide(LockedMap::lock_id_by_key);
     proof {
         assert(krnl.cpu_op.view().view()[transfer_cpu_id as int] is Off) by {
             cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, transfer_cpu_id); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, parent_container_ptr);
@@ -378,6 +379,7 @@ pub(super) fn share_new_container_range(
         child_pagetable_lock_perm.lock_id() == final(krnl).pt_mp.spec_index(child_pagetable_ptr).locking_thread()->Write_lock_id,
         final(krnl).pg_arr.spec_index(page_ptr2page_index(thread_page_ptr)).view() == old(krnl).pg_arr.spec_index(page_ptr2page_index(thread_page_ptr)).view(),
 {
+    hide(window_of);
     proof {
         assert(krnl.allc_4k_mp.dom().contains(child_allocator_4k_ptr)) by { container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, child_container_ptr); };
         assert(lctx.page_lock_map().dom().contains(page_ptr2page_index(thread_page_ptr)));

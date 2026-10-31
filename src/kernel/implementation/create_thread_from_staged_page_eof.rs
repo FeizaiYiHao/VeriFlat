@@ -253,7 +253,7 @@ proof fn create_thread_from_staged_page_eof_page_object_owner_wf(
     ensures
         page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp),
 {
-    reveal(create_thread_from_staged_page_eof_transition_framing); reveal(page_object_owner_wf); reveal(container_page_owner_wf);
+    reveal(create_thread_from_staged_page_eof_transition_framing); reveal(page_object_owner_wf); reveal(container_page_owner_wf); page_ptr_roundtrip(); page_index_roundtrip();
 }
 
 #[verifier::spinoff_prover]
@@ -314,7 +314,7 @@ proof fn create_thread_from_staged_page_eof_memory_management_inv(
     assert(process_pages_wf(post.pg_arr, post.prc_mp)) by { process_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.prc_mp, post.prc_mp); };
     assert(pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr)) by { pagetable_pages_wf_preserved_for_page_state_eq(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view(), pre.pg_arr, post.pg_arr); };
     assert(iommu_table_pages_wf(post.it_mp, post.pg_arr)) by { iommu_table_pages_wf_preserved_for_page_state_eq(pre.it_mp, post.it_mp, pre.pg_arr, post.pg_arr); };
-    assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); };
+    assert(thread_pages_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_pages_wf); page_ptr_roundtrip(); };
     assert(scheduler_pages_wf(post.sched_mp, post.pg_arr)) by { scheduler_pages_wf_preserved_for_page_state_eq(pre.sched_mp, post.sched_mp, pre.pg_arr, post.pg_arr); };
     assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
     assert(pcid_allocator_pages_wf(post.pg_arr, post.pcid_allc_mp)) by { pcid_allocator_pages_wf_preserved_for_page_state_eq(pre.pg_arr, post.pg_arr, pre.pcid_allc_mp, post.pcid_allc_mp); };

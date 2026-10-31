@@ -28,6 +28,7 @@ pub(super) proof fn new_container_cpu_transfer_eof(pre: KernelK, post: KernelK, 
     ensures
         post.inv(),
 {
+    hide(LockedMap::spec_index);
     reveal(new_container_cpu_transfer_eof_transition_framing);
     assert(post.subsystems_inv()) by { reveal(cpu_set_perms_wf); reveal(cpu_array_wf); reveal(cpu_hw_cr3_pcid_wf); reveal(cpu_offline_flags_wf); reveal(KernelK::default_pagetable_wf); reveal(cpu_op_wf); };
     assert(post.memory_management_inv()) by { assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); }; };

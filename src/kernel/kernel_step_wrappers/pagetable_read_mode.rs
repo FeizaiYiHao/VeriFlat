@@ -116,12 +116,7 @@ pub proof fn kernel_cpu_thread_wlocked_pagetable_rlocked_and_progress_changed_im
     assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thread_ptr, ThreadU {
         lock_state: LockStateU::WriteLocked, syscall_progress: post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view(), ..pre_u.thread_map.spec_index(thread_ptr)
     }), t => { if pre.thr_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thr_mp.dom().contains(t) { kernel_thread_projection_at(post, t); } });
-    assert_maps_equal!(post_u.container_map, pre_u.container_map, c => {
-        if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); } if post.ctn_mp.dom().contains(c) { kernel_container_projection_at(post, c); }
-    });
-    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => {
-        if pre.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(pre, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(post, e); }
-    });
+    kernel_container_maps_unchanged_implies_u_container_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
 }
 
 /// Read-mode exit: the cpu and thread are released, the thread's read hold on the process pagetable is dropped (other readers
@@ -208,12 +203,7 @@ pub proof fn kernel_cpu_thread_unlocked_pagetable_runlocked_and_progress_changed
     assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thread_ptr, ThreadU {
         lock_state: LockStateU::Unlocked, syscall_progress: post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view(), ..pre_u.thread_map.spec_index(thread_ptr)
     }), t => { if pre.thr_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thr_mp.dom().contains(t) { kernel_thread_projection_at(post, t); } });
-    assert_maps_equal!(post_u.container_map, pre_u.container_map, c => {
-        if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); } if post.ctn_mp.dom().contains(c) { kernel_container_projection_at(post, c); }
-    });
-    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => {
-        if pre.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(pre, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(post, e); }
-    });
+    kernel_container_maps_unchanged_implies_u_container_map(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
 }
 
 /// Downgrade: the process pagetable goes from write-held to read-held by the same thread and the thread's progress is
@@ -287,13 +277,8 @@ pub proof fn kernel_pagetable_downgraded_and_progress_changed_implies_u_step(pre
     assert_maps_equal!(post_u.thread_map, pre_u.thread_map.insert(thread_ptr, ThreadU {
         syscall_progress: post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view(), ..pre_u.thread_map.spec_index(thread_ptr)
     }), t => { if pre.thr_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thr_mp.dom().contains(t) { kernel_thread_projection_at(post, t); } });
-    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); } });
-    assert_maps_equal!(post_u.container_map, pre_u.container_map, c => {
-        if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); } if post.ctn_mp.dom().contains(c) { kernel_container_projection_at(post, c); }
-    });
-    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => {
-        if pre.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(pre, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(post, e); }
-    });
+    kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post);
+    kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
 }
 
 /// A section that changes only one thread's quota, temporary cache, and progress plus the
@@ -380,10 +365,7 @@ pub proof fn kernel_thread_quota_4k_and_progress_changed_pagetable_rlocked_impli
         ==> pre.prc_mp.dom().contains(process_ptr) && !pre.prc_mp.spec_index(process_ptr).view().zombie && pre.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr) by {
         reveal(process_cpu_wf); reveal(process_pagetable_match);
     };
-    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); } });
-    assert_maps_equal!(post_u.container_map, pre_u.container_map, c => {
-        if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); } if post.ctn_mp.dom().contains(c) { kernel_container_projection_at(post, c); }
-    });
+    kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_container_maps_unchanged_implies_u_container_map(pre, post);
     let owner = pre.pt_mp.spec_index(pagetable_ptr).view().proc_ptr;
     if pre_u.process_map.dom().contains(owner) && pre_u.process_map[owner].pagetable is Some {
         assert(pre.prc_mp.spec_index(owner).view().pagetable == pagetable_ptr) by { reveal(process_pagetable_match); };
@@ -403,9 +385,7 @@ pub proof fn kernel_thread_quota_4k_and_progress_changed_pagetable_rlocked_impli
         syscall_progress: post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view(),
         ..pre_u.thread_map.spec_index(thread_ptr)
     }), t => { if pre.thr_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thr_mp.dom().contains(t) { kernel_thread_projection_at(post, t); } });
-    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => {
-        if pre.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(pre, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(post, e); }
-    });
+    kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
 }
 
 /// A section that changes one thread's quota, temporary cache, and progress and publishes one
@@ -506,9 +486,7 @@ pub proof fn kernel_thread_quota_4k_progress_and_4k_mapping_added_pagetable_rloc
     assert(forall|p: RwLockProcessPtr, v: VAddr| #![trigger pre_u.process_map[p].pagetable->Some_0.mapping_4k[v]]
         pre_u.process_map.dom().contains(p) && pre_u.process_map[p].pagetable is Some && pre_u.process_map[p].pagetable->Some_0.mapping_4k.dom().contains(v)
         ==> pre_u.process_map[p].pagetable->Some_0.mapping_4k[v].addr != entry.addr) by { reveal(kernel_k_to_kernel_u); reveal(process_pagetable_match); reveal(mapped_4k_page_pagetable_wf); };
-    assert_maps_equal!(post_u.container_map, pre_u.container_map, c => {
-        if pre.ctn_mp.dom().contains(c) { kernel_container_projection_at(pre, c); } if post.ctn_mp.dom().contains(c) { kernel_container_projection_at(post, c); }
-    });
+    kernel_container_maps_unchanged_implies_u_container_map(pre, post);
     assert_maps_equal!(post_u.process_map, pre_u.process_map.insert(process_ptr, ProcessU { pagetable: Some(new_pagetable), ..process }), p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); } reveal(process_pagetable_match);
     });
@@ -517,10 +495,7 @@ pub proof fn kernel_thread_quota_4k_progress_and_4k_mapping_added_pagetable_rloc
         syscall_progress: post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view(),
         ..pre_u.thread_map.spec_index(thread_ptr)
     }), t => { if pre.thr_mp.dom().contains(t) { kernel_thread_projection_at(pre, t); } if post.thr_mp.dom().contains(t) { kernel_thread_projection_at(post, t); } });
-    assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(pre, i as usize); kernel_cpu_projection_at(post, i as usize); } });
-    assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, p => {
-        if pre.ep_mp.dom().contains(p) { kernel_endpoint_projection_at(pre, p); } if post.ep_mp.dom().contains(p) { kernel_endpoint_projection_at(post, p); }
-    });
+    kernel_cpu_array_unchanged_implies_u_cpu_array(pre, post); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post);
 }
 
 /// Read-mode entry with the thread context: the cpu, container, process, and thread become write-held, the process

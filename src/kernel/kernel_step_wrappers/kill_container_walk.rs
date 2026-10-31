@@ -1,5 +1,5 @@
 use vstd::prelude::*;
-use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_seqs_equal};
+use vstd::{assert_maps_equal, assert_maps_equal_internal};
 use crate::*;
 
 verus! {
@@ -31,15 +31,7 @@ pub proof fn kernel_container_locked_and_marked_implies_u_step(before: &KernelK,
     assert_maps_equal!(post.container_map, pre.container_map.insert(container_ptr, ContainerU { lock_state: LockStateU::WriteLocked, killed: true, ..pre.container_map[container_ptr] }), c => {
         if before.ctn_mp.dom().contains(c) { kernel_container_projection_at(before, c); kernel_container_projection_at(after, c); }
     });
-    assert_seqs_equal!(post.cpu_array == pre.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_projection_at(before, i as usize); kernel_cpu_projection_at(after, i as usize); } });
-    assert_maps_equal!(post.process_map, pre.process_map, p => {
-        if before.prc_mp.dom().contains(p) { kernel_process_projection_at(before, p); kernel_process_projection_at(after, p); }
-    });
-    assert_maps_equal!(post.thread_map, pre.thread_map, t => {
-        if before.thr_mp.dom().contains(t) { kernel_thread_projection_at(before, t); kernel_thread_projection_at(after, t); }
-    });
-    assert_maps_equal!(post.endpoint_map, pre.endpoint_map, e => {
-        if before.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(before, e); kernel_endpoint_projection_at(after, e); }
-    });
+    kernel_cpu_array_unchanged_implies_u_cpu_array(before, after); kernel_process_maps_unchanged_implies_u_process_map(before, after);
+    kernel_thread_map_unchanged_implies_u_thread_map(before, after); kernel_endpoint_map_unchanged_implies_u_endpoint_map(before, after);
 }
 }

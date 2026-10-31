@@ -2,6 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_new_thread_spec::*;
 use super::syscall_new_thread_trace::*;
+use super::syscall_new_thread_finish_release::release_new_thread_locks;
 #[cfg(feature = "split-crates")]
 use veriflat_kernel_core::create_thread_from_staged_page_merged;
 #[cfg(not(feature = "split-crates"))]
@@ -98,29 +99,20 @@ pub(super) fn finish_new_thread_commit(
         new_thread_syscall_trace(final(steps).view().subrange(start, final(steps).view().len() as int), pre, kernel_k_to_kernel_u(*final(krnl)), cpu_id, *initial_regs, None, true),
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
 {
-    let page_index = page_ptr2page_index(page_ptr);
     proof { new_thread_finish_step_pre_from_k(&*krnl, &*lctx, cpu_id, process_ptr, current_thread_ptr, container_ptr, None, *initial_regs, None); }
     let (new_thread_ptr, Tracked(new_thread_lock_perm)) = create_thread_from_staged_page_merged(
         krnl, page_ptr, process_ptr, current_thread_ptr, container_ptr, scheduler_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&page_lock_perm),
         Tracked(&process_lock_perm), Tracked(&current_thread_lock_perm), Tracked(&scheduler_lock_perm), initial_regs,
     );
-    krnl.wunlock_thread(new_thread_ptr, Tracked(&mut *lctx), Tracked(new_thread_lock_perm));
-    krnl.wunlock_page(page_index, Tracked(&mut *lctx), Tracked(page_lock_perm));
-    krnl.wunlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));
-    krnl.set_thread_syscall_progress(current_thread_ptr, Ghost(None), Tracked(&*lctx), Tracked(&current_thread_lock_perm));
-    krnl.wunlock_thread(current_thread_ptr, Tracked(&mut *lctx), Tracked(current_thread_lock_perm));
-    krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
-    proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }
-    krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
+    release_new_thread_locks(
+        krnl, Tracked(&mut *lctx), Ghost(steps.snapshot_k()), cpu_id, process_ptr, current_thread_ptr, container_ptr, scheduler_ptr, new_thread_ptr, Ghost(*initial_regs),
+        Tracked(cpu_lock_perm), Tracked(process_lock_perm), Tracked(current_thread_lock_perm), Tracked(new_thread_lock_perm), Tracked(page_lock_perm), Tracked(scheduler_lock_perm),
+    );
     proof {
         let ghost finish_k = steps.snapshot_k();
         let ghost finish_before = steps.view();
-        assert(kernel_new_thread_fields(&steps.snapshot_k(), krnl, process_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, *initial_regs, None, None)) by {
-            reveal(kernel_new_thread_fields); reveal(kernel_container_nonlock_fields_and_quotas_unchanged);
-        };
         steps.end_kernel_step_new_thread(&*krnl, &*lctx, process_ptr, current_thread_ptr, container_ptr, cpu_id, new_thread_ptr, *initial_regs, None, None);
         assert(new_thread_syscall_trace(steps.view().subrange(start, steps.view().len() as int), pre, kernel_k_to_kernel_u(*krnl), cpu_id, *initial_regs, None, true)) by {
-            reveal(kernel_new_thread_fields);
             kernel_new_thread_fields_and_unlocks_implies_u_step(&finish_k, &*krnl, cpu_id, process_ptr, current_thread_ptr, container_ptr, new_thread_ptr, *initial_regs, None, None, None);
             new_thread_finish_step_from_u(kernel_k_to_kernel_u(finish_k), kernel_k_to_kernel_u(*krnl), cpu_id, process_ptr, current_thread_ptr, container_ptr, new_thread_ptr, None, *initial_regs, None);
             new_thread_trace_finish_step(&*steps, finish_before, start, pre, kernel_k_to_kernel_u(finish_k), kernel_k_to_kernel_u(*krnl), cpu_id, *initial_regs, None);

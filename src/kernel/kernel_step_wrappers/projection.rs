@@ -530,8 +530,9 @@ pub(super) proof fn kernel_rebalance_pull_fields_implies_u_step(pre: &KernelK, p
         let container = pre_u.container_map.spec_index(cpu.owning_container);
         let queues = container.scheduler;
         assert_seqs_equal!(post_u.cpu_array == pre_u.cpu_array, i => { if 0 <= i < NUM_CPUS { kernel_cpu_user_projection_at(pre, i as usize); kernel_cpu_user_projection_at(post, i as usize); } });
-        assert_maps_equal!(post_u.endpoint_map, pre_u.endpoint_map, e => { if pre.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(pre, e); } if post.ep_mp.dom().contains(e) { kernel_endpoint_user_projection_at(post, e); } });
-        assert_maps_equal!(post_u.process_map, pre_u.process_map, p => { if pre.prc_mp.dom().contains(p) { kernel_process_user_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_user_projection_at(post, p); } });
+        assert(post_u.endpoint_map == pre_u.endpoint_map && post_u.process_map == pre_u.process_map) by {
+            reveal(kernel_k_to_kernel_u); kernel_endpoint_map_unchanged_implies_u_endpoint_map(pre, post); kernel_process_maps_unchanged_implies_u_process_map(pre, post);
+        };
         assert_maps_equal!(post_u.container_map, pre_u.container_map.insert(cpu.owning_container, ContainerU {
             scheduler: queues.update(victim as int, queues[victim as int].skip(1)).update(cpu_id as int, queues[cpu_id as int].push(thread)), ..container
         }), c => { if pre.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(pre, c); } if post.ctn_mp.dom().contains(c) { kernel_container_user_projection_at(post, c); } reveal(container_scheduler_wf); });
@@ -1212,13 +1213,13 @@ pub proof fn kernel_peer_scheduled_and_locks_released_implies_u_step(
     kernel_peer_scheduled_and_locks_released_implies_u_process_map(before, after, cpu_id, caller, peer, wake_cpu, endpoint, result, dequeue, descriptor);
     kernel_peer_scheduled_and_locks_released_implies_u_container_map(before, after, cpu_id, caller, peer, wake_cpu, endpoint, result, dequeue, descriptor);
     kernel_peer_scheduled_and_locks_released_implies_u_thread_map(before, after, cpu_id, caller, peer, wake_cpu, endpoint, result, dequeue, descriptor);
-    reveal(kernel_k_to_kernel_u);
+    kernel_u_domains_projection(before); kernel_u_domains_projection(after); kernel_thread_projection_at(before, caller); kernel_thread_projection_at(before, peer);
     let pre = kernel_k_to_kernel_u(*before);
     let post = kernel_k_to_kernel_u(*after);
     assert_maps_equal!(post.endpoint_map, pre.endpoint_map.insert(endpoint, EndpointU { lock_state: LockStateU::Unlocked,
         queue: if dequeue { pre.endpoint_map[endpoint].queue.skip(1) } else { pre.endpoint_map[endpoint].queue },
         owning_threads: if descriptor is Some { pre.endpoint_map[endpoint].owning_threads.insert(descriptor->Some_0) } else { pre.endpoint_map[endpoint].owning_threads }, ..pre.endpoint_map[endpoint]
-    }), e => {});
+    }), e => { if before.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(before, e); kernel_endpoint_projection_at(after, e); } });
 }
 
 /// The peer-scheduled transition projects to the cpu array with only `cpu_id` unlocked.

@@ -233,7 +233,8 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         proof {
             Self::remove_l2_entry_eof_tables(*old(self), *self, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
             Self::remove_l2_entry_eof_mapping_4k(*old(self), *self, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
-            Self::remove_l2_entry_eof_mappings(*old(self), *self, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
+            Self::remove_l2_entry_eof_wf_mapping_2m(*old(self), *self, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
+            Self::remove_l2_entry_eof_wf_mapping_1g(*old(self), *self, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
             Self::remove_l2_entry_eof_reachable(*old(self), *self, target_l4i, target_l3i, target_l2i, target_l2_p, target_l1_p);
         }
         return ret;

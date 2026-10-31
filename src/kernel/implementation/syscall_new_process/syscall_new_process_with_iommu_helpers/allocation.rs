@@ -112,6 +112,7 @@ pub(super) fn allocate_new_process_with_iommu_pages(
         held_pagetable_windows_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), final(krnl).pt_mp, final(krnl).pt_lower.view(), old(lctx)),
         held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
 {
+    hide(spec_page_ptr2page_index);
     let (pages, Tracked(mut page_lock_perms)) = allocate_free_4k_pages::<5>(krnl, current_thread_ptr, container_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(current_thread_lock_perm));
     let process_page_ptr = *pages.get(0);
     let pagetable_page_ptr = *pages.get(1);

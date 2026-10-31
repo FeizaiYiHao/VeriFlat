@@ -141,7 +141,7 @@ proof fn pop_stage_2m_page_eof_allocator_2m_pages(pre: KernelK, post: KernelK, a
     ensures allocator_2m_pages_wf(post.pg_arr, post.allc_2m_mp),
 {
     reveal(pop_stage_2m_page_eof_transition_framing);
-    assert(allocator_2m_pages_wf(post.pg_arr, post.allc_2m_mp)) by { reveal(allocator_2m_pages_wf); };
+    assert(allocator_2m_pages_wf(post.pg_arr, post.allc_2m_mp)) by { reveal(allocator_2m_pages_wf); page_ptr_roundtrip(); };
 }
 
 proof fn pop_stage_2m_page_eof_allocator_4k_pages(pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)
@@ -388,7 +388,7 @@ proof fn pop_stage_2m_page_eof_staged_pages(pre: KernelK, post: KernelK, allocat
         process_emptied_tables_wf(post.prc_mp, post.pt_mp, post.pt_lower.view(), post.it_mp),
 {
     reveal(pop_stage_2m_page_eof_transition_framing);
-    assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_2m_wf); };
+    assert(thread_staged_pages_2m_wf(post.thr_mp, post.pg_arr)) by { reveal(thread_staged_pages_2m_wf); page_ptr_roundtrip(); };
     assert(thread_staged_pages_wf(post.thr_mp, post.pg_arr)) by {
         assert(thread_staged_pages_4k_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_4k_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };
         assert(thread_staged_pages_1g_wf(post.thr_mp, post.pg_arr)) by { thread_staged_pages_1g_wf_preserved_for_temp_cache_and_owned_page_state_eq(pre.thr_mp, post.thr_mp, pre.pg_arr, post.pg_arr); };

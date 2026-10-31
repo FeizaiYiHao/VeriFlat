@@ -177,6 +177,7 @@ pub(in super::super) fn commit_new_process_with_iommu_and_endpoint(
         final(krnl).thr_mp.spec_index(ret.2).view().endpoint_descriptors.wf(),
         final(krnl).thr_mp.spec_index(ret.2).view().endpoint_descriptors.spec_index(0) == Some(endpoint_ptr),
 {
+    hide(typed_lock_map_contains_mode);
     let tracked cpu_lock_perm = cpu_lock_perm.get();
     let tracked pcid_allocator_lock_perm = pcid_allocator_lock_perm.get();
     let tracked parent_lock_perm = parent_lock_perm.get();

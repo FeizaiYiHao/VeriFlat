@@ -91,8 +91,8 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         assert(post.wf_mapping_4k()) by { reveal(PageTable::wf_mapping_4k); broadcast use PageTable::resolve_l3_addr_unique_at; broadcast use PageTable::resolve_l2_addr_unique_at; };
     }
 
-    /// EOF closure of `remove_l2_entry`: 2M and 1G abstract-mapping leaves.
-    pub(super) proof fn remove_l2_entry_eof_mappings(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr)
+    /// EOF closure of `remove_l2_entry`: 2M abstract-mapping leaf.
+    pub(super) proof fn remove_l2_entry_eof_wf_mapping_2m(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr)
         requires
             pre.wf(),
             pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
@@ -118,9 +118,38 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
                 present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: false } }),
         ensures
             post.wf_mapping_2m(),
-            post.wf_mapping_1g(),
     {
         assert(post.wf_mapping_2m()) by { reveal(PageTable::wf_mapping_2m); };
+    }
+
+    /// EOF closure of `remove_l2_entry`: 1G abstract-mapping leaf.
+    pub(super) proof fn remove_l2_entry_eof_wf_mapping_1g(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_l1_p: PageMapPtr)
+        requires
+            pre.wf(),
+            pre.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
+            pei_valid(target_l3i),
+            pei_valid(target_l2i),
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
+            pre.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
+            pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
+            pre.spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i).unwrap().addr == target_l1_p,
+            forall|i: L1Index| #![auto] pei_valid(i) ==> pre.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, i) is None,
+            post == (Self { l2_tables: post.l2_tables, l1_rev_map: post.l1_rev_map, l1_tables: post.l1_tables, ..pre }),
+            post.l1_rev_map.view() == pre.l1_rev_map.view().remove(target_l1_p),
+            post.l1_tables.view() == pre.l1_tables.view().remove(target_l1_p),
+            post.l2_tables.view() =~= pre.l2_tables.view().insert(target_l2_p, post.l2_tables.view().spec_index(target_l2_p)),
+            post.l2_tables.view().spec_index(target_l2_p).addr() == target_l2_p,
+            post.l2_tables.view().spec_index(target_l2_p).is_init(),
+            post.l2_tables.view().spec_index(target_l2_p).value().wf(),
+            forall|i: usize|
+                #![trigger pre.l2_tables.view().spec_index(target_l2_p).value().spec_index(i)]
+                #![trigger post.l2_tables.view().spec_index(target_l2_p).value().spec_index(i)]
+                pei_valid(i) && i != target_l2i ==> post.l2_tables.view().spec_index(target_l2_p).value().spec_index(i) =~= pre.l2_tables.view().spec_index(target_l2_p).value().spec_index(i),
+            post.l2_tables.view().spec_index(target_l2_p).value().spec_index(target_l2i) =~= (PageEntry { addr: 0, perm: PageEntryPerm {
+                present: false, ps: false, write: false, execute_disable: false, user: false, kernel_present: false } }),
+        ensures
+            post.wf_mapping_1g(),
+    {
         assert(post.wf_mapping_1g()) by { reveal(PageTable::wf_mapping_1g); };
     }
 
@@ -166,8 +195,6 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
             pre.spec_resolve_mapping_l4(target_l4i)->0.addr == target_l3_p,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
             pre.spec_resolve_mapping_l3(target_l4i, target_l3i).unwrap().addr == target_l2_p,
-            forall|i: L2Index| #![auto] pei_valid(i) ==> pre.spec_resolve_mapping_l2(target_l4i, target_l3i, i) is None,
-            forall|i: L2Index| #![auto] pei_valid(i) ==> pre.spec_resolve_mapping_2m_l2(target_l4i, target_l3i, i) is None,
             pre.l3_tables.view().dom().contains(target_l3_p),
             pre.l2_tables.view().dom().contains(target_l2_p),
             post == (Self { l3_tables: post.l3_tables, l2_rev_map: post.l2_rev_map, l2_tables: post.l2_tables, ..pre }),

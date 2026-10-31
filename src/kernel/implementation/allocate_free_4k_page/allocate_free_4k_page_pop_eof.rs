@@ -122,7 +122,7 @@ proof fn pop_stage_4k_page_eof_cpu_set_pages(pre: KernelK, post: KernelK, alloca
         cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr),
 {
     reveal(pop_stage_4k_page_eof_transition_framing);
-    assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); };
+    assert(cpu_set_pages_wf(post.cpu_set_mp, post.pg_arr)) by { reveal(cpu_set_pages_wf); page_ptr_roundtrip(); };
 }
 
 proof fn pop_stage_4k_page_eof_container_page_owner(pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)
@@ -141,7 +141,7 @@ proof fn pop_stage_4k_page_eof_container_page_owner(pre: KernelK, post: KernelK,
         container_page_owner_wf(post.ctn_mp, post.pg_arr),
 {
     reveal(pop_stage_4k_page_eof_transition_framing);
-    assert(container_page_owner_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_page_owner_wf); };
+    assert(container_page_owner_wf(post.ctn_mp, post.pg_arr)) by { reveal(container_page_owner_wf); page_ptr_roundtrip(); };
 }
 
 proof fn pop_stage_4k_page_eof_container_pages(pre: KernelK, post: KernelK, allocator: RwLockPageAllocatorPtr, thread: RwLockThreadPtr, container: RwLockContainerPtr, page: PagePtr, node: usize, source: Option<CpuId>)

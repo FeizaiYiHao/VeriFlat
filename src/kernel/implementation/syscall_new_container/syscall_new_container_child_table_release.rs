@@ -140,6 +140,7 @@ pub(super) fn release_new_container_child_table_locks(
         forall|s: RwLockSchedulerPtr| #![trigger scheduler_shards_of(final(krnl).sched_mp.spec_index(s))]
             old(krnl).sched_mp.dom().contains(s) ==> scheduler_shards_of(final(krnl).sched_mp.spec_index(s)) == scheduler_shards_of(old(krnl).sched_mp.spec_index(s)),
 {
+    hide(typed_lock_maps_aligned);
     krnl.unlock_pagetable_range_existing_windows(child_pagetable_ptr, source_range, Tracked(&child_pagetable_lock_perm), Tracked(&mut *lctx), Tracked(child_window_perms));
     proof { assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable_ptr) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr)); }
     krnl.unlock_pagetable_range_existing_windows(source_pagetable_ptr, source_range, Tracked(&source_pagetable_lock_perm), Tracked(&mut *lctx), Tracked(source_window_perms));

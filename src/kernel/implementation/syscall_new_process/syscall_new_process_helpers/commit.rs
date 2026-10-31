@@ -178,6 +178,7 @@ pub(in super::super) fn commit_new_process(
         endpoint is Some ==> final(krnl).thr_mp.spec_index(ret.1).view().endpoint_descriptors.wf(),
         endpoint is Some ==> final(krnl).thr_mp.spec_index(ret.1).view().endpoint_descriptors.spec_index(0) == endpoint,
 {
+    hide(LockedMap::spec_index);
     let tracked cpu_lock_perm = cpu_lock_perm.get();
     let tracked pcid_allocator_lock_perm = pcid_allocator_lock_perm.get();
     let tracked parent_lock_perm = parent_lock_perm.get();

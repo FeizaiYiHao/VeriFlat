@@ -352,6 +352,7 @@ verus! {
                 old(krnl).ctn_mp.dom().contains(c) ==> scheduler_shards_of(final(krnl).sched_mp.spec_index(final(krnl).ctn_mp.spec_index(c).view_rodata().view().scheduler))
                     == scheduler_shards_of(old(krnl).sched_mp.spec_index(old(krnl).ctn_mp.spec_index(c).view_rodata().view().scheduler)),
     {
+        hide(Set::is_empty);
         if let Some(transfer_perm) = transfer_cpu_lock_perm { krnl.wunlock_cpu(transfer_cpu_id, Tracked(&mut *lctx), transfer_perm); }
         krnl.wunlock_cpu_set(target_cpu_set, Tracked(&mut *lctx), Tracked(target_cpu_set_lock_perm));
         krnl.wunlock_cpu_set(source_cpu_set, Tracked(&mut *lctx), Tracked(source_cpu_set_lock_perm));
