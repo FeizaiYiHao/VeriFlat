@@ -59,7 +59,7 @@ verus! {
     #[verifier::reject_recursive_types(T)]
     pub struct LockedArray<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT, const N: usize, const HAS_KILL_STATE: bool,
         S = Array<RwLock<T, ROT, GhostT, HAS_KILL_STATE>, N>> {
-        storage: S,
+        pub(crate) storage: S,
         user_seq: Ghost<Seq<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>,
     }
     impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT, const HAS_KILL_STATE: bool, const N: usize, S: LockStorage<T, ROT, GhostT, N, HAS_KILL_STATE>>

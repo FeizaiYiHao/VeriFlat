@@ -8,6 +8,7 @@ pub mod pcid_needflush;
 pub mod hw_cr3_pcid;
 pub mod cpu_offline_flags;
 pub mod cpu_offline_flags_map;
+pub mod cpu_offline_flags_lock_t;
 pub mod cpu_ipi;
 pub mod cpu_op;
 
@@ -17,6 +18,7 @@ pub use cpu_tlb_def::*;
 pub use pcid_needflush::*;
 pub use hw_cr3_pcid::*;
 pub use cpu_offline_flags::*;
+pub use cpu_offline_flags_lock_t::*;
 pub use cpu_ipi::*;
 pub use cpu_op::*;
 

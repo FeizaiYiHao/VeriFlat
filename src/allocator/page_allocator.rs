@@ -153,303 +153,352 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
 }
 
 impl<const SIZE: usize> PageAllocator<SIZE> {
-    pub fn wlock_quota(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>) -> (ret: Tracked<LockPerm>)
+    pub fn wlock_quota(pptr: &PPtr<PageAllocator<SIZE>>, Tracked(perm): Tracked<&mut PointsTo<PageAllocator<SIZE>>>,
+        Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>) -> (ret: Tracked<LockPerm>)
         requires
-            old(self).wf(),
-            wlock_requires(old(self).quota, old(lctx)),
-            old(lctx).lock_id_acyclic(old(self).quota.lock_id()),
+            pptr.addr() == old(perm).addr(),
+            old(perm).is_init(),
+            old(perm).value().wf(),
+            wlock_requires(old(perm).value().quota, old(lctx)),
+            old(lctx).lock_id_acyclic(old(perm).value().quota.lock_id()),
         ensures
+            final(perm).addr() == old(perm).addr(),
+            final(perm).is_init(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
-            final(self).wf(),
-            wlock_ensures(old(self).quota, final(self).quota, old(self).quota.lock_id(), final(lctx), ret.view()),
-            lock_ensures(old(lctx), final(lctx), old(self).quota.lock_id(), KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr.view())),
-            final(self).cpu_caches == old(self).cpu_caches,
-            final(self).global_pool == old(self).global_pool,
-            final(self).owning_container == old(self).owning_container,
-            final(self).total_free_pages == old(self).total_free_pages,
+            final(perm).value().wf(),
+            wlock_ensures(old(perm).value().quota, final(perm).value().quota, old(perm).value().quota.lock_id(), final(lctx), ret.view()),
+            lock_ensures(old(lctx), final(lctx), old(perm).value().quota.lock_id(), KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr.view())),
+            final(perm).value().cpu_caches == old(perm).value().cpu_caches,
+            final(perm).value().global_pool == old(perm).value().global_pool,
+            final(perm).value().owning_container == old(perm).value().owning_container,
+            final(perm).value().total_free_pages == old(perm).value().total_free_pages,
     {
-        let lock_id = Ghost(old(self).quota.lock_id());
-        self.quota.wlock(Tracked(lctx), lock_id, Ghost(KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr.view())))
+        let lock_id = Ghost(old(perm).value().quota.lock_id());
+        wlock_quota::<SIZE>(pptr, Tracked(perm), Tracked(lctx), lock_id, Ghost(KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr.view())))
     }
-}
 
-impl<const SIZE: usize> PageAllocator<SIZE> {
-    pub fn wunlock_quota(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>)
+    pub fn wunlock_quota(pptr: &PPtr<PageAllocator<SIZE>>, Tracked(perm): Tracked<&mut PointsTo<PageAllocator<SIZE>>>,
+        Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>)
         requires
-            old(self).wf(),
-            old(self).quota.wlocked_by(old(lctx)),
-            old(self).quota.inv(),
+            pptr.addr() == old(perm).addr(),
+            old(perm).is_init(),
+            old(perm).value().wf(),
+            old(perm).value().quota.wlocked_by(old(lctx)),
+            old(perm).value().quota.inv(),
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),
-            lock_perm.view().lock_id() == old(self).quota.locking_thread()->Write_lock_id,
-            old(lctx).lock_entry_contains(old(self).quota.lock_id(), KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr.view())),
+            lock_perm.view().lock_id() == old(perm).value().quota.locking_thread()->Write_lock_id,
+            old(lctx).lock_entry_contains(old(perm).value().quota.lock_id(), KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr.view())),
         ensures
+            final(perm).addr() == old(perm).addr(),
+            final(perm).is_init(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
-            final(self).wf(),
-            final(self).quota.lock_id() == old(self).quota.lock_id(),
-            wunlock_ensures(old(self).quota, final(self).quota),
-            unlock_ensures(old(lctx), final(lctx), KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr.view()), old(self).quota.lock_id()),
-            final(self).cpu_caches == old(self).cpu_caches,
-            final(self).global_pool == old(self).global_pool,
-            final(self).owning_container == old(self).owning_container,
-            final(self).total_free_pages == old(self).total_free_pages,
+            final(perm).value().wf(),
+            final(perm).value().quota.lock_id() == old(perm).value().quota.lock_id(),
+            wunlock_ensures(old(perm).value().quota, final(perm).value().quota),
+            unlock_ensures(old(lctx), final(lctx), KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr.view()), old(perm).value().quota.lock_id()),
+            final(perm).value().cpu_caches == old(perm).value().cpu_caches,
+            final(perm).value().global_pool == old(perm).value().global_pool,
+            final(perm).value().owning_container == old(perm).value().owning_container,
+            final(perm).value().total_free_pages == old(perm).value().total_free_pages,
     {
-        self.quota.wunlock(Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr.view())))
+        wunlock_quota::<SIZE>(pptr, Tracked(perm), Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorQuota(page_size.view(), alloc_ptr.view())))
     }
-}
 
-impl<const SIZE: usize> PageAllocator<SIZE> {
-    pub fn wlock_cache(&mut self, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>) -> (ret: Tracked<LockPerm>)
+    pub fn wlock_cache(pptr: &PPtr<PageAllocator<SIZE>>, Tracked(perm): Tracked<&mut PointsTo<PageAllocator<SIZE>>>, cpu_id: CpuId,
+        Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>) -> (ret: Tracked<LockPerm>)
         requires
-            old(self).wf(),
+            pptr.addr() == old(perm).addr(),
+            old(perm).is_init(),
+            old(perm).value().wf(),
             index_valid(NUM_CPUS, cpu_id),
-            wlock_requires(old(self).cpu_caches.spec_index(cpu_id).view(), old(lctx)),
-            old(lctx).lock_id_acyclic(old(self).cpu_caches.lock_id_by_index(cpu_id)),
+            wlock_requires(old(perm).value().cpu_caches.spec_index(cpu_id).view(), old(lctx)),
+            old(lctx).lock_id_acyclic(old(perm).value().cpu_caches.lock_id_by_index(cpu_id)),
         ensures
+            final(perm).addr() == old(perm).addr(),
+            final(perm).is_init(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
-            final(self).wf(),
-            wlock_ensures(old(self).cpu_caches.spec_index(cpu_id).view(), final(self).cpu_caches.spec_index(cpu_id).view(), old(self).cpu_caches.lock_id_by_index(cpu_id), final(lctx), ret.view()),
-            lock_ensures(old(lctx), final(lctx), old(self).cpu_caches.lock_id_by_index(cpu_id), KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id)),
-            final(self).cpu_caches.unchanged_except(&old(self).cpu_caches, cpu_id),
-            final(self).global_pool == old(self).global_pool,
-            final(self).quota == old(self).quota,
-            final(self).owning_container == old(self).owning_container,
-            final(self).total_free_pages == old(self).total_free_pages,
+            final(perm).value().wf(),
+            wlock_ensures(old(perm).value().cpu_caches.spec_index(cpu_id).view(), final(perm).value().cpu_caches.spec_index(cpu_id).view(), old(perm).value().cpu_caches.lock_id_by_index(cpu_id), final(lctx), ret.view()),
+            lock_ensures(old(lctx), final(lctx), old(perm).value().cpu_caches.lock_id_by_index(cpu_id), KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id)),
+            final(perm).value().cpu_caches.unchanged_except(&old(perm).value().cpu_caches, cpu_id),
+            final(perm).value().global_pool == old(perm).value().global_pool,
+            final(perm).value().quota == old(perm).value().quota,
+            final(perm).value().owning_container == old(perm).value().owning_container,
+            final(perm).value().total_free_pages == old(perm).value().total_free_pages,
     {
-        let ghost old_caches = self.cpu_caches;
-        let ret = self.cpu_caches.wlock(cpu_id, Tracked(lctx), Ghost(KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id)));
-        assert(self.total_free_pages_wf()) by { old_caches.lemma_view_index(); self.cpu_caches.lemma_view_index(); lemma_cache_len_fold_congruence(old_caches.view(), self.cpu_caches.view()); };
+        let ghost old_caches = perm.value().cpu_caches;
+        let ret = wlock_cache::<SIZE>(pptr, Tracked(&mut *perm), cpu_id, Tracked(lctx), Ghost(KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id)));
+        assert(perm.value().total_free_pages_wf()) by { old_caches.lemma_view_index(); perm.value().cpu_caches.lemma_view_index(); lemma_cache_len_fold_congruence(old_caches.view(), perm.value().cpu_caches.view()); };
         ret
     }
 
-    pub fn wunlock_cache(&mut self, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>)
+    pub fn wunlock_cache(pptr: &PPtr<PageAllocator<SIZE>>, Tracked(perm): Tracked<&mut PointsTo<PageAllocator<SIZE>>>, cpu_id: CpuId,
+        Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>)
         requires
-            old(self).wf(),
+            pptr.addr() == old(perm).addr(),
+            old(perm).is_init(),
+            old(perm).value().wf(),
             index_valid(NUM_CPUS, cpu_id),
-            old(self).cpu_caches.spec_index(cpu_id).view().wlocked_by(old(lctx)),
-            old(self).cpu_caches.spec_index(cpu_id).view().being_killed() == false,
+            old(perm).value().cpu_caches.spec_index(cpu_id).view().wlocked_by(old(lctx)),
+            old(perm).value().cpu_caches.spec_index(cpu_id).view().being_killed() == false,
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),
-            lock_perm.view().lock_id() == old(self).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-            old(lctx).lock_entry_contains(old(self).cpu_caches.spec_index(cpu_id).lock_id(), KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id)),
+            lock_perm.view().lock_id() == old(perm).value().cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
+            old(lctx).lock_entry_contains(old(perm).value().cpu_caches.spec_index(cpu_id).lock_id(), KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id)),
         ensures
+            final(perm).addr() == old(perm).addr(),
+            final(perm).is_init(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
-            final(self).wf(),
-            final(self).cpu_caches.spec_index(cpu_id).lock_id() == old(self).cpu_caches.spec_index(cpu_id).lock_id(),
-            wunlock_ensures(old(self).cpu_caches.spec_index(cpu_id).view(), final(self).cpu_caches.spec_index(cpu_id).view()),
-            unlock_ensures(old(lctx), final(lctx), KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id), old(self).cpu_caches.spec_index(cpu_id).lock_id()),
-            final(self).cpu_caches.unchanged_except(&old(self).cpu_caches, cpu_id),
-            final(self).global_pool == old(self).global_pool,
-            final(self).quota == old(self).quota,
-            final(self).owning_container == old(self).owning_container,
-            final(self).total_free_pages == old(self).total_free_pages,
+            final(perm).value().wf(),
+            final(perm).value().cpu_caches.spec_index(cpu_id).lock_id() == old(perm).value().cpu_caches.spec_index(cpu_id).lock_id(),
+            wunlock_ensures(old(perm).value().cpu_caches.spec_index(cpu_id).view(), final(perm).value().cpu_caches.spec_index(cpu_id).view()),
+            unlock_ensures(old(lctx), final(lctx), KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id), old(perm).value().cpu_caches.spec_index(cpu_id).lock_id()),
+            final(perm).value().cpu_caches.unchanged_except(&old(perm).value().cpu_caches, cpu_id),
+            final(perm).value().global_pool == old(perm).value().global_pool,
+            final(perm).value().quota == old(perm).value().quota,
+            final(perm).value().owning_container == old(perm).value().owning_container,
+            final(perm).value().total_free_pages == old(perm).value().total_free_pages,
     {
-        let ghost old_caches = self.cpu_caches;
-        self.cpu_caches.wunlock(cpu_id, Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id)));
-        assert(self.total_free_pages_wf()) by { old_caches.lemma_view_index(); self.cpu_caches.lemma_view_index(); lemma_cache_len_fold_congruence(old_caches.view(), self.cpu_caches.view()); };
+        let ghost old_caches = perm.value().cpu_caches;
+        wunlock_cache::<SIZE>(pptr, Tracked(&mut *perm), cpu_id, Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id)));
+        assert(perm.value().total_free_pages_wf()) by { old_caches.lemma_view_index(); perm.value().cpu_caches.lemma_view_index(); lemma_cache_len_fold_congruence(old_caches.view(), perm.value().cpu_caches.view()); };
     }
 
-    pub fn wlock_global_pool(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>) -> (ret: Tracked<LockPerm>)
+    pub fn wlock_global_pool(pptr: &PPtr<PageAllocator<SIZE>>, Tracked(perm): Tracked<&mut PointsTo<PageAllocator<SIZE>>>,
+        Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>) -> (ret: Tracked<LockPerm>)
         requires
-            old(self).wf(),
-            wlock_requires(old(self).global_pool, old(lctx)),
-            old(lctx).lock_id_acyclic(old(self).global_pool.lock_id()),
+            pptr.addr() == old(perm).addr(),
+            old(perm).is_init(),
+            old(perm).value().wf(),
+            wlock_requires(old(perm).value().global_pool, old(lctx)),
+            old(lctx).lock_id_acyclic(old(perm).value().global_pool.lock_id()),
         ensures
+            final(perm).addr() == old(perm).addr(),
+            final(perm).is_init(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
-            final(self).wf(),
-            wlock_ensures(old(self).global_pool, final(self).global_pool, old(self).global_pool.lock_id(), final(lctx), ret.view()),
-            lock_ensures(old(lctx), final(lctx), old(self).global_pool.lock_id(), KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr.view())),
-            final(self).cpu_caches == old(self).cpu_caches,
-            final(self).quota == old(self).quota,
-            final(self).owning_container == old(self).owning_container,
-            final(self).total_free_pages == old(self).total_free_pages,
+            final(perm).value().wf(),
+            wlock_ensures(old(perm).value().global_pool, final(perm).value().global_pool, old(perm).value().global_pool.lock_id(), final(lctx), ret.view()),
+            lock_ensures(old(lctx), final(lctx), old(perm).value().global_pool.lock_id(), KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr.view())),
+            final(perm).value().cpu_caches == old(perm).value().cpu_caches,
+            final(perm).value().quota == old(perm).value().quota,
+            final(perm).value().owning_container == old(perm).value().owning_container,
+            final(perm).value().total_free_pages == old(perm).value().total_free_pages,
     {
-        let lock_id = Ghost(old(self).global_pool.lock_id());
-        self.global_pool.wlock(Tracked(lctx), lock_id, Ghost(KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr.view())))
+        let lock_id = Ghost(old(perm).value().global_pool.lock_id());
+        wlock_global_pool::<SIZE>(pptr, Tracked(perm), Tracked(lctx), lock_id, Ghost(KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr.view())))
     }
 
-    pub fn wunlock_global_pool(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>)
+    pub fn wunlock_global_pool(pptr: &PPtr<PageAllocator<SIZE>>, Tracked(perm): Tracked<&mut PointsTo<PageAllocator<SIZE>>>,
+        Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>, alloc_ptr: Ghost<RwLockPageAllocatorPtr>)
         requires
-            old(self).wf(),
-            old(self).global_pool.wlocked_by(old(lctx)),
-            old(self).global_pool.inv(),
+            pptr.addr() == old(perm).addr(),
+            old(perm).is_init(),
+            old(perm).value().wf(),
+            old(perm).value().global_pool.wlocked_by(old(lctx)),
+            old(perm).value().global_pool.inv(),
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == old(lctx).thread_id(),
-            lock_perm.view().lock_id() == old(self).global_pool.locking_thread()->Write_lock_id,
-            old(lctx).lock_entry_contains(old(self).global_pool.lock_id(), KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr.view())),
+            lock_perm.view().lock_id() == old(perm).value().global_pool.locking_thread()->Write_lock_id,
+            old(lctx).lock_entry_contains(old(perm).value().global_pool.lock_id(), KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr.view())),
         ensures
+            final(perm).addr() == old(perm).addr(),
+            final(perm).is_init(),
             final(lctx).cpu_id() == old(lctx).cpu_id(),
-            final(self).wf(),
-            final(self).global_pool.lock_id() == old(self).global_pool.lock_id(),
-            wunlock_ensures(old(self).global_pool, final(self).global_pool),
-            unlock_ensures(old(lctx), final(lctx), KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr.view()), old(self).global_pool.lock_id()),
-            final(self).cpu_caches == old(self).cpu_caches,
-            final(self).quota == old(self).quota,
-            final(self).owning_container == old(self).owning_container,
-            final(self).total_free_pages == old(self).total_free_pages,
+            final(perm).value().wf(),
+            final(perm).value().global_pool.lock_id() == old(perm).value().global_pool.lock_id(),
+            wunlock_ensures(old(perm).value().global_pool, final(perm).value().global_pool),
+            unlock_ensures(old(lctx), final(lctx), KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr.view()), old(perm).value().global_pool.lock_id()),
+            final(perm).value().cpu_caches == old(perm).value().cpu_caches,
+            final(perm).value().quota == old(perm).value().quota,
+            final(perm).value().owning_container == old(perm).value().owning_container,
+            final(perm).value().total_free_pages == old(perm).value().total_free_pages,
     {
-        self.global_pool.wunlock(Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr.view())))
+        wunlock_global_pool::<SIZE>(pptr, Tracked(perm), Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorGlobalPool(page_size.view(), alloc_ptr.view())))
     }
-}
 
-impl<const SIZE: usize> PageAllocator<SIZE> {
-    pub fn push_cache_page(&mut self, cpu_id: CpuId, node_addr: usize, node_perm: Tracked<PointsTo<Node<PagePtr>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>)
+    pub fn push_cache_page(pptr: &PPtr<PageAllocator<SIZE>>, Tracked(perm): Tracked<&mut PointsTo<PageAllocator<SIZE>>>, cpu_id: CpuId,
+        node_addr: usize, node_perm: Tracked<PointsTo<Node<PagePtr>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>)
         requires
-            old(self).wf(),
+            pptr.addr() == old(perm).addr(),
+            old(perm).is_init(),
+            old(perm).value().wf(),
             index_valid(NUM_CPUS, cpu_id),
-            old(self).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx),
-            old(self).cpu_caches.spec_index(cpu_id).view().is_init(),
+            old(perm).value().cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx),
+            old(perm).value().cpu_caches.spec_index(cpu_id).view().is_init(),
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == lctx.thread_id(),
-            lock_perm.view().lock_id() == old(self).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-            old(self).cpu_caches.spec_index(cpu_id).view().view().view().len() < ALLOCATOR_MAX_WATERMARK,
+            lock_perm.view().lock_id() == old(perm).value().cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
+            old(perm).value().cpu_caches.spec_index(cpu_id).view().view().view().len() < ALLOCATOR_MAX_WATERMARK,
             node_perm.view().is_init(),
-            !old(self).cpu_caches.spec_index(cpu_id).view().view().view().contains(node_perm.view().value().view()),
+            !old(perm).value().cpu_caches.spec_index(cpu_id).view().view().view().contains(node_perm.view().value().view()),
             node_perm.view().addr() == node_addr,
-            old(self).total_free_pages.view() < usize::MAX,
+            old(perm).value().total_free_pages.view() < usize::MAX,
         ensures
-            final(self).wf(),
-            final(self).cpu_caches.spec_index(cpu_id).view().view().view() == old(self).cpu_caches.spec_index(cpu_id).view().view().view().insert(0, node_perm.view().value().view()),
-            final(self).cpu_caches.spec_index(cpu_id).view().view().map() == old(self).cpu_caches.spec_index(cpu_id).view().view().map().insert(node_addr, node_perm.view().value().view()),
-            !old(self).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(node_addr),
-            final(self).total_free_pages.view() == old(self).total_free_pages.view() + 1,
-            final(self).cpu_caches.entries_unchanged_except(&old(self).cpu_caches, cpu_id),
-            final(self).cpu_caches.spec_index(cpu_id).view().is_init(),
-            final(self).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx),
-            final(self).cpu_caches.spec_index(cpu_id).view().write_lock_perm_match(lock_perm.view()),
-            final(self).cpu_caches.spec_index(cpu_id).lock_id() == old(self).cpu_caches.spec_index(cpu_id).lock_id(),
-            final(self).cpu_caches.spec_index(cpu_id).view().locking_thread() == old(self).cpu_caches.spec_index(cpu_id).view().locking_thread(),
-            final(self).cpu_caches.spec_index(cpu_id).view().being_killed() == old(self).cpu_caches.spec_index(cpu_id).view().being_killed(),
-            final(self).global_pool == old(self).global_pool,
-            final(self).quota == old(self).quota,
-            final(self).owning_container == old(self).owning_container,
+            final(perm).addr() == old(perm).addr(),
+            final(perm).is_init(),
+            final(perm).value().wf(),
+            final(perm).value().cpu_caches.spec_index(cpu_id).view().view().view() == old(perm).value().cpu_caches.spec_index(cpu_id).view().view().view().insert(0, node_perm.view().value().view()),
+            final(perm).value().cpu_caches.spec_index(cpu_id).view().view().map() == old(perm).value().cpu_caches.spec_index(cpu_id).view().view().map().insert(node_addr, node_perm.view().value().view()),
+            !old(perm).value().cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(node_addr),
+            final(perm).value().total_free_pages.view() == old(perm).value().total_free_pages.view() + 1,
+            final(perm).value().cpu_caches.entries_unchanged_except(&old(perm).value().cpu_caches, cpu_id),
+            final(perm).value().cpu_caches.spec_index(cpu_id).view().is_init(),
+            final(perm).value().cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx),
+            final(perm).value().cpu_caches.spec_index(cpu_id).view().write_lock_perm_match(lock_perm.view()),
+            final(perm).value().cpu_caches.spec_index(cpu_id).lock_id() == old(perm).value().cpu_caches.spec_index(cpu_id).lock_id(),
+            final(perm).value().cpu_caches.spec_index(cpu_id).view().locking_thread() == old(perm).value().cpu_caches.spec_index(cpu_id).view().locking_thread(),
+            final(perm).value().cpu_caches.spec_index(cpu_id).view().being_killed() == old(perm).value().cpu_caches.spec_index(cpu_id).view().being_killed(),
+            final(perm).value().global_pool == old(perm).value().global_pool,
+            final(perm).value().quota == old(perm).value().quota,
+            final(perm).value().owning_container == old(perm).value().owning_container,
     {
         {
-            let cache = self.cpu_caches.borrow_mut(cpu_id, Tracked(lctx), lock_perm);
+            let cache = borrow_mut_cache(pptr, Tracked(&mut *perm), cpu_id, Tracked(lctx), lock_perm);
             assert(cache.linked_list.length != usize::MAX) by { cache.linked_list.lemma_len_view(); };
             cache.linked_list.push_head(node_addr, node_perm);
         }
-        self.total_free_pages = Ghost((self.total_free_pages.view() + 1) as usize);
-        assert(self.wf()) by { lemma_cache_len_fold_change_one_array(self.cpu_caches, old(self).cpu_caches, cpu_id); };
+        proof { set_total_free_pages_ghost(perm, (perm.value().total_free_pages.view() + 1) as usize); }
+        assert(perm.value().wf()) by { lemma_cache_len_fold_change_one_array(perm.value().cpu_caches, old(perm).value().cpu_caches, cpu_id); };
     }
 
-    pub fn pop_cache_page(&mut self, cpu_id: CpuId, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret: (usize, Tracked<PointsTo<Node<PagePtr>>>))
+    pub fn pop_cache_page(pptr: &PPtr<PageAllocator<SIZE>>, Tracked(perm): Tracked<&mut PointsTo<PageAllocator<SIZE>>>, cpu_id: CpuId,
+        Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret: (usize, Tracked<PointsTo<Node<PagePtr>>>))
         requires
-            old(self).wf(),
+            pptr.addr() == old(perm).addr(),
+            old(perm).is_init(),
+            old(perm).value().wf(),
             index_valid(NUM_CPUS, cpu_id),
-            old(self).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx),
-            old(self).cpu_caches.spec_index(cpu_id).view().is_init(),
+            old(perm).value().cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx),
+            old(perm).value().cpu_caches.spec_index(cpu_id).view().is_init(),
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == lctx.thread_id(),
-            lock_perm.view().lock_id() == old(self).cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
-            old(self).cpu_caches.spec_index(cpu_id).view().view().view().len() > 0,
+            lock_perm.view().lock_id() == old(perm).value().cpu_caches.spec_index(cpu_id).view().locking_thread()->Write_lock_id,
+            old(perm).value().cpu_caches.spec_index(cpu_id).view().view().view().len() > 0,
         ensures
-            final(self).wf(),
+            final(perm).addr() == old(perm).addr(),
+            final(perm).is_init(),
+            final(perm).value().wf(),
             ret.1.view().is_init(),
             ret.1.view().addr() == ret.0,
-            ret.1.view().value().view() == old(self).cpu_caches.spec_index(cpu_id).view().view().view().spec_index(0),
-            old(self).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(ret.0),
-            old(self).cpu_caches.spec_index(cpu_id).view().view().map().spec_index(ret.0) == ret.1.view().value().view(),
-            final(self).cpu_caches.spec_index(cpu_id).view().view().view() == old(self).cpu_caches.spec_index(cpu_id).view().view().view().skip(1),
-            !final(self).cpu_caches.spec_index(cpu_id).view().view().view().contains(ret.1.view().value().view()),
-            final(self).cpu_caches.spec_index(cpu_id).view().view().map() == old(self).cpu_caches.spec_index(cpu_id).view().view().map().remove(ret.0),
-            final(self).total_free_pages.view() == old(self).total_free_pages.view() - 1,
-            final(self).cpu_caches.entries_unchanged_except(&old(self).cpu_caches, cpu_id),
-            final(self).cpu_caches.spec_index(cpu_id).view().is_init(),
-            final(self).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx),
-            final(self).cpu_caches.spec_index(cpu_id).view().write_lock_perm_match(lock_perm.view()),
-            final(self).cpu_caches.spec_index(cpu_id).lock_id() == old(self).cpu_caches.spec_index(cpu_id).lock_id(),
-            final(self).cpu_caches.spec_index(cpu_id).view().locking_thread() == old(self).cpu_caches.spec_index(cpu_id).view().locking_thread(),
-            final(self).cpu_caches.spec_index(cpu_id).view().being_killed() == old(self).cpu_caches.spec_index(cpu_id).view().being_killed(),
-            final(self).global_pool == old(self).global_pool,
-            final(self).quota == old(self).quota,
-            final(self).owning_container == old(self).owning_container,
+            ret.1.view().value().view() == old(perm).value().cpu_caches.spec_index(cpu_id).view().view().view().spec_index(0),
+            old(perm).value().cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(ret.0),
+            old(perm).value().cpu_caches.spec_index(cpu_id).view().view().map().spec_index(ret.0) == ret.1.view().value().view(),
+            final(perm).value().cpu_caches.spec_index(cpu_id).view().view().view() == old(perm).value().cpu_caches.spec_index(cpu_id).view().view().view().skip(1),
+            !final(perm).value().cpu_caches.spec_index(cpu_id).view().view().view().contains(ret.1.view().value().view()),
+            final(perm).value().cpu_caches.spec_index(cpu_id).view().view().map() == old(perm).value().cpu_caches.spec_index(cpu_id).view().view().map().remove(ret.0),
+            final(perm).value().total_free_pages.view() == old(perm).value().total_free_pages.view() - 1,
+            final(perm).value().cpu_caches.entries_unchanged_except(&old(perm).value().cpu_caches, cpu_id),
+            final(perm).value().cpu_caches.spec_index(cpu_id).view().is_init(),
+            final(perm).value().cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx),
+            final(perm).value().cpu_caches.spec_index(cpu_id).view().write_lock_perm_match(lock_perm.view()),
+            final(perm).value().cpu_caches.spec_index(cpu_id).lock_id() == old(perm).value().cpu_caches.spec_index(cpu_id).lock_id(),
+            final(perm).value().cpu_caches.spec_index(cpu_id).view().locking_thread() == old(perm).value().cpu_caches.spec_index(cpu_id).view().locking_thread(),
+            final(perm).value().cpu_caches.spec_index(cpu_id).view().being_killed() == old(perm).value().cpu_caches.spec_index(cpu_id).view().being_killed(),
+            final(perm).value().global_pool == old(perm).value().global_pool,
+            final(perm).value().quota == old(perm).value().quota,
+            final(perm).value().owning_container == old(perm).value().owning_container,
     {
-        proof { lemma_cache_len_fold_ge_elem(old(self).cpu_caches.view(), cpu_id as int); }
+        proof { lemma_cache_len_fold_ge_elem(old(perm).value().cpu_caches.view(), cpu_id as int); }
         let (node_addr, node_perm) = {
-            let cache_mut = self.cpu_caches.borrow_mut(cpu_id, Tracked(lctx), lock_perm);
+            let cache_mut = borrow_mut_cache(pptr, Tracked(&mut *perm), cpu_id, Tracked(lctx), lock_perm);
             let (node_addr, Tracked(node_perm)) = cache_mut.linked_list.pop_head();
             (node_addr, Tracked(node_perm))
         };
-        self.total_free_pages = Ghost((self.total_free_pages.view() - 1) as usize);
-        proof { lemma_cache_len_fold_change_one_array(old(self).cpu_caches, self.cpu_caches, cpu_id); }
+        proof {
+            set_total_free_pages_ghost(perm, (perm.value().total_free_pages.view() - 1) as usize);
+            lemma_cache_len_fold_change_one_array(old(perm).value().cpu_caches, perm.value().cpu_caches, cpu_id);
+        }
         (node_addr, node_perm)
     }
 
-    pub fn push_global_pool_page(&mut self, node_addr: usize, node_perm: Tracked<PointsTo<Node<PagePtr>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>)
+    pub fn push_global_pool_page(pptr: &PPtr<PageAllocator<SIZE>>, Tracked(perm): Tracked<&mut PointsTo<PageAllocator<SIZE>>>, node_addr: usize,
+        node_perm: Tracked<PointsTo<Node<PagePtr>>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>)
         requires
-            old(self).wf(),
-            old(self).global_pool.wlocked_by(lctx),
-            old(self).global_pool.is_init(),
+            pptr.addr() == old(perm).addr(),
+            old(perm).is_init(),
+            old(perm).value().wf(),
+            old(perm).value().global_pool.wlocked_by(lctx),
+            old(perm).value().global_pool.is_init(),
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == lctx.thread_id(),
-            lock_perm.view().lock_id() == old(self).global_pool.locking_thread()->Write_lock_id,
+            lock_perm.view().lock_id() == old(perm).value().global_pool.locking_thread()->Write_lock_id,
             node_perm.view().is_init(),
             node_perm.view().addr() == node_addr,
-            !old(self).global_pool.view().view().contains(node_perm.view().value().view()),
-            old(self).total_free_pages.view() < usize::MAX,
+            !old(perm).value().global_pool.view().view().contains(node_perm.view().value().view()),
+            old(perm).value().total_free_pages.view() < usize::MAX,
         ensures
-            final(self).wf(),
-            final(self).global_pool.view().view() == old(self).global_pool.view().view().insert(0, node_perm.view().value().view()),
-            final(self).global_pool.view().map() == old(self).global_pool.view().map().insert(node_addr, node_perm.view().value().view()),
-            !old(self).global_pool.view().map().dom().contains(node_addr),
-            final(self).total_free_pages.view() == old(self).total_free_pages.view() + 1,
-            final(self).global_pool.is_init(),
-            final(self).global_pool.wlocked_by(lctx),
-            final(self).global_pool.write_lock_perm_match(lock_perm.view()),
-            final(self).global_pool.lock_id() == old(self).global_pool.lock_id(),
-            final(self).global_pool.locking_thread() == old(self).global_pool.locking_thread(),
-            final(self).global_pool.being_killed() == old(self).global_pool.being_killed(),
-            final(self).cpu_caches == old(self).cpu_caches,
-            final(self).quota == old(self).quota,
-            final(self).owning_container == old(self).owning_container,
+            final(perm).addr() == old(perm).addr(),
+            final(perm).is_init(),
+            final(perm).value().wf(),
+            final(perm).value().global_pool.view().view() == old(perm).value().global_pool.view().view().insert(0, node_perm.view().value().view()),
+            final(perm).value().global_pool.view().map() == old(perm).value().global_pool.view().map().insert(node_addr, node_perm.view().value().view()),
+            !old(perm).value().global_pool.view().map().dom().contains(node_addr),
+            final(perm).value().total_free_pages.view() == old(perm).value().total_free_pages.view() + 1,
+            final(perm).value().global_pool.is_init(),
+            final(perm).value().global_pool.wlocked_by(lctx),
+            final(perm).value().global_pool.write_lock_perm_match(lock_perm.view()),
+            final(perm).value().global_pool.lock_id() == old(perm).value().global_pool.lock_id(),
+            final(perm).value().global_pool.locking_thread() == old(perm).value().global_pool.locking_thread(),
+            final(perm).value().global_pool.being_killed() == old(perm).value().global_pool.being_killed(),
+            final(perm).value().cpu_caches == old(perm).value().cpu_caches,
+            final(perm).value().quota == old(perm).value().quota,
+            final(perm).value().owning_container == old(perm).value().owning_container,
     {
-        assert(self.global_pool.view().linked_list.length != usize::MAX) by { lemma_cache_len_fold_nonneg(self.cpu_caches.view()); self.global_pool.view().linked_list.lemma_len_view(); };
+        assert(perm.value().global_pool.view().linked_list.length != usize::MAX) by { lemma_cache_len_fold_nonneg(perm.value().cpu_caches.view()); perm.value().global_pool.view().linked_list.lemma_len_view(); };
         {
-            let pool = self.global_pool.borrow_mut(Tracked(lctx), lock_perm);
+            let pool = borrow_mut_global_pool(pptr, Tracked(&mut *perm), Tracked(lctx), lock_perm);
             pool.linked_list.push_head(node_addr, node_perm);
         }
-        self.total_free_pages = Ghost((self.total_free_pages.view() + 1) as usize);
-        assert(self.wf()) by { self.global_pool.view().lemma_len_view(); old(self).global_pool.view().lemma_len_view(); };
+        proof { set_total_free_pages_ghost(perm, (perm.value().total_free_pages.view() + 1) as usize); }
+        assert(perm.value().wf()) by { perm.value().global_pool.view().lemma_len_view(); old(perm).value().global_pool.view().lemma_len_view(); };
     }
 
-    pub fn pop_global_pool_page(&mut self, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&LockPerm>) -> (ret: (usize, Tracked<PointsTo<Node<PagePtr>>>))
+    pub fn pop_global_pool_page(pptr: &PPtr<PageAllocator<SIZE>>, Tracked(perm): Tracked<&mut PointsTo<PageAllocator<SIZE>>>, Tracked(lctx): Tracked<&LocalContext>,
+        lock_perm: Tracked<&LockPerm>) -> (ret: (usize, Tracked<PointsTo<Node<PagePtr>>>))
         requires
-            old(self).wf(),
-            old(self).global_pool.wlocked_by(lctx),
-            old(self).global_pool.is_init(),
+            pptr.addr() == old(perm).addr(),
+            old(perm).is_init(),
+            old(perm).value().wf(),
+            old(perm).value().global_pool.wlocked_by(lctx),
+            old(perm).value().global_pool.is_init(),
             lock_perm.view().state() is WriteLock,
             lock_perm.view().thread_id() == lctx.thread_id(),
-            lock_perm.view().lock_id() == old(self).global_pool.locking_thread()->Write_lock_id,
-            old(self).global_pool.view().len() > 0,
+            lock_perm.view().lock_id() == old(perm).value().global_pool.locking_thread()->Write_lock_id,
+            old(perm).value().global_pool.view().len() > 0,
         ensures
-            final(self).wf(),
+            final(perm).addr() == old(perm).addr(),
+            final(perm).is_init(),
+            final(perm).value().wf(),
             ret.1.view().is_init(),
             ret.1.view().addr() == ret.0,
-            ret.1.view().value().view() == old(self).global_pool.view().view().spec_index(0),
-            old(self).global_pool.view().map().dom().contains(ret.0),
-            old(self).global_pool.view().map().spec_index(ret.0) == ret.1.view().value().view(),
-            final(self).global_pool.view().view() == old(self).global_pool.view().view().skip(1),
-            final(self).global_pool.view().map() == old(self).global_pool.view().map().remove(ret.0),
-            final(self).total_free_pages.view() == old(self).total_free_pages.view() - 1,
-            final(self).global_pool.is_init(),
-            final(self).global_pool.wlocked_by(lctx),
-            final(self).global_pool.write_lock_perm_match(lock_perm.view()),
-            final(self).global_pool.lock_id() == old(self).global_pool.lock_id(),
-            final(self).global_pool.locking_thread() == old(self).global_pool.locking_thread(),
-            final(self).global_pool.being_killed() == old(self).global_pool.being_killed(),
-            final(self).cpu_caches == old(self).cpu_caches,
-            final(self).quota == old(self).quota,
-            final(self).owning_container == old(self).owning_container,
+            ret.1.view().value().view() == old(perm).value().global_pool.view().view().spec_index(0),
+            old(perm).value().global_pool.view().map().dom().contains(ret.0),
+            old(perm).value().global_pool.view().map().spec_index(ret.0) == ret.1.view().value().view(),
+            final(perm).value().global_pool.view().view() == old(perm).value().global_pool.view().view().skip(1),
+            final(perm).value().global_pool.view().map() == old(perm).value().global_pool.view().map().remove(ret.0),
+            final(perm).value().total_free_pages.view() == old(perm).value().total_free_pages.view() - 1,
+            final(perm).value().global_pool.is_init(),
+            final(perm).value().global_pool.wlocked_by(lctx),
+            final(perm).value().global_pool.write_lock_perm_match(lock_perm.view()),
+            final(perm).value().global_pool.lock_id() == old(perm).value().global_pool.lock_id(),
+            final(perm).value().global_pool.locking_thread() == old(perm).value().global_pool.locking_thread(),
+            final(perm).value().global_pool.being_killed() == old(perm).value().global_pool.being_killed(),
+            final(perm).value().cpu_caches == old(perm).value().cpu_caches,
+            final(perm).value().quota == old(perm).value().quota,
+            final(perm).value().owning_container == old(perm).value().owning_container,
     {
-        proof { lemma_cache_len_fold_nonneg(old(self).cpu_caches.view()); }
+        proof { lemma_cache_len_fold_nonneg(old(perm).value().cpu_caches.view()); }
         let (node_addr, node_perm) = {
-            let poll_mut = self.global_pool.borrow_mut(Tracked(lctx), lock_perm);
+            let poll_mut = borrow_mut_global_pool(pptr, Tracked(&mut *perm), Tracked(lctx), lock_perm);
             let (node_addr, Tracked(node_perm)) = poll_mut.linked_list.pop_head();
             (node_addr, Tracked(node_perm))
         };
-        self.total_free_pages = Ghost((self.total_free_pages.view() - 1) as usize);
-        proof { self.global_pool.view().lemma_len_view(); old(self).global_pool.view().lemma_len_view(); }
+        proof {
+            set_total_free_pages_ghost(perm, (perm.value().total_free_pages.view() - 1) as usize);
+            perm.value().global_pool.view().lemma_len_view();
+            old(perm).value().global_pool.view().lemma_len_view();
+        }
         (node_addr, node_perm)
     }
 }

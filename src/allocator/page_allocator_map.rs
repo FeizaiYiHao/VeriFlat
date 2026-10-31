@@ -195,8 +195,8 @@ impl<const SIZE: usize> UnLockedMap<usize, PageAllocator<SIZE>> {
             *ret == old(self).spec_index(alloc_ptr).quota.view(),
             final(self).spec_index(alloc_ptr).quota.view() == *final(ret),
     {
-        let alloc = self.borrow_mut(alloc_ptr);
-        alloc.quota.borrow_mut(Tracked(lctx), lp)
+        let Tracked(perm) = self.borrow_perm_mut(alloc_ptr);
+        borrow_mut_quota(&PPtr::from_usize(alloc_ptr), Tracked(perm), Tracked(lctx), lp)
     }
 
     pub fn borrow_mut_quota_typed<'a>(
@@ -362,8 +362,8 @@ impl<const SIZE: usize> UnLockedMap<usize, PageAllocator<SIZE>> {
     {
         assert(old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx)) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); };
         {
-            let alloc_mut = self.borrow_mut(alloc_ptr);
-            alloc_mut.push_cache_page(cpu_id, node_addr, node_perm, Tracked(lctx), lock_perm)
+            let Tracked(perm) = self.borrow_perm_mut(alloc_ptr);
+            PageAllocator::<SIZE>::push_cache_page(&PPtr::from_usize(alloc_ptr), Tracked(perm), cpu_id, node_addr, node_perm, Tracked(lctx), lock_perm)
         };
         assert({
             &&& self.typed_quota_lock_map_aligned(quota_locks, lctx.thread_id())
@@ -419,8 +419,8 @@ impl<const SIZE: usize> UnLockedMap<usize, PageAllocator<SIZE>> {
     {
         assert(old(self).spec_index(alloc_ptr).cpu_caches.spec_index(cpu_id).view().wlocked_by(lctx)) by { reveal(UnLockedMap::typed_cache_lock_map_aligned); };
         let ret = {
-            let alloc_mut = self.borrow_mut(alloc_ptr);
-            alloc_mut.pop_cache_page(cpu_id, Tracked(lctx), lock_perm)
+            let Tracked(perm) = self.borrow_perm_mut(alloc_ptr);
+            PageAllocator::<SIZE>::pop_cache_page(&PPtr::from_usize(alloc_ptr), Tracked(perm), cpu_id, Tracked(lctx), lock_perm)
         };
         assert({
             &&& self.typed_quota_lock_map_aligned(quota_locks, lctx.thread_id())
@@ -473,8 +473,8 @@ impl<const SIZE: usize> UnLockedMap<usize, PageAllocator<SIZE>> {
     {
         assert(old(self).spec_index(alloc_ptr).global_pool.wlocked_by(lctx)) by { reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
         {
-            let alloc_mut = self.borrow_mut(alloc_ptr);
-            alloc_mut.push_global_pool_page(node_addr, node_perm, Tracked(lctx), lock_perm)
+            let Tracked(perm) = self.borrow_perm_mut(alloc_ptr);
+            PageAllocator::<SIZE>::push_global_pool_page(&PPtr::from_usize(alloc_ptr), Tracked(perm), node_addr, node_perm, Tracked(lctx), lock_perm)
         };
         assert({
             &&& self.typed_quota_lock_map_aligned(quota_locks, lctx.thread_id())
@@ -527,8 +527,8 @@ impl<const SIZE: usize> UnLockedMap<usize, PageAllocator<SIZE>> {
     {
         assert(old(self).spec_index(alloc_ptr).global_pool.wlocked_by(lctx)) by { reveal(UnLockedMap::typed_global_pool_lock_map_aligned); };
         let ret = {
-            let alloc_mut = self.borrow_mut(alloc_ptr);
-            alloc_mut.pop_global_pool_page(Tracked(lctx), lock_perm)
+            let Tracked(perm) = self.borrow_perm_mut(alloc_ptr);
+            PageAllocator::<SIZE>::pop_global_pool_page(&PPtr::from_usize(alloc_ptr), Tracked(perm), Tracked(lctx), lock_perm)
         };
         assert({
             &&& self.typed_quota_lock_map_aligned(quota_locks, lctx.thread_id())
@@ -559,8 +559,8 @@ impl<const SIZE: usize> UnLockedMap<usize, PageAllocator<SIZE>> {
             final(self).spec_index(alloc_ptr).owning_container == old(self).spec_index(alloc_ptr).owning_container,
             final(self).spec_index(alloc_ptr).total_free_pages == old(self).spec_index(alloc_ptr).total_free_pages,
     {
-        let alloc = self.borrow_mut(alloc_ptr);
-        alloc.wlock_quota(Tracked(lctx), page_size, Ghost(alloc_ptr))
+        let Tracked(perm) = self.borrow_perm_mut(alloc_ptr);
+        PageAllocator::<SIZE>::wlock_quota(&PPtr::from_usize(alloc_ptr), Tracked(perm), Tracked(lctx), page_size, Ghost(alloc_ptr))
     }
 }
 
@@ -589,8 +589,8 @@ impl<const SIZE: usize> UnLockedMap<usize, PageAllocator<SIZE>> {
             final(self).spec_index(alloc_ptr).owning_container == old(self).spec_index(alloc_ptr).owning_container,
             final(self).spec_index(alloc_ptr).total_free_pages == old(self).spec_index(alloc_ptr).total_free_pages,
     {
-        let alloc = self.borrow_mut(alloc_ptr);
-        alloc.wunlock_quota(Tracked(lctx), lock_perm, page_size, Ghost(alloc_ptr))
+        let Tracked(perm) = self.borrow_perm_mut(alloc_ptr);
+        PageAllocator::<SIZE>::wunlock_quota(&PPtr::from_usize(alloc_ptr), Tracked(perm), Tracked(lctx), lock_perm, page_size, Ghost(alloc_ptr))
     }
 }
 
@@ -616,8 +616,8 @@ impl<const SIZE: usize> UnLockedMap<usize, PageAllocator<SIZE>> {
             final(self).spec_index(alloc_ptr).owning_container == old(self).spec_index(alloc_ptr).owning_container,
             final(self).spec_index(alloc_ptr).total_free_pages == old(self).spec_index(alloc_ptr).total_free_pages,
     {
-        let alloc = self.borrow_mut(alloc_ptr);
-        alloc.wlock_cache(cpu_id, Tracked(lctx), page_size, Ghost(alloc_ptr))
+        let Tracked(perm) = self.borrow_perm_mut(alloc_ptr);
+        PageAllocator::<SIZE>::wlock_cache(&PPtr::from_usize(alloc_ptr), Tracked(perm), cpu_id, Tracked(lctx), page_size, Ghost(alloc_ptr))
     }
 
     pub fn wunlock_cache(&mut self, alloc_ptr: usize, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>)
@@ -646,8 +646,8 @@ impl<const SIZE: usize> UnLockedMap<usize, PageAllocator<SIZE>> {
             final(self).spec_index(alloc_ptr).owning_container == old(self).spec_index(alloc_ptr).owning_container,
             final(self).spec_index(alloc_ptr).total_free_pages == old(self).spec_index(alloc_ptr).total_free_pages,
     {
-        let alloc = self.borrow_mut(alloc_ptr);
-        alloc.wunlock_cache(cpu_id, Tracked(lctx), lock_perm, page_size, Ghost(alloc_ptr))
+        let Tracked(perm) = self.borrow_perm_mut(alloc_ptr);
+        PageAllocator::<SIZE>::wunlock_cache(&PPtr::from_usize(alloc_ptr), Tracked(perm), cpu_id, Tracked(lctx), lock_perm, page_size, Ghost(alloc_ptr))
     }
 
     pub fn wlock_global_pool(&mut self, alloc_ptr: usize, Tracked(lctx): Tracked<&mut LocalContext>, page_size: Ghost<PageSize>) -> (ret: Tracked<LockPerm>)
@@ -669,8 +669,8 @@ impl<const SIZE: usize> UnLockedMap<usize, PageAllocator<SIZE>> {
             final(self).spec_index(alloc_ptr).owning_container == old(self).spec_index(alloc_ptr).owning_container,
             final(self).spec_index(alloc_ptr).total_free_pages == old(self).spec_index(alloc_ptr).total_free_pages,
     {
-        let alloc = self.borrow_mut(alloc_ptr);
-        alloc.wlock_global_pool(Tracked(lctx), page_size, Ghost(alloc_ptr))
+        let Tracked(perm) = self.borrow_perm_mut(alloc_ptr);
+        PageAllocator::<SIZE>::wlock_global_pool(&PPtr::from_usize(alloc_ptr), Tracked(perm), Tracked(lctx), page_size, Ghost(alloc_ptr))
     }
 
     pub fn wunlock_global_pool(&mut self, alloc_ptr: usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, page_size: Ghost<PageSize>)
@@ -697,8 +697,8 @@ impl<const SIZE: usize> UnLockedMap<usize, PageAllocator<SIZE>> {
             final(self).spec_index(alloc_ptr).owning_container == old(self).spec_index(alloc_ptr).owning_container,
             final(self).spec_index(alloc_ptr).total_free_pages == old(self).spec_index(alloc_ptr).total_free_pages,
     {
-        let alloc = self.borrow_mut(alloc_ptr);
-        alloc.wunlock_global_pool(Tracked(lctx), lock_perm, page_size, Ghost(alloc_ptr))
+        let Tracked(perm) = self.borrow_perm_mut(alloc_ptr);
+        PageAllocator::<SIZE>::wunlock_global_pool(&PPtr::from_usize(alloc_ptr), Tracked(perm), Tracked(lctx), lock_perm, page_size, Ghost(alloc_ptr))
     }
 }
 } // verus!

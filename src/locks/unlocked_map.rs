@@ -81,20 +81,18 @@ impl<T> UnLockedMap<usize, T> {
         PPtr::<T>::from_usize(key).borrow(Tracked(perm))
     }
 
-    pub fn borrow_mut<'a>(&'a mut self, key: usize) -> (ret: &'a mut T)
+    /// Mutably borrow the token of `key`, for wrappers that reach the object only through its raw address; no `&mut T`
+    /// is formed.
+    pub(crate) fn borrow_perm_mut<'a>(&'a mut self, key: usize) -> (ret: Tracked<&'a mut PointsTo<T>>)
         requires
             old(self).dom().contains(key),
-            old(self).view().spec_index(key).is_init(),
-            old(self).view().spec_index(key).addr() == key,
         ensures
-            old(self).perms_wf() ==> final(self).perms_wf(),
+            *ret.view() == old(self).view().spec_index(key),
             final(self).dom() == old(self).dom(),
-            final(self).unchanged_except(old(self), key),
-            *ret == old(self).spec_index(key),
-            final(self).spec_index(key) == *final(ret),
+            final(self).view() == old(self).view().insert(key, *final(ret.view())),
     {
         let tracked perm = self.map.borrow_mut().tracked_borrow_mut(key);
-        PPtr::<T>::from_usize(key).borrow_mut(Tracked(perm))
+        Tracked(perm)
     }
 }
 }

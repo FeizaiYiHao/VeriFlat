@@ -347,8 +347,8 @@ pub enum RwLockState {
 /// locking; callers close the affected invariants at the kernel boundary.
 #[repr(C)]
 pub struct RwLock<T, ROT, GhostT, const HAS_KILL_STATE: bool> {
-    pub(super) lock: RwLockInner,
-    pub(super) value: T,
+    pub(crate) lock: RwLockInner,
+    pub(crate) value: T,
     pub(super) read_only_value: ROT,
     ghost_value: Ghost<GhostT>,
 

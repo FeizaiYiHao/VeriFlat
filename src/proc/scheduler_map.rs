@@ -97,8 +97,8 @@ impl UnLockedMap<usize, Scheduler> {
             wlock_ensures(old(self).spec_index(scheduler_ptr).shards.spec_index(cpu_id).view(), final(self).spec_index(scheduler_ptr).shards.spec_index(cpu_id).view(), old(self).spec_index(scheduler_ptr).shards.lock_id_by_index(cpu_id), final(lctx), ret.view()),
             lock_ensures(old(lctx), final(lctx), old(self).spec_index(scheduler_ptr).shards.lock_id_by_index(cpu_id), KernelObjId::SchedulerShard(scheduler_ptr, cpu_id)),
     {
-        let scheduler = self.borrow_mut(scheduler_ptr);
-        scheduler.shards.wlock(cpu_id, Tracked(lctx), Ghost(KernelObjId::SchedulerShard(scheduler_ptr, cpu_id)))
+        let Tracked(perm) = self.borrow_perm_mut(scheduler_ptr);
+        wlock_shard(&PPtr::from_usize(scheduler_ptr), Tracked(perm), cpu_id, Tracked(lctx), Ghost(KernelObjId::SchedulerShard(scheduler_ptr, cpu_id)))
     }
 
     pub fn wunlock_shard(&mut self, scheduler_ptr: RwLockSchedulerPtr, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
@@ -124,8 +124,8 @@ impl UnLockedMap<usize, Scheduler> {
             wunlock_ensures(old(self).spec_index(scheduler_ptr).shards.spec_index(cpu_id).view(), final(self).spec_index(scheduler_ptr).shards.spec_index(cpu_id).view()),
             unlock_ensures(old(lctx), final(lctx), KernelObjId::SchedulerShard(scheduler_ptr, cpu_id), old(self).spec_index(scheduler_ptr).shards.lock_id_by_index(cpu_id)),
     {
-        let scheduler = self.borrow_mut(scheduler_ptr);
-        scheduler.shards.wunlock(cpu_id, Tracked(lctx), lock_perm, Ghost(KernelObjId::SchedulerShard(scheduler_ptr, cpu_id)));
+        let Tracked(perm) = self.borrow_perm_mut(scheduler_ptr);
+        wunlock_shard(&PPtr::from_usize(scheduler_ptr), Tracked(perm), cpu_id, Tracked(lctx), lock_perm, Ghost(KernelObjId::SchedulerShard(scheduler_ptr, cpu_id)));
     }
 
     pub fn borrow_shard_typed<'a>(&'a self, scheduler_ptr: RwLockSchedulerPtr, cpu_id: CpuId, Ghost(held_locks): Ghost<Map<(RwLockSchedulerPtr, CpuId), TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&'a LockPerm>) -> (ret: &'a SchedulerShard)
@@ -175,8 +175,8 @@ impl UnLockedMap<usize, Scheduler> {
             final(self).typed_shard_lock_map_aligned(held_locks, lctx.thread_id()),
     {
         proof { reveal(UnLockedMap::typed_shard_lock_map_aligned); }
-        let scheduler = self.borrow_mut(scheduler_ptr);
-        scheduler.shards.borrow_mut(cpu_id, Tracked(lctx), lock_perm)
+        let Tracked(perm) = self.borrow_perm_mut(scheduler_ptr);
+        borrow_mut_shard(&PPtr::from_usize(scheduler_ptr), Tracked(perm), cpu_id, Tracked(lctx), lock_perm)
     }
 }
 }

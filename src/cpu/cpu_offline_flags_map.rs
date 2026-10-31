@@ -100,8 +100,8 @@ impl UnLockedMap<usize, CpuOfflineFlags> {
             wlock_ensures(old(self).spec_index(flags_ptr).flags.spec_index(cpu_id).view(), final(self).spec_index(flags_ptr).flags.spec_index(cpu_id).view(), old(self).spec_index(flags_ptr).flags.lock_id_by_index(cpu_id), final(lctx), ret.view()),
             lock_ensures(old(lctx), final(lctx), old(self).spec_index(flags_ptr).flags.lock_id_by_index(cpu_id), KernelObjId::CpuOfflineFlag(flags_ptr, cpu_id)),
     {
-        let table = self.borrow_mut(flags_ptr);
-        table.flags.wlock(cpu_id, Tracked(lctx), Ghost(KernelObjId::CpuOfflineFlag(flags_ptr, cpu_id)))
+        let Tracked(perm) = self.borrow_perm_mut(flags_ptr);
+        wlock_flag(&PPtr::from_usize(flags_ptr), Tracked(perm), cpu_id, Tracked(lctx), Ghost(KernelObjId::CpuOfflineFlag(flags_ptr, cpu_id)))
     }
 
     pub fn wunlock_flag(&mut self, flags_ptr: RwLockCpuOfflineFlagsPtr, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
@@ -128,8 +128,8 @@ impl UnLockedMap<usize, CpuOfflineFlags> {
             wunlock_ensures(old(self).spec_index(flags_ptr).flags.spec_index(cpu_id).view(), final(self).spec_index(flags_ptr).flags.spec_index(cpu_id).view()),
             unlock_ensures(old(lctx), final(lctx), KernelObjId::CpuOfflineFlag(flags_ptr, cpu_id), old(self).spec_index(flags_ptr).flags.lock_id_by_index(cpu_id)),
     {
-        let table = self.borrow_mut(flags_ptr);
-        table.flags.wunlock(cpu_id, Tracked(lctx), lock_perm, Ghost(KernelObjId::CpuOfflineFlag(flags_ptr, cpu_id)));
+        let Tracked(perm) = self.borrow_perm_mut(flags_ptr);
+        wunlock_flag(&PPtr::from_usize(flags_ptr), Tracked(perm), cpu_id, Tracked(lctx), lock_perm, Ghost(KernelObjId::CpuOfflineFlag(flags_ptr, cpu_id)));
     }
 
     pub fn read_flag(&self, flags_ptr: RwLockCpuOfflineFlagsPtr, cpu_id: CpuId, lock_perm: Tracked<&LockPerm>) -> (ret: bool)
@@ -175,8 +175,8 @@ impl UnLockedMap<usize, CpuOfflineFlags> {
             final(self).spec_index(flags_ptr).flags.lock_id_by_index(cpu_id) == old(self).spec_index(flags_ptr).flags.lock_id_by_index(cpu_id),
             cpu_offline_requests_of(final(self).spec_index(flags_ptr)) == cpu_offline_requests_of(old(self).spec_index(flags_ptr)).update(cpu_id as int, value),
     {
-        let table = self.borrow_mut(flags_ptr);
-        let flag = table.flags.borrow_mut(cpu_id, Tracked(lctx), lock_perm);
+        let Tracked(perm) = self.borrow_perm_mut(flags_ptr);
+        let flag = borrow_mut_flag(&PPtr::from_usize(flags_ptr), Tracked(perm), cpu_id, Tracked(lctx), lock_perm);
         flag.set(value);
         proof { reveal(cpu_offline_requests_of); assert_seqs_equal!(cpu_offline_requests_of(self.spec_index(flags_ptr)) == cpu_offline_requests_of(old(self).spec_index(flags_ptr)).update(cpu_id as int, value)); }
     }
