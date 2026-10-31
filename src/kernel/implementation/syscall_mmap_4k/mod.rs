@@ -4,6 +4,7 @@ mod syscall_mmap_4k_map_owned;
 mod syscall_mmap_4k_map_one_leaf;
 mod syscall_mmap_4k_map_range;
 mod syscall_mmap_4k_read_enter;
+mod syscall_mmap_4k_read_windows;
 mod syscall_mmap_4k_fill_enter;
 mod syscall_mmap_4k_fill_structure;
 mod syscall_mmap_4k_lock_helpers;

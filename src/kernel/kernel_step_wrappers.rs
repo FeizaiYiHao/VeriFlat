@@ -57,6 +57,8 @@ pub mod user_projection_at;
 /// K->U lemmas of read-mode page-table steps: held-window mappings, read-mode entry and exit, and downgrade.
 pub mod pagetable_read_mode;
 pub mod new_process_read_mode;
+/// Per-key and per-map K->U lemmas of the new-thread finish steps.
+pub mod new_thread_finish_maps;
 pub mod ipc_pages_tables;
 /// K->U lemmas of IOMMU-table leaf publication and global IOTLB flush steps.
 pub mod iommu_table_steps;
@@ -90,6 +92,7 @@ pub use owner_and_tables_per_map_projection::*;
 pub use user_projection_at::*;
 pub use pagetable_read_mode::*;
 pub use new_process_read_mode::*;
+pub use new_thread_finish_maps::*;
 pub use ipc_pages_tables::*;
 pub use iommu_table_steps::*;
 pub use env_steps::*;

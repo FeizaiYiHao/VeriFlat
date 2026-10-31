@@ -76,6 +76,71 @@ pub(super) open spec fn flush_local_pcid_and_clear_eof_transition_framing(pre: K
         ==> post.pcid_needflush.spec_index(c, p) == pre.pcid_needflush.spec_index(c, p)
 }
 
+proof fn flush_local_pcid_and_clear_eof_subsystems_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, pcid: Pcid)
+    requires
+        pre.inv(),
+        flush_local_pcid_and_clear_eof_transition_framing(pre, post, cpu_id, pcid),
+        index_valid(NUM_CPUS, cpu_id),
+        pcid_valid(pcid),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid,
+        post.cpu_arr.inv(),
+        post.cpu_tlb.inv(),
+        pcid_needflush_wf(post.pcid_needflush),
+    ensures post.subsystems_inv(),
+{
+    reveal(flush_local_pcid_and_clear_eof_transition_framing);
+    reveal(cpu_array_wf); reveal(cpu_hw_cr3_pcid_wf); reveal(cpu_offline_flags_wf); reveal(cpu_op_wf); reveal(KernelK::default_pagetable_wf);
+}
+
+proof fn flush_local_pcid_and_clear_eof_process_management_inv(pre: KernelK, post: KernelK, cpu_id: CpuId, pcid: Pcid)
+    requires
+        pre.inv(),
+        flush_local_pcid_and_clear_eof_transition_framing(pre, post, cpu_id, pcid),
+        index_valid(NUM_CPUS, cpu_id),
+        pcid_valid(pcid),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid,
+        post.cpu_arr.inv(),
+        post.cpu_tlb.inv(),
+        pcid_needflush_wf(post.pcid_needflush),
+    ensures post.process_management_inv(),
+{
+    reveal(flush_local_pcid_and_clear_eof_transition_framing);
+    reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf);
+}
+
+proof fn flush_local_pcid_and_clear_eof_cpu_dirty_map_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, pcid: Pcid)
+    requires
+        pre.inv(),
+        flush_local_pcid_and_clear_eof_transition_framing(pre, post, cpu_id, pcid),
+        index_valid(NUM_CPUS, cpu_id),
+        pcid_valid(pcid),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid,
+        post.cpu_arr.inv(),
+        post.cpu_tlb.inv(),
+        pcid_needflush_wf(post.pcid_needflush),
+    ensures cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush),
+{
+    reveal(flush_local_pcid_and_clear_eof_transition_framing);
+    reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match);
+    reveal(cpu_not_in_dirty_map_imply_not_in_tlb); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
+}
+
+proof fn flush_local_pcid_and_clear_eof_tlb_wf(pre: KernelK, post: KernelK, cpu_id: CpuId, pcid: Pcid)
+    requires
+        pre.inv(),
+        flush_local_pcid_and_clear_eof_transition_framing(pre, post, cpu_id, pcid),
+        index_valid(NUM_CPUS, cpu_id),
+        pcid_valid(pcid),
+        pre.cpu_arr.spec_index(cpu_id).view().view().view().current_pcid == pcid,
+        post.cpu_arr.inv(),
+        post.cpu_tlb.inv(),
+        pcid_needflush_wf(post.pcid_needflush),
+    ensures tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush),
+{
+    reveal(flush_local_pcid_and_clear_eof_transition_framing);
+    reveal(tlb_wf_spec); reveal(cpu_dirty_map_contains_pagetable_pcid_match); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
+}
+
 pub(super) proof fn flush_local_pcid_and_clear_eof(pre: KernelK, post: KernelK, cpu_id: CpuId, pcid: Pcid)
     requires
         pre.inv(),
@@ -89,14 +154,9 @@ pub(super) proof fn flush_local_pcid_and_clear_eof(pre: KernelK, post: KernelK, 
     ensures post.inv(),
 {
     reveal(flush_local_pcid_and_clear_eof_transition_framing);
-    assert(post.subsystems_inv()) by { reveal(cpu_array_wf); reveal(cpu_hw_cr3_pcid_wf); reveal(cpu_offline_flags_wf); reveal(cpu_op_wf); reveal(KernelK::default_pagetable_wf); };
-    assert(post.process_management_inv()) by { reveal(container_cpu_wf); reveal(process_cpu_wf); reveal(thread_cpu_wf); };
-    assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by {
-        reveal(cpu_dirty_map_contains_container_processes); reveal(cpu_dirty_map_proc_pcid_match); reveal(cpu_dirty_map_contains_pagetable_pcid_match);
-        reveal(cpu_not_in_dirty_map_imply_not_in_tlb); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
-    };
-    assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
-        reveal(tlb_wf_spec); reveal(cpu_dirty_map_contains_pagetable_pcid_match); cpu_array_wf_at(pre.cpu_arr, pre.dflt_pt.view(), cpu_id); process_cpu_wf_at(pre.prc_mp, pre.cpu_arr, cpu_id);
-    };
+    flush_local_pcid_and_clear_eof_subsystems_inv(pre, post, cpu_id, pcid);
+    flush_local_pcid_and_clear_eof_process_management_inv(pre, post, cpu_id, pcid);
+    flush_local_pcid_and_clear_eof_cpu_dirty_map_wf(pre, post, cpu_id, pcid);
+    flush_local_pcid_and_clear_eof_tlb_wf(pre, post, cpu_id, pcid);
 }
 }

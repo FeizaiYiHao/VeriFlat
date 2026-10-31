@@ -111,7 +111,7 @@ pub(crate) fn kill_retire_next_table_page_scoped(
         match scan {
             StructureScan::L1 { l4i, l3i, l2i, .. } => {
                 proof {
-                    pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, table); krnl.default_pagetable_wf_at(table);
+                    pagetable_perms_wf_at(krnl.pt_mp, table); krnl.default_pagetable_wf_at(table);
                     assert(spec_va_2m_valid(spec_index2va((l4i, l3i, l2i, 0usize)))) by (bit_vector) requires KERNEL_MEM_END_L4INDEX <= l4i < 512, l3i < 512, l2i < 512;
                 }
                 let Tracked(perm) = krnl.lock_pagetable_window(table, l4i, l3i, l2i, Tracked(table_perm), Tracked(&mut *lctx));

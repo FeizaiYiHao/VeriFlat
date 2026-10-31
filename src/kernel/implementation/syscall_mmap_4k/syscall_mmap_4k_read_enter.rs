@@ -2,8 +2,7 @@ use vstd::prelude::*;
 use vstd::{assert_maps_equal, assert_maps_equal_internal, assert_sets_equal};
 use crate::*;
 use super::syscall_mmap_4k_fill_enter::mmap_4k_fill_enter;
-use super::syscall_mmap_4k_map_range::mmap_4k_map_leaves_and_finish;
-use super::syscall_mmap_4k_precheck::{mmap_4k_precheck, Mmap4kPrecheck};
+use super::syscall_mmap_4k_read_windows::mmap_4k_read_lock_windows_and_map;
 use super::syscall_mmap_4k_spec::*;
 use super::syscall_mmap_4k_trace::*;
 
@@ -11,7 +10,7 @@ verus! {
 /// With `cpu_id` and its current `thread_ptr` write-held since the entry snapshot and `pagetable_ptr` read-held by
 /// `pagetable_lock_perm` with no window held and the table's window locks as in that snapshot: releases all three and finishes
 /// the call without recording a step.
-fn mmap_4k_unlock_read_rejected(
+pub(super) fn mmap_4k_unlock_read_rejected(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, pagetable_ptr: RwLockPageTableRoot,
     Tracked(pagetable_lock_perm): Tracked<LockPerm>, Tracked(thread_lock_perm): Tracked<LockPerm>, Tracked(cpu_lock_perm): Tracked<LockPerm>,
 )
@@ -224,6 +223,8 @@ pub(super) fn mmap_4k_try_read_enter(
         ret.0 is Success ==> mmap_4k_syscall_success_mapped(final(krnl), cpu_id, va, range),
         !(ret.0 is Success) ==> final(steps).view().len() == 0 || mmap_4k_syscall_failure_trace(final(steps).view(), cpu_id, va, range) && ret.1.view() == final(steps).view()[1].old_u,
 {
+    let ghost pre_k = *krnl;
+    let ghost pre_lctx = *lctx;
     proof { krnl.pt_mp.typed_lock_map_aligned_locked_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr); pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); }
     let Tracked(pagetable_lock_perm) = krnl.rlock_pagetable(pagetable_ptr, Tracked(&mut *lctx));
     proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr); }
@@ -268,40 +269,8 @@ pub(super) fn mmap_4k_try_read_enter(
             Tracked(thread_lock_perm), Tracked(cpu_lock_perm));
         return (ret, Ghost(anchor));
     }
-    let ghost unlocked_windows = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks;
-    let Tracked(window_perms) = krnl.lock_pagetable_range_windows(pagetable_ptr, va_range, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx));
-    let ghost checked = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
-    let (precheck, Ghost(found)) = mmap_4k_precheck(krnl, va_range, pagetable_ptr, Tracked(&*lctx), Tracked(&pagetable_lock_perm));
-    let ready = match precheck { Mmap4kPrecheck::Ready => true, _ => false };
-    if !ready {
-        krnl.unlock_pagetable_range_windows(pagetable_ptr, va_range, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx), Tracked(window_perms));
-        proof { assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks =~= unlocked_windows); }
-        mmap_4k_unlock_read_rejected(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, thread_ptr, pagetable_ptr, Tracked(pagetable_lock_perm), Tracked(thread_lock_perm),
-            Tracked(cpu_lock_perm));
-        proof { mmap_4k_result_from_k(&old(steps).snapshot_k(), cpu_id, va, range, RetValueType::ErrorVaInUse, Some(checked), found); }
-        return (RetValueType::ErrorVaInUse, Ghost(kernel_k_to_kernel_u(old(steps).snapshot_k())));
-    }
-    proof { mmap_4k_result_from_k(&old(steps).snapshot_k(), cpu_id, va, range, RetValueType::Success, Some(checked), None); }
-    krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::Mmap4k { range: *va_range, mapped: 0, directory: Mmap4kDirectory::None, phase: Mmap4kPhase::Read })),
-        Tracked(&*lctx), Tracked(&thread_lock_perm));
-    let ghost entered_k = *krnl;
-    proof {
-        enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
-        krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
-        assert(mmap_4k_trace_after_enter(steps.view(), cpu_id, *va_range, Mmap4kPhase::Read)) by {
-            kernel_cpu_thread_wlocked_pagetable_rlocked_and_progress_changed_implies_u_step(&old(steps).snapshot_k(), &entered_k, &entry_lctx, cpu_id, thread_ptr, process_ptr, pagetable_ptr);
-            mmap_4k_enter_step_pre_from_k(&old(steps).snapshot_k(), cpu_id, process_ptr, thread_ptr);
-            mmap_4k_enter_step_from_u(&old(steps).snapshot_k(), kernel_k_to_kernel_u(entered_k), cpu_id, process_ptr, thread_ptr, pagetable_ptr, va, range, *va_range,
-                Mmap4kPhase::Read, pagetable_c(entered_k.pt_mp, entered_k.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks);
-            mmap_4k_trace_enter_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(entered_k), cpu_id, *va_range, Mmap4kPhase::Read);
-        };
-        container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);
-        container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr);
-        broadcast use spec_va_2m_valid_index_roundtrip;
-    }
-    let ghost entered = steps.view();
-    mmap_4k_map_leaves_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, va_range, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr, pagetable_ptr,
-        Ghost(Mmap4kPhase::Read), Ghost(entered), Tracked(thread_lock_perm), Tracked(pagetable_lock_perm), Tracked(cpu_lock_perm), Tracked(window_perms));
-    (RetValueType::Success, Ghost(kernel_k_to_kernel_u(old(steps).snapshot_k())))
+    let ret = mmap_4k_read_lock_windows_and_map(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, va_range, alloc_ptr_4k, thread_ptr, process_ptr, container_ptr,
+        pagetable_ptr, Ghost(entry_lctx), Ghost(pre_k), Ghost(pre_lctx), Tracked(pagetable_lock_perm), Tracked(thread_lock_perm), Tracked(cpu_lock_perm));
+    (ret, Ghost(kernel_k_to_kernel_u(old(steps).snapshot_k())))
 }
 } // verus!

@@ -588,17 +588,18 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_step(
         ..old_u
     };
     let post_u = kernel_k_to_kernel_u(*post);
-    kernel_cpu_projection_at(post, cpu_id); kernel_cpu_projection_at(pre, cpu_id);
-    if post.prc_mp.dom().contains(process_ptr) { kernel_process_projection_at(post, process_ptr); }
+    assert(pre.prc_mp.dom().contains(process_ptr) && post.prc_mp.dom() == pre.prc_mp.dom() && pre.thr_mp.dom().contains(thread_ptr) && post.thr_mp.dom().contains(new_thread_ptr)
+        && post.ep_mp.dom() == pre.ep_mp.dom() && (endpoint_ptr is Some ==> pre.ep_mp.dom().contains(endpoint_ptr->Some_0))) by { reveal(kernel_new_thread_fields); };
+    kernel_cpu_projection_at(post, cpu_id); kernel_cpu_projection_at(pre, cpu_id); kernel_process_projection_at(post, process_ptr);
     if let Some(source) = release_source_process {
-        if post.prc_mp.dom().contains(source) { kernel_process_projection_at(post, source); } kernel_process_projection_at(pre, source);
-        assert(pre.prc_mp.dom().contains(process_ptr) && pre.pt_mp.dom().contains(pre.prc_mp.spec_index(process_ptr).view().pagetable)
-            && pre.pt_mp.dom().contains(pre.prc_mp.spec_index(source).view().pagetable)) by { reveal(kernel_new_thread_fields); process_pagetable_match_process_at(post.prc_mp, post.pt_mp, process_ptr); process_pagetable_match_process_at(post.prc_mp, post.pt_mp, source); };
+        kernel_process_projection_at(post, source); kernel_process_projection_at(pre, source);
+        assert(pre.pt_mp.dom().contains(pre.prc_mp.spec_index(process_ptr).view().pagetable) && pre.pt_mp.dom().contains(pre.prc_mp.spec_index(source).view().pagetable)) by {
+            reveal(kernel_new_thread_fields); process_pagetable_match_process_at(post.prc_mp, post.pt_mp, process_ptr); process_pagetable_match_process_at(post.prc_mp, post.pt_mp, source);
+        };
         kernel_process_projection_at(pre, process_ptr);
     }
-    if pre.thr_mp.dom().contains(thread_ptr) { kernel_thread_projection_at(pre, thread_ptr); }
-    if post.thr_mp.dom().contains(new_thread_ptr) { kernel_thread_projection_at(post, new_thread_ptr); }
-    if let Some(e) = endpoint_ptr { if post.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(post, e); } if pre.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(pre, e); } }
+    kernel_thread_projection_at(pre, thread_ptr);
+    if let Some(e) = endpoint_ptr { kernel_endpoint_projection_at(post, e); kernel_endpoint_projection_at(pre, e); }
     assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { reveal(kernel_new_thread_fields); pre.irt.view().user_view_unfold(); post.irt.view().user_view_unfold(); };
     assert(post_u.process_map.spec_index(process_ptr).owned_threads.last() == new_thread_ptr
         && kernel_u_new_thread_changed(pre_u, post_u, process_ptr, thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, endpoint_ptr, staging_progress)) by {
@@ -608,7 +609,7 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_step(
         kernel_new_thread_fields_and_unlocks_implies_u_container_map(pre, post, process_ptr, thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, endpoint_ptr, staging_progress, None);
         kernel_new_thread_fields_and_unlocks_implies_u_process_map(pre, post, process_ptr, thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, endpoint_ptr, staging_progress, release_source_process);
         reveal(kernel_new_thread_fields); reveal(kernel_u_new_thread_changed);
-        assert_seqs_equal!(post_u.thread_map.spec_index(new_thread_ptr).endpoint_descriptors == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| if i == 0 { endpoint_ptr } else { None }));
+        kernel_new_thread_fields_implies_u_new_thread_entry(pre, post, process_ptr, thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, endpoint_ptr, staging_progress);
     };
 }
 

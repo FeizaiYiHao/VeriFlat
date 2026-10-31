@@ -221,7 +221,7 @@ fn kill_reassign_owned_functions(
         final(krnl).cpu_arr.spec_index(cpu_id) == before.cpu_arr.spec_index(cpu_id),
 {
     let ghost before_steps = steps.view();
-    proof { process_perms_wf_map(before.prc_mp); process_perms_wf_at(before.prc_mp, target); process_iommu_table_match_process_at(before.prc_mp, before.it_mp, target); }
+    proof { process_perms_wf_at(before.prc_mp, target); process_iommu_table_match_process_at(before.prc_mp, before.it_mp, target); }
     match iommu_table {
         Some(it) => {
             let Tracked(iommu_perm) = krnl.wlock_iommu_table(it, Tracked(&mut *lctx));

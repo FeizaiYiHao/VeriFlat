@@ -1,6 +1,7 @@
 mod mmap_4k_create_entry_install;
 mod mmap_4k_create_entry_install_eof;
 pub mod mmap_4k_install_one;
+mod mmap_4k_install_one_helpers;
 pub mod mmap_4k_build_structure;
 pub mod mmap_4k_build_structure_spec;
 mod mmap_4k_build_structure_trace;

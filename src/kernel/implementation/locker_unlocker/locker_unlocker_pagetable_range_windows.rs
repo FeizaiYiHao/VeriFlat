@@ -403,7 +403,7 @@ impl KernelK {
                 pagetable_c(self.pt_mp, self.pt_lower.view(), root).mapping_1g() == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_1g(),
                 pagetable_c(self.pt_mp, self.pt_lower.view(), root).higher == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).higher,
                 pagetable_c(self.pt_mp, self.pt_lower.view(), root).lower.l2_perms.dom() == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_perms.dom(),
-                forall|p: PageMapPtr, i: L2Index| #![trigger pagetable_c(self.pt_mp, self.pt_lower.view(), root).lower.l2_page(p).entry_lock(i)]
+                forall|p: PageMapPtr, i: L2Index| #![trigger pagetable_c(self.pt_mp, self.pt_lower.view(), root).lower.l2_page(p).entry_lock(i), pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_page(p).entry_lock(i)]
                     pagetable_c(self.pt_mp, self.pt_lower.view(), root).lower.l2_entry(p, i) == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_entry(p, i)
                         && pagetable_c(self.pt_mp, self.pt_lower.view(), root).lower.l2_page(p).entry_lock(i).l1() == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_page(p).entry_lock(i).l1(),
                 pagetable_c(self.pt_mp, self.pt_lower.view(), root).lower.l1_rev_map == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l1_rev_map,

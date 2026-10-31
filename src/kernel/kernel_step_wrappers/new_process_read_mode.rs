@@ -396,7 +396,7 @@ pub proof fn kernel_new_thread_fields_and_parent_unlocks_source_runlocked_implie
             }, kernel_k_to_kernel_u(*post), process_ptr, thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, endpoint_ptr, None)
         }),
 {
-    reveal(kernel_new_thread_fields); kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
+    kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     let old_u = kernel_k_to_kernel_u(*pre);
     let post_u = kernel_k_to_kernel_u(*post);
     let mode = LockStateU::Unlocked;
@@ -422,32 +422,25 @@ pub proof fn kernel_new_thread_fields_and_parent_unlocks_source_runlocked_implie
         },
         ..old_u
     };
-    kernel_cpu_projection_at(pre, cpu_id); kernel_cpu_projection_at(post, cpu_id);
-    if pre.prc_mp.dom().contains(process_ptr) { kernel_process_projection_at(pre, process_ptr); } if post.prc_mp.dom().contains(process_ptr) { kernel_process_projection_at(post, process_ptr); }
-    kernel_process_projection_at(pre, source); if post.prc_mp.dom().contains(source) { kernel_process_projection_at(post, source); }
-    process_pagetable_match_process_at(post.prc_mp, post.pt_mp, process_ptr); process_pagetable_match_process_at(post.prc_mp, post.pt_mp, source);
-    if pre.thr_mp.dom().contains(thread_ptr) { kernel_thread_projection_at(pre, thread_ptr); }
-    if post.thr_mp.dom().contains(new_thread_ptr) { kernel_thread_projection_at(post, new_thread_ptr); }
-    if let Some(e) = endpoint_ptr { if post.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(post, e); } if pre.ep_mp.dom().contains(e) { kernel_endpoint_projection_at(pre, e); } }
-    assert(lock is Unlocked || lock is ReadLocked) by { process_pagetable_match_process_at(post.prc_mp, post.pt_mp, source); };
-    assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { reveal(IommuRootTable::user_view); };
-    let process = unlocked.spec_index(process_ptr);
-    assert(post_u.process_map == unlocked.insert(process_ptr, ProcessU { owned_threads: process.owned_threads.push(new_thread_ptr), ..process })) by {
-        assert_maps_equal!(post_u.process_map, unlocked.insert(process_ptr, ProcessU { owned_threads: process.owned_threads.push(new_thread_ptr), ..process }), p => {
-            if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); }
-            reveal(process_pagetable_match); reveal(process_iommu_table_match); reveal(kernel_pagetable_nonlock_fields_unchanged);
-            assert(post.prc_mp.spec_index(process_ptr).view().pagetable == pre.prc_mp.spec_index(process_ptr).view().pagetable);
-            assert(post.prc_mp.spec_index(source).view().pagetable == pre.prc_mp.spec_index(source).view().pagetable);
-        });
+    assert(pre.prc_mp.dom().contains(process_ptr) && post.prc_mp.dom() == pre.prc_mp.dom() && pre.thr_mp.dom().contains(thread_ptr) && post.thr_mp.dom().contains(new_thread_ptr)
+        && pre.pt_mp.dom().contains(pre.prc_mp.spec_index(process_ptr).view().pagetable) && pre.pt_mp.dom().contains(pre.prc_mp.spec_index(source).view().pagetable)) by {
+        reveal(kernel_new_thread_fields); process_pagetable_match_process_at(post.prc_mp, post.pt_mp, process_ptr); process_pagetable_match_process_at(post.prc_mp, post.pt_mp, source);
     };
+    kernel_cpu_projection_at(pre, cpu_id); kernel_process_projection_at(pre, process_ptr); kernel_process_projection_at(pre, source); kernel_process_projection_at(post, source); kernel_thread_projection_at(pre, thread_ptr);
+    assert(lock is Unlocked || lock is ReadLocked) by {
+        reveal(kernel_new_thread_fields); process_pagetable_match_process_at(post.prc_mp, post.pt_mp, source);
+        assert(post.prc_mp.spec_index(source).view().pagetable == pre.prc_mp.spec_index(source).view().pagetable);
+    };
+    assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { reveal(kernel_new_thread_fields); pre.irt.view().user_view_unfold(); post.irt.view().user_view_unfold(); };
     assert(post_u.process_map.spec_index(process_ptr).owned_threads.last() == new_thread_ptr && old_u.process_map[process_ptr].iommu_table is None
         && kernel_u_new_thread_changed(pre_u, post_u, process_ptr, thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, endpoint_ptr, None)) by {
         kernel_new_thread_fields_and_unlocks_implies_u_cpu_array(pre, post, cpu_id, process_ptr, thread_ptr, container_ptr, new_thread_ptr, initial_regs, endpoint_ptr, None);
         kernel_new_thread_fields_and_unlocks_implies_u_thread_map(pre, post, process_ptr, thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, endpoint_ptr, None);
         kernel_new_thread_fields_and_unlocks_implies_u_endpoint_map(pre, post, process_ptr, thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, endpoint_ptr, None);
         kernel_new_thread_fields_and_unlocks_implies_u_container_map(pre, post, process_ptr, thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, endpoint_ptr, None, Some(source_container));
-        reveal(kernel_u_new_thread_changed);
-        assert_seqs_equal!(post_u.thread_map.spec_index(new_thread_ptr).endpoint_descriptors == Seq::new(MAX_NUM_ENDPOINT_DESCRIPTORS as nat, |i: int| if i == 0 { endpoint_ptr } else { None }));
+        kernel_new_thread_fields_and_parent_unlocks_source_runlocked_implies_u_process_map(pre, post, process_ptr, thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, endpoint_ptr, source);
+        reveal(kernel_new_thread_fields); reveal(kernel_u_new_thread_changed);
+        kernel_new_thread_fields_implies_u_new_thread_entry(pre, post, process_ptr, thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, endpoint_ptr, None);
     };
 }
 
