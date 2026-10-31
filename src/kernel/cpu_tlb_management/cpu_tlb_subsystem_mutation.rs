@@ -26,7 +26,7 @@ pub fn pcid_needflush_array_clear(needflush: &mut PcidNeedFlushArray, cpu_id: Cp
         forall|c: CpuId, p: Pcid| #![trigger typed_lock_map_contains_mode(lctx.pcid_needflush_lock_map(), (c, p), TypedLockMode::Write)] typed_lock_map_contains_mode(lctx.pcid_needflush_lock_map(), (c, p), TypedLockMode::Write)
             ==> final(needflush).spec_index(c, p).view_ghost() == old(needflush).spec_index(c, p).view_ghost(),
 {
-    proof { pcid_needflush_wf_at(*needflush, cpu_id, pcid); }
+    proof { pcid_needflush_wf_implies_array_inv(*needflush); pcid_needflush_wf_at(*needflush, cpu_id, pcid); }
     let entry = needflush.borrow_mut_typed(cpu_id, pcid, Ghost(lctx.pcid_needflush_lock_map()), Tracked(lctx), Tracked(needflush_lock_perm));
     entry.set(false);
     proof {

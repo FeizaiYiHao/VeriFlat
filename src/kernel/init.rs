@@ -1,4 +1,3 @@
-use core::mem::offset_of;
 use vstd::prelude::*;
 use vstd::simple_pptr::*;
 
@@ -6,13 +5,8 @@ mod boot_eof_pages;
 mod init_eof;
 use init_eof::*;
 
-const ASSERT_KERNEL_IRT_OFFSET: [(); 0] = [(); offset_of!(crate::KernelK, irt)];
-
 verus! {
 use crate::*;
-
-/// `irt` leads `KernelK`; the pinned table starts one 4K page after its lock word (`IommuRootTableLock` is `#[repr(C)]`).
-pub const KERNEL_IRT_OFFSET: usize = VTD_TABLE_SIZE;
 
 #[derive(Clone, Copy)]
 pub struct BootKernelLayout {
@@ -52,11 +46,12 @@ impl BootKernelLayout {
         &&& self.cpu_pagetable != self.iommu_table
     }
 
+    /// The pinned root table starts one 4K page after the root-table lock cell.
     pub open spec fn iommu_root_table_base(&self) -> PAddr
         recommends
-            self.kernel_ptr as int + KERNEL_IRT_OFFSET as int <= usize::MAX as int,
+            irt_cell_base_spec() as int + VTD_TABLE_SIZE as int <= usize::MAX as int,
     {
-        (self.kernel_ptr as int + KERNEL_IRT_OFFSET as int) as usize
+        (irt_cell_base_spec() as int + VTD_TABLE_SIZE as int) as usize
     }
 }
 
@@ -879,7 +874,7 @@ pub fn finish_init_from_boot(
     requires
         0 < NUM_CPUS,
         layout.pointers_wf(),
-        layout.kernel_ptr as int + KERNEL_IRT_OFFSET as int <= usize::MAX as int,
+        irt_cell_base_spec() as int + VTD_TABLE_SIZE as int <= usize::MAX as int,
         layout.iommu_root_table_base() % VTD_TABLE_SIZE == 0,
         layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= MEM_MASK as int,
         layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= usize::MAX as int,
@@ -980,9 +975,10 @@ pub fn finish_init_from_boot(
     let tracked cpu_op = CpuOpArray::new_boot(Seq::new(NUM_CPUS as nat, |i: int| if i == 0 { CpuOpState::Idle } else { CpuOpState::Off }));
     let cpu_tlb = CpuTLB::new_empty();
     let iommu_tlb = IommuTLB::new_empty();
-    let irt_base = layout.kernel_ptr + KERNEL_IRT_OFFSET;
+    let irt_addr = irt_cell_base();
+    let irt_base = irt_addr + VTD_TABLE_SIZE;
     assert(VTD_TABLE_SIZE == 4096) by (compute);
-    let irt = RwLock::new_unlocked(IommuRootTable::new_disabled(irt_base, layout.root_process), (), Ghost(()));
+    let irt = TokenLock::from_token(irt_addr, irt_cell_init(RwLock::new_unlocked(IommuRootTable::new_disabled(irt_base, layout.root_process), (), Ghost(()))));
 
     let process_rodata = ReadOnlyNode::new(ProcessRO {
         owning_container: layout.root_container, container_depth: 0, parent: None, depth: 0,

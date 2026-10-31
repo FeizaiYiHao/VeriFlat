@@ -87,6 +87,7 @@ pub(super) fn cpu_offline_commit_unlock_and_record(
         },
         old(krnl).cpu_arr.inv(),
         old(krnl).cpu_tlb.inv(),
+        old(krnl).pcid_needflush.inv(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().wf(),
         old(krnl).sched_mp.perms_wf(),
         old(krnl).sched_mp.spec_index(scheduler_ptr).shards.inv(),

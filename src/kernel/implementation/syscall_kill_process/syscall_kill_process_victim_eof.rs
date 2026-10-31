@@ -305,7 +305,12 @@ pub(crate) proof fn kill_leave_process_eof(
     else { kill_leave_process_eof_chain_end_waiting(pre, post, process_ptr, victim_ptr, callers, holder); }
     kill_leave_process_eof_process(pre, post, process_ptr, victim_ptr, callers);
     assert(iommu_root_table_process_wf(post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_root_table_process_wf); };
-    assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by { reveal(process_pci_function_ownership_wf); };
+    assert(process_pci_function_ownership_wf(post.irt.view(), post.prc_mp)) by {
+        assert forall|proc_ptr: RwLockProcessPtr, bdf: PciBdf| #![trigger post.prc_mp.spec_index(proc_ptr).view_ghost().owned_pci_functions.view().contains(bdf)]
+            post.prc_mp.dom().contains(proc_ptr) && post.prc_mp.spec_index(proc_ptr).view_ghost().owned_pci_functions.view().contains(bdf)
+            implies pci_bdf_valid(bdf.0, bdf.1, bdf.2) && post.irt.view().spec_index_owner(bdf.0, bdf.1, bdf.2) == proc_ptr by { process_pci_function_ownership_wf_at(pre.irt.view(), pre.prc_mp, bdf, proc_ptr); };
+        reveal(process_pci_function_ownership_wf);
+    };
     assert(iommu_tlb_wf_spec(post.iommu_tlb, post.irt.view(), post.prc_mp, post.it_mp)) by { reveal(iommu_tlb_wf_spec); reveal(iommu_root_table_process_wf); };
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_proc_pcid_match); };
 }

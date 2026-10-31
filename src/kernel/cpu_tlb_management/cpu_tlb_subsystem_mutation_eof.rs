@@ -21,6 +21,7 @@ pub proof fn pcid_needflush_array_clear_eof(pre: PcidNeedFlushArray, post: PcidN
         index_valid(NUM_CPUS, cpu_id),
         pcid_valid(pcid),
         pcid_needflush_array_clear_eof_transition_framing(pre, post, cpu_id, pcid),
+        post.inv(),
     ensures pcid_needflush_wf(post),
 { reveal(pcid_needflush_array_clear_eof_transition_framing); reveal(pcid_needflush_wf); }
 }

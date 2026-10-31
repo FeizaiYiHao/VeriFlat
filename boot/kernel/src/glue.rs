@@ -2,12 +2,12 @@
 //! `finish_init_from_boot` describe, then calls it.
 //!
 //! Everything here is trusted. It classifies every physical page, picks the pages of the boot
-//! singletons and the free 2M blocks, writes the page array and the PCID-needflush array in place
-//! at their final `KernelK` offsets, threads every free page's intrusive node into the global 4K
-//! pool and every free 2M head's node into the global 2M pool at that final address, and hands
-//! the rest to the verified initializer.
+//! singletons and the free 2M blocks, writes every page lock into its cell in the page-cell static
+//! and every PCID-needflush lock into its cell in the needflush-cell static, threads every free page's
+//! intrusive node into the global 4K pool and every free 2M head's node into the global 2M pool at
+//! that final address, and hands the rest to the verified initializer.
 
-use core::mem::{align_of, offset_of, size_of, MaybeUninit};
+use core::mem::{align_of, size_of, MaybeUninit};
 use core::ptr;
 
 use astd::boot::{BootInfo, PhysicalMemoryType, MAX_PAGES};
@@ -53,8 +53,7 @@ enum Kind {
 static mut KINDS: [Kind; NUM_PAGES] = [Kind::Unavailable; NUM_PAGES];
 
 /// Storage of the verified kernel object, written by `finish_init_from_boot`. It lives in the
-/// identity-mapped kernel image, so its address is also its physical address (the IOMMU root
-/// table inside it must be page aligned).
+/// identity-mapped kernel image, so its address is also its physical address.
 #[repr(C, align(4096))]
 struct KernelSlot(MaybeUninit<KernelK>);
 
@@ -205,9 +204,10 @@ fn new_page(addr: usize, state: PageState, ref_count: usize, owning_container: u
     }
 }
 
-/// Physical address of the VT-d root table inside [`KERNEL`] (the kernel image is identity mapped).
+/// Physical address of the VT-d root table: one 4K page past the root-table lock cell, which lies in the identity-mapped
+/// kernel image.
 pub fn iommu_root_table() -> u64 {
-    (&raw const KERNEL) as u64 + veriflat_monolith::kernel::init::KERNEL_IRT_OFFSET as u64
+    (irt_cell_base() + VTD_TABLE_SIZE) as u64
 }
 
 /// Builds the verified kernel in [`KERNEL`].
@@ -216,8 +216,6 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
     log::info!("KernelK: {} bytes at {:#x}; page lock {} bytes", size_of::<KernelK>(), kernel_ptr, size_of::<PageLock>());
     assert!(kernel_ptr % PAGE_SIZE == 0);
     assert!(align_of::<KernelK>() <= PAGE_SIZE);
-    assert!(size_of::<PageLockedArray>() == NUM_PAGES * size_of::<PageLock>());
-    assert!(size_of::<PcidNeedFlushArray>() == NUM_CPUS * PCID_MAX * size_of::<NeedFlushLock>());
     assert!(boot_info.pages.len() == NUM_PAGES);
 
     // 1. Classify every page.
@@ -277,8 +275,8 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
         kinds[head + 1..head + PAGES_PER_2M].fill(Kind::Merged2m);
     }
 
-    // 3. Page array, written in place at its final address so free-page node addresses stay valid.
-    let page_base = kernel_ptr + offset_of!(KernelK, pg_arr);
+    // 3. Page lock cells, written in place at their final address so free-page node addresses stay valid.
+    let page_base = page_cells_base();
     let page_value_offset = size_of::<RwLockInner>().next_multiple_of(align_of::<Page>());
     let mut free_4k_pool: FreePool = LinkedList::new(Some(0), Some(root_container));
     let mut free_2m_pool: FreePool = LinkedList::new(Some(0), Some(root_container));
@@ -315,16 +313,16 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
             }
         }
     }
-    let page_array: PageLockedArray = ptr::read(page_base as *const PageLockedArray);
+    let page_array = PageLockedArray::from_token_cells(TokenCells { base: page_base, perms: Tracked::assume_new() });
     log::info!("pages: {} free, {} free 2M blocks, {} dom0 tables, {} dom0 leaves", free_count, BOOT_FREE_2M_BLOCKS, tables, leaves);
 
-    // 4. PCID needflush array, written in place.
-    let needflush_base = kernel_ptr + offset_of!(KernelK, pcid_needflush);
+    // 4. PCID needflush locks, written in place; cell `(cpu, pcid)` is cell `cpu * PCID_MAX + pcid`.
+    let needflush_base = pcid_needflush_cells_base();
     for k in 0..NUM_CPUS * PCID_MAX {
         let lock_ptr = (needflush_base + k * size_of::<NeedFlushLock>()) as *mut NeedFlushLock;
         ptr::write(lock_ptr, RwLock::new_unlocked(PcidNeedFlush::new(Ghost::assume_new(), Ghost::assume_new()), (), Ghost::assume_new()));
     }
-    let pcid_needflush: PcidNeedFlushArray = ptr::read(needflush_base as *const PcidNeedFlushArray);
+    let pcid_needflush = PcidNeedFlushArray::from_token_cells(needflush_base, Tracked::assume_new());
 
     // 5. Default page table and the per-cpu hardware cr3/pcid words.
     let default_pagetable = ReadOnlyNode::new(

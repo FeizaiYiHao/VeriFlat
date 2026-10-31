@@ -246,6 +246,10 @@ pub(super) fn release_backing_page_lock_group(
         &&& pages.spec_index(indices.4).view().wlocked_by(&*lctx)
         &&& lctx.lock_entry_contains(pages.lock_id_by_index(indices.4), KernelObjId::Page(indices.4))
     }) by { reveal(LockedArray::typed_lock_map_aligned); };
+    assert(pages.spec_index(indices.0).view().inv() && pages.spec_index(indices.1).view().inv() && pages.spec_index(indices.2).view().inv()
+        && pages.spec_index(indices.3).view().inv() && pages.spec_index(indices.4).view().inv()) by {
+        page_array_wf_at(*pages, indices.0); page_array_wf_at(*pages, indices.1); page_array_wf_at(*pages, indices.2); page_array_wf_at(*pages, indices.3); page_array_wf_at(*pages, indices.4);
+    };
     pages.wunlock(indices.0, Tracked(&mut *lctx), Tracked(perm0), Ghost(KernelObjId::Page(indices.0)));
     pages.wunlock(indices.1, Tracked(&mut *lctx), Tracked(perm1), Ghost(KernelObjId::Page(indices.1)));
     pages.wunlock(indices.2, Tracked(&mut *lctx), Tracked(perm2), Ghost(KernelObjId::Page(indices.2)));

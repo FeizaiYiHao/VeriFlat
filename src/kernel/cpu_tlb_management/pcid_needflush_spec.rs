@@ -4,7 +4,8 @@ use crate::*;
 verus! {
 #[verifier::opaque]
 pub open spec fn pcid_needflush_wf(array: PcidNeedFlushArray) -> bool {
-    forall|cpu_id: CpuId, pcid: Pcid|
+    &&& array.inv()
+    &&& forall|cpu_id: CpuId, pcid: Pcid|
         #![trigger array.spec_index(cpu_id, pcid)]
         index_valid(NUM_CPUS, cpu_id) && pcid_valid(pcid) ==> {
             let entry = array.spec_index(cpu_id, pcid);
@@ -14,6 +15,11 @@ pub open spec fn pcid_needflush_wf(array: PcidNeedFlushArray) -> bool {
             &&& (entry.view_ghost() is Some ==> index_valid(NUM_CPUS, entry.view_ghost().unwrap()))
         }
 }
+
+pub proof fn pcid_needflush_wf_implies_array_inv(array: PcidNeedFlushArray)
+    requires pcid_needflush_wf(array)
+    ensures array.inv()
+{ reveal(pcid_needflush_wf); }
 
 /// Entry `(cpu_id, pcid)` is well formed, pinned to its slot, and write-held exactly when it names a valid holder cpu.
 pub proof fn pcid_needflush_wf_at(array: PcidNeedFlushArray, cpu_id: CpuId, pcid: Pcid)

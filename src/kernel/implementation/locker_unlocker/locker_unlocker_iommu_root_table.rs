@@ -32,7 +32,7 @@ impl KernelK {
             kernel_container_nonlock_fields_and_quotas_unchanged(old(self), final(self)),
             typed_lock_maps_aligned(final(self), final(lctx)),
             *final(self) == (KernelK { irt: final(self).irt, ..*old(self) }),
-            wlock_ensures(old(self).irt, final(self).irt, old(self).irt.lock_id(), final(lctx), ret.view()),
+            wlock_ensures(old(self).irt.lock(), final(self).irt.lock(), old(self).irt.lock_id(), final(lctx), ret.view()),
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::IommuRootTable(old(self).irt.view().table_base()), TypedHeldLock { lock_id: old(self).irt.lock_id(), mode: TypedLockMode::Write }),
     {
         proof {
@@ -40,7 +40,7 @@ impl KernelK {
                 reveal(LocalContext::lock_id_acyclic); reveal(UnLockedMap::typed_flag_lock_map_aligned);
                 reveal(LockedArray::typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);
             };
-            assert(wlock_requires(old(self).irt, old(lctx))) by { reveal(iommu_root_table_typed_lock_map_aligned); };
+            assert(wlock_requires(old(self).irt.lock(), old(lctx))) by { reveal(iommu_root_table_typed_lock_map_aligned); };
         }
         let ret = self.irt.wlock(Tracked(&mut *lctx), Ghost(self.irt.lock_id()), Ghost(KernelObjId::IommuRootTable(self.irt.view().table_base())));
         proof {
@@ -68,7 +68,7 @@ impl KernelK {
             kernel_container_nonlock_fields_and_quotas_unchanged(old(self), final(self)),
             typed_lock_maps_aligned(final(self), final(lctx)),
             *final(self) == (KernelK { irt: final(self).irt, ..*old(self) }),
-            wunlock_ensures(old(self).irt, final(self).irt),
+            wunlock_ensures(old(self).irt.lock(), final(self).irt.lock()),
             unlock_ensures(old(lctx), final(lctx), KernelObjId::IommuRootTable(old(self).irt.view().table_base()), old(self).irt.lock_id()),
     {
         proof { assert(old(self).irt.wlocked_by(old(lctx)) && old(lctx).lock_entry_contains(old(self).irt.lock_id(), KernelObjId::IommuRootTable(old(self).irt.view().table_base()))) by { reveal(iommu_root_table_typed_lock_map_aligned); }; }

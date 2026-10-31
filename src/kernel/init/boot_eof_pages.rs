@@ -14,7 +14,7 @@ pub(super) proof fn boot_memory_management_inv_eof_container_pages(
     requires
         0 < NUM_CPUS,
         layout.pointers_wf(),
-        layout.kernel_ptr as int + KERNEL_IRT_OFFSET as int <= usize::MAX as int,
+        irt_cell_base_spec() as int + VTD_TABLE_SIZE as int <= usize::MAX as int,
         layout.iommu_root_table_base() % VTD_TABLE_SIZE == 0,
         layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= MEM_MASK as int,
         layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= usize::MAX as int,
@@ -48,7 +48,7 @@ pub(super) proof fn boot_memory_management_inv_eof_process_pages(
     requires
         0 < NUM_CPUS,
         layout.pointers_wf(),
-        layout.kernel_ptr as int + KERNEL_IRT_OFFSET as int <= usize::MAX as int,
+        irt_cell_base_spec() as int + VTD_TABLE_SIZE as int <= usize::MAX as int,
         layout.iommu_root_table_base() % VTD_TABLE_SIZE == 0,
         layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= MEM_MASK as int,
         layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= usize::MAX as int,
@@ -81,7 +81,7 @@ pub(super) proof fn boot_memory_management_inv_eof_pagetable_pages(
     requires
         0 < NUM_CPUS,
         layout.pointers_wf(),
-        layout.kernel_ptr as int + KERNEL_IRT_OFFSET as int <= usize::MAX as int,
+        irt_cell_base_spec() as int + VTD_TABLE_SIZE as int <= usize::MAX as int,
         layout.iommu_root_table_base() % VTD_TABLE_SIZE == 0,
         layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= MEM_MASK as int,
         layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= usize::MAX as int,
@@ -114,7 +114,7 @@ pub(super) proof fn boot_memory_management_inv_eof_thread_pages(
     requires
         0 < NUM_CPUS,
         layout.pointers_wf(),
-        layout.kernel_ptr as int + KERNEL_IRT_OFFSET as int <= usize::MAX as int,
+        irt_cell_base_spec() as int + VTD_TABLE_SIZE as int <= usize::MAX as int,
         layout.iommu_root_table_base() % VTD_TABLE_SIZE == 0,
         layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= MEM_MASK as int,
         layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= usize::MAX as int,
@@ -147,7 +147,7 @@ pub(super) proof fn boot_memory_management_inv_eof_scheduler_pages(
     requires
         0 < NUM_CPUS,
         layout.pointers_wf(),
-        layout.kernel_ptr as int + KERNEL_IRT_OFFSET as int <= usize::MAX as int,
+        irt_cell_base_spec() as int + VTD_TABLE_SIZE as int <= usize::MAX as int,
         layout.iommu_root_table_base() % VTD_TABLE_SIZE == 0,
         layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= MEM_MASK as int,
         layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= usize::MAX as int,
@@ -180,7 +180,7 @@ pub(super) proof fn boot_memory_management_inv_eof_cpu_set_pages(
     requires
         0 < NUM_CPUS,
         layout.pointers_wf(),
-        layout.kernel_ptr as int + KERNEL_IRT_OFFSET as int <= usize::MAX as int,
+        irt_cell_base_spec() as int + VTD_TABLE_SIZE as int <= usize::MAX as int,
         layout.iommu_root_table_base() % VTD_TABLE_SIZE == 0,
         layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= MEM_MASK as int,
         layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= usize::MAX as int,
@@ -213,7 +213,7 @@ pub(super) proof fn boot_memory_management_inv_eof_pcid_allocator_pages(
     requires
         0 < NUM_CPUS,
         layout.pointers_wf(),
-        layout.kernel_ptr as int + KERNEL_IRT_OFFSET as int <= usize::MAX as int,
+        irt_cell_base_spec() as int + VTD_TABLE_SIZE as int <= usize::MAX as int,
         layout.iommu_root_table_base() % VTD_TABLE_SIZE == 0,
         layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= MEM_MASK as int,
         layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= usize::MAX as int,
@@ -247,7 +247,7 @@ pub(super) proof fn boot_memory_management_inv_eof_thread_staged_pages(
     requires
         0 < NUM_CPUS,
         layout.pointers_wf(),
-        layout.kernel_ptr as int + KERNEL_IRT_OFFSET as int <= usize::MAX as int,
+        irt_cell_base_spec() as int + VTD_TABLE_SIZE as int <= usize::MAX as int,
         layout.iommu_root_table_base() % VTD_TABLE_SIZE == 0,
         layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= MEM_MASK as int,
         layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= usize::MAX as int,
@@ -280,7 +280,7 @@ pub(super) proof fn boot_memory_management_inv_eof_endpoint_pages(
     requires
         0 < NUM_CPUS,
         layout.pointers_wf(),
-        layout.kernel_ptr as int + KERNEL_IRT_OFFSET as int <= usize::MAX as int,
+        irt_cell_base_spec() as int + VTD_TABLE_SIZE as int <= usize::MAX as int,
         layout.iommu_root_table_base() % VTD_TABLE_SIZE == 0,
         layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= MEM_MASK as int,
         layout.iommu_root_table_base() as int + IOMMU_ROOT_TABLE_STATIC_SIZE as int <= usize::MAX as int,

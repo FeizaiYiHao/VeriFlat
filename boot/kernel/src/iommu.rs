@@ -1,12 +1,12 @@
 //! VT-d DMA remapping over the verified kernel's root table.
 //!
-//! The verified kernel owns the root table: `KernelK.irt` is a legacy-mode VT-d image pinned at
-//! `KERNEL_IRT_OFFSET`, and its syscalls only write entries. This module points every remapping
-//! unit at that one image (entries are indexed by B/D/F, so the units share it), enables
-//! translation, and implements the IOTLB hook. It also enables interrupt remapping on every unit
-//! with an empty table and compatibility-format requests blocked, so no device can raise an
-//! interrupt: nothing in VeriFlat takes device interrupts. The model relies on hardware
-//! properties that `init` checks:
+//! The verified kernel owns the root table: `KernelK.irt` holds a legacy-mode VT-d image pinned
+//! one 4K page past the root-table lock cell, and its syscalls only write entries. This module
+//! points every remapping unit at that one image (entries are indexed by B/D/F, so the units
+//! share it), enables translation, and implements the IOTLB hook. It also enables interrupt
+//! remapping on every unit with an empty table and compatibility-format requests blocked, so no
+//! device can raise an interrupt: nothing in VeriFlat takes device interrupts. The model relies on
+//! hardware properties that `init` checks:
 //!
 //! - CAP.CM = 0: not-present entries are never cached, so `pci_attach_dma` needs no invalidation;
 //!   the model encodes this by caching only roots.

@@ -423,7 +423,11 @@ proof fn thread_exit_destroy_eof_thread_relations(
     process_thread_wf_at(pre.prc_mp, pre.thr_mp, thread_ptr);
     process_perms_wf_at(pre.prc_mp, process_ptr);
     lemma_seq_remove_value_membership::<RwLockThreadPtr>();
-    assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by { reveal(process_emptied_threads_wf); reveal(process_thread_wf); };
+    assert(process_emptied_threads_wf(post.prc_mp, post.thr_mp)) by {
+        reveal(process_emptied_threads_wf);
+        assert forall|p_ptr: RwLockProcessPtr, t_ptr: RwLockThreadPtr| post.prc_mp.dom().contains(p_ptr) && post.prc_mp.spec_index(p_ptr).view().state.view() is TablesEmptied && #[trigger] post.prc_mp.spec_index(p_ptr).view().owned_threads.view().contains(t_ptr)
+            implies post.thr_mp.dom().contains(t_ptr) && post.thr_mp.spec_index(t_ptr).view_ghost().exited by { process_thread_wf_process_at(pre.prc_mp, pre.thr_mp, p_ptr, t_ptr); };
+    };
     assert(thread_endpoint_ref_counter_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_perms_wf); reveal(thread_endpoint_ref_counter_wf); };
     assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_queue_wf); };
     assert(thread_caller_callee_wf(post.thr_mp)) by { reveal(thread_caller_callee_wf); };
@@ -434,7 +438,22 @@ proof fn thread_exit_destroy_eof_thread_relations(
     assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); reveal(container_endpoint_wf); reveal(container_thread_endpoint_wf); };
     assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by { reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf); };
     assert(container_thread_wf(post.ctn_mp, post.thr_mp)) by { reveal(container_thread_wf); uppers.to_set_ensures(); };
-    assert(process_thread_wf(post.prc_mp, post.thr_mp)) by { reveal(process_thread_wf); };
+    assert(process_thread_wf(post.prc_mp, post.thr_mp)) by {
+        reveal(process_thread_wf);
+        assert forall|p_ptr: RwLockProcessPtr, t_ptr: RwLockThreadPtr| post.prc_mp.dom().contains(p_ptr) && #[trigger] post.prc_mp.spec_index(p_ptr).view().owned_threads.view().contains(t_ptr) implies {
+            let thread = post.thr_mp.spec_index(t_ptr).view();
+            let process = post.prc_mp.spec_index(p_ptr);
+            &&& post.thr_mp.dom().contains(t_ptr)
+            &&& thread.owning_proc == p_ptr
+            &&& thread.owning_container == process.view_rodata().view().owning_container
+            &&& thread.container_depth == process.view_rodata().view().container_depth
+            &&& thread.process_depth == process.view_rodata().view().depth
+            &&& thread.proc_pagetable_ptr == process.view().pagetable
+            &&& process.view().owned_threads.map().dom().contains(thread.proc_linkedlist_node.addr())
+            &&& process.view().owned_threads.map().spec_index(thread.proc_linkedlist_node.addr()) == t_ptr
+            &&& !thread.proc_linkedlist_node.is_init()
+        } by { process_thread_wf_process_at(pre.prc_mp, pre.thr_mp, p_ptr, t_ptr); };
+    };
 }
 
 proof fn thread_exit_destroy_eof_cpu_relations(

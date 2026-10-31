@@ -91,6 +91,7 @@ pub(super) fn schedule_switch_unlock_and_record(
         scheduler_context_switch_eof_transition_framing(switch_k, *old(krnl), cpu_id, scheduler_ptr, next_thread, entry_regs),
         old(krnl).cpu_arr.inv(),
         old(krnl).cpu_tlb.inv(),
+        old(krnl).pcid_needflush.inv(),
         old(krnl).cpu_hw_cr3_pcid[cpu_id as int].inv(),
         old(krnl).cpu_arr.spec_index(cpu_id).view().view().view().tlb_dirty_bitmap.inv(),
         old(krnl).sched_mp.perms_wf(),

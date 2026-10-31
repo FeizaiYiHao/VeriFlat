@@ -191,7 +191,7 @@ fn kill_reassign_owned_functions(
         kernel_endpoint_nonlock_fields_unchanged(before.ep_mp, old(krnl).ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(&before, old(krnl)),
         *old(krnl) == (KernelK { irt: old(krnl).irt, ..before }),
-        wlock_ensures(before.irt, old(krnl).irt, before.irt.lock_id(), old(lctx), irt_perm),
+        wlock_ensures(before.irt.lock(), old(krnl).irt.lock(), before.irt.lock_id(), old(lctx), irt_perm),
         typed_lock_maps_inserted(&before_lctx, old(lctx), KernelObjId::IommuRootTable(before.irt.view().table_base()), TypedHeldLock { lock_id: before.irt.lock_id(), mode: TypedLockMode::Write }),
         pci_bdf_valid(owned.0, owned.1, owned.2),
         old(krnl).irt.view().spec_index_owner(owned.0, owned.1, owned.2) == target,

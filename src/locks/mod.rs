@@ -8,6 +8,7 @@ pub mod unlocked_map;
 pub mod lock_array_element;
 pub mod lock_array;
 pub mod lock_array_2d;
+pub mod token_lock;
 
 pub use rwlock::*;
 pub use local_context::*;
@@ -19,3 +20,4 @@ pub use unlocked_map::*;
 pub use lock_array_element::*;
 pub use lock_array::*;
 pub use lock_array_2d::*;
+pub use token_lock::*;

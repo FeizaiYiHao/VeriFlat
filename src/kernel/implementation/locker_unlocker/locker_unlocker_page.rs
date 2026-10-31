@@ -121,7 +121,7 @@ impl KernelK {
             wunlock_ensures(old(self).pg_arr.spec_index(page_index).view(), final(self).pg_arr.spec_index(page_index).view()),
             unlock_ensures(old(lctx), final(lctx), KernelObjId::Page(page_index), old(self).pg_arr.lock_id_by_index(page_index)),
     {
-        assert(self.pg_arr.inv()) by { page_array_wf_map(self.pg_arr); };
+        assert(self.pg_arr.inv() && self.pg_arr.spec_index(page_index).view().inv()) by { page_array_wf_map(self.pg_arr); page_array_wf_at(self.pg_arr, page_index); };
         assert({
             &&& lctx.lock_entry_contains(self.pg_arr.lock_id_by_index(page_index), KernelObjId::Page(page_index))
             &&& self.pg_arr.spec_index(page_index).view().wlocked_by(&*lctx)

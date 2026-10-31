@@ -213,7 +213,7 @@ pub(super) fn thread_exit_destroy_remove_thread(
         assert(krnl.prc_mp.spec_index(process_ptr).view().owned_threads.dom().contains(proc_node_addr)) by { krnl.prc_mp.spec_index(process_ptr).view().owned_threads.wf_map_at(proc_node_addr); };
         assert(krnl.cpu_arr.inv() && krnl.cpu_arr.spec_index(cpu_id).view().is_init() && krnl.cpu_arr.spec_index(cpu_id).view().view().wf()) by { cpu_array_wf_map(krnl.cpu_arr, krnl.dflt_pt.view()); cpu_array_wf_at(krnl.cpu_arr, krnl.dflt_pt.view(), cpu_id); };
         assert(krnl.cpu_hw_cr3_pcid[cpu_id as int].owner_cpu() == cpu_id) by { cpu_hw_cr3_pcid_wf_at(krnl.cpu_hw_cr3_pcid, krnl.cpu_arr, krnl.pcid_needflush, cpu_id); };
-        assert(krnl.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID).inv()) by { pcid_needflush_wf_at(krnl.pcid_needflush, cpu_id, KERNEL_DEFAULT_PCID); };
+        assert(krnl.pcid_needflush.inv() && krnl.pcid_needflush.spec_index(cpu_id, KERNEL_DEFAULT_PCID).inv()) by { pcid_needflush_wf_implies_array_inv(krnl.pcid_needflush); pcid_needflush_wf_at(krnl.pcid_needflush, cpu_id, KERNEL_DEFAULT_PCID); };
         assert(krnl.pcid_allc_mp.dom().contains(pcid_allocator_ptr)) by { container_pcid_allocator_wf_container_at(krnl.ctn_mp, krnl.pcid_allc_mp, container_ptr); };
         assert({
             &&& krnl.prc_mp.spec_index(process_ptr).view_rodata().view().pcid == krnl.prc_mp.spec_index(process_ptr).view().pcid
