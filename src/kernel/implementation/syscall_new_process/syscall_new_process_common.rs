@@ -338,7 +338,6 @@ pub(super) fn syscall_new_process_common(krnl: &mut KernelK, Tracked(lctx): Trac
         (ret is SuccessPairUsize || ret is SuccessThreeUsize) == (new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, endpoint_index, with_iommu) is Success),
         !(ret is SuccessPairUsize || ret is SuccessThreeUsize) ==> ret == new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, endpoint_index, with_iommu),
 {
-    hide(LockedMap::spec_index);
     let entry = match new_process_lock_entry(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, endpoint_index, with_iommu, initial_regs) {
         Ok(entry) => entry,
         Err(ret) => return ret,

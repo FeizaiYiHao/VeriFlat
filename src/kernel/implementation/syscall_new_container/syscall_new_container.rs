@@ -156,7 +156,6 @@ fn new_container_release_entry_locks(
         typed_lock_maps_aligned(final(krnl), final(lctx)),
         final(lctx).no_locks_held(),
 {
-    hide(typed_lock_maps_aligned);
     krnl.wunlock_cpu_set(cpu_set_ptr, Tracked(&mut *lctx), Tracked(cpu_set_lock_perm));
     proof { container_nonlock_fields_and_quotas_unchanged_for_cpu_set_relock(&cpu_set_unlocked_k, &*krnl, cpu_set_ptr); }
     new_container_release_source_table(krnl, Tracked(&mut *lctx), pagetable_ptr, source_range, windows_held, Ghost(steps.snapshot_k()), Tracked(pagetable_lock_perm), Tracked(source_window_perms));

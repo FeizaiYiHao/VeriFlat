@@ -264,12 +264,6 @@ pub proof fn kernel_dangling_thread_reclaimed_implies_u_step(before: &KernelK, a
     reveal(kernel_u_dangling_thread_reclaimed);
 }
 
-/// The syscall progress of thread `ptr` in the user projection, without unfolding the rest of its entry.
-pub broadcast proof fn kernel_thread_syscall_progress_projection_at(krnl: &KernelK, ptr: RwLockThreadPtr)
-    requires krnl.thr_mp.dom().contains(ptr),
-    ensures (#[trigger] kernel_k_to_kernel_u(*krnl).thread_map[ptr]).syscall_progress == krnl.thr_mp.spec_index(ptr).view().syscall_progress.view(),
-{ kernel_thread_projection_at(krnl, ptr); }
-
 /// The lock mode, kill mark, and owning container of process `ptr` in the user projection, without unfolding the rest
 /// of its entry.
 pub broadcast proof fn kernel_process_lock_state_projection_at(krnl: &KernelK, ptr: RwLockProcessPtr)
