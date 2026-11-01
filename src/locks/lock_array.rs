@@ -437,8 +437,8 @@ verus! {
             wunlock_sti_array_cell(&PPtr::<RwLock<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), lock_perm, Ghost(index), obj_id);
         }
 
-        /// Mark entry `index`, which this thread write-holds, for its killer; the write lock stays. Like
-        /// `RwLock::mark_kill`, the mark is a kernel-view Release: every other thread's next `*_unless_killed` lock fails.
+        /// Mark entry `index`, which this thread write-holds, for its killer; the write lock stays. The mark is a
+        /// kernel-view Release: every other thread's next `*_unless_killed` lock fails.
         pub fn mark_kill(&mut self, index: usize, Tracked(lctx): Tracked<&LocalContext>, killer_info: KillerInfo)
             requires
                 old(self).inv(),

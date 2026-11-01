@@ -382,7 +382,7 @@ pub fn has_kill_state_wunlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrai
     unsafe { (*p).lock.wunlock(); }
 }
 
-/// `RwLock::wlock_unless_killed` of lock array cell `index` at `pptr`, under the ordering id derived from the cell: the
+/// `RwLockInner::wlock_unless_killed` of lock array cell `index` at `pptr`, under the ordering id derived from the cell: the
 /// object's owners, the major of its current state, and the cell index as minor; a marked object returns `None` with its
 /// token unchanged.
 #[verifier::external_body]
@@ -458,7 +458,7 @@ pub fn wlock_unless_killed_cli_array_cell<T: LockInvTrait + LockMajorTrait + Loc
     if unsafe { (*p).lock.wlock_unless_killed_cli() }.is_err() { None } else { Some(Tracked::assume_new()) }
 }
 
-/// `RwLock::wunlock` of lock array cell `index` at `pptr`, registered under the ordering id derived from the cell.
+/// `RwLockInner::wunlock` of lock array cell `index` at `pptr`, registered under the ordering id derived from the cell.
 #[verifier::external_body]
 pub fn has_kill_state_wunlock_array_cell<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>,
     Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, Ghost(index): Ghost<usize>,
@@ -522,7 +522,7 @@ pub fn wunlock_sti_array_cell<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrai
     unsafe { (*p).lock.wunlock_sti(); }
 }
 
-/// `RwLock::wlock` of lock array cell `index` at `pptr`, under the ordering id derived from the cell: the object's
+/// `RwLockInner::wlock` of lock array cell `index` at `pptr`, under the ordering id derived from the cell: the object's
 /// owners, the major of its current state, and the cell index as minor.
 #[verifier::external_body]
 pub fn wlock_array_cell<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, NO_KILL_STATE>>,
@@ -551,7 +551,7 @@ pub fn wlock_array_cell<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT
     Tracked::assume_new()
 }
 
-/// `RwLock::wunlock` of lock array cell `index` at `pptr`, registered under the ordering id derived from the cell.
+/// `RwLockInner::wunlock` of lock array cell `index` at `pptr`, registered under the ordering id derived from the cell.
 #[verifier::external_body]
 pub fn wunlock_array_cell<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, NO_KILL_STATE>>,
     Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, NO_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, Ghost(index): Ghost<usize>,
@@ -580,7 +580,7 @@ pub fn wunlock_array_cell<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, R
     unsafe { (*p).lock.wunlock(); }
 }
 
-/// `RwLock::wlock` of the object at `pptr`, under the ordering id derived from the object: its owners, the major of its
+/// `RwLockInner::wlock` of the object at `pptr`, under the ordering id derived from the object: its owners, the major of its
 /// current state, and its own minor.
 #[verifier::external_body]
 pub fn wlock_object_minor<T: LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, NO_KILL_STATE>>,
@@ -607,7 +607,7 @@ pub fn wlock_object_minor<T: LockInvTrait + LockMajorTrait + LockMinorTrait + Lo
     Tracked::assume_new()
 }
 
-/// `RwLock::wunlock` of the object at `pptr`, registered under the ordering id derived from the object.
+/// `RwLockInner::wunlock` of the object at `pptr`, registered under the ordering id derived from the object.
 #[verifier::external_body]
 pub fn wunlock_object_minor<T: LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, GhostT>(pptr: &PPtr<RwLock<T, ROT, GhostT, NO_KILL_STATE>>,
     Tracked(perm): Tracked<&mut PointsTo<RwLock<T, ROT, GhostT, NO_KILL_STATE>>>, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, obj_id: Ghost<KernelObjId>)
