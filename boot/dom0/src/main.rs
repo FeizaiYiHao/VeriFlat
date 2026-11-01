@@ -528,19 +528,27 @@ const PAIR_WINDOW: u64 = 100_000_000;
 const PAIR_BATCH: u64 = 64;
 /// The least share, in hundredths, of the concurrent phase's span in which every pair must be timing.
 const PAIR_MIN_OVERLAP: u64 = 50;
-/// The phases dom0 releases a pair's client into: alone, all pairs at once, and stop.
+/// The phases dom0 releases a pair's client into: alone, all pairs at once, then in the cross-process
+/// mode the start of its child server and the same two timing phases against it, and stop.
 const PHASE_ALONE: usize = 1;
 const PHASE_CONCURRENT: usize = 2;
-const PHASE_STOP: usize = 3;
+const PHASE_XPROC_SETUP: usize = 3;
+const PHASE_XPROC_ALONE: usize = 4;
+const PHASE_XPROC_CONCURRENT: usize = 5;
+const PHASE_STOP: usize = 6;
+/// The descriptor where each client of the cross-process mode, dom0 as client 0 included, creates the
+/// endpoint of its child server, which holds it in descriptor 0. The pair's endpoint cannot serve: the
+/// same-process server stays blocked in receive_call on it.
+const XPROC_ENDPOINT: usize = 1;
 
 /// One client/server pair of the parallel call timing, alone on its cache lines, so the pairs share
 /// nothing but the kernel.
 #[repr(C, align(64))]
 struct Pair {
-    /// One plus the CPU the client, and the server, first ran on; 0 until it ran.
+    /// One plus the CPU the client, and the server of the current mode, first ran on; 0 until it ran.
     client_cpu: AtomicUsize,
     server_cpu: AtomicUsize,
-    /// Set once the client's server blocks in receive_call.
+    /// Set once the client's server of the current mode blocks in receive_call.
     ready: AtomicBool,
     /// The phase dom0 released the client into, and the last phase the pair finished.
     go: AtomicUsize,
@@ -571,6 +579,8 @@ static PAIRS: [Pair; MAX_PAIRS] = [const { Pair::new() }; MAX_PAIRS];
 static NEXT_PAIR: AtomicUsize = AtomicUsize::new(0);
 static mut PAIR_CLIENT_STACKS: [[u8; 16 * 1024]; MAX_PAIRS] = [[0; 16 * 1024]; MAX_PAIRS];
 static mut PAIR_SERVER_STACKS: [[u8; 16 * 1024]; MAX_PAIRS] = [[0; 16 * 1024]; MAX_PAIRS];
+/// Stacks of the cross-process mode's child servers, in dom0's image that every child shares.
+static mut PAIR_CHILD_STACKS: [[u8; 16 * 1024]; MAX_PAIRS] = [[0; 16 * 1024]; MAX_PAIRS];
 
 /// A fraction in hundredths, displayed with two decimals.
 struct Hundredths(u64);
@@ -586,8 +596,9 @@ fn hundredths(num: u64, den: u64) -> u64 {
     (200 * num + den) / (2 * den)
 }
 
-/// Server of a parallel call pair, holding the pair's endpoint in descriptor 0: records its CPU at
-/// the first call and replies each value plus one, forever.
+/// Server of a parallel call pair, holding the pair's endpoint in descriptor 0: a thread of dom0, or in
+/// the cross-process mode the first thread of a child process that shares dom0's image. Records its CPU
+/// at the first call and replies each value plus one, forever.
 extern "C" fn pair_server() -> ! {
     let pair = &PAIRS[NEXT_PAIR.load(Ordering::SeqCst)];
     let mut value = quiet_value("pair server receive_call", unsafe { sys_receive_call(0) });
@@ -597,10 +608,30 @@ extern "C" fn pair_server() -> ! {
     }
 }
 
+/// The 4K quota a client of the cross-process mode moves to its thread: one for its child's endpoint
+/// and `4 + 3 * pages` for the child, which shares dom0's image of `pages` pages.
+fn pair_child_quota() -> usize {
+    1 + 4 + 3 * image_range().1
+}
+
+/// Starts the child server of pair `k` from the pair's client on CPU `k`, once dom0's process holds the
+/// quota: a fresh endpoint in the client's `XPROC_ENDPOINT`, and a child process holding it in
+/// descriptor 0, whose first thread, `pair_server` queued on the creator's shard, runs until it blocks.
+fn start_pair_child(k: usize) {
+    quiet("pair child alloc_thread_quota_4k", unsafe { sys_alloc_thread_quota_4k(pair_child_quota()) });
+    quiet("pair child new_endpoint", unsafe { sys_new_endpoint(XPROC_ENDPOINT) });
+    let (image, pages) = image_range();
+    let sp = stack_top(unsafe { &raw const PAIR_CHILD_STACKS[k] });
+    quiet("pair child new_process_with_endpoint", unsafe { sys_new_process_with_endpoint(image, pages, XPROC_ENDPOINT, entry(pair_server), sp) });
+    // The child's first thread, the only other thread of this CPU's shard, runs until it blocks.
+    unsafe { sys_schedule() };
+}
+
 /// Client of parallel call pair k >= 1, holding the pair's endpoint in descriptor 0. Once CPU k pulled
 /// it, it records that CPU, creates its server there, and lets the server block in receive_call; then
-/// it times the pair in each phase dom0 releases it into, spinning in between, and at the stop yields
-/// until its CPU goes Off.
+/// it times the pair in each phase dom0 releases it into, spinning in between. Unless dom0 skips the
+/// pair in the cross-process mode, it then starts its child server and times the pair against it the
+/// same way. At the stop it yields until its CPU goes Off.
 extern "C" fn pair_client() -> ! {
     let k = NEXT_PAIR.load(Ordering::SeqCst);
     let pair = &PAIRS[k];
@@ -611,11 +642,11 @@ extern "C" fn pair_client() -> ! {
     // The server, the only other thread of this CPU's shard, runs until it blocks.
     unsafe { sys_schedule() };
     pair.ready.store(true, Ordering::SeqCst);
-    for phase in [PHASE_ALONE, PHASE_CONCURRENT] {
-        while pair.go.load(Ordering::SeqCst) != phase {
-            core::hint::spin_loop();
-        }
-        time_pair(k, 0, phase);
+    time_client_phases(k, 0, [PHASE_ALONE, PHASE_CONCURRENT]);
+    if released_into(pair, PHASE_XPROC_SETUP) {
+        start_pair_child(k);
+        pair.ready.store(true, Ordering::SeqCst);
+        time_client_phases(k, XPROC_ENDPOINT, [PHASE_XPROC_ALONE, PHASE_XPROC_CONCURRENT]);
     }
     while pair.go.load(Ordering::SeqCst) != PHASE_STOP {
         core::hint::spin_loop();
@@ -624,6 +655,28 @@ extern "C" fn pair_client() -> ! {
     // on its shard.
     loop {
         unsafe { sys_schedule() };
+    }
+}
+
+/// Times client `k`'s pair on `endpoint` in each of `phases`, spinning until dom0 releases it into it.
+fn time_client_phases(k: usize, endpoint: usize, phases: [usize; 2]) {
+    for phase in phases {
+        while PAIRS[k].go.load(Ordering::SeqCst) != phase {
+            core::hint::spin_loop();
+        }
+        time_pair(k, endpoint, phase);
+    }
+}
+
+/// Spins until dom0 releases `pair`'s client into `phase` or to the stop, and returns whether it was
+/// `phase`.
+fn released_into(pair: &Pair, phase: usize) -> bool {
+    loop {
+        let go = pair.go.load(Ordering::SeqCst);
+        if go == phase || go == PHASE_STOP {
+            return go == phase;
+        }
+        core::hint::spin_loop();
     }
 }
 
@@ -666,14 +719,14 @@ fn time_pair(k: usize, endpoint: usize, phase: usize) {
     pair.done.store(phase, Ordering::SeqCst);
 }
 
-/// Times call round trips of one client/server pair per CPU, first each pair alone while the other
-/// clients spin, then all pairs at once, and logs per CPU the TSC cycles per round trip of both phases
-/// and their ratio. Each pair times a window of `PAIR_WINDOW` cycles from its release; the pairs at
-/// once share one deadline. Pair 0 is dom0 itself with a server on CPU 0. The client of pair k comes
-/// to CPU k when dom0 brings that CPU online, which pulls the only queued thread, and creates its server
-/// there; each round trip is a direct switch between the pair's threads, so no pair leaves its CPU.
-/// Fails unless every pair ran on its own CPU and every pair was timing in at least `PAIR_MIN_OVERLAP`
-/// hundredths of the concurrent phase's span. Afterwards every CPU but 0 is Off again.
+/// Times call round trips of one client/server pair per CPU in two modes (`time_pairs`): first with each
+/// server a thread of dom0, then, in the cross-process mode, with each server the first thread of a child
+/// process that shares dom0's image, so every round trip also loads both cr3s. Pair 0 is dom0 itself with
+/// its server on CPU 0. The client of pair k comes to CPU k when dom0 brings that CPU online, which pulls
+/// the only queued thread, and creates its server, and later its child, there; each round trip is a
+/// direct switch between the pair's threads, so no pair leaves its CPU. The cross-process mode times as
+/// many pairs as dom0's container quota funds children for. Afterwards the children are killed and every
+/// CPU but 0 is Off again.
 fn time_parallel_call() {
     // Every CPU but 0 is Off, so an offline request fails without effect until the first missing CPU.
     let mut n = 1;
@@ -710,36 +763,38 @@ fn time_parallel_call() {
         }
         wait_for("a pair server to block", || pair.ready.load(Ordering::SeqCst));
     }
+    time_pairs(n, PAIR_ENDPOINT, [PHASE_ALONE, PHASE_CONCURRENT], "parallel_call");
 
-    let (mut alone, mut alone_rounds) = ([0; MAX_PAIRS], [0; MAX_PAIRS]);
-    for k in 0..n {
+    // dom0's process takes the children's quota from its container, for as many pairs as it covers.
+    let quota = pair_child_quota();
+    let mut m = n;
+    let mut ret = unsafe { sys_alloc_quota_4k(m * quota) };
+    while ret < 0 && m > 1 {
+        expect_quiet("alloc_quota_4k (pair children)", ret, "ErrorContainerQuotaInsufficient");
+        m -= 1;
+        ret = unsafe { sys_alloc_quota_4k(m * quota) };
+    }
+    quiet("alloc_quota_4k (pair children)", ret);
+    log::info!("parallel_call_xproc funding: {} 4K quota per pair for {} of {} pairs", quota, m, n);
+    // The pairs start their children in turn, as their servers, so each child finds its pair in
+    // `NEXT_PAIR`. The same-process servers stay blocked on the pair endpoints.
+    NEXT_PAIR.store(0, Ordering::SeqCst);
+    PAIRS[0].server_cpu.store(0, Ordering::SeqCst);
+    start_pair_child(0);
+    for k in 1..m {
         let pair = &PAIRS[k];
-        pair.deadline.store(unsafe { core::arch::x86_64::_rdtsc() } + PAIR_WINDOW, Ordering::SeqCst);
-        if k == 0 {
-            time_pair(0, PAIR_ENDPOINT, PHASE_ALONE);
-        } else {
-            pair.go.store(PHASE_ALONE, Ordering::SeqCst);
-            wait_for("a pair alone", || pair.done.load(Ordering::SeqCst) == PHASE_ALONE);
-        }
-        (alone[k], alone_rounds[k]) = (pair.cycles.load(Ordering::SeqCst), pair.rounds.load(Ordering::SeqCst));
-        let server_cpu = pair.server_cpu.load(Ordering::SeqCst);
-        if server_cpu != k + 1 {
-            log::error!("the server of pair {} ran on CPU {}", k, server_cpu as isize - 1);
-            unsafe { sys_debug_exit(1) };
-        }
+        pair.server_cpu.store(0, Ordering::SeqCst);
+        pair.ready.store(false, Ordering::SeqCst);
+        NEXT_PAIR.store(k, Ordering::SeqCst);
+        pair.go.store(PHASE_XPROC_SETUP, Ordering::SeqCst);
+        wait_for("a pair child to block", || pair.ready.load(Ordering::SeqCst));
     }
-    // One deadline for all pairs, published before any release.
-    let deadline = unsafe { core::arch::x86_64::_rdtsc() } + PAIR_WINDOW;
-    for pair in &PAIRS[..n] {
-        pair.deadline.store(deadline, Ordering::SeqCst);
+    time_pairs(m, XPROC_ENDPOINT, [PHASE_XPROC_ALONE, PHASE_XPROC_CONCURRENT], "parallel_call_xproc");
+    // The children, waiting for the next call, are killed, which returns their quota to dom0's container.
+    for _ in 0..m {
+        quiet("kill_process(0) (pair child)", unsafe { sys_kill_process(0) });
     }
-    for pair in &PAIRS[1..n] {
-        pair.go.store(PHASE_CONCURRENT, Ordering::SeqCst);
-    }
-    time_pair(0, PAIR_ENDPOINT, PHASE_CONCURRENT);
-    for pair in &PAIRS[1..n] {
-        wait_for("the pairs at once", || pair.done.load(Ordering::SeqCst) == PHASE_CONCURRENT);
-    }
+    expect_quiet("kill_process(0) after the pair children", unsafe { sys_kill_process(0) }, "ErrorInvalidChild");
 
     // The clients take their CPUs Off, so the timings after this one run on CPU 0 alone.
     for k in 1..n {
@@ -759,6 +814,44 @@ fn time_parallel_call() {
             core::hint::spin_loop();
         }
     }
+}
+
+/// Times the first `n` pairs in one mode, pair 0 on dom0's `endpoint`: each pair alone in the first of
+/// `phases` while the other clients spin, then all pairs at once in the second, and logs with `prefix`
+/// per CPU the TSC cycles per round trip of both phases and their ratio, then a summary. Each pair times
+/// a window of `PAIR_WINDOW` cycles from its release; the pairs at once share one deadline. Fails unless
+/// every server ran on its pair's CPU and every pair was timing in at least `PAIR_MIN_OVERLAP`
+/// hundredths of the concurrent phase's span.
+fn time_pairs(n: usize, endpoint: usize, [alone_phase, concurrent_phase]: [usize; 2], prefix: &str) {
+    let (mut alone, mut alone_rounds) = ([0; MAX_PAIRS], [0; MAX_PAIRS]);
+    for k in 0..n {
+        let pair = &PAIRS[k];
+        pair.deadline.store(unsafe { core::arch::x86_64::_rdtsc() } + PAIR_WINDOW, Ordering::SeqCst);
+        if k == 0 {
+            time_pair(0, endpoint, alone_phase);
+        } else {
+            pair.go.store(alone_phase, Ordering::SeqCst);
+            wait_for("a pair alone", || pair.done.load(Ordering::SeqCst) == alone_phase);
+        }
+        (alone[k], alone_rounds[k]) = (pair.cycles.load(Ordering::SeqCst), pair.rounds.load(Ordering::SeqCst));
+        let server_cpu = pair.server_cpu.load(Ordering::SeqCst);
+        if server_cpu != k + 1 {
+            log::error!("{}: the server of pair {} ran on CPU {}", prefix, k, server_cpu as isize - 1);
+            unsafe { sys_debug_exit(1) };
+        }
+    }
+    // One deadline for all pairs, published before any release.
+    let deadline = unsafe { core::arch::x86_64::_rdtsc() } + PAIR_WINDOW;
+    for pair in &PAIRS[..n] {
+        pair.deadline.store(deadline, Ordering::SeqCst);
+    }
+    for pair in &PAIRS[1..n] {
+        pair.go.store(concurrent_phase, Ordering::SeqCst);
+    }
+    time_pair(0, endpoint, concurrent_phase);
+    for pair in &PAIRS[1..n] {
+        wait_for("the pairs at once", || pair.done.load(Ordering::SeqCst) == concurrent_phase);
+    }
 
     let mut ratios = [0; MAX_PAIRS];
     let (mut min_begin, mut max_begin, mut min_end, mut max_end) = (u64::MAX, 0, u64::MAX, 0);
@@ -770,7 +863,7 @@ fn time_parallel_call() {
         let rounds = pair.rounds.load(Ordering::SeqCst);
         (min_conc_rounds, max_conc_rounds) = (min_conc_rounds.min(rounds), max_conc_rounds.max(rounds));
         ratios[k] = hundredths(conc, alone[k]);
-        log::info!("parallel_call cpu={} alone={} conc={} ratio={}", k, alone[k], conc, Hundredths(ratios[k]));
+        log::info!("{} cpu={} alone={} conc={} ratio={}", prefix, k, alone[k], conc, Hundredths(ratios[k]));
     }
     // The share of the concurrent phase's span in which every pair was timing.
     let overlap = if max_begin < min_end { hundredths(min_end - max_begin, max_end - min_begin) } else { 0 };
@@ -780,14 +873,14 @@ fn time_parallel_call() {
     let alone_rounds = &alone_rounds[..n];
     let (min_alone_rounds, max_alone_rounds) = (alone_rounds.iter().min().unwrap(), alone_rounds.iter().max().unwrap());
     log::info!(
-        "parallel_call summary n={} min_ratio={} max_ratio={} median_ratio={} overlap={} (rounds per pair: alone {}..{}, conc {}..{})",
-        n, Hundredths(ratios[0]), Hundredths(ratios[n - 1]), Hundredths(median), Hundredths(overlap), min_alone_rounds, max_alone_rounds,
-        min_conc_rounds, max_conc_rounds
+        "{} summary n={} min_ratio={} max_ratio={} median_ratio={} overlap={} (rounds per pair: alone {}..{}, conc {}..{})",
+        prefix, n, Hundredths(ratios[0]), Hundredths(ratios[n - 1]), Hundredths(median), Hundredths(overlap), min_alone_rounds,
+        max_alone_rounds, min_conc_rounds, max_conc_rounds
     );
     if overlap < PAIR_MIN_OVERLAP {
         log::error!(
-            "the concurrent pairs overlapped in only {} of their span: last begin {}, first end {}",
-            Hundredths(overlap), max_begin, min_end
+            "{}: the concurrent pairs overlapped in only {} of their span: last begin {}, first end {}",
+            prefix, Hundredths(overlap), max_begin, min_end
         );
         unsafe { sys_debug_exit(1) };
     }
@@ -1193,12 +1286,12 @@ pub extern "C" fn _start() -> ! {
     // Without the timer (feature `no-timer`) nothing preempts a spinning thread, an idle CPU wakes only
     // at an IPI (queuing a thread sends none), and a CPU notices an offline request only when its thread
     // yields. The remaining timings need none of these: the parallel call timing brings each other CPU
-    // online once, with the IPI of `cpu_online`, and its clients yield to take their CPUs Off again;
-    // after it only CPU 0 runs, the pong and call server threads block in receive, the call server child
-    // is killed while it blocks in receive, and the timed threads are only created. The phases below
-    // rely on them (spinning waits for other threads, CPU offline cycles, the register spinner), so this
-    // build skips them. The parallel call timing comes first, while CPU 0's shard holds no thread that a
-    // CPU coming online could pull instead.
+    // online once, with the IPI of `cpu_online`, kills its children while they block in receive, and its
+    // clients yield to take their CPUs Off again; after it only CPU 0 runs, the pong and call server
+    // threads block in receive, the call server child is killed while it blocks in receive, and the
+    // timed threads are only created. The phases below rely on them (spinning waits for other threads,
+    // CPU offline cycles, the register spinner), so this build skips them. The parallel call timing comes
+    // first, while CPU 0's shard holds no thread that a CPU coming online could pull instead.
     if cfg!(feature = "no-timer") {
         time_parallel_call();
         fund("timing helper threads funding", 2);
