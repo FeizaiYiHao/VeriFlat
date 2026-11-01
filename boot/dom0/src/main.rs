@@ -4,7 +4,7 @@
 #![no_main]
 
 use core::panic::PanicInfo;
-use core::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, AtomicUsize, Ordering};
 
 use vsys::*;
 
@@ -480,6 +480,248 @@ fn time_mmap_only() {
     }
 }
 
+/// Client/server pairs of the parallel call timing: at most one per CPU.
+const MAX_PAIRS: usize = 32;
+/// dom0's descriptor of pair k's endpoint is `PAIR_ENDPOINT + k`; the pair's other threads hold it in
+/// descriptor 0.
+const PAIR_ENDPOINT: usize = 8;
+/// Untimed and timed call round trips of each pair in each phase.
+const PAIR_WARMUP: usize = 2_000;
+const PAIR_ROUNDS: u64 = 20_000;
+/// The phases dom0 releases a pair's client into: alone, all pairs at once, and stop.
+const PHASE_ALONE: usize = 1;
+const PHASE_CONCURRENT: usize = 2;
+const PHASE_STOP: usize = 3;
+
+/// One client/server pair of the parallel call timing, alone on its cache line, so the pairs share
+/// nothing but the kernel.
+#[repr(C, align(64))]
+struct Pair {
+    /// One plus the CPU the client, and the server, first ran on; 0 until it ran.
+    client_cpu: AtomicUsize,
+    server_cpu: AtomicUsize,
+    /// Set once the client's server blocks in receive_call.
+    ready: AtomicBool,
+    /// The phase dom0 released the client into, and the last phase the pair finished.
+    go: AtomicUsize,
+    done: AtomicUsize,
+    /// The TSC before the first and after the last timed round trip of the last finished phase, and
+    /// the TSC cycles per round trip.
+    begin: AtomicU64,
+    end: AtomicU64,
+    cycles: AtomicU64,
+}
+
+impl Pair {
+    const fn new() -> Self {
+        Pair {
+            client_cpu: AtomicUsize::new(0), server_cpu: AtomicUsize::new(0), ready: AtomicBool::new(false), go: AtomicUsize::new(0),
+            done: AtomicUsize::new(0), begin: AtomicU64::new(0), end: AtomicU64::new(0), cycles: AtomicU64::new(0),
+        }
+    }
+}
+
+static PAIRS: [Pair; MAX_PAIRS] = [const { Pair::new() }; MAX_PAIRS];
+/// The pair whose threads dom0 is creating: each new thread of a pair reads it once it runs.
+static NEXT_PAIR: AtomicUsize = AtomicUsize::new(0);
+static mut PAIR_CLIENT_STACKS: [[u8; 16 * 1024]; MAX_PAIRS] = [[0; 16 * 1024]; MAX_PAIRS];
+static mut PAIR_SERVER_STACKS: [[u8; 16 * 1024]; MAX_PAIRS] = [[0; 16 * 1024]; MAX_PAIRS];
+
+/// A fraction in hundredths, displayed with two decimals.
+struct Hundredths(u64);
+
+impl core::fmt::Display for Hundredths {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        write!(f, "{}.{:02}", self.0 / 100, self.0 % 100)
+    }
+}
+
+/// `num / den` in hundredths, rounded.
+fn hundredths(num: u64, den: u64) -> u64 {
+    (200 * num + den) / (2 * den)
+}
+
+/// Server of a parallel call pair, holding the pair's endpoint in descriptor 0: records its CPU at
+/// the first call and replies each value plus one, forever.
+extern "C" fn pair_server() -> ! {
+    let pair = &PAIRS[NEXT_PAIR.load(Ordering::SeqCst)];
+    let mut value = quiet_value("pair server receive_call", unsafe { sys_receive_call(0) });
+    pair.server_cpu.store(current_cpu() + 1, Ordering::SeqCst);
+    loop {
+        value = quiet_value("pair server reply_and_receive_usize", unsafe { sys_reply_and_receive_usize(0, value + 1) });
+    }
+}
+
+/// Client of parallel call pair k >= 1, holding the pair's endpoint in descriptor 0. Once CPU k pulled
+/// it, it records that CPU, creates its server there, and lets the server block in receive_call; then
+/// it times the pair in each phase dom0 releases it into, spinning in between, and at the stop yields
+/// until its CPU goes Off.
+extern "C" fn pair_client() -> ! {
+    let k = NEXT_PAIR.load(Ordering::SeqCst);
+    let pair = &PAIRS[k];
+    pair.client_cpu.store(current_cpu() + 1, Ordering::SeqCst);
+    fund("pair client funding", 1);
+    let sp = stack_top(unsafe { &raw const PAIR_SERVER_STACKS[k] });
+    quiet("pair client new_thread_with_endpoint (server)", unsafe { sys_new_thread_with_endpoint(0, entry(pair_server), sp) });
+    // The server, the only other thread of this CPU's shard, runs until it blocks.
+    unsafe { sys_schedule() };
+    pair.ready.store(true, Ordering::SeqCst);
+    for phase in [PHASE_ALONE, PHASE_CONCURRENT] {
+        while pair.go.load(Ordering::SeqCst) != phase {
+            core::hint::spin_loop();
+        }
+        time_pair(k, 0, phase);
+    }
+    while pair.go.load(Ordering::SeqCst) != PHASE_STOP {
+        core::hint::spin_loop();
+    }
+    // dom0 asked this CPU to go Off: the schedule check of a yield takes it Off and requeues this thread
+    // on its shard.
+    loop {
+        unsafe { sys_schedule() };
+    }
+}
+
+/// Times `PAIR_ROUNDS` call round trips of pair `k` on `endpoint` after `PAIR_WARMUP` untimed ones,
+/// checks each reply and that the pair is still on CPU `k`, and records the result of `phase`.
+fn time_pair(k: usize, endpoint: usize, phase: usize) {
+    let call = |i: usize| {
+        let reply = quiet_value("pair call_usize", unsafe { sys_call_usize(endpoint, i) });
+        if reply != i + 1 {
+            log::error!("pair {}: call_usize({}) replied {}", k, i, reply);
+            unsafe { sys_debug_exit(1) };
+        }
+    };
+    for i in 0..PAIR_WARMUP {
+        call(i);
+    }
+    let begin = unsafe { core::arch::x86_64::_rdtsc() };
+    for i in 0..PAIR_ROUNDS as usize {
+        call(i);
+    }
+    let end = unsafe { core::arch::x86_64::_rdtsc() };
+    if current_cpu() != k {
+        log::error!("pair {} moved to CPU {}", k, current_cpu());
+        unsafe { sys_debug_exit(1) };
+    }
+    let pair = &PAIRS[k];
+    pair.begin.store(begin, Ordering::SeqCst);
+    pair.end.store(end, Ordering::SeqCst);
+    pair.cycles.store((end - begin) / PAIR_ROUNDS, Ordering::SeqCst);
+    pair.done.store(phase, Ordering::SeqCst);
+}
+
+/// Times call round trips of one client/server pair per CPU, first each pair alone while the other
+/// clients spin, then all pairs at once, and logs per CPU the TSC cycles per round trip of both phases
+/// and their ratio. Pair 0 is dom0 itself with a server on CPU 0. The client of pair k comes to CPU k
+/// when dom0 brings that CPU online, which pulls the only queued thread, and creates its server there;
+/// each round trip is a direct switch between the pair's threads, so no pair leaves its CPU. Fails
+/// unless every pair ran on its own CPU and the concurrent runs overlapped. Afterwards every CPU but 0
+/// is Off again.
+fn time_parallel_call() {
+    // Every CPU but 0 is Off, so an offline request fails without effect until the first missing CPU.
+    let mut n = 1;
+    while n < MAX_PAIRS {
+        let ret = unsafe { sys_cpu_offline_request(n) };
+        if error_name(ret) == "InvalidArgument" {
+            break;
+        }
+        expect_quiet("cpu_offline_request to count the CPUs", ret, "ErrorCpuAlreadyOff");
+        n += 1;
+    }
+    // The endpoints, the n - 1 clients, and server 0; each client funds its own server.
+    fund("parallel call funding", 2 * n);
+    for k in 0..n {
+        quiet("new_endpoint (pair)", unsafe { sys_new_endpoint(PAIR_ENDPOINT + k) });
+    }
+    NEXT_PAIR.store(0, Ordering::SeqCst);
+    let sp = stack_top(unsafe { &raw const PAIR_SERVER_STACKS[0] });
+    quiet("new_thread_with_endpoint (pair server 0)", unsafe { sys_new_thread_with_endpoint(PAIR_ENDPOINT, entry(pair_server), sp) });
+    // Server 0 runs until it blocks, which empties CPU 0's shard: a CPU coming online pulls the head
+    // of the lowest-numbered other nonempty shard, which must be the next client.
+    unsafe { sys_schedule() };
+    for k in 1..n {
+        let pair = &PAIRS[k];
+        NEXT_PAIR.store(k, Ordering::SeqCst);
+        let sp = stack_top(unsafe { &raw const PAIR_CLIENT_STACKS[k] });
+        quiet("new_thread_with_endpoint (pair client)", unsafe { sys_new_thread_with_endpoint(PAIR_ENDPOINT + k, entry(pair_client), sp) });
+        quiet("cpu_online (pair client)", unsafe { sys_cpu_online(k) });
+        wait_for("a pair client", || pair.client_cpu.load(Ordering::SeqCst) != 0);
+        let cpu = pair.client_cpu.load(Ordering::SeqCst) - 1;
+        if cpu != k {
+            log::error!("the client of pair {} ran on CPU {}", k, cpu);
+            unsafe { sys_debug_exit(1) };
+        }
+        wait_for("a pair server to block", || pair.ready.load(Ordering::SeqCst));
+    }
+
+    let mut alone = [0; MAX_PAIRS];
+    for k in 0..n {
+        let pair = &PAIRS[k];
+        if k == 0 {
+            time_pair(0, PAIR_ENDPOINT, PHASE_ALONE);
+        } else {
+            pair.go.store(PHASE_ALONE, Ordering::SeqCst);
+            wait_for("a pair alone", || pair.done.load(Ordering::SeqCst) == PHASE_ALONE);
+        }
+        alone[k] = pair.cycles.load(Ordering::SeqCst);
+        let server_cpu = pair.server_cpu.load(Ordering::SeqCst);
+        if server_cpu != k + 1 {
+            log::error!("the server of pair {} ran on CPU {}", k, server_cpu as isize - 1);
+            unsafe { sys_debug_exit(1) };
+        }
+    }
+    for pair in &PAIRS[1..n] {
+        pair.go.store(PHASE_CONCURRENT, Ordering::SeqCst);
+    }
+    time_pair(0, PAIR_ENDPOINT, PHASE_CONCURRENT);
+    for pair in &PAIRS[1..n] {
+        wait_for("the pairs at once", || pair.done.load(Ordering::SeqCst) == PHASE_CONCURRENT);
+    }
+
+    // The clients take their CPUs Off, so the timings after this one run on CPU 0 alone.
+    for k in 1..n {
+        quiet("cpu_offline_request (pair client)", unsafe { sys_cpu_offline_request(k) });
+        PAIRS[k].go.store(PHASE_STOP, Ordering::SeqCst);
+    }
+    for k in 1..n {
+        let start = unsafe { core::arch::x86_64::_rdtsc() };
+        loop {
+            let ret = unsafe { sys_cpu_offline_request(k) };
+            if error_name(ret) == "ErrorCpuAlreadyOff" {
+                break;
+            }
+            if ret < 0 || unsafe { core::arch::x86_64::_rdtsc() } - start > WAIT_LIMIT {
+                expect_error("cpu_offline_request until a pair CPU is Off", ret, "ErrorCpuAlreadyOff");
+            }
+            core::hint::spin_loop();
+        }
+    }
+
+    let mut ratios = [0; MAX_PAIRS];
+    let (mut min_begin, mut max_begin, mut min_end, mut max_end) = (u64::MAX, 0, u64::MAX, 0);
+    for k in 0..n {
+        let pair = &PAIRS[k];
+        let (begin, end, conc) = (pair.begin.load(Ordering::SeqCst), pair.end.load(Ordering::SeqCst), pair.cycles.load(Ordering::SeqCst));
+        (min_begin, max_begin, min_end, max_end) = (min_begin.min(begin), max_begin.max(begin), min_end.min(end), max_end.max(end));
+        ratios[k] = hundredths(conc, alone[k]);
+        log::info!("parallel_call cpu={} alone={} conc={} ratio={}", k, alone[k], conc, Hundredths(ratios[k]));
+    }
+    // The share of the concurrent phase's span in which every pair was timing.
+    let overlap = if max_begin < min_end { hundredths(min_end - max_begin, max_end - min_begin) } else { 0 };
+    let ratios = &mut ratios[..n];
+    ratios.sort_unstable();
+    let median = (ratios[(n - 1) / 2] + ratios[n / 2]) / 2;
+    log::info!(
+        "parallel_call summary n={} min_ratio={} max_ratio={} median_ratio={} overlap={} ({} rounds per pair)",
+        n, Hundredths(ratios[0]), Hundredths(ratios[n - 1]), Hundredths(median), Hundredths(overlap), PAIR_ROUNDS
+    );
+    if max_begin >= min_end {
+        log::error!("the concurrent pairs did not overlap: last begin {} >= first end {}", max_begin, min_end);
+        unsafe { sys_debug_exit(1) };
+    }
+}
+
 /// Retries `online` while it fails with `ErrorCpuNotOff`, until the CPU has gone Off and is back.
 fn online_after_offline(name: &str, online: impl Fn() -> isize) {
     let start = unsafe { core::arch::x86_64::_rdtsc() };
@@ -878,11 +1120,15 @@ pub extern "C" fn _start() -> ! {
     time_mmap_only();
 
     // Without the timer (feature `no-timer`) nothing preempts a spinning thread, an idle CPU wakes only
-    // at an IPI (queuing a thread sends none), and no CPU notices an offline request. The remaining
-    // timings need none of these: only CPU 0 runs, the pong and call server threads block in receive,
-    // and the timed threads are only created. The phases below rely on them (spinning waits for other
-    // threads, CPU offline cycles, the register spinner), so this build skips them.
+    // at an IPI (queuing a thread sends none), and a CPU notices an offline request only when its thread
+    // yields. The remaining timings need none of these: the parallel call timing brings each other CPU
+    // online once, with the IPI of `cpu_online`, and its clients yield to take their CPUs Off again;
+    // after it only CPU 0 runs, the pong and call server threads block in receive, and the timed
+    // threads are only created. The phases below rely on them (spinning waits for other threads, CPU
+    // offline cycles, the register spinner), so this build skips them. The parallel call timing comes
+    // first, while CPU 0's shard holds no thread that a CPU coming online could pull instead.
     if cfg!(feature = "no-timer") {
+        time_parallel_call();
         fund("timing helper threads funding", 2);
         time_ipc_round_trip();
         time_call_round_trip();
