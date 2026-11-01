@@ -757,8 +757,8 @@ pub open spec fn iommu_root_table_typed_lock_map_aligned(lock: IommuRootTableLoc
 
 // Compile-time checks for the hardware layout and the stated memory budget.
 // The lock word occupies the page before the pinned table.
-const ASSERT_IOMMU_ROOT_TABLE_LOCK_SIZE: [(); VTD_TABLE_SIZE + IOMMU_ROOT_TABLE_STATIC_SIZE] = [(); core::mem::size_of::<RwLock<IommuRootTable, (), (), NO_KILL_STATE>>()];
-const ASSERT_IOMMU_ROOT_TABLE_VALUE_OFFSET: [(); VTD_TABLE_SIZE] = [(); core::mem::offset_of!(RwLock<IommuRootTable, (), (), NO_KILL_STATE>, value)];
+const ASSERT_IOMMU_ROOT_TABLE_LOCK_SIZE: [(); VTD_TABLE_SIZE + IOMMU_ROOT_TABLE_STATIC_SIZE] = [(); core::mem::size_of::<LockCell<IommuRootTable, (), (), NO_KILL_STATE>>()];
+const ASSERT_IOMMU_ROOT_TABLE_VALUE_OFFSET: [(); VTD_TABLE_SIZE] = [(); core::mem::offset_of!(LockCell<IommuRootTable, (), (), NO_KILL_STATE>, value)];
 const ASSERT_VTD_ENTRY_SIZE: [(); VTD_ENTRY_SIZE] = [(); core::mem::size_of::<VtdLegacyEntry>()];
 // Each context-entry word is one aligned 64-bit store: `lower` at offset 0, `upper` at offset 8.
 const ASSERT_VTD_ENTRY_WORD_SIZE: [(); 8] = [(); core::mem::size_of::<usize>()];

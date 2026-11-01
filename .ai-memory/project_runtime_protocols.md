@@ -12,7 +12,7 @@ metadata:
 
 - `KernelU` includes `LockStateU::{Unlocked, ReadLocked, WriteLocked}` on
   containers, processes, threads, endpoints, CPUs, and both ordinary and IOMMU
-  page-table views. Modes come from the outer physical RwLock; owners and reader
+  page-table views. Modes come from the outer physical LockCell; owners and reader
   counts remain kernel-only. Allocator and other internal lock families are not
   projected.
 - `KernelSteps` retains exact K and U snapshots and records complete U changes

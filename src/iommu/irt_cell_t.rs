@@ -6,7 +6,7 @@ use crate::*;
 
 /// Memory of the IOMMU root-table lock. The lock is `#[repr(C)]` and 4K aligned, so the pinned table starts one 4K page
 /// after the cell address. Only raw addresses reach it; the root-table lock's points-to token owns it.
-struct IrtCell(UnsafeCell<MaybeUninit<RwLock<IommuRootTable, (), (), NO_KILL_STATE>>>);
+struct IrtCell(UnsafeCell<MaybeUninit<LockCell<IommuRootTable, (), (), NO_KILL_STATE>>>);
 
 // Every access goes through the lock guard or its owning token.
 unsafe impl Sync for IrtCell {}
@@ -26,20 +26,20 @@ pub fn irt_cell_base() -> (ret: usize)
     IRT_CELL.0.get() as usize
 }
 
-impl TokenCellBase for RwLock<IommuRootTable, (), (), NO_KILL_STATE> {
+impl TokenCellBase for LockCell<IommuRootTable, (), (), NO_KILL_STATE> {
     open spec fn cell_base_spec() -> usize { irt_cell_base_spec() }
     fn cell_base() -> (ret: usize) { irt_cell_base() }
 }
 
 /// TCB: write `lock` into the root-table lock cell and mint the cell's points-to token; init only, once.
 #[verifier::external_body]
-pub(crate) fn irt_cell_init(lock: RwLock<IommuRootTable, (), (), NO_KILL_STATE>) -> (ret: Tracked<PointsTo<RwLock<IommuRootTable, (), (), NO_KILL_STATE>>>)
+pub(crate) fn irt_cell_init(lock: LockCell<IommuRootTable, (), (), NO_KILL_STATE>) -> (ret: Tracked<PointsTo<LockCell<IommuRootTable, (), (), NO_KILL_STATE>>>)
     ensures
         ret.view().addr() == irt_cell_base_spec(),
         ret.view().is_init(),
         ret.view().value() == lock,
 {
-    unsafe { (IRT_CELL.0.get() as *mut RwLock<IommuRootTable, (), (), NO_KILL_STATE>).write(lock); }
+    unsafe { (IRT_CELL.0.get() as *mut LockCell<IommuRootTable, (), (), NO_KILL_STATE>).write(lock); }
     Tracked::assume_new()
 }
 }

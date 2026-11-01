@@ -10,7 +10,7 @@ pub enum DynamicWLockOutcome {
     DepthConflict(LockOwnerId),
 }
 
-/// Runtime word of a lock taken only by writers. These traits are exec only: the ghost lock state lives in `RwLock`, and
+/// Runtime word of a lock taken only by writers. These traits are exec only: the ghost lock state lives in `LockCell`, and
 /// the TCB primitives of `locked_points_to.rs` state what each operation does to it.
 pub trait SpinLockInner: Sized {
     fn new_unlocked() -> Self;

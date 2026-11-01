@@ -74,7 +74,7 @@ impl Scheduler {
             },
             scheduler_shards_of(ret) == Seq::new(NUM_CPUS as nat, |i: int| Seq::<RwLockThreadPtr>::empty()),
     {
-        let mut shard_array: Array<RwLock<SchedulerShard, (), (), NO_KILL_STATE>, NUM_CPUS> = Array::new();
+        let mut shard_array: Array<LockCell<SchedulerShard, (), (), NO_KILL_STATE>, NUM_CPUS> = Array::new();
         let mut cpu_id = 0;
         while cpu_id < NUM_CPUS
             invariant
@@ -88,7 +88,7 @@ impl Scheduler {
                 },
             decreases NUM_CPUS - cpu_id,
         {
-            shard_array.set(cpu_id, RwLock::new_unlocked(SchedulerShard { queue: LinkedList::new(None, None) }, (), Ghost(())));
+            shard_array.set(cpu_id, LockCell::new_unlocked(SchedulerShard { queue: LinkedList::new(None, None) }, (), Ghost(())));
             cpu_id = cpu_id + 1;
         }
         let ret = Self { shards: LockedArray::from_array(shard_array), owning_container };
@@ -112,8 +112,8 @@ impl Scheduler {
     {
         let mut root_queue = LinkedList::new(None, None);
         root_queue.push_tail(thread_node_addr, thread_node_perm);
-        let mut shard_array: Array<RwLock<SchedulerShard, (), (), NO_KILL_STATE>, NUM_CPUS> = Array::new();
-        shard_array.set(0, RwLock::new_unlocked(SchedulerShard { queue: root_queue }, (), Ghost(())));
+        let mut shard_array: Array<LockCell<SchedulerShard, (), (), NO_KILL_STATE>, NUM_CPUS> = Array::new();
+        shard_array.set(0, LockCell::new_unlocked(SchedulerShard { queue: root_queue }, (), Ghost(())));
         let mut cpu_id = 1;
         while cpu_id < NUM_CPUS
             invariant
@@ -127,7 +127,7 @@ impl Scheduler {
                 },
             decreases NUM_CPUS - cpu_id,
         {
-            shard_array.set(cpu_id, RwLock::new_unlocked(SchedulerShard { queue: LinkedList::new(None, None) }, (), Ghost(())));
+            shard_array.set(cpu_id, LockCell::new_unlocked(SchedulerShard { queue: LinkedList::new(None, None) }, (), Ghost(())));
             cpu_id = cpu_id + 1;
         }
         Self { shards: LockedArray::from_array(shard_array), owning_container }

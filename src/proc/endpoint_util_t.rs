@@ -12,7 +12,7 @@ use vstd::simple_pptr::*;
 /// with the object.
 #[verifier::external_body]
 pub fn retype_endpoint_rwlock_to_4k_page_perm(
-    endpoint_ptr: RwLockEndpointPtr, Tracked(endpoint_perm): Tracked<PointsTo<RwLock<Endpoint, (), (), ENDPOINT_HAS_KILL_STATE>>>,
+    endpoint_ptr: RwLockEndpointPtr, Tracked(endpoint_perm): Tracked<PointsTo<LockCell<Endpoint, (), (), ENDPOINT_HAS_KILL_STATE>>>,
     Tracked(lock_perm): Tracked<LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>,
 ) -> (ret: Tracked<PagePerm4k>)
     requires

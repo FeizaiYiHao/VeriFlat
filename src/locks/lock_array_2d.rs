@@ -8,12 +8,12 @@ verus! {
 /// `TokenCellBase` address `base`, and the array holds one points-to token per cell and no runtime bytes.
 #[verifier::reject_recursive_types(T)]
 pub struct LockedArray2D<T, ROT, GhostT, const ROWS: usize, const COLS: usize> {
-    perms: Tracked<Map<(usize, usize), PointsTo<RwLock<T, ROT, GhostT, NO_KILL_STATE>>>>,
+    perms: Tracked<Map<(usize, usize), PointsTo<LockCell<T, ROT, GhostT, NO_KILL_STATE>>>>,
 }
 
-impl<T, ROT, GhostT, const ROWS: usize, const COLS: usize> LockedArray2D<T, ROT, GhostT, ROWS, COLS> where RwLock<T, ROT, GhostT, NO_KILL_STATE>: TokenCellBase {
+impl<T, ROT, GhostT, const ROWS: usize, const COLS: usize> LockedArray2D<T, ROT, GhostT, ROWS, COLS> where LockCell<T, ROT, GhostT, NO_KILL_STATE>: TokenCellBase {
     /// `perms` holds exactly one token per in-range cell, each covering an initialized lock at its cell address.
-    pub open spec fn token_cells_wf(perms: Map<(usize, usize), PointsTo<RwLock<T, ROT, GhostT, NO_KILL_STATE>>>) -> bool {
+    pub open spec fn token_cells_wf(perms: Map<(usize, usize), PointsTo<LockCell<T, ROT, GhostT, NO_KILL_STATE>>>) -> bool {
         &&& ROWS * COLS <= usize::MAX
         &&& forall|row: usize, col: usize| #![trigger perms.dom().contains((row, col))] perms.dom().contains((row, col)) <==> index_valid(ROWS, row) && index_valid(COLS, col)
         &&& forall|row: usize, col: usize|
@@ -21,13 +21,13 @@ impl<T, ROT, GhostT, const ROWS: usize, const COLS: usize> LockedArray2D<T, ROT,
             #![trigger perms[(row, col)]]
             perms.dom().contains((row, col)) ==> {
                 &&& perms[(row, col)].is_init()
-                &&& perms[(row, col)].addr() == lock_cell_addr::<RwLock<T, ROT, GhostT, NO_KILL_STATE>>(RwLock::<T, ROT, GhostT, NO_KILL_STATE>::cell_base_spec(), row * COLS + col)
+                &&& perms[(row, col)].addr() == lock_cell_addr::<LockCell<T, ROT, GhostT, NO_KILL_STATE>>(LockCell::<T, ROT, GhostT, NO_KILL_STATE>::cell_base_spec(), row * COLS + col)
             }
     }
 
     pub closed spec fn inv(&self) -> bool { Self::token_cells_wf(self.perms@) }
 
-    pub closed spec fn spec_index(&self, row: usize, col: usize) -> RwLock<T, ROT, GhostT, NO_KILL_STATE>
+    pub closed spec fn spec_index(&self, row: usize, col: usize) -> LockCell<T, ROT, GhostT, NO_KILL_STATE>
         recommends
             index_valid(ROWS, row),
             index_valid(COLS, col),
@@ -36,7 +36,7 @@ impl<T, ROT, GhostT, const ROWS: usize, const COLS: usize> LockedArray2D<T, ROT,
     }
 
     /// Builds the array over cells that boot initialized in place.
-    pub fn from_token_cells(perms: Tracked<Map<(usize, usize), PointsTo<RwLock<T, ROT, GhostT, NO_KILL_STATE>>>>) -> (ret: Self)
+    pub fn from_token_cells(perms: Tracked<Map<(usize, usize), PointsTo<LockCell<T, ROT, GhostT, NO_KILL_STATE>>>>) -> (ret: Self)
         requires
             Self::token_cells_wf(perms@),
         ensures
@@ -54,7 +54,7 @@ impl<T, ROT, GhostT, const ROWS: usize, const COLS: usize> LockedArray2D<T, ROT,
             ret == self.perms@[(row, col)].addr(),
     {
         assert(row * COLS + col < ROWS * COLS) by (nonlinear_arith) requires row < ROWS, col < COLS;
-        lock_cell_addr_exec::<RwLock<T, ROT, GhostT, NO_KILL_STATE>>(RwLock::<T, ROT, GhostT, NO_KILL_STATE>::cell_base(), row * COLS + col)
+        lock_cell_addr_exec::<LockCell<T, ROT, GhostT, NO_KILL_STATE>>(LockCell::<T, ROT, GhostT, NO_KILL_STATE>::cell_base(), row * COLS + col)
     }
 
     pub fn set_ghost(&mut self, row: usize, col: usize, Ghost(value): Ghost<GhostT>, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&LockPerm>)
@@ -79,7 +79,7 @@ impl<T, ROT, GhostT, const ROWS: usize, const COLS: usize> LockedArray2D<T, ROT,
 }
 
 impl<T: LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, GhostT, const ROWS: usize, const COLS: usize> LockedArray2D<T, ROT, GhostT, ROWS, COLS>
-    where RwLock<T, ROT, GhostT, NO_KILL_STATE>: TokenCellBase {
+    where LockCell<T, ROT, GhostT, NO_KILL_STATE>: TokenCellBase {
     pub open spec fn lock_id_by_index(&self, row: usize, col: usize) -> LockId
         recommends
             index_valid(ROWS, row),
@@ -121,7 +121,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, 
     {
         let addr = self.cell_addr(row, col);
         let tracked perm = self.perms.borrow_mut().tracked_borrow_mut((row, col));
-        wlock_object_minor(&PPtr::<RwLock<T, ROT, GhostT, NO_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), Ghost(obj))
+        wlock_object_minor(&PPtr::<LockCell<T, ROT, GhostT, NO_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), Ghost(obj))
     }
 
     pub fn wunlock(&mut self, row: usize, col: usize, Tracked(lctx): Tracked<&mut LocalContext>, lp: Tracked<LockPerm>, Ghost(obj): Ghost<KernelObjId>)
@@ -143,7 +143,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, 
     {
         let addr = self.cell_addr(row, col);
         let tracked perm = self.perms.borrow_mut().tracked_borrow_mut((row, col));
-        wunlock_object_minor(&PPtr::<RwLock<T, ROT, GhostT, NO_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), lp, Ghost(obj));
+        wunlock_object_minor(&PPtr::<LockCell<T, ROT, GhostT, NO_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), lp, Ghost(obj));
     }
 
     pub fn borrow_typed<'a>(&self, row: usize, col: usize, Ghost(held): Ghost<Map<(usize, usize), TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a T)
@@ -163,7 +163,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, 
         assert(self.spec_index(row, col).write_lock_perm_match(lp.view())) by { reveal(LockedArray2D::typed_lock_map_aligned); };
         let addr = self.cell_addr(row, col);
         let tracked perm = self.perms.borrow().tracked_borrow((row, col));
-        borrow(&PPtr::<RwLock<T, ROT, GhostT, NO_KILL_STATE>>::from_usize(addr), Tracked(perm), lp)
+        borrow(&PPtr::<LockCell<T, ROT, GhostT, NO_KILL_STATE>>::from_usize(addr), Tracked(perm), lp)
     }
 
     pub fn borrow_mut_typed<'a>(&'a mut self, row: usize, col: usize, Ghost(held): Ghost<Map<(usize, usize), TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a mut T)
@@ -191,7 +191,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockMinorTrait + LockOwnerIdTrait, ROT, 
         assert(self.spec_index(row, col).wlocked_by(lctx)) by { reveal(LockedArray2D::typed_lock_map_aligned); };
         let addr = self.cell_addr(row, col);
         let tracked perm = self.perms.borrow_mut().tracked_borrow_mut((row, col));
-        borrow_mut(&PPtr::<RwLock<T, ROT, GhostT, NO_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), lp)
+        borrow_mut(&PPtr::<LockCell<T, ROT, GhostT, NO_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), lp)
     }
 }
 }

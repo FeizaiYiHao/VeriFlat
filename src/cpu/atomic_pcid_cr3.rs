@@ -68,7 +68,7 @@ impl AtomicPcidCr3 {
     #[verifier::external_body]
     pub(super) fn ipi_remote_running_to_idle_raw(
         &mut self, hardware: &mut CpuCr3Pcid, cpu_id: CpuId, cr3: PageTableRoot, Tracked(cpu_op): Tracked<&mut CpuOpArray>, perm: Tracked<&KernelCallPerm>,
-        Ghost(target_lock): Ghost<RwLock<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>>, Tracked(lctx): Tracked<&LocalContext>,
+        Ghost(target_lock): Ghost<LockCell<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>>, Tracked(lctx): Tracked<&LocalContext>,
     )
         requires
             old(hardware).wf(),

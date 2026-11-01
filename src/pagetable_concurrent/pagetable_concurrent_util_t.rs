@@ -85,4 +85,4 @@ impl PageTableHigher<PT_TYPE> {
 } // verus!
 
 // Layout contract: the page-table big lock, per-cpu reader slots included, fits the 4K page it is retyped from.
-const _: () = assert!(core::mem::size_of::<RwLock<PageTableHigher<PT_TYPE>, (), PageTableLower<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>>() <= PAGE_SZ_4K);
+const _: () = assert!(core::mem::size_of::<LockCell<PageTableHigher<PT_TYPE>, (), PageTableLower<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>>() <= PAGE_SZ_4K);

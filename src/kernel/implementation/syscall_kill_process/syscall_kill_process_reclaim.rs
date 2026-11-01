@@ -531,7 +531,7 @@ pub(crate) fn kill_reclaim_lock_table(
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
 {
-    hide(RwLock::being_killed);
+    hide(LockCell::being_killed);
     let ghost before = *krnl;
     let ghost before_lctx = *lctx;
     let ghost before_steps = steps.view();

@@ -84,7 +84,7 @@ pub open spec fn pagetable_window_locks_after_new_l2_page(m: Map<WindowVa, LockS
 }
 
 impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
-    /// The owner of the outer RwLock supplies its mode; the payload has no lock state.
+    /// The owner of the outer LockCell supplies its mode; the payload has no lock state.
     pub open spec fn user_view(&self, lock_state: LockStateU) -> PageTableU {
         PageTableU {
             lock_state,

@@ -4,7 +4,7 @@ use crate::*;
 
 /// PCID allocator payload. Each of the 4096 PCIDs has one machine-word
 /// reference counter; ownership and lock-ordering metadata are ghost state.
-/// The allocator and its generic `RwLock` header are backed by one 2MiB page.
+/// The allocator and its generic `LockCell` header are backed by one 2MiB page.
 #[repr(C)]
 pub struct PcidAllocator {
     pub owning_container: Ghost<RwLockContainerPtr>,
@@ -160,4 +160,4 @@ impl LockOwnerIdTrait for PcidAllocator {
 } // verus!
 
 const ASSERT_PCID_ALLOCATOR_PAYLOAD_SIZE: [(); PCID_MAX * core::mem::size_of::<usize>()] = [(); core::mem::size_of::<PcidAllocator>()];
-const ASSERT_PCID_ALLOCATOR_LOCK_FITS_2M: [(); 1] = [(); (core::mem::size_of::<RwLock<PcidAllocator, (), (), PCID_ALLOCATOR_HAS_KILL_STATE, >>() <= PAGE_SZ_2M) as usize];
+const ASSERT_PCID_ALLOCATOR_LOCK_FITS_2M: [(); 1] = [(); (core::mem::size_of::<LockCell<PcidAllocator, (), (), PCID_ALLOCATOR_HAS_KILL_STATE, >>() <= PAGE_SZ_2M) as usize];

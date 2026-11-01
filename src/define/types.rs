@@ -196,13 +196,13 @@ pub enum RetValueType {
     VaInUse,
     // ---- syscall_alloc_quota_4k failure modes ----
     /// The owning container is being torn down (`being_killed()` set on
-    /// the container's RwLock).
+    /// the container's LockCell).
     ErrorContainerKilled,
     /// The container's 4k allocator's reservable quota is less than the
     /// requested `alloc_amount`.
     ErrorContainerQuotaInsufficient,
     /// The running process is being torn down (`being_killed()` set on
-    /// the process's RwLock).
+    /// the process's LockCell).
     ErrorProcessKilled,
     /// The currently running thread is being torn down.
     ErrorThreadKilled,

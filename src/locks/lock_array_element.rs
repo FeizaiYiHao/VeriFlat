@@ -9,12 +9,12 @@ use crate::primitive::*;
 verus! {
     #[verifier::reject_recursive_types(T)]
     pub struct LockedArrayElement<T, ROT, GhostT, const HAS_KILL_STATE: bool> {
-        pub value: RwLock<T, ROT, GhostT, HAS_KILL_STATE>,
+        pub value: LockCell<T, ROT, GhostT, HAS_KILL_STATE>,
         pub lock_minor: usize,
     }
     impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockedArrayElement<T, ROT, GhostT, HAS_KILL_STATE> {
-        pub open spec fn view(&self) -> RwLock<T, ROT, GhostT, HAS_KILL_STATE> { self.value }
-        pub open spec fn value(&self) -> RwLock<T, ROT, GhostT, HAS_KILL_STATE> { self.value }
+        pub open spec fn view(&self) -> LockCell<T, ROT, GhostT, HAS_KILL_STATE> { self.value }
+        pub open spec fn value(&self) -> LockCell<T, ROT, GhostT, HAS_KILL_STATE> { self.value }
     }
 
     impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> LockMinorTrait for LockedArrayElement<T, ROT, GhostT, HAS_KILL_STATE> {

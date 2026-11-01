@@ -5,7 +5,7 @@ use crate::*;
 
 /// Memory of the PCID needflush locks, one row of `PCID_MAX` cells per cpu. Only raw addresses reach it; the needflush
 /// array's points-to tokens own its cells.
-struct PcidNeedFlushCells(UnsafeCell<MaybeUninit<[[RwLock<PcidNeedFlush, (), Option<CpuId>, NO_KILL_STATE>; PCID_MAX]; NUM_CPUS]>>);
+struct PcidNeedFlushCells(UnsafeCell<MaybeUninit<[[LockCell<PcidNeedFlush, (), Option<CpuId>, NO_KILL_STATE>; PCID_MAX]; NUM_CPUS]>>);
 
 // Every access goes through a cell's lock guard or its owning token.
 unsafe impl Sync for PcidNeedFlushCells {}
@@ -26,7 +26,7 @@ pub fn pcid_needflush_cells_base() -> (ret: usize)
     PCID_NEEDFLUSH_CELLS.0.get() as usize
 }
 
-impl TokenCellBase for RwLock<PcidNeedFlush, (), Option<CpuId>, NO_KILL_STATE> {
+impl TokenCellBase for LockCell<PcidNeedFlush, (), Option<CpuId>, NO_KILL_STATE> {
     open spec fn cell_base_spec() -> usize { pcid_needflush_cells_base_spec() }
     fn cell_base() -> (ret: usize) { pcid_needflush_cells_base() }
 }

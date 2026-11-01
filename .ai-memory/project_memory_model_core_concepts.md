@@ -30,7 +30,7 @@ metadata:
   still holding its previous contents. Zeroing or content ownership must be
   modeled before any cross-container page flow counts as isolating.
 - `PcidAllocator` has one machine-word counter for each of the 4096 PCIDs. Its
-  payload size is compile-time checked, the complete `RwLock` object must fit in
+  payload size is compile-time checked, the complete `LockCell` object must fit in
   one 2 MiB page, and `pcid_allocator_pages_wf` ties each allocator object to an
   `Allocated2m { AsPcidAllocator }` backing page.
 

@@ -7,8 +7,8 @@ verus! {
 #[verifier::reject_recursive_types(SIZE)]
 pub struct PageAllocator<const SIZE: usize> {
     pub cpu_caches: LockedArray<AllocatorCache<SIZE>, (), (), NUM_CPUS, NO_KILL_STATE>,
-    pub global_pool: RwLock<GlobalPool<SIZE>, (), (), NO_KILL_STATE>,
-    pub quota: RwLock<AllocatorQuota<SIZE>, (), (), NO_KILL_STATE>,
+    pub global_pool: LockCell<GlobalPool<SIZE>, (), (), NO_KILL_STATE>,
+    pub quota: LockCell<AllocatorQuota<SIZE>, (), (), NO_KILL_STATE>,
     pub total_free_pages: Ghost<usize>,
 
     pub owning_container: RwLockContainerPtr,
@@ -46,7 +46,7 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
                 },
     {
         assert(linked_list.view().len() == linked_list.length) by { linked_list.wf_implies_view_len_eq_len(); };
-        let mut cache_array: Array<RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>, NUM_CPUS> = Array::new();
+        let mut cache_array: Array<LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>, NUM_CPUS> = Array::new();
         let mut cpu_id = 0;
         while cpu_id < NUM_CPUS
             invariant
@@ -63,13 +63,13 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
             decreases NUM_CPUS - cpu_id,
         {
             let cache = AllocatorCache { linked_list: LinkedList::new(Some(container_depth), Some(cpu_id)) };
-            cache_array.set(cpu_id, RwLock::new_unlocked(cache, (), Ghost(())));
+            cache_array.set(cpu_id, LockCell::new_unlocked(cache, (), Ghost(())));
             cpu_id = cpu_id + 1;
         }
         let total_free_pages = linked_list.length;
         let cpu_caches = LockedArray::from_array(cache_array);
-        let global_pool = RwLock::new_unlocked(GlobalPool { linked_list }, (), Ghost(()));
-        let quota = RwLock::new_unlocked(AllocatorQuota { value: quota_value, minor: Ghost(owning_container), container_depth }, (), Ghost(()));
+        let global_pool = LockCell::new_unlocked(GlobalPool { linked_list }, (), Ghost(()));
+        let quota = LockCell::new_unlocked(AllocatorQuota { value: quota_value, minor: Ghost(owning_container), container_depth }, (), Ghost(()));
         let ret = Self { cpu_caches, global_pool, quota, total_free_pages: Ghost(total_free_pages), owning_container };
         proof { lemma_cache_len_fold_all_zero(ret.cpu_caches.view()); ret.global_pool.view().wf_implies_view_len_eq_len(); }
         ret
@@ -94,7 +94,7 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
                     &&& !ret.cpu_caches.spec_index(cpu_id).view().locked()
                 },
     {
-        let mut cache_array: Array<RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>, NUM_CPUS> = Array::new();
+        let mut cache_array: Array<LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>, NUM_CPUS> = Array::new();
         let mut cpu_id = 0;
         while cpu_id < NUM_CPUS
             invariant
@@ -112,12 +112,12 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
             decreases NUM_CPUS - cpu_id,
         {
             let cache = AllocatorCache { linked_list: LinkedList::new(Some(container_depth), Some(cpu_id)) };
-            cache_array.set(cpu_id, RwLock::new_unlocked(cache, (), Ghost(())));
+            cache_array.set(cpu_id, LockCell::new_unlocked(cache, (), Ghost(())));
             cpu_id = cpu_id + 1;
         }
         let cpu_caches = LockedArray::from_array(cache_array);
-        let global_pool = RwLock::new_unlocked(GlobalPool { linked_list: LinkedList::new(Some(container_depth), Some(owning_container)) }, (), Ghost(()));
-        let quota = RwLock::new_unlocked(AllocatorQuota { value: 0, minor: Ghost(owning_container), container_depth }, (), Ghost(()));
+        let global_pool = LockCell::new_unlocked(GlobalPool { linked_list: LinkedList::new(Some(container_depth), Some(owning_container)) }, (), Ghost(()));
+        let quota = LockCell::new_unlocked(AllocatorQuota { value: 0, minor: Ghost(owning_container), container_depth }, (), Ghost(()));
         let ret = Self { cpu_caches, global_pool, quota, total_free_pages: Ghost(0), owning_container };
         proof { lemma_cache_len_fold_all_zero(ret.cpu_caches.view()); }
         ret
@@ -137,7 +137,7 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
     }
 
     /// The quota's intrinsic minor lock id is the owning container pointer.
-    /// `AllocatorQuota` sits in a bare `RwLock` (not in a wrapper that
+    /// `AllocatorQuota` sits in a bare `LockCell` (not in a wrapper that
     /// provides a minor), so it carries its own `Ghost<usize>` minor field;
     /// this invariant pins that minor to `owning_container`.
     pub open spec fn quota_minor_wf(&self) -> bool { self.quota.view().lock_minor() == seq![self.owning_container] }
@@ -148,7 +148,7 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
     pub open spec fn global_pool_minor_wf(&self) -> bool { self.global_pool.view().lock_minor() == seq![self.owning_container] }
 
     pub open spec fn total_free_pages_wf(&self) -> bool {
-        self.global_pool.view().len() + self.cpu_caches.view().fold_left(0int, |sum: int, cpu_rw_lock: RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + cpu_rw_lock.view().linked_list.len() }) == self.total_free_pages.view()
+        self.global_pool.view().len() + self.cpu_caches.view().fold_left(0int, |sum: int, cpu_rw_lock: LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + cpu_rw_lock.view().linked_list.len() }) == self.total_free_pages.view()
     }
 }
 

@@ -42,13 +42,13 @@ pub enum RwLockState {
     None,
 }
 
-/// `RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>`: payload `T` under the runtime lock word `I`.
+/// `LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>`: payload `T` under the runtime lock word `I`.
 ///
 /// The refinement projection alone decides which payload and ghost fields are
 /// user-visible. Ghost replacement is proof-only and independent of payload
 /// locking; callers close the affected invariants at the kernel boundary.
 #[repr(C)]
-pub struct RwLock<T, ROT, GhostT, const HAS_KILL_STATE: bool, I = SpinWord> {
+pub struct LockCell<T, ROT, GhostT, const HAS_KILL_STATE: bool, I = SpinWord> {
     pub(crate) lock: I,
     pub(crate) value: T,
     pub(super) read_only_value: ROT,
@@ -59,7 +59,7 @@ pub struct RwLock<T, ROT, GhostT, const HAS_KILL_STATE: bool, I = SpinWord> {
     locking_thread: Ghost<RwLockState>,
 }
 
-impl<T, ROT, GhostT, const HAS_KILL_STATE: bool, I: SpinLockInner> RwLock<T, ROT, GhostT, HAS_KILL_STATE, I> {
+impl<T, ROT, GhostT, const HAS_KILL_STATE: bool, I: SpinLockInner> LockCell<T, ROT, GhostT, HAS_KILL_STATE, I> {
     pub fn new_unlocked(value: T, read_only_value: ROT, Ghost(ghost_value): Ghost<GhostT>) -> (ret: Self)
         where
             T: LockInvTrait,
@@ -92,7 +92,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool, I: SpinLockInner> RwLock<T, ROT
     }
 }
 
-impl<T, ROT, GhostT, const HAS_KILL_STATE: bool, I> RwLock<T, ROT, GhostT, HAS_KILL_STATE, I> {
+impl<T, ROT, GhostT, const HAS_KILL_STATE: bool, I> LockCell<T, ROT, GhostT, HAS_KILL_STATE, I> {
     pub open spec fn lock_state_u(&self) -> LockStateU {
         match self.locking_thread() {
             RwLockState::None => LockStateU::Unlocked,
@@ -186,7 +186,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool, I> RwLock<T, ROT, GhostT, HAS_K
     }
 }
 
-impl<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool, I> RwLock<T, ROT, GhostT, HAS_KILL_STATE, I> {
+impl<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool, I> LockCell<T, ROT, GhostT, HAS_KILL_STATE, I> {
     pub open spec fn inv(&self) -> bool {
         &&& self.view().inv()
         &&& self.is_init()
@@ -194,7 +194,7 @@ impl<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool, I> RwLock<T, ROT,
     }
 }
 
-impl<T, ROT, GhostT, const HAS_KILL_STATE: bool, I> RwLock<T, ROT, GhostT, HAS_KILL_STATE, I> {
+impl<T, ROT, GhostT, const HAS_KILL_STATE: bool, I> LockCell<T, ROT, GhostT, HAS_KILL_STATE, I> {
     #[verifier::external_body]
     pub fn borrow<'a,>(&self, lp: Tracked<&'a LockPerm>) -> (ret: &'a T)
         requires
@@ -223,7 +223,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool, I> RwLock<T, ROT, GhostT, HAS_K
         ensures
             final(self).is_init(),
             final(self).wlocked_by(lctx),
-            // Invariants of the lock are preserved by the structure of the rwlock.
+            // Invariants of the lock are preserved by the structure of the lock cell.
             final(self).view_rodata() == old(self).view_rodata(),
             final(self).view_ghost() == old(self).view_ghost(),
             final(self).locking_thread() == old(self).locking_thread(),
@@ -252,7 +252,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool, I> RwLock<T, ROT, GhostT, HAS_K
     }
 }
 
-pub open spec fn wlock_requires<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool, I>(old: RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>, lctx: &LocalContext) -> bool {
+pub open spec fn wlock_requires<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool, I>(old: LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>, lctx: &LocalContext) -> bool {
     &&& old.inv()
     // The acquiring thread must hold neither a read nor a write lock here; other
     // threads' contention is handled by the physical lock.
@@ -260,7 +260,7 @@ pub open spec fn wlock_requires<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STA
     &&& lctx.kernel_view_locking_state() is Acquire
 }
 
-pub open spec fn wlock_ensures<T: LockInvTrait + LockMajorTrait, ROT, GhostT, const HAS_KILL_STATE: bool, I>(old: RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>, new: RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>, lock_id: LockId, lctx: &LocalContext, lock_perm: LockPerm) -> bool {
+pub open spec fn wlock_ensures<T: LockInvTrait + LockMajorTrait, ROT, GhostT, const HAS_KILL_STATE: bool, I>(old: LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>, new: LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>, lock_id: LockId, lctx: &LocalContext, lock_perm: LockPerm) -> bool {
     &&& new.wlocked_by(lctx)
     &&& new.locking_thread() == RwLockState::Write { thread_id: lctx.thread_id(), lock_id: lock_perm.lock_id() }
     &&& new.inv()
@@ -278,7 +278,7 @@ pub open spec fn wlock_ensures<T: LockInvTrait + LockMajorTrait, ROT, GhostT, co
 }
 
 /// Readers share the object: the new reader joins the existing reader map (or starts one).
-pub open spec fn rlock_ensures<T: LockInvTrait + LockMajorTrait, ROT, GhostT, const HAS_KILL_STATE: bool, I>(old: RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>, new: RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>, lock_id: LockId, lctx: &LocalContext, lock_perm: LockPerm) -> bool {
+pub open spec fn rlock_ensures<T: LockInvTrait + LockMajorTrait, ROT, GhostT, const HAS_KILL_STATE: bool, I>(old: LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>, new: LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>, lock_id: LockId, lctx: &LocalContext, lock_perm: LockPerm) -> bool {
     &&& new.rlocked_by(lctx)
     &&& new.locking_thread() == RwLockState::Read { reader_map: (if old.locking_thread() is Read { old.locking_thread()->Read_reader_map } else { Map::empty() }).insert(lctx.thread_id(), lock_perm.lock_id()) }
     &&& new.inv()
@@ -294,7 +294,7 @@ pub open spec fn rlock_ensures<T: LockInvTrait + LockMajorTrait, ROT, GhostT, co
     &&& lock_perm.thread_id() == lctx.thread_id()
 }
 
-pub open spec fn runlock_ensures<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool, I>(old: RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>, new: RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>, thread_id: LockThreadId) -> bool {
+pub open spec fn runlock_ensures<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool, I>(old: LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>, new: LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>, thread_id: LockThreadId) -> bool {
     &&& new.locking_thread() == (if old.locking_thread()->Read_reader_map.remove(thread_id).dom().is_empty() { RwLockState::None } else { RwLockState::Read { reader_map: old.locking_thread()->Read_reader_map.remove(thread_id) } })
     &&& new.inv()
     &&& new.view() == old.view()
@@ -304,7 +304,7 @@ pub open spec fn runlock_ensures<T: LockInvTrait, ROT, GhostT, const HAS_KILL_ST
     &&& new.control() == old.control()
 }
 
-pub open spec fn wunlock_ensures<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool, I>(old: RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>, new: RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>) -> bool {
+pub open spec fn wunlock_ensures<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool, I>(old: LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>, new: LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>) -> bool {
     &&& new.locking_thread() == RwLockState::None
     &&& new.inv()
     &&& new.view() == old.view()
@@ -318,7 +318,7 @@ pub open spec fn wunlock_ensures<T: LockInvTrait, ROT, GhostT, const HAS_KILL_ST
 /// A dynamic write acquisition of the free, live lock records `requested`; a kill record or a shallower live dynamic
 /// holder is reported without changing the lock or the local context.
 pub open spec fn dynamic_wlock_ensures<T: LockInvTrait + LockMajorTrait, ROT, GhostT, const HAS_KILL_STATE: bool, I>(
-    old: RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>, new: RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>, old_lctx: &LocalContext, new_lctx: &LocalContext,
+    old: LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>, new: LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>, old_lctx: &LocalContext, new_lctx: &LocalContext,
     lock_id: LockId, obj_id: KernelObjId, requested: LockOwnerId, ret: DynamicWLockResult,
 ) -> bool {
     match ret {
@@ -353,7 +353,7 @@ pub open spec fn dynamic_wlock_ensures<T: LockInvTrait + LockMajorTrait, ROT, Gh
 }
 
 /// Releasing a live dynamic write acquisition clears the recorded owner; payload, read-only data, and ghost stay.
-pub open spec fn dynamic_wunlock_ensures<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool, I>(old: RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>, new: RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>) -> bool {
+pub open spec fn dynamic_wunlock_ensures<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool, I>(old: LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>, new: LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>) -> bool {
     &&& new.locking_thread() == RwLockState::None
     &&& new.inv()
     &&& new.view() == old.view()
@@ -363,7 +363,7 @@ pub open spec fn dynamic_wunlock_ensures<T: LockInvTrait, ROT, GhostT, const HAS
 }
 
 /// The writer becomes the only reader under its write token; payload, ghost slot, and kill state stay.
-pub open spec fn downgrade_ensures<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool, I>(old: RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>, new: RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>, lctx: &LocalContext, old_perm: LockPerm, new_perm: LockPerm) -> bool {
+pub open spec fn downgrade_ensures<T: LockInvTrait, ROT, GhostT, const HAS_KILL_STATE: bool, I>(old: LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>, new: LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>, lctx: &LocalContext, old_perm: LockPerm, new_perm: LockPerm) -> bool {
     &&& new.locking_thread() == RwLockState::Read { reader_map: Map::empty().insert(lctx.thread_id(), old_perm.lock_id()) }
     &&& new.inv()
     &&& new.view() == old.view()
@@ -379,7 +379,7 @@ pub open spec fn downgrade_ensures<T: LockInvTrait, ROT, GhostT, const HAS_KILL_
     &&& new.read_lock_perm_match(&new_perm)
 }
 
-pub open spec fn take_ensures<T, ROT, GhostT, const HAS_KILL_STATE: bool, I>(old: RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>, new: RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>) -> bool {
+pub open spec fn take_ensures<T, ROT, GhostT, const HAS_KILL_STATE: bool, I>(old: LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>, new: LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>) -> bool {
     &&& new.locking_thread() == old.locking_thread()
     &&& new.is_init() == false
     &&& new.view() == old.view()
@@ -388,7 +388,7 @@ pub open spec fn take_ensures<T, ROT, GhostT, const HAS_KILL_STATE: bool, I>(old
     &&& new.control() == old.control()
 }
 
-pub open spec fn put_ensures<T, ROT, GhostT, const HAS_KILL_STATE: bool, I>(old: RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>, new: RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>, v: T) -> bool {
+pub open spec fn put_ensures<T, ROT, GhostT, const HAS_KILL_STATE: bool, I>(old: LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>, new: LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>, v: T) -> bool {
     &&& new.locking_thread() == old.locking_thread()
     &&& new.is_init() == true
     &&& new.view() == v
@@ -398,7 +398,7 @@ pub open spec fn put_ensures<T, ROT, GhostT, const HAS_KILL_STATE: bool, I>(old:
     &&& new.being_killed() == old.being_killed()
 }
 
-pub open spec fn update_ghost_ensures<T, ROT, GhostT, const HAS_KILL_STATE: bool, I>(old: RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>, new: RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>, new_ghost: GhostT) -> bool {
+pub open spec fn update_ghost_ensures<T, ROT, GhostT, const HAS_KILL_STATE: bool, I>(old: LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>, new: LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>, new_ghost: GhostT) -> bool {
     &&& new.locking_thread() == old.locking_thread()
     &&& new.is_init() == old.is_init()
     &&& new.view() == old.view()
@@ -407,7 +407,7 @@ pub open spec fn update_ghost_ensures<T, ROT, GhostT, const HAS_KILL_STATE: bool
     &&& new.control() == old.control()
 }
 
-impl<T: LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: bool, I> LockOwnerIdTrait for RwLock<T, ROT, GhostT, HAS_KILL_STATE, I> {
+impl<T: LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: bool, I> LockOwnerIdTrait for LockCell<T, ROT, GhostT, HAS_KILL_STATE, I> {
     open spec fn container_depth(&self) -> LockOwnerId {
         if self.being_killed() { LockOwnerId::High }
         else {
@@ -432,7 +432,7 @@ impl<T: LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: b
     }
 }
 
-impl<T: LockIdTrait, const HAS_KILL_STATE: bool, I> LockIdTrait for RwLock<T, (), (), HAS_KILL_STATE, I> {
+impl<T: LockIdTrait, const HAS_KILL_STATE: bool, I> LockIdTrait for LockCell<T, (), (), HAS_KILL_STATE, I> {
     open spec fn lock_id(&self) -> LockId { self.view().lock_id() }
 }
 }

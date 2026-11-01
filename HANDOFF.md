@@ -64,7 +64,7 @@ mmap 新路径：`mmap_4k_try_read_enter` 3.04 s / 4.78M、`mmap_4k_fill_enter` 
   `ipc_pages_*_step_iso` rlimit、`iommu_table_map_set_did` 的重 wf reveal 移入 EOF、`reclaim_detached_iommu_4k_page` 与 kill
   IOMMU leaf 路径的 exec reveal 移除（改由 `reclaim_last_iommu_4k_mapping` / `clear_iommu_4k_mapping_present` ensures 给出）。
   新引理与 ensures 清单见 `ProofSimplificationNotes.md`「Batch 3 收尾」。
-- **rlock / runlock / downgrade 的 `Dynamic` 守卫**（`src/locks/rwlock.rs`、`locked_map.rs`、`locked_points_to.rs`）：
+- **rlock / runlock / downgrade 的 `Dynamic` 守卫**（`src/locks/lock_cell.rs`、`locked_map.rs`、`locked_points_to.rs`）：
   三者 requires 锁的 container / process owner 来源都不是 `OwnerSource::Dynamic`。Dynamic 只用于 Container 的写获取记录，
   读锁路径不能产生或清除该记录。
 

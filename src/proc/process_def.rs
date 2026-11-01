@@ -31,7 +31,7 @@ pub struct ProcessGhost {
     pub owned_pci_functions: Ghost<Set<PciBdf>>,
 }
 
-pub type ProcessRwLock = RwLock<Process, ReadOnlyNode<ProcessRO>, ProcessGhost, PROCESS_HAS_KILL_STATE>;
+pub type ProcessRwLock = LockCell<Process, ReadOnlyNode<ProcessRO>, ProcessGhost, PROCESS_HAS_KILL_STATE>;
 
 pub ghost struct ProcessU {
     pub lock_state: LockStateU,

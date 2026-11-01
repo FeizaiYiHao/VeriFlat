@@ -71,7 +71,7 @@ pub proof fn lemma_container_allocator_2m_quota_bounded(krnl: &KernelK, owner: R
             reveal(LinkedList::value_list_unique); allocator.global_pool.view().linked_list.wf_implies_view_len_eq_len();
             seq_unique_bounded_usize_len(allocator.global_pool.view().view(), (NUM_PAGES * 4096) as usize);
         };
-        assert(allocator.cpu_caches.view().fold_left(0int, |sum: int, cache: RwLock<AllocatorCache<ALLOCATOR_SIZE_2M>, (), (), NO_KILL_STATE>| sum + cache.view().linked_list.len()) <= NUM_CPUS * ALLOCATOR_MAX_WATERMARK) by { lemma_cache_len_fold_upper_bound(allocator.cpu_caches); };
+        assert(allocator.cpu_caches.view().fold_left(0int, |sum: int, cache: LockCell<AllocatorCache<ALLOCATOR_SIZE_2M>, (), (), NO_KILL_STATE>| sum + cache.view().linked_list.len()) <= NUM_CPUS * ALLOCATOR_MAX_WATERMARK) by { lemma_cache_len_fold_upper_bound(allocator.cpu_caches); };
     };
 }
 } // verus!

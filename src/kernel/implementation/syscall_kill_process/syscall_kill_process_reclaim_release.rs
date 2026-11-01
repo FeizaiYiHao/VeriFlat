@@ -771,7 +771,7 @@ pub(crate) fn kill_reclaim_iommu_leaves(
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
 {
-    hide(RwLock::being_killed);
+    hide(LockCell::being_killed);
     let ghost entry_thread = krnl.thr_mp.spec_index(thread_ptr).view();
     proof {
         iommu_table_perms_wf_map(krnl.it_mp);

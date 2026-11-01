@@ -15,7 +15,7 @@ use super::pagetable_util_t_eof::*;
 /// object.
 #[verifier::external_body]
 pub fn retype_pagetable_rwlock_to_4k_page_perms(
-    pagetable_ptr: RwLockPageTableRoot, Tracked(pagetable_perm): Tracked<PointsTo<RwLock<PageTableHigher<PT_TYPE>, (), PageTableLower<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>>>,
+    pagetable_ptr: RwLockPageTableRoot, Tracked(pagetable_perm): Tracked<PointsTo<LockCell<PageTableHigher<PT_TYPE>, (), PageTableLower<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>>>,
     Tracked(lock_perm): Tracked<LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>,
 ) -> (ret: (Tracked<PagePerm4k>, Tracked<PagePerm4k>))
     requires
@@ -49,7 +49,7 @@ pub fn retype_pagetable_rwlock_to_4k_page_perms(
 /// conditions as `retype_pagetable_rwlock_to_4k_page_perms`.
 #[verifier::external_body]
 pub fn retype_iommu_table_rwlock_to_4k_page_perms(
-    iommu_table_ptr: RwLockPageTableRoot, Tracked(iommu_table_perm): Tracked<PointsTo<RwLock<PageTable<IOMMU_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE>>>,
+    iommu_table_ptr: RwLockPageTableRoot, Tracked(iommu_table_perm): Tracked<PointsTo<LockCell<PageTable<IOMMU_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE>>>,
     Tracked(lock_perm): Tracked<LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>,
 ) -> (ret: (Tracked<PagePerm4k>, Tracked<PagePerm4k>))
     requires

@@ -5,7 +5,7 @@ use crate::*;
 
 verus! {
 /// Approved TCB boundary: initialize the second 4K of an installed container's 2M page as that
-/// container's `CpuOfflineFlags` table. The container `RwLock` fits in the first 4K
+/// container's `CpuOfflineFlags` table. The container `LockCell` fits in the first 4K
 /// (`ASSERT_CONTAINER_LOCK_FITS_4K`); `retype_container_page_tail_and_insert` keeps each table
 /// pointer unique through `insert_with_perm`.
 #[verifier::external_body]

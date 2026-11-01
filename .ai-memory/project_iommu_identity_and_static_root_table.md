@@ -60,7 +60,7 @@ metadata:
 
 ## Root table
 
-- `KernelK.irt` is one `RwLock` over the whole table
+- `KernelK.irt` is one `LockCell` over the whole table
   (`IOMMU_ROOT_TABLE_LOCK_MAJOR = PAGE_TABLE_LOCK_MAJOR + 1`, below
   `IOMMU_TABLE_LOCK_MAJOR`, so DID changes can write-lock an IOMMU table under
   it); it is taken and released inside one step and is not U-visible.

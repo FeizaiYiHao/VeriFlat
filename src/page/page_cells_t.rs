@@ -4,7 +4,7 @@ use core::mem::MaybeUninit;
 use crate::*;
 
 /// Memory of the page locks. Only raw addresses reach it; the page array's points-to tokens own its cells.
-struct PageCells(UnsafeCell<MaybeUninit<[RwLock<Page, (), (), NO_KILL_STATE>; NUM_PAGES]>>);
+struct PageCells(UnsafeCell<MaybeUninit<[LockCell<Page, (), (), NO_KILL_STATE>; NUM_PAGES]>>);
 
 // Every access goes through a cell's lock guard or its owning token.
 unsafe impl Sync for PageCells {}
@@ -24,7 +24,7 @@ pub fn page_cells_base() -> (ret: usize)
     PAGE_CELLS.0.get() as usize
 }
 
-impl TokenCellBase for RwLock<Page, (), (), NO_KILL_STATE> {
+impl TokenCellBase for LockCell<Page, (), (), NO_KILL_STATE> {
     open spec fn cell_base_spec() -> usize { page_cells_base_spec() }
     fn cell_base() -> (ret: usize) { page_cells_base() }
 }

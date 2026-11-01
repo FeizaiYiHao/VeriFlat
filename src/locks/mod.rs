@@ -1,6 +1,6 @@
 pub mod lock_inner_traits;
 pub mod lock_inner_t;
-pub mod rwlock;
+pub mod lock_cell;
 pub mod local_context;
 pub mod lock_traits;
 pub mod locked_points_to;
@@ -14,7 +14,7 @@ pub mod token_lock;
 
 pub use lock_inner_traits::*;
 pub use lock_inner_t::*;
-pub use rwlock::*;
+pub use lock_cell::*;
 pub use local_context::*;
 pub use lock_traits::*;
 pub use locked_points_to::*;

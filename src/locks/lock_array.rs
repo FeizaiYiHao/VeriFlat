@@ -12,13 +12,13 @@ use crate::page::Page;
 verus! {
     /// Storage of a lock array's cells: the cells' lock objects and their well-formedness.
     pub trait LockStorage<T, ROT, GhostT, const N: usize, const HAS_KILL_STATE: bool> {
-        spec fn view(&self) -> Seq<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>;
+        spec fn view(&self) -> Seq<LockCell<T, ROT, GhostT, HAS_KILL_STATE>>;
         spec fn wf(&self) -> bool;
     }
 
     /// Inline storage: the cells live inside the array value.
-    impl<T, ROT, GhostT, const N: usize, const HAS_KILL_STATE: bool> LockStorage<T, ROT, GhostT, N, HAS_KILL_STATE> for Array<RwLock<T, ROT, GhostT, HAS_KILL_STATE>, N> {
-        open spec fn view(&self) -> Seq<RwLock<T, ROT, GhostT, HAS_KILL_STATE>> { self.seq.view() }
+    impl<T, ROT, GhostT, const N: usize, const HAS_KILL_STATE: bool> LockStorage<T, ROT, GhostT, N, HAS_KILL_STATE> for Array<LockCell<T, ROT, GhostT, HAS_KILL_STATE>, N> {
+        open spec fn view(&self) -> Seq<LockCell<T, ROT, GhostT, HAS_KILL_STATE>> { self.seq.view() }
         open spec fn wf(&self) -> bool { self.seq.view().len() == N }
     }
 
@@ -46,12 +46,12 @@ verus! {
     /// reached only through raw addresses; the array holds one points-to token per cell and no runtime bytes.
     #[verifier::reject_recursive_types(T)]
     pub struct TokenCells<T, ROT, GhostT, const N: usize, const HAS_KILL_STATE: bool> {
-        pub perms: Tracked<Map<int, PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>>,
+        pub perms: Tracked<Map<int, PointsTo<LockCell<T, ROT, GhostT, HAS_KILL_STATE>>>>,
     }
 
     impl<T, ROT, GhostT, const N: usize, const HAS_KILL_STATE: bool> LockStorage<T, ROT, GhostT, N, HAS_KILL_STATE> for TokenCells<T, ROT, GhostT, N, HAS_KILL_STATE>
-        where RwLock<T, ROT, GhostT, HAS_KILL_STATE>: TokenCellBase {
-        open spec fn view(&self) -> Seq<RwLock<T, ROT, GhostT, HAS_KILL_STATE>> { Seq::new(N as nat, |i: int| self.perms.view().index(i).value()) }
+        where LockCell<T, ROT, GhostT, HAS_KILL_STATE>: TokenCellBase {
+        open spec fn view(&self) -> Seq<LockCell<T, ROT, GhostT, HAS_KILL_STATE>> { Seq::new(N as nat, |i: int| self.perms.view().index(i).value()) }
         open spec fn wf(&self) -> bool {
             &&& forall|i: int| #![trigger self.perms.view().dom().contains(i)] self.perms.view().dom().contains(i) <==> 0 <= i < N
             &&& forall|i: int|
@@ -59,7 +59,7 @@ verus! {
                 #![trigger self.perms.view().index(i)]
                 self.perms.view().dom().contains(i) ==> {
                     &&& self.perms.view().index(i).is_init()
-                    &&& self.perms.view().index(i).addr() == lock_cell_addr::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>(RwLock::<T, ROT, GhostT, HAS_KILL_STATE>::cell_base_spec(), i)
+                    &&& self.perms.view().index(i).addr() == lock_cell_addr::<LockCell<T, ROT, GhostT, HAS_KILL_STATE>>(LockCell::<T, ROT, GhostT, HAS_KILL_STATE>::cell_base_spec(), i)
                 }
         }
     }
@@ -67,9 +67,9 @@ verus! {
     /// A lock array over inline (`S` default) or token storage; both expose the same cell sequence.
     #[verifier::reject_recursive_types(T)]
     pub struct LockedArray<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT, const N: usize, const HAS_KILL_STATE: bool,
-        S = Array<RwLock<T, ROT, GhostT, HAS_KILL_STATE>, N>> {
+        S = Array<LockCell<T, ROT, GhostT, HAS_KILL_STATE>, N>> {
         pub(crate) storage: S,
-        user_seq: Ghost<Seq<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>,
+        user_seq: Ghost<Seq<LockCell<T, ROT, GhostT, HAS_KILL_STATE>>>,
     }
     impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT, const HAS_KILL_STATE: bool, const N: usize, S: LockStorage<T, ROT, GhostT, N, HAS_KILL_STATE>>
         LockedArray<T, ROT, GhostT, N, HAS_KILL_STATE, S> {
@@ -82,7 +82,7 @@ verus! {
             &&& self.view().len() == N
         }
 
-        pub closed spec fn view(&self) -> Seq<RwLock<T, ROT, GhostT, HAS_KILL_STATE>> { self.storage.view() }
+        pub closed spec fn view(&self) -> Seq<LockCell<T, ROT, GhostT, HAS_KILL_STATE>> { self.storage.view() }
         pub open spec fn spec_index(&self, index: usize) -> LockedArrayElement<T, ROT, GhostT, HAS_KILL_STATE>
             recommends
                 0 <= index < N,
@@ -147,7 +147,7 @@ verus! {
     }
 
     impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT, const HAS_KILL_STATE: bool, const N: usize> LockedArray<T, ROT, GhostT, N, HAS_KILL_STATE> {
-        pub fn from_array(array: Array<RwLock<T, ROT, GhostT, HAS_KILL_STATE>, N>) -> (ret: Self)
+        pub fn from_array(array: Array<LockCell<T, ROT, GhostT, HAS_KILL_STATE>, N>) -> (ret: Self)
             requires
                 array.wf(),
             ensures
@@ -195,7 +195,7 @@ verus! {
     }
 
     impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT, GhostT, const HAS_KILL_STATE: bool, const N: usize>
-        LockedArray<T, ROT, GhostT, N, HAS_KILL_STATE, TokenCells<T, ROT, GhostT, N, HAS_KILL_STATE>> where RwLock<T, ROT, GhostT, HAS_KILL_STATE>: TokenCellBase {
+        LockedArray<T, ROT, GhostT, N, HAS_KILL_STATE, TokenCells<T, ROT, GhostT, N, HAS_KILL_STATE>> where LockCell<T, ROT, GhostT, HAS_KILL_STATE>: TokenCellBase {
         pub fn from_token_cells(cells: TokenCells<T, ROT, GhostT, N, HAS_KILL_STATE>) -> (ret: Self)
             requires
                 cells.wf(),
@@ -236,9 +236,9 @@ verus! {
             ensures
                 ret == self.spec_index(index).view().view(),
         {
-            let addr = lock_cell_addr_exec::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>(RwLock::<T, ROT, GhostT, HAS_KILL_STATE>::cell_base(), index);
+            let addr = lock_cell_addr_exec::<LockCell<T, ROT, GhostT, HAS_KILL_STATE>>(LockCell::<T, ROT, GhostT, HAS_KILL_STATE>::cell_base(), index);
             let tracked perm = self.storage.perms.borrow().tracked_borrow(index as int);
-            borrow(&PPtr::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>::from_usize(addr), Tracked(perm), lp)
+            borrow(&PPtr::<LockCell<T, ROT, GhostT, HAS_KILL_STATE>>::from_usize(addr), Tracked(perm), lp)
         }
 
         pub fn borrow_typed<'a>(&self, index: usize, Ghost(held_locks): Ghost<Map<usize, TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>, lock_perm: Tracked<&'a LockPerm>) -> (ret: &'a T)
@@ -288,9 +288,9 @@ verus! {
                 *ret == old(self).spec_index(index).view().view(),
                 final(self).spec_index(index).view().view() == *final(ret),
         {
-            let addr = lock_cell_addr_exec::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>(RwLock::<T, ROT, GhostT, HAS_KILL_STATE>::cell_base(), index);
+            let addr = lock_cell_addr_exec::<LockCell<T, ROT, GhostT, HAS_KILL_STATE>>(LockCell::<T, ROT, GhostT, HAS_KILL_STATE>::cell_base(), index);
             let tracked perm = self.storage.perms.borrow_mut().tracked_borrow_mut(index as int);
-            borrow_mut(&PPtr::<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), lp)
+            borrow_mut(&PPtr::<LockCell<T, ROT, GhostT, HAS_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), lp)
         }
 
         pub fn borrow_mut_typed<'a>(&'a mut self, index: usize, Ghost(held_locks): Ghost<Map<usize, TypedHeldLock>>, Tracked(lctx): Tracked<&LocalContext>, lp: Tracked<&'a LockPerm>) -> (ret: &'a mut T)
@@ -349,9 +349,9 @@ verus! {
                 ret is Some ==> wlock_ensures(old(self).spec_index(index).view(), final(self).spec_index(index).view(), old(self).lock_id_by_index(index), final(lctx), ret->Some_0.view()),
                 ret is Some ==> lock_ensures(old(lctx), final(lctx), old(self).lock_id_by_index(index), obj_id.view()),
         {
-            let addr = lock_cell_addr_exec::<RwLock<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>(RwLock::<Cpu, (), Option<CpuId>, HAS_KILL_STATE>::cell_base(), index);
+            let addr = lock_cell_addr_exec::<LockCell<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>(LockCell::<Cpu, (), Option<CpuId>, HAS_KILL_STATE>::cell_base(), index);
             let tracked perm = self.storage.perms.borrow_mut().tracked_borrow_mut(index as int);
-            let ret = wlock_unless_killed_array_cell(&PPtr::<RwLock<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), Ghost(index), obj_id);
+            let ret = wlock_unless_killed_array_cell(&PPtr::<LockCell<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), Ghost(index), obj_id);
             proof { if ret is None { assert(self.storage.perms.view() =~= old(self).storage.perms.view()); } }
             ret
         }
@@ -378,9 +378,9 @@ verus! {
                 wunlock_ensures(old(self).spec_index(index).view(), final(self).spec_index(index).view()),
                 unlock_ensures(old(lctx), final(lctx), obj_id.view(), old(self).lock_id_by_index(index)),
         {
-            let addr = lock_cell_addr_exec::<RwLock<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>(RwLock::<Cpu, (), Option<CpuId>, HAS_KILL_STATE>::cell_base(), index);
+            let addr = lock_cell_addr_exec::<LockCell<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>(LockCell::<Cpu, (), Option<CpuId>, HAS_KILL_STATE>::cell_base(), index);
             let tracked perm = self.storage.perms.borrow_mut().tracked_borrow_mut(index as int);
-            has_kill_state_wunlock_array_cell(&PPtr::<RwLock<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), lock_perm, Ghost(index), obj_id);
+            has_kill_state_wunlock_array_cell(&PPtr::<LockCell<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), lock_perm, Ghost(index), obj_id);
         }
 
         /// `wlock_unless_killed` that also clears the calling cpu's interrupt flag when it takes the lock.
@@ -402,9 +402,9 @@ verus! {
                 ret is Some ==> wlock_ensures(old(self).spec_index(index).view(), final(self).spec_index(index).view(), old(self).lock_id_by_index(index), final(lctx), ret->Some_0.view()),
                 ret is Some ==> lock_ensures(old(lctx), final(lctx), old(self).lock_id_by_index(index), obj_id.view()),
         {
-            let addr = lock_cell_addr_exec::<RwLock<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>(RwLock::<Cpu, (), Option<CpuId>, HAS_KILL_STATE>::cell_base(), index);
+            let addr = lock_cell_addr_exec::<LockCell<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>(LockCell::<Cpu, (), Option<CpuId>, HAS_KILL_STATE>::cell_base(), index);
             let tracked perm = self.storage.perms.borrow_mut().tracked_borrow_mut(index as int);
-            let ret = wlock_unless_killed_cli_array_cell(&PPtr::<RwLock<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), Ghost(index), obj_id);
+            let ret = wlock_unless_killed_cli_array_cell(&PPtr::<LockCell<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), Ghost(index), obj_id);
             proof { if ret is None { assert(self.storage.perms.view() =~= old(self).storage.perms.view()); } }
             ret
         }
@@ -432,9 +432,9 @@ verus! {
                 wunlock_ensures(old(self).spec_index(index).view(), final(self).spec_index(index).view()),
                 unlock_ensures(old(lctx), final(lctx), obj_id.view(), old(self).lock_id_by_index(index)),
         {
-            let addr = lock_cell_addr_exec::<RwLock<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>(RwLock::<Cpu, (), Option<CpuId>, HAS_KILL_STATE>::cell_base(), index);
+            let addr = lock_cell_addr_exec::<LockCell<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>(LockCell::<Cpu, (), Option<CpuId>, HAS_KILL_STATE>::cell_base(), index);
             let tracked perm = self.storage.perms.borrow_mut().tracked_borrow_mut(index as int);
-            wunlock_sti_array_cell(&PPtr::<RwLock<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), lock_perm, Ghost(index), obj_id);
+            wunlock_sti_array_cell(&PPtr::<LockCell<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), lock_perm, Ghost(index), obj_id);
         }
 
         /// Mark entry `index`, which this thread write-holds, for its killer; the write lock stays. The mark is a
@@ -458,9 +458,9 @@ verus! {
                 final(self).spec_index(index).view().view_rodata() == old(self).spec_index(index).view().view_rodata(),
                 final(self).spec_index(index).view().view_ghost() == old(self).spec_index(index).view().view_ghost(),
         {
-            let addr = lock_cell_addr_exec::<RwLock<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>(RwLock::<Cpu, (), Option<CpuId>, HAS_KILL_STATE>::cell_base(), index);
+            let addr = lock_cell_addr_exec::<LockCell<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>(LockCell::<Cpu, (), Option<CpuId>, HAS_KILL_STATE>::cell_base(), index);
             let tracked perm = self.storage.perms.borrow_mut().tracked_borrow_mut(index as int);
-            mark_kill(&PPtr::<RwLock<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), Ghost(killer_info));
+            mark_kill(&PPtr::<LockCell<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), Ghost(killer_info));
         }
     }
 
@@ -484,9 +484,9 @@ verus! {
                 final(self).spec_index(index).view().view_rodata() == old(self).spec_index(index).view().view_rodata(),
                 final(self).spec_index(index).view().view_ghost() == old(self).spec_index(index).view().view_ghost(),
         {
-            let addr = lock_cell_addr_exec::<RwLock<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>(RwLock::<Cpu, (), Option<CpuId>, HAS_KILL_STATE>::cell_base(), index);
+            let addr = lock_cell_addr_exec::<LockCell<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>(LockCell::<Cpu, (), Option<CpuId>, HAS_KILL_STATE>::cell_base(), index);
             let tracked perm = self.storage.perms.borrow_mut().tracked_borrow_mut(index as int);
-            unkill(&PPtr::<RwLock<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx));
+            unkill(&PPtr::<LockCell<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx));
         }
     }
 
@@ -505,9 +505,9 @@ verus! {
                 wlock_ensures(old(self).spec_index(index).view(), final(self).spec_index(index).view(), old(self).lock_id_by_index(index), final(lctx), ret.view()),
                 lock_ensures(old(lctx), final(lctx), old(self).lock_id_by_index(index), obj_id.view()),
         {
-            let addr = lock_cell_addr_exec::<RwLock<Page, (), (), NO_KILL_STATE>>(RwLock::<Page, (), (), NO_KILL_STATE>::cell_base(), index);
+            let addr = lock_cell_addr_exec::<LockCell<Page, (), (), NO_KILL_STATE>>(LockCell::<Page, (), (), NO_KILL_STATE>::cell_base(), index);
             let tracked perm = self.storage.perms.borrow_mut().tracked_borrow_mut(index as int);
-            wlock_array_cell(&PPtr::<RwLock<Page, (), (), NO_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), Ghost(index), obj_id)
+            wlock_array_cell(&PPtr::<LockCell<Page, (), (), NO_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), Ghost(index), obj_id)
         }
 
         pub fn wunlock(&mut self, index: usize, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, obj_id: Ghost<KernelObjId>)
@@ -530,9 +530,9 @@ verus! {
                 wunlock_ensures(old(self).spec_index(index).view(), final(self).spec_index(index).view()),
                 unlock_ensures(old(lctx), final(lctx), obj_id.view(), old(self).lock_id_by_index(index)),
         {
-            let addr = lock_cell_addr_exec::<RwLock<Page, (), (), NO_KILL_STATE>>(RwLock::<Page, (), (), NO_KILL_STATE>::cell_base(), index);
+            let addr = lock_cell_addr_exec::<LockCell<Page, (), (), NO_KILL_STATE>>(LockCell::<Page, (), (), NO_KILL_STATE>::cell_base(), index);
             let tracked perm = self.storage.perms.borrow_mut().tracked_borrow_mut(index as int);
-            wunlock_array_cell(&PPtr::<RwLock<Page, (), (), NO_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), lock_perm, Ghost(index), obj_id);
+            wunlock_array_cell(&PPtr::<LockCell<Page, (), (), NO_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), lock_perm, Ghost(index), obj_id);
         }
     }
 }

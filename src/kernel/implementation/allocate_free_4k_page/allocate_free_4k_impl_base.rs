@@ -569,7 +569,7 @@ verus! {
             ret is None ==> {
                 &&& *final(krnl) == *old(krnl)
                 &&& *final(lctx) == *old(lctx)
-                &&& final(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.view().fold_left(0int, |sum: int, cache: RwLock<AllocatorCache<ALLOCATOR_SIZE_4K>, (), (), NO_KILL_STATE>| { sum + cache.view().linked_list.len() }) == 0
+                &&& final(krnl).allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.view().fold_left(0int, |sum: int, cache: LockCell<AllocatorCache<ALLOCATOR_SIZE_4K>, (), (), NO_KILL_STATE>| { sum + cache.view().linked_list.len() }) == 0
             },
             ret is Some ==> {
                 &&& final(lctx).kernel_view_locking_state() is Release
@@ -629,7 +629,7 @@ verus! {
                 forall|held_cpu_id: CpuId| #![trigger lctx.cpu_lock_map().dom().contains(held_cpu_id)] lctx.cpu_lock_map().dom().contains(held_cpu_id) ==> !(krnl.cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
                 forall|held_page: PageIndex| #![trigger lctx.page_lock_map().dom().contains(held_page)] lctx.page_lock_map().dom().contains(held_page) ==> krnl.pg_arr.spec_index(held_page).view().view().orders_below_allocator_locks(),
                 krnl.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.view().take(cpu as int).fold_left(0int,
-                    |sum: int, cache: RwLock<AllocatorCache<ALLOCATOR_SIZE_4K>, (), (), NO_KILL_STATE>| { sum + cache.view().linked_list.len() }) == 0,
+                    |sum: int, cache: LockCell<AllocatorCache<ALLOCATOR_SIZE_4K>, (), (), NO_KILL_STATE>| { sum + cache.view().linked_list.len() }) == 0,
             decreases NUM_CPUS - cpu,
         {
             proof {
@@ -649,10 +649,10 @@ verus! {
                 assert(cache_perms_match_lctx(krnl.allc_4k_mp, alloc_ptr_4k, &*lctx, cache_perms)) by { reveal(cache_perms_match_lctx); };
                 return Some((page_ptr, Tracked(page_lock_perm)));
             }
-            assert(krnl.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.view().take(cpu as int + 1).fold_left(0int, |sum: int, cache: RwLock<AllocatorCache<ALLOCATOR_SIZE_4K>, (), (), NO_KILL_STATE>| { sum + cache.view().linked_list.len() }) == 0) by {
+            assert(krnl.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.view().take(cpu as int + 1).fold_left(0int, |sum: int, cache: LockCell<AllocatorCache<ALLOCATOR_SIZE_4K>, (), (), NO_KILL_STATE>| { sum + cache.view().linked_list.len() }) == 0) by {
                 let caches = krnl.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches;
                 let cache_seq = caches.view();
-                let cache_len_sum = |sum: int, cache: RwLock<AllocatorCache<ALLOCATOR_SIZE_4K>, (), (), NO_KILL_STATE>| { sum + cache.view().linked_list.len() };
+                let cache_len_sum = |sum: int, cache: LockCell<AllocatorCache<ALLOCATOR_SIZE_4K>, (), (), NO_KILL_STATE>| { sum + cache.view().linked_list.len() };
                 assert(cache_seq.spec_index(cpu as int).view().linked_list.len() == 0) by { caches.view_index_eq_element_value(); };
                 assert(cache_seq.take(cpu as int + 1).fold_left(0int, cache_len_sum) == cache_len_sum(cache_seq.take(cpu as int).fold_left(0int, cache_len_sum), cache_seq.spec_index(cpu as int))) by {
                     assert(cache_seq.take(cpu as int + 1).drop_last() =~= cache_seq.take(cpu as int) && cache_seq.take(cpu as int + 1).last() == cache_seq.spec_index(cpu as int)) by { cache_seq.lemma_take_succ_push(cpu as int); };
@@ -661,7 +661,7 @@ verus! {
             cpu = cpu + 1;
         }
         assert(krnl.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.view().fold_left(0int,
-            |sum: int, cache: RwLock<AllocatorCache<ALLOCATOR_SIZE_4K>, (), (), NO_KILL_STATE>| { sum + cache.view().linked_list.len() }) == 0) by { allocator_perms_wf_at(krnl.allc_4k_mp, alloc_ptr_4k); krnl.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.view().lemma_take_len(); };
+            |sum: int, cache: LockCell<AllocatorCache<ALLOCATOR_SIZE_4K>, (), (), NO_KILL_STATE>| { sum + cache.view().linked_list.len() }) == 0) by { allocator_perms_wf_at(krnl.allc_4k_mp, alloc_ptr_4k); krnl.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.view().lemma_take_len(); };
         proof { held_threads_unchanged_except_for_unchanged_except(old(krnl).thr_mp, krnl.thr_mp, old(lctx), thread_ptr); }
         proof { assert(kernel_endpoint_nonlock_fields_unchanged(old(krnl).ep_mp, krnl.ep_mp)) by { broadcast use group_kernel_endpoint_nonlock_fields_unchanged_transitive; }; }
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), krnl)) by { broadcast use group_kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
@@ -683,7 +683,7 @@ pub proof fn lemma_scan_fail_pool_nonempty(k: &KernelK, container_ptr: RwLockCon
         k.ctn_mp.spec_index(container_ptr).view_rodata().view().allocator_ptr_4k == alloc_ptr_4k,
         k.ctn_mp.spec_index(container_ptr).view_ghost().owned_threads.view().contains(thread_ptr),
         thread_effective_quota_4k(k.thr_mp.spec_index(thread_ptr)) >= 1,
-        k.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.view().fold_left(0int, |sum: int, cache: RwLock<AllocatorCache<ALLOCATOR_SIZE_4K>, (), (), NO_KILL_STATE>| { sum + cache.view().linked_list.len() }) == 0,
+        k.allc_4k_mp.spec_index(alloc_ptr_4k).cpu_caches.view().fold_left(0int, |sum: int, cache: LockCell<AllocatorCache<ALLOCATOR_SIZE_4K>, (), (), NO_KILL_STATE>| { sum + cache.view().linked_list.len() }) == 0,
     ensures
         k.allc_4k_mp.spec_index(alloc_ptr_4k).global_pool.view().view().len() > 0,
 {

@@ -186,7 +186,7 @@ pub ghost struct ThreadGhost {
     pub exited: bool,
 }
 
-pub type ThreadRwLock = RwLock<Thread, (), ThreadGhost, THREAD_HAS_KILL_STATE>;
+pub type ThreadRwLock = LockCell<Thread, (), ThreadGhost, THREAD_HAS_KILL_STATE>;
 pub type ThreadLockedMap = LockedMap<RwLockThreadPtr, Thread, (), ThreadGhost, THREAD_HAS_KILL_STATE>;
 
 pub ghost struct ThreadU {

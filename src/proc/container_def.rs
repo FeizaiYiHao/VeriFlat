@@ -25,7 +25,7 @@ pub struct ContainerRO {
     pub allocator_ptr_1g: RwLockPageAllocatorPtr,
 }
 
-/// Lock-free ghost state associated with a container's `RwLock`.
+/// Lock-free ghost state associated with a container's `LockCell`.
 pub struct ContainerGhost {
     pub uppertree_seq: Ghost<Seq<RwLockContainerPtr>>,
     pub subtree_set: Ghost<Set<RwLockContainerPtr>>,

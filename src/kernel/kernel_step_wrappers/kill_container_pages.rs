@@ -196,7 +196,7 @@ proof fn lemma_free_1g_cache_len_fold_zero(krnl: &KernelK, allocator_ptr: RwLock
         0 <= n <= NUM_CPUS,
     ensures
         krnl.allc_1g_mp.spec_index(allocator_ptr).cpu_caches.view().take(n)
-            .fold_left(0int, |sum: int, cpu_rw_lock: RwLock<AllocatorCache<ALLOCATOR_SIZE_1G>, (), (), NO_KILL_STATE>| { sum + cpu_rw_lock.view().linked_list.len() }) == 0,
+            .fold_left(0int, |sum: int, cpu_rw_lock: LockCell<AllocatorCache<ALLOCATOR_SIZE_1G>, (), (), NO_KILL_STATE>| { sum + cpu_rw_lock.view().linked_list.len() }) == 0,
         forall|i: CpuId| #![trigger krnl.allc_1g_mp.spec_index(allocator_ptr).cpu_caches.spec_index(i)]
             i < n ==> krnl.allc_1g_mp.spec_index(allocator_ptr).cpu_caches.spec_index(i).view().view().linked_list.view().len() == 0,
     decreases n,

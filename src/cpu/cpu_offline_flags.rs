@@ -95,7 +95,7 @@ impl CpuOfflineFlags {
                 &&& !ret.flags.spec_index(cpu_id).view().view().requested
             },
     {
-        let mut flag_array: Array<RwLock<OfflineFlag, (), (), NO_KILL_STATE>, NUM_CPUS> = Array::new();
+        let mut flag_array: Array<LockCell<OfflineFlag, (), (), NO_KILL_STATE>, NUM_CPUS> = Array::new();
         let mut cpu_id = 0;
         while cpu_id < NUM_CPUS
             invariant
@@ -110,7 +110,7 @@ impl CpuOfflineFlags {
                 },
             decreases NUM_CPUS - cpu_id,
         {
-            flag_array.set(cpu_id, RwLock::new_unlocked(OfflineFlag::new(Ghost(flags_ptr), Ghost(cpu_id), Ghost(depth)), (), Ghost(())));
+            flag_array.set(cpu_id, LockCell::new_unlocked(OfflineFlag::new(Ghost(flags_ptr), Ghost(cpu_id), Ghost(depth)), (), Ghost(())));
             cpu_id = cpu_id + 1;
         }
         Self { owning_container: Ghost(owning_container), container_depth: Ghost(depth), flags: LockedArray::from_array(flag_array) }
@@ -119,4 +119,4 @@ impl CpuOfflineFlags {
 }
 
 const ASSERT_CPU_OFFLINE_FLAGS_FITS_4K: [(); 1] = [(); (core::mem::size_of::<CpuOfflineFlags>() <= PAGE_SZ_4K) as usize];
-const ASSERT_CONTAINER_LOCK_FITS_4K: [(); 1] = [(); (core::mem::size_of::<RwLock<Container, ReadOnlyNode<ContainerRO>, ContainerGhost, CONTAINER_HAS_KILL_STATE>>() <= PAGE_SZ_4K) as usize];
+const ASSERT_CONTAINER_LOCK_FITS_4K: [(); 1] = [(); (core::mem::size_of::<LockCell<Container, ReadOnlyNode<ContainerRO>, ContainerGhost, CONTAINER_HAS_KILL_STATE>>() <= PAGE_SZ_4K) as usize];

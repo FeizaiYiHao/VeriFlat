@@ -27,8 +27,8 @@ const PTE_PRESENT: u64 = 1;
 const PTE_HUGE: u64 = 1 << 7;
 const PTE_ADDR_MASK: u64 = 0x000f_ffff_ffff_f000;
 
-type PageLock = RwLock<Page, (), (), NO_KILL_STATE>;
-type NeedFlushLock = RwLock<PcidNeedFlush, (), Option<CpuId>, NO_KILL_STATE>;
+type PageLock = LockCell<Page, (), (), NO_KILL_STATE>;
+type NeedFlushLock = LockCell<PcidNeedFlush, (), Option<CpuId>, NO_KILL_STATE>;
 type FreePool = LinkedList<PagePtr, 233>;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -299,10 +299,10 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
             Kind::DomainSpare => unreachable!(),
         };
         let lock_ptr = (page_base + i * size_of::<PageLock>()) as *mut PageLock;
-        ptr::write(lock_ptr, RwLock::new_unlocked(new_page(addr, state, ref_count, root_container), (), Ghost::assume_new()));
+        ptr::write(lock_ptr, LockCell::new_unlocked(new_page(addr, state, ref_count, root_container), (), Ghost::assume_new()));
         if kinds[i] == Kind::Free || kinds[i] == Kind::Free2m {
             let page = &mut *((lock_ptr as usize + page_value_offset) as *mut Page);
-            assert!(page.addr == addr, "RwLock value offset mismatch");
+            assert!(page.addr == addr, "LockCell value offset mismatch");
             let (node_addr, mut node_perm) = page.free_list_node_storage.take();
             node_update_value(node_addr, &mut node_perm, addr);
             if kinds[i] == Kind::Free {
@@ -320,7 +320,7 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
     let needflush_base = pcid_needflush_cells_base();
     for k in 0..NUM_CPUS * PCID_MAX {
         let lock_ptr = (needflush_base + k * size_of::<NeedFlushLock>()) as *mut NeedFlushLock;
-        ptr::write(lock_ptr, RwLock::new_unlocked(PcidNeedFlush::new(Ghost::assume_new(), Ghost::assume_new()), (), Ghost::assume_new()));
+        ptr::write(lock_ptr, LockCell::new_unlocked(PcidNeedFlush::new(Ghost::assume_new(), Ghost::assume_new()), (), Ghost::assume_new()));
     }
     let pcid_needflush = PcidNeedFlushArray::from_token_cells(Tracked::assume_new());
 

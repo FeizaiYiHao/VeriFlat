@@ -4,7 +4,7 @@ use crate::*;
 use vstd::simple_pptr::*;
 
 /// TCB: reinterpret a raw 4k page's memory as a fresh, WRITE-LOCKED
-/// `RwLock<T>` and mint the corresponding `LockPerm`.
+/// `LockCell<T>` and mint the corresponding `LockPerm`.
 ///
 /// This is a MINT, not an acquire: the page is exclusively ours (staged,
 /// slot write-locked), so no other thread can contend on the new object
@@ -17,7 +17,7 @@ use vstd::simple_pptr::*;
 #[verifier::external_body]
 pub fn retype_page_perm_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: bool, I: SpinLockInner>(
     page_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm4k>, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>,
-) -> (ret: (Tracked<PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>>>, Tracked<LockPerm>))
+) -> (ret: (Tracked<PointsTo<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>>, Tracked<LockPerm>))
     requires
         !(rodata.container_source() is Dynamic),
         !(rodata.process_source() is Dynamic),
@@ -46,7 +46,7 @@ pub fn retype_page_perm_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerId
         final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
         typed_lock_maps_inserted(old(lctx), final(lctx), obj_id.view(), TypedHeldLock { lock_id: ret.1.view().ordering_lock_id(), mode: TypedLockMode::Write }),
 {
-    unsafe { (page_ptr as *mut RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>).write(RwLock::new_wlocked_for_retype(value, rodata, Ghost(LockControl::Clear), LockOwnerId::None)); }
+    unsafe { (page_ptr as *mut LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>).write(LockCell::new_wlocked_for_retype(value, rodata, Ghost(LockControl::Clear), LockOwnerId::None)); }
     (Tracked::assume_new(), Tracked::assume_new())
 }
 
@@ -93,7 +93,7 @@ pub fn retype_thread_rwlock_to_4k_page_perm(
 fn retype_page_perm_2m_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: bool, I: SpinLockInner>(
     page_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm2m>, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>,
     control: LockControl,
-) -> (ret: (Tracked<PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>>>, Tracked<LockPerm>))
+) -> (ret: (Tracked<PointsTo<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>>, Tracked<LockPerm>))
     requires
         !(rodata.container_source() is Dynamic),
         (rodata.process_source() is Dynamic) == (control is DynamicProcess),
@@ -125,7 +125,7 @@ fn retype_page_perm_2m_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdT
         typed_lock_maps_inserted(old(lctx), final(lctx), obj_id.view(), TypedHeldLock { lock_id: ret.1.view().ordering_lock_id(), mode: TypedLockMode::Write }),
 {
     let owner = match control { LockControl::DynamicProcess(owner) => owner, _ => LockOwnerId::None };
-    unsafe { (page_ptr as *mut RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>).write(RwLock::new_wlocked_for_retype(value, rodata, Ghost(control), owner)); }
+    unsafe { (page_ptr as *mut LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>).write(LockCell::new_wlocked_for_retype(value, rodata, Ghost(control), owner)); }
     (Tracked::assume_new(), Tracked::assume_new())
 }
 

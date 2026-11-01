@@ -8,20 +8,20 @@ pub proof fn lemma_cache_len_fold_upper_bound<const SIZE: usize>(caches: LockedA
         caches.inv(),
         forall|cpu: CpuId| #![trigger caches.spec_index(cpu)] index_valid(NUM_CPUS, cpu) ==> caches.spec_index(cpu).inv(),
     ensures
-        caches.view().fold_left(0int, |sum: int, cache: RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| sum + cache.view().linked_list.len()) <= NUM_CPUS * ALLOCATOR_MAX_WATERMARK,
+        caches.view().fold_left(0int, |sum: int, cache: LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| sum + cache.view().linked_list.len()) <= NUM_CPUS * ALLOCATOR_MAX_WATERMARK,
 {
     caches.view_index_eq_element_value();
-    seq_fold_upper_bound(caches.view(), |sum: int, cache: RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| sum + cache.view().linked_list.len(), ALLOCATOR_MAX_WATERMARK as int);
+    seq_fold_upper_bound(caches.view(), |sum: int, cache: LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| sum + cache.view().linked_list.len(), ALLOCATOR_MAX_WATERMARK as int);
 }
 
-pub proof fn lemma_cache_len_fold_congruence<const SIZE: usize>(s1: Seq<RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>>, s2: Seq<RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>>)
+pub proof fn lemma_cache_len_fold_congruence<const SIZE: usize>(s1: Seq<LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>>, s2: Seq<LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>>)
     requires
         s1.len() == s2.len(),
         forall|i: int| #![trigger s1.spec_index(i), s2.spec_index(i)]
             0 <= i < s1.len() ==> s1.spec_index(i).view().linked_list.len() == s2.spec_index(i).view().linked_list.len(),
     ensures
-        s1.fold_left(0int, |sum: int, cpu_rw_lock: RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + cpu_rw_lock.view().linked_list.len() })
-            == s2.fold_left(0int, |sum: int, cpu_rw_lock: RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + cpu_rw_lock.view().linked_list.len() }),
+        s1.fold_left(0int, |sum: int, cpu_rw_lock: LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + cpu_rw_lock.view().linked_list.len() })
+            == s2.fold_left(0int, |sum: int, cpu_rw_lock: LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + cpu_rw_lock.view().linked_list.len() }),
     decreases s1.len(),
 {
     if s1.len() != 0 {
@@ -29,7 +29,7 @@ pub proof fn lemma_cache_len_fold_congruence<const SIZE: usize>(s1: Seq<RwLock<A
     }
 }
 
-pub proof fn lemma_cache_len_fold_change_one<const SIZE: usize>(s1: Seq<RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>>, s2: Seq<RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>>, j: int)
+pub proof fn lemma_cache_len_fold_change_one<const SIZE: usize>(s1: Seq<LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>>, s2: Seq<LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>>, j: int)
     requires
         s1.len() == s2.len(),
         0 <= j < s1.len(),
@@ -37,8 +37,8 @@ pub proof fn lemma_cache_len_fold_change_one<const SIZE: usize>(s1: Seq<RwLock<A
         forall|i: int| #![trigger s1.spec_index(i)] #![trigger s2.spec_index(i)]
             0 <= i < s1.len() && i != j ==> s1.spec_index(i).view().linked_list.len() == s2.spec_index(i).view().linked_list.len(),
     ensures
-        s1.fold_left(0int, |sum: int, c: RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + c.view().linked_list.len() })
-            == s2.fold_left(0int, |sum: int, c: RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + c.view().linked_list.len() }) + 1,
+        s1.fold_left(0int, |sum: int, c: LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + c.view().linked_list.len() })
+            == s2.fold_left(0int, |sum: int, c: LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + c.view().linked_list.len() }) + 1,
     decreases s1.len(),
 {
     if j == s1.len() - 1 {
@@ -56,16 +56,16 @@ pub proof fn lemma_cache_len_fold_change_one_array<const SIZE: usize>(old_arr: L
         new_arr.entries_unchanged_except(&old_arr, j),
         old_arr.spec_index(j).view().view().linked_list.len() == new_arr.spec_index(j).view().view().linked_list.len() + 1,
     ensures
-        old_arr.view().fold_left(0int, |sum: int, c: RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + c.view().linked_list.len() })
-            == new_arr.view().fold_left(0int, |sum: int, c: RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + c.view().linked_list.len() }) + 1,
+        old_arr.view().fold_left(0int, |sum: int, c: LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + c.view().linked_list.len() })
+            == new_arr.view().fold_left(0int, |sum: int, c: LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + c.view().linked_list.len() }) + 1,
 {
-    let f = |sum: int, c: RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| sum + c.view().linked_list.len();
+    let f = |sum: int, c: LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| sum + c.view().linked_list.len();
     assert(old_arr.view().fold_left(0int, f) == new_arr.view().fold_left(0int, f) + 1) by { old_arr.view_index_eq_element_value(); new_arr.view_index_eq_element_value(); lemma_cache_len_fold_change_one(old_arr.view(), new_arr.view(), j as int); };
 }
 
-pub proof fn lemma_cache_len_fold_nonneg<const SIZE: usize>(s: Seq<RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>>)
+pub proof fn lemma_cache_len_fold_nonneg<const SIZE: usize>(s: Seq<LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>>)
     ensures
-        s.fold_left(0int, |sum: int, c: RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + c.view().linked_list.len() }) >= 0,
+        s.fold_left(0int, |sum: int, c: LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + c.view().linked_list.len() }) >= 0,
     decreases s.len(),
 {
     if s.len() != 0 {
@@ -73,11 +73,11 @@ pub proof fn lemma_cache_len_fold_nonneg<const SIZE: usize>(s: Seq<RwLock<Alloca
     }
 }
 
-pub proof fn lemma_cache_len_fold_ge_elem<const SIZE: usize>(s: Seq<RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>>, j: int)
+pub proof fn lemma_cache_len_fold_ge_elem<const SIZE: usize>(s: Seq<LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>>, j: int)
     requires
         0 <= j < s.len(),
     ensures
-        s.fold_left(0int, |sum: int, c: RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + c.view().linked_list.len() }) >= s.spec_index(j).view().linked_list.len(),
+        s.fold_left(0int, |sum: int, c: LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + c.view().linked_list.len() }) >= s.spec_index(j).view().linked_list.len(),
     decreases s.len(),
 {
     if j == s.len() - 1 {
@@ -87,11 +87,11 @@ pub proof fn lemma_cache_len_fold_ge_elem<const SIZE: usize>(s: Seq<RwLock<Alloc
     }
 }
 
-pub proof fn lemma_cache_len_fold_all_zero<const SIZE: usize>(s: Seq<RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>>)
+pub proof fn lemma_cache_len_fold_all_zero<const SIZE: usize>(s: Seq<LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>>)
     requires
         forall|j: int| #![trigger s.spec_index(j)] 0 <= j < s.len() ==> s.spec_index(j).view().linked_list.view().len() == 0,
     ensures
-        s.fold_left(0int, |sum: int, c: RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + c.view().linked_list.len() }) == 0,
+        s.fold_left(0int, |sum: int, c: LockCell<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + c.view().linked_list.len() }) == 0,
     decreases s.len(),
 {
     if s.len() != 0 {

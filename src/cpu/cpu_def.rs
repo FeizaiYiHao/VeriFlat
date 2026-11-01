@@ -147,7 +147,7 @@ impl Cpu {
                     &&& ret.spec_index(cpu_id).view().view().view().current_pcid == KERNEL_DEFAULT_PCID
                 },
     {
-        let tracked mut perms = Map::<int, PointsTo<RwLock<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>>>::tracked_empty();
+        let tracked mut perms = Map::<int, PointsTo<LockCell<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>>>::tracked_empty();
         let mut cpu_id = 0;
         while cpu_id < NUM_CPUS
             invariant
@@ -158,7 +158,7 @@ impl Cpu {
                     #![trigger perms.index(old_cpu)]
                     0 <= old_cpu < cpu_id ==> {
                         &&& perms.index(old_cpu).is_init()
-                        &&& perms.index(old_cpu).addr() == lock_cell_addr::<RwLock<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>>(cpu_cells_base_spec(), old_cpu)
+                        &&& perms.index(old_cpu).addr() == lock_cell_addr::<LockCell<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>>(cpu_cells_base_spec(), old_cpu)
                         &&& perms.index(old_cpu).value().inv()
                         &&& !perms.index(old_cpu).value().locked()
                         &&& !perms.index(old_cpu).value().being_killed()
@@ -173,7 +173,7 @@ impl Cpu {
             decreases NUM_CPUS - cpu_id,
         {
             let cpu = if cpu_id == 0 { Self::new_idle(owning_container, 0, default_cr3, cpu_id) } else { Self::new_off(owning_container, 0, default_cr3, cpu_id) };
-            let Tracked(cell) = cpu_cell_init(cpu_id, RwLock::new_unlocked(cpu, (), Ghost(None)));
+            let Tracked(cell) = cpu_cell_init(cpu_id, LockCell::new_unlocked(cpu, (), Ghost(None)));
             proof { perms.tracked_insert(cpu_id as int, cell); }
             cpu_id = cpu_id + 1;
         }
