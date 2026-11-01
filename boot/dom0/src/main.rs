@@ -95,6 +95,9 @@ const MMAP_ONLY_PAGES: usize = 16384;
 const MMAP_ONLY_VA: [usize; 2] = [0xc0_0000_0000, 0xc0_4000_0000];
 static mut PONG_STACK: [u8; 64 * 1024] = [0; 64 * 1024];
 static mut CALL_SERVER_STACK: [u8; 64 * 1024] = [0; 64 * 1024];
+/// Untimed call round trips before the timed ones of the cross-process call timing.
+const CROSS_CALL_WARMUP: usize = 100;
+static mut CROSS_CALL_SERVER_STACK: [u8; 64 * 1024] = [0; 64 * 1024];
 
 /// One page of dom0's image that a child process sends back to dom0 over IPC.
 #[repr(C, align(4096))]
@@ -341,9 +344,10 @@ extern "C" fn pong_thread() -> ! {
     retire_when_asked()
 }
 
-/// Serves `IPC_ROUNDS` calls on the root endpoint, replying each value plus one, until a plain
-/// `send_empty` from dom0 meets its receive-call wait and fails the rendezvous with
-/// ErrorIpcTypeMismatch; then yields until retired.
+/// Serves calls on the root endpoint, replying each value plus one, until a plain `send_empty` from
+/// dom0 meets its receive-call wait and fails the rendezvous with ErrorIpcTypeMismatch; then yields
+/// until retired. It runs as a dom0 thread, and as the first thread of the cross-process timing's
+/// child, which holds the root endpoint in descriptor 0 too.
 extern "C" fn call_server_thread() -> ! {
     let mut value = quiet_value("server receive_call", unsafe { sys_receive_call(ENDPOINT) });
     loop {
@@ -375,6 +379,35 @@ fn time_call_round_trip() {
     let cycles = (unsafe { core::arch::x86_64::_rdtsc() } - start) / IPC_ROUNDS;
     log::info!("call round trip: {} TSC cycles (2 syscalls, 2 direct switches) over {} rounds", cycles, IPC_ROUNDS);
     expect_error("send_empty to a receive_call waiter", unsafe { sys_send_empty(ENDPOINT) }, "ErrorIpcTypeMismatch");
+}
+
+/// Times one call round trip as `time_call_round_trip` does, but against `call_server_thread` as the
+/// first thread of a child process that shares dom0's image and holds the root endpoint: each direct
+/// switch also loads the other process's cr3 (its own page table and PCID). The timed rounds follow
+/// `CROSS_CALL_WARMUP` untimed ones, the first of which lets the child start. The child, waiting for
+/// the next call, is killed afterwards, which returns its quota to dom0's container.
+fn time_call_round_trip_cross_process() {
+    let (image, pages) = image_range();
+    fund("cross-process call server funding", 4 + 3 * pages);
+    let sp = stack_top(&raw const CROSS_CALL_SERVER_STACK);
+    check("new_process_with_endpoint (call server)", unsafe { sys_new_process_with_endpoint(image, pages, ENDPOINT, entry(call_server_thread), sp) });
+    let call = |i: usize| {
+        let reply = quiet_value("cross-process call_usize", unsafe { sys_call_usize(ENDPOINT, i) });
+        if reply != i + 1 {
+            log::error!("cross-process call_usize({}) replied {}", i, reply);
+            unsafe { sys_debug_exit(1) };
+        }
+    };
+    for i in 0..CROSS_CALL_WARMUP {
+        call(i);
+    }
+    let start = unsafe { core::arch::x86_64::_rdtsc() };
+    for i in 0..IPC_ROUNDS as usize {
+        call(i);
+    }
+    let cycles = (unsafe { core::arch::x86_64::_rdtsc() } - start) / IPC_ROUNDS;
+    log::info!("call round trip cross process: {} TSC cycles (2 syscalls, 2 direct switches with cr3 loads) over {} rounds", cycles, IPC_ROUNDS);
+    check("kill_process(0) (call server child)", unsafe { sys_kill_process(0) });
 }
 
 /// Times one IPC round trip (send_empty, then receive_empty, each a rendezvous with `pong_thread`
@@ -1161,15 +1194,17 @@ pub extern "C" fn _start() -> ! {
     // at an IPI (queuing a thread sends none), and a CPU notices an offline request only when its thread
     // yields. The remaining timings need none of these: the parallel call timing brings each other CPU
     // online once, with the IPI of `cpu_online`, and its clients yield to take their CPUs Off again;
-    // after it only CPU 0 runs, the pong and call server threads block in receive, and the timed
-    // threads are only created. The phases below rely on them (spinning waits for other threads, CPU
-    // offline cycles, the register spinner), so this build skips them. The parallel call timing comes
-    // first, while CPU 0's shard holds no thread that a CPU coming online could pull instead.
+    // after it only CPU 0 runs, the pong and call server threads block in receive, the call server child
+    // is killed while it blocks in receive, and the timed threads are only created. The phases below
+    // rely on them (spinning waits for other threads, CPU offline cycles, the register spinner), so this
+    // build skips them. The parallel call timing comes first, while CPU 0's shard holds no thread that a
+    // CPU coming online could pull instead.
     if cfg!(feature = "no-timer") {
         time_parallel_call();
         fund("timing helper threads funding", 2);
         time_ipc_round_trip();
         time_call_round_trip();
+        time_call_round_trip_cross_process();
         time_new_thread();
         log::info!("dom0 timings passed without the timer");
         unsafe { sys_debug_exit(0) };
