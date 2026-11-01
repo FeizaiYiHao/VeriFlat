@@ -615,88 +615,91 @@ fn new_container_lock_entry(
         ret is Ok ==> forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger final(lctx).pagetable_window_lock_map().dom().contains((p, w))]
             final(lctx).pagetable_window_lock_map().dom().contains((p, w)) == (p == ret->Ok_0.source_pagetable_ptr && ret->Ok_0.source_window_perms.view().dom().contains(w)),
 {
-    let owners = match new_container_lock_owners(
+    // The owners' error is the match value, not an early return: a return here adds one more copy of the `ret is Ok`
+    // postcondition block at this exit and makes the query's cost depend on the solver's assertion order.
+    match new_container_lock_owners(
         krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index, initial_regs,
     ) {
-        Ok(owners) => owners,
-        Err(error) => return Err(error),
-    };
-    let NewContainerOwnersLocked {
-        parent_container_ptr, parent_process_ptr, current_thread_ptr, source_pagetable_ptr, parent_cpu_set, source_range, endpoint: endpoint_option,
-        cpu_lock_perm, container_lock_perm, process_lock_perm, thread_lock_perm,
-    } = owners;
-    let endpoint_ptr = match endpoint_option { Some(ptr) => ptr, None => 0 };
-    let tracked mut endpoint_lock_perm_opt: Option<LockPerm> = None;
-    if endpoint_index.is_some() {
-        proof {
-            assert(krnl.ep_mp.dom().contains(endpoint_ptr) && krnl.ep_mp.spec_index(endpoint_ptr).view().owning_threads.view().contains((current_thread_ptr, endpoint_index->Some_0))) by {
-                thread_endpoint_ref_counter_wf_thread_at(krnl.thr_mp, krnl.ep_mp, current_thread_ptr, endpoint_index->Some_0);
-            };
-        }
-        let Tracked(endpoint_lock_perm) = krnl.wlock_endpoint(endpoint_ptr, Tracked(&mut *lctx));
-        proof { endpoint_lock_perm_opt = Some(endpoint_lock_perm); }
+        Err(error) => Err(error),
+        Ok(owners) => {
+            let NewContainerOwnersLocked {
+                parent_container_ptr, parent_process_ptr, current_thread_ptr, source_pagetable_ptr, parent_cpu_set, source_range, endpoint: endpoint_option,
+                cpu_lock_perm, container_lock_perm, process_lock_perm, thread_lock_perm,
+            } = owners;
+            let endpoint_ptr = match endpoint_option { Some(ptr) => ptr, None => 0 };
+            let tracked mut endpoint_lock_perm_opt: Option<LockPerm> = None;
+            if endpoint_index.is_some() {
+                proof {
+                    assert(krnl.ep_mp.dom().contains(endpoint_ptr) && krnl.ep_mp.spec_index(endpoint_ptr).view().owning_threads.view().contains((current_thread_ptr, endpoint_index->Some_0))) by {
+                        thread_endpoint_ref_counter_wf_thread_at(krnl.thr_mp, krnl.ep_mp, current_thread_ptr, endpoint_index->Some_0);
+                    };
+                }
+                let Tracked(endpoint_lock_perm) = krnl.wlock_endpoint(endpoint_ptr, Tracked(&mut *lctx));
+                proof { endpoint_lock_perm_opt = Some(endpoint_lock_perm); }
+            }
+            proof {
+                assert({
+                    &&& krnl.pt_mp.dom().contains(source_pagetable_ptr)
+                    &&& !lctx.pagetable_lock_map().dom().contains(source_pagetable_ptr)
+                    &&& krnl.prc_mp.spec_index(parent_process_ptr).view().pagetable == source_pagetable_ptr
+                }) by { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, parent_process_ptr); };
+            }
+            proof {
+                pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, source_pagetable_ptr);
+                krnl.pt_mp.typed_lock_map_aligned_locked_at(lctx.pagetable_lock_map(), lctx.thread_id(), source_pagetable_ptr);
+            }
+            let Tracked(source_pagetable_lock_perm) = krnl.rlock_pagetable(cpu_id, source_pagetable_ptr, Tracked(&mut *lctx));
+            proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, source_pagetable_ptr); }
+            let (l4_ok, source_ready, source_window_perms) = new_container_lock_source_windows(krnl, Tracked(&mut *lctx), source_pagetable_ptr, &source_range, Tracked(&source_pagetable_lock_perm));
+            let Tracked(source_window_perms) = source_window_perms;
+            proof {
+                assert(krnl.cpu_set_mp.dom().contains(parent_cpu_set)) by { container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, parent_container_ptr); };
+                assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
+                // The caller's thread lives in the parent container, so its cpu set is not marked.
+                assert(!krnl.cpu_set_mp.spec_index(parent_cpu_set).being_killed()) by {
+                    container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, current_thread_ptr); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, parent_container_ptr);
+                    cpu_set_kill_mark_wf_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, parent_cpu_set);
+                };
+            }
+            let ghost cpu_set_unlocked_k = *krnl;
+            let Tracked(cpu_set_lock_perm) = krnl.wlock_cpu_set(parent_cpu_set, Tracked(&mut *lctx));
+            let parent_set = krnl.cpu_set_mp.borrow_typed(parent_cpu_set, Ghost(lctx.cpu_set_lock_map()), Tracked(&*lctx), Tracked(&cpu_set_lock_perm));
+            let transfer_cpu_owned = parent_set.owned_cpus.contains(transfer_cpu_id);
+            let transfer_cpu_off = parent_set.owned_cpus.is_closed(transfer_cpu_id);
+            proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
+            if !source_ready || !transfer_cpu_owned || !transfer_cpu_off {
+                let error = if !source_ready { RetValueType::Error } else if !transfer_cpu_owned { RetValueType::ErrorIpcCpuOwnerMismatch } else { RetValueType::ErrorIpcCpuNotOff };
+                proof {
+                    assert(new_container_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index) == error) by {
+                        container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, transfer_cpu_id); container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, parent_container_ptr, transfer_cpu_id);
+                        new_container_result_from_k(old(krnl), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index, error);
+                    };
+                }
+                new_container_release_entry_locks(
+                    krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, parent_container_ptr, parent_process_ptr, current_thread_ptr, source_pagetable_ptr, parent_cpu_set,
+                    endpoint_option, &source_range, l4_ok, Ghost(cpu_set_unlocked_k), cpu_lock_perm, container_lock_perm, process_lock_perm, thread_lock_perm,
+                    Tracked(source_pagetable_lock_perm), Tracked(cpu_set_lock_perm), Tracked(endpoint_lock_perm_opt), Tracked(source_window_perms),
+                );
+                proof {
+                    new_container_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, endpoint_index, error);
+                }
+                return Err(error);
+            }
+            proof {
+                assert(krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().view().state is Off
+                    && krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().view().owning_container == parent_container_ptr) by { container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, parent_container_ptr, transfer_cpu_id); };
+                new_container_result_from_k(old(krnl), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index, RetValueType::Success);
+                pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable_ptr);
+            }
+            let (endpoint, endpoint_slot) = match endpoint_index { Some(index) => (Some(endpoint_ptr), index), None => (None, 0) };
+            Ok(NewContainerEntryLocked {
+                parent_container_ptr, parent_process_ptr, current_thread_ptr, source_pagetable_ptr, parent_cpu_set, source_range, endpoint, endpoint_slot,
+                cpu_lock_perm, container_lock_perm, process_lock_perm,
+                thread_lock_perm, source_pagetable_lock_perm: Tracked(source_pagetable_lock_perm), cpu_set_lock_perm: Tracked(cpu_set_lock_perm),
+                endpoint_lock_perm: Tracked(endpoint_lock_perm_opt), source_window_perms: Tracked(source_window_perms),
+            })
+        },
     }
-    proof {
-        assert({
-            &&& krnl.pt_mp.dom().contains(source_pagetable_ptr)
-            &&& !lctx.pagetable_lock_map().dom().contains(source_pagetable_ptr)
-            &&& krnl.prc_mp.spec_index(parent_process_ptr).view().pagetable == source_pagetable_ptr
-        }) by { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, current_thread_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, parent_process_ptr); };
-    }
-    proof {
-        pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, source_pagetable_ptr);
-        krnl.pt_mp.typed_lock_map_aligned_locked_at(lctx.pagetable_lock_map(), lctx.thread_id(), source_pagetable_ptr);
-    }
-    let Tracked(source_pagetable_lock_perm) = krnl.rlock_pagetable(cpu_id, source_pagetable_ptr, Tracked(&mut *lctx));
-    proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, source_pagetable_ptr); }
-    let (l4_ok, source_ready, source_window_perms) = new_container_lock_source_windows(krnl, Tracked(&mut *lctx), source_pagetable_ptr, &source_range, Tracked(&source_pagetable_lock_perm));
-    let Tracked(source_window_perms) = source_window_perms;
-    proof {
-        assert(krnl.cpu_set_mp.dom().contains(parent_cpu_set)) by { container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, parent_container_ptr); };
-        assert(kernel_container_nonlock_fields_and_quotas_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
-        // The caller's thread lives in the parent container, so its cpu set is not marked.
-        assert(!krnl.cpu_set_mp.spec_index(parent_cpu_set).being_killed()) by {
-            container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, current_thread_ptr); container_cpu_set_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, parent_container_ptr);
-            cpu_set_kill_mark_wf_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.prc_mp, parent_cpu_set);
-        };
-    }
-    let ghost cpu_set_unlocked_k = *krnl;
-    let Tracked(cpu_set_lock_perm) = krnl.wlock_cpu_set(parent_cpu_set, Tracked(&mut *lctx));
-    let parent_set = krnl.cpu_set_mp.borrow_typed(parent_cpu_set, Ghost(lctx.cpu_set_lock_map()), Tracked(&*lctx), Tracked(&cpu_set_lock_perm));
-    let transfer_cpu_owned = parent_set.owned_cpus.contains(transfer_cpu_id);
-    let transfer_cpu_off = parent_set.owned_cpus.is_closed(transfer_cpu_id);
-    proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
-    if !source_ready || !transfer_cpu_owned || !transfer_cpu_off {
-        let error = if !source_ready { RetValueType::Error } else if !transfer_cpu_owned { RetValueType::ErrorIpcCpuOwnerMismatch } else { RetValueType::ErrorIpcCpuNotOff };
-        proof {
-            assert(new_container_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index) == error) by {
-                container_cpu_wf_cpu_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, transfer_cpu_id); container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, parent_container_ptr, transfer_cpu_id);
-                new_container_result_from_k(old(krnl), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index, error);
-            };
-        }
-        new_container_release_entry_locks(
-            krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, parent_container_ptr, parent_process_ptr, current_thread_ptr, source_pagetable_ptr, parent_cpu_set,
-            endpoint_option, &source_range, l4_ok, Ghost(cpu_set_unlocked_k), cpu_lock_perm, container_lock_perm, process_lock_perm, thread_lock_perm,
-            Tracked(source_pagetable_lock_perm), Tracked(cpu_set_lock_perm), Tracked(endpoint_lock_perm_opt), Tracked(source_window_perms),
-        );
-        proof {
-            new_container_trace_stutter(steps.view().subrange(old(steps).view().len() as int, steps.view().len() as int), kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, *initial_regs, endpoint_index, error);
-        }
-        return Err(error);
-    }
-    proof {
-        assert(krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().view().state is Off
-            && krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().view().owning_container == parent_container_ptr) by { container_cpu_wf_container_at(krnl.ctn_mp, krnl.cpu_set_mp, krnl.cpu_arr, parent_container_ptr, transfer_cpu_id); };
-        new_container_result_from_k(old(krnl), cpu_id, va, range, funding_page_count, process_quota_4k, transfer_cpu_id, endpoint_index, RetValueType::Success);
-        pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable_ptr);
-    }
-    let (endpoint, endpoint_slot) = match endpoint_index { Some(index) => (Some(endpoint_ptr), index), None => (None, 0) };
-    Ok(NewContainerEntryLocked {
-        parent_container_ptr, parent_process_ptr, current_thread_ptr, source_pagetable_ptr, parent_cpu_set, source_range, endpoint, endpoint_slot,
-        cpu_lock_perm, container_lock_perm, process_lock_perm,
-        thread_lock_perm, source_pagetable_lock_perm: Tracked(source_pagetable_lock_perm), cpu_set_lock_perm: Tracked(cpu_set_lock_perm),
-        endpoint_lock_perm: Tracked(endpoint_lock_perm_opt), source_window_perms: Tracked(source_window_perms),
-    })
 }
 
 /// Shared body of the container-creation syscalls: `endpoint_index` seeds the child's root thread.
