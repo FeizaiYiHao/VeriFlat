@@ -40,7 +40,7 @@ verus! {
                 whole_pagetable(pt_mp, pt_lower, pagetable_p).lower.window_stale_cpus.dom().contains((p, i)) ==> {
                     &&& whole_pagetable(pt_mp, pt_lower, pagetable_p).lower.l2_perms.dom().contains(p)
                     &&& pei_valid(i)
-                    &&& whole_pagetable(pt_mp, pt_lower, pagetable_p).lower.l2_owner(p, i) is Some
+                    &&& whole_pagetable(pt_mp, pt_lower, pagetable_p).lower.l2_owner(p, i) is Write
                 }
     }
 
@@ -52,7 +52,7 @@ verus! {
             !(pt_mp.spec_index(pagetable_ptr).locking_thread() is Write) && whole_pagetable(pt_mp, pt_lower, pagetable_ptr).lower.window_stale_cpus.dom().contains((p, i)) ==> {
                 &&& whole_pagetable(pt_mp, pt_lower, pagetable_ptr).lower.l2_perms.dom().contains(p)
                 &&& pei_valid(i)
-                &&& whole_pagetable(pt_mp, pt_lower, pagetable_ptr).lower.l2_owner(p, i) is Some
+                &&& whole_pagetable(pt_mp, pt_lower, pagetable_ptr).lower.l2_owner(p, i) is Write
             },
     { reveal(pagetable_window_stale_cpus_only_when_locked); }
 
@@ -163,7 +163,7 @@ verus! {
         ensures pagetable_perms.perms_wf()
     { reveal(pagetable_perms_wf); }
 
-    pub open spec fn pagetables_inv<T: LockInvTrait, GhostT>(pagetable_perms: LockedMap<RwLockPageTableRoot, T, (), GhostT, PAGE_TABLE_HAS_KILL_STATE>) -> bool {
+    pub open spec fn pagetables_inv<T: LockInvTrait, GhostT, I>(pagetable_perms: LockedMap<RwLockPageTableRoot, T, (), GhostT, PAGE_TABLE_HAS_KILL_STATE, I>) -> bool {
         &&& forall|pagetable_p:RwLockPageTableRoot| #![auto] pagetable_perms.dom().contains(pagetable_p) ==> pagetable_perms.spec_index(pagetable_p).inv()
     }
 

@@ -105,7 +105,7 @@ fn mmap_4k_fill_page_directories(
             &&& window_perms.index(w).state() is WriteLock
             &&& window_perms.index(w).thread_id() == old(lctx).thread_id()
             &&& typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (pagetable_ptr, w), TypedLockMode::Write)
-            &&& table.lower.l2_owner(table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) == (SpinLockState::Some { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
+            &&& table.lower.l2_owner(table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) == (RwLockState::Write { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
         },
     ensures
         final(krnl).inv(),
@@ -166,7 +166,7 @@ fn mmap_4k_fill_page_directories(
             &&& ret.view().index(w).state() is WriteLock
             &&& ret.view().index(w).thread_id() == final(lctx).thread_id()
             &&& typed_lock_map_contains_mode(final(lctx).pagetable_window_lock_map(), (pagetable_ptr, w), TypedLockMode::Write)
-            &&& table.lower.l2_owner(table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) == (SpinLockState::Some { thread_id: ret.view().index(w).thread_id(), lock_id: ret.view().index(w).lock_id() })
+            &&& table.lower.l2_owner(table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) == (RwLockState::Write { thread_id: ret.view().index(w).thread_id(), lock_id: ret.view().index(w).lock_id() })
         },
 {
     let tracked mut window_perms = window_perms;
@@ -286,7 +286,7 @@ pub(super) fn mmap_4k_fill_range_structure(
             &&& window_perms.index(w).state() is WriteLock
             &&& window_perms.index(w).thread_id() == old(lctx).thread_id()
             &&& typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (pagetable_ptr, w), TypedLockMode::Write)
-            &&& table.lower.l2_owner(table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) == (SpinLockState::Some { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
+            &&& table.lower.l2_owner(table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) == (RwLockState::Write { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
         },
     ensures
         final(krnl).inv(),
@@ -341,7 +341,7 @@ pub(super) fn mmap_4k_fill_range_structure(
             &&& ret.view().dom().contains(w)
             &&& ret.view().index(w).state() is WriteLock
             &&& ret.view().index(w).thread_id() == final(lctx).thread_id()
-            &&& table.lower.l2_owner(table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) == (SpinLockState::Some { thread_id: ret.view().index(w).thread_id(), lock_id: ret.view().index(w).lock_id() })
+            &&& table.lower.l2_owner(table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) == (RwLockState::Write { thread_id: ret.view().index(w).thread_id(), lock_id: ret.view().index(w).lock_id() })
         },
 {
     let tracked mut window_perms = window_perms;
@@ -432,7 +432,7 @@ pub(super) fn mmap_4k_fill_range_structure(
                 &&& window_perms.index(w).state() is WriteLock
                 &&& window_perms.index(w).thread_id() == lctx.thread_id()
                 &&& typed_lock_map_contains_mode(lctx.pagetable_window_lock_map(), (pagetable_ptr, w), TypedLockMode::Write)
-                &&& table.lower.l2_owner(table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) == (SpinLockState::Some { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
+                &&& table.lower.l2_owner(table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) == (RwLockState::Write { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
             },
             0 < i ==> forall|l4i: L4Index, l3i: L3Index|
                 #![trigger whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l3(l4i, l3i)]

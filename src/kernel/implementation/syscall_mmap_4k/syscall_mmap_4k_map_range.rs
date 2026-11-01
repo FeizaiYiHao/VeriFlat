@@ -67,7 +67,7 @@ pub(super) fn mmap_4k_map_leaf_range(
             let table = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr);
             &&& table.window_leaves_present(w)
             &&& window_perms.dom().contains(w)
-            &&& table.window_view(w).lock_state == (SpinLockState::Some { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
+            &&& table.window_view(w).lock_state == (RwLockState::Write { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
         },
         forall|w: WindowVa, j: int| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)), range.view()[j]]
             old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)) && 0 <= j < range.len && spec_v2l4index(range.view()[j]) == spec_v2l4index(w.va)
@@ -192,7 +192,7 @@ pub(super) fn mmap_4k_map_leaf_range(
             forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w))] old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)) ==> {
                 let cur = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
                 &&& window_perms.dom().contains(w)
-                &&& entry.window_view(w).lock_state == (SpinLockState::Some { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
+                &&& entry.window_view(w).lock_state == (RwLockState::Write { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
                 &&& cur.window_view(w).lock_state == entry.window_view(w).lock_state
                 &&& cur.window_view(w).stale_cpus == entry.window_view(w).stale_cpus
                 &&& cur.mapping_2m().dom().contains(w.va) == entry.mapping_2m().dom().contains(w.va)
@@ -305,7 +305,7 @@ pub(super) fn mmap_4k_map_leaves_and_finish(
             &&& window_perms.index(w).state() is WriteLock
             &&& window_perms.index(w).thread_id() == old(lctx).thread_id()
             &&& typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (pagetable_ptr, w), TypedLockMode::Write)
-            &&& table.lower.l2_owner(table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) == (SpinLockState::Some { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
+            &&& table.lower.l2_owner(table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) == (RwLockState::Write { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
             &&& table.window_leaves_present(w)
             &&& !table.lower.window_stale_cpus.dom().contains((table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
         },
@@ -365,7 +365,7 @@ pub(super) fn mmap_4k_map_leaves_and_finish(
     krnl.set_thread_syscall_progress(thread_ptr, Ghost(None), Tracked(&*lctx), Tracked(&thread_lock_perm));
     krnl.unlock_pagetable_range_windows(pagetable_ptr, va_range, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx), Tracked(window_perms));
     proof { krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr); }
-    krnl.runlock_pagetable(pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
+    krnl.runlock_pagetable(cpu_id, pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
     proof { cpu_op_wf_at(old(krnl).cpu_op.view().view(), old(krnl).cpu_arr, cpu_id); cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }
     krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));

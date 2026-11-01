@@ -569,7 +569,7 @@ impl CpuLockedArray {
     /// flags, and dirty bitmap stay as they are. The running-to-idle IPI uses the target's kernel-call permission, which
     /// stays in the cpu object because the target is outside a kernel step while this thread holds its lock.
     pub fn ipi_remote_running_to_idle(
-        &mut self, cpu_id: CpuId, default_cr3: PageTableRoot, killer_info: KillerInfo, hw_cr3_pcid: &mut CpuHwCr3PcidArray, Tracked(cpu_op): Tracked<&mut CpuOpArray>,
+        &mut self, cpu_id: CpuId, default_cr3: PageTableRoot, Ghost(killer_info): Ghost<KillerInfo>, hw_cr3_pcid: &mut CpuHwCr3PcidArray, Tracked(cpu_op): Tracked<&mut CpuOpArray>,
         Tracked(lctx): Tracked<&mut LocalContext>, cpu_lock_perm: Tracked<&LockPerm>,
     )
         requires
@@ -615,7 +615,7 @@ impl CpuLockedArray {
     {
         proof { lctx.enter_kernel_view_release(); }
         assert(self.spec_index(cpu_id).view().wlocked_by(&*lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
-        self.mark_kill(cpu_id, Tracked(&*lctx), killer_info);
+        self.mark_kill(cpu_id, Tracked(&*lctx), Ghost(killer_info));
         let ghost target_lock = self.spec_index(cpu_id).view();
         assert(self.typed_lock_map_aligned(lctx.cpu_lock_map(), lctx.thread_id())) by { reveal(LockedArray::typed_lock_map_aligned); };
         let cpu = self.borrow_mut_typed(cpu_id, Ghost(lctx.cpu_lock_map()), Tracked(&*lctx), cpu_lock_perm);

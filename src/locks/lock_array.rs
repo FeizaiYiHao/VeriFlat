@@ -439,7 +439,7 @@ verus! {
 
         /// Mark entry `index`, which this thread write-holds, for its killer; the write lock stays. The mark is a
         /// kernel-view Release: every other thread's next `*_unless_killed` lock fails.
-        pub fn mark_kill(&mut self, index: usize, Tracked(lctx): Tracked<&LocalContext>, killer_info: KillerInfo)
+        pub fn mark_kill(&mut self, index: usize, Tracked(lctx): Tracked<&LocalContext>, Ghost(killer_info): Ghost<KillerInfo>)
             requires
                 old(self).inv(),
                 0 <= index < N,
@@ -460,7 +460,7 @@ verus! {
         {
             let addr = lock_cell_addr_exec::<RwLock<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>(RwLock::<Cpu, (), Option<CpuId>, HAS_KILL_STATE>::cell_base(), index);
             let tracked perm = self.storage.perms.borrow_mut().tracked_borrow_mut(index as int);
-            mark_kill(&PPtr::<RwLock<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), killer_info);
+            mark_kill(&PPtr::<RwLock<Cpu, (), Option<CpuId>, HAS_KILL_STATE>>::from_usize(addr), Tracked(perm), Tracked(lctx), Ghost(killer_info));
         }
     }
 

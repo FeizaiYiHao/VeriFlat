@@ -1,3 +1,5 @@
+pub mod lock_inner_traits;
+pub mod lock_inner_t;
 pub mod rwlock;
 pub mod local_context;
 pub mod lock_traits;
@@ -10,6 +12,8 @@ pub mod lock_array;
 pub mod lock_array_2d;
 pub mod token_lock;
 
+pub use lock_inner_traits::*;
+pub use lock_inner_t::*;
 pub use rwlock::*;
 pub use local_context::*;
 pub use lock_traits::*;

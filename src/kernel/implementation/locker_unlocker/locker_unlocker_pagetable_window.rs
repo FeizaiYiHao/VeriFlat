@@ -77,7 +77,7 @@ impl KernelK {
             big.state() is ReadLock ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).window_leaves_present(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }),
             big.state() is ReadLock ==> !whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.window_stale_cpus.dom().contains((whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).window_l2_page(l4i, l3i), l2i)),
             whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).lower.l2_owner(whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).window_l2_page(l4i, l3i), l2i)
-                == (SpinLockState::Some { thread_id: ret.view().thread_id(), lock_id: ret.view().lock_id() }),
+                == (RwLockState::Write { thread_id: ret.view().thread_id(), lock_id: ret.view().lock_id() }),
             ret.view().state() is WriteLock,
             ret.view().thread_id() == final(lctx).thread_id(),
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::PageTableWindow(root, WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }),
@@ -156,7 +156,7 @@ impl KernelK {
             typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (root, WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }), TypedLockMode::Write),
             lp.view().state() is WriteLock,
             lp.view().thread_id() == old(lctx).thread_id(),
-            whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_owner(whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_l2_page(l4i, l3i), l2i) == (SpinLockState::Some { thread_id: lp.view().thread_id(), lock_id: lp.view().lock_id() }),
+            whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower.l2_owner(whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_l2_page(l4i, l3i), l2i) == (RwLockState::Write { thread_id: lp.view().thread_id(), lock_id: lp.view().lock_id() }),
             big.thread_id() == old(lctx).thread_id(),
             big.state() is WriteLock ==> typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), root, TypedLockMode::Write),
             big.state() is WriteLock ==> big.lock_id() == old(self).pt_mp.spec_index(root).locking_thread()->Write_lock_id,

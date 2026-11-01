@@ -124,7 +124,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
                 |w: WindowVa| if old(lower).pagetable_window_locks.dom().contains(w) { old(lower).pagetable_window_locks[w] } else if lo <= spec_v2l2index(w.va) <= hi { LockStateU::WriteLocked } else { LockStateU::Unlocked }),
             forall|i: L2Index| #![trigger ret.view().dom().contains(i)] ret.view().dom().contains(i) == (lo <= i <= hi),
             forall|i: L2Index| #![trigger ret.view().index(i)] lo <= i <= hi ==> {
-                &&& final(lower).l2_owner(page_map_ptr, i) == (SpinLockState::Some { thread_id: ret.view().index(i).thread_id(), lock_id: ret.view().index(i).lock_id() })
+                &&& final(lower).l2_owner(page_map_ptr, i) == (RwLockState::Write { thread_id: ret.view().index(i).thread_id(), lock_id: ret.view().index(i).lock_id() })
                 &&& ret.view().index(i).state() is WriteLock
                 &&& ret.view().index(i).ordering_lock_id() == window_lock_id(root, target_l4i, target_l3i, i)
                 &&& ret.view().index(i).thread_id() == final(lctx).thread_id()
@@ -160,10 +160,10 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
                 KERNEL_MEM_END_L4INDEX <= target_l4i && pei_valid(target_l4i) && pei_valid(target_l3i),
                 l2_perm.addr() == page_map_ptr && l2_perm.is_init() && l2_perm.value().addr() == page_map_ptr && l2_perm.value().wf(),
                 forall|i: L2Index| #![trigger l2_perm.value().entry_lock(i)] pei_valid(i) ==> l2_perm.value().entry_lock(i).view().is_empty() && l2_perm.value().entry_lock(i).l1() is None,
-                forall|i: L2Index| #![trigger l2_perm.value().entry_lock(i)] pei_valid(i) && !(lo <= i < k) ==> l2_perm.value().entry_lock(i).owner() is None,
+                forall|i: L2Index| #![trigger l2_perm.value().entry_lock(i)] pei_valid(i) && !(lo <= i < k) ==> l2_perm.value().entry_lock(i).locking_thread() is None,
                 forall|i: L2Index| #![trigger window_perms.dom().contains(i)] window_perms.dom().contains(i) == (lo <= i < k),
                 forall|i: L2Index| #![trigger window_perms.index(i)] #![trigger l2_perm.value().entry_lock(i)] lo <= i < k ==> {
-                    &&& l2_perm.value().entry_lock(i).owner() == (SpinLockState::Some { thread_id: lctx.thread_id(), lock_id: window_perms.index(i).lock_id() })
+                    &&& l2_perm.value().entry_lock(i).locking_thread() == (RwLockState::Write { thread_id: lctx.thread_id(), lock_id: window_perms.index(i).lock_id() })
                     &&& window_perms.index(i).state() is WriteLock
                     &&& window_perms.index(i).ordering_lock_id() == window_lock_id(root, target_l4i, target_l3i, i)
                     &&& window_perms.index(i).thread_id() == lctx.thread_id()
@@ -225,7 +225,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             (WholePageTable { higher: *self, lower: *old(lower) }).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
             (WholePageTable { higher: *self, lower: *old(lower) }).spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None,
             (WholePageTable { higher: *self, lower: *old(lower) }).window_locked_by_thread(target_l4i, target_l3i, target_l2i, old(lctx).thread_id()),
-            old(lower).l2_owner(target_l2_p, target_l2i) == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
+            old(lower).l2_owner(target_l2_p, target_l2i) == (RwLockState::Write { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
             page_ptr_valid(page_map_ptr),
             (WholePageTable { higher: *self, lower: *old(lower) }).page_closure().contains(page_map_ptr) == false,
             page_map_perm.addr() == page_map_ptr,

@@ -21,7 +21,7 @@ verus! {
 /// retired, then clear the kill and unlock the cpu, the killer's container, the process, and the thread.
 pub(crate) fn kill_container_walk_and_finish(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
-    thread_ptr: RwLockThreadPtr, owner_ptr: RwLockContainerPtr, child_ptr: RwLockContainerPtr, killer_info: KillerInfo, Tracked(cpu_perm): Tracked<LockPerm>,
+    thread_ptr: RwLockThreadPtr, owner_ptr: RwLockContainerPtr, child_ptr: RwLockContainerPtr, Ghost(killer_info): Ghost<KillerInfo>, Tracked(cpu_perm): Tracked<LockPerm>,
     Tracked(process_perm): Tracked<LockPerm>, Tracked(thread_perm): Tracked<LockPerm>, Tracked(owner_perm): Tracked<LockPerm>,
     Tracked(chain_perms): Tracked<Map<RwLockContainerPtr, LockPerm>>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(child_index): Ghost<usize>,
 )
@@ -81,17 +81,17 @@ pub(crate) fn kill_container_walk_and_finish(
                 krnl.ctn_mp.borrow_typed(target, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(target_perm)).children.len() != 0
             };
             if has_children {
-                let next = kill_container_mark_child(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, owner_ptr, target, killer_info, Ghost(chain),
+                let next = kill_container_mark_child(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, owner_ptr, target, Ghost(killer_info), Ghost(chain),
                     Tracked(&mut chain_perms), Tracked(&cpu_perm), Tracked(&process_perm), Tracked(&thread_perm), Tracked(&owner_perm), Ghost(start), Ghost(pre), Ghost(ctx));
                 proof { chain = chain.push(next); }
                 target = next;
             } else {
-                kill_container_kill_processes(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, owner_ptr, target, killer_info, Ghost(chain),
+                kill_container_kill_processes(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, owner_ptr, target, Ghost(killer_info), Ghost(chain),
                     Tracked(&chain_perms), Tracked(&cpu_perm), Tracked(&process_perm), Tracked(&thread_perm), Tracked(&owner_perm), Ghost(start), Ghost(pre), Ghost(ctx));
                 processes_left = false;
             }
         } else {
-            let parent = kill_container_retire_target(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, owner_ptr, target, killer_info, Ghost(chain),
+            let parent = kill_container_retire_target(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, owner_ptr, target, Ghost(killer_info), Ghost(chain),
                 Tracked(&mut chain_perms), Tracked(&cpu_perm), Tracked(&process_perm), Tracked(&thread_perm), Tracked(&owner_perm), Ghost(start), Ghost(pre), Ghost(ctx));
             proof { chain = chain.drop_last(); }
             if parent == owner_ptr { walking = false; } else { target = parent; processes_left = true; }
@@ -132,7 +132,7 @@ pub(crate) fn kill_container_walk_and_finish(
 /// The child of the write-held target carries no mark of another killer and still owns processes.
 pub(crate) fn kill_container_mark_child(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
-    thread_ptr: RwLockThreadPtr, owner_ptr: RwLockContainerPtr, target: RwLockContainerPtr, killer_info: KillerInfo, Ghost(chain): Ghost<Seq<RwLockContainerPtr>>,
+    thread_ptr: RwLockThreadPtr, owner_ptr: RwLockContainerPtr, target: RwLockContainerPtr, Ghost(killer_info): Ghost<KillerInfo>, Ghost(chain): Ghost<Seq<RwLockContainerPtr>>,
     Tracked(chain_perms): Tracked<&mut Map<RwLockContainerPtr, LockPerm>>, Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>,
     Tracked(thread_perm): Tracked<&LockPerm>, Tracked(owner_perm): Tracked<&LockPerm>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(ctx): Ghost<KillTraceCtx>,
 ) -> (ret: RwLockContainerPtr)
@@ -197,7 +197,7 @@ pub(crate) fn kill_container_mark_child(
             krnl.ctn_mp.typed_lock_map_aligned_locked_at(lctx.container_lock_map(), lctx.thread_id(), child_ptr);
         };
     }
-    let Tracked(child_perm) = krnl.try_wlock_container_and_mark_kill(child_ptr, killer_info, Tracked(&mut *lctx)).unwrap();
+    let Tracked(child_perm) = krnl.try_wlock_container_and_mark_kill(child_ptr, Ghost(killer_info), Tracked(&mut *lctx)).unwrap();
     let ghost marked_k = *krnl;
     krnl.set_thread_syscall_progress(thread_ptr, Ghost(kill_container_progress(child_ptr, ContainerKillStage::Walk)), Tracked(&*lctx), Tracked(thread_perm));
     let ghost entered_k = *krnl;
@@ -220,7 +220,7 @@ pub(crate) fn kill_container_mark_child(
 /// killer's container `owner_ptr`, retire it, and walk its parent, which is returned.
 pub(crate) fn kill_container_retire_target(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
-    thread_ptr: RwLockThreadPtr, owner_ptr: RwLockContainerPtr, target: RwLockContainerPtr, killer_info: KillerInfo, Ghost(chain): Ghost<Seq<RwLockContainerPtr>>,
+    thread_ptr: RwLockThreadPtr, owner_ptr: RwLockContainerPtr, target: RwLockContainerPtr, Ghost(killer_info): Ghost<KillerInfo>, Ghost(chain): Ghost<Seq<RwLockContainerPtr>>,
     Tracked(chain_perms): Tracked<&mut Map<RwLockContainerPtr, LockPerm>>, Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>,
     Tracked(thread_perm): Tracked<&LockPerm>, Tracked(owner_perm): Tracked<&LockPerm>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(ctx): Ghost<KillTraceCtx>,
 ) -> (parent: RwLockContainerPtr)
@@ -265,7 +265,7 @@ pub(crate) fn kill_container_retire_target(
     let parent = krnl.ctn_mp.borrow_rodata(target).borrow().parent.unwrap();
     let tracked container_perm = chain_perms.tracked_remove(target);
     let (cpu_set_ptr, Tracked(cpu_set_perm)) = kill_container_cpus(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, owner_ptr,
-        killer_info, Tracked(cpu_perm), Tracked(process_perm), Tracked(thread_perm), Tracked(&container_perm), Ghost(start), Ghost(pre), Ghost(ctx));
+        Ghost(killer_info), Tracked(cpu_perm), Tracked(process_perm), Tracked(thread_perm), Tracked(&container_perm), Ghost(start), Ghost(pre), Ghost(ctx));
     proof {
         process_perms_wf_map(krnl.prc_mp); krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), process_ptr);
         krnl.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr);

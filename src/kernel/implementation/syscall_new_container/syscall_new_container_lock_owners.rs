@@ -322,7 +322,7 @@ pub(super) fn new_container_lock_source_windows(
             &&& ret.2.view().index(w).state() is WriteLock
             &&& ret.2.view().index(w).thread_id() == final(lctx).thread_id()
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).lower.l2_owner(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-                == (SpinLockState::Some { thread_id: ret.2.view().index(w).thread_id(), lock_id: ret.2.view().index(w).lock_id() })
+                == (RwLockState::Write { thread_id: ret.2.view().index(w).thread_id(), lock_id: ret.2.view().index(w).lock_id() })
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).window_leaves_present(w)
             &&& !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).lower.window_stale_cpus.dom().contains((whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
         },

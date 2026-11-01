@@ -82,7 +82,7 @@ pub(crate) fn kill_reclaim_last_4k_mapping_scoped(
         window_perm.state() is WriteLock,
         window_perm.thread_id() == entry_lctx.thread_id(),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va))
-            == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
+            == (RwLockState::Write { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
         whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable).lower.pagetable_window_locks.dom().contains(window_of(va)),
         whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable).lower.pagetable_window_locks[window_of(va)] is Unlocked,
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.pagetable_window_locks == whole_pagetable(old(steps).snapshot_k().pt_mp, old(steps).snapshot_k().pt_lower.view(), pagetable).lower.pagetable_window_locks.insert(window_of(va), LockStateU::WriteLocked),

@@ -151,7 +151,7 @@ pub(super) fn release_new_process_locks_and_attach_endpoint(
             &&& source_window_perms.index(w).state() is WriteLock
             &&& source_window_perms.index(w).thread_id() == entry_lctx.thread_id()
             &&& whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).lower.l2_owner(whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-                == (SpinLockState::Some { thread_id: source_window_perms.index(w).thread_id(), lock_id: source_window_perms.index(w).lock_id() })
+                == (RwLockState::Write { thread_id: source_window_perms.index(w).thread_id(), lock_id: source_window_perms.index(w).lock_id() })
             &&& whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_leaves_present(w)
             &&& !whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).lower.window_stale_cpus.dom().contains((
                 whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
@@ -178,7 +178,7 @@ pub(super) fn release_new_process_locks_and_attach_endpoint(
             &&& target_window_perms.index(w).state() is WriteLock
             &&& target_window_perms.index(w).thread_id() == old(lctx).thread_id()
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable_ptr).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-                == (SpinLockState::Some { thread_id: target_window_perms.index(w).thread_id(), lock_id: target_window_perms.index(w).lock_id() })
+                == (RwLockState::Write { thread_id: target_window_perms.index(w).thread_id(), lock_id: target_window_perms.index(w).lock_id() })
         },
         iommu_table is Some ==> {
             let iommu_table_ptr = iommu_table->Some_0;

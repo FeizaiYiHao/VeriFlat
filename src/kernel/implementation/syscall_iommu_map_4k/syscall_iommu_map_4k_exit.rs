@@ -78,7 +78,7 @@ pub(super) fn iommu_map_4k_exit(
                 &&& window_perms.index(w).state() is WriteLock
                 &&& window_perms.index(w).thread_id() == lctx0.thread_id()
                 &&& whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).lower.l2_owner(whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-                    == (SpinLockState::Some { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
+                    == (RwLockState::Write { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
                 &&& whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).window_leaves_present(w)
                 &&& !whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).lower.window_stale_cpus.dom().contains((
                     whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
@@ -121,7 +121,7 @@ pub(super) fn iommu_map_4k_exit(
     krnl.set_thread_syscall_progress(thread_ptr, Ghost(None), Tracked(&*lctx), Tracked(&thread_lock_perm));
     krnl.unlock_pagetable_range_existing_windows(pagetable_ptr, va_range, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx), Tracked(window_perms));
     krnl.wunlock_iommu_table(iommu_table_ptr, Tracked(&mut *lctx), Tracked(iommu_table_lock_perm));
-    krnl.runlock_pagetable(pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
+    krnl.runlock_pagetable(cpu_id, pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
     krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
     proof { assert(krnl.cpu_op.view().view()[cpu_id as int] is InStep) by { cpu_op_wf_at(krnl.cpu_op.view().view(), krnl.cpu_arr, cpu_id); }; }

@@ -248,7 +248,7 @@ pub(crate) fn kill_dequeue_endpoint_victim(krnl: &mut KernelK, Tracked(lctx): Tr
 /// Force the remote cpu running the write-held marked thread `victim_ptr` from running to idle and kill the thread: the
 /// cpu, write-locked, marked with `killer_info` for the running-to-idle IPI and released here, loads the default page
 /// table with the default PCID and goes idle.
-pub(crate) fn kill_running_victim_cpu_to_idle(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, victim_ptr: RwLockThreadPtr, killer_info: KillerInfo, Tracked(victim_lock_perm): Tracked<&LockPerm>)
+pub(crate) fn kill_running_victim_cpu_to_idle(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, victim_ptr: RwLockThreadPtr, Ghost(killer_info): Ghost<KillerInfo>, Tracked(victim_lock_perm): Tracked<&LockPerm>)
     requires
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
@@ -343,7 +343,7 @@ pub(crate) fn kill_running_victim_cpu_to_idle(krnl: &mut KernelK, Tracked(lctx):
     }
     let default_cr3 = krnl.dflt_pt.borrow().cr3;
     assert(page_ptr_valid(default_cr3)) by { krnl.default_pagetable_view_inv(); };
-    krnl.cpu_arr.ipi_remote_running_to_idle(remote, default_cr3, killer_info, &mut krnl.cpu_hw_cr3_pcid, Tracked(krnl.cpu_op.borrow_mut()), Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
+    krnl.cpu_arr.ipi_remote_running_to_idle(remote, default_cr3, Ghost(killer_info), &mut krnl.cpu_hw_cr3_pcid, Tracked(krnl.cpu_op.borrow_mut()), Tracked(&mut *lctx), Tracked(&cpu_lock_perm));
     proof { lctx.update_lock_id(KernelObjId::Cpu(remote), old_cpu_lock_id, krnl.cpu_arr.lock_id_by_index(remote)); }
     {
         let victim = krnl.thr_mp.borrow_mut_typed(victim_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(victim_lock_perm));

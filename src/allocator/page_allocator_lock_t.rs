@@ -7,7 +7,7 @@ verus! {
 // through a raw-pointer place at `pptr`, so no `&mut` covers the allocator's other lock words; a payload borrow is
 // formed only while its write lock is held.
 
-/// TCB: `RwLockInner::wlock` of the quota of the allocator at `pptr`.
+/// TCB: `SpinLockInner::wlock` of the quota of the allocator at `pptr`.
 #[verifier::external_body]
 pub fn wlock_quota<const SIZE: usize>(pptr: &PPtr<PageAllocator<SIZE>>, Tracked(perm): Tracked<&mut PointsTo<PageAllocator<SIZE>>>, Tracked(lctx): Tracked<&mut LocalContext>,
     lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>) -> (ret: Tracked<LockPerm>)
@@ -35,7 +35,7 @@ pub fn wlock_quota<const SIZE: usize>(pptr: &PPtr<PageAllocator<SIZE>>, Tracked(
     Tracked::assume_new()
 }
 
-/// TCB: `RwLockInner::wunlock` of the quota of the allocator at `pptr`.
+/// TCB: `SpinLockInner::wunlock` of the quota of the allocator at `pptr`.
 #[verifier::external_body]
 pub fn wunlock_quota<const SIZE: usize>(pptr: &PPtr<PageAllocator<SIZE>>, Tracked(perm): Tracked<&mut PointsTo<PageAllocator<SIZE>>>, Tracked(lctx): Tracked<&mut LocalContext>,
     lp: Tracked<LockPerm>, obj_id: Ghost<KernelObjId>)
@@ -201,7 +201,7 @@ pub fn borrow_mut_cache<'a, const SIZE: usize>(pptr: &PPtr<PageAllocator<SIZE>>,
     unsafe { &mut (*p).cpu_caches.storage.ar[cpu_id].value }
 }
 
-/// TCB: `RwLockInner::wlock` of the global pool of the allocator at `pptr`.
+/// TCB: `SpinLockInner::wlock` of the global pool of the allocator at `pptr`.
 #[verifier::external_body]
 pub fn wlock_global_pool<const SIZE: usize>(pptr: &PPtr<PageAllocator<SIZE>>, Tracked(perm): Tracked<&mut PointsTo<PageAllocator<SIZE>>>, Tracked(lctx): Tracked<&mut LocalContext>,
     lock_id: Ghost<LockId>, obj_id: Ghost<KernelObjId>) -> (ret: Tracked<LockPerm>)
@@ -229,7 +229,7 @@ pub fn wlock_global_pool<const SIZE: usize>(pptr: &PPtr<PageAllocator<SIZE>>, Tr
     Tracked::assume_new()
 }
 
-/// TCB: `RwLockInner::wunlock` of the global pool of the allocator at `pptr`.
+/// TCB: `SpinLockInner::wunlock` of the global pool of the allocator at `pptr`.
 #[verifier::external_body]
 pub fn wunlock_global_pool<const SIZE: usize>(pptr: &PPtr<PageAllocator<SIZE>>, Tracked(perm): Tracked<&mut PointsTo<PageAllocator<SIZE>>>, Tracked(lctx): Tracked<&mut LocalContext>,
     lp: Tracked<LockPerm>, obj_id: Ghost<KernelObjId>)

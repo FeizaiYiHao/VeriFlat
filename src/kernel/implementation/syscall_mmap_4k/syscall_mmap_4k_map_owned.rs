@@ -59,7 +59,7 @@ use super::syscall_mmap_4k_map_owned_eof::{map_owned_4k_page_eof, map_owned_4k_p
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).spec_resolve_mapping_l2(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2) is Some,
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_locked_by_thread(spec_va2index(va).0, spec_va2index(va).1, spec_va2index(va).2, old(lctx).thread_id()),
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.l2_owner(
-                whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(spec_va2index(va).0, spec_va2index(va).1), spec_va2index(va).2) == (SpinLockState::Some { thread_id: window_perm.view().thread_id(), lock_id: window_perm.view().lock_id() }),
+                whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(spec_va2index(va).0, spec_va2index(va).1), spec_va2index(va).2) == (RwLockState::Write { thread_id: window_perm.view().thread_id(), lock_id: window_perm.view().lock_id() }),
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(krnl).inv(),

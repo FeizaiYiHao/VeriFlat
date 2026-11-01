@@ -5,7 +5,7 @@ use crate::*;
 use vstd::simple_pptr::*;
 
 verus! {
-    pub type PageTableLockedMap = LockedMap<RwLockPageTableRoot, PageTableHigher<PT_TYPE>, (), PageTableLower<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>;
+    pub type PageTableLockedMap = LockedMap<RwLockPageTableRoot, PageTableHigher<PT_TYPE>, (), PageTableLower<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>;
     pub type PageTableLowerMap = Map<RwLockPageTableRoot, PageTableLower<PT_TYPE>>;
     pub type IommuTableLockedMap = LockedMap<RwLockPageTableRoot, PageTable<IOMMU_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE>;
     pub type PageLockedArray = LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE, TokenCells<Page, (), (), NUM_PAGES, NO_KILL_STATE>>;

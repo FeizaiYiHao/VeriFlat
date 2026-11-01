@@ -79,7 +79,7 @@ pub(crate) fn kill_retire_lock_table_page(
             &&& ret.0.view()->Some_0.state() is WriteLock
             &&& ret.0.view()->Some_0.thread_id() == old(lctx).thread_id()
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).lower.l2_owner(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).window_l2_page(scan->L1_l4i, scan->L1_l3i), scan->L1_l2i)
-                == (SpinLockState::Some { thread_id: ret.0.view()->Some_0.thread_id(), lock_id: ret.0.view()->Some_0.lock_id() })
+                == (RwLockState::Write { thread_id: ret.0.view()->Some_0.thread_id(), lock_id: ret.0.view()->Some_0.lock_id() })
         },
         final(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view() == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view(),
         ret.3 == old(krnl).pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container,

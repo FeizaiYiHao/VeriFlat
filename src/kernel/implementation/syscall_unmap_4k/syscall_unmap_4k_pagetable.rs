@@ -165,7 +165,7 @@ pub(super) fn unmap_4k_lock_pagetable_and_unmap(
         krnl.pt_mp.typed_lock_map_aligned_locked_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable);
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
     }
-    let Tracked(pagetable_perm) = krnl.rlock_pagetable(pagetable, Tracked(&mut *lctx));
+    let Tracked(pagetable_perm) = krnl.rlock_pagetable(cpu_id, pagetable, Tracked(&mut *lctx));
     assert(krnl.pt_mp.perms_wf()) by { pagetable_perms_wf_map(krnl.pt_mp); };
     let pt = krnl.pt_mp.borrow_typed(pagetable, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_perm));
     let indices = va2index(va);
@@ -318,7 +318,7 @@ fn unmap_4k_unlock_all_rejected(
             assert(Map::<LockThreadId, LockToken>::empty().insert(lctx.thread_id(), pagetable_perm.lock_id()).remove(lctx.thread_id()).dom() =~= Set::empty());
         }
     }
-    krnl.runlock_pagetable(pagetable, Tracked(&mut *lctx), Tracked(pagetable_perm));
+    krnl.runlock_pagetable(cpu_id, pagetable, Tracked(&mut *lctx), Tracked(pagetable_perm));
     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_perm));
     krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_perm));
     krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_perm));

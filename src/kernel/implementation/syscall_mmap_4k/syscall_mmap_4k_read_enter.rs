@@ -106,7 +106,7 @@ pub(super) fn mmap_4k_unlock_read_rejected(
             assert(Map::<LockThreadId, LockToken>::empty().insert(lctx.thread_id(), pagetable_lock_perm.lock_id()).remove(lctx.thread_id()).dom() =~= Set::empty());
         }
     }
-    krnl.runlock_pagetable(pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
+    krnl.runlock_pagetable(cpu_id, pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
     krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
     proof {
@@ -226,7 +226,7 @@ pub(super) fn mmap_4k_try_read_enter(
     let ghost pre_k = *krnl;
     let ghost pre_lctx = *lctx;
     proof { krnl.pt_mp.typed_lock_map_aligned_locked_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr); pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); }
-    let Tracked(pagetable_lock_perm) = krnl.rlock_pagetable(pagetable_ptr, Tracked(&mut *lctx));
+    let Tracked(pagetable_lock_perm) = krnl.rlock_pagetable(cpu_id, pagetable_ptr, Tracked(&mut *lctx));
     proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr); }
     let (user_range, windows_exist) = {
         let pagetable = krnl.pt_mp.borrow_typed(pagetable_ptr, Ghost(lctx.pagetable_lock_map()), Tracked(&*lctx), Tracked(&pagetable_lock_perm));
@@ -248,7 +248,7 @@ pub(super) fn mmap_4k_try_read_enter(
                 assert_sets_equal!(Map::<LockThreadId, LockToken>::empty().insert(lctx.thread_id(), pagetable_lock_perm.lock_id()).remove(lctx.thread_id()).dom(), Set::empty());
             }
         }
-        krnl.runlock_pagetable(pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
+        krnl.runlock_pagetable(cpu_id, pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
         let ghost held_k = *krnl;
         proof {
             assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };

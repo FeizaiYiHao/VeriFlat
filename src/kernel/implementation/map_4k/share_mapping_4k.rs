@@ -242,7 +242,7 @@ fn share_one_mapping_4k(
         share_4k_objects_k(*old(krnl), cpu_id).transfer_source is Some ==> old(lctx).container_lock_map().dom().contains(target_container),
         share_4k_objects_k(*old(krnl), cpu_id).transfer_source matches Some(source) ==> old(krnl).ctn_mp.spec_index(target_container).view_rodata().view().parent == Some(source),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).window_l2_page(spec_v2l4index(target_va), spec_v2l3index(target_va)), spec_v2l2index(target_va))
-            == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
+            == (RwLockState::Write { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
     ensures
         forall|base: Seq<KernelStep>| kernel_steps_prefix_unchanged(base, old(steps).view()) ==> #[trigger] kernel_steps_prefix_unchanged(base, final(steps).view()),
         final(steps).view() == old(steps).view().push(final(steps).view().last()),
@@ -872,7 +872,7 @@ pub fn share_mapping_4k_build_and_share(
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).spec_resolve_mapping_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some
             &&& window_perms.dom().contains(window_of(va))
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va))
-                == (SpinLockState::Some { thread_id: window_perms[window_of(va)].thread_id(), lock_id: window_perms[window_of(va)].lock_id() })
+                == (RwLockState::Write { thread_id: window_perms[window_of(va)].thread_id(), lock_id: window_perms[window_of(va)].lock_id() })
         },
         old(krnl).thr_mp.spec_index(quota_thread).view().temp_alloc_cache_2m.view().len() == 0,
         old(krnl).thr_mp.spec_index(quota_thread).view().temp_alloc_cache_1g.view().len() == 0,
@@ -1176,7 +1176,7 @@ pub fn share_mapping_4k_build_and_share(
                 &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).spec_resolve_mapping_l2(spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va)) is Some
                 &&& window_perms.dom().contains(window_of(va))
                 &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va))
-                    == (SpinLockState::Some { thread_id: window_perms[window_of(va)].thread_id(), lock_id: window_perms[window_of(va)].lock_id() })
+                    == (RwLockState::Write { thread_id: window_perms[window_of(va)].thread_id(), lock_id: window_perms[window_of(va)].lock_id() })
             },
             old(krnl).thr_mp.dom().contains(quota_thread),
             krnl.pt_mp.spec_index(target_pagetable).view().kernel_l4_end == old(krnl).pt_mp.spec_index(target_pagetable).view().kernel_l4_end,

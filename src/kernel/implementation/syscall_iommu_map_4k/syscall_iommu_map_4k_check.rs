@@ -104,7 +104,7 @@ fn iommu_map_4k_unlock_rejected(
         }
     }
     krnl.wunlock_iommu_table(iommu_table_ptr, Tracked(&mut *lctx), Tracked(iommu_table_lock_perm));
-    krnl.runlock_pagetable(pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
+    krnl.runlock_pagetable(cpu_id, pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
     krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
     krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));
@@ -276,7 +276,7 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
                 &&& typed_lock_map_contains_mode(final(lctx).pagetable_window_lock_map(), (ptp, w), TypedLockMode::Write)
                 &&& wp.index(w).state() is WriteLock
                 &&& wp.index(w).thread_id() == final(lctx).thread_id()
-                &&& pt.lower.l2_owner(pt.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) == (SpinLockState::Some { thread_id: wp.index(w).thread_id(), lock_id: wp.index(w).lock_id() })
+                &&& pt.lower.l2_owner(pt.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) == (RwLockState::Write { thread_id: wp.index(w).thread_id(), lock_id: wp.index(w).lock_id() })
                 &&& pt.window_leaves_present(w)
                 &&& !pt.lower.window_stale_cpus.dom().contains((pt.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
             }
@@ -365,7 +365,7 @@ pub(super) fn iommu_map_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): Tra
     }
     let iommu_table_ptr = iommu_table.unwrap();
     proof { krnl.pt_mp.typed_lock_map_aligned_locked_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); }
-    let Tracked(pagetable_lock_perm) = krnl.rlock_pagetable(pagetable_ptr, Tracked(&mut *lctx));
+    let Tracked(pagetable_lock_perm) = krnl.rlock_pagetable(cpu_id, pagetable_ptr, Tracked(&mut *lctx));
     proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr); }
     proof { krnl.default_pagetable_wf_at(pagetable_ptr); }
     let user_range = va2index(va).0 >= krnl.dflt_pt.borrow().kernel_l4_end;

@@ -768,8 +768,8 @@ pub(super) proof fn pagetable_map_create_entry_l3_eof(
 }
 
 /// No window of the L2 page `l2_p` linked at `(l4i, l3i)` of the table that `thread_id` write-holds has a holder when `thread_id`
-/// holds no window: a holder would hold the big lock too, so it would be `thread_id`, whose window map would list it. Stated at the
-/// would-be holder `lock_state(i)`, so a caller reads off `lock_state(i) is None`.
+/// holds no window: a write holder would hold the big lock too, so it would be `thread_id`, whose window map would list it, and an
+/// L2 entry is never read-held. Stated at the would-be holder `lock_state(i)`, so a caller reads off `lock_state(i) is None`.
 pub proof fn wlocker_holds_no_windows_implies_l2_windows_unlocked(
     pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap, window_lock_map: Map<(RwLockPageTableRoot, WindowVa), TypedHeldLock>,
     pagetable_lock_map: Map<RwLockPageTableRoot, TypedHeldLock>, thread_id: LockThreadId, pagetable_ptr: RwLockPageTableRoot, l4i: L4Index, l3i: L3Index, l2_p: PageMapPtr,
@@ -780,16 +780,22 @@ pub proof fn wlocker_holds_no_windows_implies_l2_windows_unlocked(
         pt_mp.dom().contains(pagetable_ptr),
         pt_mp.spec_index(pagetable_ptr).wlocked_by_thread(thread_id),
         window_lock_map.dom().is_empty(),
+        whole_pagetable(pt_mp, pt_lower, pagetable_ptr).wf(),
         whole_pagetable(pt_mp, pt_lower, pagetable_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i),
         whole_pagetable(pt_mp, pt_lower, pagetable_ptr).spec_resolve_mapping_l3(l4i, l3i) is Some,
         whole_pagetable(pt_mp, pt_lower, pagetable_ptr).spec_resolve_mapping_l3(l4i, l3i)->0.addr == l2_p,
     ensures
         forall|i: L2Index|
             #![trigger pt_lower.spec_index(pagetable_ptr).l2_owner(l2_p, i)]
-            pei_valid(i) ==> !whole_pagetable(pt_mp, pt_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, i, pt_lower.spec_index(pagetable_ptr).l2_owner(l2_p, i)->Some_thread_id),
+            pei_valid(i) ==> !whole_pagetable(pt_mp, pt_lower, pagetable_ptr).window_locked_by_thread(l4i, l3i, i, pt_lower.spec_index(pagetable_ptr).l2_owner(l2_p, i)->Write_thread_id)
+                && !(pt_lower.spec_index(pagetable_ptr).l2_owner(l2_p, i) is Read),
 {
+    let c = whole_pagetable(pt_mp, pt_lower, pagetable_ptr);
     reveal(pagetable_window_holders_hold_pagetable);
     reveal(pagetable_window_typed_lock_map_aligned);
+    c.higher.wf_l4_at(l4i);
+    c.wf_l3_at(c.spec_resolve_mapping_l4(l4i)->0.addr, l3i);
+    assert(c.lower.l2_page(l2_p).wf()) by { reveal(WholePageTable::wf_l2); };
 }
 
 /// S of `iommu_table_map_set_did`: only the DID of the write-held IOMMU table `iommu_table_ptr` changes; its lock state stays.

@@ -133,7 +133,7 @@ fn build_new_child_page_structure(
             &&& old(window_perms).index(w).thread_id() == old(lctx).thread_id()
             &&& typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (pagetable_ptr, w), TypedLockMode::Write)
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-                == (SpinLockState::Some { thread_id: old(window_perms).index(w).thread_id(), lock_id: old(window_perms).index(w).lock_id() })
+                == (RwLockState::Write { thread_id: old(window_perms).index(w).thread_id(), lock_id: old(window_perms).index(w).lock_id() })
         },
         forall|w: WindowVa| #![trigger old(window_perms).dom().contains(w)] old(window_perms).dom().contains(w) ==> old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)),
         0 <= start <= old(steps).view().len(),
@@ -249,7 +249,7 @@ fn build_new_child_page_structure(
             &&& final(window_perms).index(w).thread_id() == final(lctx).thread_id()
             &&& typed_lock_map_contains_mode(final(lctx).pagetable_window_lock_map(), (pagetable_ptr, w), TypedLockMode::Write)
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_owner(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-                == (SpinLockState::Some { thread_id: final(window_perms).index(w).thread_id(), lock_id: final(window_perms).index(w).lock_id() })
+                == (RwLockState::Write { thread_id: final(window_perms).index(w).thread_id(), lock_id: final(window_perms).index(w).lock_id() })
         },
         forall|w: WindowVa| #![trigger final(window_perms).dom().contains(w)] final(window_perms).dom().contains(w) ==> final(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)),
 {
@@ -454,7 +454,7 @@ pub fn build_new_child_structure(
             &&& ret.view().index(w).state() is WriteLock
             &&& ret.view().index(w).thread_id() == final(lctx).thread_id()
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_owner(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-                == (SpinLockState::Some { thread_id: ret.view().index(w).thread_id(), lock_id: ret.view().index(w).lock_id() })
+                == (RwLockState::Write { thread_id: ret.view().index(w).thread_id(), lock_id: ret.view().index(w).lock_id() })
         },
         forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len ==> {
             &&& spec_va2index(window_of(range.view().spec_index(j)).va) == (spec_v2l4index(range.view().spec_index(j)), spec_v2l3index(range.view().spec_index(j)), spec_v2l2index(range.view().spec_index(j)), 0usize)
@@ -632,7 +632,7 @@ pub fn build_new_child_structure(
                 &&& window_perms.index(w).thread_id() == lctx.thread_id()
                 &&& typed_lock_map_contains_mode(lctx.pagetable_window_lock_map(), (pagetable_ptr, w), TypedLockMode::Write)
                 &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.l2_owner(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-                    == (SpinLockState::Some { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
+                    == (RwLockState::Write { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
             },
             forall|w: WindowVa| #![trigger window_perms.dom().contains(w)] window_perms.dom().contains(w) ==> lctx.pagetable_window_lock_map().dom().contains((pagetable_ptr, w)),
             forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len ==> {

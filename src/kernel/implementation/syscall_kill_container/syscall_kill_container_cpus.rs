@@ -19,7 +19,7 @@ verus! {
 /// permission.
 pub(crate) fn kill_container_cpus(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
-    container_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, killer_info: KillerInfo,
+    container_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, Ghost(killer_info): Ghost<KillerInfo>,
     Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>, Tracked(thread_perm): Tracked<&LockPerm>, Tracked(container_perm): Tracked<&LockPerm>,
     Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(ctx): Ghost<KillTraceCtx>,
 ) -> (ret: (RwLockCpuSetPtr, Tracked<LockPerm>))
@@ -108,7 +108,7 @@ pub(crate) fn kill_container_cpus(
         final(krnl).thr_mp.spec_index(thread_ptr).being_killed() == old(krnl).thr_mp.spec_index(thread_ptr).being_killed(),
 {
     let (set_ptr, Tracked(set_perm)) = kill_container_cpus_enter(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, container_ptr, owner_ptr,
-        killer_info, Tracked(cpu_perm), Tracked(process_perm), Tracked(thread_perm), Tracked(container_perm), Ghost(start), Ghost(pre), Ghost(ctx));
+        Ghost(killer_info), Tracked(cpu_perm), Tracked(process_perm), Tracked(thread_perm), Tracked(container_perm), Ghost(start), Ghost(pre), Ghost(ctx));
     let ghost entered_lctx = *lctx;
     let ghost entered_k = *krnl;
     let mut i: usize = 0;
@@ -201,7 +201,7 @@ pub(crate) fn kill_container_cpus(
 /// threads, for the target's killer, and move the kill on to the target's cpus.
 fn kill_container_cpus_enter(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
-    container_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, killer_info: KillerInfo,
+    container_ptr: RwLockContainerPtr, owner_ptr: RwLockContainerPtr, Ghost(killer_info): Ghost<KillerInfo>,
     Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>, Tracked(thread_perm): Tracked<&LockPerm>, Tracked(container_perm): Tracked<&LockPerm>,
     Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(ctx): Ghost<KillTraceCtx>,
 ) -> (ret: (RwLockCpuSetPtr, Tracked<LockPerm>))
@@ -296,7 +296,7 @@ fn kill_container_cpus_enter(
         thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id);
     }
     let set_ptr = krnl.ctn_mp.borrow_rodata(container_ptr).borrow().cpu_set;
-    let Tracked(set_perm) = krnl.wlock_cpu_set_and_mark_kill(container_ptr, set_ptr, killer_info, Tracked(&mut *lctx));
+    let Tracked(set_perm) = krnl.wlock_cpu_set_and_mark_kill(container_ptr, set_ptr, Ghost(killer_info), Tracked(&mut *lctx));
     let ghost marked_k = *krnl;
     krnl.set_thread_syscall_progress(thread_ptr, Ghost(kill_container_progress(container_ptr, ContainerKillStage::Cpus)), Tracked(&*lctx), Tracked(thread_perm));
     proof {

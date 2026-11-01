@@ -85,7 +85,7 @@ verus! {
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_exists(spec_v2l4index(va), spec_v2l3index(va)) ==> old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, window_of(va))),
             whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_exists(spec_v2l4index(va), spec_v2l3index(va)) ==> window_perms.dom().contains(window_of(va))
                 && whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va))
-                    == (SpinLockState::Some { thread_id: window_perms[window_of(va)].thread_id(), lock_id: window_perms[window_of(va)].lock_id() }),
+                    == (RwLockState::Write { thread_id: window_perms[window_of(va)].thread_id(), lock_id: window_perms[window_of(va)].lock_id() }),
             va_4k_valid(va),
             pei_valid(lo) && pei_valid(hi) && lo <= spec_v2l2index(va) <= hi,
             old(krnl).thr_mp.spec_index(quota_thread_ptr).view().temp_alloc_cache_2m.view().len() == 0,
@@ -172,7 +172,7 @@ verus! {
                     && spec_v2l3index(w.va) == spec_v2l3index(va) && lo <= spec_v2l2index(w.va) <= hi),
             forall|w: WindowVa| #![trigger ret.view().index(w)] ret.view().dom().contains(w) ==> {
                 &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_owner(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-                    == (SpinLockState::Some { thread_id: ret.view().index(w).thread_id(), lock_id: ret.view().index(w).lock_id() })
+                    == (RwLockState::Write { thread_id: ret.view().index(w).thread_id(), lock_id: ret.view().index(w).lock_id() })
                 &&& ret.view().index(w).state() is WriteLock
                 &&& ret.view().index(w).thread_id() == final(lctx).thread_id()
             },
@@ -406,7 +406,7 @@ verus! {
             l3_present ==> old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0usize)) })),
             l3_present ==> window_perms.dom().contains(WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0usize)) })
                 && whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(indices.0, indices.1), indices.2)
-                    == (SpinLockState::Some { thread_id: window_perms[WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0usize)) }].thread_id(), lock_id: window_perms[WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0usize)) }].lock_id() }),
+                    == (RwLockState::Write { thread_id: window_perms[WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0usize)) }].thread_id(), lock_id: window_perms[WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0usize)) }].lock_id() }),
             old(lctx).scheduler_lock_map().dom().is_empty(),
             old(lctx).cpu_set_lock_map().dom().is_empty(),
             forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
@@ -502,7 +502,7 @@ verus! {
                 ret.view().dom().contains(i) == (!whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_exists(indices.0, indices.1) && lo <= i <= hi),
             forall|i: L2Index| #![trigger ret.view().index(i)] ret.view().dom().contains(i) ==> {
                 &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_owner(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(indices.0, indices.1), i)
-                    == (SpinLockState::Some { thread_id: ret.view().index(i).thread_id(), lock_id: ret.view().index(i).lock_id() })
+                    == (RwLockState::Write { thread_id: ret.view().index(i).thread_id(), lock_id: ret.view().index(i).lock_id() })
                 &&& ret.view().index(i).state() is WriteLock
                 &&& ret.view().index(i).thread_id() == final(lctx).thread_id()
             },
@@ -730,7 +730,7 @@ verus! {
             l3_present ==> old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0usize)) })),
             l3_present ==> window_perms.dom().contains(WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0usize)) })
                 && whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(indices.0, indices.1), indices.2)
-                    == (SpinLockState::Some { thread_id: window_perms[WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0usize)) }].thread_id(), lock_id: window_perms[WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0usize)) }].lock_id() }),
+                    == (RwLockState::Write { thread_id: window_perms[WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0usize)) }].thread_id(), lock_id: window_perms[WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0usize)) }].lock_id() }),
             old(lctx).scheduler_lock_map().dom().is_empty(),
             old(lctx).cpu_set_lock_map().dom().is_empty(),
             forall|held_page: PageIndex| #![trigger old(lctx).page_lock_map().dom().contains(held_page)] old(lctx).page_lock_map().dom().contains(held_page) ==> old(krnl).pg_arr.spec_index(held_page).view().view().orders_below_table_locks(),
@@ -825,7 +825,7 @@ verus! {
                 ret.view().dom().contains(i) == (!whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_exists(indices.0, indices.1) && lo <= i <= hi),
             forall|i: L2Index| #![trigger ret.view().index(i)] ret.view().dom().contains(i) ==> {
                 &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_owner(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(indices.0, indices.1), i)
-                    == (SpinLockState::Some { thread_id: ret.view().index(i).thread_id(), lock_id: ret.view().index(i).lock_id() })
+                    == (RwLockState::Write { thread_id: ret.view().index(i).thread_id(), lock_id: ret.view().index(i).lock_id() })
                 &&& ret.view().index(i).state() is WriteLock
                 &&& ret.view().index(i).thread_id() == final(lctx).thread_id()
             },

@@ -3,7 +3,6 @@ use crate::{define::*};
 
 verus! {
 pub tracked enum LockState {
-    Mutex,
     ReadLock,
     WriteLock,
 }

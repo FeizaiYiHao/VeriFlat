@@ -238,8 +238,9 @@ impl KernelK {
 
     /// Turn this thread's write lock on `pagetable_ptr` into a read lock under the same token; any window of the table
     /// this thread holds stays held.
-    pub fn downgrade_pagetable(&mut self, pagetable_ptr: RwLockPageTableRoot, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>) -> (ret: Tracked<LockPerm>)
+    pub fn downgrade_pagetable(&mut self, cpu_id: CpuId, pagetable_ptr: RwLockPageTableRoot, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>) -> (ret: Tracked<LockPerm>)
         requires
+            cpu_id == old(lctx).cpu_id(),
             old(self).inv(),
             old(self).pt_mp.dom().contains(pagetable_ptr),
             whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).leaves_present(),
@@ -269,7 +270,7 @@ impl KernelK {
             assert(old(lctx).lock_entry_contains(old(self).pt_mp.lock_id_by_key(pagetable_ptr), KernelObjId::PageTable(pagetable_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         assert(self.pt_mp.spec_index(pagetable_ptr).wlocked_by(&*lctx)) by { old(self).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable_ptr); };
-        let ret = self.pt_mp.downgrade(pagetable_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::PageTable(pagetable_ptr)));
+        let ret = self.pt_mp.downgrade(cpu_id, pagetable_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::PageTable(pagetable_ptr)));
         proof {
             assert(typed_lock_maps_aligned(self, &*lctx)) by {
                 reveal(LockedMap::typed_lock_map_aligned); reveal(pagetable_window_typed_lock_map_aligned);
@@ -288,8 +289,10 @@ impl KernelK {
     }
 
     /// Read-lock two distinct page tables in increasing pointer order.
-    pub fn rlock_pagetable_pair(&mut self, source_pagetable: RwLockPageTableRoot, target_pagetable: RwLockPageTableRoot, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: (Tracked<LockPerm>, Tracked<LockPerm>))
+    pub fn rlock_pagetable_pair(&mut self, cpu_id: CpuId, source_pagetable: RwLockPageTableRoot, target_pagetable: RwLockPageTableRoot, Tracked(lctx): Tracked<&mut LocalContext>)
+        -> (ret: (Tracked<LockPerm>, Tracked<LockPerm>))
         requires
+            cpu_id == old(lctx).cpu_id(),
             old(self).inv(),
             source_pagetable != target_pagetable,
             old(self).pt_mp.dom().contains(source_pagetable),
@@ -355,16 +358,16 @@ impl KernelK {
             typed_lock_map_contains_mode(final(lctx).pagetable_lock_map(), target_pagetable, TypedLockMode::Read),
     {
         if source_pagetable < target_pagetable {
-            let Tracked(source_perm) = self.rlock_pagetable(source_pagetable, Tracked(&mut *lctx));
-            let Tracked(target_perm) = self.rlock_pagetable(target_pagetable, Tracked(&mut *lctx));
+            let Tracked(source_perm) = self.rlock_pagetable(cpu_id, source_pagetable, Tracked(&mut *lctx));
+            let Tracked(target_perm) = self.rlock_pagetable(cpu_id, target_pagetable, Tracked(&mut *lctx));
             proof {
                 assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
                 assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
             }
             (Tracked(source_perm), Tracked(target_perm))
         } else {
-            let Tracked(target_perm) = self.rlock_pagetable(target_pagetable, Tracked(&mut *lctx));
-            let Tracked(source_perm) = self.rlock_pagetable(source_pagetable, Tracked(&mut *lctx));
+            let Tracked(target_perm) = self.rlock_pagetable(cpu_id, target_pagetable, Tracked(&mut *lctx));
+            let Tracked(source_perm) = self.rlock_pagetable(cpu_id, source_pagetable, Tracked(&mut *lctx));
             proof {
                 assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
                 assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
@@ -374,9 +377,10 @@ impl KernelK {
     }
 
     /// Read-lock `read_pagetable` and write-lock `write_pagetable`, two distinct page tables, in increasing pointer order.
-    pub fn rlock_wlock_pagetable_pair(&mut self, read_pagetable: RwLockPageTableRoot, write_pagetable: RwLockPageTableRoot, Tracked(lctx): Tracked<&mut LocalContext>)
+    pub fn rlock_wlock_pagetable_pair(&mut self, cpu_id: CpuId, read_pagetable: RwLockPageTableRoot, write_pagetable: RwLockPageTableRoot, Tracked(lctx): Tracked<&mut LocalContext>)
         -> (ret: (Tracked<LockPerm>, Tracked<LockPerm>))
         requires
+            cpu_id == old(lctx).cpu_id(),
             old(self).inv(),
             read_pagetable != write_pagetable,
             old(self).pt_mp.dom().contains(read_pagetable),
@@ -450,7 +454,7 @@ impl KernelK {
             ret.1.view().thread_id() == final(lctx).thread_id(),
     {
         if read_pagetable < write_pagetable {
-            let Tracked(read_perm) = self.rlock_pagetable(read_pagetable, Tracked(&mut *lctx));
+            let Tracked(read_perm) = self.rlock_pagetable(cpu_id, read_pagetable, Tracked(&mut *lctx));
             let Tracked(write_perm) = self.wlock_pagetable(write_pagetable, Tracked(&mut *lctx));
             proof {
                 assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
@@ -459,7 +463,7 @@ impl KernelK {
             (Tracked(read_perm), Tracked(write_perm))
         } else {
             let Tracked(write_perm) = self.wlock_pagetable(write_pagetable, Tracked(&mut *lctx));
-            let Tracked(read_perm) = self.rlock_pagetable(read_pagetable, Tracked(&mut *lctx));
+            let Tracked(read_perm) = self.rlock_pagetable(cpu_id, read_pagetable, Tracked(&mut *lctx));
             proof {
                 assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(self), self)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
                 assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(self), self)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
@@ -468,8 +472,9 @@ impl KernelK {
         }
     }
 
-    pub fn rlock_pagetable(&mut self, pagetable_ptr: RwLockPageTableRoot, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
+    pub fn rlock_pagetable(&mut self, cpu_id: CpuId, pagetable_ptr: RwLockPageTableRoot, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
         requires
+            cpu_id == old(lctx).cpu_id(),
             old(self).inv(),
             old(self).pt_mp.dom().contains(pagetable_ptr),
             old(lctx).kernel_view_locking_state() is Acquire,
@@ -521,7 +526,7 @@ impl KernelK {
                 }
             };
         }
-        let ret = self.pt_mp.rlock(pagetable_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::PageTable(pagetable_ptr)));
+        let ret = self.pt_mp.rlock(cpu_id, pagetable_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::PageTable(pagetable_ptr)));
         proof {
             assert(typed_lock_maps_aligned(self, &*lctx)) by {
                 reveal(LockedMap::typed_lock_map_aligned); reveal(pagetable_window_typed_lock_map_aligned);
@@ -538,8 +543,9 @@ impl KernelK {
         ret
     }
 
-    pub fn runlock_pagetable(&mut self, pagetable_ptr: RwLockPageTableRoot, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
+    pub fn runlock_pagetable(&mut self, cpu_id: CpuId, pagetable_ptr: RwLockPageTableRoot, Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>)
         requires
+            cpu_id == old(lctx).cpu_id(),
             old(self).inv(),
             old(self).pt_mp.dom().contains(pagetable_ptr),
             typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable_ptr, TypedLockMode::Read),
@@ -568,7 +574,7 @@ impl KernelK {
             assert(old(lctx).lock_entry_contains(old(self).pt_mp.lock_id_by_key(pagetable_ptr), KernelObjId::PageTable(pagetable_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
         assert(self.pt_mp.spec_index(pagetable_ptr).rlocked_by(&*lctx)) by { old(self).pt_mp.typed_lock_map_aligned_read_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable_ptr); };
-        self.pt_mp.runlock(pagetable_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::PageTable(pagetable_ptr)));
+        self.pt_mp.runlock(cpu_id, pagetable_ptr, Tracked(&mut *lctx), lock_perm, Ghost(KernelObjId::PageTable(pagetable_ptr)));
         proof {
             assert(typed_lock_maps_aligned(self, &*lctx)) by {
                 reveal(LockedMap::typed_lock_map_aligned); reveal(pagetable_window_typed_lock_map_aligned);

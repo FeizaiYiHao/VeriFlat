@@ -76,7 +76,7 @@ pub(super) open spec fn lock_pagetable_range_existing_windows_eol_loop_framing(p
             &&& perms.index(w).state() is WriteLock
             &&& perms.index(w).thread_id() == pre_lctx.thread_id()
             &&& typed_lock_map_contains_mode(cur_lctx.pagetable_window_lock_map(), (root, w), TypedLockMode::Write)
-            &&& whole_pagetable(cur.pt_mp, cur.pt_lower.view(), root).window_view(w).lock_state == (SpinLockState::Some { thread_id: pre_lctx.thread_id(), lock_id: perms.index(w).lock_id() })
+            &&& whole_pagetable(cur.pt_mp, cur.pt_lower.view(), root).window_view(w).lock_state == (RwLockState::Write { thread_id: pre_lctx.thread_id(), lock_id: perms.index(w).lock_id() })
             &&& big.state() is ReadLock ==> whole_pagetable(cur.pt_mp, cur.pt_lower.view(), root).window_leaves_present(w)
             &&& big.state() is ReadLock ==> !whole_pagetable(cur.pt_mp, cur.pt_lower.view(), root).lower.window_stale_cpus.dom().contains((
                 whole_pagetable(cur.pt_mp, cur.pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
@@ -139,7 +139,7 @@ pub(super) proof fn lock_pagetable_range_existing_windows_eol_step(pre: KernelK,
             &&& big.state() is ReadLock ==> !whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.window_stale_cpus.dom().contains((
                 whole_pagetable(post.pt_mp, post.pt_lower.view(), root).window_l2_page(cursor.0, cursor.1), cursor.2))
             &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.l2_owner(whole_pagetable(post.pt_mp, post.pt_lower.view(), root).window_l2_page(cursor.0, cursor.1), cursor.2)
-                == (SpinLockState::Some { thread_id: post_perms.index(window_va).thread_id(), lock_id: post_perms.index(window_va).lock_id() })
+                == (RwLockState::Write { thread_id: post_perms.index(window_va).thread_id(), lock_id: post_perms.index(window_va).lock_id() })
             &&& post_perms.index(window_va).state() is WriteLock
             &&& post_perms.index(window_va).thread_id() == post_lctx.thread_id()
             &&& typed_lock_maps_inserted(mid_lctx, post_lctx, KernelObjId::PageTableWindow(root, window_va),
@@ -224,7 +224,7 @@ pub(super) proof fn lock_pagetable_range_existing_windows_eol_exit(pre: KernelK,
                 &&& typed_lock_map_contains_mode(post_lctx.pagetable_window_lock_map(), (root, w), TypedLockMode::Write)
                 &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), root).window_locked_by_thread(spec_v2l4index(w.va), spec_v2l3index(w.va), spec_v2l2index(w.va), post_lctx.thread_id())
                 &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.l2_owner(whole_pagetable(post.pt_mp, post.pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)),
-                    spec_v2l2index(w.va)) == (SpinLockState::Some { thread_id: perms.index(w).thread_id(), lock_id: perms.index(w).lock_id() })
+                    spec_v2l2index(w.va)) == (RwLockState::Write { thread_id: perms.index(w).thread_id(), lock_id: perms.index(w).lock_id() })
                 &&& big.state() is ReadLock ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), root).window_leaves_present(w)
                 &&& big.state() is ReadLock ==> !whole_pagetable(post.pt_mp, post.pt_lower.view(), root).lower.window_stale_cpus.dom().contains((
                     whole_pagetable(post.pt_mp, post.pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))

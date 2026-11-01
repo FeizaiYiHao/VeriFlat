@@ -54,7 +54,7 @@ pub(super) fn share_one_mapping_4k_copy_leaf(
         target_pagetable_lock_perm.state() is WriteLock ==> target_pagetable_lock_perm.lock_id() == old(krnl).pt_mp.spec_index(target_pagetable).locking_thread()->Write_lock_id,
         old(lctx).pagetable_window_lock_map().dom().contains((target_pagetable, window_of(target_va))),
         whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).window_l2_page(spec_v2l4index(target_va), spec_v2l3index(target_va)), spec_v2l2index(target_va))
-            == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
+            == (RwLockState::Write { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
         share_mapping_4k_leaf_ready(old(krnl), source_pagetable, target_pagetable, target_container, source_va, target_va),
     ensures
         final(krnl).inv(),

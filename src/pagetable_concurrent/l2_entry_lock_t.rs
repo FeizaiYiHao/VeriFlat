@@ -17,20 +17,14 @@ pub fn l2_entry_lock(pptr: &PPtr<L2PageMap>, Tracked(perm): Tracked<&mut PointsT
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
         pei_valid(i),
-        !(old(perm).value().entry_lock(i).owner() is Some && old(perm).value().entry_lock(i).owner()->Some_thread_id == old(lctx).thread_id()),
+        !(old(perm).value().entry_lock(i).locking_thread() is Write && old(perm).value().entry_lock(i).locking_thread()->Write_thread_id == old(lctx).thread_id()),
         old(lctx).kernel_view_locking_state() is Acquire,
     ensures
         final(perm).addr() == old(perm).addr(),
         final(perm).is_init(),
         final(perm).value().addr() == old(perm).value().addr(),
         forall|j: L2Index| #![trigger final(perm).value().entry_lock(j)] j != i ==> final(perm).value().entry_lock(j) == old(perm).value().entry_lock(j),
-        old(perm).value().entry_lock(i).owner() is None,
-        final(perm).value().entry_lock(i).view() == old(perm).value().entry_lock(i).view(),
-        final(perm).value().entry_lock(i).l1() == old(perm).value().entry_lock(i).l1(),
-        final(perm).value().entry_lock(i).owner() == (SpinLockState::Some { thread_id: final(lctx).thread_id(), lock_id: lp.view().lock_id() }),
-        lp.view().state() is WriteLock,
-        lp.view().ordering_lock_id() == lock_id,
-        lp.view().thread_id() == final(lctx).thread_id(),
+        window_wlock_ensures(old(perm).value().entry_lock(i), final(perm).value().entry_lock(i), lock_id, final(lctx), lp.view()),
         lock_ensures(old(lctx), final(lctx), lock_id, obj_id),
 {
     let p = pptr.addr() as *mut L2PageMap;
@@ -50,7 +44,7 @@ pub fn l2_entry_unlock(pptr: &PPtr<L2PageMap>, Tracked(perm): Tracked<&mut Point
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
         pei_valid(i),
-        old(perm).value().entry_lock(i).owner() == (SpinLockState::Some { thread_id: old(lctx).thread_id(), lock_id: lp.lock_id() }),
+        old(perm).value().entry_lock(i).locking_thread() == (RwLockState::Write { thread_id: old(lctx).thread_id(), lock_id: lp.lock_id() }),
         lp.state() is WriteLock,
         lp.thread_id() == old(lctx).thread_id(),
         old(lctx).lock_entry_contains(lock_id, obj_id),
@@ -59,9 +53,7 @@ pub fn l2_entry_unlock(pptr: &PPtr<L2PageMap>, Tracked(perm): Tracked<&mut Point
         final(perm).is_init(),
         final(perm).value().addr() == old(perm).value().addr(),
         forall|j: L2Index| #![trigger final(perm).value().entry_lock(j)] j != i ==> final(perm).value().entry_lock(j) == old(perm).value().entry_lock(j),
-        final(perm).value().entry_lock(i).view() == old(perm).value().entry_lock(i).view(),
-        final(perm).value().entry_lock(i).l1() == old(perm).value().entry_lock(i).l1(),
-        final(perm).value().entry_lock(i).owner() is None,
+        window_wunlock_ensures(old(perm).value().entry_lock(i), final(perm).value().entry_lock(i)),
         unlock_ensures(old(lctx), final(lctx), obj_id, lock_id),
 {
     let p = pptr.addr() as *mut L2PageMap;
@@ -69,21 +61,21 @@ pub fn l2_entry_unlock(pptr: &PPtr<L2PageMap>, Tracked(perm): Tracked<&mut Point
 }
 
 /// TCB: release-store `w` into the word of entry `i` of the L2 page at `pptr`. The stored lock bit must match the
-/// recorded owner, so a store never takes or drops the window lock.
+/// recorded locking thread, so a store never takes or drops the window lock.
 #[verifier::external_body]
 pub(super) fn l2_entry_store_release(pptr: &PPtr<L2PageMap>, Tracked(perm): Tracked<&mut PointsTo<L2PageMap>>, i: L2Index, w: usize)
     requires
         pptr.addr() == old(perm).addr(),
         old(perm).is_init(),
         pei_valid(i),
-        (w & L2_ENTRY_LOCK_MASK != 0) == (old(perm).value().entry_lock(i).owner() is Some),
+        (w & L2_ENTRY_LOCK_MASK != 0) == (old(perm).value().entry_lock(i).locking_thread() is Write),
     ensures
         final(perm).addr() == old(perm).addr(),
         final(perm).is_init(),
         final(perm).value().addr() == old(perm).value().addr(),
         forall|j: L2Index| #![trigger final(perm).value().entry_lock(j)] j != i ==> final(perm).value().entry_lock(j) == old(perm).value().entry_lock(j),
         final(perm).value().entry_lock(i).view() == usize2page_entry(w),
-        final(perm).value().entry_lock(i).owner() == old(perm).value().entry_lock(i).owner(),
+        final(perm).value().entry_lock(i).locking_thread() == old(perm).value().entry_lock(i).locking_thread(),
         final(perm).value().entry_lock(i).l1() == old(perm).value().entry_lock(i).l1(),
 {
     let p = pptr.addr() as *mut L2PageMap;
@@ -97,7 +89,7 @@ pub proof fn l2_entry_take_l1(tracked perm: &mut PointsTo<L2PageMap>, i: L2Index
     requires
         old(perm).is_init(),
         pei_valid(i),
-        old(perm).value().entry_lock(i).owner() == (SpinLockState::Some { thread_id: lp.thread_id(), lock_id: lp.lock_id() }),
+        old(perm).value().entry_lock(i).locking_thread() == (RwLockState::Write { thread_id: lp.thread_id(), lock_id: lp.lock_id() }),
         old(perm).value().entry_lock(i).l1() is Some,
     ensures
         final(perm).addr() == old(perm).addr(),
@@ -105,7 +97,7 @@ pub proof fn l2_entry_take_l1(tracked perm: &mut PointsTo<L2PageMap>, i: L2Index
         final(perm).value().addr() == old(perm).value().addr(),
         forall|j: L2Index| #![trigger final(perm).value().entry_lock(j)] j != i ==> final(perm).value().entry_lock(j) == old(perm).value().entry_lock(j),
         final(perm).value().entry_lock(i).view() == old(perm).value().entry_lock(i).view(),
-        final(perm).value().entry_lock(i).owner() == old(perm).value().entry_lock(i).owner(),
+        final(perm).value().entry_lock(i).locking_thread() == old(perm).value().entry_lock(i).locking_thread(),
         final(perm).value().entry_lock(i).l1() is None,
         ret == old(perm).value().entry_lock(i).l1()->Some_0,
 {
@@ -119,14 +111,14 @@ pub proof fn l2_entry_put_l1(tracked perm: &mut PointsTo<L2PageMap>, i: L2Index,
     requires
         old(perm).is_init(),
         pei_valid(i),
-        old(perm).value().entry_lock(i).owner() == (SpinLockState::Some { thread_id: lp.thread_id(), lock_id: lp.lock_id() }),
+        old(perm).value().entry_lock(i).locking_thread() == (RwLockState::Write { thread_id: lp.thread_id(), lock_id: lp.lock_id() }),
     ensures
         final(perm).addr() == old(perm).addr(),
         final(perm).is_init(),
         final(perm).value().addr() == old(perm).value().addr(),
         forall|j: L2Index| #![trigger final(perm).value().entry_lock(j)] j != i ==> final(perm).value().entry_lock(j) == old(perm).value().entry_lock(j),
         final(perm).value().entry_lock(i).view() == old(perm).value().entry_lock(i).view(),
-        final(perm).value().entry_lock(i).owner() == old(perm).value().entry_lock(i).owner(),
+        final(perm).value().entry_lock(i).locking_thread() == old(perm).value().entry_lock(i).locking_thread(),
         final(perm).value().entry_lock(i).l1() == Some(l1),
 {
     unimplemented!()

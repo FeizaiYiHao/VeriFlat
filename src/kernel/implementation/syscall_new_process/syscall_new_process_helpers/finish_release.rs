@@ -20,6 +20,7 @@ pub(super) fn release_new_process_child_locks(
     requires
         old(krnl).inv(),
         index_valid(NUM_CPUS, cpu_id),
+        cpu_id == old(lctx).cpu_id(),
         old(lctx).kernel_view_locking_state() is Release,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).page_lock_map().dom() =~= set![page_ptr2page_index(new_thread_ptr)],
@@ -72,7 +73,7 @@ pub(super) fn release_new_process_child_locks(
             &&& source_window_perms.index(w).state() is WriteLock
             &&& source_window_perms.index(w).thread_id() == entry_lctx.thread_id()
             &&& whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).lower.l2_owner(whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-                == (SpinLockState::Some { thread_id: source_window_perms.index(w).thread_id(), lock_id: source_window_perms.index(w).lock_id() })
+                == (RwLockState::Write { thread_id: source_window_perms.index(w).thread_id(), lock_id: source_window_perms.index(w).lock_id() })
             &&& whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_leaves_present(w)
             &&& !whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).lower.window_stale_cpus.dom().contains((
                 whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
@@ -99,7 +100,7 @@ pub(super) fn release_new_process_child_locks(
             &&& target_window_perms.index(w).state() is WriteLock
             &&& target_window_perms.index(w).thread_id() == old(lctx).thread_id()
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable_ptr).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-                == (SpinLockState::Some { thread_id: target_window_perms.index(w).thread_id(), lock_id: target_window_perms.index(w).lock_id() })
+                == (RwLockState::Write { thread_id: target_window_perms.index(w).thread_id(), lock_id: target_window_perms.index(w).lock_id() })
         },
         iommu_table is Some ==> {
             let iommu_table_ptr = iommu_table->Some_0;
@@ -164,7 +165,7 @@ pub(super) fn release_new_process_child_locks(
     krnl.unlock_pagetable_range_existing_windows(target_pagetable_ptr, source_range, Tracked(&target_pagetable_lock_perm), Tracked(&mut *lctx), Tracked(target_window_perms));
     wunlock_new_process_iommu_table(krnl, iommu_table, Tracked(&mut *lctx), Tracked(iommu_table_lock_perm));
     krnl.wunlock_process(child_ptr, Tracked(&mut *lctx), Tracked(child_lock_perm));
-    krnl.runlock_pagetable(source_pagetable_ptr, Tracked(&mut *lctx), Tracked(source_pagetable_lock_perm));
+    krnl.runlock_pagetable(cpu_id, source_pagetable_ptr, Tracked(&mut *lctx), Tracked(source_pagetable_lock_perm));
     krnl.wunlock_pagetable(target_pagetable_ptr, Tracked(&mut *lctx), Tracked(target_pagetable_lock_perm));
     krnl.wunlock_page(page_ptr2page_index(new_thread_ptr), Tracked(&mut *lctx), Tracked(thread_page_lock_perm));
     krnl.wunlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx), Tracked(scheduler_lock_perm));

@@ -136,7 +136,7 @@ pub(super) fn release_new_container_root_thread_locks_and_attach_endpoint(
             &&& source_window_perms.index(w).state() is WriteLock
             &&& source_window_perms.index(w).thread_id() == entry_lctx.thread_id()
             &&& whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).lower.l2_owner(whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-                == (SpinLockState::Some { thread_id: source_window_perms.index(w).thread_id(), lock_id: source_window_perms.index(w).lock_id() })
+                == (RwLockState::Write { thread_id: source_window_perms.index(w).thread_id(), lock_id: source_window_perms.index(w).lock_id() })
             &&& whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_leaves_present(w)
             &&& !whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).lower.window_stale_cpus.dom().contains((
                 whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
@@ -163,7 +163,7 @@ pub(super) fn release_new_container_root_thread_locks_and_attach_endpoint(
             &&& child_window_perms.index(w).state() is WriteLock
             &&& child_window_perms.index(w).thread_id() == old(lctx).thread_id()
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), child_pagetable_ptr).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), child_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-                == (SpinLockState::Some { thread_id: child_window_perms.index(w).thread_id(), lock_id: child_window_perms.index(w).lock_id() })
+                == (RwLockState::Write { thread_id: child_window_perms.index(w).thread_id(), lock_id: child_window_perms.index(w).lock_id() })
         },
         endpoint is Some ==> {
             let endpoint_ptr = endpoint->Some_0;
@@ -281,6 +281,7 @@ fn release_new_container_child_side_locks_and_attach_endpoint(
     requires
         old(krnl).inv(),
         index_valid(NUM_CPUS, cpu_id),
+        cpu_id == old(lctx).cpu_id(),
         old(lctx).kernel_view_locking_state() is Release,
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(lctx).page_lock_map().dom() =~= set![page_ptr2page_index(new_thread_ptr)],
@@ -358,7 +359,7 @@ fn release_new_container_child_side_locks_and_attach_endpoint(
             &&& source_window_perms.index(w).state() is WriteLock
             &&& source_window_perms.index(w).thread_id() == entry_lctx.thread_id()
             &&& whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).lower.l2_owner(whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-                == (SpinLockState::Some { thread_id: source_window_perms.index(w).thread_id(), lock_id: source_window_perms.index(w).lock_id() })
+                == (RwLockState::Write { thread_id: source_window_perms.index(w).thread_id(), lock_id: source_window_perms.index(w).lock_id() })
             &&& whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_leaves_present(w)
             &&& !whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).lower.window_stale_cpus.dom().contains((
                 whole_pagetable(entry_k.pt_mp, entry_k.pt_lower.view(), source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
@@ -385,7 +386,7 @@ fn release_new_container_child_side_locks_and_attach_endpoint(
             &&& child_window_perms.index(w).state() is WriteLock
             &&& child_window_perms.index(w).thread_id() == old(lctx).thread_id()
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), child_pagetable_ptr).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), child_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-                == (SpinLockState::Some { thread_id: child_window_perms.index(w).thread_id(), lock_id: child_window_perms.index(w).lock_id() })
+                == (RwLockState::Write { thread_id: child_window_perms.index(w).thread_id(), lock_id: child_window_perms.index(w).lock_id() })
         },
         endpoint is Some ==> {
             let endpoint_ptr = endpoint->Some_0;

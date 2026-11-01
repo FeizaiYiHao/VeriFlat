@@ -132,7 +132,7 @@ pub open spec fn kill_chain_state(
 /// write-held target carries no mark of another killer.
 pub(crate) fn kill_mark_child(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
-    thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, killer_info: KillerInfo, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>,
+    thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, Ghost(killer_info): Ghost<KillerInfo>, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>,
     Tracked(chain_perms): Tracked<&mut Map<RwLockProcessPtr, LockPerm>>, Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>,
     Tracked(thread_perm): Tracked<&LockPerm>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>,
 ) -> (ret: RwLockProcessPtr)
@@ -215,7 +215,7 @@ pub(crate) fn kill_mark_child(
         }
         assert(!krnl.prc_mp.spec_index(child_ptr).being_killed()) by { process_kill_mark_wf_at(krnl.ctn_mp, krnl.prc_mp, child_ptr); krnl.prc_mp.typed_lock_map_aligned_write_at(lctx.process_lock_map(), lctx.thread_id(), target); };
     }
-    let Tracked(child_perm) = krnl.try_wlock_process_and_mark_kill(child_ptr, process_ptr, thread_ptr, killer_info, Tracked(&mut *lctx)).unwrap();
+    let Tracked(child_perm) = krnl.try_wlock_process_and_mark_kill(child_ptr, process_ptr, thread_ptr, Ghost(killer_info), Tracked(&mut *lctx)).unwrap();
     let ghost marked_k = *krnl;
     krnl.set_thread_syscall_progress(thread_ptr, Ghost(kill_scope_progress(scope, child_ptr, KillStage::Walk)), Tracked(&*lctx), Tracked(thread_perm));
     let ghost entered_k = *krnl;
@@ -245,7 +245,7 @@ pub(crate) fn kill_mark_child(
 /// its caller, is unlinked from the target, and is reclaimed.
 pub(crate) fn kill_first_thread(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
-    thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, killer_info: KillerInfo, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>,
+    thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, Ghost(killer_info): Ghost<KillerInfo>, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>,
     Tracked(chain_perms): Tracked<&Map<RwLockProcessPtr, LockPerm>>, Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>,
     Tracked(thread_perm): Tracked<&LockPerm>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>,
 )
@@ -346,7 +346,7 @@ pub(crate) fn kill_first_thread(
             assert(kill_walk_state(*krnl, *lctx, cpu_id, scope, process_ptr, thread_ptr, chain, None, KillStage::Walk, *cpu_perm, *process_perm, *thread_perm, *chain_perms));
         }
     } else {
-        krnl.mark_thread_kill(victim_ptr, target, killer_info, Tracked(&mut *lctx));
+        krnl.mark_thread_kill(victim_ptr, target, Ghost(killer_info), Tracked(&mut *lctx));
         let ghost marked_k = *krnl;
         krnl.set_thread_syscall_progress(thread_ptr, Ghost(kill_scope_progress(scope, target, KillStage::Thread { thread: victim_ptr })), Tracked(&*lctx), Tracked(thread_perm));
         let ghost entered_k = *krnl;
@@ -360,7 +360,7 @@ pub(crate) fn kill_first_thread(
             kill_mark_thread_step_from_u(before_u, kernel_k_to_kernel_u(marked_k), kernel_k_to_kernel_u(entered_k), cpu_id, thread_ptr, target, victim_ptr, scope);
             kill_trace_push(&*steps, before_steps, start, pre, before_u, kernel_k_to_kernel_u(entered_k), cpu_id, ctx);
         }
-        kill_finish_marked_victim(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, victim_ptr, killer_info, Ghost(chain), Tracked(chain_perms),
+        kill_finish_marked_victim(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, victim_ptr, Ghost(killer_info), Ghost(chain), Tracked(chain_perms),
             Tracked(cpu_perm), Tracked(process_perm), Tracked(thread_perm), Tracked(victim_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
     }
 }
@@ -368,7 +368,7 @@ pub(crate) fn kill_first_thread(
 /// Kill the marked first thread `victim_ptr` of the target, release its caller, unlink it from the target, and reclaim it.
 pub(crate) fn kill_finish_marked_victim(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
-    thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, victim_ptr: RwLockThreadPtr, killer_info: KillerInfo, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>,
+    thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, victim_ptr: RwLockThreadPtr, Ghost(killer_info): Ghost<KillerInfo>, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>,
     Tracked(chain_perms): Tracked<&Map<RwLockProcessPtr, LockPerm>>, Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>,
     Tracked(thread_perm): Tracked<&LockPerm>, Tracked(victim_perm): Tracked<LockPerm>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>,
 )
@@ -426,7 +426,7 @@ pub(crate) fn kill_finish_marked_victim(
         final(lctx).container_lock_map() == old(lctx).container_lock_map(),
         final(krnl).cpu_arr.spec_index(cpu_id) == old(krnl).cpu_arr.spec_index(cpu_id),
 {
-    kill_victim_off_cpu_or_queue(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, victim_ptr, killer_info, Ghost(chain), Tracked(chain_perms),
+    kill_victim_off_cpu_or_queue(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, victim_ptr, Ghost(killer_info), Ghost(chain), Tracked(chain_perms),
         Tracked(cpu_perm), Tracked(process_perm), Tracked(thread_perm), Tracked(&victim_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
     kill_release_victim_caller(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, victim_ptr, Ghost(chain), Tracked(chain_perms),
         Tracked(cpu_perm), Tracked(process_perm), Tracked(thread_perm), Tracked(&victim_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
@@ -440,7 +440,7 @@ pub(crate) fn kill_finish_marked_victim(
 /// force the remote cpu it runs on from running to idle, and kill it.
 pub(crate) fn kill_victim_off_cpu_or_queue(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
-    thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, victim_ptr: RwLockThreadPtr, killer_info: KillerInfo, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>,
+    thread_ptr: RwLockThreadPtr, target: RwLockProcessPtr, victim_ptr: RwLockThreadPtr, Ghost(killer_info): Ghost<KillerInfo>, Ghost(chain): Ghost<Seq<RwLockProcessPtr>>,
     Tracked(chain_perms): Tracked<&Map<RwLockProcessPtr, LockPerm>>, Tracked(cpu_perm): Tracked<&LockPerm>, Tracked(process_perm): Tracked<&LockPerm>,
     Tracked(thread_perm): Tracked<&LockPerm>, Tracked(victim_perm): Tracked<&LockPerm>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>, Ghost(scope): Ghost<KillScope>, Ghost(ctx): Ghost<KillTraceCtx>,
 )
@@ -534,7 +534,7 @@ pub(crate) fn kill_victim_off_cpu_or_queue(
         }
     } else if running {
         proof { container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, target); container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr); }
-        kill_running_victim_cpu_to_idle(krnl, Tracked(&mut *lctx), victim_ptr, killer_info, Tracked(victim_perm));
+        kill_running_victim_cpu_to_idle(krnl, Tracked(&mut *lctx), victim_ptr, Ghost(killer_info), Tracked(victim_perm));
         let ghost killed_k = *krnl;
         proof {
             let remote = before.thr_mp.spec_index(victim_ptr).view().state->RUNNING_cpu_id;

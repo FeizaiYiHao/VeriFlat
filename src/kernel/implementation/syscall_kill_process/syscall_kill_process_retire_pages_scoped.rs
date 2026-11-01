@@ -194,7 +194,7 @@ pub(crate) fn kill_retire_table_page_scoped_and_unlock(
             &&& window_perm->Some_0.state() is WriteLock
             &&& window_perm->Some_0.thread_id() == old(lctx).thread_id()
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).window_l2_page(scan->L1_l4i, scan->L1_l3i), scan->L1_l2i)
-                == (SpinLockState::Some { thread_id: window_perm->Some_0.thread_id(), lock_id: window_perm->Some_0.lock_id() })
+                == (RwLockState::Write { thread_id: window_perm->Some_0.thread_id(), lock_id: window_perm->Some_0.lock_id() })
         },
     ensures
         final(krnl).inv(),
@@ -276,7 +276,7 @@ pub(crate) fn kill_retire_table_page_scoped_to_cache(
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).leaves_present()
             &&& scan is L1 ==> typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (table, WindowVa { va: spec_index2va((scan->L1_l4i, scan->L1_l3i, scan->L1_l2i, 0)) }), TypedLockMode::Write)
             &&& scan is L1 ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).window_l2_page(scan->L1_l4i, scan->L1_l3i), scan->L1_l2i)
-                == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() })
+                == (RwLockState::Write { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() })
             &&& scan is L2 ==> old(lctx).pagetable_window_lock_map().dom().is_empty()
         },
         iommu ==> {

@@ -69,7 +69,7 @@ impl KernelK {
                 &&& final(self).ctn_mp.spec_index(container_ptr) == old(self).ctn_mp.spec_index(container_ptr)
                 &&& *final(lctx) == *old(lctx)
             },
-            ret is Killed ==> old(self).ctn_mp.spec_index(container_ptr).killer_info() == Some(ret->Killed_0),
+            ret is Killed ==> old(self).ctn_mp.spec_index(container_ptr).killer_info() == Some(ret->Killed_0.view()),
             ret is DepthConflict ==> {
                 &&& !old(self).ctn_mp.spec_index(container_ptr).being_killed()
                 &&& old(self).ctn_mp.spec_index(container_ptr).lock_process_owner_u() == Some(ret->DepthConflict_observed_owner)
@@ -123,7 +123,7 @@ impl KernelK {
     /// Write-lock a child of a container the killer write-holds and mark it for the killer running on this cpu. A
     /// container another killer already marked is left untouched. On success the held entry moves to the sunk id a
     /// marked object reports. The acquisition requests the killer owner `High`, so it never reports a depth conflict.
-    pub fn try_wlock_container_and_mark_kill(&mut self, container_ptr: RwLockContainerPtr, killer_info: KillerInfo, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Option<Tracked<LockPerm>>)
+    pub fn try_wlock_container_and_mark_kill(&mut self, container_ptr: RwLockContainerPtr, Ghost(killer_info): Ghost<KillerInfo>, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Option<Tracked<LockPerm>>)
         requires
             old(self).inv(),
             old(self).ctn_mp.dom().contains(container_ptr),
@@ -188,7 +188,7 @@ impl KernelK {
             };
         }
         let lock_id = Ghost(dynamic_container_lock_id(container_ptr, self.ctn_mp.spec_index(container_ptr).view_rodata().view().depth, LockOwnerId::High));
-        let res = self.ctn_mp.try_wlock_dynamic_and_mark_kill(container_ptr, Tracked(&mut *lctx), lock_id, Ghost(KernelObjId::Container(container_ptr)), Ghost(LockOwnerId::High), killer_info);
+        let res = self.ctn_mp.try_wlock_dynamic_and_mark_kill(container_ptr, Tracked(&mut *lctx), lock_id, Ghost(KernelObjId::Container(container_ptr)), Ghost(LockOwnerId::High), Ghost(killer_info));
         proof {
             if res is Some {
                 let entry = TypedHeldLock { lock_id: lock_id.view(), mode: TypedLockMode::Write };

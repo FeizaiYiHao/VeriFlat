@@ -121,7 +121,7 @@ impl KernelK {
     /// Write-lock the cpu set `cpu_set_ptr` of the marked container `container_ptr`, which owns no process or thread, and
     /// mark the set for the same killer, whose process this thread write-holds. The held entry moves to the sunk id a
     /// marked object reports.
-    pub fn wlock_cpu_set_and_mark_kill(&mut self, container_ptr: RwLockContainerPtr, cpu_set_ptr: RwLockCpuSetPtr, killer_info: KillerInfo, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
+    pub fn wlock_cpu_set_and_mark_kill(&mut self, container_ptr: RwLockContainerPtr, cpu_set_ptr: RwLockCpuSetPtr, Ghost(killer_info): Ghost<KillerInfo>, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
         requires
             old(self).inv(),
             old(self).ctn_mp.dom().contains(container_ptr),
@@ -178,7 +178,7 @@ impl KernelK {
             };
         }
         assert(wlock_requires(self.cpu_set_mp.spec_index(cpu_set_ptr), &*lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-        let ret = self.cpu_set_mp.try_wlock_and_mark_kill(cpu_set_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::CpuSet(cpu_set_ptr)), killer_info).unwrap();
+        let ret = self.cpu_set_mp.try_wlock_and_mark_kill(cpu_set_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::CpuSet(cpu_set_ptr)), Ghost(killer_info)).unwrap();
         proof {
             let entry = TypedHeldLock { lock_id: old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr), mode: TypedLockMode::Write };
             lctx.update_lock_id(KernelObjId::CpuSet(cpu_set_ptr), old(self).cpu_set_mp.lock_id_by_key(cpu_set_ptr), self.cpu_set_mp.lock_id_by_key(cpu_set_ptr));

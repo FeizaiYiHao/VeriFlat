@@ -46,7 +46,7 @@ pub ghost struct WholePageTable<const TABLE_TYPE: PTType> {
 pub ghost struct PageTableWindowView {
     pub l2_page: PageMapPtr,
     pub l2_entry: PageEntry,
-    pub lock_state: SpinLockState,
+    pub lock_state: RwLockState,
     pub l1_table: Option<PointsTo<PageMap>>,
     pub stale_cpus: Option<Set<CpuId>>,
 }
@@ -320,7 +320,7 @@ impl<const TABLE_TYPE: PTType> PageTableLower<TABLE_TYPE> {
     pub open spec fn l2_entry(&self, p: PageMapPtr, i: L2Index) -> PageEntry { self.l2_page(p).entry_lock(i).view() }
 
     #[verifier::inline]
-    pub open spec fn l2_owner(&self, p: PageMapPtr, i: L2Index) -> SpinLockState { self.l2_page(p).entry_lock(i).owner() }
+    pub open spec fn l2_owner(&self, p: PageMapPtr, i: L2Index) -> RwLockState { self.l2_page(p).entry_lock(i).locking_thread() }
 
     #[verifier::inline]
     pub open spec fn l1_perm(&self, p: PageMapPtr, i: L2Index) -> PointsTo<PageMap> { self.l2_page(p).entry_lock(i).l1()->Some_0 }
@@ -444,14 +444,14 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
 
     pub open spec fn window_locked_by_thread(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId) -> bool {
         &&& self.window_exists(l4i, l3i)
-        &&& self.lower.l2_owner(self.window_l2_page(l4i, l3i), l2i) is Some
-        &&& self.lower.l2_owner(self.window_l2_page(l4i, l3i), l2i)->Some_thread_id == thread_id
+        &&& self.lower.l2_owner(self.window_l2_page(l4i, l3i), l2i) is Write
+        &&& self.lower.l2_owner(self.window_l2_page(l4i, l3i), l2i)->Write_thread_id == thread_id
     }
 
     /// Window `(l4i, l3i, l2i)` exists and some thread holds its lock; that holder is named so the window-holder
     /// invariant can fire on it.
     pub open spec fn window_locked(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index) -> bool {
-        self.window_locked_by_thread(l4i, l3i, l2i, self.lower.l2_owner(self.window_l2_page(l4i, l3i), l2i)->Some_thread_id)
+        self.window_locked_by_thread(l4i, l3i, l2i, self.lower.l2_owner(self.window_l2_page(l4i, l3i), l2i)->Write_thread_id)
     }
 
     /// Every 4K leaf the user cannot see lies in a locked 2M window; every 2M and 1G leaf is present.
@@ -486,8 +486,8 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
 
     /// No thread other than `thread_id` holds window `(l4i, l3i, l2i)`.
     pub open spec fn window_free_for(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId) -> bool {
-        self.window_exists(l4i, l3i) && self.lower.l2_owner(self.window_l2_page(l4i, l3i), l2i) is Some
-            ==> self.lower.l2_owner(self.window_l2_page(l4i, l3i), l2i)->Some_thread_id == thread_id
+        self.window_exists(l4i, l3i) && self.lower.l2_owner(self.window_l2_page(l4i, l3i), l2i) is Write
+            ==> self.lower.l2_owner(self.window_l2_page(l4i, l3i), l2i)->Write_thread_id == thread_id
     }
 
     /// Every present non-huge L3 entry links an L2 page of the window half.
@@ -664,7 +664,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                 &&& page_table_key_2m_valid::<TABLE_TYPE>(w.va)
                 &&& self.kernel_l4_end() <= spec_v2l4index(w.va)
                 &&& self.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
-                &&& self.lower.pagetable_window_locks.spec_index(w) == if self.lower.l2_owner(self.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) is Some {
+                &&& self.lower.pagetable_window_locks.spec_index(w) == if self.lower.l2_owner(self.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) is Write {
                     LockStateU::WriteLocked
                 } else {
                     LockStateU::Unlocked

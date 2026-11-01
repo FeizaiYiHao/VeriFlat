@@ -277,7 +277,7 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
 
     // 3. Page lock cells, written in place at their final address so free-page node addresses stay valid.
     let page_base = page_cells_base();
-    let page_value_offset = size_of::<RwLockInner>().next_multiple_of(align_of::<Page>());
+    let page_value_offset = size_of::<SpinWord>().next_multiple_of(align_of::<Page>());
     let mut free_4k_pool: FreePool = LinkedList::new(Some(0), Some(root_container));
     let mut free_2m_pool: FreePool = LinkedList::new(Some(0), Some(root_container));
     let mut free_count = 0usize;

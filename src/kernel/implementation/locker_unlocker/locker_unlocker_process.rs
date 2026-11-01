@@ -127,7 +127,7 @@ impl KernelK {
     /// Write-lock a process below the killer's own and mark it for the killer: a child of a process the killer holds, or
     /// the root of a container the killer marked and holds. A process another killer already marked is left untouched.
     /// On success the held entry moves to the sunk id a marked object reports.
-    pub fn try_wlock_process_and_mark_kill(&mut self, process_ptr: RwLockProcessPtr, killer_process: RwLockProcessPtr, killer_thread: RwLockThreadPtr, killer_info: KillerInfo, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Option<Tracked<LockPerm>>)
+    pub fn try_wlock_process_and_mark_kill(&mut self, process_ptr: RwLockProcessPtr, killer_process: RwLockProcessPtr, killer_thread: RwLockThreadPtr, Ghost(killer_info): Ghost<KillerInfo>, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Option<Tracked<LockPerm>>)
         requires
             old(self).inv(),
             old(self).prc_mp.dom().contains(process_ptr),
@@ -206,7 +206,7 @@ impl KernelK {
                 }
             };
         }
-        let res = self.prc_mp.try_wlock_and_mark_kill(process_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Process(process_ptr)), killer_info);
+        let res = self.prc_mp.try_wlock_and_mark_kill(process_ptr, Tracked(&mut *lctx), Ghost(KernelObjId::Process(process_ptr)), Ghost(killer_info));
         let res = if res.is_some() {
             let Tracked(lock_perm) = res.unwrap();
             let process = self.prc_mp.borrow_mut(process_ptr, Tracked(&*lctx), Tracked(&lock_perm));

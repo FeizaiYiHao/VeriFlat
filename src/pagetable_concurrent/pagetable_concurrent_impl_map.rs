@@ -24,7 +24,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             (WholePageTable { higher: *self, lower: *old(lower) }).window_locked_by_thread(target_l4i, target_l3i, target_l2i, old(lctx).thread_id()),
             self.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
             self.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
-            old(lower).l2_owner(target_l2_p, target_l2i) == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
+            old(lower).l2_owner(target_l2_p, target_l2i) == (RwLockState::Write { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),
@@ -96,7 +96,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             page_table_key_2m_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0))),
             target_entry.present,
             (WholePageTable { higher: *self, lower: *old(lower) }).window_locked_by_thread(target_l4i, target_l3i, target_l2i, old(lctx).thread_id()),
-            old(lower).l2_owner(target_l2_p, target_l2i) == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
+            old(lower).l2_owner(target_l2_p, target_l2i) == (RwLockState::Write { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
             final(lctx).cpu_id() == old(lctx).cpu_id(),

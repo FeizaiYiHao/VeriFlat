@@ -6,10 +6,11 @@ verus! {
 /// existing windows over `source_range` held with perms `source_window_perms`; the table's lock state returns to the one
 /// it had in `base`, before this thread read-locked it.
 pub(super) fn new_container_release_source_table(
-    krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, pagetable_ptr: RwLockPageTableRoot, source_range: &VaRange4K, windows_held: bool,
+    krnl: &mut KernelK, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>, pagetable_ptr: RwLockPageTableRoot, source_range: &VaRange4K, windows_held: bool,
     Ghost(base): Ghost<KernelK>, Tracked(pagetable_lock_perm): Tracked<LockPerm>, Tracked(source_window_perms): Tracked<Map<WindowVa, LockPerm>>,
 )
     requires
+        cpu_id == old(lctx).cpu_id(),
         old(krnl).inv(),
         typed_lock_maps_aligned(old(krnl), old(lctx)),
         old(krnl).pt_mp.dom().contains(pagetable_ptr),
@@ -37,7 +38,7 @@ pub(super) fn new_container_release_source_table(
                 &&& table.higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some
                 &&& typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (pagetable_ptr, w), TypedLockMode::Write)
                 &&& source_window_perms.index(w).state() is WriteLock && source_window_perms.index(w).thread_id() == old(lctx).thread_id()
-                &&& table.lower.l2_owner(table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) == (SpinLockState::Some { thread_id: source_window_perms.index(w).thread_id(), lock_id: source_window_perms.index(w).lock_id() })
+                &&& table.lower.l2_owner(table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) == (RwLockState::Write { thread_id: source_window_perms.index(w).thread_id(), lock_id: source_window_perms.index(w).lock_id() })
                 &&& table.window_leaves_present(w)
                 &&& !table.lower.window_stale_cpus.dom().contains((table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
             }
@@ -89,7 +90,7 @@ pub(super) fn new_container_release_source_table(
             assert(Map::<LockThreadId, LockToken>::empty().insert(lctx.thread_id(), pagetable_lock_perm.lock_id()).remove(lctx.thread_id()).dom() =~= Set::empty());
         }
     }
-    krnl.runlock_pagetable(pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
+    krnl.runlock_pagetable(cpu_id, pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
     proof {
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
         assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };

@@ -157,7 +157,7 @@ pub(super) fn mmap_4k_fill_enter(
     let ghost filled_k = *krnl;
     let ghost filled_lctx = *lctx;
     let ghost filled_steps = steps.view();
-    let Tracked(pagetable_read_perm) = krnl.downgrade_pagetable(pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
+    let Tracked(pagetable_read_perm) = krnl.downgrade_pagetable(cpu_id, pagetable_ptr, Tracked(&mut *lctx), Tracked(pagetable_lock_perm));
     krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::Mmap4k { range: *va_range, mapped: 0, directory: Mmap4kDirectory::None, phase: Mmap4kPhase::Filled })),
         Tracked(&*lctx), Tracked(&thread_lock_perm));
     let ghost downgraded_k = *krnl;

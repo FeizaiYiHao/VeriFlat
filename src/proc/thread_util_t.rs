@@ -15,9 +15,9 @@ use vstd::simple_pptr::*;
 /// `LockedMap::insert_with_perm`; the page-state flip and process unstage
 /// stay in verified code.
 #[verifier::external_body]
-pub fn retype_page_perm_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: bool>(
+pub fn retype_page_perm_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: bool, I: SpinLockInner>(
     page_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm4k>, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>,
-) -> (ret: (Tracked<PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>, Tracked<LockPerm>))
+) -> (ret: (Tracked<PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>>>, Tracked<LockPerm>))
     requires
         !(rodata.container_source() is Dynamic),
         !(rodata.process_source() is Dynamic),
@@ -46,7 +46,7 @@ pub fn retype_page_perm_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerId
         final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
         typed_lock_maps_inserted(old(lctx), final(lctx), obj_id.view(), TypedHeldLock { lock_id: ret.1.view().ordering_lock_id(), mode: TypedLockMode::Write }),
 {
-    unsafe { (page_ptr as *mut RwLock<T, ROT, GhostT, HAS_KILL_STATE>).write(RwLock::new_wlocked_for_retype(value, rodata, LockControl::Clear)); }
+    unsafe { (page_ptr as *mut RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>).write(RwLock::new_wlocked_for_retype(value, rodata, Ghost(LockControl::Clear), LockOwnerId::None)); }
     (Tracked::assume_new(), Tracked::assume_new())
 }
 
@@ -90,10 +90,10 @@ pub fn retype_thread_rwlock_to_4k_page_perm(
 /// write-held under the concrete `LockOwnerId::Some` owner recorded in `control`; every other lock is created with a
 /// clear control word.
 #[verifier::external_body]
-fn retype_page_perm_2m_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: bool>(
+fn retype_page_perm_2m_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: bool, I: SpinLockInner>(
     page_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm2m>, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>,
     control: LockControl,
-) -> (ret: (Tracked<PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE>>>, Tracked<LockPerm>))
+) -> (ret: (Tracked<PointsTo<RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>>>, Tracked<LockPerm>))
     requires
         !(rodata.container_source() is Dynamic),
         (rodata.process_source() is Dynamic) == (control is DynamicProcess),
@@ -124,12 +124,13 @@ fn retype_page_perm_2m_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdT
         final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
         typed_lock_maps_inserted(old(lctx), final(lctx), obj_id.view(), TypedHeldLock { lock_id: ret.1.view().ordering_lock_id(), mode: TypedLockMode::Write }),
 {
-    unsafe { (page_ptr as *mut RwLock<T, ROT, GhostT, HAS_KILL_STATE>).write(RwLock::new_wlocked_for_retype(value, rodata, control)); }
+    let owner = match control { LockControl::DynamicProcess(owner) => owner, _ => LockOwnerId::None };
+    unsafe { (page_ptr as *mut RwLock<T, ROT, GhostT, HAS_KILL_STATE, I>).write(RwLock::new_wlocked_for_retype(value, rodata, Ghost(control), owner)); }
     (Tracked::assume_new(), Tracked::assume_new())
 }
 
-impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: bool>
-    LockedMap<usize, T, ROT, GhostT, HAS_KILL_STATE> {
+impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: bool, I: SpinLockInner>
+    LockedMap<usize, T, ROT, GhostT, HAS_KILL_STATE, I> {
     pub fn retype_4k_and_insert(&mut self, page_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm4k>, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>) -> (ret: Tracked<LockPerm>)
         requires
             !(rodata.container_source() is Dynamic),
@@ -172,7 +173,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
             typed_lock_maps_inserted(old(lctx), final(lctx), obj_id.view(), TypedHeldLock { lock_id: final(self).lock_id_by_key(page_ptr), mode: TypedLockMode::Write }),
     {
-        let (Tracked(rwlock_perm), Tracked(lock_perm)) = retype_page_perm_to_rwlock::<T, ROT, GhostT, HAS_KILL_STATE>(page_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut *lctx), obj_id);
+        let (Tracked(rwlock_perm), Tracked(lock_perm)) = retype_page_perm_to_rwlock::<T, ROT, GhostT, HAS_KILL_STATE, I>(page_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut *lctx), obj_id);
         self.insert_with_perm(page_ptr, Tracked(rwlock_perm));
         Tracked(lock_perm)
     }
@@ -222,14 +223,14 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             final(lctx).kernel_view_locking_state() == old(lctx).kernel_view_locking_state(),
             typed_lock_maps_inserted(old(lctx), final(lctx), obj_id.view(), TypedHeldLock { lock_id: final(self).lock_id_by_key(page_ptr), mode: TypedLockMode::Write }),
     {
-        let (Tracked(rwlock_perm), Tracked(lock_perm)) = retype_page_perm_2m_to_rwlock::<T, ROT, GhostT, HAS_KILL_STATE>(page_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut *lctx), obj_id, control);
+        let (Tracked(rwlock_perm), Tracked(lock_perm)) = retype_page_perm_2m_to_rwlock::<T, ROT, GhostT, HAS_KILL_STATE, I>(page_ptr, value, rodata, Ghost(ghost), Tracked(page_perm), Tracked(&mut *lctx), obj_id, control);
         self.insert_with_perm(page_ptr, Tracked(rwlock_perm));
         Tracked(lock_perm)
     }
 }
 
-impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT>
-    LockedMap<usize, T, ROT, GhostT, NO_KILL_STATE> {
+impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, I: SpinLockInner>
+    LockedMap<usize, T, ROT, GhostT, NO_KILL_STATE, I> {
     #[verifier::spinoff_prover]
     pub fn retype_4k_as_unlocked_singleton(&mut self, page_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm4k>, cpu_id: CpuId, lock_thread_id: LockThreadId, Ghost(obj_id): Ghost<KernelObjId>)
         requires

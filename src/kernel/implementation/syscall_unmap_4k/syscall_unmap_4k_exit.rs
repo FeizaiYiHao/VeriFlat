@@ -74,7 +74,7 @@ pub(super) fn unmap_4k_release_and_exit(
                 &&& window_perms.index(w).state() is WriteLock
                 &&& window_perms.index(w).thread_id() == old(lctx).thread_id()
                 &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-                    == (SpinLockState::Some { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
+                    == (RwLockState::Write { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
                 &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_leaves_present(w)
                 &&& !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.window_stale_cpus.dom().contains((
                     whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
@@ -123,7 +123,7 @@ pub(super) fn unmap_4k_release_and_exit(
     krnl.set_thread_syscall_progress(thread_ptr, Ghost(None), Tracked(&*lctx), Tracked(&thread_perm));
     krnl.unlock_pagetable_range_existing_windows(pagetable, va_range, Tracked(&pagetable_perm), Tracked(&mut *lctx), Tracked(window_perms));
     proof { krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable); }
-    krnl.runlock_pagetable(pagetable, Tracked(&mut *lctx), Tracked(pagetable_perm));
+    krnl.runlock_pagetable(cpu_id, pagetable, Tracked(&mut *lctx), Tracked(pagetable_perm));
     krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_perm));
     krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_perm));
     krnl.wunlock_container(container_ptr, Tracked(&mut *lctx), Tracked(container_perm));

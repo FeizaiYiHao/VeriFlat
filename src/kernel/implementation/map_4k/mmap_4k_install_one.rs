@@ -82,7 +82,7 @@ verus! {
             level is L2 ==> old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, WindowVa { va: spec_index2va((indices.0, indices.1, indices.2, 0usize)) })),
             level is L2 ==> window_perm is Some
                 && whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(indices.0, indices.1), indices.2)
-                    == (SpinLockState::Some { thread_id: window_perm->Some_0.thread_id(), lock_id: window_perm->Some_0.lock_id() }),
+                    == (RwLockState::Write { thread_id: window_perm->Some_0.thread_id(), lock_id: window_perm->Some_0.lock_id() }),
             kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
             kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
             old(krnl).irt.view().owners() == old(steps).snapshot_k().irt.view().owners(),
@@ -190,7 +190,7 @@ verus! {
             forall|i: L2Index| #![trigger ret.view().dom().contains(i)] ret.view().dom().contains(i) == (level is L3 && lo <= i <= hi),
             forall|i: L2Index| #![trigger ret.view().index(i)] level is L3 && lo <= i <= hi ==> {
                 &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.l2_owner(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).window_l2_page(indices.0, indices.1), i)
-                    == (SpinLockState::Some { thread_id: ret.view().index(i).thread_id(), lock_id: ret.view().index(i).lock_id() })
+                    == (RwLockState::Write { thread_id: ret.view().index(i).thread_id(), lock_id: ret.view().index(i).lock_id() })
                 &&& ret.view().index(i).state() is WriteLock
                 &&& ret.view().index(i).thread_id() == final(lctx).thread_id()
             },

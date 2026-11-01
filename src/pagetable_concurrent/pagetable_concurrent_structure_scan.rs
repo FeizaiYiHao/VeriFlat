@@ -136,7 +136,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             (WholePageTable { higher: *old(self), lower: *old(lower) }).spec_structure_scan_wf(scan),
             scan.spec_table_page() is Some,
             scan is L1 ==> (WholePageTable { higher: *old(self), lower: *old(lower) }).window_locked_by_thread(scan->L1_l4i, scan->L1_l3i, scan->L1_l2i, old(lctx).thread_id()),
-            scan is L1 ==> old(lower).l2_owner(scan->L1_l2_p, scan->L1_l2i) == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
+            scan is L1 ==> old(lower).l2_owner(scan->L1_l2_p, scan->L1_l2i) == (RwLockState::Write { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
             scan is L2 ==> forall|i: L2Index| #![trigger old(lower).l2_owner(scan->L2_l2_p, i)] pei_valid(i) ==> old(lower).l2_owner(scan->L2_l2_p, i) is None,
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures

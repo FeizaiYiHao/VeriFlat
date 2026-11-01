@@ -48,7 +48,7 @@ pub fn retype_page_to_whole_pagetable_and_insert(pt_mp: &mut PageTableHigherLock
         typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::PageTable(page_ptr), TypedHeldLock { lock_id: final(pt_mp).lock_id_by_key(page_ptr), mode: TypedLockMode::Write }),
         final(pt_mp).typed_lock_map_aligned(final(lctx).pagetable_lock_map(), final(lctx).thread_id()),
 {
-    let (Tracked(pagetable_rwlock_perm), Tracked(pagetable_perm)) = retype_page_perm_to_rwlock::<PageTableHigher<PT_TYPE>, (), PageTableLower<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>(
+    let (Tracked(pagetable_rwlock_perm), Tracked(pagetable_perm)) = retype_page_perm_to_rwlock::<PageTableHigher<PT_TYPE>, (), PageTableLower<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>(
         page_ptr, higher_value, (), Ghost(lower_value), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::PageTable(page_ptr)));
     pt_mp.insert_with_perm(page_ptr, Tracked(pagetable_rwlock_perm));
     proof {
@@ -83,3 +83,6 @@ impl PageTableHigher<PT_TYPE> {
     }
 }
 } // verus!
+
+// Layout contract: the page-table big lock, per-cpu reader slots included, fits the 4K page it is retyped from.
+const _: () = assert!(core::mem::size_of::<RwLock<PageTableHigher<PT_TYPE>, (), PageTableLower<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>>() <= PAGE_SZ_4K);

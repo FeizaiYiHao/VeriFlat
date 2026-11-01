@@ -536,7 +536,7 @@ impl KernelK {
 
     /// Mark a thread of a process the killer marked and holds; the killer already write-holds the thread. A marked
     /// thread is held by whoever holds its marked owner, and the held entry moves to the sunk id.
-    pub fn mark_thread_kill(&mut self, thread_ptr: RwLockThreadPtr, process_ptr: RwLockProcessPtr, killer_info: KillerInfo, Tracked(lctx): Tracked<&mut LocalContext>)
+    pub fn mark_thread_kill(&mut self, thread_ptr: RwLockThreadPtr, process_ptr: RwLockProcessPtr, Ghost(killer_info): Ghost<KillerInfo>, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
             old(self).inv(),
             old(self).prc_mp.dom().contains(process_ptr),
@@ -572,7 +572,7 @@ impl KernelK {
             old(self).thr_mp.typed_lock_map_aligned_write_at(old(lctx).thread_lock_map(), old(lctx).thread_id(), thread_ptr);
             assert(old(lctx).lock_entry_contains(old(self).thr_mp.lock_id_by_key(thread_ptr), KernelObjId::Thread(thread_ptr))) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
-        self.thr_mp.mark_kill(thread_ptr, Tracked(&*lctx), killer_info);
+        self.thr_mp.mark_kill(thread_ptr, Tracked(&*lctx), Ghost(killer_info));
         proof {
             let entry = TypedHeldLock { lock_id: old(self).thr_mp.lock_id_by_key(thread_ptr), mode: TypedLockMode::Write };
             lctx.update_lock_id(KernelObjId::Thread(thread_ptr), old(self).thr_mp.lock_id_by_key(thread_ptr), self.thr_mp.lock_id_by_key(thread_ptr));

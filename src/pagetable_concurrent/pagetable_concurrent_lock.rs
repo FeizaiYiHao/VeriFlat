@@ -24,10 +24,8 @@ impl PageTableHigher<PT_TYPE> {
             lock_window_eof_transition_framing(WholePageTable { higher: *self, lower: *old(lower) }, WholePageTable { higher: *self, lower: *final(lower) }, l4i, l3i, l2i,
                 final(lctx).thread_id(), ret.view().lock_id()),
             (WholePageTable { higher: *self, lower: *final(lower) }).window_locked_by_thread(l4i, l3i, l2i, final(lctx).thread_id()),
-            final(lower).l2_owner((WholePageTable { higher: *self, lower: *final(lower) }).window_l2_page(l4i, l3i), l2i) == (SpinLockState::Some { thread_id: ret.view().thread_id(), lock_id: ret.view().lock_id() }),
-            ret.view().state() is WriteLock,
-            ret.view().ordering_lock_id() == window_lock_id(root, l4i, l3i, l2i),
-            ret.view().thread_id() == final(lctx).thread_id(),
+            window_wlock_ensures(old(lower).l2_page((WholePageTable { higher: *self, lower: *old(lower) }).window_l2_page(l4i, l3i)).entry_lock(l2i),
+                final(lower).l2_page((WholePageTable { higher: *self, lower: *final(lower) }).window_l2_page(l4i, l3i)).entry_lock(l2i), window_lock_id(root, l4i, l3i, l2i), final(lctx), ret.view()),
             lock_ensures(old(lctx), final(lctx), window_lock_id(root, l4i, l3i, l2i), window_obj_id(root, l4i, l3i, l2i)),
     {
         let ghost pre = WholePageTable { higher: *self, lower: *lower };
@@ -59,7 +57,7 @@ impl PageTableHigher<PT_TYPE> {
             (WholePageTable { higher: *self, lower: *old(lower) }).window_locked_by_thread(l4i, l3i, l2i, old(lctx).thread_id()),
             lp.view().state() is WriteLock,
             lp.view().thread_id() == old(lctx).thread_id(),
-            old(lower).l2_owner((WholePageTable { higher: *self, lower: *old(lower) }).window_l2_page(l4i, l3i), l2i) == (SpinLockState::Some { thread_id: lp.view().thread_id(), lock_id: lp.view().lock_id() }),
+            old(lower).l2_owner((WholePageTable { higher: *self, lower: *old(lower) }).window_l2_page(l4i, l3i), l2i) == (RwLockState::Write { thread_id: lp.view().thread_id(), lock_id: lp.view().lock_id() }),
             old(lctx).lock_entry_contains(window_lock_id(root, l4i, l3i, l2i), window_obj_id(root, l4i, l3i, l2i)),
         ensures
             (WholePageTable { higher: *self, lower: *final(lower) }).wf(),

@@ -194,7 +194,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             pei_valid(i) ==> post.lower.l2_entry(page_map_ptr, i).is_empty() && post.lower.l2_page(page_map_ptr).entry_lock(i).l1() is None
         &&& forall|i: L2Index| #![trigger post.lower.l2_owner(page_map_ptr, i)] pei_valid(i) && !(lo <= i <= hi) ==> post.lower.l2_owner(page_map_ptr, i) is None
         &&& forall|i: L2Index| #![trigger post.lower.l2_owner(page_map_ptr, i)]
-            lo <= i <= hi ==> post.lower.l2_owner(page_map_ptr, i) is Some && post.lower.l2_owner(page_map_ptr, i)->Some_thread_id == thread_id
+            lo <= i <= hi ==> post.lower.l2_owner(page_map_ptr, i) is Write && post.lower.l2_owner(page_map_ptr, i)->Write_thread_id == thread_id
         &&& post.lower.pagetable_window_locks == Map::new(
             pre.lower.pagetable_window_locks.dom() + Set::<usize>::range(0, 512).map_by(|i: usize| WindowVa { va: spec_index2va((target_l4i, target_l3i, i, 0usize)) }, |w: WindowVa| spec_v2l2index(w.va)),
             |w: WindowVa| if pre.lower.pagetable_window_locks.dom().contains(w) { pre.lower.pagetable_window_locks[w] } else if lo <= spec_v2l2index(w.va) <= hi { LockStateU::WriteLocked } else { LockStateU::Unlocked })
@@ -352,7 +352,8 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     }
 
     /// EOF closure of `create_entry_l3`: the window-map half of `wf_window_locks`. Proved apart from the L2-slot half:
-    /// one query over both halves costs several times the two separate ones.
+    /// one query over both halves costs several times the two separate ones. `tables_reachable_wf` maps each L2 page's
+    /// reverse index back to the page, which ends the window/slot trigger chain of `wf_window_locks`.
     proof fn create_entry_l3_eof_wf_window_locks_va(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l3_p: PageMapPtr, page_map_ptr: PageMapPtr, lo: L2Index, hi: L2Index, thread_id: LockThreadId)
         requires
             TABLE_TYPE == PT_TYPE,
@@ -373,7 +374,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                 &&& page_table_key_2m_valid::<TABLE_TYPE>(w.va)
                 &&& post.kernel_l4_end() <= spec_v2l4index(w.va)
                 &&& post.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
-                &&& post.lower.pagetable_window_locks.spec_index(w) == if post.lower.l2_owner(post.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) is Some {
+                &&& post.lower.pagetable_window_locks.spec_index(w) == if post.lower.l2_owner(post.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) is Write {
                     LockStateU::WriteLocked
                 } else {
                     LockStateU::Unlocked
@@ -381,7 +382,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
             },
     {
         reveal(WholePageTable::create_entry_l3_eof_transition_framing);
-        reveal(WholePageTable::wf_window_locks); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::wf_l3);
+        reveal(WholePageTable::wf_window_locks); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::wf_l3); reveal(WholePageTable::tables_reachable_wf);
         spec_index2va_injective();
         broadcast use spec_va_2m_valid_index_roundtrip, iova_2m_valid_index_roundtrip, spec_index2va_2m_valid;
     }
@@ -423,7 +424,7 @@ impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
                 &&& page_table_key_2m_valid::<TABLE_TYPE>(w.va)
                 &&& post.kernel_l4_end() <= spec_v2l4index(w.va)
                 &&& post.window_exists(spec_v2l4index(w.va), spec_v2l3index(w.va))
-                &&& post.lower.pagetable_window_locks.spec_index(w) == if post.lower.l2_owner(post.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) is Some {
+                &&& post.lower.pagetable_window_locks.spec_index(w) == if post.lower.l2_owner(post.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) is Write {
                     LockStateU::WriteLocked
                 } else {
                     LockStateU::Unlocked

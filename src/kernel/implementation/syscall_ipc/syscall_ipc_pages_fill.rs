@@ -120,7 +120,7 @@ pub(super) fn ipc_pages_fill_target_page(
             &&& old(window_perms).index(w).thread_id() == old(lctx).thread_id()
             &&& typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (target_pagetable, w), TypedLockMode::Write)
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-                == (SpinLockState::Some { thread_id: old(window_perms).index(w).thread_id(), lock_id: old(window_perms).index(w).lock_id() })
+                == (RwLockState::Write { thread_id: old(window_perms).index(w).thread_id(), lock_id: old(window_perms).index(w).lock_id() })
         },
         forall|w: WindowVa| #![trigger old(window_perms).dom().contains(w)]
             old(window_perms).dom().contains(w) ==> old(lctx).pagetable_window_lock_map().dom().contains((target_pagetable, w)),
@@ -234,7 +234,7 @@ pub(super) fn ipc_pages_fill_target_page(
             &&& final(window_perms).index(w).thread_id() == final(lctx).thread_id()
             &&& typed_lock_map_contains_mode(final(lctx).pagetable_window_lock_map(), (target_pagetable, w), TypedLockMode::Write)
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).lower.l2_owner(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-                == (SpinLockState::Some { thread_id: final(window_perms).index(w).thread_id(), lock_id: final(window_perms).index(w).lock_id() })
+                == (RwLockState::Write { thread_id: final(window_perms).index(w).thread_id(), lock_id: final(window_perms).index(w).lock_id() })
         },
         forall|w: WindowVa| #![trigger final(window_perms).dom().contains(w)]
             final(window_perms).dom().contains(w) ==> final(lctx).pagetable_window_lock_map().dom().contains((target_pagetable, w)),

@@ -377,7 +377,7 @@ pub(super) fn new_process_unlock_and_stutter(
                 assert(Map::<LockThreadId, LockToken>::empty().insert(lctx.thread_id(), perm.lock_id()).remove(lctx.thread_id()).dom() =~= Set::empty());
             }
         }
-        krnl.runlock_pagetable(source_pagetable.unwrap(), Tracked(&mut *lctx), Tracked(perm));
+        krnl.runlock_pagetable(cpu_id, source_pagetable.unwrap(), Tracked(&mut *lctx), Tracked(perm));
     }
     if endpoint.is_some() {
         let tracked perm = endpoint_lock_perm.tracked_unwrap();
@@ -499,7 +499,7 @@ pub(super) fn new_process_lock_endpoint_and_source(
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr);
         krnl.pt_mp.typed_lock_map_aligned_locked_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr);
     }
-    let source_pagetable_lock_perm = krnl.rlock_pagetable(pagetable_ptr, Tracked(&mut *lctx));
+    let source_pagetable_lock_perm = krnl.rlock_pagetable(cpu_id, pagetable_ptr, Tracked(&mut *lctx));
     proof {
         pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
         assert(kernel_cpu_process_thread_nonlock_fields_unchanged(old(krnl), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; };
@@ -572,7 +572,7 @@ pub(super) fn new_process_lock_source_windows(
             &&& ret.1.view().index(w).state() is WriteLock
             &&& ret.1.view().index(w).thread_id() == final(lctx).thread_id()
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).lower.l2_owner(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-                == (SpinLockState::Some { thread_id: ret.1.view().index(w).thread_id(), lock_id: ret.1.view().index(w).lock_id() })
+                == (RwLockState::Write { thread_id: ret.1.view().index(w).thread_id(), lock_id: ret.1.view().index(w).lock_id() })
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).window_leaves_present(w)
             &&& !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).lower.window_stale_cpus.dom().contains((whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), root).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
         },

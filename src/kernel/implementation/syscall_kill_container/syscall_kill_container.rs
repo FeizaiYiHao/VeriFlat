@@ -147,11 +147,8 @@ pub fn syscall_kill_container(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
         return RetValueType::ErrorInvalidChild;
     }
     let child_ptr = krnl.ctn_mp.borrow_typed(container_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(&container_lock_perm)).children.get(child_index);
-    let (container_depth, process_depth) = {
-        let process_ro = krnl.prc_mp.borrow_rodata(process_ptr).borrow();
-        (process_ro.container_depth, process_ro.depth)
-    };
-    let killer_info = KillerInfo { container: container_ptr, container_depth, process: process_ptr, process_depth, thread: thread_ptr, cpu_id };
+    let ghost process_ro = krnl.prc_mp.spec_index(process_ptr).view_rodata().view();
+    let ghost killer_info = KillerInfo { container: container_ptr, container_depth: process_ro.container_depth, process: process_ptr, process_depth: process_ro.depth, thread: thread_ptr, cpu_id };
     let ghost locked_k = *krnl;
     let ghost locked_lctx = *lctx;
     proof {
@@ -170,7 +167,7 @@ pub fn syscall_kill_container(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
             assert(krnl.ctn_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view()[container_ro.depth as int] == container_ptr);
         };
     }
-    let child_res = krnl.try_wlock_container_and_mark_kill(child_ptr, killer_info, Tracked(&mut *lctx));
+    let child_res = krnl.try_wlock_container_and_mark_kill(child_ptr, Ghost(killer_info), Tracked(&mut *lctx));
     if child_res.is_none() {
         krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
@@ -208,7 +205,7 @@ pub fn syscall_kill_container(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
     proof { chain_perms.tracked_insert(child_ptr, child_perm); }
     assert(kill_container_walk_state(*krnl, *lctx, cpu_id, process_ptr, thread_ptr, container_ptr, killer_info, seq![child_ptr], cpu_lock_perm, process_lock_perm, thread_lock_perm,
         container_lock_perm, chain_perms));
-    kill_container_walk_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, container_ptr, child_ptr, killer_info, Tracked(cpu_lock_perm),
+    kill_container_walk_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, container_ptr, child_ptr, Ghost(killer_info), Tracked(cpu_lock_perm),
         Tracked(process_lock_perm), Tracked(thread_lock_perm), Tracked(container_lock_perm), Tracked(chain_perms), Ghost(start), Ghost(pre), Ghost(child_index));
     RetValueType::Success
 }

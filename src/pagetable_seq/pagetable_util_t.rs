@@ -15,7 +15,7 @@ use super::pagetable_util_t_eof::*;
 /// object.
 #[verifier::external_body]
 pub fn retype_pagetable_rwlock_to_4k_page_perms(
-    pagetable_ptr: RwLockPageTableRoot, Tracked(pagetable_perm): Tracked<PointsTo<RwLock<PageTableHigher<PT_TYPE>, (), PageTableLower<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE>>>,
+    pagetable_ptr: RwLockPageTableRoot, Tracked(pagetable_perm): Tracked<PointsTo<RwLock<PageTableHigher<PT_TYPE>, (), PageTableLower<PT_TYPE>, PAGE_TABLE_HAS_KILL_STATE, PerCpuReaderSlots>>>,
     Tracked(lock_perm): Tracked<LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>,
 ) -> (ret: (Tracked<PagePerm4k>, Tracked<PagePerm4k>))
     requires
@@ -200,7 +200,8 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::IommuTable(page_ptr), TypedHeldLock { lock_id: final(self).it_mp.lock_id_by_key(page_ptr), mode: TypedLockMode::Write }),
             final(self).it_mp.typed_lock_map_aligned(final(lctx).iommu_table_lock_map(), final(lctx).thread_id()),
     {
-        let (Tracked(iommu_table_rwlock_perm), Tracked(iommu_table_perm)) = retype_page_perm_to_rwlock::<PageTable<IOMMU_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE>(page_ptr, iommu_table_value, (), Ghost(()), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::IommuTable(page_ptr)));
+        let (Tracked(iommu_table_rwlock_perm), Tracked(iommu_table_perm)) = retype_page_perm_to_rwlock::<PageTable<IOMMU_TYPE>, (), (), PAGE_TABLE_HAS_KILL_STATE, SpinWord>(
+            page_ptr, iommu_table_value, (), Ghost(()), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::IommuTable(page_ptr)));
         self.it_mp.insert_with_perm(page_ptr, Tracked(iommu_table_rwlock_perm));
         proof { assert(self.it_mp.typed_lock_map_aligned(lctx.iommu_table_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); }; }
         Tracked(iommu_table_perm)
@@ -353,8 +354,8 @@ impl KernelK {
                 let l2_page = before.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va));
                 &&& before.lower.l2_perms.dom().contains(l2_page)
                 &&& pei_valid(spec_v2l2index(w.va))
-                &&& before.lower.l2_owner(l2_page, spec_v2l2index(w.va)) is Some
-                &&& before.lower.l2_owner(l2_page, spec_v2l2index(w.va))->Some_thread_id == lctx.thread_id()
+                &&& before.lower.l2_owner(l2_page, spec_v2l2index(w.va)) is Write
+                &&& before.lower.l2_owner(l2_page, spec_v2l2index(w.va))->Write_thread_id == lctx.thread_id()
             },
     {
         proof { window_stale_cpus_update_eof_held_windows(*old(self), root, lctx.pagetable_window_lock_map(), lctx.pagetable_lock_map(), lctx.thread_id()); }

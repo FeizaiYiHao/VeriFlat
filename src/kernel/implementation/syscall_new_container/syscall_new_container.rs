@@ -130,7 +130,7 @@ fn new_container_release_entry_locks(
                 &&& table.higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some
                 &&& typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (pagetable_ptr, w), TypedLockMode::Write)
                 &&& source_window_perms.index(w).state() is WriteLock && source_window_perms.index(w).thread_id() == old(lctx).thread_id()
-                &&& table.lower.l2_owner(table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) == (SpinLockState::Some { thread_id: source_window_perms.index(w).thread_id(), lock_id: source_window_perms.index(w).lock_id() })
+                &&& table.lower.l2_owner(table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)) == (RwLockState::Write { thread_id: source_window_perms.index(w).thread_id(), lock_id: source_window_perms.index(w).lock_id() })
                 &&& table.window_leaves_present(w)
                 &&& !table.lower.window_stale_cpus.dom().contains((table.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
             }
@@ -158,7 +158,7 @@ fn new_container_release_entry_locks(
 {
     krnl.wunlock_cpu_set(cpu_set_ptr, Tracked(&mut *lctx), Tracked(cpu_set_lock_perm));
     proof { container_nonlock_fields_and_quotas_unchanged_for_cpu_set_relock(&cpu_set_unlocked_k, &*krnl, cpu_set_ptr); }
-    new_container_release_source_table(krnl, Tracked(&mut *lctx), pagetable_ptr, source_range, windows_held, Ghost(steps.snapshot_k()), Tracked(pagetable_lock_perm), Tracked(source_window_perms));
+    new_container_release_source_table(krnl, cpu_id, Tracked(&mut *lctx), pagetable_ptr, source_range, windows_held, Ghost(steps.snapshot_k()), Tracked(pagetable_lock_perm), Tracked(source_window_perms));
     if endpoint.is_some() {
         let tracked endpoint_lock_perm = endpoint_lock_perm.tracked_unwrap();
         krnl.wunlock_endpoint(endpoint.unwrap(), Tracked(&mut *lctx), Tracked(endpoint_lock_perm));
@@ -607,7 +607,7 @@ fn new_container_lock_entry(
             &&& ret->Ok_0.source_window_perms.view().index(w).thread_id() == final(lctx).thread_id()
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), ret->Ok_0.source_pagetable_ptr).lower.l2_owner(whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(),
                 ret->Ok_0.source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
-                    == (SpinLockState::Some { thread_id: ret->Ok_0.source_window_perms.view().index(w).thread_id(), lock_id: ret->Ok_0.source_window_perms.view().index(w).lock_id() })
+                    == (RwLockState::Write { thread_id: ret->Ok_0.source_window_perms.view().index(w).thread_id(), lock_id: ret->Ok_0.source_window_perms.view().index(w).lock_id() })
             &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), ret->Ok_0.source_pagetable_ptr).window_leaves_present(w)
             &&& !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), ret->Ok_0.source_pagetable_ptr).lower.window_stale_cpus.dom().contains((whole_pagetable(final(krnl).pt_mp,
                 final(krnl).pt_lower.view(), ret->Ok_0.source_pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
@@ -647,7 +647,7 @@ fn new_container_lock_entry(
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, source_pagetable_ptr);
         krnl.pt_mp.typed_lock_map_aligned_locked_at(lctx.pagetable_lock_map(), lctx.thread_id(), source_pagetable_ptr);
     }
-    let Tracked(source_pagetable_lock_perm) = krnl.rlock_pagetable(source_pagetable_ptr, Tracked(&mut *lctx));
+    let Tracked(source_pagetable_lock_perm) = krnl.rlock_pagetable(cpu_id, source_pagetable_ptr, Tracked(&mut *lctx));
     proof { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, source_pagetable_ptr); }
     let (l4_ok, source_ready, source_window_perms) = new_container_lock_source_windows(krnl, Tracked(&mut *lctx), source_pagetable_ptr, &source_range, Tracked(&source_pagetable_lock_perm));
     let Tracked(source_window_perms) = source_window_perms;

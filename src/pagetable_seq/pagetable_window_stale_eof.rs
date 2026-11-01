@@ -12,7 +12,7 @@ pub open spec fn window_stale_cpus_after_set(stale: Map<(PageMapPtr, L2Index), S
 pub open spec fn window_stale_cpus_after_remove_cpu(stale: Map<(PageMapPtr, L2Index), Set<CpuId>>, lower: PageTableLower<PT_TYPE>, root_write_held: bool, thread_id: LockThreadId, cpu_id: CpuId)
     -> Map<(PageMapPtr, L2Index), Set<CpuId>>
 {
-    Map::new(stale.dom(), |k: (PageMapPtr, L2Index)| if root_write_held || (lower.l2_perms.dom().contains(k.0) && pei_valid(k.1) && (lower.l2_owner(k.0, k.1) is Some && lower.l2_owner(k.0, k.1)->Some_thread_id == thread_id)) {
+    Map::new(stale.dom(), |k: (PageMapPtr, L2Index)| if root_write_held || (lower.l2_perms.dom().contains(k.0) && pei_valid(k.1) && (lower.l2_owner(k.0, k.1) is Write && lower.l2_owner(k.0, k.1)->Write_thread_id == thread_id)) {
         stale.spec_index(k).remove(cpu_id)
     } else {
         stale.spec_index(k)
@@ -22,7 +22,7 @@ pub open spec fn window_stale_cpus_after_remove_cpu(stale: Map<(PageMapPtr, L2In
 /// The stale-CPU map after the empty records the thread may change are deleted: all of them while it write-holds the table,
 /// otherwise those of the windows it holds in `lower`.
 pub open spec fn window_stale_cpus_after_clear_empty(stale: Map<(PageMapPtr, L2Index), Set<CpuId>>, lower: PageTableLower<PT_TYPE>, root_write_held: bool, thread_id: LockThreadId) -> Map<(PageMapPtr, L2Index), Set<CpuId>> {
-    stale.filter_keys(|k: (PageMapPtr, L2Index)| !(stale.spec_index(k) == Set::<CpuId>::empty() && (root_write_held || (lower.l2_perms.dom().contains(k.0) && pei_valid(k.1) && (lower.l2_owner(k.0, k.1) is Some && lower.l2_owner(k.0, k.1)->Some_thread_id == thread_id)))))
+    stale.filter_keys(|k: (PageMapPtr, L2Index)| !(stale.spec_index(k) == Set::<CpuId>::empty() && (root_write_held || (lower.l2_perms.dom().contains(k.0) && pei_valid(k.1) && (lower.l2_owner(k.0, k.1) is Write && lower.l2_owner(k.0, k.1)->Write_thread_id == thread_id)))))
 }
 
 /// One update of a page table's stale-CPU map by `KernelK::replace_window_stale_cpus`.
@@ -88,8 +88,8 @@ pub(super) proof fn window_stale_cpus_update_eof(pre: KernelK, post: KernelK, ro
             let l2_page = before.window_l2_page(spec_v2l4index(update->Set_window.va), spec_v2l3index(update->Set_window.va));
             &&& before.lower.l2_perms.dom().contains(l2_page)
             &&& pei_valid(spec_v2l2index(update->Set_window.va))
-            &&& before.lower.l2_owner(l2_page, spec_v2l2index(update->Set_window.va)) is Some
-            &&& before.lower.l2_owner(l2_page, spec_v2l2index(update->Set_window.va))->Some_thread_id == thread_id
+            &&& before.lower.l2_owner(l2_page, spec_v2l2index(update->Set_window.va)) is Write
+            &&& before.lower.l2_owner(l2_page, spec_v2l2index(update->Set_window.va))->Write_thread_id == thread_id
         }),
         update is Set ==> (whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).window_view(update->Set_window).stale_cpus is Some
             ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).window_view(update->Set_window).stale_cpus->Some_0.subset_of(update->Set_cpus))
@@ -147,8 +147,8 @@ pub(super) proof fn window_stale_cpus_update_eof_held_windows(pre: KernelK, root
             let l2_page = before.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va));
             &&& before.lower.l2_perms.dom().contains(l2_page)
             &&& pei_valid(spec_v2l2index(w.va))
-            &&& before.lower.l2_owner(l2_page, spec_v2l2index(w.va)) is Some
-            &&& before.lower.l2_owner(l2_page, spec_v2l2index(w.va))->Some_thread_id == thread_id
+            &&& before.lower.l2_owner(l2_page, spec_v2l2index(w.va)) is Write
+            &&& before.lower.l2_owner(l2_page, spec_v2l2index(w.va))->Write_thread_id == thread_id
         },
 {
     broadcast use spec_va_2m_valid_index_roundtrip;
@@ -210,8 +210,8 @@ proof fn window_stale_cpus_update_eof_tlb_wf_new_map(pre: KernelK, post: KernelK
             let l2_page = before.window_l2_page(spec_v2l4index(update->Set_window.va), spec_v2l3index(update->Set_window.va));
             &&& before.lower.l2_perms.dom().contains(l2_page)
             &&& pei_valid(spec_v2l2index(update->Set_window.va))
-            &&& before.lower.l2_owner(l2_page, spec_v2l2index(update->Set_window.va)) is Some
-            &&& before.lower.l2_owner(l2_page, spec_v2l2index(update->Set_window.va))->Some_thread_id == thread_id
+            &&& before.lower.l2_owner(l2_page, spec_v2l2index(update->Set_window.va)) is Write
+            &&& before.lower.l2_owner(l2_page, spec_v2l2index(update->Set_window.va))->Write_thread_id == thread_id
         }),
         update is Set ==> (whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).window_view(update->Set_window).stale_cpus is Some
             ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), root).window_view(update->Set_window).stale_cpus->Some_0.subset_of(update->Set_cpus))

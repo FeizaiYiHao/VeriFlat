@@ -369,7 +369,7 @@ impl KernelK {
             typed_lock_maps_inserted(old(lctx), final(lctx), KernelObjId::Process(page_ptr), TypedHeldLock { lock_id: final(self).prc_mp.lock_id_by_key(page_ptr), mode: TypedLockMode::Write }),
             final(self).prc_mp.typed_lock_map_aligned(final(lctx).process_lock_map(), final(lctx).thread_id()),
     {
-        let (Tracked(process_rwlock_perm), Tracked(process_perm)) = retype_page_perm_to_rwlock::<Process, ReadOnlyNode<ProcessRO>, ProcessGhost, PROCESS_HAS_KILL_STATE>(
+        let (Tracked(process_rwlock_perm), Tracked(process_perm)) = retype_page_perm_to_rwlock::<Process, ReadOnlyNode<ProcessRO>, ProcessGhost, PROCESS_HAS_KILL_STATE, SpinWord>(
             page_ptr, process_value, rodata, Ghost(process_ghost), Tracked(page_perm), Tracked(&mut *lctx), Ghost(KernelObjId::Process(page_ptr)));
         self.prc_mp.insert_with_perm(page_ptr, Tracked(process_rwlock_perm));
         proof {

@@ -114,15 +114,11 @@ pub fn syscall_kill_process(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loca
         return RetValueType::ErrorInvalidChild;
     }
     let child_ptr = krnl.prc_mp.borrow_typed(process_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(&process_lock_perm)).children.get(child_index);
-    let (container_depth, process_depth) = {
-        let process_ro = krnl.prc_mp.borrow_rodata(process_ptr).borrow();
-        (process_ro.container_depth, process_ro.depth)
-    };
-    let killer_info = KillerInfo { container: container_ptr, container_depth, process: process_ptr, process_depth, thread: thread_ptr, cpu_id };
+    let ghost process_ro = krnl.prc_mp.spec_index(process_ptr).view_rodata().view();
+    let ghost killer_info = KillerInfo { container: container_ptr, container_depth: process_ro.container_depth, process: process_ptr, process_depth: process_ro.depth, thread: thread_ptr, cpu_id };
     let ghost locked_k = *krnl;
     let ghost locked_lctx = *lctx;
     proof {
-        let process_ro = krnl.prc_mp.spec_index(process_ptr).view_rodata().view();
         assert({
             let child_ro = krnl.prc_mp.spec_index(child_ptr).view_rodata().view();
             &&& krnl.prc_mp.dom().contains(child_ptr)
@@ -144,7 +140,7 @@ pub fn syscall_kill_process(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loca
             assert(krnl.prc_mp.spec_index(child_ptr).view_ghost().uppertree_seq.view().contains(process_ptr)) by { process_children_depth_wf_at(root, tree, krnl.prc_mp, child_ptr); };
         };
     }
-    let child_res = krnl.try_wlock_process_and_mark_kill(child_ptr, process_ptr, thread_ptr, killer_info, Tracked(&mut *lctx));
+    let child_res = krnl.try_wlock_process_and_mark_kill(child_ptr, process_ptr, thread_ptr, Ghost(killer_info), Tracked(&mut *lctx));
     if child_res.is_none() {
         krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
         krnl.wunlock_process(process_ptr, Tracked(&mut *lctx), Tracked(process_lock_perm));
@@ -179,7 +175,7 @@ pub fn syscall_kill_process(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loca
     }
     let tracked mut chain_perms: Map<RwLockProcessPtr, LockPerm> = Map::tracked_empty();
     proof { chain_perms.tracked_insert(child_ptr, child_perm); }
-    kill_walk_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, child_ptr, killer_info, Tracked(cpu_lock_perm), Tracked(process_lock_perm),
+    kill_walk_and_finish(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, child_ptr, Ghost(killer_info), Tracked(cpu_lock_perm), Tracked(process_lock_perm),
         Tracked(thread_lock_perm), Tracked(chain_perms), Ghost(start), Ghost(pre), Ghost(child_index));
     RetValueType::Success
 }
@@ -188,7 +184,7 @@ pub fn syscall_kill_process(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loca
 /// unlock the cpu, the process, and the thread.
 pub(crate) fn kill_walk_and_finish(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
-    thread_ptr: RwLockThreadPtr, child_ptr: RwLockProcessPtr, killer_info: KillerInfo, Tracked(cpu_perm): Tracked<LockPerm>, Tracked(process_perm): Tracked<LockPerm>,
+    thread_ptr: RwLockThreadPtr, child_ptr: RwLockProcessPtr, Ghost(killer_info): Ghost<KillerInfo>, Tracked(cpu_perm): Tracked<LockPerm>, Tracked(process_perm): Tracked<LockPerm>,
     Tracked(thread_perm): Tracked<LockPerm>, Tracked(chain_perms): Tracked<Map<RwLockProcessPtr, LockPerm>>, Ghost(start): Ghost<int>, Ghost(pre): Ghost<KernelU>,
     Ghost(child_index): Ghost<usize>,
 )
@@ -251,12 +247,12 @@ pub(crate) fn kill_walk_and_finish(
             (target_process.children.len() != 0, target_process.owned_threads.len() != 0)
         };
         if has_children {
-            let next = kill_mark_child(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, killer_info, Ghost(chain), Tracked(&mut chain_perms),
+            let next = kill_mark_child(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, Ghost(killer_info), Ghost(chain), Tracked(&mut chain_perms),
                 Tracked(&cpu_perm), Tracked(&process_perm), Tracked(&thread_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
             proof { chain = chain.push(next); }
             target = next;
         } else if has_threads {
-            kill_first_thread(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, killer_info, Ghost(chain), Tracked(&chain_perms),
+            kill_first_thread(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, Ghost(killer_info), Ghost(chain), Tracked(&chain_perms),
                 Tracked(&cpu_perm), Tracked(&process_perm), Tracked(&thread_perm), Ghost(start), Ghost(pre), Ghost(scope), Ghost(ctx));
         } else {
             let parent = kill_reclaim_target(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, process_ptr, thread_ptr, target, Ghost(chain), Tracked(&mut chain_perms),
