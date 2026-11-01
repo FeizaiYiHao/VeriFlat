@@ -44,7 +44,7 @@ verus! {
 
         pub rt_ctn: RwLockContainerPtr, // Never dies
 
-        pub dflt_pt: ReadOnlyNode<PageTable<PT_TYPE>>, // Read only
+        pub dflt_pt: &'static ReadOnlyNode<PageTable<PT_TYPE>>, // Read only, in its own static cell
     }
 
     impl KernelK{

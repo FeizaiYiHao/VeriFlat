@@ -1,6 +1,7 @@
 use vstd::prelude::*;
 use crate::*;
 use super::cpu_cr3_pcid::CpuCr3Pcid;
+use super::cpu_hw_cr3_pcid_cells_t::TrustedAtomicUsize;
 
 // Platform implementation: send the maskable running-to-idle IPI to `cpu_id` and spin until it acknowledges. The target
 // takes the IPI anywhere outside a kernel step, where its interrupt flag is set; it loads `cr3` with the default PCID,
@@ -23,22 +24,25 @@ impl AtomicPcidCr3 {
         &&& self.atomic.view() & !(MEM_MASK as usize | 0xfffusize) == 0
     }
 
-    pub fn new(cr3: PageTableRoot, pcid: Pcid, Ghost(owner_cpu): Ghost<CpuId>) -> (ret: Self)
+    /// Boot only, once per cpu: publish `(cr3, pcid)` as the hardware cr3/pcid word of cpu `cpu_id`.
+    pub fn new(cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid) -> (ret: Self)
         requires
+            index_valid(NUM_CPUS, cpu_id),
             page_ptr_valid(cr3),
             pcid_valid(pcid),
-            index_valid(NUM_CPUS, owner_cpu),
         ensures
             ret.inv(),
             ret.view() == (cr3, pcid),
-            ret.owner_cpu() == owner_cpu,
+            ret.owner_cpu() == cpu_id,
     {
         let packed = pack_pcid_cr3(cr3, pcid);
-        Self { atomic: TrustedAtomicUsize::new(packed, Ghost(owner_cpu)) }
+        Self { atomic: TrustedAtomicUsize::new(cpu_id, packed) }
     }
 
-    pub fn load(&self, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: (PageTableRoot, Pcid))
+    pub fn load(&self, cpu_id: CpuId, Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: (PageTableRoot, Pcid))
         requires
+            index_valid(NUM_CPUS, cpu_id),
+            self.owner_cpu() == cpu_id,
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
             ret == self.view(),
@@ -48,7 +52,7 @@ impl AtomicPcidCr3 {
             final(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
     {
-        let packed = self.atomic.load(Tracked(&mut *lctx));
+        let packed = self.atomic.load(cpu_id, Tracked(&mut *lctx));
         (packed & MEM_MASK as usize, packed & 0xfffusize)
     }
 
@@ -91,14 +95,16 @@ impl AtomicPcidCr3 {
         hardware.hardware = Ghost((cr3, KERNEL_DEFAULT_PCID));
         hardware.current_cr3 = cr3;
         hardware.current_pcid = KERNEL_DEFAULT_PCID;
-        self.atomic.store(pack_pcid_cr3(cr3, KERNEL_DEFAULT_PCID), Tracked(lctx));
+        self.atomic.store(cpu_id, pack_pcid_cr3(cr3, KERNEL_DEFAULT_PCID), Tracked(lctx));
     }
 
-    pub fn store(&mut self, cr3: PageTableRoot, pcid: Pcid, Tracked(lctx): Tracked<&LocalContext>)
+    pub fn store(&mut self, cpu_id: CpuId, cr3: PageTableRoot, pcid: Pcid, Tracked(lctx): Tracked<&LocalContext>)
         requires
+            index_valid(NUM_CPUS, cpu_id),
             page_ptr_valid(cr3),
             pcid_valid(pcid),
-            old(self).owner_cpu() == lctx.cpu_id(),
+            old(self).owner_cpu() == cpu_id,
+            cpu_id == lctx.cpu_id(),
             lctx.kernel_view_locking_state() is Release,
         ensures
             final(self).inv(),
@@ -106,7 +112,7 @@ impl AtomicPcidCr3 {
             final(self).owner_cpu() == old(self).owner_cpu(),
     {
         let packed = pack_pcid_cr3(cr3, pcid);
-        self.atomic.store(packed, Tracked(lctx));
+        self.atomic.store(cpu_id, packed, Tracked(lctx));
     }
 }
 

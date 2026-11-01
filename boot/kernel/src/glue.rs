@@ -329,8 +329,7 @@ pub unsafe fn init_kernel(boot_info: &BootInfo) {
         PageTable::new(Some(KERNEL_DEFAULT_PCID), Ghost::assume_new(), kernel_pml4, Tracked::assume_new(), KERNEL_MEM_END_L4INDEX, 0),
         Ghost::assume_new(),
     );
-    let cpu_hw_cr3_pcid: CpuHwCr3PcidArray =
-        core::array::from_fn(|_| AtomicPcidCr3::new(kernel_pml4, KERNEL_DEFAULT_PCID, Ghost::assume_new()));
+    let cpu_hw_cr3_pcid: CpuHwCr3PcidArray = core::array::from_fn(|cpu_id| AtomicPcidCr3::new(cpu_id, kernel_pml4, KERNEL_DEFAULT_PCID));
 
     // 6. The root thread's first frame.
     let dom0 = boot_info.dom0.as_ref().expect("no dom0");

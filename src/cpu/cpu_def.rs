@@ -553,7 +553,7 @@ impl CpuLockedArray {
         cpu.current_thread = None;
         cpu.current_pagetable = None;
         cpu.state = CpuState::Idle;
-        hw_cr3_pcid[cpu_id].store(default_cr3, KERNEL_DEFAULT_PCID, Tracked(&*lctx));
+        hw_cr3_pcid[cpu_id].store(cpu_id, default_cr3, KERNEL_DEFAULT_PCID, Tracked(&*lctx));
         let entry = needflush.borrow_mut_typed(cpu_id, KERNEL_DEFAULT_PCID, Ghost(lctx.pcid_needflush_lock_map()), Tracked(&*lctx), needflush_perm);
         entry.set(false);
         proof {
@@ -752,7 +752,7 @@ impl CpuLockedArray {
         cpu.current_pagetable = Some(pagetable_ptr);
         cpu.process_depth = process_depth;
         cpu.tlb_dirty_bitmap.update(pcid, Some(ProcessPageTablePair { process_ptr, pagetable_ptr }));
-        hw_cr3_pcid[cpu_id].store(cr3, pcid, Tracked(&*lctx));
+        hw_cr3_pcid[cpu_id].store(cpu_id, cr3, pcid, Tracked(&*lctx));
         let entry = needflush.borrow_mut_typed(cpu_id, pcid, Ghost(lctx.pcid_needflush_lock_map()), Tracked(&*lctx), needflush_perm);
         entry.set(false);
         proof {

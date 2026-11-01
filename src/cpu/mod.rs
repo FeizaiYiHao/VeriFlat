@@ -3,6 +3,7 @@ mod cpu_cr3_pcid;
 pub mod cpu_def;
 mod cpu_def_eof;
 mod cpu_cells_t;
+mod cpu_hw_cr3_pcid_cells_t;
 pub mod cpu_tlb_def;
 pub mod pcid_needflush;
 pub mod pcid_needflush_cells_t;

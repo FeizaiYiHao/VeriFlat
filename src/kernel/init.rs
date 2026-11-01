@@ -2,7 +2,9 @@ use vstd::prelude::*;
 use vstd::simple_pptr::*;
 
 mod boot_eof_pages;
+mod default_pagetable_cell_t;
 mod init_eof;
+use default_pagetable_cell_t::default_pagetable_cell_init;
 use init_eof::*;
 
 verus! {
@@ -593,7 +595,7 @@ pub open spec fn boot_kernel_state(
     &&& krnl.pg_arr == page_array
     &&& krnl.pcid_needflush == pcid_needflush
     &&& krnl.cpu_hw_cr3_pcid == cpu_hw_cr3_pcid
-    &&& krnl.dflt_pt == default_pagetable
+    &&& *krnl.dflt_pt == default_pagetable
     &&& krnl.cpu_op.view().view() == Seq::new(NUM_CPUS as nat, |i: int| if i == 0 { CpuOpState::Idle } else { CpuOpState::Off })
     &&& krnl.cpu_arr.inv()
     &&& forall|cpu_id: CpuId| #![trigger krnl.cpu_arr.spec_index(cpu_id)] index_valid(NUM_CPUS, cpu_id) ==> {
@@ -1027,9 +1029,10 @@ pub fn finish_init_from_boot(
 
     let tracked mut pt_lower = Map::<RwLockPageTableRoot, PageTableLower<PT_TYPE>>::tracked_empty();
     proof { pt_lower.tracked_insert(layout.cpu_pagetable, cpu_pagetable_lower); }
+    let dflt_pt = default_pagetable_cell_init(default_pagetable);
     let krnl = KernelK {
         pt_mp, pt_lower: Tracked(pt_lower), it_mp, irt, pg_arr: page_array, cpu_arr: cpu_array, pcid_needflush, cpu_offline_mp, cpu_hw_cr3_pcid, cpu_op: Tracked(cpu_op), ctn_mp, sched_mp, pcid_allc_mp, cpu_set_mp,
-        prc_mp, thr_mp, ep_mp, allc_4k_mp, allc_2m_mp, allc_1g_mp, cpu_tlb, iommu_tlb, rt_ctn: layout.root_container, dflt_pt: default_pagetable,
+        prc_mp, thr_mp, ep_mp, allc_4k_mp, allc_2m_mp, allc_1g_mp, cpu_tlb, iommu_tlb, rt_ctn: layout.root_container, dflt_pt,
     };
     proof {
         boot_subsystems_inv_eof(&krnl, layout, kernel_l4_end, *initial_regs, kernel_entries.view(), manifest_4k.view(), page_array, pcid_needflush, cpu_hw_cr3_pcid, default_pagetable,
