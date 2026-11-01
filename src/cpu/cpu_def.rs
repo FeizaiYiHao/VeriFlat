@@ -18,6 +18,8 @@ pub struct ProcessPageTablePair {
     pub pagetable_ptr: RwLockPageTableRoot,
 }
 
+/// Cache-line aligned so the fields written on every thread switch never share a line with another cpu's lock cell.
+#[repr(align(64))]
 pub struct Cpu {
     owning_container: RwLockContainerPtr,
     state: CpuState,

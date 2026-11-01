@@ -2,9 +2,17 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use vstd::prelude::*;
 use crate::*;
 
+/// One hardware cr3/pcid word on its own cache line: every thread switch stores its cpu's word, so a shared line would
+/// bounce between cpus.
+#[repr(align(64))]
+struct CacheLineWord(AtomicUsize);
+
 /// Memory of the hardware cr3/pcid words, one cell per cpu. Only the token methods below reach it; the kernel object
 /// holds the zero-size tokens and none of these bytes.
-static CPU_HW_CR3_PCID_CELLS: [AtomicUsize; NUM_CPUS] = [const { AtomicUsize::new(0) }; NUM_CPUS];
+static CPU_HW_CR3_PCID_CELLS: [CacheLineWord; NUM_CPUS] = [const { CacheLineWord(AtomicUsize::new(0)) }; NUM_CPUS];
+
+// Layout contract: each cpu's cr3/pcid word fills exactly one cache line.
+const _: () = assert!(core::mem::size_of::<CacheLineWord>() == 64);
 
 verus! {
 /// Token of hardware cr3/pcid cell `owner_cpu()`: `view()` is the value that cell holds.
@@ -26,7 +34,7 @@ impl TrustedAtomicUsize {
             ret.view() == value,
             ret.owner_cpu() == cpu_id,
     {
-        CPU_HW_CR3_PCID_CELLS[cpu_id].store(value, Ordering::SeqCst);
+        CPU_HW_CR3_PCID_CELLS[cpu_id].0.store(value, Ordering::SeqCst);
         Self { value: Ghost(value), owner_cpu: Ghost(cpu_id) }
     }
 
@@ -45,7 +53,7 @@ impl TrustedAtomicUsize {
             final(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
     {
-        CPU_HW_CR3_PCID_CELLS[cpu_id].load(Ordering::SeqCst)
+        CPU_HW_CR3_PCID_CELLS[cpu_id].0.load(Ordering::SeqCst)
     }
 
     /// TCB: publish `value` in cell `cpu_id`, from cpu `cpu_id` itself or from the running-to-idle IPI it acknowledged.
@@ -60,7 +68,7 @@ impl TrustedAtomicUsize {
             final(self).view() == value,
             final(self).owner_cpu() == old(self).owner_cpu(),
     {
-        CPU_HW_CR3_PCID_CELLS[cpu_id].store(value, Ordering::SeqCst);
+        CPU_HW_CR3_PCID_CELLS[cpu_id].0.store(value, Ordering::SeqCst);
         self.value = Ghost(value);
     }
 }

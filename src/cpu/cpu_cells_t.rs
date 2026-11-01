@@ -12,6 +12,11 @@ unsafe impl Sync for CpuCells {}
 
 static CPU_CELLS: CpuCells = CpuCells(UnsafeCell::new(MaybeUninit::uninit()));
 
+// Layout contract: every cpu lock cell starts and ends on a cache-line boundary, so one cpu's switch-time stores never
+// share a line with the next cpu's lock word.
+const _: () = assert!(core::mem::align_of::<RwLock<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>>() % 64 == 0);
+const _: () = assert!(core::mem::size_of::<RwLock<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>>() % 64 == 0);
+
 verus! {
 /// Address of the first cpu lock cell.
 pub uninterp spec fn cpu_cells_base_spec() -> usize;
