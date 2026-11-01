@@ -485,15 +485,22 @@ const MAX_PAIRS: usize = 32;
 /// dom0's descriptor of pair k's endpoint is `PAIR_ENDPOINT + k`; the pair's other threads hold it in
 /// descriptor 0.
 const PAIR_ENDPOINT: usize = 8;
-/// Untimed and timed call round trips of each pair in each phase.
+/// Untimed call round trips of each pair before its timed window in each phase.
 const PAIR_WARMUP: usize = 2_000;
-const PAIR_ROUNDS: u64 = 20_000;
+/// TSC cycles from a pair's release to the deadline that ends its timed window, about 45 ms at the
+/// 2.2 GHz TSC of the test machine. A window of fixed length rather than of fixed round trips: the pairs
+/// at once share one deadline, so they stop together and time side by side however late each started.
+const PAIR_WINDOW: u64 = 100_000_000;
+/// Timed round trips between two deadline checks, so reading the TSC adds little to a round trip.
+const PAIR_BATCH: u64 = 64;
+/// The least share, in hundredths, of the concurrent phase's span in which every pair must be timing.
+const PAIR_MIN_OVERLAP: u64 = 50;
 /// The phases dom0 releases a pair's client into: alone, all pairs at once, and stop.
 const PHASE_ALONE: usize = 1;
 const PHASE_CONCURRENT: usize = 2;
 const PHASE_STOP: usize = 3;
 
-/// One client/server pair of the parallel call timing, alone on its cache line, so the pairs share
+/// One client/server pair of the parallel call timing, alone on its cache lines, so the pairs share
 /// nothing but the kernel.
 #[repr(C, align(64))]
 struct Pair {
@@ -505,10 +512,14 @@ struct Pair {
     /// The phase dom0 released the client into, and the last phase the pair finished.
     go: AtomicUsize,
     done: AtomicUsize,
-    /// The TSC before the first and after the last timed round trip of the last finished phase, and
-    /// the TSC cycles per round trip.
+    /// The TSC that ends the timed window of the phase dom0 released the client into, published
+    /// before the release.
+    deadline: AtomicU64,
+    /// The TSC before the first and after the last timed round trip of the last finished phase, its
+    /// timed round trips, and the TSC cycles per round trip.
     begin: AtomicU64,
     end: AtomicU64,
+    rounds: AtomicU64,
     cycles: AtomicU64,
 }
 
@@ -516,7 +527,8 @@ impl Pair {
     const fn new() -> Self {
         Pair {
             client_cpu: AtomicUsize::new(0), server_cpu: AtomicUsize::new(0), ready: AtomicBool::new(false), go: AtomicUsize::new(0),
-            done: AtomicUsize::new(0), begin: AtomicU64::new(0), end: AtomicU64::new(0), cycles: AtomicU64::new(0),
+            done: AtomicUsize::new(0), deadline: AtomicU64::new(0), begin: AtomicU64::new(0), end: AtomicU64::new(0),
+            rounds: AtomicU64::new(0), cycles: AtomicU64::new(0),
         }
     }
 }
@@ -582,9 +594,12 @@ extern "C" fn pair_client() -> ! {
     }
 }
 
-/// Times `PAIR_ROUNDS` call round trips of pair `k` on `endpoint` after `PAIR_WARMUP` untimed ones,
-/// checks each reply and that the pair is still on CPU `k`, and records the result of `phase`.
+/// Times call round trips of pair `k` on `endpoint` after `PAIR_WARMUP` untimed ones, in batches of
+/// `PAIR_BATCH` until the TSC reaches the pair's deadline (at least one batch), checks each reply and
+/// that the pair is still on CPU `k`, and records the result of `phase`.
 fn time_pair(k: usize, endpoint: usize, phase: usize) {
+    let pair = &PAIRS[k];
+    let deadline = pair.deadline.load(Ordering::SeqCst);
     let call = |i: usize| {
         let reply = quiet_value("pair call_usize", unsafe { sys_call_usize(endpoint, i) });
         if reply != i + 1 {
@@ -596,28 +611,36 @@ fn time_pair(k: usize, endpoint: usize, phase: usize) {
         call(i);
     }
     let begin = unsafe { core::arch::x86_64::_rdtsc() };
-    for i in 0..PAIR_ROUNDS as usize {
-        call(i);
-    }
-    let end = unsafe { core::arch::x86_64::_rdtsc() };
+    let mut rounds = 0;
+    let end = loop {
+        for i in 0..PAIR_BATCH as usize {
+            call(i);
+        }
+        rounds += PAIR_BATCH;
+        let now = unsafe { core::arch::x86_64::_rdtsc() };
+        if now >= deadline {
+            break now;
+        }
+    };
     if current_cpu() != k {
         log::error!("pair {} moved to CPU {}", k, current_cpu());
         unsafe { sys_debug_exit(1) };
     }
-    let pair = &PAIRS[k];
     pair.begin.store(begin, Ordering::SeqCst);
     pair.end.store(end, Ordering::SeqCst);
-    pair.cycles.store((end - begin) / PAIR_ROUNDS, Ordering::SeqCst);
+    pair.rounds.store(rounds, Ordering::SeqCst);
+    pair.cycles.store((end - begin) / rounds, Ordering::SeqCst);
     pair.done.store(phase, Ordering::SeqCst);
 }
 
 /// Times call round trips of one client/server pair per CPU, first each pair alone while the other
 /// clients spin, then all pairs at once, and logs per CPU the TSC cycles per round trip of both phases
-/// and their ratio. Pair 0 is dom0 itself with a server on CPU 0. The client of pair k comes to CPU k
-/// when dom0 brings that CPU online, which pulls the only queued thread, and creates its server there;
-/// each round trip is a direct switch between the pair's threads, so no pair leaves its CPU. Fails
-/// unless every pair ran on its own CPU and the concurrent runs overlapped. Afterwards every CPU but 0
-/// is Off again.
+/// and their ratio. Each pair times a window of `PAIR_WINDOW` cycles from its release; the pairs at
+/// once share one deadline. Pair 0 is dom0 itself with a server on CPU 0. The client of pair k comes
+/// to CPU k when dom0 brings that CPU online, which pulls the only queued thread, and creates its server
+/// there; each round trip is a direct switch between the pair's threads, so no pair leaves its CPU.
+/// Fails unless every pair ran on its own CPU and every pair was timing in at least `PAIR_MIN_OVERLAP`
+/// hundredths of the concurrent phase's span. Afterwards every CPU but 0 is Off again.
 fn time_parallel_call() {
     // Every CPU but 0 is Off, so an offline request fails without effect until the first missing CPU.
     let mut n = 1;
@@ -655,21 +678,27 @@ fn time_parallel_call() {
         wait_for("a pair server to block", || pair.ready.load(Ordering::SeqCst));
     }
 
-    let mut alone = [0; MAX_PAIRS];
+    let (mut alone, mut alone_rounds) = ([0; MAX_PAIRS], [0; MAX_PAIRS]);
     for k in 0..n {
         let pair = &PAIRS[k];
+        pair.deadline.store(unsafe { core::arch::x86_64::_rdtsc() } + PAIR_WINDOW, Ordering::SeqCst);
         if k == 0 {
             time_pair(0, PAIR_ENDPOINT, PHASE_ALONE);
         } else {
             pair.go.store(PHASE_ALONE, Ordering::SeqCst);
             wait_for("a pair alone", || pair.done.load(Ordering::SeqCst) == PHASE_ALONE);
         }
-        alone[k] = pair.cycles.load(Ordering::SeqCst);
+        (alone[k], alone_rounds[k]) = (pair.cycles.load(Ordering::SeqCst), pair.rounds.load(Ordering::SeqCst));
         let server_cpu = pair.server_cpu.load(Ordering::SeqCst);
         if server_cpu != k + 1 {
             log::error!("the server of pair {} ran on CPU {}", k, server_cpu as isize - 1);
             unsafe { sys_debug_exit(1) };
         }
+    }
+    // One deadline for all pairs, published before any release.
+    let deadline = unsafe { core::arch::x86_64::_rdtsc() } + PAIR_WINDOW;
+    for pair in &PAIRS[..n] {
+        pair.deadline.store(deadline, Ordering::SeqCst);
     }
     for pair in &PAIRS[1..n] {
         pair.go.store(PHASE_CONCURRENT, Ordering::SeqCst);
@@ -700,10 +729,13 @@ fn time_parallel_call() {
 
     let mut ratios = [0; MAX_PAIRS];
     let (mut min_begin, mut max_begin, mut min_end, mut max_end) = (u64::MAX, 0, u64::MAX, 0);
+    let (mut min_conc_rounds, mut max_conc_rounds) = (u64::MAX, 0);
     for k in 0..n {
         let pair = &PAIRS[k];
         let (begin, end, conc) = (pair.begin.load(Ordering::SeqCst), pair.end.load(Ordering::SeqCst), pair.cycles.load(Ordering::SeqCst));
         (min_begin, max_begin, min_end, max_end) = (min_begin.min(begin), max_begin.max(begin), min_end.min(end), max_end.max(end));
+        let rounds = pair.rounds.load(Ordering::SeqCst);
+        (min_conc_rounds, max_conc_rounds) = (min_conc_rounds.min(rounds), max_conc_rounds.max(rounds));
         ratios[k] = hundredths(conc, alone[k]);
         log::info!("parallel_call cpu={} alone={} conc={} ratio={}", k, alone[k], conc, Hundredths(ratios[k]));
     }
@@ -712,12 +744,18 @@ fn time_parallel_call() {
     let ratios = &mut ratios[..n];
     ratios.sort_unstable();
     let median = (ratios[(n - 1) / 2] + ratios[n / 2]) / 2;
+    let alone_rounds = &alone_rounds[..n];
+    let (min_alone_rounds, max_alone_rounds) = (alone_rounds.iter().min().unwrap(), alone_rounds.iter().max().unwrap());
     log::info!(
-        "parallel_call summary n={} min_ratio={} max_ratio={} median_ratio={} overlap={} ({} rounds per pair)",
-        n, Hundredths(ratios[0]), Hundredths(ratios[n - 1]), Hundredths(median), Hundredths(overlap), PAIR_ROUNDS
+        "parallel_call summary n={} min_ratio={} max_ratio={} median_ratio={} overlap={} (rounds per pair: alone {}..{}, conc {}..{})",
+        n, Hundredths(ratios[0]), Hundredths(ratios[n - 1]), Hundredths(median), Hundredths(overlap), min_alone_rounds, max_alone_rounds,
+        min_conc_rounds, max_conc_rounds
     );
-    if max_begin >= min_end {
-        log::error!("the concurrent pairs did not overlap: last begin {} >= first end {}", max_begin, min_end);
+    if overlap < PAIR_MIN_OVERLAP {
+        log::error!(
+            "the concurrent pairs overlapped in only {} of their span: last begin {}, first end {}",
+            Hundredths(overlap), max_begin, min_end
+        );
         unsafe { sys_debug_exit(1) };
     }
 }
