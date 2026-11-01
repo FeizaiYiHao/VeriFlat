@@ -344,7 +344,13 @@ pub unsafe fn enter_off_cpu() -> ! {
     enter_frame(frame);
 }
 
+/// Arms the scheduling tick and keeps it re-armed. With feature `no-timer` it arms nothing and leaves
+/// `timer_on` false, for timing runs: no tick then preempts a thread, ends an idle CPU's `hlt`, or
+/// makes a CPU notice an offline request.
 fn start_timer() {
+    if cfg!(feature = "no-timer") {
+        return;
+    }
     cpu::get_current().timer_on = true;
     interrupt::set_timer(TICK);
 }

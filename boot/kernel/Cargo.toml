@@ -6,6 +6,10 @@ edition = "2021"
 build = "build.rs"
 publish = false
 
+[features]
+# Never arms the LAPIC timer (`syscalls::start_timer`), for timing runs comparable to kernels without one.
+no-timer = []
+
 [dependencies]
 astd = { path = "../astd", features = ["kernel"] }
 vsys = { path = "../vsys" }

@@ -877,6 +877,20 @@ pub extern "C" fn _start() -> ! {
     time_mmap_unmap();
     time_mmap_only();
 
+    // Without the timer (feature `no-timer`) nothing preempts a spinning thread, an idle CPU wakes only
+    // at an IPI (queuing a thread sends none), and no CPU notices an offline request. The remaining
+    // timings need none of these: only CPU 0 runs, the pong and call server threads block in receive,
+    // and the timed threads are only created. The phases below rely on them (spinning waits for other
+    // threads, CPU offline cycles, the register spinner), so this build skips them.
+    if cfg!(feature = "no-timer") {
+        fund("timing helper threads funding", 2);
+        time_ipc_round_trip();
+        time_call_round_trip();
+        time_new_thread();
+        log::info!("dom0 timings passed without the timer");
+        unsafe { sys_debug_exit(0) };
+    }
+
     // 1. quota + mmap + touch + unmap
     check("alloc_quota_4k", unsafe { sys_alloc_quota_4k(64) });
     check("alloc_thread_quota_4k", unsafe { sys_alloc_thread_quota_4k(64) });

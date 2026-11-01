@@ -5,6 +5,11 @@ license = "MIT"
 edition = "2021"
 publish = false
 
+[features]
+# For a kernel built with `no-timer`: runs only the timings, which need no tick, and skips every phase
+# that needs preemption, an idle CPU's tick, or an offline request noticed at a tick.
+no-timer = []
+
 [dependencies]
 vsys = { path = "../vsys" }
 log = "0.4.19"

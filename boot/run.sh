@@ -4,11 +4,12 @@
 # exits with status (code << 1) | 1: 1 means dom0 passed.
 #
 # Usage: boot/run.sh [extra qemu args...]
+# NO_TIMER=1 builds the kernel and dom0 with feature `no-timer`: no LAPIC timer, dom0 runs its timings only.
 set -euo pipefail
 cd "$(dirname "$0")"
 
 PROFILE=${PROFILE:-release}
-cargo +1.99.1 build --profile "$PROFILE" -p aloader -p kernel -p dom0
+cargo +1.99.1 build --profile "$PROFILE" -p aloader -p kernel -p dom0 ${NO_TIMER:+--features kernel/no-timer,dom0/no-timer}
 OUT=target/x86_64-unknown-none/$PROFILE
 
 JUMBO=$(mktemp --suffix=.veriflat-jumbo)
