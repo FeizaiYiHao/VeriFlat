@@ -60,14 +60,12 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             page_ptr_valid_imply_mem_valid(target_entry.addr);
         }
         let tracked mut l2_perm = lower.l2_perms.tracked_remove(target_l2_p);
-        let l2_tbl: &mut L2PageMap = PPtr::<L2PageMap>::from_usize(target_l2_p).borrow_mut(Tracked(&mut l2_perm));
-        let l1_slot = l2_tbl.borrow_entry_lock_mut(target_l2i).borrow_l1_mut(Tracked(window_perm));
-        let tracked mut l1_perm = l1_slot.borrow_mut().tracked_take();
+        let tracked mut l1_perm = l2_entry_take_l1(&mut l2_perm, target_l2i, window_perm);
         page_map_set_published(target_l1_p, Tracked(&mut l1_perm), target_l1i,
             PageEntry { addr: target_entry.addr, perm: PageEntryPerm { present: true, ps: false, write: target_entry.write, execute_disable: target_entry.execute_disable, user: true, kernel_present: true } },
             Tracked(&mut *lctx));
-        *l1_slot = Tracked(Some(l1_perm));
         proof {
+            l2_entry_put_l1(&mut l2_perm, target_l2i, window_perm, l1_perm);
             lower.l2_perms.tracked_insert(target_l2_p, l2_perm);
             lower.mapping_4k = lower.mapping_4k.insert(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)), *target_entry);
             let pre = WholePageTable { higher: *self, lower: *old(lower) };
@@ -122,8 +120,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             page_ptr_valid_imply_mem_valid(target_entry.addr);
         }
         let tracked mut l2_perm = lower.l2_perms.tracked_remove(target_l2_p);
-        let l2_tbl: &mut L2PageMap = PPtr::<L2PageMap>::from_usize(target_l2_p).borrow_mut(Tracked(&mut l2_perm));
-        l2_tbl.borrow_entry_lock_mut(target_l2i).set_published_locked(Tracked(window_perm),
+        l2_entry_set_published_locked(&PPtr::<L2PageMap>::from_usize(target_l2_p), Tracked(&mut l2_perm), target_l2i, Tracked(window_perm),
             PageEntry { addr: target_entry.addr, perm: PageEntryPerm { present: true, ps: true, write: target_entry.write, execute_disable: target_entry.execute_disable, user: true, kernel_present: true } },
             Tracked(&mut *lctx));
         proof {

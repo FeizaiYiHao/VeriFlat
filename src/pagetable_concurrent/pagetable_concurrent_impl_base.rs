@@ -184,8 +184,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
                         ==> lctx.pagetable_window_lock_map().index((root, w)) == (TypedHeldLock { lock_id: window_lock_id_of(root, w), mode: TypedLockMode::Write }),
             decreases hi + 1 - k,
         {
-            let l2_tbl: &mut L2PageMap = PPtr::<L2PageMap>::from_usize(page_map_ptr).borrow_mut(Tracked(&mut l2_perm));
-            let lp = l2_tbl.borrow_entry_lock_mut(k).lock(Tracked(&mut *lctx), Ghost(window_lock_id(root, target_l4i, target_l3i, k)), Ghost(window_obj_id(root, target_l4i, target_l3i, k)));
+            let lp = l2_entry_lock(&PPtr::<L2PageMap>::from_usize(page_map_ptr), Tracked(&mut l2_perm), k, Tracked(&mut *lctx), Ghost(window_lock_id(root, target_l4i, target_l3i, k)), Ghost(window_obj_id(root, target_l4i, target_l3i, k)));
             proof { broadcast use spec_index2va_2m_valid, spec_va_2m_valid_index_roundtrip; window_perms.tracked_insert(k, lp.get()); }
             k = k + 1;
         }
@@ -267,14 +266,11 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             page_ptr_valid_imply_mem_valid(page_map_ptr);
         }
         let tracked mut l2_perm = lower.l2_perms.tracked_remove(target_l2_p);
-        let l2_tbl: &mut L2PageMap = PPtr::<L2PageMap>::from_usize(target_l2_p).borrow_mut(Tracked(&mut l2_perm));
-        let entry = l2_tbl.borrow_entry_lock_mut(target_l2i);
-        entry.set_published_locked(Tracked(window_perm),
+        l2_entry_set_published_locked(&PPtr::<L2PageMap>::from_usize(target_l2_p), Tracked(&mut l2_perm), target_l2i, Tracked(window_perm),
             PageEntry { addr: page_map_ptr, perm: PageEntryPerm { present: true, ps: false, write: true, execute_disable: false, user: true, kernel_present: true } },
             Tracked(&mut *lctx));
-        let l1_slot = entry.borrow_l1_mut(Tracked(window_perm));
-        *l1_slot = Tracked(Some(page_map_perm));
         proof {
+            l2_entry_put_l1(&mut l2_perm, target_l2i, window_perm, page_map_perm);
             lower.l2_perms.tracked_insert(target_l2_p, l2_perm);
             lower.l1_rev_map = lower.l1_rev_map.insert(page_map_ptr, (target_l4i, target_l3i, target_l2i));
         }

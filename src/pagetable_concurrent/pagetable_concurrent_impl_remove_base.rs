@@ -48,15 +48,13 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             c.wf_mapping_4k_at(target_l4i, target_l3i, target_l2i, target_l1i);
         }
         let tracked mut l2_perm = lower.l2_perms.tracked_remove(target_l2_p);
-        let l2_tbl: &mut L2PageMap = PPtr::<L2PageMap>::from_usize(target_l2_p).borrow_mut(Tracked(&mut l2_perm));
-        let l1_slot = l2_tbl.borrow_entry_lock_mut(target_l2i).borrow_l1_mut(Tracked(window_perm));
-        let tracked mut l1_perm = l1_slot.borrow_mut().tracked_take();
+        let tracked mut l1_perm = l2_entry_take_l1(&mut l2_perm, target_l2i, window_perm);
         let l1_tbl: &PageMap = PPtr::<PageMap>::from_usize(target_l1_p).borrow(Tracked(&l1_perm));
         let mut l1_entry = l1_tbl.get(target_l1i);
         l1_entry.perm.present = false;
         page_map_set_published(target_l1_p, Tracked(&mut l1_perm), target_l1i, l1_entry, Tracked(&mut *lctx));
-        *l1_slot = Tracked(Some(l1_perm));
         proof {
+            l2_entry_put_l1(&mut l2_perm, target_l2i, window_perm, l1_perm);
             lower.l2_perms.tracked_insert(target_l2_p, l2_perm);
             let va = spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i));
             lower.mapping_4k = lower.mapping_4k.insert(va, MapEntry { present: false, ..old(lower).mapping_4k.spec_index(va) });
@@ -113,12 +111,10 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             mem_valid_zero();
         }
         let tracked mut l2_perm = lower.l2_perms.tracked_remove(target_l2_p);
-        let l2_tbl: &mut L2PageMap = PPtr::<L2PageMap>::from_usize(target_l2_p).borrow_mut(Tracked(&mut l2_perm));
-        let l1_slot = l2_tbl.borrow_entry_lock_mut(target_l2i).borrow_l1_mut(Tracked(window_perm));
-        let tracked mut l1_perm = l1_slot.borrow_mut().tracked_take();
+        let tracked mut l1_perm = l2_entry_take_l1(&mut l2_perm, target_l2i, window_perm);
         page_map_set_published(target_l1_p, Tracked(&mut l1_perm), target_l1i, PageEntry::empty(), Tracked(&mut *lctx));
-        *l1_slot = Tracked(Some(l1_perm));
         proof {
+            l2_entry_put_l1(&mut l2_perm, target_l2i, window_perm, l1_perm);
             lower.l2_perms.tracked_insert(target_l2_p, l2_perm);
             lower.mapping_4k = lower.mapping_4k.remove(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)));
             let pre = WholePageTable { higher: *self, lower: *old(lower) };
@@ -181,11 +177,8 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             mem_valid_zero();
         }
         let tracked mut l2_perm = lower.l2_perms.tracked_remove(target_l2_p);
-        let l2_tbl: &mut L2PageMap = PPtr::<L2PageMap>::from_usize(target_l2_p).borrow_mut(Tracked(&mut l2_perm));
-        let l2_entry_lock = l2_tbl.borrow_entry_lock_mut(target_l2i);
-        l2_entry_lock.set_published_locked(Tracked(window_perm), PageEntry::empty(), Tracked(&mut *lctx));
-        let l1_slot = l2_entry_lock.borrow_l1_mut(Tracked(window_perm));
-        let tracked l1_perm = l1_slot.borrow_mut().tracked_take();
+        l2_entry_set_published_locked(&PPtr::<L2PageMap>::from_usize(target_l2_p), Tracked(&mut l2_perm), target_l2i, Tracked(window_perm), PageEntry::empty(), Tracked(&mut *lctx));
+        let tracked l1_perm = l2_entry_take_l1(&mut l2_perm, target_l2i, window_perm);
         proof {
             lower.l2_perms.tracked_insert(target_l2_p, l2_perm);
             lower.l1_rev_map = lower.l1_rev_map.remove(target_l1_p);

@@ -3,6 +3,7 @@ verus! {
 use crate::*;
 use vstd::simple_pptr::*;
 use core::sync::atomic::*;
+use super::l2_entry_lock_t::l2_entry_store_release;
 
 /// PDE bit 9 (AVL) is the 2M-window spin lock. Hardware walks ignore it and `usize2page_entry` drops it, so a
 /// locked word decodes to the same entry.
@@ -20,11 +21,12 @@ pub open spec fn l2_word_hw_equiv(a: usize, b: usize) -> bool { usize2page_entry
 /// One entry of an L2 page-table page; its word doubles as the spin lock of the entry's 2M window.
 ///
 /// `entry` is the decoded word and `owner` the holder of the lock bit; the TCB word primitives keep both in step
-/// with `word`. `l1` owns the L1 page that a present non-huge entry links. Fields stay private: the word changes
-/// only through `lock`, `unlock` and `set_published_locked`, and `l1` only through `borrow_l1_mut`.
+/// with `word`. `l1` owns the L1 page that a present non-huge entry links. Only the TCB primitives of
+/// `l2_entry_lock_t` see `word`: it changes only through `l2_entry_lock`, `l2_entry_unlock` and
+/// `l2_entry_store_release`, and `l1` moves only through `l2_entry_take_l1` and `l2_entry_put_l1`.
 #[repr(C)]
 pub struct L2EntryLock {
-    word: AtomicUsize,
+    pub(super) word: AtomicUsize,
     l1: Tracked<Option<PointsTo<PageMap>>>,
     entry: Ghost<PageEntry>,
     owner: Ghost<SpinLockState>,
@@ -33,7 +35,7 @@ pub struct L2EntryLock {
 /// Concrete L2 page-table page whose 512 entries double as the 2M-window spin locks.
 #[repr(C)]
 pub struct L2PageMap {
-    ar: [L2EntryLock; 512],
+    pub(super) ar: [L2EntryLock; 512],
     addr: Ghost<PageMapPtr>,
 }
 
@@ -58,100 +60,11 @@ impl L2EntryLock {
         self.word.load(Ordering::Acquire)
     }
 
-    /// TCB: release-store of the entry word. The stored lock bit must match the recorded owner, so a store never
-    /// takes or drops the window lock.
-    #[verifier::external_body]
-    fn store_release(&mut self, w: usize)
-        requires
-            (w & L2_ENTRY_LOCK_MASK != 0) == (old(self).owner() is Some),
-        ensures
-            final(self).view() == usize2page_entry(w),
-            final(self).owner() == old(self).owner(),
-            final(self).l1() == old(self).l1(),
-    {
-        self.word.store(w, Ordering::Release)
-    }
-
-    /// TCB: spin until this thread owns the lock bit; the bit is free when this thread takes it.
-    #[verifier::external_body]
-    pub fn lock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, Ghost(lock_id): Ghost<LockId>, Ghost(obj_id): Ghost<KernelObjId>) -> (lp: Tracked<LockPerm>)
-        requires
-            !(old(self).owner() is Some && old(self).owner()->Some_thread_id == old(lctx).thread_id()),
-            old(lctx).kernel_view_locking_state() is Acquire,
-        ensures
-            old(self).owner() is None,
-            final(self).view() == old(self).view(),
-            final(self).l1() == old(self).l1(),
-            final(self).owner() == (SpinLockState::Some { thread_id: final(lctx).thread_id(), lock_id: lp.view().lock_id() }),
-            lp.view().state() is WriteLock,
-            lp.view().ordering_lock_id() == lock_id,
-            lp.view().thread_id() == final(lctx).thread_id(),
-            lock_ensures(old(lctx), final(lctx), lock_id, obj_id),
-    {
-        loop {
-            let v = self.word.load(Ordering::Relaxed);
-            if v & L2_ENTRY_LOCK_MASK == 0 && self.word.compare_exchange_weak(v, v | L2_ENTRY_LOCK_MASK, Ordering::Acquire, Ordering::Relaxed).is_ok() { break; }
-            core::hint::spin_loop();
-        }
-        Tracked::assume_new()
-    }
-
-    /// TCB: release the lock bit; the entry otherwise stays as published.
-    #[verifier::external_body]
-    pub fn unlock(&mut self, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(lp): Tracked<LockPerm>, Ghost(lock_id): Ghost<LockId>, Ghost(obj_id): Ghost<KernelObjId>)
-        requires
-            old(self).owner() == (SpinLockState::Some { thread_id: old(lctx).thread_id(), lock_id: lp.lock_id() }),
-            lp.state() is WriteLock,
-            lp.thread_id() == old(lctx).thread_id(),
-            old(lctx).lock_entry_contains(lock_id, obj_id),
-        ensures
-            final(self).view() == old(self).view(),
-            final(self).l1() == old(self).l1(),
-            final(self).owner() is None,
-            unlock_ensures(old(lctx), final(lctx), obj_id, lock_id),
-    {
-        self.word.fetch_and(!L2_ENTRY_LOCK_MASK, Ordering::Release);
-    }
-
     pub fn get(&self) -> (e: PageEntry)
         ensures
             e == self.view(),
     {
         usize2page_entry(self.load_acquire())
-    }
-
-    /// Publish a new entry while this thread holds the lock; the stored word keeps the lock bit.
-    pub fn set_published_locked(&mut self, Tracked(lp): Tracked<&LockPerm>, value: PageEntry, Tracked(lctx): Tracked<&mut LocalContext>)
-        requires
-            old(self).owner() == (SpinLockState::Some { thread_id: lp.thread_id(), lock_id: lp.lock_id() }),
-            mem_valid(value.addr),
-            old(lctx).kernel_view_locking_state() is Acquire,
-        ensures
-            final(self).view() == value,
-            final(self).owner() == old(self).owner(),
-            final(self).l1() == old(self).l1(),
-            final(lctx).cpu_id() == old(lctx).cpu_id(),
-            final(lctx).thread_id() == old(lctx).thread_id(),
-            final(lctx).kernel_view_locking_state() is Release,
-            typed_lock_maps_unchanged(old(lctx), final(lctx)),
-    {
-        proof { lctx.enter_kernel_view_release(); }
-        let u = page_entry2usize(&value);
-        let w = u | L2_ENTRY_LOCK_MASK;
-        assert({
-            &&& w & MEM_MASK as usize == u & MEM_MASK as usize
-            &&& (w & PAGE_ENTRY_PRESENT_MASK as usize != 0) == (u & PAGE_ENTRY_PRESENT_MASK as usize != 0)
-            &&& (w & PAGE_ENTRY_PS_MASK as usize != 0) == (u & PAGE_ENTRY_PS_MASK as usize != 0)
-            &&& (w & PAGE_ENTRY_WRITE_MASK as usize != 0) == (u & PAGE_ENTRY_WRITE_MASK as usize != 0)
-            &&& (w & PAGE_ENTRY_EXECUTE_MASK as usize != 0) == (u & PAGE_ENTRY_EXECUTE_MASK as usize != 0)
-            &&& (w & PAGE_ENTRY_USER_MASK as usize != 0) == (u & PAGE_ENTRY_USER_MASK as usize != 0)
-            &&& (w & PAGE_ENTRY_KERNEL_PRESENT_MASK as usize != 0) == (u & PAGE_ENTRY_KERNEL_PRESENT_MASK as usize != 0)
-            &&& w & L2_ENTRY_LOCK_MASK != 0
-        }) by (bit_vector)
-            requires
-                w == u | L2_ENTRY_LOCK_MASK,
-        ;
-        self.store_release(w);
     }
 
     /// The L1 page slot of this entry, for reading.
@@ -160,19 +73,6 @@ impl L2EntryLock {
             r.view() == self.l1(),
     {
         &self.l1
-    }
-
-    /// The L1 page slot of this entry, while this thread holds the lock.
-    pub fn borrow_l1_mut(&mut self, Tracked(lp): Tracked<&LockPerm>) -> (r: &mut Tracked<Option<PointsTo<PageMap>>>)
-        requires
-            old(self).owner() == (SpinLockState::Some { thread_id: lp.thread_id(), lock_id: lp.lock_id() }),
-        ensures
-            r.view() == old(self).l1(),
-            final(self).view() == old(self).view(),
-            final(self).owner() == old(self).owner(),
-            final(self).l1() == final(r).view(),
-    {
-        &mut self.l1
     }
 }
 
@@ -190,18 +90,49 @@ impl L2PageMap {
     {
         &self.ar[i]
     }
+}
 
-    pub fn borrow_entry_lock_mut(&mut self, i: L2Index) -> (r: &mut L2EntryLock)
+/// Publish `value` in entry `i` of the L2 page at `pptr` while this thread holds the entry's lock; the stored word
+/// keeps the lock bit.
+pub fn l2_entry_set_published_locked(pptr: &PPtr<L2PageMap>, Tracked(perm): Tracked<&mut PointsTo<L2PageMap>>, i: L2Index, Tracked(lp): Tracked<&LockPerm>, value: PageEntry,
+    Tracked(lctx): Tracked<&mut LocalContext>)
+    requires
+        pptr.addr() == old(perm).addr(),
+        old(perm).is_init(),
+        pei_valid(i),
+        old(perm).value().entry_lock(i).owner() == (SpinLockState::Some { thread_id: lp.thread_id(), lock_id: lp.lock_id() }),
+        mem_valid(value.addr),
+        old(lctx).kernel_view_locking_state() is Acquire,
+    ensures
+        final(perm).addr() == old(perm).addr(),
+        final(perm).is_init(),
+        final(perm).value().addr() == old(perm).value().addr(),
+        forall|j: L2Index| #![trigger final(perm).value().entry_lock(j)] j != i ==> final(perm).value().entry_lock(j) == old(perm).value().entry_lock(j),
+        final(perm).value().entry_lock(i).view() == value,
+        final(perm).value().entry_lock(i).owner() == old(perm).value().entry_lock(i).owner(),
+        final(perm).value().entry_lock(i).l1() == old(perm).value().entry_lock(i).l1(),
+        final(lctx).cpu_id() == old(lctx).cpu_id(),
+        final(lctx).thread_id() == old(lctx).thread_id(),
+        final(lctx).kernel_view_locking_state() is Release,
+        typed_lock_maps_unchanged(old(lctx), final(lctx)),
+{
+    proof { lctx.enter_kernel_view_release(); }
+    let u = page_entry2usize(&value);
+    let w = u | L2_ENTRY_LOCK_MASK;
+    assert({
+        &&& w & MEM_MASK as usize == u & MEM_MASK as usize
+        &&& (w & PAGE_ENTRY_PRESENT_MASK as usize != 0) == (u & PAGE_ENTRY_PRESENT_MASK as usize != 0)
+        &&& (w & PAGE_ENTRY_PS_MASK as usize != 0) == (u & PAGE_ENTRY_PS_MASK as usize != 0)
+        &&& (w & PAGE_ENTRY_WRITE_MASK as usize != 0) == (u & PAGE_ENTRY_WRITE_MASK as usize != 0)
+        &&& (w & PAGE_ENTRY_EXECUTE_MASK as usize != 0) == (u & PAGE_ENTRY_EXECUTE_MASK as usize != 0)
+        &&& (w & PAGE_ENTRY_USER_MASK as usize != 0) == (u & PAGE_ENTRY_USER_MASK as usize != 0)
+        &&& (w & PAGE_ENTRY_KERNEL_PRESENT_MASK as usize != 0) == (u & PAGE_ENTRY_KERNEL_PRESENT_MASK as usize != 0)
+        &&& w & L2_ENTRY_LOCK_MASK != 0
+    }) by (bit_vector)
         requires
-            pei_valid(i),
-        ensures
-            *r == old(self).entry_lock(i),
-            final(self).addr() == old(self).addr(),
-            final(self).entry_lock(i) == *final(r),
-            forall|j: L2Index| #![trigger final(self).entry_lock(j)] j != i ==> final(self).entry_lock(j) == old(self).entry_lock(j),
-    {
-        &mut self.ar[i]
-    }
+            w == u | L2_ENTRY_LOCK_MASK,
+    ;
+    l2_entry_store_release(pptr, Tracked(&mut *perm), i, w);
 }
 
 /// TCB: retype a free 4K page into an L2 page whose 512 entries are empty, unlocked and own no L1 page.

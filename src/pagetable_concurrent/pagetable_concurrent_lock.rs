@@ -39,8 +39,7 @@ impl PageTableHigher<PT_TYPE> {
             pre.wf_l2_at(l3_entry.addr, l2i);
         }
         let tracked mut l2_perm = lower.l2_perms.tracked_remove(l3_entry.addr);
-        let l2_tbl: &mut L2PageMap = PPtr::<L2PageMap>::from_usize(l3_entry.addr).borrow_mut(Tracked(&mut l2_perm));
-        let ret = l2_tbl.borrow_entry_lock_mut(l2i).lock(Tracked(&mut *lctx), Ghost(window_lock_id(root, l4i, l3i, l2i)), Ghost(window_obj_id(root, l4i, l3i, l2i)));
+        let ret = l2_entry_lock(&PPtr::<L2PageMap>::from_usize(l3_entry.addr), Tracked(&mut l2_perm), l2i, Tracked(&mut *lctx), Ghost(window_lock_id(root, l4i, l3i, l2i)), Ghost(window_obj_id(root, l4i, l3i, l2i)));
         proof {
             lower.l2_perms.tracked_insert(l3_entry.addr, l2_perm);
             lower.pagetable_window_locks = lower.pagetable_window_locks.insert(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }, LockStateU::WriteLocked);
@@ -76,8 +75,7 @@ impl PageTableHigher<PT_TYPE> {
             pre.wf_l2_at(l3_entry.addr, l2i);
         }
         let tracked mut l2_perm = lower.l2_perms.tracked_remove(l3_entry.addr);
-        let l2_tbl: &mut L2PageMap = PPtr::<L2PageMap>::from_usize(l3_entry.addr).borrow_mut(Tracked(&mut l2_perm));
-        l2_tbl.borrow_entry_lock_mut(l2i).unlock(Tracked(&mut *lctx), lp, Ghost(window_lock_id(root, l4i, l3i, l2i)), Ghost(window_obj_id(root, l4i, l3i, l2i)));
+        l2_entry_unlock(&PPtr::<L2PageMap>::from_usize(l3_entry.addr), Tracked(&mut l2_perm), l2i, Tracked(&mut *lctx), lp, Ghost(window_lock_id(root, l4i, l3i, l2i)), Ghost(window_obj_id(root, l4i, l3i, l2i)));
         proof {
             lower.l2_perms.tracked_insert(l3_entry.addr, l2_perm);
             lower.pagetable_window_locks = lower.pagetable_window_locks.insert(WindowVa { va: spec_index2va((l4i, l3i, l2i, 0)) }, LockStateU::Unlocked);
