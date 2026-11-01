@@ -88,6 +88,11 @@ const IPC_ROUNDS: u64 = 1000;
 /// and `unmap_4k`.
 const MMAP_PAGES: usize = 64;
 const MMAP_ROUNDS: u64 = 1000;
+/// Fresh 4K pages mapped and touched by each variant of the mmap-only timing, and the region of each
+/// variant: a separate GiB of dom0's user half that nothing mapped before, so every variant builds its
+/// own page tables.
+const MMAP_ONLY_PAGES: usize = 16384;
+const MMAP_ONLY_VA: [usize; 2] = [0xc0_0000_0000, 0xc0_4000_0000];
 static mut PONG_STACK: [u8; 64 * 1024] = [0; 64 * 1024];
 static mut CALL_SERVER_STACK: [u8; 64 * 1024] = [0; 64 * 1024];
 
@@ -445,6 +450,34 @@ fn time_mmap_unmap() {
     }
     let cycles = total / (MMAP_ROUNDS * MMAP_PAGES as u64);
     log::info!("mmap+unmap 4K: {} TSC cycles per page over {} rounds", cycles, MMAP_ROUNDS);
+}
+
+/// Times mapping and touching `MMAP_ONLY_PAGES` fresh 4K pages without unmapping them, once with
+/// `MMAP_PAGES` pages per mmap_4k and once with one page per call, and logs the mean TSC cycles per
+/// page of each. The pages are unmapped afterwards, untimed.
+fn time_mmap_only() {
+    for (va, per_call) in [(MMAP_ONLY_VA[0], MMAP_PAGES), (MMAP_ONLY_VA[1], 1)] {
+        // As in `time_mmap_unmap`: three extra quota per page of a call keep four at hand, plus one per
+        // page and the page tables (an L1 per 512 pages, an L2, and slack), all moved to the thread
+        // before the timed loop.
+        fund("mmap-only timer funding", 3 * per_call + MMAP_ONLY_PAGES + MMAP_ONLY_PAGES / 512 + 3);
+        let start = unsafe { core::arch::x86_64::_rdtsc() };
+        for call in 0..MMAP_ONLY_PAGES / per_call {
+            let base = va + call * per_call * 4096;
+            quiet("mmap_4k (mmap-only)", unsafe { sys_mmap_4k(base, per_call) });
+            for i in 0..per_call {
+                let p = (base + i * 4096) as *mut u64;
+                unsafe { p.write_volatile(PAGE_MAGIC ^ i as u64) };
+                if unsafe { p.read_volatile() } != PAGE_MAGIC ^ i as u64 {
+                    log::error!("mmap-only: page {} at {:#x} does not hold what was written", i, base);
+                    unsafe { sys_debug_exit(1) };
+                }
+            }
+        }
+        let cycles = (unsafe { core::arch::x86_64::_rdtsc() } - start) / MMAP_ONLY_PAGES as u64;
+        log::info!("mmap 4K: {} TSC cycles per page, {} pages per call, over {} pages", cycles, per_call, MMAP_ONLY_PAGES);
+        quiet("unmap_4k (mmap-only)", unsafe { sys_unmap_4k(va, MMAP_ONLY_PAGES) });
+    }
 }
 
 /// Retries `online` while it fails with `ErrorCpuNotOff`, until the CPU has gone Off and is back.
@@ -842,6 +875,7 @@ pub extern "C" fn _start() -> ! {
     expect_error("new_thread at a non-canonical ip", unsafe { sys_new_thread(1 << 63, 0) }, "InvalidArgument");
     time_syscall_returns();
     time_mmap_unmap();
+    time_mmap_only();
 
     // 1. quota + mmap + touch + unmap
     check("alloc_quota_4k", unsafe { sys_alloc_quota_4k(64) });
