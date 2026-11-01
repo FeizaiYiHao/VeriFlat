@@ -2,7 +2,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
+impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     /// EOF closure of `create_entry_l4`: no user window changes its holder, since the new L3 page is empty and every other walk
     /// is unchanged.
     pub(super) proof fn create_entry_l4_eof_window_locks_unchanged(pre: Self, post: Self, target_l4i: L4Index, page_map_ptr: PageMapPtr)
@@ -20,7 +20,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
                     ==> post.window_locked_by_thread(l4i, l3i, l2i, thread_id) == pre.window_locked_by_thread(l4i, l3i, l2i, thread_id),
     {
-        reveal(PageTableC::create_entry_l4_eof_transition_framing);
+        reveal(WholePageTable::create_entry_l4_eof_transition_framing);
         reveal(PageTableHigher::wf_l4);
     }
 
@@ -50,10 +50,10 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pre.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some
                     ==> post.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some,
     {
-        reveal(PageTableC::create_entry_l3_eof_transition_framing);
+        reveal(WholePageTable::create_entry_l3_eof_transition_framing);
         reveal(PageTableHigher::wf_l4);
         reveal(PageTableHigher::disjoint_l4);
-        reveal(PageTableC::wf_l3);
+        reveal(WholePageTable::wf_l3);
     }
 
     /// EOF closure of `create_entry_l2`: every L2 entry that resolved before still resolves, since only the empty entry `target_l2i`
@@ -68,9 +68,9 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pre.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some
                     ==> post.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some,
     {
-        reveal(PageTableC::create_entry_l2_eof_transition_framing);
+        reveal(WholePageTable::create_entry_l2_eof_transition_framing);
         reveal(PageTableHigher::wf_l4);
-        reveal(PageTableC::wf_l3);
+        reveal(WholePageTable::wf_l3);
     }
 }
 } // verus!

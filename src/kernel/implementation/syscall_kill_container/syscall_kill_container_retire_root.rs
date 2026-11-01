@@ -219,7 +219,7 @@ pub(crate) fn kill_container_retire_root_process(
     let ghost base_steps = steps.view();
     proof {
         lemma_container_allocator_4k_quota_bounded(&*krnl, container_ptr); allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr);
-        assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable)) by {
+        assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable)) by {
             old(krnl).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable);
             pagetable_lower_backup_wf_at(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable); pagetable_lower_backup_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         };

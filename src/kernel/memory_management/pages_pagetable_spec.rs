@@ -14,11 +14,11 @@ verus! {
         forall|page_index:PageIndex|
             #![trigger page_array.spec_index(page_index).view().view().state]
             #![trigger pagetable_map.dom().contains(page_array.spec_index(page_index).view().view().state->Allocated4k_state->PageTable_pagetable_root)]
-            #![trigger pagetable_c(pagetable_map, pt_lower, page_array.spec_index(page_index).view().view().state->Allocated4k_state->PageTable_pagetable_root).page_closure().contains(page_index2page_ptr(page_index))]
+            #![trigger whole_pagetable(pagetable_map, pt_lower, page_array.spec_index(page_index).view().view().state->Allocated4k_state->PageTable_pagetable_root).page_closure().contains(page_index2page_ptr(page_index))]
             index_valid(NUM_PAGES, page_index) && (page_array.spec_index(page_index).view().view().state matches PageState::Allocated4k{state: Allocated4KPageState::PageTable { .. }})
                 && page_array.spec_index(page_index).view().view().state->Allocated4k_state->PageTable_table_type == PT_TYPE
                 ==> pagetable_map.dom().contains(page_array.spec_index(page_index).view().view().state->Allocated4k_state->PageTable_pagetable_root)
-                && pagetable_c(pagetable_map, pt_lower, page_array.spec_index(page_index).view().view().state->Allocated4k_state->PageTable_pagetable_root).page_closure().contains(page_index2page_ptr(page_index))
+                && whole_pagetable(pagetable_map, pt_lower, page_array.spec_index(page_index).view().view().state->Allocated4k_state->PageTable_pagetable_root).page_closure().contains(page_index2page_ptr(page_index))
     }
 
     pub open spec fn pagetable_root_page_backward_wf(pagetable_map: PageTableLockedMap, page_array: PageLockedArray) -> bool {
@@ -33,8 +33,8 @@ verus! {
 
     pub open spec fn pagetable_closure_page_backward_wf(pagetable_map: PageTableLockedMap, pt_lower: PageTableLowerMap, page_array: PageLockedArray) -> bool {
         forall|pt_ptr:RwLockPageTableRoot, pt_p_ptr:PagePtr|
-            #![trigger pagetable_c(pagetable_map, pt_lower, pt_ptr).page_closure().contains(pt_p_ptr)]
-            pagetable_map.dom().contains(pt_ptr) && pagetable_c(pagetable_map, pt_lower, pt_ptr).page_closure().contains(pt_p_ptr)
+            #![trigger whole_pagetable(pagetable_map, pt_lower, pt_ptr).page_closure().contains(pt_p_ptr)]
+            pagetable_map.dom().contains(pt_ptr) && whole_pagetable(pagetable_map, pt_lower, pt_ptr).page_closure().contains(pt_p_ptr)
                 ==> page_ptr_valid(pt_p_ptr)
                 && page_array.spec_index(page_ptr2page_index(pt_p_ptr)).view().view().state is Allocated4k
                 && page_array.spec_index(page_ptr2page_index(pt_p_ptr)).view().view().state->Allocated4k_state is PageTable
@@ -56,7 +56,7 @@ verus! {
         requires
             pagetable_pages_wf(pagetable_map, pt_lower, page_array),
             pagetable_map.dom().contains(pagetable_ptr),
-            pagetable_c(pagetable_map, pt_lower, pagetable_ptr).page_closure().contains(page_ptr),
+            whole_pagetable(pagetable_map, pt_lower, pagetable_ptr).page_closure().contains(page_ptr),
         ensures
             page_ptr_valid(page_ptr),
             page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().state is Allocated4k,

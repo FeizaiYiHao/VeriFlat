@@ -17,8 +17,8 @@ pub proof fn kernel_page_freed_to_owner_quota_implies_u_step(
         *post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, it_mp: post.it_mp, pg_arr: post.pg_arr, allc_4k_mp: post.allc_4k_mp, ..*pre }),
         kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post),
         forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
-            pre.pt_mp.dom().contains(p) && (iommu || p != table) ==> pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks,
-        !iommu && pagetable_c(post.pt_mp, post.pt_lower.view(), table).lower.pagetable_window_locks != pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).lower.pagetable_window_locks ==> {
+            pre.pt_mp.dom().contains(p) && (iommu || p != table) ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks,
+        !iommu && whole_pagetable(post.pt_mp, post.pt_lower.view(), table).lower.pagetable_window_locks != whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).lower.pagetable_window_locks ==> {
             let zombie = pre.pt_mp.spec_index(table).view().proc_ptr;
             &&& pre.prc_mp.dom().contains(zombie)
             &&& pre.prc_mp.spec_index(zombie).view().zombie
@@ -43,7 +43,7 @@ pub proof fn kernel_page_freed_to_owner_quota_implies_u_step(
     assert(kernel_container_nonlock_fields_and_quotas_unchanged(pre, &mid)) by { reveal(kernel_container_nonlock_fields_and_quotas_unchanged); };
     kernel_endpoint_nonlock_fields_unchanged_for_equal(pre.ep_mp, mid.ep_mp);
     assert(kernel_cpu_process_thread_nonlock_fields_unchanged(pre, &mid)) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };
-    let zombie = if !iommu && pagetable_c(post.pt_mp, post.pt_lower.view(), table).lower.pagetable_window_locks != pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).lower.pagetable_window_locks { Some(pre.pt_mp.spec_index(table).view().proc_ptr) } else { None };
+    let zombie = if !iommu && whole_pagetable(post.pt_mp, post.pt_lower.view(), table).lower.pagetable_window_locks != whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).lower.pagetable_window_locks { Some(pre.pt_mp.spec_index(table).view().proc_ptr) } else { None };
     kernel_lock_states_unchanged_except_tables_of_implies_u_eq(pre, &mid, zombie);
     container_allocator_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, owner);
     assert(kernel_container_quota_4k_changed(&mid, post, owner, 1)) by { reveal(kernel_container_quota_4k_changed); reveal(kernel_thread_nonlock_fields_unchanged); reveal(container_allocator_wf); };

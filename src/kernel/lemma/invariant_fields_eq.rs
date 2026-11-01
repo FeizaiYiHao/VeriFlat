@@ -42,7 +42,7 @@ pub open spec fn allocator_invariant_fields_except_quota_unchanged<const SIZE: u
         }
 }
 
-pub proof fn lemma_allocator_pages_wf_preserved_for_allocator_invariant_fields_except_quota_forall()
+pub proof fn allocator_pages_wf_preserved_for_allocator_fields_except_quota()
     ensures
         forall|page_array: PageLockedArray, pre: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>, post: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>, allocator_2m_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_2M>, allocator_1g_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_1G>|
             #![trigger allocator_pages_wf(page_array, pre, allocator_2m_map, allocator_1g_map), allocator_pages_wf(page_array, post, allocator_2m_map, allocator_1g_map)]
@@ -56,7 +56,7 @@ pub proof fn lemma_process_pages_wf_preserved_for_process_domain_eq_forall()
             process_pages_wf(page_array, pre) && post.dom() == pre.dom() ==> process_pages_wf(page_array, post),
 { reveal(process_pages_wf); }
 
-pub proof fn lemma_container_process_page_pagetable_wf_preserved_for_process_invariant_fields_except_quota_forall()
+pub proof fn container_process_page_pagetable_wf_preserved_for_process_fields_except_quota()
     ensures
         forall|container_map: ContainerLockedMap, pre: ProcessLockedMap, post: ProcessLockedMap, pagetable_map: PageTableLockedMap, page_array: PageLockedArray|
             #![trigger container_process_page_pagetable_wf(container_map, pre, pagetable_map, page_array), container_process_page_pagetable_wf(container_map, post, pagetable_map, page_array)]
@@ -109,21 +109,21 @@ pub proof fn lemma_process_iommu_table_match_preserved_for_process_iommu_table_f
                 }) ==> process_iommu_table_match(post, iommu_table_map),
 { reveal(process_iommu_table_match); }
 
-pub proof fn lemma_iommu_root_table_process_wf_preserved_for_process_invariant_fields_except_quota_forall()
+pub proof fn iommu_root_table_process_wf_preserved_for_process_fields_except_quota()
     ensures
         forall|root_table: IommuRootTable, pre: ProcessLockedMap, post: ProcessLockedMap, iommu_table_map: IommuTableLockedMap|
             #![trigger iommu_root_table_process_wf(root_table, pre, iommu_table_map), iommu_root_table_process_wf(root_table, post, iommu_table_map)]
             iommu_root_table_process_wf(root_table, pre, iommu_table_map) && process_invariant_fields_except_quota_unchanged(pre, post) ==> iommu_root_table_process_wf(root_table, post, iommu_table_map),
 { reveal(iommu_root_table_process_wf); }
 
-pub proof fn lemma_process_pci_function_ownership_wf_preserved_for_process_invariant_fields_except_quota_forall()
+pub proof fn process_pci_function_ownership_wf_preserved_for_process_fields_except_quota()
     ensures
         forall|root_table: IommuRootTable, pre: ProcessLockedMap, post: ProcessLockedMap|
             #![trigger process_pci_function_ownership_wf(root_table, pre), process_pci_function_ownership_wf(root_table, post)]
             process_pci_function_ownership_wf(root_table, pre) && process_invariant_fields_except_quota_unchanged(pre, post) ==> process_pci_function_ownership_wf(root_table, post),
 { reveal(process_pci_function_ownership_wf); }
 
-pub proof fn lemma_iommu_tlb_wf_spec_preserved_for_process_invariant_fields_except_quota_forall()
+pub proof fn iommu_tlb_wf_spec_preserved_for_process_fields_except_quota()
     ensures
         forall|iommu_tlb: IommuTLB, root_table: IommuRootTable, pre: ProcessLockedMap, post: ProcessLockedMap, iommu_table_map: IommuTableLockedMap|
             #![trigger iommu_tlb_wf_spec(iommu_tlb, root_table, pre, iommu_table_map), iommu_tlb_wf_spec(iommu_tlb, root_table, post, iommu_table_map)]
@@ -144,7 +144,7 @@ pub proof fn lemma_container_process_wf_preserved_for_process_rodata_forall()
                 }) ==> container_process_wf(container_map, post),
 { reveal(container_process_wf); }
 
-pub proof fn lemma_container_allocator_wf_preserved_for_allocator_invariant_fields_except_quota_forall()
+pub proof fn container_allocator_wf_preserved_for_allocator_fields_except_quota()
     ensures
         forall|container_map: ContainerLockedMap, pre: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>, post: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_4K>, allocator_2m_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_2M>, allocator_1g_map: PageAllocatorUnLockedMap<ALLOCATOR_SIZE_1G>|
             #![trigger container_allocator_wf(container_map, pre, allocator_2m_map, allocator_1g_map), container_allocator_wf(container_map, post, allocator_2m_map, allocator_1g_map)]
@@ -193,7 +193,7 @@ pub proof fn lemma_thread_staged_pages_wf_preserved_for_thread_invariant_fields_
             thread_staged_pages_wf(pre, page_array) && thread_invariant_fields_unchanged(pre, post) ==> thread_staged_pages_wf(post, page_array),
 { reveal(thread_staged_pages_4k_wf); reveal(thread_staged_pages_2m_wf); reveal(thread_staged_pages_1g_wf); }
 
-pub proof fn lemma_per_container_process_tree_wf_preserved_for_process_invariant_fields_except_quota_forall()
+pub proof fn per_container_process_tree_wf_preserved_for_process_fields_except_quota()
     ensures
         forall|container_map: ContainerLockedMap, pre: ProcessLockedMap, post: ProcessLockedMap|
             #![trigger per_container_process_tree_wf(container_map, pre), per_container_process_tree_wf(container_map, post)]
@@ -232,7 +232,7 @@ pub proof fn lemma_process_thread_wf_preserved_for_process_thread_membership_fie
                 }) ==> process_thread_wf(post, thread_map),
 { reveal(process_thread_wf); }
 
-pub proof fn lemma_cpu_dirty_map_wf_preserved_for_process_invariant_fields_except_quota_forall()
+pub proof fn cpu_dirty_map_wf_preserved_for_process_fields_except_quota()
     ensures
         forall|container_map: ContainerLockedMap, cpu_set_map: CpuSetLockedMap, pre: ProcessLockedMap, post: ProcessLockedMap, cpu_array: CpuLockedArray, needflush: PcidNeedFlushArray, cpu_tlb: CpuTLB, pagetable_map: PageTableLockedMap|
             #![trigger cpu_dirty_map_wf(container_map, cpu_set_map, pre, cpu_array, cpu_tlb, pagetable_map, needflush), cpu_dirty_map_wf(container_map, cpu_set_map, post, cpu_array, cpu_tlb, pagetable_map, needflush)]

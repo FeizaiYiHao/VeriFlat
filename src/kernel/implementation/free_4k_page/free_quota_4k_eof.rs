@@ -80,7 +80,7 @@ proof fn return_free_quota_4k_eof_memory(pre: KernelK, post: KernelK, thread_ptr
 {
     reveal(return_free_quota_4k_eof_transition_framing);
     assert(post.memory_management_inv()) by {
-        assert(allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { lemma_allocator_pages_wf_preserved_for_allocator_invariant_fields_except_quota_forall(); };
+        assert(allocator_pages_wf(post.pg_arr, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { allocator_pages_wf_preserved_for_allocator_fields_except_quota(); };
         assert(container_allocator_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by { reveal(container_allocator_wf); };
         assert(container_kill_retire_wf(post.ctn_mp, post.allc_4k_mp, post.allc_2m_mp, post.allc_1g_mp)) by {
             let thread = pre.thr_mp.spec_index(thread_ptr).view();

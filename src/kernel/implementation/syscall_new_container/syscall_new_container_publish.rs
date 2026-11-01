@@ -5,7 +5,7 @@ use super::syscall_new_container_publish_release::release_new_container_publish_
 
 verus! {
 #[verifier::spinoff_prover]
-pub(super) fn publish_new_container_base(
+pub(super) fn publish_new_container_staged_root(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, caller_cpu_id: CpuId, transfer_cpu_id: CpuId,
     parent_cpu_set: RwLockCpuSetPtr, parent_container_ptr: RwLockContainerPtr, parent_process_ptr: RwLockProcessPtr,
     current_thread_ptr: RwLockThreadPtr, source_pagetable_ptr: RwLockPageTableRoot, source_range: &VaRange4K,
@@ -166,7 +166,7 @@ pub(super) fn publish_new_container_base(
         ret.6.view().2.cpu_set_mp.spec_index(pages_4k.view()[8]).locking_thread() is Write,
         kernel_k_to_kernel_u(*final(krnl)) == kernel_k_to_kernel_u(ret.6.view().2),
         held_pagetable_windows_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), final(krnl).pt_mp, final(krnl).pt_lower.view(), old(lctx)),
-        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pages_4k.view().spec_index(5)).is_empty(),
+        whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pages_4k.view().spec_index(5)).is_empty(),
         final(lctx).cpu_id() == old(lctx).cpu_id(),
         index_valid(NUM_CPUS, old(lctx).cpu_id()) ==> final(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view() == old(krnl).cpu_hw_cr3_pcid[old(lctx).cpu_id() as int].view(),
         final(krnl).inv(),
@@ -374,7 +374,7 @@ pub(super) fn publish_new_container_base(
         assert({
             &&& !krnl.cpu_set_mp.spec_index(cpu_set_page).being_killed()
             &&& krnl.pt_mp.spec_index(source_pagetable_ptr) == staged_k.pt_mp.spec_index(source_pagetable_ptr)
-            &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable_ptr) == pagetable_c(staged_k.pt_mp, staged_k.pt_lower.view(), source_pagetable_ptr)
+            &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable_ptr) == whole_pagetable(staged_k.pt_mp, staged_k.pt_lower.view(), source_pagetable_ptr)
         }) by { reveal(publish_staged_container_root_eof_transition_framing); };
     }
     let ghost origin = Share4kOrigin::NewContainer(NewContainerProgress {

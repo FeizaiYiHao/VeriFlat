@@ -434,7 +434,7 @@ proof fn pop_stage_4k_page_eof_global_pool_after_pool_pop(pre: KernelK, post: Ke
     assert(container_allocator_global_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by {
         reveal(container_allocator_global_free_4k_page_wf); reveal(container_allocator_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf); reveal(allocator_perms_wf);
         reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list);
-        seq_skip_lemma::<PagePtr>();
+        seq_skip_one_implies_contains_and_index_shift::<PagePtr>();
     };
 }
 
@@ -467,7 +467,7 @@ proof fn pop_stage_4k_page_eof_cpu_cache(pre: KernelK, post: KernelK, allocator:
             reveal(allocator_perms_wf); page_ptr_roundtrip();
             reveal(container_allocator_cpu_cache_free_4k_page_wf); reveal(container_allocator_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf);
             reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list);
-            seq_skip_lemma::<PagePtr>();
+            seq_skip_one_implies_contains_and_index_shift::<PagePtr>();
         };
     } else {
         assert(container_allocator_cpu_cache_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(container_allocator_cpu_cache_free_4k_page_wf); reveal(container_allocator_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf); };

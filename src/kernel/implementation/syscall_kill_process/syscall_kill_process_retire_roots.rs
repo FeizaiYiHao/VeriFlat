@@ -96,7 +96,7 @@ pub(crate) fn kill_retire_hold_roots(
         process_perms_wf_map(krnl.prc_mp);
         process_perms_wf_at(krnl.prc_mp, target);
         process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, target); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, target);
-        let pt = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
+        let pt = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         pagetable_perms_wf_at(krnl.pt_mp, pagetable);
         assert(page_ptr_valid(target) && krnl.pg_arr.spec_index(page_ptr2page_index(target)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::AsProcess })) by { process_pages_wf_process_entry_at(krnl.pg_arr, krnl.prc_mp, target); };
         pagetable_pages_wf_root_entry_at(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr, pagetable);

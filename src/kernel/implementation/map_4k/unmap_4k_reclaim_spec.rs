@@ -20,15 +20,15 @@ pub(super) open spec fn reclaim_last_4k_mapping_to_cpu_cache_eof_transition_fram
     &&& post.pt_mp.dom() == pre.pt_mp.dom()
     &&& post.pt_mp.unchanged_except(&pre.pt_mp, pagetable)
     &&& post.pt_lower.view() == pre.pt_lower.view().insert(pagetable, post.pt_lower.view().spec_index(pagetable))
-    &&& forall|p: RwLockPageTableRoot| #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), p)]
-        pre.pt_mp.dom().contains(p) && p != pagetable ==> pagetable_c(post.pt_mp, post.pt_lower.view(), p) == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p)
+    &&& forall|p: RwLockPageTableRoot| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), p)]
+        pre.pt_mp.dom().contains(p) && p != pagetable ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), p) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p)
     &&& post.pt_mp.spec_index(pagetable).locking_thread() == pre.pt_mp.spec_index(pagetable).locking_thread()
     &&& post.pt_mp.spec_index(pagetable).being_killed() == pre.pt_mp.spec_index(pagetable).being_killed()
-    &&& pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).mapping_4k() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().remove(va)
-    &&& pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).mapping_2m() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m()
-    &&& pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).mapping_1g() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g()
-    &&& pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).page_closure() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).page_closure()
-    &&& pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).lower.window_stale_cpus == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus
+    &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().remove(va)
+    &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m()
+    &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g()
+    &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).page_closure() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).page_closure()
+    &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).lower.window_stale_cpus == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus
     &&& post.pt_mp.spec_index(pagetable).view() == pre.pt_mp.spec_index(pagetable).view()
     &&& post.pt_mp.spec_index(pagetable).view().kernel_entries == pre.pt_mp.spec_index(pagetable).view().kernel_entries
     &&& post.pt_mp.spec_index(pagetable).view().kernel_l4_end == pre.pt_mp.spec_index(pagetable).view().kernel_l4_end

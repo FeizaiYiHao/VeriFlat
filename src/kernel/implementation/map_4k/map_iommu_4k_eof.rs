@@ -16,7 +16,7 @@ pub(super) open spec fn map_shared_page_into_iommu_4k_eof_transition_framing(
     &&& post.it_mp.unchanged_except(&pre.it_mp, iommu_table_ptr)
     &&& new_it.locking_thread() == old_it.locking_thread()
     &&& new_it.being_killed() == old_it.being_killed()
-    &&& new_it.view().mapping_4k() == old_it.view().mapping_4k().insert(iova, pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va))
+    &&& new_it.view().mapping_4k() == old_it.view().mapping_4k().insert(iova, whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va))
     &&& new_it.view().mapping_2m() == old_it.view().mapping_2m()
     &&& new_it.view().mapping_1g() == old_it.view().mapping_1g()
     &&& new_it.view().page_closure() == old_it.view().page_closure()
@@ -57,9 +57,9 @@ pub(super) proof fn map_shared_page_into_iommu_4k_eof(
         map_shared_page_into_iommu_4k_eof_transition_framing(pre, post, page_index, source_pagetable, va, iommu_table_ptr, iova),
         pre.pt_mp.dom().contains(source_pagetable),
         pre.pt_mp.spec_index(source_pagetable).view().proc_ptr == process_ptr,
-        pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(va),
-        page_ptr_valid(pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr),
-        page_index == page_ptr2page_index(pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(va),
+        page_ptr_valid(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr),
+        page_index == page_ptr2page_index(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr),
         index_valid(NUM_PAGES, page_index),
         pre.pg_arr.spec_index(page_index).view().view().state is Mapped4k,
         pre.it_mp.dom().contains(iommu_table_ptr),
@@ -131,9 +131,9 @@ proof fn map_shared_page_into_iommu_4k_eof_page_iommu_table(
         map_shared_page_into_iommu_4k_eof_transition_framing(pre, post, page_index, source_pagetable, va, iommu_table_ptr, iova),
         pre.pt_mp.dom().contains(source_pagetable),
         pre.pt_mp.spec_index(source_pagetable).view().proc_ptr == process_ptr,
-        pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(va),
-        page_ptr_valid(pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr),
-        page_index == page_ptr2page_index(pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(va),
+        page_ptr_valid(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr),
+        page_index == page_ptr2page_index(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr),
         index_valid(NUM_PAGES, page_index),
         pre.pg_arr.spec_index(page_index).view().view().state is Mapped4k,
         pre.it_mp.dom().contains(iommu_table_ptr),
@@ -152,7 +152,7 @@ proof fn map_shared_page_into_iommu_4k_eof_page_iommu_table(
     ensures page_iommu_table_wf(post.ctn_mp, post.prc_mp, post.it_mp, post.pg_arr),
 {
     reveal(map_shared_page_into_iommu_4k_eof_transition_framing);
-    let entry = pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va);
+    let entry = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va);
     assert({
         &&& entry.addr == page_index2page_ptr(page_index)
         &&& entry.owning_container.view() == pre.pg_arr.spec_index(page_index).view().view().owning_container
@@ -177,9 +177,9 @@ proof fn map_shared_page_into_iommu_4k_eof_page_pagetable(
         map_shared_page_into_iommu_4k_eof_transition_framing(pre, post, page_index, source_pagetable, va, iommu_table_ptr, iova),
         pre.pt_mp.dom().contains(source_pagetable),
         pre.pt_mp.spec_index(source_pagetable).view().proc_ptr == process_ptr,
-        pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(va),
-        page_ptr_valid(pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr),
-        page_index == page_ptr2page_index(pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().dom().contains(va),
+        page_ptr_valid(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr),
+        page_index == page_ptr2page_index(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).addr),
         index_valid(NUM_PAGES, page_index),
         pre.pg_arr.spec_index(page_index).view().view().state is Mapped4k,
         pre.it_mp.dom().contains(iommu_table_ptr),

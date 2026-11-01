@@ -28,10 +28,10 @@ pub open spec fn kernel_endpoint_nonlock_fields_unchanged(pre: EndpointLockedMap
 #[verifier::opaque]
 pub open spec fn kernel_pagetable_nonlock_fields_unchanged(pre_pt: PageTableLockedMap, pre_lower: PageTableLowerMap, post_pt: PageTableLockedMap, post_lower: PageTableLowerMap) -> bool {
     &&& post_pt.dom() == pre_pt.dom()
-    &&& forall|p: RwLockPageTableRoot| #![trigger pagetable_c(post_pt, post_lower, p)]
+    &&& forall|p: RwLockPageTableRoot| #![trigger whole_pagetable(post_pt, post_lower, p)]
         pre_pt.dom().contains(p) ==> {
-            let before = pagetable_c(pre_pt, pre_lower, p);
-            let after = pagetable_c(post_pt, post_lower, p);
+            let before = whole_pagetable(pre_pt, pre_lower, p);
+            let after = whole_pagetable(post_pt, post_lower, p);
             &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
             &&& after.mapping_2m().filter_keys(|va: VAddr| after.mapping_2m().spec_index(va).present) == before.mapping_2m().filter_keys(|va: VAddr| before.mapping_2m().spec_index(va).present)
             &&& after.mapping_1g().filter_keys(|va: VAddr| after.mapping_1g().spec_index(va).present) == before.mapping_1g().filter_keys(|va: VAddr| before.mapping_1g().spec_index(va).present)
@@ -245,10 +245,10 @@ pub open spec fn kernel_new_thread_fields(
     &&& post.dflt_pt == pre.dflt_pt
     &&& post.pt_mp.dom() == pre.pt_mp.dom()
     &&& kernel_pagetable_nonlock_fields_unchanged(pre.pt_mp, pre.pt_lower.view(), post.pt_mp, post.pt_lower.view())
-    &&& forall|p: RwLockPageTableRoot| #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), p)]
+    &&& forall|p: RwLockPageTableRoot| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), p)]
         pre.pt_mp.dom().contains(p) && (pre.thr_mp.spec_index(staging_thread_ptr).view().owning_proc == process_ptr || p != pre.prc_mp.spec_index(process_ptr).view().pagetable
             && p != pre.prc_mp.spec_index(pre.thr_mp.spec_index(staging_thread_ptr).view().owning_proc).view().pagetable)
-        ==> pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks
+        ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks
     &&& post.it_mp.dom() == pre.it_mp.dom()
     &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
         pre.it_mp.dom().contains(p) ==> {
@@ -424,8 +424,8 @@ pub open spec fn kernel_process_quota_4k_changed(pre: &KernelK, post: &KernelK, 
     &&& post.pt_mp.dom() == pre.pt_mp.dom()
     &&& forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
         pre.pt_mp.dom().contains(p) ==> {
-            let before = pagetable_c(pre.pt_mp, pre.pt_lower.view(), p);
-            let after = pagetable_c(post.pt_mp, post.pt_lower.view(), p);
+            let before = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p);
+            let after = whole_pagetable(post.pt_mp, post.pt_lower.view(), p);
             &&& post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
             &&& after.lower.pagetable_window_locks == before.lower.pagetable_window_locks
             &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
@@ -570,8 +570,8 @@ pub open spec fn kernel_process_quota_2m_changed(pre: &KernelK, post: &KernelK, 
     &&& post.pt_mp.dom() == pre.pt_mp.dom()
     &&& forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
         pre.pt_mp.dom().contains(p) ==> {
-            let before = pagetable_c(pre.pt_mp, pre.pt_lower.view(), p);
-            let after = pagetable_c(post.pt_mp, post.pt_lower.view(), p);
+            let before = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p);
+            let after = whole_pagetable(post.pt_mp, post.pt_lower.view(), p);
             &&& post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
             &&& after.lower.pagetable_window_locks == before.lower.pagetable_window_locks
             &&& after.mapping_4k().filter_keys(|va: VAddr| after.mapping_4k().spec_index(va).present) == before.mapping_4k().filter_keys(|va: VAddr| before.mapping_4k().spec_index(va).present)
@@ -810,8 +810,8 @@ pub open spec fn kernel_process_4k_mapping_changed(pre: &KernelK, post: &KernelK
     &&& post.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr
     &&& pre.pt_mp.dom().contains(pagetable_ptr)
     &&& post.pt_mp.dom().contains(pagetable_ptr)
-    &&& pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k().filter_keys(|v: VAddr| pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(v).present).dom().contains(va)
-        != pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k().filter_keys(|v: VAddr| pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(v).present).dom().contains(va)
+    &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k().filter_keys(|v: VAddr| whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(v).present).dom().contains(va)
+        != whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k().filter_keys(|v: VAddr| whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(v).present).dom().contains(va)
 }
 
 /// `share_4k_objects` read from the kernel objects it projects from.
@@ -953,7 +953,7 @@ pub open spec fn kernel_cpu_went_off_fields(pre: &KernelK, post: &KernelK, cpu_i
     &&& forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
         pre.pt_mp.dom().contains(p) ==> {
             &&& post.pt_mp.spec_index(p).locking_thread() == pre.pt_mp.spec_index(p).locking_thread()
-            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks
+            &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), p).lower.pagetable_window_locks
         }
     &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)]
         pre.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).locking_thread() == pre.it_mp.spec_index(p).locking_thread()

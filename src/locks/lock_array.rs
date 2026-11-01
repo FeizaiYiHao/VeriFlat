@@ -132,7 +132,7 @@ verus! {
         }
 
         /// Bridge between `spec_index(i).value` and `view()[i]`.
-        pub proof fn lemma_view_index(&self)
+        pub proof fn view_index_eq_element_value(&self)
             ensures
                 forall|i: int| 0 <= i < N ==> #[trigger] self.view().spec_index(i) == self.spec_index(i as usize).value,
         {

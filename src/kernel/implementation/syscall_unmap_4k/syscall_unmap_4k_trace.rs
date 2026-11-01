@@ -15,7 +15,7 @@ pub(super) proof fn unmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VA
             let thread = krnl.thr_mp.spec_index(thread_ptr);
             let container = krnl.ctn_mp.spec_index(thread.view().owning_container);
             let process = krnl.prc_mp.spec_index(thread.view().owning_proc);
-            let table = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), process.view().pagetable);
+            let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), process.view().pagetable);
             let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
             let unowned = container.lock_process_owner_u() is None;
             let conflict = container.lock_process_owner_u() is Some && container.lock_process_owner_u()->Some_0 < LockOwnerId::Some(process.view_rodata().view().depth);
@@ -91,7 +91,7 @@ pub(super) proof fn unmap_4k_enter_step_from_u(
         process_pagetable_match(pre_k.prc_mp, pre_k.pt_mp),
         pre_k.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
         pre_k.prc_mp.spec_index(process_ptr).view_rodata().view().pagetable == pagetable_ptr,
-        windows == pagetable_window_locks_after_locking_range(pagetable_c(pre_k.pt_mp, pre_k.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, range),
+        windows == pagetable_window_locks_after_locking_range(whole_pagetable(pre_k.pt_mp, pre_k.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, range),
         {
             let cpu = pre.cpu_array[cpu_id as int];
             let thread = pre.thread_map.spec_index(thread_ptr);
@@ -155,7 +155,7 @@ pub(super) proof fn unmap_4k_exit_step_from_u(
         process_pagetable_match(pre_k.prc_mp, pre_k.pt_mp),
         pre_k.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
         pre_k.prc_mp.spec_index(process_ptr).view_rodata().view().pagetable == pagetable_ptr,
-        windows == pagetable_window_locks_after_unlocking_range(pagetable_c(pre_k.pt_mp, pre_k.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, range),
+        windows == pagetable_window_locks_after_unlocking_range(whole_pagetable(pre_k.pt_mp, pre_k.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, range),
         {
             let thread = pre.thread_map.spec_index(thread_ptr);
             let process = pre.process_map.spec_index(process_ptr);

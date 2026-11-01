@@ -266,7 +266,7 @@ pub fn adopt_boot_dom0_pagetable(
         boot_dom0_manifest_wf(manifest_4k.view(), root_container),
         boot_dom0_pagetable_model(raw_cr3, process_ptr, kernel_l4_end, kernel_entries.view(), manifest_4k.view(), l4_tables, l3_tables, l2_tables, l1_tables, rev_maps.view()).wf(),
     ensures
-        (PageTableC { higher: ret.0, lower: ret.1.view() }).wf(),
+        (WholePageTable { higher: ret.0, lower: ret.1.view() }).wf(),
         forall|p: PageMapPtr, i: L2Index| #![trigger ret.1.view().l2_owner(p, i)] ret.1.view().l2_owner(p, i) is None,
         ret.1.view().window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty(),
         ret.0.cr3 == raw_cr3,
@@ -280,10 +280,10 @@ pub fn adopt_boot_dom0_pagetable(
         ret.0.l3_tables.view() == l3_tables,
         ret.1.view().l2_perms.dom() == l2_tables.dom(),
         ret.1.view().l1_rev_map.dom() == l1_tables.dom(),
-        (PageTableC { higher: ret.0, lower: ret.1.view() }).page_closure() =~= l4_tables.dom() + l3_tables.dom() + l2_tables.dom() + l1_tables.dom(),
-        (PageTableC { higher: ret.0, lower: ret.1.view() }).mapping_4k() == manifest_4k.view(),
-        (PageTableC { higher: ret.0, lower: ret.1.view() }).mapping_2m() == Map::<VAddr, MapEntry>::empty(),
-        (PageTableC { higher: ret.0, lower: ret.1.view() }).mapping_1g() == Map::<VAddr, MapEntry>::empty(),
+        (WholePageTable { higher: ret.0, lower: ret.1.view() }).page_closure() =~= l4_tables.dom() + l3_tables.dom() + l2_tables.dom() + l1_tables.dom(),
+        (WholePageTable { higher: ret.0, lower: ret.1.view() }).mapping_4k() == manifest_4k.view(),
+        (WholePageTable { higher: ret.0, lower: ret.1.view() }).mapping_2m() == Map::<VAddr, MapEntry>::empty(),
+        (WholePageTable { higher: ret.0, lower: ret.1.view() }).mapping_1g() == Map::<VAddr, MapEntry>::empty(),
 {
     let higher = PageTableHigher {
         cr3: raw_cr3, pcid: Some(1), did: None, kernel_l4_end, l4_table: Tracked(l4_tables), l3_rev_map: Ghost(rev_maps.view().0), l3_tables: Tracked(l3_tables),
@@ -630,20 +630,20 @@ pub open spec fn boot_kernel_state(
     &&& !krnl.pt_mp.spec_index(layout.cpu_pagetable).being_killed()
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).locking_thread() is None
     &&& krnl.pt_lower.view().dom() =~= set![layout.cpu_pagetable]
-    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).wf()
-    &&& forall|p: PageMapPtr, i: L2Index| #![trigger pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.l2_owner(p, i)]
-        pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.l2_owner(p, i) is None
-    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty()
+    &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).wf()
+    &&& forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.l2_owner(p, i)]
+        whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.l2_owner(p, i) is None
+    &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).lower.window_stale_cpus == Map::<(PageMapPtr, L2Index), Set<CpuId>>::empty()
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().cr3 == layout.cpu_cr3
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().pcid == Some(1usize)
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().pcid_value() == 1
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().proc_ptr == layout.root_process
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().kernel_l4_end == kernel_l4_end
     &&& krnl.pt_mp.spec_index(layout.cpu_pagetable).view().kernel_entries.view() == kernel_entries
-    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).page_closure() =~= cpu_page_closure
-    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).mapping_4k() == manifest_4k
-    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).mapping_2m() == Map::<VAddr, MapEntry>::empty()
-    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).mapping_1g() == Map::<VAddr, MapEntry>::empty()
+    &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).page_closure() =~= cpu_page_closure
+    &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).mapping_4k() == manifest_4k
+    &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).mapping_2m() == Map::<VAddr, MapEntry>::empty()
+    &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), layout.cpu_pagetable).mapping_1g() == Map::<VAddr, MapEntry>::empty()
     &&& krnl.it_mp.perms_wf()
     &&& krnl.it_mp.dom() =~= set![layout.iommu_table]
     &&& krnl.it_mp.spec_index(layout.iommu_table).is_init()

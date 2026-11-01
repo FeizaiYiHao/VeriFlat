@@ -19,9 +19,9 @@ pub(super) proof fn endpoint_lock_op_eof(pre: KernelK, post: KernelK, endpoint_p
     assert(post.memory_management_inv()) by { lemma_endpoint_pages_wf_preserved_for_endpoint_invariant_fields_forall(); };
     assert(post.process_management_inv()) by {
         lemma_container_endpoint_wf_preserved_for_endpoint_invariant_fields_forall();
-        lemma_thread_endpoint_ref_counter_wf_preserved_for_endpoint_invariant_fields_forall();
+        thread_endpoint_ref_counter_wf_preserved_for_endpoint_fields();
         lemma_thread_endpoint_queue_wf_preserved_for_endpoint_invariant_fields_forall();
-        lemma_container_thread_endpoint_wf_preserved_for_endpoint_invariant_fields_forall();
+        container_thread_endpoint_wf_preserved_for_endpoint_fields();
     };
 }
 } // verus!

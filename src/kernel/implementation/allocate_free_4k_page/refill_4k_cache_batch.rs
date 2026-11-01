@@ -77,7 +77,7 @@ pub fn refill_4k_cache_batch(krnl: &mut KernelK, allocator: RwLockPageAllocatorP
         && held_pagetables_unchanged(krnl.pt_mp, krnl.pt_mp, lctx) && held_iommu_tables_unchanged(krnl.it_mp, krnl.it_mp, lctx)) by { held_kernel_objects_unchanged_reflexive(krnl, lctx); };
     assert(krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.spec_index(allocator).wf()) by { allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allocator); };
     let pool = krnl.allc_4k_mp.borrow_global_pool_typed(allocator, Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), pool_perm);
-    proof { pool.lemma_len_view(); }
+    proof { pool.wf_implies_view_len_eq_len(); }
     let pool_len = pool.len();
     let target = if pool_len < ALLOCATOR_BATCH { pool_len } else { ALLOCATOR_BATCH };
     let mut moved = 0usize;
@@ -144,12 +144,12 @@ pub fn refill_4k_cache_batch(krnl: &mut KernelK, allocator: RwLockPageAllocatorP
     {
         assert(krnl.allc_4k_mp.perms_wf() && krnl.allc_4k_mp.spec_index(allocator).wf()) by { allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, allocator); };
         let pool = krnl.allc_4k_mp.borrow_global_pool_typed(allocator, Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), pool_perm);
-        proof { pool.lemma_len_view(); }
+        proof { pool.wf_implies_view_len_eq_len(); }
         let (_, page_ptr) = pool.peek_head();
         assert(page_ptr_valid(page_ptr)) by { allocator_free_page_ptrs_wf_global_at(krnl.allc_4k_mp, allocator, page_ptr); };
         let page_index = page_ptr2page_index(page_ptr);
         assert(index_valid(NUM_PAGES, page_index) && krnl.pg_arr.lock_id_by_index(page_index).major == FREE_PAGE_LOCK_MAJOR) by {
-            container_allocator_free_4k_page_wf_global_at(krnl.allc_4k_mp, krnl.pg_arr, allocator, page_ptr); reveal(LinkedList::wf_value_list); page_ptr_valid_imply_page_index_valid(); seq_skip_lemma::<PagePtr>();
+            container_allocator_free_4k_page_wf_global_at(krnl.allc_4k_mp, krnl.pg_arr, allocator, page_ptr); reveal(LinkedList::wf_value_list); page_ptr_valid_imply_page_index_valid(); seq_skip_one_implies_contains_and_index_shift::<PagePtr>();
             page_array_wf_at(krnl.pg_arr, page_index);
         };
         let Tracked(page_perm) = krnl.wlock_page(page_index, Tracked(&mut *lctx));

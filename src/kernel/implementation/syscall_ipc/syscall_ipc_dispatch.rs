@@ -23,7 +23,7 @@ verus! {
             !krnl.ep_mp.spec_index(endpoint_ptr).view().queue.view().contains(thread_ptr),
     { reveal(thread_endpoint_queue_wf); }
 
-    pub(super) proof fn endpoint_queue_member_thread_facts(krnl: &KernelK, endpoint_ptr: RwLockEndpointPtr, thread_ptr: RwLockThreadPtr)
+    pub(super) proof fn endpoint_queue_member_implies_thread_waiting_on_endpoint(krnl: &KernelK, endpoint_ptr: RwLockEndpointPtr, thread_ptr: RwLockThreadPtr)
         requires
             krnl.inv(),
             krnl.ep_mp.dom().contains(endpoint_ptr),
@@ -275,7 +275,7 @@ verus! {
             assert({
                 &&& steps.snapshot_k().ep_mp.spec_index(endpoint_ptr).view().queue.view().len() == queue_len
                 &&& (steps.snapshot_k().ep_mp.spec_index(endpoint_ptr).view().queue_state is SEND) == queue_is_send
-            }) by { reveal(kernel_endpoint_nonlock_fields_unchanged); endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr); krnl.ep_mp.spec_index(endpoint_ptr).view().queue.lemma_len_view(); };
+            }) by { reveal(kernel_endpoint_nonlock_fields_unchanged); endpoint_perms_wf_at(krnl.ep_mp, endpoint_ptr); krnl.ep_mp.spec_index(endpoint_ptr).view().queue.wf_implies_view_len_eq_len(); };
         }
 
         if (queue_len == 0 || queue_is_send == waiting_is_send) && !blocking {
@@ -1178,7 +1178,7 @@ verus! {
                 &&& krnl.thr_mp.spec_index(peer_thread_ptr).view().state.is_endpoint_waiting()
                 &&& krnl.thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr)
                 &&& peer_thread_ptr != current_thread_ptr
-            }) by { endpoint_queue_member_thread_facts(krnl, endpoint_ptr, peer_thread_ptr); };
+            }) by { endpoint_queue_member_implies_thread_waiting_on_endpoint(krnl, endpoint_ptr, peer_thread_ptr); };
         }
         proof {
             assert({

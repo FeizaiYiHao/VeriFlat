@@ -309,7 +309,7 @@ pub(super) proof fn new_container_result_from_k(
             let t = thread.view();
             let container = krnl.ctn_mp.spec_index(t.owning_container);
             let process = krnl.prc_mp.spec_index(t.owning_proc);
-            let table = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), process.view().pagetable);
+            let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), process.view().pagetable);
             let transfer = krnl.cpu_arr.spec_index(transfer_cpu_id).view().view().view();
             let owner = container.lock_process_owner_u();
             let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };

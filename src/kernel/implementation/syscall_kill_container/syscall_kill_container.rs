@@ -131,7 +131,7 @@ pub fn syscall_kill_container(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Lo
         return RetValueType::ErrorThreadKilled;
     }
     let Tracked(thread_lock_perm) = thread_res.unwrap();
-    proof { container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, container_ptr); krnl.ctn_mp.spec_index(container_ptr).view().children.lemma_len_view(); }
+    proof { container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, container_ptr); krnl.ctn_mp.spec_index(container_ptr).view().children.wf_implies_view_len_eq_len(); }
     let num_children = krnl.ctn_mp.borrow_typed(container_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(&container_lock_perm)).children.len();
     if child_index >= num_children {
         krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));

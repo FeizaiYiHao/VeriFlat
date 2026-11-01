@@ -111,7 +111,7 @@ pub(crate) fn kill_retire_hold_tables(
         final(krnl).thr_mp.spec_index(thread_ptr).view().free_quota_pending_clean(),
         kill_chain_state(*final(krnl), *final(lctx), cpu_id, scope, process_ptr, thread_ptr, chain, KillStage::Retire, *cpu_perm, *process_perm, *thread_perm, *chain_perms),
         final(krnl).prc_mp.spec_index(target) == old(krnl).prc_mp.spec_index(target),
-        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).leaves_present(),
+        whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable).leaves_present(),
         iommu_table is Some ==> final(krnl).it_mp.spec_index(iommu_table->Some_0).view().leaves_present(),
         ret.0.wf(),
         0 < ret.0.view().len(),
@@ -275,7 +275,7 @@ pub(crate) fn kill_retire_process(
     let ghost base_lctx = *lctx;
     proof {
         lemma_container_allocator_4k_quota_bounded(&*krnl, container_ptr); allocator_perms_wf_at(krnl.allc_4k_mp, allocator_ptr);
-        assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable)) by {
+        assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable)) by {
             old(krnl).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable);
             pagetable_lower_backup_wf_at(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable); pagetable_lower_backup_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable);
         };
@@ -448,7 +448,7 @@ pub(crate) fn kill_retire_commit(
         pt_lock_perm.thread_id() == old(lctx).thread_id(),
         pt_lock_perm.lock_id() == old(krnl).pt_mp.spec_index(pagetable).locking_thread()->Write_lock_id,
         ({
-            let pt = pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable);
+            let pt = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable);
             &&& pt.page_closure() =~= set![pt.cr3()]
             &&& pt.mapping_4k().dom() =~= Set::<VAddr>::empty()
             &&& pt.mapping_2m().dom() =~= Set::<VAddr>::empty()
@@ -722,7 +722,7 @@ pub(crate) fn kill_retire_remove_tables(
         old(krnl).pt_mp.dom().contains(pagetable),
         page_ptr_valid(pagetable),
         page_ptr_valid(old(krnl).pt_mp.spec_index(pagetable).view().cr3),
-        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).page_closure() =~= set![old(krnl).pt_mp.spec_index(pagetable).view().cr3],
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).page_closure() =~= set![old(krnl).pt_mp.spec_index(pagetable).view().cr3],
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), pagetable, TypedLockMode::Write),
         pt_lock_perm.state() is WriteLock,
         pt_lock_perm.thread_id() == old(lctx).thread_id(),

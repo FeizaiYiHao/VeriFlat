@@ -71,7 +71,7 @@ impl CpuTLB {
                     ==> final(self).spec_index((other_cpu, other_pcid)) == old(self).spec_index((other_cpu, other_pcid)),
             final(self).view() == if flush { old(self).view().insert((cpu_id, pcid), final(self).spec_index((cpu_id, pcid))) } else { old(self).view() },
             flush ==> match next_table {
-                Some(ptr) => single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(self).spec_index((cpu_id, pcid)), pagetable_c(k.pt_mp, k.pt_lower.view(), ptr)),
+                Some(ptr) => single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(self).spec_index((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), ptr)),
                 None => final(self).spec_index((cpu_id, pcid)).is_empty(),
             },
     {

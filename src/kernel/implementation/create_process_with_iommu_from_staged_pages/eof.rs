@@ -77,16 +77,16 @@ proof fn create_process_with_iommu_from_staged_pages_eof_pagetable_window_holder
         post.pt_mp.dom() == pre.pt_mp.dom().insert(pagetable_page_ptr),
         forall|pt_ptr: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(pt_ptr)]
             post.pt_mp.dom().contains(pt_ptr) && pt_ptr != pagetable_page_ptr ==> pre.pt_mp.dom().contains(pt_ptr) && post.pt_mp.spec_index(pt_ptr) == pre.pt_mp.spec_index(pt_ptr),
-        forall|pt_ptr: RwLockPageTableRoot| #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), pt_ptr)]
-            pre.pt_mp.dom().contains(pt_ptr) ==> pagetable_c(post.pt_mp, post.pt_lower.view(), pt_ptr) == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pt_ptr),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_page_ptr).wf(),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_page_ptr).is_empty(),
+        forall|pt_ptr: RwLockPageTableRoot| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pt_ptr)]
+            pre.pt_mp.dom().contains(pt_ptr) ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pt_ptr) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt_ptr),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_page_ptr).wf(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_page_ptr).is_empty(),
     ensures
         pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
 {
-    reveal(pagetable_window_holders_hold_pagetable); reveal(PageTableC::wf_window_locks);
-    assert(forall|l4i: L4Index| #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_page_ptr).spec_resolve_mapping_l4(l4i)]
-        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_page_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) ==> pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_page_ptr).spec_resolve_mapping_l4(l4i) is None);
+    reveal(pagetable_window_holders_hold_pagetable); reveal(WholePageTable::wf_window_locks);
+    assert(forall|l4i: L4Index| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_page_ptr).spec_resolve_mapping_l4(l4i)]
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_page_ptr).kernel_l4_end() <= l4i && pei_valid(l4i) ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_page_ptr).spec_resolve_mapping_l4(l4i) is None);
 }
 
 /// The new process joins its parent's child list; every other process keeps its tree fields.
@@ -117,7 +117,7 @@ proof fn create_process_with_iommu_from_staged_pages_eof_process_perms_wf(
         reveal(container_process_wf);
         assert(!pre.prc_mp.spec_index(parent_ptr).view().children.view().contains(process_page_ptr)) by { reveal(per_container_process_tree_wf); reveal(process_children_parent_wf); };
         assert(!pre.prc_mp.spec_index(parent_ptr).view_ghost().uppertree_seq.view().contains(parent_ptr)) by { reveal(per_container_process_tree_wf); reveal(process_uppertree_seq_wf); };
-        process_perms_wf_at(pre.prc_mp, parent_ptr); seq_push_lemma::<RwLockProcessPtr>(); seq_push_unique_lemma::<RwLockProcessPtr>();
+        process_perms_wf_at(pre.prc_mp, parent_ptr); seq_push_implies_contains::<RwLockProcessPtr>(); seq_push_absent_implies_no_duplicates_and_index_of::<RwLockProcessPtr>();
     };
     assert(process_perms_wf(post.prc_mp)) by { reveal(process_perms_wf); };
 }
@@ -699,7 +699,7 @@ pub(super) proof fn create_process_with_iommu_from_staged_pages_eof_inv(
         post.pt_mp.dom() == pre.pt_mp.dom().insert(pagetable_page_ptr),
         forall|pt: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(pt)]
             pre.pt_mp.dom().contains(pt) ==> post.pt_mp.spec_index(pt) == pre.pt_mp.spec_index(pt),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_page_ptr).is_empty(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_page_ptr).is_empty(),
         post.pt_mp.spec_index(pagetable_page_ptr).view().proc_ptr == process_page_ptr,
         post.prc_mp.spec_index(process_page_ptr).view().pagetable == pagetable_page_ptr,
         post.ctn_mp.dom() == pre.ctn_mp.dom(),

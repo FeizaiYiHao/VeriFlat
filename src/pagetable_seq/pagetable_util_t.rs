@@ -8,7 +8,7 @@ use super::pagetable_util_t_eof::*;
 /// TCB: retire a write-locked page table whose only table page is its root table, and reclaim the page that held the
 /// object and the root table's page as raw memory.
 ///
-/// This is the inverse of `retype_page_to_pagetable_c_and_insert` plus the root table it owned. The object has already
+/// This is the inverse of `retype_page_to_whole_pagetable_and_insert` plus the root table it owned. The object has already
 /// left `pagetable_map`, the caller exclusively write-holds its lock in the release phase, and its big-lock half owns
 /// only its root table; its window half owns no L2 or L1 page and has been dropped from `pt_lower`. So the object owns
 /// no other memory and no other thread can reach or wait on the lock. The held lock disappears from `lctx` with the
@@ -86,8 +86,8 @@ impl KernelK {
             !old(self).pt_mp.dom().contains(page_ptr),
             page_perm.is_init(),
             page_perm.addr() == page_ptr,
-            (PageTableC { higher, lower }).wf(),
-            (PageTableC { higher, lower }).is_empty(),
+            (WholePageTable { higher, lower }).wf(),
+            (WholePageTable { higher, lower }).is_empty(),
             old(self).pt_mp.typed_lock_map_aligned(old(lctx).pagetable_lock_map(), old(lctx).thread_id()),
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
@@ -115,9 +115,9 @@ impl KernelK {
             final(self).pt_mp.spec_index(page_ptr).view() == higher,
             final(self).pt_mp.spec_index(page_ptr).view_ghost() == lower,
             forall|r: RwLockPageTableRoot|
-                #![trigger pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), r)]
-                old(self).pt_mp.dom().contains(r) ==> pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), r) == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), r),
-            pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), page_ptr) == (PageTableC { higher, lower }),
+                #![trigger whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), r)]
+                old(self).pt_mp.dom().contains(r) ==> whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), r) == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), r),
+            whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), page_ptr) == (WholePageTable { higher, lower }),
             !final(self).pt_mp.spec_index(page_ptr).being_killed(),
             pagetable_perms_wf(old(self).pt_mp) ==> pagetable_perms_wf(final(self).pt_mp),
             pagetable_lower_wf(old(self).pt_mp, old(self).pt_lower.view()) ==> pagetable_lower_wf(final(self).pt_mp, final(self).pt_lower.view()),
@@ -139,7 +139,7 @@ impl KernelK {
             pagetable_window_typed_lock_map_aligned(old(self).pt_mp, old(self).pt_lower.view(), old(lctx).pagetable_window_lock_map(), old(lctx).pagetable_lock_map(), old(lctx).thread_id())
                 ==> pagetable_window_typed_lock_map_aligned(final(self).pt_mp, final(self).pt_lower.view(), final(lctx).pagetable_window_lock_map(), final(lctx).pagetable_lock_map(), final(lctx).thread_id()),
     {
-        let ret = retype_page_to_pagetable_c_and_insert(&mut self.pt_mp, Tracked(self.pt_lower.borrow_mut()), page_ptr, higher, Tracked(lower), Tracked(page_perm), Tracked(&mut *lctx));
+        let ret = retype_page_to_whole_pagetable_and_insert(&mut self.pt_mp, Tracked(self.pt_lower.borrow_mut()), page_ptr, higher, Tracked(lower), Tracked(page_perm), Tracked(&mut *lctx));
         proof { retype_page_to_pagetable_and_insert_eof(*old(self), *self, *old(lctx), *lctx, page_ptr, higher, lower, ret.view()); }
         ret
     }
@@ -215,8 +215,8 @@ impl KernelK {
             old(self).pt_mp.dom().contains(pagetable_ptr),
             old(self).pt_mp.spec_index(pagetable_ptr).is_init(),
             old(self).pt_lower.view().dom().contains(pagetable_ptr),
-            pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).wf(),
-            pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).page_closure() =~= set![old(self).pt_mp.spec_index(pagetable_ptr).view().cr3],
+            whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).wf(),
+            whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), pagetable_ptr).page_closure() =~= set![old(self).pt_mp.spec_index(pagetable_ptr).view().cr3],
             lock_perm.state() is WriteLock,
             lock_perm.thread_id() == old(lctx).thread_id(),
             lock_perm.lock_id() == old(self).pt_mp.spec_index(pagetable_ptr).locking_thread()->Write_lock_id,
@@ -250,7 +250,7 @@ impl KernelK {
     {
         proof {
             self.pt_mp.typed_lock_map_aligned_write_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr);
-            let c = pagetable_c(self.pt_mp, self.pt_lower.view(), pagetable_ptr);
+            let c = whole_pagetable(self.pt_mp, self.pt_lower.view(), pagetable_ptr);
             assert(c.higher.l3_tables.view().dom() + c.higher.l4_table.view().dom() =~= set![c.cr3()]) by { c.higher.wf_l4_cr3_at(); };
         }
         let Tracked(pagetable_perm) = self.pt_mp.remove_with_perm(pagetable_ptr);
@@ -314,11 +314,11 @@ impl KernelK {
             old(self).pt_mp.dom().contains(root),
             typed_lock_maps_aligned(old(self), lctx),
             update is Set ==> typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write) || lctx.pagetable_window_lock_map().dom().contains((root, update->Set_window)),
-            update is Set ==> (pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).window_view(update->Set_window).stale_cpus is Some
-                ==> pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).window_view(update->Set_window).stale_cpus->Some_0.subset_of(update->Set_cpus))
+            update is Set ==> (whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_view(update->Set_window).stale_cpus is Some
+                ==> whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).window_view(update->Set_window).stale_cpus->Some_0.subset_of(update->Set_cpus))
                 || tlb_wf_spec(old(self).cpu_tlb, old(self).pt_mp, old(self).pt_lower.view().insert(root, PageTableLower {
-                window_stale_cpus: window_stale_cpus_after(update, pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root), typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write), lctx.thread_id()),
-                ..pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower }), old(self).cpu_arr, old(self).pcid_needflush),
+                window_stale_cpus: window_stale_cpus_after(update, whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root), typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write), lctx.thread_id()),
+                ..whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower }), old(self).cpu_arr, old(self).pcid_needflush),
             update is RemoveCpu ==> ({
                 let cpu_id = update->RemoveCpu_cpu_id;
                 let pcid = old(self).pt_mp.spec_index(root).view().pcid->Some_0;
@@ -327,10 +327,10 @@ impl KernelK {
                 &&& old(self).cpu_tlb.spec_index((cpu_id, pcid)).is_empty()
                     || (old(self).pcid_needflush.spec_index(cpu_id, pcid).view().needflush && old(self).cpu_arr.spec_index(cpu_id).view().view().view().current_pcid != pcid)
                     || (old(self).cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid) is Some && old(self).cpu_arr.spec_index(cpu_id).view().view().tlb_dirty_bitmap().spec_index(pcid).unwrap().pagetable_ptr != root)
-                || single_cpu_single_pcid_tlb_subset_of_present_pagetable(old(self).cpu_tlb.spec_index((cpu_id, pcid)), pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root))
+                || single_cpu_single_pcid_tlb_subset_of_present_pagetable(old(self).cpu_tlb.spec_index((cpu_id, pcid)), whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root))
             }) || tlb_wf_spec(old(self).cpu_tlb, old(self).pt_mp, old(self).pt_lower.view().insert(root, PageTableLower {
-                window_stale_cpus: window_stale_cpus_after(update, pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root), typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write), lctx.thread_id()),
-                ..pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower }), old(self).cpu_arr, old(self).pcid_needflush),
+                window_stale_cpus: window_stale_cpus_after(update, whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root), typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write), lctx.thread_id()),
+                ..whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower }), old(self).cpu_arr, old(self).pcid_needflush),
         ensures
             final(self).inv(),
             typed_lock_maps_aligned(final(self), lctx),
@@ -343,13 +343,13 @@ impl KernelK {
             update_ghost_ensures(old(self).pt_mp.spec_index(root), final(self).pt_mp.spec_index(root),
                 if old(self).pt_mp.spec_index(root).wlocked() { final(self).pt_lower.view().spec_index(root) } else { old(self).pt_mp.spec_index(root).view_ghost() }),
             final(self).pt_lower.view() =~= old(self).pt_lower.view().insert(root, PageTableLower {
-                window_stale_cpus: window_stale_cpus_after(update, pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root), typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write), lctx.thread_id()),
-                ..pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower }),
-            pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_4k() == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_4k(),
-            pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_2m() == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_2m(),
-            pagetable_c(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_1g() == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_1g(),
+                window_stale_cpus: window_stale_cpus_after(update, whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root), typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write), lctx.thread_id()),
+                ..whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower }),
+            whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_4k() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_4k(),
+            whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_2m() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_2m(),
+            whole_pagetable(final(self).pt_mp, final(self).pt_lower.view(), root).mapping_1g() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_1g(),
             forall|w: WindowVa| #![trigger lctx.pagetable_window_lock_map().dom().contains((root, w))] lctx.pagetable_window_lock_map().dom().contains((root, w)) ==> {
-                let before = pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root);
+                let before = whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root);
                 let l2_page = before.window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va));
                 &&& before.lower.l2_perms.dom().contains(l2_page)
                 &&& pei_valid(spec_v2l2index(w.va))
@@ -361,17 +361,17 @@ impl KernelK {
         proof {
             pagetable_perms_wf_map(old(self).pt_mp);
             pagetable_lower_wf_at(old(self).pt_mp, old(self).pt_lower.view(), root);
-            let ghost new_map = window_stale_cpus_after(update, pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root), typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write), lctx.thread_id());
+            let ghost new_map = window_stale_cpus_after(update, whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root), typed_lock_map_contains_mode(lctx.pagetable_lock_map(), root, TypedLockMode::Write), lctx.thread_id());
             let tracked mut lower = self.pt_lower.borrow_mut().tracked_remove(root);
             lower.window_stale_cpus = new_map;
             self.pt_lower.borrow_mut().tracked_insert(root, lower);
             if old(self).pt_mp.spec_index(root).wlocked() { self.pt_mp.update_ghost(root, self.pt_lower.view().spec_index(root)); }
-            assert(self.pt_lower.view() =~= old(self).pt_lower.view().insert(root, PageTableLower { window_stale_cpus: new_map, ..pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).lower }));
-            assert(pagetable_c(self.pt_mp, self.pt_lower.view(), root).mapping_4k() == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_4k()
-                && pagetable_c(self.pt_mp, self.pt_lower.view(), root).mapping_2m() == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_2m()
-                && pagetable_c(self.pt_mp, self.pt_lower.view(), root).mapping_1g() == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_1g());
-            assert(pagetable_c(self.pt_mp, self.pt_lower.view(), root).page_closure() == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).page_closure()
-                && pagetable_c(self.pt_mp, self.pt_lower.view(), root).leaves_present() == pagetable_c(old(self).pt_mp, old(self).pt_lower.view(), root).leaves_present());
+            assert(self.pt_lower.view() =~= old(self).pt_lower.view().insert(root, PageTableLower { window_stale_cpus: new_map, ..whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).lower }));
+            assert(whole_pagetable(self.pt_mp, self.pt_lower.view(), root).mapping_4k() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_4k()
+                && whole_pagetable(self.pt_mp, self.pt_lower.view(), root).mapping_2m() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_2m()
+                && whole_pagetable(self.pt_mp, self.pt_lower.view(), root).mapping_1g() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).mapping_1g());
+            assert(whole_pagetable(self.pt_mp, self.pt_lower.view(), root).page_closure() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).page_closure()
+                && whole_pagetable(self.pt_mp, self.pt_lower.view(), root).leaves_present() == whole_pagetable(old(self).pt_mp, old(self).pt_lower.view(), root).leaves_present());
             assert(window_stale_cpus_update_eof_transition_framing(*old(self), *self, root)) by { reveal(window_stale_cpus_update_eof_transition_framing); };
             assert(typed_lock_maps_aligned(self, lctx)) by {
                 reveal(window_stale_cpus_update_eof_transition_framing); reveal(pagetable_window_typed_lock_map_aligned); reveal(LockedMap::typed_lock_map_aligned);

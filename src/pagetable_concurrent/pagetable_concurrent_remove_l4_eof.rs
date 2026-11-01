@@ -2,7 +2,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
+impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     /// Operation-state summary of `remove_l4_entry`: the root map's entry `target_l4i` is cleared and the L3 page
     /// `target_l3_p` leaves the L3 pages and their reverse index; the window half and every other field are unchanged.
     #[verifier::opaque]
@@ -61,7 +61,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.higher.inv(),
     {
-        reveal(PageTableC::remove_l4_entry_eof_transition_framing);
+        reveal(WholePageTable::remove_l4_entry_eof_transition_framing);
         assert(post.higher.wf_l4()) by { reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::disjoint_l4); };
         assert(post.higher.wf_l3()) by { reveal(PageTableHigher::wf_l3); };
         assert(post.higher.disjoint_l4()) by { reveal(PageTableHigher::disjoint_l4); };
@@ -91,15 +91,15 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             post.table_pages_wf(),
             post.page_closure() =~= pre.page_closure().remove(target_l3_p),
     {
-        reveal(PageTableC::remove_l4_entry_eof_transition_framing);
-        assert(post.wf_l3()) by { reveal(PageTableC::wf_l3); };
-        assert(post.wf_l2()) by { reveal(PageTableC::wf_l2); };
-        assert(post.wf_l1()) by { reveal(PageTableC::wf_l1); };
-        assert(post.disjoint_l2()) by { reveal(PageTableC::disjoint_l2); };
-        assert(post.user_only()) by { reveal(PageTableC::user_only); };
-        assert(post.rwx_upper_level_entries()) by { reveal(PageTableC::rwx_upper_level_entries); };
-        assert(post.table_pages_wf()) by { reveal(PageTableC::table_pages_wf); };
-        assert(post.page_closure() =~= pre.page_closure().remove(target_l3_p)) by { reveal(PageTableC::table_pages_wf); reveal(PageTableHigher::table_pages_wf); };
+        reveal(WholePageTable::remove_l4_entry_eof_transition_framing);
+        assert(post.wf_l3()) by { reveal(WholePageTable::wf_l3); };
+        assert(post.wf_l2()) by { reveal(WholePageTable::wf_l2); };
+        assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
+        assert(post.disjoint_l2()) by { reveal(WholePageTable::disjoint_l2); };
+        assert(post.user_only()) by { reveal(WholePageTable::user_only); };
+        assert(post.rwx_upper_level_entries()) by { reveal(WholePageTable::rwx_upper_level_entries); };
+        assert(post.table_pages_wf()) by { reveal(WholePageTable::table_pages_wf); };
+        assert(post.page_closure() =~= pre.page_closure().remove(target_l3_p)) by { reveal(WholePageTable::table_pages_wf); reveal(PageTableHigher::table_pages_wf); };
     }
 
     /// EOF closure of `remove_l4_entry`: the leaves that read walks through the root, `wf_mapping_4k`, `wf_mapping_2m`,
@@ -134,8 +134,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.wf_mapping_4k(),
     {
-        reveal(PageTableC::remove_l4_entry_eof_transition_framing);
-        reveal(PageTableC::wf_mapping_4k); reveal(PageTableHigher::disjoint_l4);
+        reveal(WholePageTable::remove_l4_entry_eof_transition_framing);
+        reveal(WholePageTable::wf_mapping_4k); reveal(PageTableHigher::disjoint_l4);
     }
 
     /// EOF closure of `remove_l4_entry` for `wf_mapping_2m`.
@@ -150,8 +150,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.wf_mapping_2m(),
     {
-        reveal(PageTableC::remove_l4_entry_eof_transition_framing);
-        reveal(PageTableC::wf_mapping_2m); reveal(PageTableHigher::disjoint_l4);
+        reveal(WholePageTable::remove_l4_entry_eof_transition_framing);
+        reveal(WholePageTable::wf_mapping_2m); reveal(PageTableHigher::disjoint_l4);
     }
 
     /// EOF closure of `remove_l4_entry` for `tables_reachable_wf`.
@@ -166,8 +166,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.tables_reachable_wf(),
     {
-        reveal(PageTableC::remove_l4_entry_eof_transition_framing);
-        reveal(PageTableC::tables_reachable_wf); reveal(PageTableHigher::disjoint_l4);
+        reveal(WholePageTable::remove_l4_entry_eof_transition_framing);
+        reveal(WholePageTable::tables_reachable_wf); reveal(PageTableHigher::disjoint_l4);
     }
 
     /// EOF closure of `remove_l4_entry`: `wf_window_locks`, kept apart from the walk leaves because its index roundtrip
@@ -183,8 +183,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.wf_window_locks(),
     {
-        reveal(PageTableC::remove_l4_entry_eof_transition_framing);
-        assert(post.wf_window_locks()) by { reveal(PageTableC::wf_window_locks); reveal(PageTableHigher::disjoint_l4); broadcast use spec_va_2m_valid_index_roundtrip, iova_2m_valid_index_roundtrip; };
+        reveal(WholePageTable::remove_l4_entry_eof_transition_framing);
+        assert(post.wf_window_locks()) by { reveal(WholePageTable::wf_window_locks); reveal(PageTableHigher::disjoint_l4); broadcast use spec_va_2m_valid_index_roundtrip, iova_2m_valid_index_roundtrip; };
     }
 
     /// EOF closure of `remove_l4_entry`: window lock owners. No window hangs under the cleared root entry and the
@@ -203,7 +203,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
                 #![trigger pre.window_locked_by_thread(l4i, l3i, l2i, thread_id)]
                 pre.kernel_l4_end() <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) ==> post.window_locked_by_thread(l4i, l3i, l2i, thread_id) == pre.window_locked_by_thread(l4i, l3i, l2i, thread_id),
     {
-        reveal(PageTableC::remove_l4_entry_eof_transition_framing);
+        reveal(WholePageTable::remove_l4_entry_eof_transition_framing);
         reveal(PageTableHigher::disjoint_l4);
     }
 }

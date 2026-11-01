@@ -2,7 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_ipc_dispatch::{ipc_lock_entry, IpcEntryLocked};
 #[cfg(verus_keep_ghost)]
-use super::syscall_ipc_dispatch::{endpoint_queue_member_thread_facts, running_thread_not_in_endpoint_queue};
+use super::syscall_ipc_dispatch::{endpoint_queue_member_implies_thread_waiting_on_endpoint, running_thread_not_in_endpoint_queue};
 use super::syscall_ipc_queue::ipc_dequeue_endpoint_waiter;
 use super::syscall_ipc_transition::{ipc_block_current, ipc_schedule_waiting_peer_and_finish};
 use super::syscall_ipc_spec::*;
@@ -197,7 +197,7 @@ verus! {
                 &&& endpoint_node_perm.addr() == callee_node_addr
             }) by {
                 thread_endpoint_queue_wf_thread_at(before_switch.thr_mp, before_switch.ep_mp, callee_ptr); endpoint_perms_wf_at(before_switch.ep_mp, endpoint_ptr);
-                before_switch.ep_mp.spec_index(endpoint_ptr).view().queue.lemma_value_addr_unique(endpoint_node_perm.addr(), before_switch.thr_mp.spec_index(callee_ptr).view().endpoint_linkedlist_node.addr());
+                before_switch.ep_mp.spec_index(endpoint_ptr).view().queue.wf_and_equal_values_implies_equal_addrs(endpoint_node_perm.addr(), before_switch.thr_mp.spec_index(callee_ptr).view().endpoint_linkedlist_node.addr());
             };
         }
         let caller = krnl.thr_mp.borrow_mut_typed(caller_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&caller_lock_perm));
@@ -390,7 +390,7 @@ verus! {
                 &&& endpoint_node_perm.addr() == caller_node_addr
             }) by {
                 thread_endpoint_queue_wf_thread_at(old(krnl).thr_mp, old(krnl).ep_mp, caller_ptr); endpoint_perms_wf_at(old(krnl).ep_mp, endpoint_ptr);
-                old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.lemma_value_addr_unique(endpoint_node_perm.addr(), old(krnl).thr_mp.spec_index(caller_ptr).view().endpoint_linkedlist_node.addr());
+                old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.wf_and_equal_values_implies_equal_addrs(endpoint_node_perm.addr(), old(krnl).thr_mp.spec_index(caller_ptr).view().endpoint_linkedlist_node.addr());
             };
         }
         let caller = krnl.thr_mp.borrow_mut_typed(caller_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&caller_lock_perm));
@@ -563,7 +563,7 @@ verus! {
                 &&& krnl.thr_mp.spec_index(peer_thread_ptr).view().state.is_endpoint_waiting()
                 &&& krnl.thr_mp.spec_index(peer_thread_ptr).view().blocking_endpoint_ptr == Some(endpoint_ptr)
                 &&& peer_thread_ptr != current_thread_ptr
-            }) by { endpoint_queue_member_thread_facts(krnl, endpoint_ptr, peer_thread_ptr); };
+            }) by { endpoint_queue_member_implies_thread_waiting_on_endpoint(krnl, endpoint_ptr, peer_thread_ptr); };
             thread_perms_wf_at(krnl.thr_mp, current_thread_ptr);
             assert({
                 &&& ipc_queue_head(old(steps).snapshot_k(), cpu_id, endpoint_index) == peer_thread_ptr

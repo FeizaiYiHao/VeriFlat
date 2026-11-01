@@ -38,9 +38,9 @@ pub fn map_shared_page_into_iommu_4k(
         source_pagetable_lock_perm.thread_id() == old(lctx).thread_id(),
         old(krnl).pt_mp.spec_index(source_pagetable).locking_thread()->Read_reader_map.contains_pair(old(lctx).thread_id(), source_pagetable_lock_perm.lock_id()),
         va_4k_valid(va),
-        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).kernel_l4_end() <= spec_va2index(va).0,
-        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().dom().contains(va),
-        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).present,
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).kernel_l4_end() <= spec_va2index(va).0,
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().dom().contains(va),
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().spec_index(va).present,
         old(krnl).it_mp.dom().contains(iommu_table_ptr),
         old(krnl).it_mp.spec_index(iommu_table_ptr).view().proc_ptr == process_ptr,
         typed_lock_map_contains_mode(old(lctx).iommu_table_lock_map(), iommu_table_ptr, TypedLockMode::Write),
@@ -61,7 +61,7 @@ pub fn map_shared_page_into_iommu_4k(
         final(krnl).it_mp.unchanged_except(&old(krnl).it_mp, iommu_table_ptr),
         final(krnl).it_mp.spec_index(iommu_table_ptr).locking_thread() == old(krnl).it_mp.spec_index(iommu_table_ptr).locking_thread(),
         final(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_4k()
-            == old(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_4k().insert(iova, pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().spec_index(va)),
+            == old(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_4k().insert(iova, whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().spec_index(va)),
         final(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_2m() == old(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_2m(),
         final(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_1g() == old(krnl).it_mp.spec_index(iommu_table_ptr).view().mapping_1g(),
         final(krnl).it_mp.spec_index(iommu_table_ptr).view().proc_ptr == old(krnl).it_mp.spec_index(iommu_table_ptr).view().proc_ptr,
@@ -76,11 +76,11 @@ pub fn map_shared_page_into_iommu_4k(
     assert({
         &&& spec_index2va(source_indices) == va
         &&& spec_index2va(indices) == iova
-        &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).spec_resolve_mapping_4k_l1(source_indices.0, source_indices.1, source_indices.2, source_indices.3) is Some
+        &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).spec_resolve_mapping_4k_l1(source_indices.0, source_indices.1, source_indices.2, source_indices.3) is Some
     }) by {
         spec_va_4k_index_roundtrip_at(va, source_indices.0, source_indices.1, source_indices.2, source_indices.3);
         spec_va_4k_index_roundtrip_at(iova, indices.0, indices.1, indices.2, indices.3);
-        pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).wf_mapping_4k_at(source_indices.0, source_indices.1, source_indices.2, source_indices.3);
+        whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).wf_mapping_4k_at(source_indices.0, source_indices.1, source_indices.2, source_indices.3);
     };
     let source_entry;
     {

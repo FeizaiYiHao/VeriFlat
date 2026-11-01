@@ -3,7 +3,7 @@ use crate::*;
 
 verus! {
 /// Container `owner` at depth `depth > 0` of thread `thread_ptr`'s ancestor chain has its parent, one level up, as the chain's previous entry.
-pub(super) proof fn refund_unmap_4k_quota_parent_facts(krnl: KernelK, thread_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, depth: usize)
+pub(super) proof fn refund_unmap_4k_quota_owner_at_depth_implies_parent_is_previous_chain_entry(krnl: KernelK, thread_ptr: RwLockThreadPtr, owner: RwLockContainerPtr, depth: usize)
     requires
         krnl.inv(),
         krnl.thr_mp.dom().contains(thread_ptr),

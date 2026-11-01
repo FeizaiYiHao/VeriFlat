@@ -364,9 +364,9 @@ fn kill_container_retire_detach(
         allocator_perms_wf_at(krnl.allc_4k_mp, ro.allocator_ptr_4k); allocator_perms_wf_at(krnl.allc_2m_mp, ro.allocator_ptr_2m); allocator_perms_wf_at(krnl.allc_1g_mp, ro.allocator_ptr_1g);
         allocator_perms_wf_at(krnl.allc_4k_mp, owner_ro.allocator_ptr_4k); allocator_perms_wf_at(krnl.allc_2m_mp, owner_ro.allocator_ptr_2m);
         lemma_container_allocator_quota_eq_total_free_without_users(*krnl, container_ptr);
-        krnl.allc_4k_mp.spec_index(ro.allocator_ptr_4k).global_pool.view().linked_list.lemma_len_view();
-        krnl.allc_2m_mp.spec_index(ro.allocator_ptr_2m).global_pool.view().linked_list.lemma_len_view();
-        krnl.allc_1g_mp.spec_index(ro.allocator_ptr_1g).global_pool.view().linked_list.lemma_len_view();
+        krnl.allc_4k_mp.spec_index(ro.allocator_ptr_4k).global_pool.view().linked_list.wf_implies_view_len_eq_len();
+        krnl.allc_2m_mp.spec_index(ro.allocator_ptr_2m).global_pool.view().linked_list.wf_implies_view_len_eq_len();
+        krnl.allc_1g_mp.spec_index(ro.allocator_ptr_1g).global_pool.view().linked_list.wf_implies_view_len_eq_len();
         lemma_cache_len_fold_nonneg(krnl.allc_4k_mp.spec_index(ro.allocator_ptr_4k).cpu_caches.view());
         lemma_cache_len_fold_nonneg(krnl.allc_2m_mp.spec_index(ro.allocator_ptr_2m).cpu_caches.view());
         lemma_cache_len_fold_nonneg(krnl.allc_1g_mp.spec_index(ro.allocator_ptr_1g).cpu_caches.view());

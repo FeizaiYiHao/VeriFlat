@@ -59,13 +59,13 @@ pub proof fn page_pagetable_wf_preserved_for_4k_mapping_insert(
             } else {
                 Set::empty().insert((pagetable_ptr, va))
             },
-        pagetable_c(pre_pagetable_map, pre_pt_lower, pagetable_ptr).mapping_4k().dom().contains(va) == false,
-        pagetable_c(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_4k().dom().contains(va),
-        pagetable_c(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_4k() == pagetable_c(pre_pagetable_map, pre_pt_lower, pagetable_ptr).mapping_4k().insert(va, pagetable_c(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_4k().spec_index(va)),
-        pagetable_c(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_4k().spec_index(va).addr == page_ptr,
-        pagetable_c(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_4k().spec_index(va).owning_container.view() == post_page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container,
-        pagetable_c(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_2m() == pagetable_c(pre_pagetable_map, pre_pt_lower, pagetable_ptr).mapping_2m(),
-        pagetable_c(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_1g() == pagetable_c(pre_pagetable_map, pre_pt_lower, pagetable_ptr).mapping_1g(),
+        whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).mapping_4k().dom().contains(va) == false,
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_4k().dom().contains(va),
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_4k() == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).mapping_4k().insert(va, whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_4k().spec_index(va)),
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_4k().spec_index(va).addr == page_ptr,
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_4k().spec_index(va).owning_container.view() == post_page_array.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container,
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_2m() == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).mapping_2m(),
+        whole_pagetable(post_pagetable_map, post_pt_lower, pagetable_ptr).mapping_1g() == whole_pagetable(pre_pagetable_map, pre_pt_lower, pagetable_ptr).mapping_1g(),
     ensures
         page_pagetable_wf(post_pagetable_map, post_pt_lower, post_page_array),
 { reveal(pagetable_lower_wf); reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); }

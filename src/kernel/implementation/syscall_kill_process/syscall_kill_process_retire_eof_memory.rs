@@ -133,7 +133,7 @@ proof fn kill_retire_eof_page_states(
 {
     reveal(kill_retire_eof_transition_framing);
     let process = pre.prc_mp.spec_index(target).view();
-    let pt = pagetable_c(pre.pt_mp, pre.pt_lower.view(), process.pagetable);
+    let pt = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), process.pagetable);
     process_pages_wf_process_entry_at(pre.pg_arr, pre.prc_mp, target);
     pagetable_pages_wf_root_entry_at(pre.pt_mp, pre.pt_lower.view(), pre.pg_arr, process.pagetable);
     assert(pre.pg_arr.spec_index(page_ptr2page_index(pt.cr3())).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::PageTable { pagetable_root: process.pagetable, table_type: PT_TYPE } }))
@@ -215,7 +215,7 @@ proof fn kill_retire_eof_process_object_pages(
 {
     reveal(kill_retire_eof_transition_framing);
     let process = pre.prc_mp.spec_index(target).view();
-    let pt = pagetable_c(pre.pt_mp, pre.pt_lower.view(), process.pagetable);
+    let pt = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), process.pagetable);
     process_pages_wf_process_entry_at(pre.pg_arr, pre.prc_mp, target);
     pagetable_pages_wf_root_entry_at(pre.pt_mp, pre.pt_lower.view(), pre.pg_arr, process.pagetable);
     assert(pre.pg_arr.spec_index(page_ptr2page_index(pt.cr3())).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::PageTable { pagetable_root: process.pagetable, table_type: PT_TYPE } }))
@@ -280,7 +280,7 @@ proof fn kill_retire_eof_pagetable_pages(
 {
     reveal(kill_retire_eof_transition_framing);
     let process = pre.prc_mp.spec_index(target).view();
-    let pt = pagetable_c(pre.pt_mp, pre.pt_lower.view(), process.pagetable);
+    let pt = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), process.pagetable);
     process_pages_wf_process_entry_at(pre.pg_arr, pre.prc_mp, target);
     pagetable_pages_wf_root_entry_at(pre.pt_mp, pre.pt_lower.view(), pre.pg_arr, process.pagetable);
     assert(pre.pg_arr.spec_index(page_ptr2page_index(pt.cr3())).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::PageTable { pagetable_root: process.pagetable, table_type: PT_TYPE } }))
@@ -345,7 +345,7 @@ proof fn kill_retire_eof_iommu_table_pages(
 {
     reveal(kill_retire_eof_transition_framing);
     let process = pre.prc_mp.spec_index(target).view();
-    let pt = pagetable_c(pre.pt_mp, pre.pt_lower.view(), process.pagetable);
+    let pt = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), process.pagetable);
     process_pages_wf_process_entry_at(pre.pg_arr, pre.prc_mp, target);
     pagetable_pages_wf_root_entry_at(pre.pt_mp, pre.pt_lower.view(), pre.pg_arr, process.pagetable);
     assert(pre.pg_arr.spec_index(page_ptr2page_index(pt.cr3())).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::PageTable { pagetable_root: process.pagetable, table_type: PT_TYPE } }))

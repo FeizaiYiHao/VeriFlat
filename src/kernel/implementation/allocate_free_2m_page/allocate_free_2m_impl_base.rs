@@ -212,7 +212,7 @@ verus! {
                 assert(krnl.ctn_mp.spec_index(container_ptr).view_ghost().owned_threads.view().contains(thread_ptr)) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); };
                 lemma_scan_fail_pool_nonempty(krnl, container_ptr, alloc_ptr_2m, thread_ptr);
                 allocator_perms_wf_at(krnl.allc_2m_mp, alloc_ptr_2m);
-                krnl.allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().lemma_len_view();
+                krnl.allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().wf_implies_view_len_eq_len();
             };
             pop_stage_2m_page(krnl, alloc_ptr_2m, None, thread_ptr, container_ptr, Tracked(&mut *lctx), Tracked(pool_perm.borrow()), Tracked(thread_lock_perm))
         };
@@ -644,7 +644,7 @@ verus! {
             }
             let cache_ref = krnl.allc_2m_mp.borrow_cache_typed(alloc_ptr_2m, cpu, Ghost(lctx.allocator_cache_2m_lock_map()), Tracked(&*lctx), Tracked(cache_perms.tracked_borrow(cpu)));
             let cache_len = cache_ref.linked_list.len();
-            assert(cache_len == krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(cpu).view().view().view().len()) by { cache_ref.linked_list.lemma_len_view(); };
+            assert(cache_len == krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(cpu).view().view().view().len()) by { cache_ref.linked_list.wf_implies_view_len_eq_len(); };
             if cache_len > 0 {
                 let tracked selected_cache_perm = cache_perms.tracked_borrow(cpu);
                 let (page_ptr, Tracked(page_lock_perm)) = pop_stage_2m_page(krnl, alloc_ptr_2m, Some(cpu), thread_ptr, container_ptr, Tracked(&mut *lctx), Tracked(selected_cache_perm), Tracked(thread_lock_perm));
@@ -655,7 +655,7 @@ verus! {
                 let caches = krnl.allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches;
                 let cache_seq = caches.view();
                 let cache_len_sum = |sum: int, cache: RwLock<AllocatorCache<ALLOCATOR_SIZE_2M>, (), (), NO_KILL_STATE>| { sum + cache.view().linked_list.len() };
-                assert(cache_seq.spec_index(cpu as int).view().linked_list.len() == 0) by { caches.lemma_view_index(); };
+                assert(cache_seq.spec_index(cpu as int).view().linked_list.len() == 0) by { caches.view_index_eq_element_value(); };
                 assert(cache_seq.take(cpu as int + 1).fold_left(0int, cache_len_sum) == cache_len_sum(cache_seq.take(cpu as int).fold_left(0int, cache_len_sum), cache_seq.spec_index(cpu as int))) by {
                     assert(cache_seq.take(cpu as int + 1).drop_last() =~= cache_seq.take(cpu as int) && cache_seq.take(cpu as int + 1).last() == cache_seq.spec_index(cpu as int)) by { cache_seq.lemma_take_succ_push(cpu as int); };
                 };

@@ -337,7 +337,7 @@ pub fn scheduler_map_move_shard_head(scheduler_map: &mut SchedulerUnLockedMap, s
         final(scheduler_map).spec_index(scheduler_ptr).shard(to).queue.map() == old(scheduler_map).spec_index(scheduler_ptr).shard(to).queue.map().insert(ret, old(scheduler_map).spec_index(scheduler_ptr).shard(from).queue.view()[0]),
         final(scheduler_map).spec_index(scheduler_ptr).shard(to).queue.dom() == old(scheduler_map).spec_index(scheduler_ptr).shard(to).queue.dom().insert(ret),
 {
-    proof { scheduler_perms_wf_map(*scheduler_map); scheduler_perms_wf_at(*scheduler_map, scheduler_ptr); scheduler_map.spec_index(scheduler_ptr).shard(from).queue.lemma_len_view(); }
+    proof { scheduler_perms_wf_map(*scheduler_map); scheduler_perms_wf_at(*scheduler_map, scheduler_ptr); scheduler_map.spec_index(scheduler_ptr).shard(from).queue.wf_implies_view_len_eq_len(); }
     let shard = scheduler_map.borrow_mut_shard_typed(scheduler_ptr, from, Ghost(lctx.scheduler_lock_map()), Tracked(lctx), Tracked(from_lock_perm));
     let (node_addr, node_perm) = shard.queue.pop_head();
     let shard = scheduler_map.borrow_mut_shard_typed(scheduler_ptr, to, Ghost(lctx.scheduler_lock_map()), Tracked(lctx), Tracked(to_lock_perm));

@@ -103,7 +103,7 @@ pub(super) proof fn boot_memory_management_inv_eof_pagetable_pages(
     ensures pagetable_pages_wf(krnl.pt_mp, krnl.pt_lower.view(), krnl.pg_arr),
 {
     hide(Seq::no_duplicates);
-    reveal(pagetable_pages_wf); reveal(boot_page_array_ready); reveal(PageTableC::table_pages_wf);
+    reveal(pagetable_pages_wf); reveal(boot_page_array_ready); reveal(WholePageTable::table_pages_wf);
 }
 
 pub(super) proof fn boot_memory_management_inv_eof_thread_pages(

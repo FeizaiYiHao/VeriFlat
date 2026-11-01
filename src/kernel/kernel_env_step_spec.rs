@@ -17,7 +17,7 @@ pub open spec fn cpu_tlb_within_may_cache(k: KernelK, cpu_id: CpuId, pcid: Pcid,
     if pcid == KERNEL_DEFAULT_PCID {
         true
     } else if cpu.current_pcid == pcid && cpu.current_pagetable is Some {
-        single_cpu_single_pcid_tlb_subset_of_present_pagetable(tlb, pagetable_c(k.pt_mp, k.pt_lower.view(), cpu.current_pagetable->Some_0))
+        single_cpu_single_pcid_tlb_subset_of_present_pagetable(tlb, whole_pagetable(k.pt_mp, k.pt_lower.view(), cpu.current_pagetable->Some_0))
     } else {
         tlb.is_empty()
     }
@@ -369,7 +369,7 @@ pub proof fn cpu_op_ipi_running_to_idle_respects_boundary(pre: KernelK, post: Ke
     reveal(UnLockedMap::typed_quota_lock_map_aligned); reveal(UnLockedMap::typed_cache_lock_map_aligned); reveal(UnLockedMap::typed_global_pool_lock_map_aligned);
 }
 
-/// The wake-up IPI of `CpuOpArray::woken` stays within the step-boundary framing of a thread between its sections that
+/// The wake-up IPI of `CpuOpArray::mark_idle_after_wake` stays within the step-boundary framing of a thread between its sections that
 /// does not run on the target. The IPI runs inside the waker's section, so the invariant after it is assumed.
 pub proof fn cpu_op_woken_respects_boundary(pre: KernelK, post: KernelK, cpu_id: CpuId, lctx: LocalContext)
     requires

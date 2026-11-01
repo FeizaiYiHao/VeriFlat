@@ -308,7 +308,7 @@ verus! {
         assert(parent_uppers.len() == parent_depth && child_uppers == parent_uppers.push(parent_ptr) && child_uppers.no_duplicates()) by { reveal(process_perms_wf); };
         assert(!parent_uppers.contains(parent_ptr)) by { reveal(process_uppertree_seq_wf); };
         assert(child_uppers.contains(parent_ptr) && child_uppers.spec_index(parent_depth as int) == parent_ptr && child_uppers.index_of(parent_ptr) == parent_depth
-            && child_uppers.subrange(0, parent_depth as int) =~= parent_uppers) by { seq_push_lemma::<RwLockProcessPtr>(); seq_push_unique_lemma::<RwLockProcessPtr>(); };
+            && child_uppers.subrange(0, parent_depth as int) =~= parent_uppers) by { seq_push_implies_contains::<RwLockProcessPtr>(); seq_push_absent_implies_no_duplicates_and_index_of::<RwLockProcessPtr>(); };
         child_uppers.to_set_ensures();
         assert(process_tree_fields_wf(old_process_perms) && process_tree_fields_wf(new_process_perms)) by { reveal(process_perms_wf); };
         process_add_child_eof_process_uppertree_seq_wf(root_process, process_tree_dom, old_process_perms, new_process_perms, parent_ptr, child_ptr);
@@ -340,7 +340,7 @@ verus! {
     {
         hide(Seq::no_duplicates);
         new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
-        seq_push_lemma::<RwLockProcessPtr>(); seq_push_unique_lemma::<RwLockProcessPtr>(); reveal(process_uppertree_seq_wf);
+        seq_push_implies_contains::<RwLockProcessPtr>(); seq_push_absent_implies_no_duplicates_and_index_of::<RwLockProcessPtr>(); reveal(process_uppertree_seq_wf);
     }
 
     /// Closure of `process_add_child_preserves_tree_wf` for `process_root_wf`.
@@ -386,7 +386,7 @@ verus! {
     {
         hide(Seq::no_duplicates);
         new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
-        reveal(process_root_wf); reveal(process_children_parent_wf); seq_push_lemma::<RwLockProcessPtr>();
+        reveal(process_root_wf); reveal(process_children_parent_wf); seq_push_implies_contains::<RwLockProcessPtr>();
     }
 
     /// Closure of `process_add_child_preserves_tree_wf` for `process_linkedlist_wf`.
@@ -409,7 +409,7 @@ verus! {
     {
         hide(Seq::no_duplicates);
         new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
-        reveal(process_root_wf); reveal(process_children_parent_wf); reveal(process_linkedlist_wf); seq_push_lemma::<RwLockProcessPtr>();
+        reveal(process_root_wf); reveal(process_children_parent_wf); reveal(process_linkedlist_wf); seq_push_implies_contains::<RwLockProcessPtr>();
     }
 
     /// Closure of `process_add_child_preserves_tree_wf` for `process_children_depth_wf`.
@@ -432,7 +432,7 @@ verus! {
     {
         hide(Seq::no_duplicates);
         new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
-        reveal(process_children_depth_wf); seq_push_lemma::<RwLockProcessPtr>(); seq_push_unique_lemma::<RwLockProcessPtr>();
+        reveal(process_children_depth_wf); seq_push_implies_contains::<RwLockProcessPtr>(); seq_push_absent_implies_no_duplicates_and_index_of::<RwLockProcessPtr>();
     }
 
     /// Closure of `process_add_child_preserves_tree_wf` for `process_subtree_set_wf`.
@@ -455,7 +455,7 @@ verus! {
     {
         hide(Seq::no_duplicates);
         new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
-        reveal(process_subtree_set_wf); reveal(process_uppertree_seq_wf); seq_push_lemma::<RwLockProcessPtr>(); seq_push_unique_lemma::<RwLockProcessPtr>();
+        reveal(process_subtree_set_wf); reveal(process_uppertree_seq_wf); seq_push_implies_contains::<RwLockProcessPtr>(); seq_push_absent_implies_no_duplicates_and_index_of::<RwLockProcessPtr>();
     }
 
     /// Closure of `process_add_child_preserves_tree_wf` for `process_subtree_set_exclusive`.
@@ -478,7 +478,7 @@ verus! {
     {
         hide(Seq::no_duplicates);
         new_process_perms.spec_index(child_ptr).view_ghost().uppertree_seq.view().to_set_ensures();
-        reveal(process_subtree_set_wf); reveal(process_uppertree_seq_wf); reveal(process_subtree_set_exclusive); seq_push_lemma::<RwLockProcessPtr>(); seq_push_unique_lemma::<RwLockProcessPtr>();
+        reveal(process_subtree_set_wf); reveal(process_uppertree_seq_wf); reveal(process_subtree_set_exclusive); seq_push_implies_contains::<RwLockProcessPtr>(); seq_push_absent_implies_no_duplicates_and_index_of::<RwLockProcessPtr>();
     }
 
     pub proof fn process_insert_child_into_ancestor_subtree_sets(tracked process_map: &mut ProcessLockedMap, ancestors: Seq<RwLockProcessPtr>, child_ptr: RwLockProcessPtr, held_locks: Map<RwLockProcessPtr, TypedHeldLock>, thread_id: LockThreadId)

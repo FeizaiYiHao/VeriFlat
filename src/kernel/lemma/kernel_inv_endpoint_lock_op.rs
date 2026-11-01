@@ -28,7 +28,7 @@ pub proof fn lemma_container_endpoint_wf_preserved_for_endpoint_invariant_fields
             container_endpoint_wf(container_map, pre) && endpoint_invariant_fields_unchanged(pre, post) ==> container_endpoint_wf(container_map, post),
 { reveal(container_endpoint_wf); }
 
-pub proof fn lemma_thread_endpoint_ref_counter_wf_preserved_for_endpoint_invariant_fields_forall()
+pub proof fn thread_endpoint_ref_counter_wf_preserved_for_endpoint_fields()
     ensures
         forall|thread_map: ThreadLockedMap, pre: EndpointLockedMap, post: EndpointLockedMap|
             #![trigger thread_endpoint_ref_counter_wf(thread_map, pre), thread_endpoint_ref_counter_wf(thread_map, post)]
@@ -43,7 +43,7 @@ pub proof fn lemma_thread_endpoint_queue_wf_preserved_for_endpoint_invariant_fie
                 ==> thread_endpoint_queue_wf(thread_map, post),
 { reveal(thread_endpoint_queue_wf); }
 
-pub proof fn lemma_container_thread_endpoint_wf_preserved_for_endpoint_invariant_fields_forall()
+pub proof fn container_thread_endpoint_wf_preserved_for_endpoint_fields()
     ensures
         forall|container_map: ContainerLockedMap, thread_map: ThreadLockedMap, pre: EndpointLockedMap, post: EndpointLockedMap|
             #![trigger container_thread_endpoint_wf(container_map, thread_map, pre), container_thread_endpoint_wf(container_map, thread_map, post)]

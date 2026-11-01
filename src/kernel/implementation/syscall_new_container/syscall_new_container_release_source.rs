@@ -27,7 +27,7 @@ pub(super) fn new_container_release_source_table(
             old(lctx).pagetable_window_lock_map().dom().contains((p, w)) == (windows_held && p == pagetable_ptr && source_window_perms.dom().contains(w)),
         !windows_held ==> old(lctx).pagetable_window_lock_map().dom().is_empty(),
         windows_held ==> {
-            let table = pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr);
+            let table = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr);
             &&& source_range.wf() && source_range.len > 0
             &&& table.kernel_l4_end() <= spec_va2index(source_range.start).0
             &&& forall|w: WindowVa| #![trigger va_range_2m_windows(*source_range).contains(w)]
@@ -55,9 +55,9 @@ pub(super) fn new_container_release_source_table(
         final(krnl).pt_mp.unchanged_except(&old(krnl).pt_mp, pagetable_ptr),
         final(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread() == base.pt_mp.spec_index(pagetable_ptr).locking_thread(),
         final(krnl).pt_lower.view() =~= old(krnl).pt_lower.view().insert(pagetable_ptr, final(krnl).pt_lower.view().spec_index(pagetable_ptr)),
-        !windows_held ==> pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
-        windows_held ==> pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks
-            == pagetable_window_locks_after_unlocking_range(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, *source_range),
+        !windows_held ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
+        windows_held ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks
+            == pagetable_window_locks_after_unlocking_range(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, *source_range),
         final(lctx).page_lock_map() == old(lctx).page_lock_map(),
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),

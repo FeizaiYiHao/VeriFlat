@@ -171,7 +171,7 @@ pub proof fn kernel_container_quotas_zero_projection(krnl: &KernelK, container_p
     let allocator = krnl.allc_1g_mp.spec_index(allocator_ptr);
     let pool = allocator.global_pool.view().view();
     kernel_container_projection_at(krnl, container_ptr); container_allocator_wf_at(krnl.ctn_mp, krnl.allc_4k_mp, krnl.allc_2m_mp, krnl.allc_1g_mp, container_ptr);
-    allocator_perms_wf_map(krnl.allc_1g_mp); allocator_perms_wf_at(krnl.allc_1g_mp, allocator_ptr); allocator.global_pool.view().linked_list.lemma_len_view();
+    allocator_perms_wf_map(krnl.allc_1g_mp); allocator_perms_wf_at(krnl.allc_1g_mp, allocator_ptr); allocator.global_pool.view().linked_list.wf_implies_view_len_eq_len();
     assert(pool.len() == 0) by {
         if pool.len() > 0 {
             let page_ptr = pool[0];
@@ -206,9 +206,9 @@ proof fn lemma_free_1g_cache_len_fold_zero(krnl: &KernelK, allocator_ptr: RwLock
         lemma_free_1g_cache_len_fold_zero(krnl, allocator_ptr, n - 1);
         allocator_perms_wf_map(krnl.allc_1g_mp); allocator_perms_wf_at(krnl.allc_1g_mp, allocator_ptr);
         assert(caches.view().take(n).drop_last() =~= caches.view().take(n - 1));
-        caches.lemma_view_index();
+        caches.view_index_eq_element_value();
         let cache = caches.spec_index((n - 1) as usize).view().view();
-        cache.linked_list.lemma_len_view();
+        cache.linked_list.wf_implies_view_len_eq_len();
         assert(cache.view().len() == 0) by {
             if cache.view().len() > 0 {
                 let page_ptr = cache.view()[0];

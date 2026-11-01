@@ -445,7 +445,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL
         ||| self.wlocked_by(lctx)
     }
     pub closed spec fn control(&self) -> LockControl { self.lock.control() }
-    pub open spec fn killer_info_inner(&self) -> Option<KillerInfo> {
+    pub open spec fn killer_info_from_control(&self) -> Option<KillerInfo> {
         match self.control() { LockControl::Killed(killer_info) => Some(killer_info), _ => None }
     }
     /// Concrete owner recorded by the current dynamic write acquisition.
@@ -457,10 +457,10 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> RwLock<T, ROT, GhostT, HAS_KILL
         if self.locking_thread() is Write { self.dynamic_process_owner() } else { None }
     }
     pub open spec fn killer_info(&self) -> Option<KillerInfo> {
-        if HAS_KILL_STATE { self.killer_info_inner() } else { None }
+        if HAS_KILL_STATE { self.killer_info_from_control() } else { None }
     }
     pub open spec fn being_killed(&self) -> bool {
-        if HAS_KILL_STATE { self.killer_info_inner() is Some } else { false }
+        if HAS_KILL_STATE { self.killer_info_from_control() is Some } else { false }
     }
     pub closed spec fn is_init(&self) -> bool { self.is_init.view() }
 
@@ -834,7 +834,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
                 // Like `wlock`, the mark is taken only once the lock is free.
                 &&& old(self).locked() == false
                 &&& final(self).being_killed() == true
-                &&& final(self).killer_info_inner() == Some(killer_info)
+                &&& final(self).killer_info_from_control() == Some(killer_info)
                 &&& ret.1 is Some
                 // Lock acquired with the given lock_id.
                 &&& final(self).locking_thread() == RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: ret.1.unwrap().view().lock_id() }
@@ -874,7 +874,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
             lctx.kernel_view_locking_state() is Release,
         ensures
             final(self).being_killed(),
-            final(self).killer_info_inner() == Some(killer_info),
+            final(self).killer_info_from_control() == Some(killer_info),
             final(self).locking_thread() == old(self).locking_thread(),
             final(self).is_init() == old(self).is_init(),
             final(self).view() == old(self).view(),
@@ -955,7 +955,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
                 &&& old(self).being_killed() == false
                 &&& old(self).locked() == false
                 &&& final(self).being_killed() == true
-                &&& final(self).killer_info_inner() == Some(killer_info)
+                &&& final(self).killer_info_from_control() == Some(killer_info)
                 &&& ret.1 is Some
                 &&& final(self).locking_thread() == RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: ret.1.unwrap().view().lock_id() }
                 &&& final(self).inv()
@@ -1049,12 +1049,12 @@ pub open spec fn dynamic_wlock_ensures<T: LockInvTrait + LockMajorTrait, ROT, Gh
 ) -> bool {
     match ret {
         DynamicWLockResult::Killed(killer_info) => {
-            &&& old.killer_info_inner() == Some(killer_info)
+            &&& old.killer_info_from_control() == Some(killer_info)
             &&& new == old
             &&& *new_lctx == *old_lctx
         },
         DynamicWLockResult::DepthConflict { observed_owner } => {
-            &&& old.killer_info_inner() is None
+            &&& old.killer_info_from_control() is None
             &&& old.wlocked()
             &&& old.dynamic_process_owner() == Some(observed_owner)
             &&& observed_owner < requested
@@ -1062,7 +1062,7 @@ pub open spec fn dynamic_wlock_ensures<T: LockInvTrait + LockMajorTrait, ROT, Gh
             &&& *new_lctx == *old_lctx
         },
         DynamicWLockResult::Acquired(lock_perm) => {
-            &&& old.killer_info_inner() is None
+            &&& old.killer_info_from_control() is None
             &&& old.locked() == false
             &&& new.locking_thread() == RwLockState::Write { thread_id: new_lctx.thread_id(), lock_id: lock_perm.view().lock_id() }
             &&& new.inv()

@@ -59,12 +59,12 @@ pub(super) fn mmap_4k_map_leaf_range(
         held_locks_order_below(old(krnl), old(lctx), ALLOCATOR_CACHE_4K_MAJOR),
         range.wf(),
         range.len > 0,
-        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() <= spec_v2l4index(range.start),
-        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).higher.spec_mapping_4k_va_range_windows_exist(range),
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() <= spec_v2l4index(range.start),
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).higher.spec_mapping_4k_va_range_windows_exist(range),
         forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))]
             old(lctx).pagetable_window_lock_map().dom().contains((p, w)) == (p == pagetable_ptr && va_range_2m_windows(*range).contains(w)),
         forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w))] old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)) ==> {
-            let table = pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr);
+            let table = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr);
             &&& table.window_leaves_present(w)
             &&& window_perms.dom().contains(w)
             &&& table.window_view(w).lock_state == (SpinLockState::Some { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
@@ -72,8 +72,8 @@ pub(super) fn mmap_4k_map_leaf_range(
         forall|w: WindowVa, j: int| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)), range.view()[j]]
             old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)) && 0 <= j < range.len && spec_v2l4index(range.view()[j]) == spec_v2l4index(w.va)
                 && spec_v2l3index(range.view()[j]) == spec_v2l3index(w.va) && spec_v2l2index(range.view()[j]) == spec_v2l2index(w.va) ==> {
-                &&& !pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_2m().dom().contains(w.va)
-                &&& !pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(range.view()[j])
+                &&& !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_2m().dom().contains(w.va)
+                &&& !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(range.view()[j])
             },
     ensures
         final(krnl).inv(),
@@ -103,21 +103,21 @@ pub(super) fn mmap_4k_map_leaf_range(
         final(krnl).pt_mp.spec_index(pagetable_ptr).view() == old(krnl).pt_mp.spec_index(pagetable_ptr).view(),
         final(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map.contains_pair(old(lctx).thread_id(), pagetable_lock_perm.lock_id()),
         forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w))] old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)) ==> {
-            let pre = pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr);
-            let post = pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr);
+            let pre = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr);
+            let post = whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr);
             &&& post.window_view(w).lock_state == pre.window_view(w).lock_state
             &&& post.window_view(w).stale_cpus == pre.window_view(w).stale_cpus
             &&& post.window_leaves_present(w)
         },
         forall|j: int| #![trigger range.view()[j]] 0 <= j < range.len ==> {
-            let post = pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr);
+            let post = whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_ptr);
             &&& post.mapping_4k().dom().contains(range.view()[j])
             &&& post.mapping_4k().spec_index(range.view()[j]).present
             &&& post.mapping_4k().spec_index(range.view()[j]).write
             &&& !post.mapping_4k().spec_index(range.view()[j]).execute_disable
         },
 {
-    let ghost entry = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
+    let ghost entry = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
     let range_len = range.len;
     let mut i: usize = 0;
     while i < range_len
@@ -138,7 +138,7 @@ pub(super) fn mmap_4k_map_leaf_range(
             lctx.page_lock_map().dom().is_empty(),
             lctx.scheduler_lock_map().dom().is_empty(),
             lctx.cpu_set_lock_map().dom().is_empty(),
-            entry == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr),
+            entry == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr),
             krnl.cpu_arr.spec_index(cpu_id).view() == old(krnl).cpu_arr.spec_index(cpu_id).view(),
             !krnl.cpu_arr.spec_index(cpu_id).view().being_killed(),
             krnl.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
@@ -177,8 +177,8 @@ pub(super) fn mmap_4k_map_leaf_range(
             range.wf(),
             range_len == range.len,
             i <= range_len,
-            pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() <= spec_v2l4index(range.start),
-            pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).higher.spec_mapping_4k_va_range_windows_exist(range),
+            whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() <= spec_v2l4index(range.start),
+            whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).higher.spec_mapping_4k_va_range_windows_exist(range),
             forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))]
                 old(lctx).pagetable_window_lock_map().dom().contains((p, w)) == (p == pagetable_ptr && va_range_2m_windows(*range).contains(w)),
             forall|w: WindowVa, j: int| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)), range.view()[j]]
@@ -190,7 +190,7 @@ pub(super) fn mmap_4k_map_leaf_range(
                 &&& spec_va2index(window_of(range.view()[j]).va) == (spec_v2l4index(range.view()[j]), spec_v2l3index(range.view()[j]), spec_v2l2index(range.view()[j]), 0usize)
             },
             forall|w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w))] old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)) ==> {
-                let cur = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
+                let cur = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
                 &&& window_perms.dom().contains(w)
                 &&& entry.window_view(w).lock_state == (SpinLockState::Some { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
                 &&& cur.window_view(w).lock_state == entry.window_view(w).lock_state
@@ -201,9 +201,9 @@ pub(super) fn mmap_4k_map_leaf_range(
             forall|w: WindowVa, j: int| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)), range.view()[j]]
                 old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)) && i <= j < range.len && spec_v2l4index(range.view()[j]) == spec_v2l4index(w.va)
                     && spec_v2l3index(range.view()[j]) == spec_v2l3index(w.va) && spec_v2l2index(range.view()[j]) == spec_v2l2index(w.va)
-                    ==> !pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(range.view()[j]),
+                    ==> !whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(range.view()[j]),
             forall|j: int| #![trigger range.view()[j]] 0 <= j < i ==> {
-                let cur = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
+                let cur = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
                 &&& cur.mapping_4k().dom().contains(range.view()[j])
                 &&& cur.mapping_4k().spec_index(range.view()[j]).present
                 &&& cur.mapping_4k().spec_index(range.view()[j]).write
@@ -217,11 +217,11 @@ pub(super) fn mmap_4k_map_leaf_range(
         let va = range.index(i);
         let ghost win = window_of(va);
         proof {
-            assert(va_4k_valid(va) && range.start <= va && spec_va_4k_valid(range.start) && spec_va_4k_valid(va)) by { range.va_range_lemma(); };
+            assert(va_4k_valid(va) && range.start <= va && spec_va_4k_valid(range.start) && spec_va_4k_valid(va)) by { range.wf_implies_view_index_is_start_plus_offset(); };
             spec_v2l4index_monotonic(range.start, va);
             assert(old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, win)) && spec_va2index(win.va) == (spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), 0usize)) by {
                 let last_va = range.view().spec_index(range.len - 1);
-                range.va_range_lemma();
+                range.wf_implies_view_index_is_start_plus_offset();
                 broadcast use spec_va_4k_valid_index_roundtrip;
                 spec_index2va_le_implies_4k_indices_lex_le(spec_va2index(range.start), spec_va2index(va));
                 spec_index2va_le_implies_4k_indices_lex_le(spec_va2index(va), spec_va2index(last_va));
@@ -295,12 +295,12 @@ pub(super) fn mmap_4k_map_leaves_and_finish(
         pagetable_lock_perm.state() is ReadLock,
         pagetable_lock_perm.thread_id() == old(lctx).thread_id(),
         old(krnl).pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map.contains_pair(old(lctx).thread_id(), pagetable_lock_perm.lock_id()),
-        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() <= spec_v2l4index(va_range.start),
-        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).higher.spec_mapping_4k_va_range_windows_exist(va_range),
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).kernel_l4_end() <= spec_v2l4index(va_range.start),
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).higher.spec_mapping_4k_va_range_windows_exist(va_range),
         forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((p, w))]
             old(lctx).pagetable_window_lock_map().dom().contains((p, w)) == (p == pagetable_ptr && va_range_2m_windows(*va_range).contains(w)),
         forall|w: WindowVa| #![trigger va_range_2m_windows(*va_range).contains(w)] va_range_2m_windows(*va_range).contains(w) ==> {
-            let table = pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr);
+            let table = whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr);
             &&& window_perms.dom().contains(w)
             &&& window_perms.index(w).state() is WriteLock
             &&& window_perms.index(w).thread_id() == old(lctx).thread_id()
@@ -312,8 +312,8 @@ pub(super) fn mmap_4k_map_leaves_and_finish(
         forall|w: WindowVa, j: int| #![trigger old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)), va_range.view()[j]]
             old(lctx).pagetable_window_lock_map().dom().contains((pagetable_ptr, w)) && 0 <= j < range && spec_v2l4index(va_range.view()[j]) == spec_v2l4index(w.va)
                 && spec_v2l3index(va_range.view()[j]) == spec_v2l3index(w.va) && spec_v2l2index(va_range.view()[j]) == spec_v2l2index(w.va) ==> {
-                &&& !pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_2m().dom().contains(w.va)
-                &&& !pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(va_range.view()[j])
+                &&& !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_2m().dom().contains(w.va)
+                &&& !whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(va_range.view()[j])
             },
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), cpu_id, TypedLockMode::Write),
         typed_lock_map_contains_mode(old(lctx).thread_lock_map(), thread_ptr, TypedLockMode::Write),
@@ -376,10 +376,10 @@ pub(super) fn mmap_4k_map_leaves_and_finish(
             kernel_cpu_thread_unlocked_pagetable_runlocked_and_progress_changed_implies_u_step(&exit_start, &exit_k, &exit_lctx, cpu_id, thread_ptr, process_ptr, pagetable_ptr);
             process_cpu_wf_at(exit_start.prc_mp, exit_start.cpu_arr, cpu_id); process_pagetable_match_process_at(exit_start.prc_mp, exit_start.pt_mp, process_ptr);
             mmap_4k_exit_step_from_u(&exit_start, kernel_k_to_kernel_u(exit_k), cpu_id, process_ptr, thread_ptr, pagetable_ptr, *va_range, exit_k.pt_mp.spec_index(pagetable_ptr).lock_state_u(),
-                pagetable_c(exit_k.pt_mp, exit_k.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks);
+                whole_pagetable(exit_k.pt_mp, exit_k.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks);
             mmap_4k_trace_exit_step(&*steps, range_steps, kernel_k_to_kernel_u(exit_start), kernel_k_to_kernel_u(exit_k), cpu_id, va, range, enter_phase);
         };
-        assert(mmap_4k_syscall_success_mapped(krnl, cpu_id, va, range)) by { va_range.va_range_lemma(); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, process_ptr); };
+        assert(mmap_4k_syscall_success_mapped(krnl, cpu_id, va, range)) by { va_range.wf_implies_view_index_is_start_plus_offset(); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, process_ptr); };
     }
 }
 } // verus!

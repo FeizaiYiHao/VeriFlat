@@ -14,7 +14,7 @@ pub(super) proof fn iommu_map_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va
             let thread_ptr = cpu.view().view().current_thread->Some_0;
             let thread = krnl.thr_mp.spec_index(thread_ptr);
             let process = krnl.prc_mp.spec_index(thread.view().owning_proc);
-            let table = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), process.view().pagetable);
+            let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), process.view().pagetable);
             let it = krnl.it_mp.spec_index(process.view().iommu_table->Some_0).view();
             let va_range = iommu_map_4k_syscall_range(va, range);
             let iova_range = iommu_map_4k_syscall_range(iova, range);
@@ -58,7 +58,7 @@ pub(super) proof fn iommu_map_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va
         kernel_cpu_thread_projection_at(krnl, cpu_id, thread.owning_proc, c.current_thread->Some_0, None);
         if !(ret is ErrorProcessKilled) && !(ret is ErrorThreadKilled) {
             kernel_l4_end_projection_at(krnl, process.pagetable); kernel_process_projection_at(krnl, thread.owning_proc);
-            let table = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), process.pagetable);
+            let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), process.pagetable);
             assert(forall|v: VAddr| #![trigger u.process_map[thread.owning_proc].pagetable->Some_0.mapping_4k.dom().contains(v)] #![trigger table.mapping_4k().dom().contains(v)]
                 u.process_map[thread.owning_proc].pagetable->Some_0.mapping_4k.dom().contains(v) == (table.mapping_4k().dom().contains(v) && table.mapping_4k()[v].present));
             assert(user_va_range(u, iommu_map_4k_syscall_range(va, range)) == (spec_v2l4index(va) >= table.kernel_l4_end()));
@@ -119,10 +119,10 @@ pub(super) proof fn iommu_map_4k_enter_step_from_k(
         post.pt_mp.spec_index(pagetable_ptr).view() == pre.pt_mp.spec_index(pagetable_ptr).view(),
         post.pt_mp.spec_index(pagetable_ptr).locking_thread() is Read,
         post.pt_lower.view() == pre.pt_lower.view().insert(pagetable_ptr, post.pt_lower.view().spec_index(pagetable_ptr)),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k(),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m(),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g(),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == pagetable_window_locks_after_locking_range(pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, iommu_map_4k_syscall_range(va, range)),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == pagetable_window_locks_after_locking_range(whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, iommu_map_4k_syscall_range(va, range)),
         !pre.it_mp.spec_index(iommu_table_ptr).locked(),
         post.it_mp.unchanged_except(&pre.it_mp, iommu_table_ptr),
         post.it_mp.spec_index(iommu_table_ptr).view() == pre.it_mp.spec_index(iommu_table_ptr).view(),
@@ -188,11 +188,11 @@ pub(super) proof fn iommu_map_4k_exit_step_from_k(
         post.pt_mp.spec_index(pagetable_ptr).view() == pre.pt_mp.spec_index(pagetable_ptr).view(),
         !(post.pt_mp.spec_index(pagetable_ptr).locking_thread() is Write),
         post.pt_lower.view() == pre.pt_lower.view().insert(pagetable_ptr, post.pt_lower.view().spec_index(pagetable_ptr)),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k(),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m(),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g(),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == pagetable_window_locks_after_unlocking_range(
-            pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view()->Some_0->IommuMap4k_va_range),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == pagetable_window_locks_after_unlocking_range(
+            whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view()->Some_0->IommuMap4k_va_range),
         post.it_mp.unchanged_except(&pre.it_mp, iommu_table_ptr),
         post.it_mp.spec_index(iommu_table_ptr).view() == pre.it_mp.spec_index(iommu_table_ptr).view(),
         post.it_mp.spec_index(iommu_table_ptr).locking_thread() is None,
@@ -267,7 +267,7 @@ pub(super) proof fn iommu_map_4k_leaf_step_from_k(
         pre.it_mp.spec_index(iommu_table_ptr).view().leaves_present(),
         ({
             let progress = pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view();
-            let table = pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr);
+            let table = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr);
             let va = progress->Some_0->IommuMap4k_va_range.view()[progress->Some_0->IommuMap4k_mapped as int];
             let iova = progress->Some_0->IommuMap4k_iova_range.view()[progress->Some_0->IommuMap4k_mapped as int];
             &&& progress is Some && progress->Some_0 is IommuMap4k
@@ -297,7 +297,7 @@ pub(super) proof fn iommu_map_4k_leaf_step_from_k(
     reveal(iommu_map_4k_leaf_step_pre); reveal(iommu_map_4k_leaf_step);
     iommu_map_4k_locked_from_k(pre, lctx, cpu_id, process_ptr, thread_ptr, pagetable_ptr, iommu_table_ptr);
     let progress = pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view();
-    let table = pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr);
+    let table = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr);
     let va = progress->Some_0->IommuMap4k_va_range.view()[progress->Some_0->IommuMap4k_mapped as int];
     let iova = progress->Some_0->IommuMap4k_iova_range.view()[progress->Some_0->IommuMap4k_mapped as int];
     assert(pre.prc_mp.dom().contains(process_ptr) && !pre.prc_mp.spec_index(process_ptr).view().zombie && pre.pt_mp.dom().contains(pagetable_ptr) && pre.it_mp.dom().contains(iommu_table_ptr)

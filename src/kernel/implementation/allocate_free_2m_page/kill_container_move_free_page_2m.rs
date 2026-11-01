@@ -118,7 +118,7 @@ pub fn kill_container_move_free_page_2m(
         container_allocator_free_2m_page_wf_global_at(krnl.allc_2m_mp, krnl.pg_arr, src_allocator, page_ptr);
         container_allocator_free_2m_page_wf_global_at(krnl.allc_2m_mp, krnl.pg_arr, dst_allocator, page_ptr);
         container_allocator_free_2m_page_wf_at(krnl.allc_2m_mp, krnl.pg_arr, page_index);
-        krnl.allc_2m_mp.spec_index(src_allocator).global_pool.view().linked_list.lemma_len_view();
+        krnl.allc_2m_mp.spec_index(src_allocator).global_pool.view().linked_list.wf_implies_view_len_eq_len();
         assert(krnl.allc_2m_mp.spec_index(src_allocator).global_pool.view().view().contains(page_ptr));
         owned_2m_all_ptrs_belong_to_container(&*krnl, page_index, src);
         page_2m_all_ptrs_contains_head(page_index);
@@ -130,7 +130,7 @@ pub fn kill_container_move_free_page_2m(
     let (node_addr, Tracked(node_perm)) = krnl.allc_2m_mp.pop_global_pool_page_typed(src_allocator, Ghost(lctx.allocator_quota_2m_lock_map()),
         Ghost(lctx.allocator_cache_2m_lock_map()), Ghost(lctx.allocator_global_pool_2m_lock_map()), Tracked(&*lctx), Tracked(src_pool_perm));
     assert(node_addr == krnl.pg_arr.spec_index(page_index).view().view().free_list_node_storage.addr()) by {
-        pre.allc_2m_mp.spec_index(src_allocator).global_pool.view().linked_list.lemma_value_addr_unique(node_addr, krnl.pg_arr.spec_index(page_index).view().view().free_list_node_storage.addr());
+        pre.allc_2m_mp.spec_index(src_allocator).global_pool.view().linked_list.wf_and_equal_values_implies_equal_addrs(node_addr, krnl.pg_arr.spec_index(page_index).view().view().free_list_node_storage.addr());
     };
     krnl.allc_2m_mp.push_global_pool_page_typed(dst_allocator, node_addr, Tracked(node_perm), Ghost(lctx.allocator_quota_2m_lock_map()), Ghost(lctx.allocator_cache_2m_lock_map()),
         Ghost(lctx.allocator_global_pool_2m_lock_map()), Tracked(&*lctx), Tracked(dst_pool_perm));
@@ -162,7 +162,7 @@ pub fn kill_container_move_free_page_2m(
         lctx.enter_kernel_view_release();
         assert(kill_container_move_free_page_2m_eof_transition_framing(pre, *krnl, src, dst, src_allocator, dst_allocator, page_ptr, node_addr)) by {
             reveal(kill_container_move_free_page_2m_eof_transition_framing);
-            seq_skip_lemma::<PagePtr>(); pre.allc_2m_mp.spec_index(dst_allocator).global_pool.view().view().insert_ensures(0, page_ptr);
+            seq_skip_one_implies_contains_and_index_shift::<PagePtr>(); pre.allc_2m_mp.spec_index(dst_allocator).global_pool.view().view().insert_ensures(0, page_ptr);
         };
         kill_container_move_free_page_2m_eof(pre, *krnl, src, dst, src_allocator, dst_allocator, page_ptr, node_addr);
     }

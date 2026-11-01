@@ -30,7 +30,7 @@ pub(super) proof fn publish_staged_container_root_eof_container_uppertree_seq_wf
     assert(container_tree_fields_wf(post.ctn_mp)) by { reveal(container_perms_wf); };
     assert(container_uppertree_seq_wf(post.rt_ctn, post.ctn_mp)) by {
         reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions); reveal(container_uppertree_seq_wf); reveal(container_tree_fields_wf);
-        seq_push_lemma::<RwLockContainerPtr>(); seq_push_unique_lemma::<RwLockContainerPtr>();
+        seq_push_implies_contains::<RwLockContainerPtr>(); seq_push_absent_implies_no_duplicates_and_index_of::<RwLockContainerPtr>();
     };
 }
 
@@ -58,11 +58,11 @@ pub(super) proof fn publish_staged_container_root_eof_container_tree_wf(
 {
     reveal(publish_staged_container_root_eof_transition_framing); reveal(publish_staged_container_root_eof_preconditions);
     assert(container_root_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_root_wf); };
-    assert(container_children_parent_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_children_parent_wf); seq_push_lemma::<RwLockContainerPtr>(); };
+    assert(container_children_parent_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_children_parent_wf); seq_push_implies_contains::<RwLockContainerPtr>(); };
     assert(containers_linkedlist_wf(post.rt_ctn, post.ctn_mp)) by { reveal(containers_linkedlist_wf); reveal(container_children_parent_wf); };
     assert(container_tree_fields_wf(pre.ctn_mp)) by { reveal(container_perms_wf); };
-    assert(container_children_depth_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_children_depth_wf); reveal(container_tree_fields_wf); seq_push_lemma::<RwLockContainerPtr>(); };
-    assert(container_subtree_set_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_subtree_set_wf); reveal(container_uppertree_seq_wf); reveal(container_tree_fields_wf); seq_push_lemma::<RwLockContainerPtr>(); };
+    assert(container_children_depth_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_children_depth_wf); reveal(container_tree_fields_wf); seq_push_implies_contains::<RwLockContainerPtr>(); };
+    assert(container_subtree_set_wf(post.rt_ctn, post.ctn_mp)) by { reveal(container_subtree_set_wf); reveal(container_uppertree_seq_wf); reveal(container_tree_fields_wf); seq_push_implies_contains::<RwLockContainerPtr>(); };
     publish_staged_container_root_eof_container_uppertree_seq_wf(
         pre, post, parent_container_ptr, current_thread_ptr, container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page,
         allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page, funding_pages,
@@ -70,7 +70,7 @@ pub(super) proof fn publish_staged_container_root_eof_container_tree_wf(
     );
     assert(container_subtree_set_exclusive(post.rt_ctn, post.ctn_mp)) by {
         reveal(container_subtree_set_wf); reveal(container_uppertree_seq_wf); reveal(container_subtree_set_exclusive);
-        seq_push_lemma::<RwLockContainerPtr>(); seq_push_unique_lemma::<RwLockContainerPtr>();
+        seq_push_implies_contains::<RwLockContainerPtr>(); seq_push_absent_implies_no_duplicates_and_index_of::<RwLockContainerPtr>();
     };
 }
 

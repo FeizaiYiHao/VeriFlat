@@ -25,12 +25,12 @@ pub proof fn kernel_pagetable_pair_lock_modes_and_progress_changed_implies_u_ste
         forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
             pre.pt_mp.dom().contains(p) && p != source_table && p != target_table ==> post.pt_mp.spec_index(p) == pre.pt_mp.spec_index(p),
         post.pt_lower.view() == pre.pt_lower.view().insert(source_table, post.pt_lower.view().spec_index(source_table)).insert(target_table, post.pt_lower.view().spec_index(target_table)),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), source_table).mapping_4k() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_table).mapping_4k(),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), source_table).mapping_2m() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_table).mapping_2m(),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), source_table).mapping_1g() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_table).mapping_1g(),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), target_table).mapping_4k() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_4k(),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), target_table).mapping_2m() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_2m(),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), target_table).mapping_1g() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_1g(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), source_table).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_table).mapping_4k(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), source_table).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_table).mapping_2m(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), source_table).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_table).mapping_1g(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), target_table).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_4k(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), target_table).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_2m(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), target_table).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_1g(),
         pre.thr_mp.dom().contains(thread),
         post.thr_mp.unchanged_except(&pre.thr_mp, thread),
         post.thr_mp.spec_index(thread).view() == (Thread { syscall_progress: post.thr_mp.spec_index(thread).view().syscall_progress, ..pre.thr_mp.spec_index(thread).view() }),
@@ -45,10 +45,10 @@ pub proof fn kernel_pagetable_pair_lock_modes_and_progress_changed_implies_u_ste
                 thread_map: a.thread_map.insert(thread, ThreadU { syscall_progress: post.thr_mp.spec_index(thread).view().syscall_progress.view(), ..a.thread_map[thread] }),
                 process_map: a.process_map.insert(source, ProcessU {
                     pagetable: Some(PageTableU { lock_state: post.pt_mp.spec_index(source_table).lock_state_u(),
-                        pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), source_table).lower.pagetable_window_locks, ..a.process_map[source].pagetable->Some_0 }), ..a.process_map[source]
+                        pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), source_table).lower.pagetable_window_locks, ..a.process_map[source].pagetable->Some_0 }), ..a.process_map[source]
                 }).insert(target, ProcessU {
                     pagetable: Some(PageTableU { lock_state: post.pt_mp.spec_index(target_table).lock_state_u(),
-                        pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), target_table).lower.pagetable_window_locks, ..a.process_map[target].pagetable->Some_0 }), ..a.process_map[target]
+                        pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), target_table).lower.pagetable_window_locks, ..a.process_map[target].pagetable->Some_0 }), ..a.process_map[target]
                 }),
                 ..a
             })
@@ -93,21 +93,21 @@ proof fn kernel_pagetable_pair_lock_modes_changed_implies_u_process_map(
         forall|p: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(p)]
             pre.pt_mp.dom().contains(p) && p != source_table && p != target_table ==> post.pt_mp.spec_index(p) == pre.pt_mp.spec_index(p),
         post.pt_lower.view() == pre.pt_lower.view().insert(source_table, post.pt_lower.view().spec_index(source_table)).insert(target_table, post.pt_lower.view().spec_index(target_table)),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), source_table).mapping_4k() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_table).mapping_4k(),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), source_table).mapping_2m() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_table).mapping_2m(),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), source_table).mapping_1g() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_table).mapping_1g(),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), target_table).mapping_4k() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_4k(),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), target_table).mapping_2m() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_2m(),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), target_table).mapping_1g() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_1g(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), source_table).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_table).mapping_4k(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), source_table).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_table).mapping_2m(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), source_table).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_table).mapping_1g(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), target_table).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_4k(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), target_table).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_2m(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), target_table).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_1g(),
     ensures
         ({
             let a = kernel_k_to_kernel_u(*pre);
             kernel_k_to_kernel_u(*post).process_map == a.process_map.insert(source, ProcessU {
                 pagetable: Some(PageTableU { lock_state: post.pt_mp.spec_index(source_table).lock_state_u(),
-                    pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), source_table).lower.pagetable_window_locks, ..a.process_map[source].pagetable->Some_0 }), ..a.process_map[source]
+                    pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), source_table).lower.pagetable_window_locks, ..a.process_map[source].pagetable->Some_0 }), ..a.process_map[source]
             }).insert(target, ProcessU {
                 pagetable: Some(PageTableU { lock_state: post.pt_mp.spec_index(target_table).lock_state_u(),
-                    pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), target_table).lower.pagetable_window_locks, ..a.process_map[target].pagetable->Some_0 }), ..a.process_map[target]
+                    pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), target_table).lower.pagetable_window_locks, ..a.process_map[target].pagetable->Some_0 }), ..a.process_map[target]
             })
         }),
 {
@@ -115,9 +115,9 @@ proof fn kernel_pagetable_pair_lock_modes_changed_implies_u_process_map(
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     assert_maps_equal!(b.process_map, a.process_map.insert(source, ProcessU {
-        pagetable: Some(PageTableU { lock_state: post.pt_mp.spec_index(source_table).lock_state_u(), pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), source_table).lower.pagetable_window_locks, ..a.process_map[source].pagetable->Some_0 }), ..a.process_map[source]
+        pagetable: Some(PageTableU { lock_state: post.pt_mp.spec_index(source_table).lock_state_u(), pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), source_table).lower.pagetable_window_locks, ..a.process_map[source].pagetable->Some_0 }), ..a.process_map[source]
     }).insert(target, ProcessU {
-        pagetable: Some(PageTableU { lock_state: post.pt_mp.spec_index(target_table).lock_state_u(), pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), target_table).lower.pagetable_window_locks, ..a.process_map[target].pagetable->Some_0 }), ..a.process_map[target]
+        pagetable: Some(PageTableU { lock_state: post.pt_mp.spec_index(target_table).lock_state_u(), pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), target_table).lower.pagetable_window_locks, ..a.process_map[target].pagetable->Some_0 }), ..a.process_map[target]
     }), p => {
         if pre.prc_mp.dom().contains(p) { kernel_process_projection_at(pre, p); } if post.prc_mp.dom().contains(p) { kernel_process_projection_at(post, p); } reveal(process_pagetable_match);
     });

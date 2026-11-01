@@ -10,8 +10,8 @@ pub(super) proof fn retype_page_to_pagetable_and_insert_eof(
 )
     requires
         !old_k.pt_mp.dom().contains(page_ptr),
-        (PageTableC { higher, lower }).wf(),
-        (PageTableC { higher, lower }).is_empty(),
+        (WholePageTable { higher, lower }).wf(),
+        (WholePageTable { higher, lower }).is_empty(),
         new_k == (KernelK { pt_mp: new_k.pt_mp, pt_lower: new_k.pt_lower, ..old_k }),
         new_k.pt_mp.dom() =~= old_k.pt_mp.dom().insert(page_ptr),
         forall|ptr: RwLockPageTableRoot| #![trigger new_k.pt_mp.spec_index(ptr)] #![trigger old_k.pt_mp.spec_index(ptr)] old_k.pt_mp.dom().contains(ptr) ==> new_k.pt_mp.spec_index(ptr) == old_k.pt_mp.spec_index(ptr),
@@ -22,12 +22,12 @@ pub(super) proof fn retype_page_to_pagetable_and_insert_eof(
         lock_perm.thread_id() == new_lctx.thread_id(),
         new_k.pt_lower.view() == old_k.pt_lower.view().insert(page_ptr, lower),
         forall|r: RwLockPageTableRoot|
-            #![trigger pagetable_c(new_k.pt_mp, new_k.pt_lower.view(), r)]
-            old_k.pt_mp.dom().contains(r) ==> pagetable_c(new_k.pt_mp, new_k.pt_lower.view(), r) == pagetable_c(old_k.pt_mp, old_k.pt_lower.view(), r),
+            #![trigger whole_pagetable(new_k.pt_mp, new_k.pt_lower.view(), r)]
+            old_k.pt_mp.dom().contains(r) ==> whole_pagetable(new_k.pt_mp, new_k.pt_lower.view(), r) == whole_pagetable(old_k.pt_mp, old_k.pt_lower.view(), r),
         new_lctx.thread_id() == old_lctx.thread_id(),
         typed_lock_maps_inserted(&old_lctx, &new_lctx, KernelObjId::PageTable(page_ptr), TypedHeldLock { lock_id: new_k.pt_mp.lock_id_by_key(page_ptr), mode: TypedLockMode::Write }),
     ensures
-        pagetable_c(new_k.pt_mp, new_k.pt_lower.view(), page_ptr) == (PageTableC { higher, lower }),
+        whole_pagetable(new_k.pt_mp, new_k.pt_lower.view(), page_ptr) == (WholePageTable { higher, lower }),
         pagetable_perms_wf(old_k.pt_mp) && new_k.pt_mp.perms_wf() ==> pagetable_perms_wf(new_k.pt_mp),
         pagetable_lower_wf(old_k.pt_mp, old_k.pt_lower.view()) ==> pagetable_lower_wf(new_k.pt_mp, new_k.pt_lower.view()),
         pagetable_window_holders_hold_pagetable(old_k.pt_mp, old_k.pt_lower.view()) ==> pagetable_window_holders_hold_pagetable(new_k.pt_mp, new_k.pt_lower.view()),
@@ -74,8 +74,8 @@ pub(super) proof fn remove_pagetable_and_reclaim_4k_page_perms_eof(old_k: Kernel
         typed_lock_maps_aligned(&old_k, &old_lctx),
         old_k.pt_mp.dom().contains(pagetable_ptr),
         old_k.pt_lower.view().dom().contains(pagetable_ptr),
-        pagetable_c(old_k.pt_mp, old_k.pt_lower.view(), pagetable_ptr).wf(),
-        pagetable_c(old_k.pt_mp, old_k.pt_lower.view(), pagetable_ptr).page_closure() =~= set![old_k.pt_mp.spec_index(pagetable_ptr).view().cr3],
+        whole_pagetable(old_k.pt_mp, old_k.pt_lower.view(), pagetable_ptr).wf(),
+        whole_pagetable(old_k.pt_mp, old_k.pt_lower.view(), pagetable_ptr).page_closure() =~= set![old_k.pt_mp.spec_index(pagetable_ptr).view().cr3],
         new_k == (KernelK { pt_mp: new_k.pt_mp, pt_lower: new_k.pt_lower, ..old_k }),
         new_k.pt_mp.dom() =~= old_k.pt_mp.dom().remove(pagetable_ptr),
         forall|p: RwLockPageTableRoot| #![trigger new_k.pt_mp.spec_index(p)] new_k.pt_mp.dom().contains(p) ==> new_k.pt_mp.spec_index(p) == old_k.pt_mp.spec_index(p),
@@ -83,8 +83,8 @@ pub(super) proof fn remove_pagetable_and_reclaim_4k_page_perms_eof(old_k: Kernel
         new_k.pt_mp.perms_wf(),
         new_k.pt_lower.view() == old_k.pt_lower.view().remove(pagetable_ptr),
         forall|r: RwLockPageTableRoot|
-            #![trigger pagetable_c(new_k.pt_mp, new_k.pt_lower.view(), r)]
-            new_k.pt_mp.dom().contains(r) ==> pagetable_c(new_k.pt_mp, new_k.pt_lower.view(), r) == pagetable_c(old_k.pt_mp, old_k.pt_lower.view(), r),
+            #![trigger whole_pagetable(new_k.pt_mp, new_k.pt_lower.view(), r)]
+            new_k.pt_mp.dom().contains(r) ==> whole_pagetable(new_k.pt_mp, new_k.pt_lower.view(), r) == whole_pagetable(old_k.pt_mp, old_k.pt_lower.view(), r),
         new_lctx.cpu_id() == old_lctx.cpu_id(),
         new_lctx.thread_id() == old_lctx.thread_id(),
         typed_lock_maps_removed(&old_lctx, &new_lctx, KernelObjId::PageTable(pagetable_ptr)),
@@ -109,7 +109,7 @@ pub(super) proof fn remove_pagetable_and_reclaim_4k_page_perms_eof(old_k: Kernel
         reveal(pagetable_window_stale_cpus_only_when_locked);
     };
     let removed = old_k.pt_mp.spec_index(pagetable_ptr).view();
-    assert(removed.l3_tables.view().dom().subset_of(pagetable_c(old_k.pt_mp, old_k.pt_lower.view(), pagetable_ptr).page_closure())
+    assert(removed.l3_tables.view().dom().subset_of(whole_pagetable(old_k.pt_mp, old_k.pt_lower.view(), pagetable_ptr).page_closure())
         && removed.l4_table.view().dom().disjoint(removed.l3_tables.view().dom())) by { reveal(PageTableHigher::table_pages_wf); };
     assert(removed.l3_tables.view().dom() =~= Set::<PageMapPtr>::empty()) by { reveal(PageTableHigher::wf_l4); };
     assert(pagetable_window_typed_lock_map_aligned(new_k.pt_mp, new_k.pt_lower.view(), new_lctx.pagetable_window_lock_map(), new_lctx.pagetable_lock_map(), new_lctx.thread_id())) by {

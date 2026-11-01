@@ -2,7 +2,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
+impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     /// Operation-state summary of `create_entry_l4`: root entry `target_l4i` now links the new empty L3 page `page_map_ptr`, which
     /// joins the L3 pages with reverse index `target_l4i`; the window half and every other field are unchanged.
     #[verifier::opaque]
@@ -60,7 +60,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.higher.inv(),
     {
-        reveal(PageTableC::create_entry_l4_eof_transition_framing);
+        reveal(WholePageTable::create_entry_l4_eof_transition_framing);
         assert(post.higher.wf_l4()) by { reveal(PageTableHigher::wf_l4); };
         assert(post.higher.wf_l3()) by { reveal(PageTableHigher::wf_l3); };
         assert(post.higher.disjoint_l4()) by { reveal(PageTableHigher::disjoint_l4); reveal(PageTableHigher::wf_l4); };
@@ -92,14 +92,14 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             post.table_pages_wf(),
             post.va_addr_valid(),
     {
-        reveal(PageTableC::create_entry_l4_eof_transition_framing);
-        assert(post.wf_l3()) by { reveal(PageTableC::wf_l3); };
-        assert(post.wf_l2()) by { reveal(PageTableC::wf_l2); };
-        assert(post.wf_l1()) by { reveal(PageTableC::wf_l1); };
-        assert(post.disjoint_l2()) by { reveal(PageTableC::disjoint_l2); };
-        assert(post.user_only()) by { reveal(PageTableC::user_only); };
-        assert(post.rwx_upper_level_entries()) by { reveal(PageTableC::rwx_upper_level_entries); };
-        assert(post.table_pages_wf()) by { reveal(PageTableC::table_pages_wf); };
+        reveal(WholePageTable::create_entry_l4_eof_transition_framing);
+        assert(post.wf_l3()) by { reveal(WholePageTable::wf_l3); };
+        assert(post.wf_l2()) by { reveal(WholePageTable::wf_l2); };
+        assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
+        assert(post.disjoint_l2()) by { reveal(WholePageTable::disjoint_l2); };
+        assert(post.user_only()) by { reveal(WholePageTable::user_only); };
+        assert(post.rwx_upper_level_entries()) by { reveal(WholePageTable::rwx_upper_level_entries); };
+        assert(post.table_pages_wf()) by { reveal(WholePageTable::table_pages_wf); };
     }
 
     /// EOF closure of `create_entry_l4`: `wf_mapping_4k`.
@@ -114,8 +114,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.wf_mapping_4k(),
     {
-        reveal(PageTableC::create_entry_l4_eof_transition_framing);
-        assert(post.wf_mapping_4k()) by { reveal(PageTableC::wf_mapping_4k); reveal(PageTableHigher::wf_l4); };
+        reveal(WholePageTable::create_entry_l4_eof_transition_framing);
+        assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); reveal(PageTableHigher::wf_l4); };
     }
 
     /// EOF closure of `create_entry_l4`: `wf_mapping_2m`.
@@ -130,8 +130,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.wf_mapping_2m(),
     {
-        reveal(PageTableC::create_entry_l4_eof_transition_framing);
-        assert(post.wf_mapping_2m()) by { reveal(PageTableC::wf_mapping_2m); reveal(PageTableHigher::wf_l4); };
+        reveal(WholePageTable::create_entry_l4_eof_transition_framing);
+        assert(post.wf_mapping_2m()) by { reveal(WholePageTable::wf_mapping_2m); reveal(PageTableHigher::wf_l4); };
     }
 
     /// EOF closure of `create_entry_l4`: `tables_reachable_wf`.
@@ -146,8 +146,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.tables_reachable_wf(),
     {
-        reveal(PageTableC::create_entry_l4_eof_transition_framing);
-        assert(post.tables_reachable_wf()) by { reveal(PageTableC::tables_reachable_wf); reveal(PageTableHigher::wf_l4); };
+        reveal(WholePageTable::create_entry_l4_eof_transition_framing);
+        assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); reveal(PageTableHigher::wf_l4); };
     }
 
     /// EOF closure of `create_entry_l4`: `wf_window_locks`.
@@ -162,8 +162,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.wf_window_locks(),
     {
-        reveal(PageTableC::create_entry_l4_eof_transition_framing);
-        assert(post.wf_window_locks()) by { reveal(PageTableC::wf_window_locks); reveal(PageTableHigher::wf_l4); broadcast use spec_va_2m_valid_index_roundtrip, iova_2m_valid_index_roundtrip; };
+        reveal(WholePageTable::create_entry_l4_eof_transition_framing);
+        assert(post.wf_window_locks()) by { reveal(WholePageTable::wf_window_locks); reveal(PageTableHigher::wf_l4); broadcast use spec_va_2m_valid_index_roundtrip, iova_2m_valid_index_roundtrip; };
     }
 
     /// Operation-state summary of `create_entry_l3`: L3 entry `target_l3i` of `target_l3_p` now links the new empty L2 page
@@ -245,11 +245,11 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.higher.inv(),
     {
-        reveal(PageTableC::create_entry_l3_eof_transition_framing);
+        reveal(WholePageTable::create_entry_l3_eof_transition_framing);
         assert(post.higher.wf_l4()) by { reveal(PageTableHigher::wf_l4); };
         assert(post.higher.wf_l3()) by { reveal(PageTableHigher::wf_l3); };
         assert(post.higher.disjoint_l4()) by { reveal(PageTableHigher::disjoint_l4); };
-        assert(post.higher.disjoint_l3()) by { reveal(PageTableHigher::disjoint_l3); reveal(PageTableC::wf_l3); };
+        assert(post.higher.disjoint_l3()) by { reveal(PageTableHigher::disjoint_l3); reveal(WholePageTable::wf_l3); };
         assert(post.higher.wf_mapping_1g()) by { reveal(PageTableHigher::wf_mapping_1g); reveal(PageTableHigher::wf_l4); };
         assert(post.higher.user_only()) by { reveal(PageTableHigher::user_only); };
         assert(post.higher.rwx_upper_level_entries()) by { reveal(PageTableHigher::rwx_upper_level_entries); };
@@ -281,14 +281,14 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             post.table_pages_wf(),
             post.va_addr_valid(),
     {
-        reveal(PageTableC::create_entry_l3_eof_transition_framing);
-        assert(post.wf_l3()) by { reveal(PageTableC::wf_l3); };
-        assert(post.wf_l2()) by { reveal(PageTableC::wf_l2); };
-        assert(post.wf_l1()) by { reveal(PageTableC::wf_l1); };
-        assert(post.disjoint_l2()) by { reveal(PageTableC::disjoint_l2); };
-        assert(post.user_only()) by { reveal(PageTableC::user_only); };
-        assert(post.rwx_upper_level_entries()) by { reveal(PageTableC::rwx_upper_level_entries); };
-        assert(post.table_pages_wf()) by { reveal(PageTableC::table_pages_wf); };
+        reveal(WholePageTable::create_entry_l3_eof_transition_framing);
+        assert(post.wf_l3()) by { reveal(WholePageTable::wf_l3); };
+        assert(post.wf_l2()) by { reveal(WholePageTable::wf_l2); };
+        assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
+        assert(post.disjoint_l2()) by { reveal(WholePageTable::disjoint_l2); };
+        assert(post.user_only()) by { reveal(WholePageTable::user_only); };
+        assert(post.rwx_upper_level_entries()) by { reveal(WholePageTable::rwx_upper_level_entries); };
+        assert(post.table_pages_wf()) by { reveal(WholePageTable::table_pages_wf); };
     }
 
     /// EOF closure of `create_entry_l3`: `wf_mapping_4k`.
@@ -307,8 +307,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.wf_mapping_4k(),
     {
-        reveal(PageTableC::create_entry_l3_eof_transition_framing);
-        assert(post.wf_mapping_4k()) by { reveal(PageTableC::wf_mapping_4k); reveal(PageTableHigher::wf_l4); reveal(PageTableC::wf_l3); };
+        reveal(WholePageTable::create_entry_l3_eof_transition_framing);
+        assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::wf_l3); };
     }
 
     /// EOF closure of `create_entry_l3`: `wf_mapping_2m`.
@@ -327,8 +327,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.wf_mapping_2m(),
     {
-        reveal(PageTableC::create_entry_l3_eof_transition_framing);
-        assert(post.wf_mapping_2m()) by { reveal(PageTableC::wf_mapping_2m); reveal(PageTableHigher::wf_l4); reveal(PageTableC::wf_l3); };
+        reveal(WholePageTable::create_entry_l3_eof_transition_framing);
+        assert(post.wf_mapping_2m()) by { reveal(WholePageTable::wf_mapping_2m); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::wf_l3); };
     }
 
     /// EOF closure of `create_entry_l3`: `tables_reachable_wf`.
@@ -347,8 +347,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.tables_reachable_wf(),
     {
-        reveal(PageTableC::create_entry_l3_eof_transition_framing);
-        assert(post.tables_reachable_wf()) by { reveal(PageTableC::tables_reachable_wf); reveal(PageTableHigher::wf_l4); reveal(PageTableC::wf_l3); reveal(PageTableHigher::disjoint_l4); };
+        reveal(WholePageTable::create_entry_l3_eof_transition_framing);
+        assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::wf_l3); reveal(PageTableHigher::disjoint_l4); };
     }
 
     /// EOF closure of `create_entry_l3`: the window-map half of `wf_window_locks`. Proved apart from the L2-slot half:
@@ -380,8 +380,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
                 }
             },
     {
-        reveal(PageTableC::create_entry_l3_eof_transition_framing);
-        reveal(PageTableC::wf_window_locks); reveal(PageTableHigher::wf_l4); reveal(PageTableC::wf_l3);
+        reveal(WholePageTable::create_entry_l3_eof_transition_framing);
+        reveal(WholePageTable::wf_window_locks); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::wf_l3);
         spec_index2va_injective();
         broadcast use spec_va_2m_valid_index_roundtrip, iova_2m_valid_index_roundtrip, spec_index2va_2m_valid;
     }
@@ -410,8 +410,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
                     post.lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((l4i, l3i, i, 0)) })
                 },
     {
-        reveal(PageTableC::create_entry_l3_eof_transition_framing);
-        reveal(PageTableC::wf_window_locks);
+        reveal(WholePageTable::create_entry_l3_eof_transition_framing);
+        reveal(WholePageTable::wf_window_locks);
         spec_index2va_injective();
         broadcast use spec_index2va_2m_valid, spec_va_2m_valid_index_roundtrip;
     }
@@ -439,7 +439,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.wf_window_locks(),
     {
-        reveal(PageTableC::wf_window_locks);
+        reveal(WholePageTable::wf_window_locks);
     }
 
     /// Operation-state summary of `create_entry_l2`: entry `target_l2i` of L2 page `target_l2_p` now links the new empty L1 page
@@ -511,7 +511,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.higher.inv(),
     {
-        reveal(PageTableC::create_entry_l2_eof_transition_framing);
+        reveal(WholePageTable::create_entry_l2_eof_transition_framing);
     }
 
     /// EOF closure of `create_entry_l2`: the table-shape leaves of the window half.
@@ -538,14 +538,14 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             post.table_pages_wf(),
             post.va_addr_valid(),
     {
-        reveal(PageTableC::create_entry_l2_eof_transition_framing);
-        assert(post.wf_l3()) by { reveal(PageTableC::wf_l3); };
-        assert(post.wf_l2()) by { reveal(PageTableC::wf_l2); };
-        assert(post.wf_l1()) by { reveal(PageTableC::wf_l1); };
-        assert(post.disjoint_l2()) by { reveal(PageTableC::disjoint_l2); reveal(PageTableC::wf_l2); };
-        assert(post.user_only()) by { reveal(PageTableC::user_only); };
-        assert(post.rwx_upper_level_entries()) by { reveal(PageTableC::rwx_upper_level_entries); };
-        assert(post.table_pages_wf()) by { reveal(PageTableC::table_pages_wf); };
+        reveal(WholePageTable::create_entry_l2_eof_transition_framing);
+        assert(post.wf_l3()) by { reveal(WholePageTable::wf_l3); };
+        assert(post.wf_l2()) by { reveal(WholePageTable::wf_l2); };
+        assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
+        assert(post.disjoint_l2()) by { reveal(WholePageTable::disjoint_l2); reveal(WholePageTable::wf_l2); };
+        assert(post.user_only()) by { reveal(WholePageTable::user_only); };
+        assert(post.rwx_upper_level_entries()) by { reveal(WholePageTable::rwx_upper_level_entries); };
+        assert(post.table_pages_wf()) by { reveal(WholePageTable::table_pages_wf); };
     }
 
     /// EOF closure of `create_entry_l2`: `wf_mapping_4k`.
@@ -565,8 +565,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.wf_mapping_4k(),
     {
-        reveal(PageTableC::create_entry_l2_eof_transition_framing);
-        assert(post.wf_mapping_4k()) by { reveal(PageTableC::wf_mapping_4k); reveal(PageTableHigher::wf_l4); reveal(PageTableC::wf_l3); reveal(PageTableC::wf_l2); };
+        reveal(WholePageTable::create_entry_l2_eof_transition_framing);
+        assert(post.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::wf_l3); reveal(WholePageTable::wf_l2); };
     }
 
     /// EOF closure of `create_entry_l2`: `wf_mapping_2m`.
@@ -586,8 +586,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.wf_mapping_2m(),
     {
-        reveal(PageTableC::create_entry_l2_eof_transition_framing);
-        assert(post.wf_mapping_2m()) by { reveal(PageTableC::wf_mapping_2m); reveal(PageTableHigher::wf_l4); reveal(PageTableC::wf_l3); };
+        reveal(WholePageTable::create_entry_l2_eof_transition_framing);
+        assert(post.wf_mapping_2m()) by { reveal(WholePageTable::wf_mapping_2m); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::wf_l3); };
     }
 
     /// EOF closure of `create_entry_l2`: `tables_reachable_wf`.
@@ -607,8 +607,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.tables_reachable_wf(),
     {
-        reveal(PageTableC::create_entry_l2_eof_transition_framing);
-        assert(post.tables_reachable_wf()) by { reveal(PageTableC::tables_reachable_wf); reveal(PageTableHigher::wf_l4); reveal(PageTableC::wf_l3); reveal(PageTableC::wf_l2); broadcast use PageTableHigher::resolve_l3_addr_unique_at; };
+        reveal(WholePageTable::create_entry_l2_eof_transition_framing);
+        assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); reveal(PageTableHigher::wf_l4); reveal(WholePageTable::wf_l3); reveal(WholePageTable::wf_l2); broadcast use PageTableHigher::resolve_l3_addr_unique_at; };
     }
 
     /// EOF closure of `create_entry_l2`: `wf_window_locks`.
@@ -628,8 +628,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.wf_window_locks(),
     {
-        reveal(PageTableC::create_entry_l2_eof_transition_framing);
-        assert(post.wf_window_locks()) by { reveal(PageTableC::wf_window_locks); };
+        reveal(WholePageTable::create_entry_l2_eof_transition_framing);
+        assert(post.wf_window_locks()) by { reveal(WholePageTable::wf_window_locks); };
     }
 }
 } // verus!

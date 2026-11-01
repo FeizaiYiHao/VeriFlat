@@ -79,11 +79,11 @@ pub(super) fn publish_new_container_process_and_pagetable(
         final(krnl).pt_mp.perms_wf(),
         pagetable_perms_wf(old(krnl).pt_mp) ==> pagetable_perms_wf(final(krnl).pt_mp),
         final(krnl).pt_lower.view() == old(krnl).pt_lower.view().insert(child_pagetable_ptr, final(krnl).pt_lower.view().spec_index(child_pagetable_ptr)),
-        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), child_pagetable_ptr).wf(),
+        whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), child_pagetable_ptr).wf(),
         final(krnl).pt_mp.spec_index(child_pagetable_ptr).view_ghost() == final(krnl).pt_lower.view().spec_index(child_pagetable_ptr),
         forall|r: RwLockPageTableRoot|
-            #![trigger pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), r)]
-            old(krnl).pt_mp.dom().contains(r) ==> pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), r) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), r),
+            #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), r)]
+            old(krnl).pt_mp.dom().contains(r) ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), r) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), r),
         pagetable_lower_wf(old(krnl).pt_mp, old(krnl).pt_lower.view()) ==> pagetable_lower_wf(final(krnl).pt_mp, final(krnl).pt_lower.view()),
         pagetable_window_holders_hold_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view()) ==> pagetable_window_holders_hold_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view()),
         pagetable_hidden_leaves_only_when_locked(old(krnl).pt_mp, old(krnl).pt_lower.view())
@@ -141,14 +141,14 @@ pub(super) fn publish_new_container_process_and_pagetable(
         final(krnl).prc_mp.spec_index(child_process_ptr).view_ghost().subtree_set.view().is_empty(),
         final(krnl).pt_mp.dom() =~= old(krnl).pt_mp.dom().insert(child_pagetable_ptr),
         forall|ptr: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(ptr)] old(krnl).pt_mp.dom().contains(ptr) ==> final(krnl).pt_mp.spec_index(ptr) == old(krnl).pt_mp.spec_index(ptr),
-        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), child_pagetable_ptr).is_empty(),
+        whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), child_pagetable_ptr).is_empty(),
         !final(krnl).pt_mp.spec_index(child_pagetable_ptr).being_killed(),
         final(krnl).pt_mp.spec_index(child_pagetable_ptr).view().proc_ptr == child_process_ptr,
         final(krnl).pt_mp.spec_index(child_pagetable_ptr).view().pcid is Some,
         final(krnl).pt_mp.spec_index(child_pagetable_ptr).view().pcid_value() == root_pcid,
         final(krnl).pt_mp.spec_index(child_pagetable_ptr).view().cr3 == l4_page,
         final(krnl).pt_mp.spec_index(child_pagetable_ptr).view().kernel_l4_end == old(krnl).dflt_pt.view().kernel_l4_end,
-        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), child_pagetable_ptr).page_closure() =~= set![l4_page],
+        whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), child_pagetable_ptr).page_closure() =~= set![l4_page],
         final(lctx).cpu_lock_map() == old(lctx).cpu_lock_map(),
         final(lctx).pcid_needflush_lock_map() == old(lctx).pcid_needflush_lock_map(),
         final(lctx).cpu_offline_flag_lock_map() == old(lctx).cpu_offline_flag_lock_map(),
@@ -919,7 +919,7 @@ pub(super) fn link_new_container_into_tree(
     proof {
         let ghost original_children = base_containers.spec_index(parent_container_ptr).view().children.view();
         assert(original_children.len() <= NUM_PAGES * 4096) by { container_children_len_bounded_at(root_container, base_pages, base_containers, parent_container_ptr); };
-        assert(containers.spec_index(parent_container_ptr).view().children.length == original_children.len()) by { containers.spec_index(parent_container_ptr).view().children.lemma_len_view(); };
+        assert(containers.spec_index(parent_container_ptr).view().children.length == original_children.len()) by { containers.spec_index(parent_container_ptr).view().children.wf_implies_view_len_eq_len(); };
         assert(!original_children.contains(child_container_ptr)) by {
             if original_children.contains(child_container_ptr) { assert(base_containers.dom().contains(child_container_ptr)) by { container_children_parent_wf_at(root_container, base_containers, parent_container_ptr, child_container_ptr); }; }
         };

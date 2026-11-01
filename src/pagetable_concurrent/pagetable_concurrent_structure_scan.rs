@@ -4,7 +4,7 @@ verus! {
 use crate::*;
 
 /// Tables with equal upper half and L2 pages, which own the L1 pages, resolve every L2, 2M, and 4K entry alike.
-pub proof fn resolve_mappings_eq_for_higher_and_lower_tables_eq<const TABLE_TYPE: PTType>(old: PageTableC<TABLE_TYPE>, new: PageTableC<TABLE_TYPE>)
+pub proof fn resolve_mappings_eq_for_higher_and_lower_tables_eq<const TABLE_TYPE: PTType>(old: WholePageTable<TABLE_TYPE>, new: WholePageTable<TABLE_TYPE>)
     requires
         new.higher == old.higher,
         new.lower.l2_perms == old.lower.l2_perms,
@@ -26,14 +26,14 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     { reveal(PageTableHigher::table_pages_wf); }
 }
 
-impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
+impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     pub proof fn table_pages_wf_l2_at(&self, p: PageMapPtr)
         requires
             self.table_pages_wf(),
             self.lower.l2_perms.dom().contains(p),
         ensures
             !self.higher.l4_table.view().dom().contains(p),
-    { reveal(PageTableC::table_pages_wf); }
+    { reveal(WholePageTable::table_pages_wf); }
 
     pub proof fn table_pages_wf_l1_at(&self, p: PageMapPtr)
         requires
@@ -41,7 +41,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             self.lower.l1_rev_map.dom().contains(p),
         ensures
             !self.higher.l4_table.view().dom().contains(p),
-    { reveal(PageTableC::table_pages_wf); }
+    { reveal(WholePageTable::table_pages_wf); }
 
     /// `scan` names a table page that the matching `remove_l*_entry` can unlink, or reports that no user L4 entry is
     /// present.
@@ -88,13 +88,13 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             self.spec_structure_scan_wf(StructureScan::Empty),
     {
-        assert(self.page_closure() =~= set![self.cr3()]) by { reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::tables_reachable_wf); reveal(PageTableC::tables_reachable_wf); };
+        assert(self.page_closure() =~= set![self.cr3()]) by { reveal(PageTableHigher::wf_l4); reveal(PageTableHigher::tables_reachable_wf); reveal(WholePageTable::tables_reachable_wf); };
         assert(TABLE_TYPE == IOMMU_TYPE ==> self.kernel_l4_end() == 0) by { self.higher.kernel_entries_wf_l4_end_at(); };
         assert(self.kernel_l4_end() <= KERNEL_MEM_END_L4INDEX ==> self.mapping_4k().dom() =~= Set::<VAddr>::empty() && self.mapping_2m().dom() =~= Set::<VAddr>::empty()
             && self.mapping_1g().dom() =~= Set::<VAddr>::empty()) by {
             broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip, spec_va_1g_valid_index_roundtrip, iova_4k_valid_index_roundtrip, iova_2m_valid_index_roundtrip,
                 iova_1g_valid_index_roundtrip;
-            reveal(PageTableC::wf_mapping_4k); reveal(PageTableC::wf_mapping_2m); reveal(PageTableHigher::wf_mapping_1g);
+            reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_mapping_2m); reveal(PageTableHigher::wf_mapping_1g);
         };
     }
 }
@@ -103,16 +103,16 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     /// Find the first table page, in index order below the first present user L4 entry, that can be unlinked.
     pub fn next_structure_page(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>) -> (ret: StructureScan)
         requires
-            (PageTableC { higher: *self, lower: *lower }).wf(),
+            (WholePageTable { higher: *self, lower: *lower }).wf(),
         ensures
-            (PageTableC { higher: *self, lower: *lower }).spec_structure_scan_wf(ret),
+            (WholePageTable { higher: *self, lower: *lower }).spec_structure_scan_wf(ret),
             lower.mapping_4k.dom() =~= Set::<VAddr>::empty() && lower.mapping_2m.dom() =~= Set::<VAddr>::empty() && self.mapping_1g.view().dom() =~= Set::<VAddr>::empty() ==> !(ret is Blocked),
     {
         assert(pei_valid(self.kernel_l4_end)) by { self.kernel_l4_end_valid(); };
         let mut l4i = self.kernel_l4_end;
         while l4i < 512
             invariant
-                (PageTableC { higher: *self, lower: *lower }).wf(),
+                (WholePageTable { higher: *self, lower: *lower }).wf(),
                 pei_valid(self.kernel_l4_end),
                 self.kernel_l4_end <= l4i <= 512,
                 forall|j: L4Index| #![trigger self.spec_resolve_mapping_l4(j)] self.kernel_l4_end <= j < l4i ==> self.spec_resolve_mapping_l4(j) is None,
@@ -121,7 +121,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             if let Some(l4_entry) = self.get_entry_l4(l4i) { return self.scan_l3_table(Tracked(lower), l4i, &l4_entry); }
             l4i = l4i + 1;
         }
-        proof { (PageTableC { higher: *self, lower: *lower }).next_structure_page_empty_wf(); }
+        proof { (WholePageTable { higher: *self, lower: *lower }).next_structure_page_empty_wf(); }
         StructureScan::Empty
     }
 
@@ -132,10 +132,10 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     pub fn remove_structure_page(&mut self, Tracked(lower): Tracked<&mut PageTableLower<TABLE_TYPE>>, scan: StructureScan, Tracked(window_perm): Tracked<&LockPerm>,
         Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<PagePerm4k>)
         requires
-            (PageTableC { higher: *old(self), lower: *old(lower) }).wf(),
-            (PageTableC { higher: *old(self), lower: *old(lower) }).spec_structure_scan_wf(scan),
+            (WholePageTable { higher: *old(self), lower: *old(lower) }).wf(),
+            (WholePageTable { higher: *old(self), lower: *old(lower) }).spec_structure_scan_wf(scan),
             scan.spec_table_page() is Some,
-            scan is L1 ==> (PageTableC { higher: *old(self), lower: *old(lower) }).window_locked_by_thread(scan->L1_l4i, scan->L1_l3i, scan->L1_l2i, old(lctx).thread_id()),
+            scan is L1 ==> (WholePageTable { higher: *old(self), lower: *old(lower) }).window_locked_by_thread(scan->L1_l4i, scan->L1_l3i, scan->L1_l2i, old(lctx).thread_id()),
             scan is L1 ==> old(lower).l2_owner(scan->L1_l2_p, scan->L1_l2i) == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
             scan is L2 ==> forall|i: L2Index| #![trigger old(lower).l2_owner(scan->L2_l2_p, i)] pei_valid(i) ==> old(lower).l2_owner(scan->L2_l2_p, i) is None,
             old(lctx).kernel_view_locking_state() is Acquire,
@@ -144,8 +144,8 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
-            (PageTableC { higher: *final(self), lower: *final(lower) }).wf(),
-            (PageTableC { higher: *final(self), lower: *final(lower) }).page_closure() =~= (PageTableC { higher: *old(self), lower: *old(lower) }).page_closure().remove(scan.spec_table_page()->Some_0),
+            (WholePageTable { higher: *final(self), lower: *final(lower) }).wf(),
+            (WholePageTable { higher: *final(self), lower: *final(lower) }).page_closure() =~= (WholePageTable { higher: *old(self), lower: *old(lower) }).page_closure().remove(scan.spec_table_page()->Some_0),
             final(lower).mapping_4k == old(lower).mapping_4k,
             final(lower).mapping_2m == old(lower).mapping_2m,
             final(self).mapping_1g == old(self).mapping_1g,
@@ -162,10 +162,10 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             scan is L1 ==> *final(self) == *old(self),
             scan is L1 ==> forall|p: PageMapPtr, i: L2Index| #![trigger final(lower).l2_owner(p, i)] final(lower).l2_owner(p, i) == old(lower).l2_owner(p, i),
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, thread_id: LockThreadId|
-                #![trigger (PageTableC { higher: *final(self), lower: *final(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
-                #![trigger (PageTableC { higher: *old(self), lower: *old(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+                #![trigger (WholePageTable { higher: *final(self), lower: *final(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
+                #![trigger (WholePageTable { higher: *old(self), lower: *old(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id)]
                 old(self).kernel_l4_end <= l4i && pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i)
-                    ==> (PageTableC { higher: *final(self), lower: *final(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id) == (PageTableC { higher: *old(self), lower: *old(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id),
+                    ==> (WholePageTable { higher: *final(self), lower: *final(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id) == (WholePageTable { higher: *old(self), lower: *old(lower) }).window_locked_by_thread(l4i, l3i, l2i, thread_id),
             ret.view().is_init(),
             ret.view().addr() == scan.spec_table_page()->Some_0,
     {
@@ -187,19 +187,19 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
 
     fn scan_l3_table(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, l4i: L4Index, l4_entry: &PageEntry) -> (ret: StructureScan)
         requires
-            (PageTableC { higher: *self, lower: *lower }).wf(),
+            (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= l4i && pei_valid(l4i),
             self.spec_resolve_mapping_l4(l4i) =~= Some(*l4_entry),
         ensures
-            (PageTableC { higher: *self, lower: *lower }).spec_structure_scan_wf(ret),
+            (WholePageTable { higher: *self, lower: *lower }).spec_structure_scan_wf(ret),
             !(ret is Empty),
             lower.mapping_4k.dom() =~= Set::<VAddr>::empty() && lower.mapping_2m.dom() =~= Set::<VAddr>::empty() && self.mapping_1g.view().dom() =~= Set::<VAddr>::empty() ==> !(ret is Blocked),
     {
-        let ghost c = PageTableC { higher: *self, lower: *lower };
+        let ghost c = WholePageTable { higher: *self, lower: *lower };
         let mut l3i: L3Index = 0;
         while l3i < 512
             invariant
-                c == (PageTableC { higher: *self, lower: *lower }),
+                c == (WholePageTable { higher: *self, lower: *lower }),
                 c.wf(),
                 self.kernel_l4_end <= l4i && pei_valid(l4i),
                 self.spec_resolve_mapping_l4(l4i) =~= Some(*l4_entry),
@@ -221,21 +221,21 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
 
     fn scan_l2_table(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, l4i: L4Index, l3i: L3Index, l4_entry: &PageEntry, l3_entry: &PageEntry) -> (ret: StructureScan)
         requires
-            (PageTableC { higher: *self, lower: *lower }).wf(),
+            (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= l4i && pei_valid(l4i),
             pei_valid(l3i),
             self.spec_resolve_mapping_l4(l4i) =~= Some(*l4_entry),
             self.spec_resolve_mapping_l3(l4i, l3i) =~= Some(*l3_entry),
         ensures
-            (PageTableC { higher: *self, lower: *lower }).spec_structure_scan_wf(ret),
+            (WholePageTable { higher: *self, lower: *lower }).spec_structure_scan_wf(ret),
             !(ret is Empty),
             lower.mapping_4k.dom() =~= Set::<VAddr>::empty() && lower.mapping_2m.dom() =~= Set::<VAddr>::empty() && self.mapping_1g.view().dom() =~= Set::<VAddr>::empty() ==> !(ret is Blocked),
     {
-        let ghost c = PageTableC { higher: *self, lower: *lower };
+        let ghost c = WholePageTable { higher: *self, lower: *lower };
         let mut l2i: L2Index = 0;
         while l2i < 512
             invariant
-                c == (PageTableC { higher: *self, lower: *lower }),
+                c == (WholePageTable { higher: *self, lower: *lower }),
                 c.wf(),
                 self.kernel_l4_end <= l4i && pei_valid(l4i),
                 pei_valid(l3i),
@@ -267,23 +267,23 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
 
     fn l1_table_has_no_leaf(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, l4i: L4Index, l3i: L3Index, l2i: L2Index, l3_entry: &PageEntry, l2_entry: &PageEntry) -> (ret: bool)
         requires
-            (PageTableC { higher: *self, lower: *lower }).wf(),
+            (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= l4i && pei_valid(l4i),
             pei_valid(l3i),
             pei_valid(l2i),
             self.spec_resolve_mapping_l3(l4i, l3i) =~= Some(*l3_entry),
-            (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_l2(l4i, l3i, l2i) =~= Some(*l2_entry),
+            (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_l2(l4i, l3i, l2i) =~= Some(*l2_entry),
         ensures
             ret ==> forall|i: L1Index|
-                #![trigger (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, i)]
-                pei_valid(i) ==> (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, i) is None,
+                #![trigger (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, i)]
+                pei_valid(i) ==> (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, i) is None,
             lower.mapping_4k.dom() =~= Set::<VAddr>::empty() ==> ret,
     {
-        let ghost c = PageTableC { higher: *self, lower: *lower };
+        let ghost c = WholePageTable { higher: *self, lower: *lower };
         let mut l1i: L1Index = 0;
         while l1i < 512
             invariant
-                c == (PageTableC { higher: *self, lower: *lower }),
+                c == (WholePageTable { higher: *self, lower: *lower }),
                 c.wf(),
                 self.kernel_l4_end <= l4i && pei_valid(l4i),
                 pei_valid(l3i),

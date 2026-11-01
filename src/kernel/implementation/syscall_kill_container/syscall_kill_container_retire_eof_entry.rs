@@ -185,10 +185,10 @@ proof fn kill_container_retire_eof_no_free_4k_page_at(pre: KernelK, container_pt
         allocator_perms_wf_at(pre.allc_4k_mp, a);
         if page.state->Free4k_state is PreCpuCache {
             let cpu = page.state->Free4k_state->PreCpuCache_cpu_id;
-            allocator.cpu_caches.lemma_view_index(); lemma_cache_len_fold_ge_elem(allocator.cpu_caches.view(), cpu as int);
-            allocator.cpu_caches.spec_index(cpu).view().view().linked_list.lemma_len_view();
+            allocator.cpu_caches.view_index_eq_element_value(); lemma_cache_len_fold_ge_elem(allocator.cpu_caches.view(), cpu as int);
+            allocator.cpu_caches.spec_index(cpu).view().view().linked_list.wf_implies_view_len_eq_len();
         } else {
-            lemma_cache_len_fold_nonneg(allocator.cpu_caches.view()); allocator.global_pool.view().lemma_len_view();
+            lemma_cache_len_fold_nonneg(allocator.cpu_caches.view()); allocator.global_pool.view().wf_implies_view_len_eq_len();
         }
     }
 }
@@ -218,10 +218,10 @@ proof fn kill_container_retire_eof_no_free_2m_page_at(pre: KernelK, container_pt
         allocator_perms_wf_at(pre.allc_2m_mp, a);
         if page.state->Free2m_state is PreCpuCache {
             let cpu = page.state->Free2m_state->PreCpuCache_cpu_id;
-            allocator.cpu_caches.lemma_view_index(); lemma_cache_len_fold_ge_elem(allocator.cpu_caches.view(), cpu as int);
-            allocator.cpu_caches.spec_index(cpu).view().view().linked_list.lemma_len_view();
+            allocator.cpu_caches.view_index_eq_element_value(); lemma_cache_len_fold_ge_elem(allocator.cpu_caches.view(), cpu as int);
+            allocator.cpu_caches.spec_index(cpu).view().view().linked_list.wf_implies_view_len_eq_len();
         } else {
-            lemma_cache_len_fold_nonneg(allocator.cpu_caches.view()); allocator.global_pool.view().lemma_len_view();
+            lemma_cache_len_fold_nonneg(allocator.cpu_caches.view()); allocator.global_pool.view().wf_implies_view_len_eq_len();
         }
     }
 }
@@ -261,10 +261,10 @@ proof fn kill_container_retire_eof_no_free_1g_page_at(pre: KernelK, container_pt
         allocator_perms_wf_at(pre.allc_1g_mp, a);
         if page.state->Free1g_state is PreCpuCache {
             let cpu = page.state->Free1g_state->PreCpuCache_cpu_id;
-            allocator.cpu_caches.lemma_view_index(); lemma_cache_len_fold_ge_elem(allocator.cpu_caches.view(), cpu as int);
-            allocator.cpu_caches.spec_index(cpu).view().view().linked_list.lemma_len_view();
+            allocator.cpu_caches.view_index_eq_element_value(); lemma_cache_len_fold_ge_elem(allocator.cpu_caches.view(), cpu as int);
+            allocator.cpu_caches.spec_index(cpu).view().view().linked_list.wf_implies_view_len_eq_len();
         } else {
-            lemma_cache_len_fold_nonneg(allocator.cpu_caches.view()); allocator.global_pool.view().lemma_len_view();
+            lemma_cache_len_fold_nonneg(allocator.cpu_caches.view()); allocator.global_pool.view().wf_implies_view_len_eq_len();
         }
     }
 }

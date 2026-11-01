@@ -94,7 +94,7 @@ pub fn syscall_cpu_offline_request_child(krnl: &mut KernelK, Tracked(lctx): Trac
         }
         return RetValueType::ErrorContainerZombie;
     }
-    proof { caller.children.lemma_len_view(); }
+    proof { caller.children.wf_implies_view_len_eq_len(); }
     if child >= caller.children.len() {
         krnl.wunlock_container(caller_ptr, Tracked(&mut *lctx), Tracked(container_lock_perm));
         krnl.wunlock_own_cpu(cpu_id, Tracked(&mut *lctx), Tracked(cpu_lock_perm));

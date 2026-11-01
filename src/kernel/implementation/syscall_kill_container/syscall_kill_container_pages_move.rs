@@ -90,7 +90,7 @@ pub(crate) fn kill_container_pages_move_4k(
     proof { allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, a4); }
     let tracked pool_perm = pools_4k.tracked_borrow(a4);
     let n = krnl.allc_4k_mp.borrow_global_pool_typed(a4, Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), Tracked(pool_perm)).linked_list.len();
-    proof { krnl.allc_4k_mp.spec_index(a4).global_pool.view().linked_list.lemma_len_view(); }
+    proof { krnl.allc_4k_mp.spec_index(a4).global_pool.view().linked_list.wf_implies_view_len_eq_len(); }
     let mut moved: usize = 0;
     proof { held_kernel_objects_unchanged_reflexive(&*krnl, &*lctx); }
     while moved < n
@@ -148,7 +148,7 @@ pub(crate) fn kill_container_pages_move_4k(
         let tracked quota_perm = quotas_4k.tracked_borrow(a4);
         let tracked owner_quota_perm = quotas_4k.tracked_borrow(o4);
         let pool = krnl.allc_4k_mp.borrow_global_pool_typed(a4, Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), Tracked(pool_perm));
-        assert(pool.linked_list.len() > 0) by { pool.linked_list.lemma_len_view(); };
+        assert(pool.linked_list.len() > 0) by { pool.linked_list.wf_implies_view_len_eq_len(); };
         let (_, page_ptr) = pool.peek_head();
         assert(page_ptr_valid(page_ptr)) by { allocator_free_page_ptrs_wf_global_at(krnl.allc_4k_mp, a4, page_ptr); };
         let page_index = page_ptr2page_index(page_ptr);
@@ -249,7 +249,7 @@ pub(crate) fn kill_container_pages_move_2m(
     proof { allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, a2); }
     let tracked pool_perm = pools_2m.tracked_borrow(a2);
     let n = krnl.allc_2m_mp.borrow_global_pool_typed(a2, Ghost(lctx.allocator_global_pool_2m_lock_map()), Tracked(&*lctx), Tracked(pool_perm)).linked_list.len();
-    proof { krnl.allc_2m_mp.spec_index(a2).global_pool.view().linked_list.lemma_len_view(); }
+    proof { krnl.allc_2m_mp.spec_index(a2).global_pool.view().linked_list.wf_implies_view_len_eq_len(); }
     let mut moved: usize = 0;
     proof { held_kernel_objects_unchanged_reflexive(&*krnl, &*lctx); }
     while moved < n
@@ -307,7 +307,7 @@ pub(crate) fn kill_container_pages_move_2m(
         let tracked quota_perm = quotas_2m.tracked_borrow(a2);
         let tracked owner_quota_perm = quotas_2m.tracked_borrow(o2);
         let pool = krnl.allc_2m_mp.borrow_global_pool_typed(a2, Ghost(lctx.allocator_global_pool_2m_lock_map()), Tracked(&*lctx), Tracked(pool_perm));
-        assert(pool.linked_list.len() > 0) by { pool.linked_list.lemma_len_view(); };
+        assert(pool.linked_list.len() > 0) by { pool.linked_list.wf_implies_view_len_eq_len(); };
         let (_, page_ptr) = pool.peek_head();
         assert(page_ptr_valid(page_ptr)) by { allocator_free_page_ptrs_wf_global_at(krnl.allc_2m_mp, a2, page_ptr); };
         let page_index = page_ptr2page_index(page_ptr);

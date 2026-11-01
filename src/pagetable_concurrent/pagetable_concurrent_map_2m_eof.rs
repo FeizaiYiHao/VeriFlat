@@ -2,7 +2,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
+impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     /// Operation-state summary of `map_2m_page`: entry `target_l2i` of the L2 page `target_l2_p` now maps `target_entry` as a 2M
     /// page and the 2M mapping records it at that address; the big-lock payload and every other window-half field are unchanged.
     #[verifier::opaque]
@@ -53,7 +53,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         Self::map_2m_page_eof_table_pages_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry);
         Self::map_2m_page_eof_tables_reachable_wf(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry);
         Self::map_2m_page_eof_wf_window_locks(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry);
-        assert(post.higher.inv()) by { reveal(PageTableC::map_2m_page_eof_transition_framing); };
+        assert(post.higher.inv()) by { reveal(WholePageTable::map_2m_page_eof_transition_framing); };
     }
 
     /// EOF closure of `map_2m_page`: `va_addr_valid`.
@@ -65,7 +65,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             Self::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry),
         ensures
             post.va_addr_valid(),
-    { reveal(PageTableC::map_2m_page_eof_transition_framing); }
+    { reveal(WholePageTable::map_2m_page_eof_transition_framing); }
 
     /// EOF closure of `map_2m_page`: `wf_l3`.
     proof fn map_2m_page_eof_wf_l3(pre: Self, post: Self, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr, target_entry: MapEntry)
@@ -75,8 +75,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.wf_l3(),
     {
-        reveal(PageTableC::map_2m_page_eof_transition_framing);
-        reveal(PageTableC::wf_l3);
+        reveal(WholePageTable::map_2m_page_eof_transition_framing);
+        reveal(WholePageTable::wf_l3);
     }
 
 
@@ -89,8 +89,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.wf_l2(),
     {
-        reveal(PageTableC::map_2m_page_eof_transition_framing);
-        reveal(PageTableC::wf_l2);
+        reveal(WholePageTable::map_2m_page_eof_transition_framing);
+        reveal(WholePageTable::wf_l2);
     }
 
     /// EOF closure of `map_2m_page`: `wf_l1`.
@@ -101,8 +101,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.wf_l1(),
     {
-        reveal(PageTableC::map_2m_page_eof_transition_framing);
-        reveal(PageTableC::wf_l1);
+        reveal(WholePageTable::map_2m_page_eof_transition_framing);
+        reveal(WholePageTable::wf_l1);
     }
 
     /// EOF closure of `map_2m_page`: `disjoint_l2`.
@@ -113,8 +113,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.disjoint_l2(),
     {
-        reveal(PageTableC::map_2m_page_eof_transition_framing);
-        reveal(PageTableC::disjoint_l2);
+        reveal(WholePageTable::map_2m_page_eof_transition_framing);
+        reveal(WholePageTable::disjoint_l2);
     }
 
     /// EOF-only framing of `map_2m_page`: the L2 and 4K walks are unchanged, and so is every 2M walk except the target one.
@@ -144,7 +144,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
                     ==> post.spec_resolve_mapping_2m_l2(l4i, l3i, l2i) == pre.spec_resolve_mapping_2m_l2(l4i, l3i, l2i),
     {
         broadcast use PageTableHigher::resolve_l3_addr_unique_at;
-        reveal(PageTableC::map_2m_page_eof_transition_framing);
+        reveal(WholePageTable::map_2m_page_eof_transition_framing);
     }
 
     /// EOF closure of `map_2m_page`: `wf_mapping_4k`.
@@ -165,8 +165,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             post.wf_mapping_4k(),
     {
         Self::map_2m_page_eof_resolve_unchanged(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry);
-        reveal(PageTableC::map_2m_page_eof_transition_framing);
-        reveal(PageTableC::wf_mapping_4k);
+        reveal(WholePageTable::map_2m_page_eof_transition_framing);
+        reveal(WholePageTable::wf_mapping_4k);
     }
 
     /// EOF closure of `map_2m_page`: `wf_mapping_2m`.
@@ -188,8 +188,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             post.wf_mapping_2m(),
     {
         Self::map_2m_page_eof_resolve_unchanged(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, target_entry);
-        reveal(PageTableC::map_2m_page_eof_transition_framing);
-        reveal(PageTableC::wf_mapping_2m);
+        reveal(WholePageTable::map_2m_page_eof_transition_framing);
+        reveal(WholePageTable::wf_mapping_2m);
         spec_index2va_injective();
     }
 
@@ -202,8 +202,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.user_only(),
     {
-        reveal(PageTableC::map_2m_page_eof_transition_framing);
-        reveal(PageTableC::user_only);
+        reveal(WholePageTable::map_2m_page_eof_transition_framing);
+        reveal(WholePageTable::user_only);
     }
 
     /// EOF closure of `map_2m_page`: `rwx_upper_level_entries`.
@@ -214,8 +214,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.rwx_upper_level_entries(),
     {
-        reveal(PageTableC::map_2m_page_eof_transition_framing);
-        reveal(PageTableC::rwx_upper_level_entries);
+        reveal(WholePageTable::map_2m_page_eof_transition_framing);
+        reveal(WholePageTable::rwx_upper_level_entries);
     }
 
     /// EOF closure of `map_2m_page`: `table_pages_wf`.
@@ -226,8 +226,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.table_pages_wf(),
     {
-        reveal(PageTableC::map_2m_page_eof_transition_framing);
-        reveal(PageTableC::table_pages_wf);
+        reveal(WholePageTable::map_2m_page_eof_transition_framing);
+        reveal(WholePageTable::table_pages_wf);
     }
 
     /// EOF closure of `map_2m_page`: `tables_reachable_wf`.
@@ -244,8 +244,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.tables_reachable_wf(),
     {
-        reveal(PageTableC::map_2m_page_eof_transition_framing);
-        reveal(PageTableC::tables_reachable_wf);
+        reveal(WholePageTable::map_2m_page_eof_transition_framing);
+        reveal(WholePageTable::tables_reachable_wf);
     }
 
     /// EOF closure of `map_2m_page`: `wf_window_locks`.
@@ -256,8 +256,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.wf_window_locks(),
     {
-        reveal(PageTableC::map_2m_page_eof_transition_framing);
-        reveal(PageTableC::wf_window_locks);
+        reveal(WholePageTable::map_2m_page_eof_transition_framing);
+        reveal(WholePageTable::wf_window_locks);
     }
 }
 } // verus!

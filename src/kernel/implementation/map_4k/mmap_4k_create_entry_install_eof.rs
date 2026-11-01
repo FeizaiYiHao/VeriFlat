@@ -12,8 +12,8 @@ pub(super) open spec fn install_staged_4k_page_table_page_eof_transition_framing
     let page_index = page_ptr2page_index(page_ptr);
     let old_pt = pre.pt_mp.spec_index(pagetable_ptr);
     let new_pt = post.pt_mp.spec_index(pagetable_ptr);
-    let old_c = pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr);
-    let new_c = pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr);
+    let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr);
+    let new_c = whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr);
     let old_page = pre.pg_arr.spec_index(page_index).view();
     let new_page = post.pg_arr.spec_index(page_index).view();
     let old_thread = pre.thr_mp.spec_index(quota_thread_ptr);
@@ -22,8 +22,8 @@ pub(super) open spec fn install_staged_4k_page_table_page_eof_transition_framing
     &&& post.pt_mp.unchanged_except(&pre.pt_mp, pagetable_ptr)
     &&& post.pt_lower.view() == pre.pt_lower.view().insert(pagetable_ptr, post.pt_lower.view().spec_index(pagetable_ptr))
     &&& forall|other_pagetable: RwLockPageTableRoot|
-        #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), other_pagetable)]
-        pre.pt_mp.dom().contains(other_pagetable) && other_pagetable != pagetable_ptr ==> pagetable_c(post.pt_mp, post.pt_lower.view(), other_pagetable) == pagetable_c(pre.pt_mp, pre.pt_lower.view(), other_pagetable)
+        #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), other_pagetable)]
+        pre.pt_mp.dom().contains(other_pagetable) && other_pagetable != pagetable_ptr ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), other_pagetable) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), other_pagetable)
     &&& new_pt.locking_thread() == old_pt.locking_thread()
     &&& new_pt.being_killed() == old_pt.being_killed()
     &&& old_pt.locking_thread() is Write ==> new_pt.view_ghost() == post.pt_lower.view().spec_index(pagetable_ptr)
@@ -121,7 +121,7 @@ proof fn install_staged_4k_page_table_page_eof_pagetable_pages(
         pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr,
         pre.prc_mp.spec_index(process_ptr).view_rodata().view().pagetable == pagetable_ptr,
         pre.pt_mp.dom().contains(pagetable_ptr),
-        !pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).page_closure().contains(page_ptr),
+        !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).page_closure().contains(page_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: quota_thread_ptr }),
         pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == container_ptr,
         post.subsystems_inv(),
@@ -243,7 +243,7 @@ pub(super) proof fn install_staged_4k_page_table_page_eof(
         pre.prc_mp.spec_index(process_ptr).view_rodata().view().owning_container == container_ptr,
         pre.prc_mp.spec_index(process_ptr).view_rodata().view().pagetable == pagetable_ptr,
         pre.pt_mp.dom().contains(pagetable_ptr),
-        !pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).page_closure().contains(page_ptr),
+        !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).page_closure().contains(page_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Owned4k { thread_ptr: quota_thread_ptr }),
         pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == container_ptr,
         pre.thr_mp.spec_index(quota_thread_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr),
@@ -270,7 +270,7 @@ pub(super) proof fn install_staged_4k_page_table_page_eof(
     assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by {
         pagetable_lower_wf_at(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr); pre.default_pagetable_wf_at(pagetable_ptr);
         broadcast use spec_va_4k_valid_index_roundtrip, spec_va_2m_valid_index_roundtrip;
-        reveal(PageTableC::wf_mapping_4k); reveal(PageTableC::wf_mapping_2m); reveal(tlb_wf_spec);
+        reveal(WholePageTable::wf_mapping_4k); reveal(WholePageTable::wf_mapping_2m); reveal(tlb_wf_spec);
     };
 }
 }

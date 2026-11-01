@@ -123,9 +123,9 @@ verus! {
         };
         proof {
             if let Some(cpu_id) = source {
-                old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(cpu_id).view().view().linked_list.lemma_value_addr_unique(node_addr, node_addr2);
+                old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(cpu_id).view().view().linked_list.wf_and_equal_values_implies_equal_addrs(node_addr, node_addr2);
             } else {
-                old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().linked_list.lemma_value_addr_unique(node_addr, node_addr2);
+                old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().linked_list.wf_and_equal_values_implies_equal_addrs(node_addr, node_addr2);
             }
         }
         assert(krnl.pg_arr.inv() && krnl.thr_mp.spec_index(thread_ptr).is_init()) by {
@@ -139,9 +139,9 @@ verus! {
                 container_allocator_free_2m_page_wf_at(old(krnl).allc_2m_mp, old(krnl).pg_arr, page_index);
                 container_allocator_wf_at(old(krnl).ctn_mp, old(krnl).allc_4k_mp, old(krnl).allc_2m_mp, old(krnl).allc_1g_mp, container_ptr);
                 if let Some(cpu_id) = source {
-                    old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(cpu_id).view().view().linked_list.lemma_value_addr_unique(node_addr, page.free_list_node_storage.addr());
+                    old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).cpu_caches.spec_index(cpu_id).view().view().linked_list.wf_and_equal_values_implies_equal_addrs(node_addr, page.free_list_node_storage.addr());
                 } else {
-                    old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().linked_list.lemma_value_addr_unique(node_addr, page.free_list_node_storage.addr());
+                    old(krnl).allc_2m_mp.spec_index(alloc_ptr_2m).global_pool.view().linked_list.wf_and_equal_values_implies_equal_addrs(node_addr, page.free_list_node_storage.addr());
                 }
             };
             page.state = PageState::Owned2m { thread_ptr };

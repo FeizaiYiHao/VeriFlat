@@ -246,10 +246,10 @@ impl KernelSteps {
                     &&& (krnl.pt_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().pt_mp.spec_index(p).locking_thread() is Write)
                     &&& (krnl.pt_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().pt_mp.spec_index(p).locking_thread() is Read)
                     &&& forall|q: RwLockPageTableRoot| #![trigger krnl.pt_lower.view().spec_index(q)] q != p ==> krnl.pt_lower.view().spec_index(q) == old(self).snapshot_k().pt_lower.view().spec_index(q)
-                    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_4k() == pagetable_c(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_4k()
-                    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_2m() == pagetable_c(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_2m()
-                    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_1g() == pagetable_c(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_1g()
-                    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).lower.pagetable_window_locks
+                    &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_4k() == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_4k()
+                    &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_2m() == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_2m()
+                    &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_1g() == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_1g()
+                    &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).lower.pagetable_window_locks
                 },
                 None => {
                     &&& krnl.pt_mp == old(self).snapshot_k().pt_mp
@@ -363,10 +363,10 @@ impl KernelSteps {
                     &&& (krnl.pt_mp.spec_index(p).locking_thread() is Write) == (old(self).snapshot_k().pt_mp.spec_index(p).locking_thread() is Write)
                     &&& (krnl.pt_mp.spec_index(p).locking_thread() is Read) == (old(self).snapshot_k().pt_mp.spec_index(p).locking_thread() is Read)
                     &&& forall|q: RwLockPageTableRoot| #![trigger krnl.pt_lower.view().spec_index(q)] q != p ==> krnl.pt_lower.view().spec_index(q) == old(self).snapshot_k().pt_lower.view().spec_index(q)
-                    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_4k() == pagetable_c(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_4k()
-                    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_2m() == pagetable_c(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_2m()
-                    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_1g() == pagetable_c(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_1g()
-                    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).lower.pagetable_window_locks
+                    &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_4k() == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_4k()
+                    &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_2m() == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_2m()
+                    &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).mapping_1g() == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).mapping_1g()
+                    &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).lower.pagetable_window_locks
                 },
                 None => {
                     &&& krnl.pt_mp == old(self).snapshot_k().pt_mp
@@ -425,7 +425,7 @@ impl KernelSteps {
                     let after = krnl.pt_mp.spec_index(p).locking_thread();
                     &&& (after is Write) == (before is Write)
                     &&& (after is Read) == (before is Read)
-                    &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).lower.pagetable_window_locks
+                    &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(old(self).snapshot_k().pt_mp, old(self).snapshot_k().pt_lower.view(), p).lower.pagetable_window_locks
                 },
             forall|p: RwLockPageTableRoot| #![trigger krnl.it_mp.spec_index(p)]
                 krnl.it_mp.dom().contains(p) && old(self).snapshot_k().it_mp.dom().contains(p) ==> {

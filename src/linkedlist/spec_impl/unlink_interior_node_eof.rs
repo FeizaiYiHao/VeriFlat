@@ -41,7 +41,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             post.wf_map(),
             post.value_list_unique(),
     {
-        assert(post.wf_perms()) by { seq_remove_lemma::<usize>(); reveal(LinkedList::wf_perms); reveal(LinkedList::wf_addr_list); };
+        assert(post.wf_perms()) by { seq_remove_at_index_implies_contains_and_index_shift::<usize>(); reveal(LinkedList::wf_perms); reveal(LinkedList::wf_addr_list); };
         assert(post.wf_addr_list()) by { reveal(LinkedList::wf_addr_list); };
         assert(post.wf_value_list()) by { reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_value_list); };
         assert(post.wf_head()) by { reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_head); };

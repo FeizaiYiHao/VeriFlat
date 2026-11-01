@@ -34,7 +34,7 @@ proof fn cpu_went_off_eof_container_thread_scheduler(pre: KernelK, post: KernelK
         let cpu = pre.cpu_arr.spec_index(cpu_id).view().view().view();
         assert(cpu.current_thread is Some ==> pre.thr_mp.spec_index(cpu.current_thread.unwrap()).view().owning_container == cpu.owning_container) by { reveal(process_thread_wf); reveal(process_cpu_wf); };
         reveal(container_thread_scheduler_wf); reveal(container_scheduler_wf); reveal(container_thread_wf);
-        seq_push_lemma::<RwLockThreadPtr>();
+        seq_push_implies_contains::<RwLockThreadPtr>();
     };
 }
 

@@ -574,7 +574,7 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_existing_pagetab
             allocator_quota_4k, process_quota_4k,
         ),
         post.pt_mp.dom().contains(pt_ptr),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), pt_ptr).page_closure().contains(pt_page_ptr),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pt_ptr).page_closure().contains(pt_page_ptr),
         pt_ptr != pagetable_page,
     ensures
         #![trigger
@@ -583,7 +583,7 @@ pub(super) broadcast proof fn publish_staged_container_root_eof_existing_pagetab
                 allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page, thread_page,
                 funding_pages, allocator_quota_4k, process_quota_4k,
             ),
-            pagetable_c(post.pt_mp, post.pt_lower.view(), pt_ptr).page_closure().contains(pt_page_ptr)
+            whole_pagetable(post.pt_mp, post.pt_lower.view(), pt_ptr).page_closure().contains(pt_page_ptr)
         ]
         {
             &&& page_ptr_valid(pt_page_ptr)

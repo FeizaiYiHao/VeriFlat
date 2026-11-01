@@ -75,11 +75,11 @@ impl<const SIZE: usize> GlobalPool<SIZE> {
             ret == self.linked_list.view().spec_index(index as int),
     { self.linked_list.get(index) }
 
-    pub proof fn lemma_len_view(&self)
+    pub proof fn wf_implies_view_len_eq_len(&self)
         requires
             self.linked_list.wf(),
         ensures
             self.linked_list.view().len() == self.linked_list.len(),
-    { self.linked_list.lemma_len_view(); }
+    { self.linked_list.wf_implies_view_len_eq_len(); }
 }
 } // verus!

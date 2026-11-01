@@ -34,7 +34,7 @@ pub proof fn kernel_iommu_tlb_within_may_cache_projection(krnl: &KernelK, did: V
 {
     let anchor = pci_bdf_of_did(did);
     let root_table = krnl.irt.view();
-    kernel_u_user_domains_projection(krnl); root_table.user_view_unfold();
+    kernel_u_user_domains_projection(krnl); root_table.user_view_eq_owners_and_attached();
     if root_table.spec_index_iommu_did(anchor.0, anchor.1, anchor.2) == Some(did) {
         let owner = root_table.spec_index_owner(anchor.0, anchor.1, anchor.2);
         let it = krnl.prc_mp.spec_index(owner).view().iommu_table->Some_0;

@@ -176,7 +176,7 @@ pub(crate) fn kill_mark_child(
     let ghost before = *krnl;
     let ghost before_lctx = *lctx;
     let ghost before_steps = steps.view();
-    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); krnl.prc_mp.spec_index(target).view().children.lemma_len_view(); }
+    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); krnl.prc_mp.spec_index(target).view().children.wf_implies_view_len_eq_len(); }
     let child_ptr = {
         let tracked target_perm = chain_perms.tracked_borrow(target);
         krnl.prc_mp.borrow_typed(target, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(target_perm)).children.get(0)
@@ -291,7 +291,7 @@ pub(crate) fn kill_first_thread(
     let ghost before_lctx = *lctx;
     let ghost before_steps = steps.view();
     let tracked target_perm = chain_perms.tracked_borrow(target);
-    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); krnl.prc_mp.spec_index(target).view().owned_threads.lemma_len_view(); }
+    proof { process_perms_wf_map(krnl.prc_mp); process_perms_wf_at(krnl.prc_mp, target); krnl.prc_mp.spec_index(target).view().owned_threads.wf_implies_view_len_eq_len(); }
     let victim_ptr = krnl.prc_mp.borrow_typed(target, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(target_perm)).owned_threads.get(0);
     proof {
         let target_ro = krnl.prc_mp.spec_index(target).view_rodata().view();

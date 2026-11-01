@@ -31,7 +31,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             post.wf(),
     {
         reveal(LinkedList::wf_perms); reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_head); reveal(LinkedList::wf_map);
-        seq_push_head_lemma::<usize>(); seq_push_head_lemma::<T>(); seq_push_head_unique_lemma::<usize>();
+        seq_insert_head_implies_contains::<usize>(); seq_insert_head_implies_contains::<T>(); seq_insert_head_absent_implies_no_duplicates_and_index_of_zero::<usize>();
         assert({
             &&& !pre.addr_list.view().contains(addr)
             &&& post.addr_list.view().spec_index(post.length - 1) == post.tail.unwrap()
@@ -63,7 +63,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             post.wf(),
     {
         reveal(LinkedList::wf_perms); reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_head); reveal(LinkedList::wf_next); reveal(LinkedList::wf_map);
-        seq_skip_lemma::<usize>(); seq_skip_lemma::<T>(); seq_skip_index_of_lemma::<usize>(); seq_skip_index_of_lemma::<T>();
+        seq_skip_one_implies_contains_and_index_shift::<usize>(); seq_skip_one_implies_contains_and_index_shift::<T>(); seq_skip_one_implies_index_of_minus_one::<usize>(); seq_skip_one_implies_index_of_minus_one::<T>();
         reveal(LinkedList::wf_tail); reveal(LinkedList::wf_prev); reveal(LinkedList::value_list_unique);
     }
 }

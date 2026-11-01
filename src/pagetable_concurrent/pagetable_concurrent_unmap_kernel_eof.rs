@@ -2,7 +2,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
+impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     /// Operation-state summary of `unmap_4k_page_kernel`: entry `target_l1i` of the L1 map `target_l1_p` is cleared and
     /// the 4K mapping of its address is removed; every other field is unchanged.
     #[verifier::opaque]
@@ -72,7 +72,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             post.wf_window_locks(),
             post.page_closure() =~= pre.page_closure(),
     {
-        reveal(PageTableC::unmap_4k_page_kernel_eof_transition_framing);
+        reveal(WholePageTable::unmap_4k_page_kernel_eof_transition_framing);
         Self::unmap_4k_page_kernel_eof_wf_l3(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
         Self::unmap_4k_page_kernel_eof_wf_l2(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
         Self::unmap_4k_page_kernel_eof_disjoint_l2(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p);
@@ -90,8 +90,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.wf_l3(),
     {
-        reveal(PageTableC::unmap_4k_page_kernel_eof_transition_framing);
-        reveal(PageTableC::wf_l3);
+        reveal(WholePageTable::unmap_4k_page_kernel_eof_transition_framing);
+        reveal(WholePageTable::wf_l3);
     }
 
     /// EOF closure of `unmap_4k_page_kernel` for `wf_l2`.
@@ -102,8 +102,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.wf_l2(),
     {
-        reveal(PageTableC::unmap_4k_page_kernel_eof_transition_framing);
-        reveal(PageTableC::wf_l2);
+        reveal(WholePageTable::unmap_4k_page_kernel_eof_transition_framing);
+        reveal(WholePageTable::wf_l2);
     }
 
     /// EOF closure of `unmap_4k_page_kernel` for `disjoint_l2`.
@@ -114,8 +114,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.disjoint_l2(),
     {
-        reveal(PageTableC::unmap_4k_page_kernel_eof_transition_framing);
-        reveal(PageTableC::disjoint_l2);
+        reveal(WholePageTable::unmap_4k_page_kernel_eof_transition_framing);
+        reveal(WholePageTable::disjoint_l2);
     }
 
     /// EOF closure of `unmap_4k_page_kernel` for `wf_mapping_2m`.
@@ -126,8 +126,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.wf_mapping_2m(),
     {
-        reveal(PageTableC::unmap_4k_page_kernel_eof_transition_framing);
-        reveal(PageTableC::wf_mapping_2m);
+        reveal(WholePageTable::unmap_4k_page_kernel_eof_transition_framing);
+        reveal(WholePageTable::wf_mapping_2m);
     }
 
     /// EOF closure of `unmap_4k_page_kernel` for `rwx_upper_level_entries`.
@@ -138,8 +138,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.rwx_upper_level_entries(),
     {
-        reveal(PageTableC::unmap_4k_page_kernel_eof_transition_framing);
-        reveal(PageTableC::rwx_upper_level_entries);
+        reveal(WholePageTable::unmap_4k_page_kernel_eof_transition_framing);
+        reveal(WholePageTable::rwx_upper_level_entries);
     }
 
     /// EOF closure of `unmap_4k_page_kernel` for `table_pages_wf`.
@@ -150,8 +150,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.table_pages_wf(),
     {
-        reveal(PageTableC::unmap_4k_page_kernel_eof_transition_framing);
-        reveal(PageTableC::table_pages_wf);
+        reveal(WholePageTable::unmap_4k_page_kernel_eof_transition_framing);
+        reveal(WholePageTable::table_pages_wf);
     }
 
     /// EOF closure of `unmap_4k_page_kernel` for `wf_window_locks`.
@@ -162,8 +162,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.wf_window_locks(),
     {
-        reveal(PageTableC::unmap_4k_page_kernel_eof_transition_framing);
-        reveal(PageTableC::wf_window_locks);
+        reveal(WholePageTable::unmap_4k_page_kernel_eof_transition_framing);
+        reveal(WholePageTable::wf_window_locks);
     }
 
     /// EOF closure of `unmap_4k_page_kernel`: the L1 leaves `wf_l1` and `user_only`.
@@ -175,9 +175,9 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             post.wf_l1(),
             post.user_only(),
     {
-        reveal(PageTableC::unmap_4k_page_kernel_eof_transition_framing);
-        assert(post.wf_l1()) by { reveal(PageTableC::wf_l1); };
-        assert(post.user_only()) by { reveal(PageTableC::user_only); };
+        reveal(WholePageTable::unmap_4k_page_kernel_eof_transition_framing);
+        assert(post.wf_l1()) by { reveal(WholePageTable::wf_l1); };
+        assert(post.user_only()) by { reveal(WholePageTable::user_only); };
     }
 
     /// EOF closure of `unmap_4k_page_kernel`: `wf_mapping_4k` and the cleared walk.
@@ -196,12 +196,12 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             post.wf_mapping_4k(),
             post.spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) is None,
     {
-        reveal(PageTableC::unmap_4k_page_kernel_eof_transition_framing);
+        reveal(WholePageTable::unmap_4k_page_kernel_eof_transition_framing);
         post.resolve_l2_unchanged(&pre);
         assert(post.wf_mapping_4k()) by {
-            reveal(PageTableC::wf_mapping_4k);
+            reveal(WholePageTable::wf_mapping_4k);
             spec_index2va_injective();
-            broadcast use PageTableC::resolve_l2_addr_unique_at, PageTableC::resolve_l2_target_exists;
+            broadcast use WholePageTable::resolve_l2_addr_unique_at, WholePageTable::resolve_l2_target_exists;
         };
     }
 
@@ -214,8 +214,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             post.tables_reachable_wf(),
     {
-        reveal(PageTableC::unmap_4k_page_kernel_eof_transition_framing);
-        assert(post.tables_reachable_wf()) by { reveal(PageTableC::tables_reachable_wf); };
+        reveal(WholePageTable::unmap_4k_page_kernel_eof_transition_framing);
+        assert(post.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); };
     }
 }
 } // verus!

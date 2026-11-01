@@ -84,7 +84,7 @@ pub proof fn process_management_inv_preserved_for_container_invariant_fields(pre
     ensures
         post.process_management_inv(),
 {
-    assert(container_pcid_allocator_wf(post.ctn_mp, post.pcid_allc_mp)) by { lemma_container_pcid_allocator_wf_preserved_for_container_invariant_fields_forall(); };
+    assert(container_pcid_allocator_wf(post.ctn_mp, post.pcid_allc_mp)) by { container_pcid_allocator_wf_preserved_for_container_fields(); };
     assert(process_pcid_allocator_wf(post.ctn_mp, post.prc_mp, post.pcid_allc_mp)) by { lemma_process_pcid_allocator_wf_preserved_for_container_invariant_fields_forall(); };
     assert(container_tree_wf(post.rt_ctn, post.ctn_mp)) by { container_no_change_to_tree_fields_imply_wf(pre.rt_ctn, pre.ctn_mp, post.ctn_mp); };
     assert({

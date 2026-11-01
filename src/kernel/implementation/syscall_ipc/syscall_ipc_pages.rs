@@ -424,7 +424,7 @@ fn ipc_map_pages_and_release_tables(
             running_thread_not_in_endpoint_queue(old(krnl), endpoint_ptr, current_thread_ptr);
             container_thread_wf_at(old(krnl).ctn_mp, old(krnl).thr_mp, current_thread_ptr); container_thread_wf_at(old(krnl).ctn_mp, old(krnl).thr_mp, peer_thread_ptr);
         };
-        endpoint_perms_wf_at(old(krnl).ep_mp, endpoint_ptr); old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.lemma_len_view();
+        endpoint_perms_wf_at(old(krnl).ep_mp, endpoint_ptr); old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.wf_implies_view_len_eq_len();
         ipc_pages_enter_step_pre_from_k(&pre_k, cpu_id, process_ptr, current_thread_ptr, endpoint_ptr, peer_thread_ptr, channel_index, waiting_state, range,
             if waiting_state is SENDING { *target_range } else { *source_range });
     }
@@ -442,7 +442,7 @@ fn ipc_map_pages_and_release_tables(
             &&& endpoint_node_perm.addr() == peer_node_addr
         }) by {
             thread_endpoint_queue_wf_thread_at(old(krnl).thr_mp, old(krnl).ep_mp, peer_thread_ptr);
-            old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.lemma_value_addr_unique(endpoint_node_perm.addr(), old(krnl).thr_mp.spec_index(peer_thread_ptr).view().endpoint_linkedlist_node.addr());
+            old(krnl).ep_mp.spec_index(endpoint_ptr).view().queue.wf_and_equal_values_implies_equal_addrs(endpoint_node_perm.addr(), old(krnl).thr_mp.spec_index(peer_thread_ptr).view().endpoint_linkedlist_node.addr());
         };
     }
     ipc_move_endpoint_waiter_to_transit(&mut krnl.thr_mp, Tracked(&*lctx), peer_thread_ptr, current_thread_ptr, Tracked(endpoint_node_perm), Tracked(peer_thread_lock_perm));

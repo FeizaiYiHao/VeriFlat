@@ -3,7 +3,7 @@ use crate::*;
 use crate::kernel::*;
 
 verus! {
-pub proof fn lemma_container_pcid_allocator_wf_preserved_for_container_invariant_fields_forall()
+pub proof fn container_pcid_allocator_wf_preserved_for_container_fields()
     ensures
         forall|pre: ContainerLockedMap, post: ContainerLockedMap, pcid_allocator_map: PcidAllocatorLockedMap|
             #![trigger container_pcid_allocator_wf(pre, pcid_allocator_map), container_pcid_allocator_wf(post, pcid_allocator_map)]
@@ -17,7 +17,7 @@ pub proof fn lemma_process_pcid_allocator_wf_preserved_for_container_invariant_f
             process_pcid_allocator_wf(pre, process_map, pcid_allocator_map) && container_process_wf(pre, process_map) && container_invariant_fields_unchanged(pre, post) ==> process_pcid_allocator_wf(post, process_map, pcid_allocator_map),
 { reveal(process_pcid_allocator_wf); }
 
-pub proof fn lemma_process_pcid_allocator_wf_preserved_for_process_invariant_fields_except_quota_forall()
+pub proof fn process_pcid_allocator_wf_preserved_for_process_fields_except_quota()
     ensures
         forall|container_map: ContainerLockedMap, pre: ProcessLockedMap, post: ProcessLockedMap, pcid_allocator_map: PcidAllocatorLockedMap|
             #![trigger process_pcid_allocator_wf(container_map, pre, pcid_allocator_map), process_pcid_allocator_wf(container_map, post, pcid_allocator_map)]

@@ -50,7 +50,7 @@ pub(super) fn create_and_release_staged_process(
         current_thread_lock_perm.thread_id() == old(lctx).thread_id(),
         current_thread_lock_perm.lock_id() == old(krnl).thr_mp.spec_index(current_thread_ptr).locking_thread()->Write_lock_id,
         old(krnl).pt_mp.dom().contains(source_pagetable_ptr),
-        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).wf(),
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable_ptr).wf(),
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), source_pagetable_ptr, TypedLockMode::Read),
         page_ptr_valid(process_page_ptr) && page_ptr_valid(pagetable_page_ptr) && page_ptr_valid(l4_page_ptr),
         process_page_ptr != pagetable_page_ptr && process_page_ptr != l4_page_ptr && pagetable_page_ptr != l4_page_ptr,
@@ -149,7 +149,7 @@ pub(super) fn create_and_release_staged_process(
         final(krnl).pt_mp.dom() == old(krnl).pt_mp.dom().insert(ret.1),
         forall|p: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(p)] old(krnl).pt_mp.dom().contains(p)
             ==> final(krnl).pt_mp.spec_index(p) == old(krnl).pt_mp.spec_index(p) && final(krnl).pt_lower.view().spec_index(p) == old(krnl).pt_lower.view().spec_index(p),
-        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), ret.1).is_empty(),
+        whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), ret.1).is_empty(),
         final(krnl).pt_mp.spec_index(ret.1).view().proc_ptr == ret.0,
         final(krnl).it_mp == old(krnl).it_mp,
         final(lctx).page_lock_map().dom().is_empty(),

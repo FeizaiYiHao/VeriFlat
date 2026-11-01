@@ -61,7 +61,7 @@ pub fn move_cache_page_to_pool(krnl: &mut KernelK, allocator: RwLockPageAllocato
     let (node_addr, Tracked(node_perm)) = krnl.allc_4k_mp.pop_cache_page_typed(allocator, cpu_id, Ghost(lctx.allocator_quota_4k_lock_map()), Ghost(lctx.allocator_cache_4k_lock_map()), Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), cache_perm);
     assert(node_addr == krnl.pg_arr.spec_index(page_index).view().view().free_list_node_storage.addr()) by {
         container_allocator_free_4k_page_wf_at(old(krnl).allc_4k_mp, old(krnl).pg_arr, page_index);
-        old(krnl).allc_4k_mp.spec_index(allocator).cpu_caches.spec_index(cpu_id).view().view().linked_list.lemma_value_addr_unique(node_addr, krnl.pg_arr.spec_index(page_index).view().view().free_list_node_storage.addr());
+        old(krnl).allc_4k_mp.spec_index(allocator).cpu_caches.spec_index(cpu_id).view().view().linked_list.wf_and_equal_values_implies_equal_addrs(node_addr, krnl.pg_arr.spec_index(page_index).view().view().free_list_node_storage.addr());
     };
     krnl.allc_4k_mp.push_global_pool_page_typed(allocator, node_addr, Tracked(node_perm), Ghost(lctx.allocator_quota_4k_lock_map()), Ghost(lctx.allocator_cache_4k_lock_map()), Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), pool_perm);
     page_array_move_free_4k_to_global_list(&mut krnl.pg_arr, page_index, allocator, cpu_id, Tracked(&*lctx), page_perm);

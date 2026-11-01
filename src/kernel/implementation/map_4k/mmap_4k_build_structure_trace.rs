@@ -28,9 +28,9 @@ pub(super) proof fn mmap_4k_directory_step_from_k(pre: &KernelK, post: &KernelK,
         pre.prc_mp.dom().contains(process_ptr) && pre.prc_mp.spec_index(process_ptr).view_rodata().view().pagetable == pagetable_ptr,
         post.pt_mp.unchanged_except(&pre.pt_mp, pagetable_ptr),
         post.pt_lower.view() == pre.pt_lower.view().insert(pagetable_ptr, post.pt_lower.view().spec_index(pagetable_ptr)),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k(),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m(),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g(),
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
         pre.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
         pre.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
@@ -42,15 +42,15 @@ pub(super) proof fn mmap_4k_directory_step_from_k(pre: &KernelK, post: &KernelK,
         kernel_thread_quota_4k_changed(pre, post, thread_ptr, -1),
         post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == mmap_4k_progress_after_directory(pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view(), level),
         KERNEL_MEM_END_L4INDEX <= l4i && pei_valid(l4i) && pei_valid(l3i),
-        level is L3 ==> pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == Map::new(
-            pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom() + Set::<usize>::range(0, 512).map_by(|i: usize| WindowVa { va: spec_index2va((l4i, l3i, i, 0usize)) }, |w: WindowVa| spec_v2l2index(w.va)),
-            |w: WindowVa| if pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(w) { pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks[w] }
+        level is L3 ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == Map::new(
+            whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom() + Set::<usize>::range(0, 512).map_by(|i: usize| WindowVa { va: spec_index2va((l4i, l3i, i, 0usize)) }, |w: WindowVa| spec_v2l2index(w.va)),
+            |w: WindowVa| if whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(w) { whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks[w] }
                 else if lo <= spec_v2l2index(w.va) <= hi { LockStateU::WriteLocked } else { LockStateU::Unlocked }),
-        level is L3 ==> !pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((l4i, l3i, 0usize, 0usize)) }),
+        level is L3 ==> !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((l4i, l3i, 0usize, 0usize)) }),
         level is L3 ==> forall|w: WindowVa| #![trigger va_range_2m_windows(pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range).contains(w)]
             w.wf() && spec_v2l4index(w.va) == l4i && spec_v2l3index(w.va) == l3i
                 ==> va_range_2m_windows(pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range).contains(w) == (lo <= spec_v2l2index(w.va) <= hi),
-        !(level is L3) ==> pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
+        !(level is L3) ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
     ensures
         mmap_4k_directory_step_pre(kernel_k_to_kernel_u(*pre), cpu_id),
         mmap_4k_directory_step(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id),
@@ -61,9 +61,9 @@ pub(super) proof fn mmap_4k_directory_step_from_k(pre: &KernelK, post: &KernelK,
     else { kernel_thread_quota_4k_and_progress_changed_pagetable_rlocked_implies_u_step(pre, post, lctx, cpu_id, thread_ptr, process_ptr, pagetable_ptr); }
     process_pagetable_match_process_at(pre.prc_mp, pre.pt_mp, process_ptr); kernel_process_projection_at(pre, process_ptr);
     if level is L3 {
-        let old_windows = pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks;
+        let old_windows = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks;
         let range = pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view()->Some_0->Mmap4k_range;
-        assert(pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks =~= pagetable_window_locks_after_new_l2_page(old_windows, l4i, l3i, range));
+        assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks =~= pagetable_window_locks_after_new_l2_page(old_windows, l4i, l3i, range));
     }
 }
 } // verus!

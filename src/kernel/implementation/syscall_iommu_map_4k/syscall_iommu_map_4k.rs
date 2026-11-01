@@ -60,7 +60,7 @@ pub fn syscall_iommu_map_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loca
         iommu_map_4k_trace_enter(steps.view(), old(steps).view(), kernel_k_to_kernel_u(*old(krnl)), kernel_k_to_kernel_u(entered_k), cpu_id, va_range, iova_range);
     }
     proof {
-        va_range.va_range_lemma(); iova_range.va_range_lemma(); va_range_2m_windows_contains_window_of_first_n_pages(va_range, range as int);
+        va_range.wf_implies_view_index_is_start_plus_offset(); iova_range.wf_implies_view_index_is_start_plus_offset(); va_range_2m_windows_contains_window_of_first_n_pages(va_range, range as int);
         thread_perms_wf_at(krnl.thr_mp, thread_ptr); thread_cpu_wf_cpu_at(krnl.thr_mp, krnl.cpu_arr, cpu_id);
     }
     iommu_map_4k_map_range_and_exit(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, &va_range, &iova_range, thread_ptr, process_ptr, container_ptr, pagetable_ptr, iommu_table_ptr,

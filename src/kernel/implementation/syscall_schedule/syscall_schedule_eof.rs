@@ -41,7 +41,7 @@ proof fn scheduler_context_switch_eof_container_thread_scheduler(pre: KernelK, p
         };
         assert(pre.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.view().no_duplicates()) by { scheduler_perms_wf_at(pre.sched_mp, scheduler_ptr); reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list); };
         reveal(container_thread_scheduler_wf); reveal(container_scheduler_wf); reveal(container_thread_wf);
-        seq_push_lemma::<RwLockThreadPtr>(); seq_skip_lemma::<RwLockThreadPtr>();
+        seq_push_implies_contains::<RwLockThreadPtr>(); seq_skip_one_implies_contains_and_index_shift::<RwLockThreadPtr>();
     };
 }
 

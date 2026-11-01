@@ -2,7 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 use super::syscall_ipc_spec::*;
 #[cfg(verus_keep_ghost)]
-use super::syscall_ipc_dispatch::endpoint_queue_member_thread_facts;
+use super::syscall_ipc_dispatch::endpoint_queue_member_implies_thread_waiting_on_endpoint;
 pub(super) use super::syscall_ipc_pages_trace::*;
 verus! {
 /// The entry rejection on the user projection of `krnl` is `ret` when `ret` follows the same checks on `krnl`.
@@ -35,7 +35,7 @@ pub(super) proof fn ipc_entry_result_from_k(krnl: &KernelK, cpu_id: CpuId, endpo
     if krnl.thr_mp.dom().contains(thread_ptr) { kernel_thread_projection_at(krnl, thread_ptr); }
     if endpoint_ptr is Some && krnl.ep_mp.dom().contains(endpoint_ptr->Some_0) {
         kernel_endpoint_projection_at(krnl, endpoint_ptr->Some_0);
-        if queue.len() > 0 { assert(queue.contains(queue[0])); endpoint_queue_member_thread_facts(krnl, endpoint_ptr->Some_0, queue[0]); kernel_thread_projection_at(krnl, queue[0]); }
+        if queue.len() > 0 { assert(queue.contains(queue[0])); endpoint_queue_member_implies_thread_waiting_on_endpoint(krnl, endpoint_ptr->Some_0, queue[0]); kernel_thread_projection_at(krnl, queue[0]); }
     }
 }
 

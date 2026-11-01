@@ -99,16 +99,16 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
 
     pub fn get_entry_l2(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, l3_entry: &PageEntry) -> (ret: Option<PageEntry>)
         requires
-            (PageTableC { higher: *self, lower: *lower }).wf(),
+            (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             self.spec_resolve_mapping_l3(target_l4i, target_l3i) =~= Some(*l3_entry),
         ensures
-            (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) =~= ret,
+            (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) =~= ret,
     {
         proof {
-            let c = PageTableC { higher: *self, lower: *lower };
+            let c = WholePageTable { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
             c.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(l3_entry.addr, target_l2i);
@@ -121,16 +121,16 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
 
     pub fn get_entry_2m_l2(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, l3_entry: &PageEntry) -> (ret: Option<PageEntry>)
         requires
-            (PageTableC { higher: *self, lower: *lower }).wf(),
+            (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             self.spec_resolve_mapping_l3(target_l4i, target_l3i) =~= Some(*l3_entry),
         ensures
-            (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) =~= ret,
+            (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) =~= ret,
     {
         proof {
-            let c = PageTableC { higher: *self, lower: *lower };
+            let c = WholePageTable { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
             c.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(l3_entry.addr, target_l2i);
@@ -144,21 +144,21 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     pub fn get_entry_l1(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index,
         l3_entry: &PageEntry, l2_entry: &PageEntry) -> (ret: Option<PageEntry>)
         requires
-            (PageTableC { higher: *self, lower: *lower }).wf(),
+            (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pei_valid(target_l1i),
             self.spec_resolve_mapping_l3(target_l4i, target_l3i) =~= Some(*l3_entry),
-            (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) =~= Some(*l2_entry),
+            (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) =~= Some(*l2_entry),
         ensures
-            (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) =~= ret,
+            (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) =~= ret,
             lower.mapping_4k.dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))) == ret is Some,
             ret is Some ==> lower.mapping_4k.spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)))
                 == page_entry_to_map_entry(&ret.unwrap(), Ghost(lower.mapping_4k.spec_index(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))).owning_container.view())),
     {
         proof {
-            let c = PageTableC { higher: *self, lower: *lower };
+            let c = WholePageTable { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
             c.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(l3_entry.addr, target_l2i);
@@ -196,29 +196,29 @@ impl<const TABLE_TYPE: PTType> PageTableLower<TABLE_TYPE> {
             ret.mapping_2m == Map::<VAddr, MapEntry>::empty(),
             ret.pagetable_window_locks == Map::<WindowVa, LockStateU>::empty(),
             ret == Self::spec_empty(),
-            (PageTableC { higher, lower: ret }).wf(),
+            (WholePageTable { higher, lower: ret }).wf(),
     {
         let tracked ret = PageTableLower {
             l2_perms: Map::tracked_empty(), l1_rev_map: Map::empty(), mapping_4k: Map::empty(), mapping_2m: Map::empty(), pagetable_window_locks: Map::empty(),
             window_stale_cpus: Map::empty(),
         };
-        let c = PageTableC { higher, lower: ret };
-        assert(c.wf_l3()) by { reveal(PageTableC::wf_l3); };
-        assert(c.wf_l2()) by { reveal(PageTableC::wf_l2); };
-        assert(c.wf_l1()) by { reveal(PageTableC::wf_l1); };
-        assert(c.disjoint_l2()) by { reveal(PageTableC::disjoint_l2); };
-        assert(c.wf_mapping_4k()) by { reveal(PageTableC::wf_mapping_4k); reveal(PageTableHigher::wf_l4); };
-        assert(c.wf_mapping_2m()) by { reveal(PageTableC::wf_mapping_2m); reveal(PageTableHigher::wf_l4); };
-        assert(c.user_only()) by { reveal(PageTableC::user_only); };
-        assert(c.rwx_upper_level_entries()) by { reveal(PageTableC::rwx_upper_level_entries); };
-        assert(c.table_pages_wf()) by { reveal(PageTableC::table_pages_wf); };
-        assert(c.tables_reachable_wf()) by { reveal(PageTableC::tables_reachable_wf); };
-        assert(c.wf_window_locks()) by { reveal(PageTableC::wf_window_locks); };
+        let c = WholePageTable { higher, lower: ret };
+        assert(c.wf_l3()) by { reveal(WholePageTable::wf_l3); };
+        assert(c.wf_l2()) by { reveal(WholePageTable::wf_l2); };
+        assert(c.wf_l1()) by { reveal(WholePageTable::wf_l1); };
+        assert(c.disjoint_l2()) by { reveal(WholePageTable::disjoint_l2); };
+        assert(c.wf_mapping_4k()) by { reveal(WholePageTable::wf_mapping_4k); reveal(PageTableHigher::wf_l4); };
+        assert(c.wf_mapping_2m()) by { reveal(WholePageTable::wf_mapping_2m); reveal(PageTableHigher::wf_l4); };
+        assert(c.user_only()) by { reveal(WholePageTable::user_only); };
+        assert(c.rwx_upper_level_entries()) by { reveal(WholePageTable::rwx_upper_level_entries); };
+        assert(c.table_pages_wf()) by { reveal(WholePageTable::table_pages_wf); };
+        assert(c.tables_reachable_wf()) by { reveal(WholePageTable::tables_reachable_wf); };
+        assert(c.wf_window_locks()) by { reveal(WholePageTable::wf_window_locks); };
         ret
     }
 }
 
-impl PageTableC<PT_TYPE> {
+impl WholePageTable<PT_TYPE> {
     pub open spec fn spec_4k_entry_usable(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index) -> bool
         recommends
             self.wf(),
@@ -266,21 +266,21 @@ impl PageTableHigher<PT_TYPE> {
 
     pub fn resolve_mapping_4k_l2(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, l4i: L4Index, l3i: L3Index, l2i: L2Index) -> (ret: (Option<PageEntry>, PageTableErrorCode))
         requires
-            (PageTableC { higher: *self, lower: *lower }).wf(),
+            (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= l4i && pei_valid(l4i),
             pei_valid(l3i),
             pei_valid(l2i),
         ensures
-            ret.0 =~= (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_l2(l4i, l3i, l2i),
+            ret.0 =~= (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_l2(l4i, l3i, l2i),
             ret.0 is Some <==> ret.1 == PageTableErrorCode::NoError,
             ret.1 == PageTableErrorCode::L4EntryNotExist <==> self.spec_resolve_mapping_l4(l4i) is None,
             ret.1 == PageTableErrorCode::L3EntryNotExist
                 <==> self.spec_resolve_mapping_1g_l3(l4i, l3i) is None && self.spec_resolve_mapping_l3(l4i, l3i) is None && self.spec_resolve_mapping_l4(l4i) is Some,
             ret.1 == PageTableErrorCode::L2EntryNotExist
-                <==> (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is None
-                && (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_l2(l4i, l3i, l2i) is None && self.spec_resolve_mapping_l3(l4i, l3i) is Some,
+                <==> (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is None
+                && (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_l2(l4i, l3i, l2i) is None && self.spec_resolve_mapping_l3(l4i, l3i) is Some,
             ret.1 == PageTableErrorCode::EntryTakenBy1g <==> self.spec_resolve_mapping_1g_l3(l4i, l3i) is Some,
-            ret.1 == PageTableErrorCode::EntryTakenBy2m <==> (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is Some,
+            ret.1 == PageTableErrorCode::EntryTakenBy2m <==> (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is Some,
             ret.1 != PageTableErrorCode::L1EntryNotExist,
     {
         match self.resolve_mapping_4k_l3(l4i, l3i) {
@@ -300,13 +300,13 @@ impl PageTableHigher<PT_TYPE> {
     pub fn resolve_mapping_4k_l1(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index)
         -> (ret: (Option<PageEntry>, PageTableErrorCode, Option<MapEntry>))
         requires
-            (PageTableC { higher: *self, lower: *lower }).wf(),
+            (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= l4i && pei_valid(l4i),
             pei_valid(l3i),
             pei_valid(l2i),
             pei_valid(l1i),
         ensures
-            ret.0 =~= (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i),
+            ret.0 =~= (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i),
             ret.0 is Some <==> ret.1 == PageTableErrorCode::NoError,
             ret.0 is Some == ret.2 is Some,
             ret.0 is Some && ret.2 is Some ==> ret.2->0 =~= lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))),
@@ -314,16 +314,16 @@ impl PageTableHigher<PT_TYPE> {
             ret.1 == PageTableErrorCode::L3EntryNotExist
                 ==> self.spec_resolve_mapping_1g_l3(l4i, l3i) is None && self.spec_resolve_mapping_l3(l4i, l3i) is None && self.spec_resolve_mapping_l4(l4i) is Some,
             ret.1 == PageTableErrorCode::L2EntryNotExist
-                ==> (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is None
-                && (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_l2(l4i, l3i, l2i) is None && self.spec_resolve_mapping_l3(l4i, l3i) is Some,
+                ==> (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is None
+                && (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_l2(l4i, l3i, l2i) is None && self.spec_resolve_mapping_l3(l4i, l3i) is Some,
             ret.1 == PageTableErrorCode::L1EntryNotExist
-                ==> (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is None
-                && (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_l2(l4i, l3i, l2i) is Some,
+                ==> (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is None
+                && (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_l2(l4i, l3i, l2i) is Some,
             ret.1 == PageTableErrorCode::EntryTakenBy1g <==> self.spec_resolve_mapping_1g_l3(l4i, l3i) is Some,
-            ret.1 == PageTableErrorCode::EntryTakenBy2m <==> (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is Some,
+            ret.1 == PageTableErrorCode::EntryTakenBy2m <==> (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_2m_l2(l4i, l3i, l2i) is Some,
             ret.1 != PageTableErrorCode::EntryTakenBy4k,
             ret.1 != PageTableErrorCode::EntryTakenBy1g && ret.1 != PageTableErrorCode::EntryTakenBy2m && ret.1 != PageTableErrorCode::NoError
-                ==> (PageTableC { higher: *self, lower: *lower }).spec_4k_entry_usable(l4i, l3i, l2i, l1i),
+                ==> (WholePageTable { higher: *self, lower: *lower }).spec_4k_entry_usable(l4i, l3i, l2i, l1i),
     {
         match self.resolve_mapping_4k_l3(l4i, l3i) {
             (None, error_code) => { (None, error_code, None) },

@@ -210,7 +210,7 @@ pub fn try_wlock_and_mark_kill<T: LockInvTrait + LockMajorTrait + LockOwnerIdTra
             &&& old(perm).value().being_killed() == false
             &&& old(perm).value().locked() == false
             &&& final(perm).value().being_killed() == true
-            &&& final(perm).value().killer_info_inner() == Some(killer_info)
+            &&& final(perm).value().killer_info_from_control() == Some(killer_info)
             &&& ret.1 is Some
             &&& final(perm).value().locking_thread() == RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: ret.1.unwrap().view().lock_id() }
             &&& final(perm).value().inv()
@@ -243,7 +243,7 @@ pub fn mark_kill<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockO
         final(perm).addr() == old(perm).addr(),
         final(perm).is_init(),
         final(perm).value().being_killed(),
-        final(perm).value().killer_info_inner() == Some(killer_info),
+        final(perm).value().killer_info_from_control() == Some(killer_info),
         final(perm).value().locking_thread() == old(perm).value().locking_thread(),
         final(perm).value().is_init() == old(perm).value().is_init(),
         final(perm).value().view() == old(perm).value().view(),
@@ -339,7 +339,7 @@ pub fn try_wlock_dynamic_and_mark_kill<T: LockInvTrait + LockMajorTrait + LockOw
             &&& old(perm).value().being_killed() == false
             &&& old(perm).value().locked() == false
             &&& final(perm).value().being_killed() == true
-            &&& final(perm).value().killer_info_inner() == Some(killer_info)
+            &&& final(perm).value().killer_info_from_control() == Some(killer_info)
             &&& ret.1 is Some
             &&& final(perm).value().locking_thread() == RwLockState::Write { thread_id: final(lctx).thread_id(), lock_id: ret.1.unwrap().view().lock_id() }
             &&& final(perm).value().inv()

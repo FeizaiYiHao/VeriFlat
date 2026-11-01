@@ -45,7 +45,7 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
                     &&& !ret.cpu_caches.spec_index(cpu_id).view().locked()
                 },
     {
-        assert(linked_list.view().len() == linked_list.length) by { linked_list.lemma_len_view(); };
+        assert(linked_list.view().len() == linked_list.length) by { linked_list.wf_implies_view_len_eq_len(); };
         let mut cache_array: Array<RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>, NUM_CPUS> = Array::new();
         let mut cpu_id = 0;
         while cpu_id < NUM_CPUS
@@ -71,7 +71,7 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
         let global_pool = RwLock::new_unlocked(GlobalPool { linked_list }, (), Ghost(()));
         let quota = RwLock::new_unlocked(AllocatorQuota { value: quota_value, minor: Ghost(owning_container), container_depth }, (), Ghost(()));
         let ret = Self { cpu_caches, global_pool, quota, total_free_pages: Ghost(total_free_pages), owning_container };
-        proof { lemma_cache_len_fold_all_zero(ret.cpu_caches.view()); ret.global_pool.view().lemma_len_view(); }
+        proof { lemma_cache_len_fold_all_zero(ret.cpu_caches.view()); ret.global_pool.view().wf_implies_view_len_eq_len(); }
         ret
     }
 
@@ -229,7 +229,7 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
     {
         let ghost old_caches = perm.value().cpu_caches;
         let ret = wlock_cache::<SIZE>(pptr, Tracked(&mut *perm), cpu_id, Tracked(lctx), Ghost(KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id)));
-        assert(perm.value().total_free_pages_wf()) by { old_caches.lemma_view_index(); perm.value().cpu_caches.lemma_view_index(); lemma_cache_len_fold_congruence(old_caches.view(), perm.value().cpu_caches.view()); };
+        assert(perm.value().total_free_pages_wf()) by { old_caches.view_index_eq_element_value(); perm.value().cpu_caches.view_index_eq_element_value(); lemma_cache_len_fold_congruence(old_caches.view(), perm.value().cpu_caches.view()); };
         ret
     }
 
@@ -262,7 +262,7 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
     {
         let ghost old_caches = perm.value().cpu_caches;
         wunlock_cache::<SIZE>(pptr, Tracked(&mut *perm), cpu_id, Tracked(lctx), lock_perm, Ghost(KernelObjId::AllocatorCache(page_size.view(), alloc_ptr.view(), cpu_id)));
-        assert(perm.value().total_free_pages_wf()) by { old_caches.lemma_view_index(); perm.value().cpu_caches.lemma_view_index(); lemma_cache_len_fold_congruence(old_caches.view(), perm.value().cpu_caches.view()); };
+        assert(perm.value().total_free_pages_wf()) by { old_caches.view_index_eq_element_value(); perm.value().cpu_caches.view_index_eq_element_value(); lemma_cache_len_fold_congruence(old_caches.view(), perm.value().cpu_caches.view()); };
     }
 
     pub fn wlock_global_pool(pptr: &PPtr<PageAllocator<SIZE>>, Tracked(perm): Tracked<&mut PointsTo<PageAllocator<SIZE>>>,
@@ -355,7 +355,7 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
     {
         {
             let cache = borrow_mut_cache(pptr, Tracked(&mut *perm), cpu_id, Tracked(lctx), lock_perm);
-            assert(cache.linked_list.length != usize::MAX) by { cache.linked_list.lemma_len_view(); };
+            assert(cache.linked_list.length != usize::MAX) by { cache.linked_list.wf_implies_view_len_eq_len(); };
             cache.linked_list.push_head(node_addr, node_perm);
         }
         proof { set_total_free_pages_ghost(perm, (perm.value().total_free_pages.view() + 1) as usize); }
@@ -445,13 +445,13 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
             final(perm).value().quota == old(perm).value().quota,
             final(perm).value().owning_container == old(perm).value().owning_container,
     {
-        assert(perm.value().global_pool.view().linked_list.length != usize::MAX) by { lemma_cache_len_fold_nonneg(perm.value().cpu_caches.view()); perm.value().global_pool.view().linked_list.lemma_len_view(); };
+        assert(perm.value().global_pool.view().linked_list.length != usize::MAX) by { lemma_cache_len_fold_nonneg(perm.value().cpu_caches.view()); perm.value().global_pool.view().linked_list.wf_implies_view_len_eq_len(); };
         {
             let pool = borrow_mut_global_pool(pptr, Tracked(&mut *perm), Tracked(lctx), lock_perm);
             pool.linked_list.push_head(node_addr, node_perm);
         }
         proof { set_total_free_pages_ghost(perm, (perm.value().total_free_pages.view() + 1) as usize); }
-        assert(perm.value().wf()) by { perm.value().global_pool.view().lemma_len_view(); old(perm).value().global_pool.view().lemma_len_view(); };
+        assert(perm.value().wf()) by { perm.value().global_pool.view().wf_implies_view_len_eq_len(); old(perm).value().global_pool.view().wf_implies_view_len_eq_len(); };
     }
 
     pub fn pop_global_pool_page(pptr: &PPtr<PageAllocator<SIZE>>, Tracked(perm): Tracked<&mut PointsTo<PageAllocator<SIZE>>>, Tracked(lctx): Tracked<&LocalContext>,
@@ -496,8 +496,8 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
         };
         proof {
             set_total_free_pages_ghost(perm, (perm.value().total_free_pages.view() - 1) as usize);
-            perm.value().global_pool.view().lemma_len_view();
-            old(perm).value().global_pool.view().lemma_len_view();
+            perm.value().global_pool.view().wf_implies_view_len_eq_len();
+            old(perm).value().global_pool.view().wf_implies_view_len_eq_len();
         }
         (node_addr, node_perm)
     }

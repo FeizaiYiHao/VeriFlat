@@ -283,7 +283,7 @@ impl Cpu {
             forall|c: CpuId, p: Pcid| #![trigger final(tlb).spec_index((c, p))] #![trigger old(tlb).spec_index((c, p))] index_valid(NUM_CPUS, c) && pcid_valid(p) && (c != cpu_id || p != pcid) ==> final(tlb).spec_index((c, p)) == old(tlb).spec_index((c, p)),
             final(tlb).view() == old(tlb).view().insert((cpu_id, pcid), final(tlb).spec_index((cpu_id, pcid))),
             match old(self).view().current_pagetable {
-                Some(ptr) => single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(tlb).spec_index((cpu_id, pcid)), pagetable_c(k.pt_mp, k.pt_lower.view(), ptr)),
+                Some(ptr) => single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(tlb).spec_index((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), ptr)),
                 None => final(tlb).spec_index((cpu_id, pcid)).is_empty(),
             },
     {
@@ -715,7 +715,7 @@ impl CpuLockedArray {
                 let flush = old(needflush).spec_index(cpu_id, pcid).view().needflush || (entry is Some && (entry.unwrap().process_ptr != process_ptr || entry.unwrap().pagetable_ptr != pagetable_ptr));
                 &&& (!flush ==> *final(tlb) == *old(tlb))
                 &&& final(tlb).view() == if flush { old(tlb).view().insert((cpu_id, pcid), final(tlb).spec_index((cpu_id, pcid))) } else { old(tlb).view() }
-                &&& flush ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(tlb).spec_index((cpu_id, pcid)), pagetable_c(k.pt_mp, k.pt_lower.view(), pagetable_ptr))
+                &&& flush ==> single_cpu_single_pcid_tlb_subset_of_present_pagetable(final(tlb).spec_index((cpu_id, pcid)), whole_pagetable(k.pt_mp, k.pt_lower.view(), pagetable_ptr))
             },
             final(lctx).cpu_id() == old(lctx).cpu_id(),
             final(lctx).thread_id() == old(lctx).thread_id(),

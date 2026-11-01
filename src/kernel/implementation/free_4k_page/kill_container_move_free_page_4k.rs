@@ -114,7 +114,7 @@ pub fn kill_container_move_free_page_4k(
         container_page_owner_backward_at(krnl.ctn_mp, krnl.pg_arr, page_index);
         lemma_container_allocator_quota_eq_total_free_without_users(*krnl, src);
         lemma_container_allocator_4k_quota_bounded(&*krnl, dst);
-        krnl.allc_4k_mp.spec_index(src_allocator).global_pool.view().linked_list.lemma_len_view();
+        krnl.allc_4k_mp.spec_index(src_allocator).global_pool.view().linked_list.wf_implies_view_len_eq_len();
         assert(krnl.allc_4k_mp.spec_index(src_allocator).global_pool.view().view().contains(page_ptr));
         assert(krnl.allc_4k_mp.spec_index(src_allocator).global_pool.view().view().no_duplicates()) by { reveal(LinkedList::value_list_unique); };
         assert(0 < krnl.allc_4k_mp.spec_index(src_allocator).quota.view().value) by {
@@ -124,7 +124,7 @@ pub fn kill_container_move_free_page_4k(
     let (node_addr, Tracked(node_perm)) = krnl.allc_4k_mp.pop_global_pool_page_typed(src_allocator, Ghost(lctx.allocator_quota_4k_lock_map()),
         Ghost(lctx.allocator_cache_4k_lock_map()), Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), Tracked(src_pool_perm));
     assert(node_addr == krnl.pg_arr.spec_index(page_index).view().view().free_list_node_storage.addr()) by {
-        pre.allc_4k_mp.spec_index(src_allocator).global_pool.view().linked_list.lemma_value_addr_unique(node_addr, krnl.pg_arr.spec_index(page_index).view().view().free_list_node_storage.addr());
+        pre.allc_4k_mp.spec_index(src_allocator).global_pool.view().linked_list.wf_and_equal_values_implies_equal_addrs(node_addr, krnl.pg_arr.spec_index(page_index).view().view().free_list_node_storage.addr());
     };
     krnl.allc_4k_mp.push_global_pool_page_typed(dst_allocator, node_addr, Tracked(node_perm), Ghost(lctx.allocator_quota_4k_lock_map()), Ghost(lctx.allocator_cache_4k_lock_map()),
         Ghost(lctx.allocator_global_pool_4k_lock_map()), Tracked(&*lctx), Tracked(dst_pool_perm));

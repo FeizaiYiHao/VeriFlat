@@ -171,7 +171,7 @@ pub(super) proof fn ipc_finish_transit_eof(
             &&& thread_cpu_wf(post.thr_mp, post.cpu_arr)
         }) by { reveal(container_scheduler_wf); reveal(container_thread_wf); reveal(process_thread_wf); reveal(thread_cpu_wf); };
         assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by {
-            seq_push_lemma::<RwLockThreadPtr>();
+            seq_push_implies_contains::<RwLockThreadPtr>();
             reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf); reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_map);
         };
     };

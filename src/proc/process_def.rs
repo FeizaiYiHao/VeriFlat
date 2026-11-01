@@ -170,7 +170,7 @@ impl Process {
     {
         let mut node_perm = node_perm;
         node_update_value(node_addr, &mut node_perm, thread_ptr);
-        proof { assert(self.owned_threads.length != usize::MAX) by { self.owned_threads.lemma_len_view(); }; }
+        proof { assert(self.owned_threads.length != usize::MAX) by { self.owned_threads.wf_implies_view_len_eq_len(); }; }
         self.owned_threads.push_tail(node_addr, node_perm);
         self.state = Ghost(ProcessState::Running);
     }
@@ -202,7 +202,7 @@ impl Process {
             ret.view().value().view() == old(self).owned_threads.map().spec_index(node_addr),
     {
         let (_, node_perm) = self.owned_threads.remove(node_addr);
-        proof { assert(self.owned_threads.view().len() == self.owned_threads.length && old(self).owned_threads.view().len() == old(self).owned_threads.length) by { self.owned_threads.lemma_len_view(); old(self).owned_threads.lemma_len_view(); }; }
+        proof { assert(self.owned_threads.view().len() == self.owned_threads.length && old(self).owned_threads.view().len() == old(self).owned_threads.length) by { self.owned_threads.wf_implies_view_len_eq_len(); old(self).owned_threads.wf_implies_view_len_eq_len(); }; }
         self.quota_4k = self.quota_4k + quota_4k;
         self.quota_2m = self.quota_2m + quota_2m;
         self.quota_1g = self.quota_1g + quota_1g;
@@ -259,7 +259,7 @@ impl Process {
     {
         let mut node_perm = node_perm;
         node_update_value(node_addr, &mut node_perm, child_ptr);
-        proof { assert(self.children.length != usize::MAX) by { self.children.lemma_len_view(); }; }
+        proof { assert(self.children.length != usize::MAX) by { self.children.wf_implies_view_len_eq_len(); }; }
         self.children.push_tail(node_addr, node_perm);
     }
 

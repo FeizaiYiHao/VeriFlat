@@ -44,7 +44,7 @@ proof fn kill_retire_table_page_eof_table_pages(
         page_ptr_valid(page_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::PageTable { pagetable_root: table, table_type: if iommu { IOMMU_TYPE } else { PT_TYPE } } }),
         iommu ==> pre.it_mp.dom().contains(table) && pre.it_mp.spec_index(table).view().page_closure().contains(page_ptr),
-        !iommu ==> pre.pt_mp.dom().contains(table) && pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).page_closure().contains(page_ptr),
+        !iommu ==> pre.pt_mp.dom().contains(table) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).page_closure().contains(page_ptr),
         post.subsystems_inv(),
     ensures
         pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
@@ -88,7 +88,7 @@ proof fn kill_retire_table_page_eof_page_relations(
         pre.ctn_mp.spec_index(pre.thr_mp.spec_index(thread_ptr).view().owning_container).view_rodata().view().allocator_ptr_4k == allocator_ptr,
         pre.allc_4k_mp.dom().contains(allocator_ptr),
         iommu ==> pre.it_mp.dom().contains(table) && pre.it_mp.spec_index(table).view().page_closure().contains(page_ptr),
-        !iommu ==> pre.pt_mp.dom().contains(table) && pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).page_closure().contains(page_ptr),
+        !iommu ==> pre.pt_mp.dom().contains(table) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).page_closure().contains(page_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().free_list_node_storage.addr() == node_addr,
         !pre.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(node_addr),
         post.subsystems_inv(),
@@ -227,8 +227,8 @@ pub(crate) proof fn kill_retire_table_page_eof(
         pre.ctn_mp.spec_index(pre.thr_mp.spec_index(thread_ptr).view().owning_container).view_rodata().view().allocator_ptr_4k == allocator_ptr,
         pre.allc_4k_mp.dom().contains(allocator_ptr),
         iommu ==> pre.it_mp.dom().contains(table) && pre.it_mp.spec_index(table).view().page_closure().contains(page_ptr),
-        !iommu ==> pre.pt_mp.dom().contains(table) && pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).page_closure().contains(page_ptr),
-        !iommu ==> pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).leaves_present(),
+        !iommu ==> pre.pt_mp.dom().contains(table) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).page_closure().contains(page_ptr),
+        !iommu ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).leaves_present(),
         pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().free_list_node_storage.addr() == node_addr,
         pre.thr_mp.spec_index(thread_ptr).locking_thread() is Write,
         !pre.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(node_addr),
@@ -248,7 +248,7 @@ pub(crate) proof fn kill_retire_table_page_eof(
         kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post),
         kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp),
         kernel_container_nonlock_fields_and_quotas_unchanged(&pre, &post),
-        !iommu ==> (pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).leaves_present() ==> pagetable_c(post.pt_mp, post.pt_lower.view(), table).leaves_present()),
+        !iommu ==> (whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).leaves_present() ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), table).leaves_present()),
         iommu ==> (pre.it_mp.spec_index(table).view().leaves_present() ==> post.it_mp.spec_index(table).view().leaves_present()),
 {
     kill_retire_table_page_eof_subsystems_inv(pre, post, iommu, table, page_ptr, thread_ptr, allocator_ptr, cpu_id, node_addr);

@@ -42,17 +42,17 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
             &&& range > 0
             &&& va_4k_range_valid(va, range)
             &&& final(krnl).pt_mp.dom().contains(pt)
-            &&& forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> !pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_4k().dom().contains(va_range.view()[j])
+            &&& forall|j: int| #![trigger va_range.view()[j]] 0 <= j < range ==> !whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_4k().dom().contains(va_range.view()[j])
             &&& forall|j: int, v: VAddr|
-                #![trigger va_range.view()[j], pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_4k().dom().contains(v)]
-                #![trigger va_range.view()[j], pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pt).mapping_4k().dom().contains(v)]
+                #![trigger va_range.view()[j], whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_4k().dom().contains(v)]
+                #![trigger va_range.view()[j], whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pt).mapping_4k().dom().contains(v)]
                 0 <= j < range && spec_v2l4index(v) == spec_v2l4index(va_range.view()[j]) && spec_v2l3index(v) == spec_v2l3index(va_range.view()[j]) && spec_v2l2index(v) == spec_v2l2index(va_range.view()[j])
                     && !va_range.view().contains(v) ==> {
-                    &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_4k().dom().contains(v) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pt).mapping_4k().dom().contains(v)
-                    &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pt).mapping_4k().dom().contains(v)
-                        ==> pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_4k().spec_index(v) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pt).mapping_4k().spec_index(v)
+                    &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_4k().dom().contains(v) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pt).mapping_4k().dom().contains(v)
+                    &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pt).mapping_4k().dom().contains(v)
+                        ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_4k().spec_index(v) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pt).mapping_4k().spec_index(v)
                 }
-            &&& pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_1g() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pt).mapping_1g()
+            &&& whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pt).mapping_1g() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pt).mapping_1g()
         },
 {
     proof { kernel_snapshot_k_equal_implies_nonlock_fields_unchanged(&*steps, &*krnl); }

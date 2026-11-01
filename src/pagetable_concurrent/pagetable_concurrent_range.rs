@@ -3,7 +3,7 @@ use vstd::prelude::*;
 verus! {
 use crate::*;
 
-impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
+impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     /// No 4K leaf resolves in the inclusive L1 interval under one fixed L4/L3/L2 path.
     pub open spec fn spec_resolve_4k_l1_range_empty(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, start_l1i: L1Index, end_l1i: L1Index) -> bool {
         forall|l1i: L1Index| #![trigger self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)] start_l1i <= l1i <= end_l1i ==> self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is None
@@ -115,7 +115,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             self.kernel_l4_end() <= start.0,
         ensures
             self.spec_resolve_4k_range_empty(start, end) == self.spec_mapping_4k_range_empty(start, end),
-    { reveal(PageTableC::wf_mapping_4k); }
+    { reveal(WholePageTable::wf_mapping_4k); }
 
     /// Closure of `next_mapped_4k_from`: the resolved scan result holds for the abstract 4K mapping.
     proof fn next_mapped_4k_from_resolve(&self, cursor: (L4Index, L3Index, L2Index, L1Index), ret: Option<(L4Index, L3Index, L2Index, L1Index)>)
@@ -142,10 +142,10 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
                 #![trigger self.lower.mapping_4k.dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
                 pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && spec_l4_index_path_le(cursor, (l4i, l3i, l2i, l1i))
                     && (ret is None || !spec_l4_index_path_le(ret->Some_0, (l4i, l3i, l2i, l1i))) ==> !self.lower.mapping_4k.dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
-    { reveal(PageTableC::wf_mapping_4k); }
+    { reveal(WholePageTable::wf_mapping_4k); }
 }
 
-impl PageTableC<PT_TYPE> {
+impl WholePageTable<PT_TYPE> {
     /// Every 4K slot in the range is available for a new leaf. Missing directory levels are allowed; existing 1G,
     /// 2M, and 4K leaves are not.
     pub open spec fn spec_mapping_4k_va_range_buildable(&self, range: &VaRange4K) -> bool {
@@ -159,14 +159,14 @@ impl PageTableC<PT_TYPE> {
 impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     pub fn mapping_4k_va_range_empty(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, start_va: VAddr, end_va: VAddr) -> (ret: bool)
         requires
-            (PageTableC { higher: *self, lower: *lower }).wf(),
+            (WholePageTable { higher: *self, lower: *lower }).wf(),
             va_4k_valid(start_va),
             va_4k_valid(end_va),
             start_va <= end_va,
             self.kernel_l4_end <= spec_va2index(start_va).0,
         ensures
-            ret == (PageTableC { higher: *self, lower: *lower }).spec_mapping_4k_range_empty(spec_va2index(start_va), spec_va2index(end_va)),
-            ret ==> (PageTableC { higher: *self, lower: *lower }).spec_mapping_4k_va_range_empty(start_va, end_va),
+            ret == (WholePageTable { higher: *self, lower: *lower }).spec_mapping_4k_range_empty(spec_va2index(start_va), spec_va2index(end_va)),
+            ret ==> (WholePageTable { higher: *self, lower: *lower }).spec_mapping_4k_va_range_empty(start_va, end_va),
     {
         let start = va2index(start_va);
         let end = va2index(end_va);
@@ -177,9 +177,9 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         }
         let ret = self.mapping_4k_range_empty(Tracked(lower), start, end);
         if ret {
-            assert((PageTableC { higher: *self, lower: *lower }).spec_mapping_4k_va_range_empty(start_va, end_va)) by {
-                reveal(PageTableC::spec_mapping_4k_va_range_empty);
-                broadcast use PageTableC::mapping_4k_index_range_empty_implies_va_empty_at;
+            assert((WholePageTable { higher: *self, lower: *lower }).spec_mapping_4k_va_range_empty(start_va, end_va)) by {
+                reveal(WholePageTable::spec_mapping_4k_va_range_empty);
+                broadcast use WholePageTable::mapping_4k_index_range_empty_implies_va_empty_at;
             };
         }
         ret
@@ -188,7 +188,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     fn resolve_4k_l1_range_empty(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, l4i: L4Index, l3i: L3Index, l2i: L2Index, l3_entry: &PageEntry, l2_entry: &PageEntry,
         start_l1i: L1Index, end_l1i: L1Index) -> (ret: bool)
         requires
-            (PageTableC { higher: *self, lower: *lower }).wf(),
+            (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= l4i && pei_valid(l4i),
             pei_valid(l3i),
             pei_valid(l2i),
@@ -196,15 +196,15 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             pei_valid(end_l1i),
             start_l1i <= end_l1i,
             self.spec_resolve_mapping_l3(l4i, l3i) =~= Some(*l3_entry),
-            (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_l2(l4i, l3i, l2i) =~= Some(*l2_entry),
+            (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_l2(l4i, l3i, l2i) =~= Some(*l2_entry),
         ensures
-            ret == (PageTableC { higher: *self, lower: *lower }).spec_resolve_4k_l1_range_empty(l4i, l3i, l2i, start_l1i, end_l1i),
+            ret == (WholePageTable { higher: *self, lower: *lower }).spec_resolve_4k_l1_range_empty(l4i, l3i, l2i, start_l1i, end_l1i),
     {
-        let ghost c = PageTableC { higher: *self, lower: *lower };
+        let ghost c = WholePageTable { higher: *self, lower: *lower };
         let mut l1i = start_l1i;
         while l1i <= end_l1i
             invariant
-                c == (PageTableC { higher: *self, lower: *lower }),
+                c == (WholePageTable { higher: *self, lower: *lower }),
                 c.wf(),
                 self.kernel_l4_end <= l4i && pei_valid(l4i),
                 pei_valid(l3i),
@@ -226,7 +226,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     fn resolve_4k_l2_range_empty(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, l4i: L4Index, l3i: L3Index, l3_entry: &PageEntry, start: (L2Index, L1Index),
         end: (L2Index, L1Index)) -> (ret: bool)
         requires
-            (PageTableC { higher: *self, lower: *lower }).wf(),
+            (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= l4i && pei_valid(l4i),
             pei_valid(l3i),
             pei_valid(start.0),
@@ -236,13 +236,13 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             spec_l2_index_path_le(start, end),
             self.spec_resolve_mapping_l3(l4i, l3i) =~= Some(*l3_entry),
         ensures
-            ret == (PageTableC { higher: *self, lower: *lower }).spec_resolve_4k_l2_range_empty(l4i, l3i, start, end),
+            ret == (WholePageTable { higher: *self, lower: *lower }).spec_resolve_4k_l2_range_empty(l4i, l3i, start, end),
     {
-        let ghost c = PageTableC { higher: *self, lower: *lower };
+        let ghost c = WholePageTable { higher: *self, lower: *lower };
         let mut l2i = start.0;
         while l2i <= end.0
             invariant
-                c == (PageTableC { higher: *self, lower: *lower }),
+                c == (WholePageTable { higher: *self, lower: *lower }),
                 c.wf(),
                 self.kernel_l4_end <= l4i && pei_valid(l4i),
                 pei_valid(l3i),
@@ -272,7 +272,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     fn resolve_4k_l3_range_empty(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, l4i: L4Index, l4_entry: &PageEntry, start: (L3Index, L2Index, L1Index),
         end: (L3Index, L2Index, L1Index)) -> (ret: bool)
         requires
-            (PageTableC { higher: *self, lower: *lower }).wf(),
+            (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= l4i && pei_valid(l4i),
             pei_valid(start.0),
             pei_valid(start.1),
@@ -283,13 +283,13 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             spec_l3_index_path_le(start, end),
             self.spec_resolve_mapping_l4(l4i) =~= Some(*l4_entry),
         ensures
-            ret == (PageTableC { higher: *self, lower: *lower }).spec_resolve_4k_l3_range_empty(l4i, start, end),
+            ret == (WholePageTable { higher: *self, lower: *lower }).spec_resolve_4k_l3_range_empty(l4i, start, end),
     {
-        let ghost c = PageTableC { higher: *self, lower: *lower };
+        let ghost c = WholePageTable { higher: *self, lower: *lower };
         let mut l3i = start.0;
         while l3i <= end.0
             invariant
-                c == (PageTableC { higher: *self, lower: *lower }),
+                c == (WholePageTable { higher: *self, lower: *lower }),
                 c.wf(),
                 self.kernel_l4_end <= l4i && pei_valid(l4i),
                 pei_valid(start.0),
@@ -319,7 +319,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
 
     fn resolve_4k_range_empty(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, start: (L4Index, L3Index, L2Index, L1Index), end: (L4Index, L3Index, L2Index, L1Index)) -> (ret: bool)
         requires
-            (PageTableC { higher: *self, lower: *lower }).wf(),
+            (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= start.0,
             pei_valid(start.0),
             pei_valid(start.1),
@@ -331,13 +331,13 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             pei_valid(end.3),
             spec_l4_index_path_le(start, end),
         ensures
-            ret == (PageTableC { higher: *self, lower: *lower }).spec_resolve_4k_range_empty(start, end),
+            ret == (WholePageTable { higher: *self, lower: *lower }).spec_resolve_4k_range_empty(start, end),
     {
-        let ghost c = PageTableC { higher: *self, lower: *lower };
+        let ghost c = WholePageTable { higher: *self, lower: *lower };
         let mut l4i = start.0;
         while l4i <= end.0
             invariant
-                c == (PageTableC { higher: *self, lower: *lower }),
+                c == (WholePageTable { higher: *self, lower: *lower }),
                 c.wf(),
                 self.kernel_l4_end <= start.0 <= l4i,
                 pei_valid(start.0),
@@ -371,7 +371,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     /// directory levels and huge-page entries skip their complete 4K subtrees.
     pub fn mapping_4k_range_empty(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, start: (L4Index, L3Index, L2Index, L1Index), end: (L4Index, L3Index, L2Index, L1Index)) -> (ret: bool)
         requires
-            (PageTableC { higher: *self, lower: *lower }).wf(),
+            (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= start.0,
             pei_valid(start.0),
             pei_valid(start.1),
@@ -383,10 +383,10 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             pei_valid(end.3),
             spec_l4_index_path_le(start, end),
         ensures
-            ret == (PageTableC { higher: *self, lower: *lower }).spec_mapping_4k_range_empty(start, end),
+            ret == (WholePageTable { higher: *self, lower: *lower }).spec_mapping_4k_range_empty(start, end),
     {
         let ret = self.resolve_4k_range_empty(Tracked(lower), start, end);
-        proof { (PageTableC { higher: *self, lower: *lower }).mapping_4k_range_empty_from_resolve(start, end); }
+        proof { (WholePageTable { higher: *self, lower: *lower }).mapping_4k_range_empty_from_resolve(start, end); }
         ret
     }
 
@@ -394,29 +394,29 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     fn next_resolved_4k_l1_from(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, l4i: L4Index, l3i: L3Index, l2i: L2Index, l3_entry: &PageEntry, l2_entry: &PageEntry,
         start_l1i: L1Index) -> (ret: Option<L1Index>)
         requires
-            (PageTableC { higher: *self, lower: *lower }).wf(),
+            (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= l4i && pei_valid(l4i),
             pei_valid(l3i),
             pei_valid(l2i),
             start_l1i <= 512,
             self.spec_resolve_mapping_l3(l4i, l3i) =~= Some(*l3_entry),
-            (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_l2(l4i, l3i, l2i) =~= Some(*l2_entry),
+            (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_l2(l4i, l3i, l2i) =~= Some(*l2_entry),
         ensures
             ret is Some ==> {
                 let found = ret->Some_0;
                 &&& start_l1i <= found
                 &&& pei_valid(found)
-                &&& (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, found) is Some
+                &&& (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, found) is Some
             },
             forall|l1i: L1Index|
-                #![trigger (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
-                pei_valid(l1i) && start_l1i <= l1i && (ret is None || l1i < ret->Some_0) ==> (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is None,
+                #![trigger (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
+                pei_valid(l1i) && start_l1i <= l1i && (ret is None || l1i < ret->Some_0) ==> (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is None,
     {
-        let ghost c = PageTableC { higher: *self, lower: *lower };
+        let ghost c = WholePageTable { higher: *self, lower: *lower };
         let mut l1i = start_l1i;
         while l1i < 512
             invariant
-                c == (PageTableC { higher: *self, lower: *lower }),
+                c == (WholePageTable { higher: *self, lower: *lower }),
                 c.wf(),
                 self.kernel_l4_end <= l4i && pei_valid(l4i),
                 pei_valid(l3i),
@@ -436,7 +436,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     /// The first 4K leaf under one fixed L4/L3 path at or after `start` in (L2, L1) order.
     fn next_resolved_4k_l2_from(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, l4i: L4Index, l3i: L3Index, l3_entry: &PageEntry, start: (L2Index, L1Index)) -> (ret: Option<(L2Index, L1Index)>)
         requires
-            (PageTableC { higher: *self, lower: *lower }).wf(),
+            (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= l4i && pei_valid(l4i),
             pei_valid(l3i),
             pei_valid(start.0),
@@ -448,18 +448,18 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
                 &&& pei_valid(found.0)
                 &&& pei_valid(found.1)
                 &&& spec_l2_index_path_le(start, found)
-                &&& (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, found.0, found.1) is Some
+                &&& (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, found.0, found.1) is Some
             },
             forall|l2i: L2Index, l1i: L1Index|
-                #![trigger (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
+                #![trigger (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
                 pei_valid(l2i) && pei_valid(l1i) && spec_l2_index_path_le(start, (l2i, l1i)) && (ret is None || !spec_l2_index_path_le(ret->Some_0, (l2i, l1i)))
-                    ==> (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is None,
+                    ==> (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is None,
     {
-        let ghost c = PageTableC { higher: *self, lower: *lower };
+        let ghost c = WholePageTable { higher: *self, lower: *lower };
         let mut l2i = start.0;
         while l2i < 512
             invariant
-                c == (PageTableC { higher: *self, lower: *lower }),
+                c == (WholePageTable { higher: *self, lower: *lower }),
                 c.wf(),
                 self.kernel_l4_end <= l4i && pei_valid(l4i),
                 pei_valid(l3i),
@@ -484,7 +484,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     fn next_resolved_4k_l3_from(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, l4i: L4Index, l4_entry: &PageEntry, start: (L3Index, L2Index, L1Index))
         -> (ret: Option<(L3Index, L2Index, L1Index)>)
         requires
-            (PageTableC { higher: *self, lower: *lower }).wf(),
+            (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= l4i && pei_valid(l4i),
             pei_valid(start.0),
             pei_valid(start.1),
@@ -497,18 +497,18 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
                 &&& pei_valid(found.1)
                 &&& pei_valid(found.2)
                 &&& spec_l3_index_path_le(start, found)
-                &&& (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, found.0, found.1, found.2) is Some
+                &&& (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, found.0, found.1, found.2) is Some
             },
             forall|l3i: L3Index, l2i: L2Index, l1i: L1Index|
-                #![trigger (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
+                #![trigger (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
                 pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && spec_l3_index_path_le(start, (l3i, l2i, l1i)) && (ret is None || !spec_l3_index_path_le(ret->Some_0, (l3i, l2i, l1i)))
-                    ==> (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is None,
+                    ==> (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is None,
     {
-        let ghost c = PageTableC { higher: *self, lower: *lower };
+        let ghost c = WholePageTable { higher: *self, lower: *lower };
         let mut l3i = start.0;
         while l3i < 512
             invariant
-                c == (PageTableC { higher: *self, lower: *lower }),
+                c == (WholePageTable { higher: *self, lower: *lower }),
                 c.wf(),
                 self.kernel_l4_end <= l4i && pei_valid(l4i),
                 pei_valid(start.0),
@@ -535,7 +535,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     /// The first 4K leaf at or after `cursor` in (L4, L3, L2, L1) order.
     fn next_resolved_4k_from(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, cursor: (L4Index, L3Index, L2Index, L1Index)) -> (ret: Option<(L4Index, L3Index, L2Index, L1Index)>)
         requires
-            (PageTableC { higher: *self, lower: *lower }).wf(),
+            (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= cursor.0,
             pei_valid(cursor.0),
             pei_valid(cursor.1),
@@ -550,19 +550,19 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
                 &&& pei_valid(found.2)
                 &&& pei_valid(found.3)
                 &&& spec_l4_index_path_le(cursor, found)
-                &&& (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(found.0, found.1, found.2, found.3) is Some
+                &&& (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(found.0, found.1, found.2, found.3) is Some
             },
             forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
-                #![trigger (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
+                #![trigger (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)]
                 #![trigger spec_index2va((l4i, l3i, l2i, l1i))]
                 pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && spec_l4_index_path_le(cursor, (l4i, l3i, l2i, l1i))
-                    && (ret is None || !spec_l4_index_path_le(ret->Some_0, (l4i, l3i, l2i, l1i))) ==> (PageTableC { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is None,
+                    && (ret is None || !spec_l4_index_path_le(ret->Some_0, (l4i, l3i, l2i, l1i))) ==> (WholePageTable { higher: *self, lower: *lower }).spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i) is None,
     {
-        let ghost c = PageTableC { higher: *self, lower: *lower };
+        let ghost c = WholePageTable { higher: *self, lower: *lower };
         let mut l4i = cursor.0;
         while l4i < 512
             invariant
-                c == (PageTableC { higher: *self, lower: *lower }),
+                c == (WholePageTable { higher: *self, lower: *lower }),
                 c.wf(),
                 self.kernel_l4_end <= cursor.0 <= l4i <= 512,
                 pei_valid(cursor.0),
@@ -590,7 +590,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     /// `(f.0, f.1, f.2, f.3 + 1)`. Missing directory levels and huge-page entries skip their complete 4K subtrees.
     pub fn next_mapped_4k_from(&self, Tracked(lower): Tracked<&PageTableLower<TABLE_TYPE>>, cursor: (L4Index, L3Index, L2Index, L1Index)) -> (ret: Option<(L4Index, L3Index, L2Index, L1Index)>)
         requires
-            (PageTableC { higher: *self, lower: *lower }).wf(),
+            (WholePageTable { higher: *self, lower: *lower }).wf(),
             self.kernel_l4_end <= cursor.0,
             pei_valid(cursor.0),
             pei_valid(cursor.1),
@@ -613,7 +613,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
                     && (ret is None || !spec_l4_index_path_le(ret->Some_0, (l4i, l3i, l2i, l1i))) ==> !lower.mapping_4k.dom().contains(spec_index2va((l4i, l3i, l2i, l1i))),
     {
         let ret = self.next_resolved_4k_from(Tracked(lower), cursor);
-        proof { (PageTableC { higher: *self, lower: *lower }).next_mapped_4k_from_resolve(cursor, ret); }
+        proof { (WholePageTable { higher: *self, lower: *lower }).next_mapped_4k_from_resolve(cursor, ret); }
         ret
     }
 }
@@ -641,7 +641,7 @@ impl PageTableHigher<PT_TYPE> {
         let (last_l4i, last_l3i, last_l2i, _) = va2index(last_va);
         proof {
             assert(first_l4i < last_l4i || (first_l4i == last_l4i && (first_l3i < last_l3i || (first_l3i == last_l3i && first_l2i <= last_l2i)))) by {
-                range.va_range_lemma(); broadcast use spec_va_4k_valid_index_roundtrip;
+                range.wf_implies_view_index_is_start_plus_offset(); broadcast use spec_va_4k_valid_index_roundtrip;
                 spec_index2va_le_implies_4k_indices_lex_le(spec_va2index(range.start), spec_va2index(last_va));
             };
         }
@@ -693,21 +693,21 @@ impl PageTableHigher<PT_TYPE> {
     /// not mutate any page-table state.
     pub fn mapping_4k_va_range_present(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, range: &VaRange4K) -> (ret: bool)
         requires
-            (PageTableC { higher: *self, lower: *lower }).wf(),
+            (WholePageTable { higher: *self, lower: *lower }).wf(),
             range.wf(),
             self.kernel_l4_end <= spec_va2index(range.start).0,
         ensures
-            ret == (PageTableC { higher: *self, lower: *lower }).spec_mapping_4k_va_range_present(range),
+            ret == (WholePageTable { higher: *self, lower: *lower }).spec_mapping_4k_va_range_present(range),
             ret == forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len
                 ==> lower.mapping_4k.dom().contains(range.view().spec_index(j)) && lower.mapping_4k.spec_index(range.view().spec_index(j)).present,
     {
-        let ghost c = PageTableC { higher: *self, lower: *lower };
+        let ghost c = WholePageTable { higher: *self, lower: *lower };
         let range_start = range.start;
         let range_len = range.len;
         let mut i: usize = 0;
         while i < range_len
             invariant
-                c == (PageTableC { higher: *self, lower: *lower }),
+                c == (WholePageTable { higher: *self, lower: *lower }),
                 c.wf(),
                 range.wf(),
                 range_start == range.start,
@@ -739,19 +739,19 @@ impl PageTableHigher<PT_TYPE> {
             decreases range_len - i,
         {
             let va = va_add_range(range_start, i);
-            proof { assert(va_4k_valid(va)) by { range.va_range_lemma(); }; }
+            proof { assert(va_4k_valid(va)) by { range.wf_implies_view_index_is_start_plus_offset(); }; }
             let (l4i, l3i, l2i, l1i) = va2index(va);
-            proof { assert(self.kernel_l4_end <= l4i) by { assert(spec_va_4k_valid(range_start) && spec_va_4k_valid(va) && range_start <= va) by { range.va_range_lemma(); }; spec_v2l4index_monotonic(range_start, va); }; }
+            proof { assert(self.kernel_l4_end <= l4i) by { assert(spec_va_4k_valid(range_start) && spec_va_4k_valid(va) && range_start <= va) by { range.wf_implies_view_index_is_start_plus_offset(); }; spec_v2l4index_monotonic(range_start, va); }; }
             let resolved = self.resolve_mapping_4k_l1(Tracked(lower), l4i, l3i, l2i, l1i);
             if resolved.2.is_none() {
-                proof { assert(!lower.mapping_4k.dom().contains(range.view().spec_index(i as int))) by { range.va_range_lemma(); c.wf_mapping_4k_at(l4i, l3i, l2i, l1i); spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i); }; }
+                proof { assert(!lower.mapping_4k.dom().contains(range.view().spec_index(i as int))) by { range.wf_implies_view_index_is_start_plus_offset(); c.wf_mapping_4k_at(l4i, l3i, l2i, l1i); spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i); }; }
                 return false;
             }
             let entry = resolved.2.unwrap();
             if !entry.present {
                 proof {
-                    assert(!c.spec_mapping_4k_va_range_present(range)) by { range.va_range_lemma(); assert(spec_index2va((l4i, l3i, l2i, l1i)) == va) by { spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i); }; };
-                    assert(!lower.mapping_4k.spec_index(range.view().spec_index(i as int)).present) by { range.va_range_lemma(); c.wf_mapping_4k_at(l4i, l3i, l2i, l1i); spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i); };
+                    assert(!c.spec_mapping_4k_va_range_present(range)) by { range.wf_implies_view_index_is_start_plus_offset(); assert(spec_index2va((l4i, l3i, l2i, l1i)) == va) by { spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i); }; };
+                    assert(!lower.mapping_4k.spec_index(range.view().spec_index(i as int)).present) by { range.wf_implies_view_index_is_start_plus_offset(); c.wf_mapping_4k_at(l4i, l3i, l2i, l1i); spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i); };
                 }
                 return false;
             }
@@ -773,7 +773,7 @@ impl PageTableHigher<PT_TYPE> {
                         &&& spec_resolved->0.perm.kernel_present
                         &&& spec_resolved->0.perm.present
                     }
-                }) by { range.va_range_lemma(); assert(spec_index2va((l4i, l3i, l2i, l1i)) == va) by { spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i); }; c.wf_mapping_4k_at(l4i, l3i, l2i, l1i); };
+                }) by { range.wf_implies_view_index_is_start_plus_offset(); assert(spec_index2va((l4i, l3i, l2i, l1i)) == va) by { spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i); }; c.wf_mapping_4k_at(l4i, l3i, l2i, l1i); };
             }
             i = i + 1;
         }
@@ -782,12 +782,12 @@ impl PageTableHigher<PT_TYPE> {
 
     pub fn mapping_4k_va_range_buildable(&self, Tracked(lower): Tracked<&PageTableLower<PT_TYPE>>, range: &VaRange4K) -> (ret: bool)
         requires
-            (PageTableC { higher: *self, lower: *lower }).wf(),
+            (WholePageTable { higher: *self, lower: *lower }).wf(),
             range.wf(),
             range.len > 0,
             self.kernel_l4_end <= spec_va2index(range.start).0,
         ensures
-            ret == (PageTableC { higher: *self, lower: *lower }).spec_mapping_4k_va_range_buildable(range),
+            ret == (WholePageTable { higher: *self, lower: *lower }).spec_mapping_4k_va_range_buildable(range),
             ret == forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len ==> {
                 let indices = spec_va2index(range.view().spec_index(j));
                 &&& !self.mapping_1g.view().dom().contains(spec_index2va((indices.0, indices.1, 0, 0)))
@@ -795,13 +795,13 @@ impl PageTableHigher<PT_TYPE> {
                 &&& !lower.mapping_4k.dom().contains(range.view().spec_index(j))
             },
     {
-        let ghost c = PageTableC { higher: *self, lower: *lower };
+        let ghost c = WholePageTable { higher: *self, lower: *lower };
         let range_start = range.start;
         let range_len = range.len;
         let mut i: usize = 0;
         while i < range.len
             invariant
-                c == (PageTableC { higher: *self, lower: *lower }),
+                c == (WholePageTable { higher: *self, lower: *lower }),
                 c.wf(),
                 range.wf(),
                 range_start == range.start,
@@ -832,21 +832,21 @@ impl PageTableHigher<PT_TYPE> {
             decreases range.len - i,
         {
             let va = va_add_range(range_start, i);
-            proof { assert(va_4k_valid(va)) by { range.va_range_lemma(); }; }
+            proof { assert(va_4k_valid(va)) by { range.wf_implies_view_index_is_start_plus_offset(); }; }
             let (l4i, l3i, l2i, l1i) = va2index(va);
-            proof { assert(self.kernel_l4_end <= l4i) by { assert(spec_va_4k_valid(range_start) && spec_va_4k_valid(va) && range_start <= va) by { range.va_range_lemma(); }; spec_v2l4index_monotonic(range_start, va); }; }
+            proof { assert(self.kernel_l4_end <= l4i) by { assert(spec_va_4k_valid(range_start) && spec_va_4k_valid(va) && range_start <= va) by { range.wf_implies_view_index_is_start_plus_offset(); }; spec_v2l4index_monotonic(range_start, va); }; }
             let resolved = self.resolve_mapping_4k_l1(Tracked(lower), l4i, l3i, l2i, l1i);
             match resolved.1 {
                 PageTableErrorCode::NoError | PageTableErrorCode::EntryTakenBy4k | PageTableErrorCode::EntryTakenBy1g | PageTableErrorCode::EntryTakenBy2m => {
                     proof {
-                        assert(!c.spec_mapping_4k_va_range_buildable(range)) by { range.va_range_lemma(); spec_va_4k_valid_imply_indices_valid(); };
+                        assert(!c.spec_mapping_4k_va_range_buildable(range)) by { range.wf_implies_view_index_is_start_plus_offset(); spec_va_4k_valid_imply_indices_valid(); };
                         assert({
                             let indices = spec_va2index(range.view().spec_index(i as int));
                             ||| self.mapping_1g.view().dom().contains(spec_index2va((indices.0, indices.1, 0, 0)))
                             ||| lower.mapping_2m.dom().contains(spec_index2va((indices.0, indices.1, indices.2, 0)))
                             ||| lower.mapping_4k.dom().contains(range.view().spec_index(i as int))
                         }) by {
-                            range.va_range_lemma(); spec_va_4k_valid_imply_indices_valid(); spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i);
+                            range.wf_implies_view_index_is_start_plus_offset(); spec_va_4k_valid_imply_indices_valid(); spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i);
                             self.wf_mapping_1g_at(l4i, l3i); c.wf_mapping_2m_at(l4i, l3i, l2i); c.wf_mapping_4k_at(l4i, l3i, l2i, l1i);
                         };
                     }
@@ -867,7 +867,7 @@ impl PageTableHigher<PT_TYPE> {
                     &&& !lower.mapping_2m.dom().contains(spec_index2va((checked_indices.0, checked_indices.1, checked_indices.2, 0)))
                     &&& !lower.mapping_4k.dom().contains(range.view().spec_index(i as int))
                 }) by {
-                    range.va_range_lemma(); spec_va_4k_valid_imply_indices_valid();
+                    range.wf_implies_view_index_is_start_plus_offset(); spec_va_4k_valid_imply_indices_valid();
                     assert(spec_index2va((l4i, l3i, l2i, l1i)) == va) by { spec_va_4k_index_roundtrip_at(va, l4i, l3i, l2i, l1i); };
                     self.wf_mapping_1g_at(l4i, l3i); c.wf_mapping_2m_at(l4i, l3i, l2i); c.wf_mapping_4k_at(l4i, l3i, l2i, l1i);
                 };
@@ -911,7 +911,7 @@ pub proof fn va_range_2m_windows_contains_window_of_first_n_pages(range: VaRange
         va_range_2m_windows_contains_window_of_first_n_pages(range, n - 1);
         let va = range.view()[n - 1];
         let last_va = range.view()[range.len - 1];
-        range.va_range_lemma();
+        range.wf_implies_view_index_is_start_plus_offset();
         broadcast use spec_va_4k_valid_index_roundtrip;
         spec_index2va_le_implies_4k_indices_lex_le(spec_va2index(range.start), spec_va2index(va));
         spec_index2va_le_implies_4k_indices_lex_le(spec_va2index(va), spec_va2index(last_va));

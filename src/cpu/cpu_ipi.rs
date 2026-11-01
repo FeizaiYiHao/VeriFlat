@@ -23,7 +23,7 @@ pub fn ipi_wake(target: CpuId, Tracked(cpu_op): Tracked<&mut CpuOpArray>, perm: 
         final(cpu_op).view() == old(cpu_op).view().update(target as int, CpuOpState::Idle),
 {
     unsafe { veriflat_send_ipi(target); }
-    proof { cpu_op.woken(target); }
+    proof { cpu_op.mark_idle_after_wake(target); }
 }
 
 /// Platform halt: the calling cpu holds no locks and sleeps in a plain `hlt` with its interrupt flag set until an IPI

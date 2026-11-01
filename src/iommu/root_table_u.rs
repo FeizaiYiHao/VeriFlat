@@ -39,7 +39,7 @@ impl IommuRootTable {
     #[verifier::opaque]
     pub open spec fn user_view(&self) -> IommuRootTableU { IommuRootTableU { owners: self.owners(), attached: iommu_roots_attached(self.iommu_roots()) } }
 
-    pub proof fn user_view_unfold(&self)
+    pub proof fn user_view_eq_owners_and_attached(&self)
         ensures self.user_view() == (IommuRootTableU { owners: self.owners(), attached: iommu_roots_attached(self.iommu_roots()) }),
     { reveal(IommuRootTable::user_view); }
 }

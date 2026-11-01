@@ -4,7 +4,7 @@ use crate::*;
 use vstd::set_lib::*;
 
 /// `f(i)` is in the image of `[lo, hi)` under `f` for every `i` in that range.
-pub proof fn lemma_set_range_map_contains_at<B>(lo: usize, hi: usize, f: spec_fn(usize) -> B, i: usize)
+pub proof fn in_range_implies_set_range_map_contains_image<B>(lo: usize, hi: usize, f: spec_fn(usize) -> B, i: usize)
     requires
         lo <= i < hi,
     ensures
@@ -117,7 +117,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     }
 }
 
-impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
+impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     pub proof fn wf_l3_at(&self, p: PageMapPtr, i: L3Index)
         requires
             self.wf_l3(),
@@ -126,7 +126,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             self.higher.l3_tables.view().spec_index(p).value().spec_index(i).perm.present && !self.higher.l3_tables.view().spec_index(p).value().spec_index(i).perm.ps
                 ==> self.lower.l2_perms.dom().contains(self.higher.l3_tables.view().spec_index(p).value().spec_index(i).addr),
-    { reveal(PageTableC::wf_l3); }
+    { reveal(WholePageTable::wf_l3); }
 
     pub proof fn wf_l2_at(&self, p: PageMapPtr, i: L2Index)
         requires
@@ -143,7 +143,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             (self.lower.l2_entry(p, i).perm.present && !self.lower.l2_entry(p, i).perm.ps) == (self.lower.l2_page(p).entry_lock(i).l1() is Some),
             self.lower.l2_page(p).entry_lock(i).l1() is Some
                 ==> self.lower.l1_perm(p, i).addr() == self.lower.l2_entry(p, i).addr && self.lower.l1_rev_map.dom().contains(self.lower.l2_entry(p, i).addr),
-    { reveal(PageTableC::wf_l2); }
+    { reveal(WholePageTable::wf_l2); }
 
     pub proof fn wf_l1_at(&self, p: PageMapPtr, i: L2Index)
         requires
@@ -154,7 +154,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
         ensures
             self.lower.l1_perm(p, i).is_init(),
             self.lower.l1_page(p, i).wf(),
-    { reveal(PageTableC::wf_l1); }
+    { reveal(WholePageTable::wf_l1); }
 
     pub proof fn tables_reachable_wf_l2_at(&self, p: PageMapPtr)
         requires
@@ -165,7 +165,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             pei_valid(self.higher.l2_rev_map.view().spec_index(p).1),
             self.spec_resolve_mapping_l3(self.higher.l2_rev_map.view().spec_index(p).0, self.higher.l2_rev_map.view().spec_index(p).1) is Some,
             self.spec_resolve_mapping_l3(self.higher.l2_rev_map.view().spec_index(p).0, self.higher.l2_rev_map.view().spec_index(p).1)->0.addr == p,
-    { reveal(PageTableC::tables_reachable_wf); }
+    { reveal(WholePageTable::tables_reachable_wf); }
 
     pub proof fn tables_reachable_wf_l1_at(&self, p: PageMapPtr)
         requires
@@ -176,7 +176,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             pei_valid(self.lower.l1_rev_map.spec_index(p).1) && pei_valid(self.lower.l1_rev_map.spec_index(p).2),
             self.spec_resolve_mapping_l2(self.lower.l1_rev_map.spec_index(p).0, self.lower.l1_rev_map.spec_index(p).1, self.lower.l1_rev_map.spec_index(p).2) is Some,
             self.spec_resolve_mapping_l2(self.lower.l1_rev_map.spec_index(p).0, self.lower.l1_rev_map.spec_index(p).1, self.lower.l1_rev_map.spec_index(p).2)->0.addr == p,
-    { reveal(PageTableC::tables_reachable_wf); }
+    { reveal(WholePageTable::tables_reachable_wf); }
 
     pub proof fn wf_mapping_4k_at(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index)
         requires
@@ -192,7 +192,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
                 && self.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).write == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.write
                 && self.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).execute_disable == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.execute_disable
                 && self.lower.mapping_4k.spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present == self.spec_resolve_mapping_4k_l1(l4i, l3i, l2i, l1i)->0.perm.present,
-    { reveal(PageTableC::wf_mapping_4k); }
+    { reveal(WholePageTable::wf_mapping_4k); }
 
     pub proof fn wf_mapping_2m_at(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index)
         requires
@@ -207,7 +207,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
                 && self.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0))).write == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.write
                 && self.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0))).execute_disable == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.execute_disable
                 && self.lower.mapping_2m.spec_index(spec_index2va((l4i, l3i, l2i, 0))).present == self.spec_resolve_mapping_2m_l2(l4i, l3i, l2i)->0.perm.present,
-    { reveal(PageTableC::wf_mapping_2m); }
+    { reveal(WholePageTable::wf_mapping_2m); }
 
     pub proof fn wf_window_locks_va_at(&self, w: WindowVa)
         requires
@@ -222,7 +222,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             } else {
                 LockStateU::Unlocked
             },
-    { reveal(PageTableC::wf_window_locks); }
+    { reveal(WholePageTable::wf_window_locks); }
 
     pub proof fn wf_window_locks_slot_at(&self, p: PageMapPtr, i: L2Index)
         requires
@@ -231,7 +231,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             pei_valid(i),
         ensures
             self.lower.pagetable_window_locks.dom().contains(WindowVa { va: spec_index2va((self.higher.l2_rev_map.view().spec_index(p).0, self.higher.l2_rev_map.view().spec_index(p).1, i, 0)) }),
-    { reveal(PageTableC::wf_window_locks); }
+    { reveal(WholePageTable::wf_window_locks); }
 
     pub broadcast proof fn resolve_l2_addr_unique_at(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index, l4j: L4Index, l3j: L3Index, l2j: L2Index)
         requires
@@ -252,10 +252,10 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
                 ==> self.spec_resolve_mapping_l2(l4i, l3i, l2i)->0.addr != self.spec_resolve_mapping_l2(l4j, l3j, l2j)->0.addr,
     {
         reveal(PageTableHigher::wf_l4);
-        reveal(PageTableC::wf_l3);
+        reveal(WholePageTable::wf_l3);
         reveal(PageTableHigher::disjoint_l4);
         reveal(PageTableHigher::disjoint_l3);
-        reveal(PageTableC::disjoint_l2);
+        reveal(WholePageTable::disjoint_l2);
     }
 
     pub broadcast proof fn l2_entry_addr_unique_at(&self, pi: PageMapPtr, l2i: L2Index, pj: PageMapPtr, l2j: L2Index)
@@ -270,7 +270,7 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             (pi, l2i) != (pj, l2j) && self.lower.l2_entry(pi, l2i).perm.present
                 && self.lower.l2_entry(pj, l2j).perm.present && !self.lower.l2_entry(pi, l2i).perm.ps && !self.lower.l2_entry(pj, l2j).perm.ps
                     ==> self.lower.l2_entry(pi, l2i).addr != self.lower.l2_entry(pj, l2j).addr,
-    { reveal(PageTableC::disjoint_l2); }
+    { reveal(WholePageTable::disjoint_l2); }
 
     pub broadcast proof fn resolve_l2_target_exists(&self, l4i: L4Index, l3i: L3Index, l2i: L2Index)
         requires
@@ -285,8 +285,8 @@ impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
             self.spec_resolve_mapping_l2(l4i, l3i, l2i) is Some ==> self.lower.l1_rev_map.dom().contains(self.spec_resolve_mapping_l2(l4i, l3i, l2i)->0.addr),
     {
         reveal(PageTableHigher::wf_l4);
-        reveal(PageTableC::wf_l3);
-        reveal(PageTableC::wf_l2);
+        reveal(WholePageTable::wf_l3);
+        reveal(WholePageTable::wf_l2);
     }
 
     pub proof fn resolve_l2_unchanged(&self, other: &Self)

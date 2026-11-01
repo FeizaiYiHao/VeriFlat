@@ -65,7 +65,7 @@ pub proof fn kernel_process_published_and_parent_unlocked_implies_u_step(
         after.pt_mp.dom() == before.pt_mp.dom().insert(table),
         forall|p: RwLockPageTableRoot| #![trigger after.pt_mp.spec_index(p)] before.pt_mp.dom().contains(p) ==> after.pt_mp.spec_index(p) == before.pt_mp.spec_index(p) && after.pt_lower.view().spec_index(p) == before.pt_lower.view().spec_index(p),
         typed_lock_map_contains_mode(lctx.pagetable_lock_map(), table, TypedLockMode::Write),
-        pagetable_c(after.pt_mp, after.pt_lower.view(), table).is_empty(),
+        whole_pagetable(after.pt_mp, after.pt_lower.view(), table).is_empty(),
         iommu is None ==> after.it_mp == before.it_mp,
         iommu matches Some(t) ==> {
             &&& after.it_mp.dom() == before.it_mp.dom().insert(t)
@@ -252,7 +252,7 @@ proof fn kernel_process_published_and_parent_unlocked_implies_u_process_map(
         after.pt_mp.dom() == before.pt_mp.dom().insert(table),
         forall|p: RwLockPageTableRoot| #![trigger after.pt_mp.spec_index(p)] before.pt_mp.dom().contains(p) ==> after.pt_mp.spec_index(p) == before.pt_mp.spec_index(p) && after.pt_lower.view().spec_index(p) == before.pt_lower.view().spec_index(p),
         after.pt_mp.spec_index(table).locking_thread() is Write,
-        pagetable_c(after.pt_mp, after.pt_lower.view(), table).is_empty(),
+        whole_pagetable(after.pt_mp, after.pt_lower.view(), table).is_empty(),
         iommu is None ==> after.it_mp == before.it_mp,
         iommu matches Some(t) ==> {
             &&& after.it_mp.dom() == before.it_mp.dom().insert(t)
@@ -337,9 +337,9 @@ pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_step(pre: &Ker
         pre.pt_mp.typed_lock_map_aligned(lctx.pagetable_lock_map(), lctx.thread_id()),
         post.pt_mp.typed_lock_map_aligned(lctx.pagetable_lock_map(), lctx.thread_id()),
         typed_lock_map_contains_mode(lctx.pagetable_lock_map(), table, TypedLockMode::Write),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), table).mapping_4k() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).mapping_4k(),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), table).mapping_2m() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).mapping_2m(),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), table).mapping_1g() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).mapping_1g(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), table).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).mapping_4k(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), table).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).mapping_2m(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), table).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).mapping_1g(),
     ensures
         ({
             let a = kernel_k_to_kernel_u(*pre);
@@ -358,7 +358,7 @@ pub proof fn kernel_thread_quota_and_page_owner_changed_implies_u_step(pre: &Ker
                     .insert(target, ContainerU { owned_pages: a.container_map[target].owned_pages.insert(page), ..a.container_map[target] }),
                 process_map: if a.process_map.dom().contains(owner) && a.process_map[owner].pagetable is Some {
                     a.process_map.insert(owner, ProcessU {
-                        pagetable: Some(PageTableU { pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), table).lower.pagetable_window_locks, ..a.process_map[owner].pagetable->Some_0 }),
+                        pagetable: Some(PageTableU { pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), table).lower.pagetable_window_locks, ..a.process_map[owner].pagetable->Some_0 }),
                         ..a.process_map[owner]
                     })
                 } else { a.process_map },
@@ -401,9 +401,9 @@ pub proof fn kernel_4k_mapping_copied_implies_u_step(
         pre.prc_mp.spec_index(target).view().pagetable == target_table,
         typed_lock_map_contains_mode(lctx.pagetable_lock_map(), source_table, TypedLockMode::Read) || typed_lock_map_contains_mode(lctx.pagetable_lock_map(), source_table, TypedLockMode::Write),
         typed_lock_map_contains_mode(lctx.pagetable_lock_map(), target_table, TypedLockMode::Read) || typed_lock_map_contains_mode(lctx.pagetable_lock_map(), target_table, TypedLockMode::Write),
-        pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_table).mapping_4k().dom().contains(source_va),
-        pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_table).mapping_4k()[source_va].present,
-        !pagetable_c(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_4k().dom().contains(target_va) || !pagetable_c(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_4k()[target_va].present,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_table).mapping_4k().dom().contains(source_va),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_table).mapping_4k()[source_va].present,
+        !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_4k().dom().contains(target_va) || !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_4k()[target_va].present,
         *post == (KernelK { pg_arr: post.pg_arr, pt_mp: post.pt_mp, pt_lower: post.pt_lower, thr_mp: post.thr_mp, ..*pre }),
         pre.thr_mp.dom().contains(progress_thread),
         post.thr_mp.unchanged_except(&pre.thr_mp, progress_thread),
@@ -413,10 +413,10 @@ pub proof fn kernel_4k_mapping_copied_implies_u_step(
         post.pt_mp.unchanged_except(&pre.pt_mp, target_table),
         post.pt_mp.spec_index(target_table).locking_thread() == pre.pt_mp.spec_index(target_table).locking_thread(),
         post.pt_lower.view() == pre.pt_lower.view().insert(target_table, post.pt_lower.view().spec_index(target_table)),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), target_table).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), target_table).lower.pagetable_window_locks,
-        pagetable_c(post.pt_mp, post.pt_lower.view(), target_table).mapping_4k() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_4k().insert(target_va, pagetable_c(pre.pt_mp, pre.pt_lower.view(), source_table).mapping_4k()[source_va]),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), target_table).mapping_2m() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_2m(),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), target_table).mapping_1g() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_1g(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), target_table).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_table).lower.pagetable_window_locks,
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), target_table).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_4k().insert(target_va, whole_pagetable(pre.pt_mp, pre.pt_lower.view(), source_table).mapping_4k()[source_va]),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), target_table).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_2m(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), target_table).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), target_table).mapping_1g(),
     ensures
         ({
             let a = kernel_k_to_kernel_u(*pre);
@@ -526,8 +526,8 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_step(
         },
         kernel_k_to_kernel_u(*post).process_map.spec_index(process_ptr).owned_threads.last() == new_thread_ptr,
         release_source_process matches Some(source) ==> {
-            &&& kernel_k_to_kernel_u(*pre).process_map[source].pagetable->Some_0.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks
-            &&& kernel_k_to_kernel_u(*pre).process_map[process_ptr].pagetable->Some_0.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pre.prc_mp.spec_index(process_ptr).view().pagetable).lower.pagetable_window_locks
+            &&& kernel_k_to_kernel_u(*pre).process_map[source].pagetable->Some_0.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks
+            &&& kernel_k_to_kernel_u(*pre).process_map[process_ptr].pagetable->Some_0.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pre.prc_mp.spec_index(process_ptr).view().pagetable).lower.pagetable_window_locks
         },
         ({
             let old_u = kernel_k_to_kernel_u(*pre);
@@ -537,12 +537,12 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_step(
                 process_map: match release_source_process {
                     Some(source) => old_u.process_map.insert(source, ProcessU {
                         pagetable: Some(PageTableU {
-                            lock_state: mode, pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks,
+                            lock_state: mode, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks,
                             ..old_u.process_map[source].pagetable->Some_0
                         }), ..old_u.process_map[source]
                     }).insert(process_ptr, ProcessU {
                         lock_state: mode, pagetable: Some(PageTableU {
-                            lock_state: mode, pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(process_ptr).view().pagetable).lower.pagetable_window_locks,
+                            lock_state: mode, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(process_ptr).view().pagetable).lower.pagetable_window_locks,
                             ..old_u.process_map[process_ptr].pagetable->Some_0
                         }),
                         iommu_table: match old_u.process_map[process_ptr].iommu_table { Some(t) => Some(PageTableU { lock_state: mode, ..t }), None => None },
@@ -567,12 +567,12 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_step(
         process_map: match release_source_process {
             Some(source) => old_u.process_map.insert(source, ProcessU {
                 pagetable: Some(PageTableU {
-                    lock_state: mode, pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks,
+                    lock_state: mode, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks,
                     ..old_u.process_map[source].pagetable->Some_0
                 }), ..old_u.process_map[source]
             }).insert(process_ptr, ProcessU {
                 lock_state: mode, pagetable: Some(PageTableU {
-                    lock_state: mode, pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(process_ptr).view().pagetable).lower.pagetable_window_locks,
+                    lock_state: mode, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(process_ptr).view().pagetable).lower.pagetable_window_locks,
                     ..old_u.process_map[process_ptr].pagetable->Some_0
                 }),
                 iommu_table: match old_u.process_map[process_ptr].iommu_table { Some(t) => Some(PageTableU { lock_state: mode, ..t }), None => None },
@@ -600,7 +600,7 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_step(
     }
     kernel_thread_projection_at(pre, thread_ptr);
     if let Some(e) = endpoint_ptr { kernel_endpoint_projection_at(post, e); kernel_endpoint_projection_at(pre, e); }
-    assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { reveal(kernel_new_thread_fields); pre.irt.view().user_view_unfold(); post.irt.view().user_view_unfold(); };
+    assert(post_u.iommu_root_table == pre_u.iommu_root_table) by { reveal(kernel_new_thread_fields); pre.irt.view().user_view_eq_owners_and_attached(); post.irt.view().user_view_eq_owners_and_attached(); };
     assert(post_u.process_map.spec_index(process_ptr).owned_threads.last() == new_thread_ptr
         && kernel_u_new_thread_changed(pre_u, post_u, process_ptr, thread_ptr, container_ptr, cpu_id, new_thread_ptr, initial_regs, endpoint_ptr, staging_progress)) by {
         kernel_new_thread_fields_and_unlocks_implies_u_cpu_array(pre, post, cpu_id, process_ptr, thread_ptr, container_ptr, new_thread_ptr, initial_regs, endpoint_ptr, staging_progress);
@@ -802,12 +802,12 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_process_map(
             let unlocked = match release_source_process {
                 Some(source) => old_u.process_map.insert(source, ProcessU {
                     pagetable: Some(PageTableU {
-                        lock_state: mode, pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks,
+                        lock_state: mode, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks,
                         ..old_u.process_map[source].pagetable->Some_0
                     }), ..old_u.process_map[source]
                 }).insert(process_ptr, ProcessU {
                     lock_state: mode, pagetable: Some(PageTableU {
-                        lock_state: mode, pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(process_ptr).view().pagetable).lower.pagetable_window_locks,
+                        lock_state: mode, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(process_ptr).view().pagetable).lower.pagetable_window_locks,
                         ..old_u.process_map[process_ptr].pagetable->Some_0
                     }),
                     iommu_table: match old_u.process_map[process_ptr].iommu_table { Some(t) => Some(PageTableU { lock_state: mode, ..t }), None => None },
@@ -826,12 +826,12 @@ pub proof fn kernel_new_thread_fields_and_unlocks_implies_u_process_map(
     let unlocked = match release_source_process {
         Some(source) => old_u.process_map.insert(source, ProcessU {
             pagetable: Some(PageTableU {
-                lock_state: mode, pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks,
+                lock_state: mode, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks,
                 ..old_u.process_map[source].pagetable->Some_0
             }), ..old_u.process_map[source]
         }).insert(process_ptr, ProcessU {
             lock_state: mode, pagetable: Some(PageTableU {
-                lock_state: mode, pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(process_ptr).view().pagetable).lower.pagetable_window_locks,
+                lock_state: mode, pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(process_ptr).view().pagetable).lower.pagetable_window_locks,
                 ..old_u.process_map[process_ptr].pagetable->Some_0
             }),
             iommu_table: match old_u.process_map[process_ptr].iommu_table { Some(t) => Some(PageTableU { lock_state: mode, ..t }), None => None },

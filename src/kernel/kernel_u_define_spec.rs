@@ -3,7 +3,7 @@ use crate::*;
 
 verus! {
     pub open spec fn pagetable_map_user_view(pt_mp: PageTableLockedMap, pt_lower: PageTableLowerMap) -> Map<RwLockPageTableRoot, PageTableU> {
-        Map::new(pt_mp.dom(), |ptr: RwLockPageTableRoot| pagetable_c(pt_mp, pt_lower, ptr).user_view(pt_mp.spec_index(ptr).lock_state_u()))
+        Map::new(pt_mp.dom(), |ptr: RwLockPageTableRoot| whole_pagetable(pt_mp, pt_lower, ptr).user_view(pt_mp.spec_index(ptr).lock_state_u()))
     }
 
     pub open spec fn iommu_table_map_user_view(iommu_table_map: IommuTableLockedMap) -> Map<RwLockPageTableRoot, PageTableU> {

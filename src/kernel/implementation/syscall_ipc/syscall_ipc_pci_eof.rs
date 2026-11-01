@@ -47,7 +47,7 @@ proof fn ipc_pci_rendezvous_eof_endpoint_wf(
         &&& container_endpoint_wf(post.ctn_mp, post.ep_mp)
         &&& thread_caller_callee_wf(post.thr_mp)
     }) by { container_endpoint_wf_preserved_for_endpoint_owner_eq(pre.ctn_mp, post.ctn_mp, pre.ep_mp, post.ep_mp); thread_caller_callee_wf_preserved_for_call_link_eq(pre.thr_mp, post.thr_mp); };
-    assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { seq_skip_lemma::<RwLockThreadPtr>(); reveal(endpoint_perms_wf); reveal(LinkedList::wf_value_list); reveal(LinkedList::value_list_unique); reveal(thread_endpoint_queue_wf); };
+    assert(thread_endpoint_queue_wf(post.thr_mp, post.ep_mp)) by { seq_skip_one_implies_contains_and_index_shift::<RwLockThreadPtr>(); reveal(endpoint_perms_wf); reveal(LinkedList::wf_value_list); reveal(LinkedList::value_list_unique); reveal(thread_endpoint_queue_wf); };
     assert(container_thread_endpoint_wf(post.ctn_mp, post.thr_mp, post.ep_mp)) by { reveal(thread_endpoint_ref_counter_wf); container_thread_endpoint_wf_preserved_for_descriptor_owner_eq(pre.ctn_mp, post.ctn_mp, pre.thr_mp, post.thr_mp, pre.ep_mp, post.ep_mp); };
 }
 
@@ -100,7 +100,7 @@ proof fn ipc_pci_rendezvous_eof_process_management_inv(
         }) by { reveal(container_scheduler_wf); reveal(container_thread_wf); reveal(process_thread_wf); };
         assert(thread_cpu_wf(post.thr_mp, post.cpu_arr)) by { thread_cpu_wf_preserved_for_running_thread_eq(pre.thr_mp, post.thr_mp, pre.cpu_arr, post.cpu_arr); };
         assert(container_thread_scheduler_wf(post.ctn_mp, post.thr_mp, post.sched_mp)) by {
-            seq_push_lemma::<RwLockThreadPtr>();
+            seq_push_implies_contains::<RwLockThreadPtr>();
             reveal(scheduler_perms_wf); reveal(LinkedList::wf_map); reveal(container_thread_wf); reveal(container_scheduler_wf); reveal(container_thread_scheduler_wf);
         };
     };

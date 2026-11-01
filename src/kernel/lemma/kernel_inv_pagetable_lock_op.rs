@@ -7,9 +7,9 @@ pub open spec fn pagetable_invariant_fields_unchanged(pre: PageTableLockedMap, p
     &&& pre.dom() =~= post.dom()
     &&& forall|pt_ptr: RwLockPageTableRoot| #![trigger pre.spec_index(pt_ptr).view()] #![trigger post.spec_index(pt_ptr).view()] pre.dom().contains(pt_ptr) ==> post.spec_index(pt_ptr).view() == pre.spec_index(pt_ptr).view()
     &&& forall|pt_ptr: RwLockPageTableRoot|
-        #![trigger pagetable_c(pre, pt_lower, pt_ptr)]
-        #![trigger pagetable_c(post, pt_lower, pt_ptr)]
-        pre.dom().contains(pt_ptr) ==> pagetable_c(post, pt_lower, pt_ptr) == pagetable_c(pre, pt_lower, pt_ptr)
+        #![trigger whole_pagetable(pre, pt_lower, pt_ptr)]
+        #![trigger whole_pagetable(post, pt_lower, pt_ptr)]
+        pre.dom().contains(pt_ptr) ==> whole_pagetable(post, pt_lower, pt_ptr) == whole_pagetable(pre, pt_lower, pt_ptr)
 }
 
 pub proof fn pagetable_lock_op_preserves_invariant_fields(pre: PageTableLockedMap, post: PageTableLockedMap, pt_lower: PageTableLowerMap, changed: RwLockPageTableRoot)
@@ -42,7 +42,7 @@ pub proof fn lemma_page_pagetable_wf_preserved_for_pagetable_invariant_fields_fo
             page_pagetable_wf(pre, pt_lower, page_array) && pagetable_invariant_fields_unchanged(pre, post, pt_lower) ==> page_pagetable_wf(post, pt_lower, page_array),
 { reveal(mapped_4k_page_pagetable_wf); reveal(mapped_2m_page_pagetable_wf); reveal(mapped_1g_page_pagetable_wf); }
 
-pub proof fn lemma_container_process_page_pagetable_wf_preserved_for_pagetable_invariant_fields_forall()
+pub proof fn container_process_page_pagetable_wf_preserved_for_pagetable_fields()
     ensures
         forall|container_map: ContainerLockedMap, process_map: ProcessLockedMap, pre: PageTableLockedMap, post: PageTableLockedMap, pt_lower: PageTableLowerMap, page_array: PageLockedArray|
             #![trigger container_process_page_pagetable_wf(container_map, process_map, pre, page_array), container_process_page_pagetable_wf(container_map, process_map, post, page_array), pagetable_invariant_fields_unchanged(pre, post, pt_lower)]

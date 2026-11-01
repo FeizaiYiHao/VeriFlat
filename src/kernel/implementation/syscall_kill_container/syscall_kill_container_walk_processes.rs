@@ -101,7 +101,7 @@ pub(crate) fn kill_container_kill_processes(
         proof {
             process_perms_wf_map(krnl.prc_mp);
             process_perms_wf_at(krnl.prc_mp, ptarget);
-            krnl.prc_mp.spec_index(ptarget).view().children.lemma_len_view(); krnl.prc_mp.spec_index(ptarget).view().owned_threads.lemma_len_view();
+            krnl.prc_mp.spec_index(ptarget).view().children.wf_implies_view_len_eq_len(); krnl.prc_mp.spec_index(ptarget).view().owned_threads.wf_implies_view_len_eq_len();
         }
         let (has_children, has_threads) = {
             let tracked ptarget_perm = pchain_perms.tracked_borrow(ptarget);

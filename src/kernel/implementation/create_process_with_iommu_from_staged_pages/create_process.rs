@@ -116,7 +116,7 @@ pub fn create_process_with_iommu_from_staged_pages(
         final(krnl).pt_mp.dom() == old(krnl).pt_mp.dom().insert(pagetable_page_ptr),
         forall|pt: RwLockPageTableRoot| #![trigger final(krnl).pt_mp.spec_index(pt)]
             old(krnl).pt_mp.dom().contains(pt) ==> final(krnl).pt_mp.spec_index(pt) == old(krnl).pt_mp.spec_index(pt),
-        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_page_ptr).is_empty(),
+        whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_page_ptr).is_empty(),
         final(krnl).pt_mp.spec_index(pagetable_page_ptr).view().proc_ptr == process_page_ptr,
         final(krnl).prc_mp.spec_index(process_page_ptr).view().pagetable == pagetable_page_ptr,
         final(krnl).ctn_mp.dom() == old(krnl).ctn_mp.dom(),

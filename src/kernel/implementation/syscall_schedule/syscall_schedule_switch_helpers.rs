@@ -75,7 +75,7 @@ pub(super) fn schedule_switch_read_target(
     assert(next_node == krnl.thr_mp.spec_index(next_thread).view().scheduler_linkedlist_node.addr()) by {
         container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp, scheduler_ptr, cpu_id, next_thread); container_thread_scheduler_wf_thread_at(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp, next_thread);
         reveal(LinkedList::value_list_unique);
-        krnl.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.lemma_value_addr_unique(next_node, krnl.thr_mp.spec_index(next_thread).view().scheduler_linkedlist_node.addr());
+        krnl.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.wf_and_equal_values_implies_equal_addrs(next_node, krnl.thr_mp.spec_index(next_thread).view().scheduler_linkedlist_node.addr());
     };
     (next_process, next_pagetable, cr3, pcid, depth)
 }

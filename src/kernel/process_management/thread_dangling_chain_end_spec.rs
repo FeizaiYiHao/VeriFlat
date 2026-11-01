@@ -105,7 +105,7 @@ pub proof fn thread_dangling_chain_end_on_caller_chain(thread_map: ThreadLockedM
 /// Record `end` as the chain end of `cur` and of each dangling caller above it, keeping every lock holder, and return the threads
 /// updated: `cur` and its dangling callers, each of them in `cur`'s container, the caller of an updated thread, and below `cur`'s
 /// call depth.
-pub proof fn thread_map_set_chain_end_up_dangling_callers(tracked thread_map: &mut ThreadLockedMap, cur: RwLockThreadPtr, end: RwLockThreadPtr) -> (chain: Set<RwLockThreadPtr>)
+pub proof fn thread_map_set_chain_end_along_dangling_caller_chain(tracked thread_map: &mut ThreadLockedMap, cur: RwLockThreadPtr, end: RwLockThreadPtr) -> (chain: Set<RwLockThreadPtr>)
     requires
         old(thread_map).perms_wf(),
         thread_caller_callee_wf(*old(thread_map)),
@@ -147,7 +147,7 @@ pub proof fn thread_map_set_chain_end_up_dangling_callers(tracked thread_map: &m
     let caller = pre.spec_index(cur).view().caller;
     if caller is Some && thread_is_dangling(pre.spec_index(caller.unwrap())) {
         thread_caller_callee_wf_preserved_for_call_link_eq(pre, *thread_map); reveal(thread_caller_callee_wf);
-        let rest = thread_map_set_chain_end_up_dangling_callers(thread_map, caller.unwrap(), end);
+        let rest = thread_map_set_chain_end_along_dangling_caller_chain(thread_map, caller.unwrap(), end);
         rest.insert(cur)
     } else {
         set![cur]

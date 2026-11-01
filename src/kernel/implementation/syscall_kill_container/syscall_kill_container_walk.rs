@@ -75,7 +75,7 @@ pub(crate) fn kill_container_walk_and_finish(
         decreases krnl.ctn_mp.spec_index(owner_ptr).view_ghost().subtree_set.view().len(), MAX_CONTAINER_TREE_DEPTH - chain.len(), if processes_left { 1int } else { 0int },
     {
         if processes_left {
-            proof { container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, target); krnl.ctn_mp.spec_index(target).view().children.lemma_len_view(); }
+            proof { container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, target); krnl.ctn_mp.spec_index(target).view().children.wf_implies_view_len_eq_len(); }
             let has_children = {
                 let tracked target_perm = chain_perms.tracked_borrow(target);
                 krnl.ctn_mp.borrow_typed(target, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(target_perm)).children.len() != 0
@@ -168,7 +168,7 @@ pub(crate) fn kill_container_mark_child(
     let ghost before = *krnl;
     let ghost before_lctx = *lctx;
     let ghost before_steps = steps.view();
-    proof { container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, target); krnl.ctn_mp.spec_index(target).view().children.lemma_len_view(); }
+    proof { container_perms_wf_map(krnl.ctn_mp); container_perms_wf_at(krnl.ctn_mp, target); krnl.ctn_mp.spec_index(target).view().children.wf_implies_view_len_eq_len(); }
     let child_ptr = {
         let tracked target_perm = chain_perms.tracked_borrow(target);
         krnl.ctn_mp.borrow_typed(target, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(target_perm)).children.get(0)

@@ -3,7 +3,7 @@ use crate::*;
 use super::syscall_cpu_offline_check_spec::*;
 use super::syscall_cpu_offline_check_trace::*;
 use super::syscall_cpu_offline_check_locked::cpu_offline_check_locked;
-use super::syscall_cpu_offline_commit_helpers::cpu_offline_commit_go_off;
+use super::syscall_cpu_offline_commit_helpers::cpu_offline_commit_take_cpu_off;
 
 verus! {
 pub enum OfflineCheckResult {
@@ -194,7 +194,7 @@ pub(super) fn cpu_offline_commit(
         };
         if current_thread is Some { thread_perms_wf_map(krnl.thr_mp); thread_perms_wf_at(krnl.thr_mp, current_thread.unwrap()); }
     }
-    cpu_offline_commit_go_off(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, pt_regs, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, current_process,
+    cpu_offline_commit_take_cpu_off(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, pt_regs, container_ptr, scheduler_ptr, cpu_set_ptr, flags_ptr, current_process,
         current_thread, process_lock_perm, thread_lock_perm, cpu_lock_perm, flag_lock_perm, cpu_set_lock_perm, scheduler_lock_perm);
 }
 

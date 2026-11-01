@@ -10,7 +10,7 @@ pub proof fn lemma_cache_len_fold_upper_bound<const SIZE: usize>(caches: LockedA
     ensures
         caches.view().fold_left(0int, |sum: int, cache: RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| sum + cache.view().linked_list.len()) <= NUM_CPUS * ALLOCATOR_MAX_WATERMARK,
 {
-    caches.lemma_view_index();
+    caches.view_index_eq_element_value();
     seq_fold_upper_bound(caches.view(), |sum: int, cache: RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| sum + cache.view().linked_list.len(), ALLOCATOR_MAX_WATERMARK as int);
 }
 
@@ -60,7 +60,7 @@ pub proof fn lemma_cache_len_fold_change_one_array<const SIZE: usize>(old_arr: L
             == new_arr.view().fold_left(0int, |sum: int, c: RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| { sum + c.view().linked_list.len() }) + 1,
 {
     let f = |sum: int, c: RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>| sum + c.view().linked_list.len();
-    assert(old_arr.view().fold_left(0int, f) == new_arr.view().fold_left(0int, f) + 1) by { old_arr.lemma_view_index(); new_arr.lemma_view_index(); lemma_cache_len_fold_change_one(old_arr.view(), new_arr.view(), j as int); };
+    assert(old_arr.view().fold_left(0int, f) == new_arr.view().fold_left(0int, f) + 1) by { old_arr.view_index_eq_element_value(); new_arr.view_index_eq_element_value(); lemma_cache_len_fold_change_one(old_arr.view(), new_arr.view(), j as int); };
 }
 
 pub proof fn lemma_cache_len_fold_nonneg<const SIZE: usize>(s: Seq<RwLock<AllocatorCache<SIZE>, (), (), NO_KILL_STATE>>)

@@ -97,7 +97,7 @@ pub(super) fn mmap_4k_read_lock_windows_and_map(
         pre_lctx.allocator_global_pool_1g_lock_map().dom().is_empty(),
         pre_lctx.cpu_offline_flag_lock_map().dom().is_empty(),
         pre_lctx.pcid_needflush_lock_map().dom().is_empty(),
-        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).hidden_leaves_in_locked_windows(),
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable_ptr).hidden_leaves_in_locked_windows(),
         old(lctx).cpu_id() == pre_lctx.cpu_id(),
         old(krnl).inv(),
         kernel_cpu_process_thread_nonlock_fields_unchanged(&pre_k, old(krnl)),
@@ -133,14 +133,14 @@ pub(super) fn mmap_4k_read_lock_windows_and_map(
         pre_k.pt_mp.typed_lock_map_aligned_locked_at(pre_lctx.pagetable_lock_map(), pre_lctx.thread_id(), pagetable_ptr); pagetable_perms_wf_map(pre_k.pt_mp); pagetable_perms_wf_at(pre_k.pt_mp, pagetable_ptr);
         pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
     }
-    let ghost unlocked_windows = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks;
+    let ghost unlocked_windows = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks;
     let Tracked(window_perms) = krnl.lock_pagetable_range_windows(pagetable_ptr, va_range, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx));
-    let ghost checked = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
+    let ghost checked = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
     let (precheck, Ghost(found)) = mmap_4k_precheck(krnl, va_range, pagetable_ptr, Tracked(&*lctx), Tracked(&pagetable_lock_perm));
     let ready = match precheck { Mmap4kPrecheck::Ready => true, _ => false };
     if !ready {
         krnl.unlock_pagetable_range_windows(pagetable_ptr, va_range, Tracked(&pagetable_lock_perm), Tracked(&mut *lctx), Tracked(window_perms));
-        proof { assert(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks =~= unlocked_windows); }
+        proof { assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks =~= unlocked_windows); }
         mmap_4k_unlock_read_rejected(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, thread_ptr, pagetable_ptr, Tracked(pagetable_lock_perm), Tracked(thread_lock_perm),
             Tracked(cpu_lock_perm));
         proof { mmap_4k_result_from_k(&old(steps).snapshot_k(), cpu_id, va, range, RetValueType::ErrorVaInUse, Some(checked), found); }
@@ -157,7 +157,7 @@ pub(super) fn mmap_4k_read_lock_windows_and_map(
             kernel_cpu_thread_wlocked_pagetable_rlocked_and_progress_changed_implies_u_step(&old(steps).snapshot_k(), &entered_k, &entry_lctx, cpu_id, thread_ptr, process_ptr, pagetable_ptr);
             mmap_4k_enter_step_pre_from_k(&old(steps).snapshot_k(), cpu_id, process_ptr, thread_ptr);
             mmap_4k_enter_step_from_u(&old(steps).snapshot_k(), kernel_k_to_kernel_u(entered_k), cpu_id, process_ptr, thread_ptr, pagetable_ptr, va, range, *va_range,
-                Mmap4kPhase::Read, pagetable_c(entered_k.pt_mp, entered_k.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks);
+                Mmap4kPhase::Read, whole_pagetable(entered_k.pt_mp, entered_k.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks);
             mmap_4k_trace_enter_step(&*steps, old(steps).view(), kernel_k_to_kernel_u(old(steps).snapshot_k()), kernel_k_to_kernel_u(entered_k), cpu_id, *va_range, Mmap4kPhase::Read);
         };
         container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); process_cpu_wf_at(krnl.prc_mp, krnl.cpu_arr, cpu_id);

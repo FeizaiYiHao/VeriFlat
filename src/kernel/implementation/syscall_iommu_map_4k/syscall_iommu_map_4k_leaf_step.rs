@@ -43,9 +43,9 @@ pub(super) fn iommu_map_4k_map_one_page(
         va_range.wf() && iova_range.wf() && iova_range.len == va_range.len,
         va_4k_valid(va_range.view()[i as int]) && va_4k_valid(iova_range.view()[i as int]),
         lctx0.pagetable_window_lock_map().dom().contains((pagetable_ptr, window_of(va_range.view()[i as int]))),
-        pagetable_c(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).kernel_l4_end() <= spec_v2l4index(va_range.start),
-        pagetable_c(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(va_range.view()[i as int]),
-        pagetable_c(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).mapping_4k()[va_range.view()[i as int]].present,
+        whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).kernel_l4_end() <= spec_v2l4index(va_range.start),
+        whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(va_range.view()[i as int]),
+        whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).mapping_4k()[va_range.view()[i as int]].present,
         k0.thr_mp.dom().contains(thread_ptr) && !thread_is_dangling(k0.thr_mp.spec_index(thread_ptr)),
         k0.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
         k0.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
@@ -132,7 +132,7 @@ pub(super) fn iommu_map_4k_map_one_page(
         spec_va_4k_index_roundtrip_at(va, spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
         spec_va_4k_index_roundtrip_at(window_of(va).va, spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), 0);
         held_pagetable_window_mapping_4k_unchanged_at(k0.pt_mp, k0.pt_lower.view(), krnl.pt_mp, krnl.pt_lower.view(), &lctx0, pagetable_ptr, window_of(va), va);
-        va_range.va_range_lemma(); spec_v2l4index_monotonic(va_range.start, va);
+        va_range.wf_implies_view_index_is_start_plus_offset(); spec_v2l4index_monotonic(va_range.start, va);
         krnl.pt_mp.typed_lock_map_aligned_read_at(lctx.pagetable_lock_map(), lctx.thread_id(), pagetable_ptr);
         process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, process_ptr); process_iommu_table_match_process_at(krnl.prc_mp, krnl.it_mp, process_ptr);
     }

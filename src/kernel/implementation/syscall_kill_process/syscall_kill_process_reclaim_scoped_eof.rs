@@ -18,9 +18,9 @@ proof fn kill_reclaim_unmapped_4k_page_scoped_eof_page_owners(
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view();
             &&& pre.pt_mp.dom().contains(pagetable)
             &&& va_4k_valid(va)
-            &&& pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom().contains(va)
-            &&& !pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).present
-            &&& pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr == page_ptr
+            &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom().contains(va)
+            &&& !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).present
+            &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr == page_ptr
             &&& page_ptr_valid(page_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
@@ -92,9 +92,9 @@ proof fn kill_reclaim_unmapped_4k_page_scoped_eof_page_relations(
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view();
             &&& pre.pt_mp.dom().contains(pagetable)
             &&& va_4k_valid(va)
-            &&& pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom().contains(va)
-            &&& !pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).present
-            &&& pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr == page_ptr
+            &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom().contains(va)
+            &&& !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).present
+            &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr == page_ptr
             &&& page_ptr_valid(page_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
@@ -182,10 +182,10 @@ pub(crate) proof fn kill_reclaim_unmapped_4k_page_scoped_eof(
             let old_page = pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view();
             &&& pre.pt_mp.dom().contains(pagetable)
             &&& va_4k_valid(va)
-            &&& pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom().contains(va)
-            &&& !pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).present
-            &&& pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr == page_ptr
-            &&& !pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus.dom().contains((pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va)))
+            &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom().contains(va)
+            &&& !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).present
+            &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(va).addr == page_ptr
+            &&& !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.window_stale_cpus.dom().contains((whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(va), spec_v2l3index(va)), spec_v2l2index(va)))
             &&& page_ptr_valid(page_ptr)
             &&& old_page.ref_count == 1
             &&& old_page.state is Mapped4k
@@ -221,7 +221,7 @@ pub(crate) proof fn kill_reclaim_unmapped_4k_page_scoped_eof(
     kill_reclaim_unmapped_4k_page_scoped_eof_allocator_quota_wf(pre, post, pagetable, va, page_ptr, allocator_ptr, cpu_id, node_addr);
     assert(cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush)) by { reveal(cpu_dirty_map_contains_pagetable_pcid_match); };
     assert(tlb_wf_spec(post.cpu_tlb, post.pt_mp, post.pt_lower.view(), post.cpu_arr, post.pcid_needflush)) by { reveal(tlb_wf_spec); };
-    assert(pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).user_view(LockStateU::Unlocked).mapping_4k =~= pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).user_view(LockStateU::Unlocked).mapping_4k);
+    assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).user_view(LockStateU::Unlocked).mapping_4k =~= whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).user_view(LockStateU::Unlocked).mapping_4k);
     assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post)) by {
         reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); reveal(kernel_pagetable_nonlock_fields_unchanged); reveal(kernel_thread_nonlock_fields_unchanged); reveal(kernel_iommu_table_nonlock_fields_unchanged);
         kernel_cpu_nonlock_fields_unchanged_for_equal(pre.cpu_arr, post.cpu_arr);
@@ -507,7 +507,7 @@ proof fn kill_retire_table_page_scoped_eof_table_pages(
         page_ptr_valid(page_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::PageTable { pagetable_root: table, table_type: if iommu { IOMMU_TYPE } else { PT_TYPE } } }),
         iommu ==> pre.it_mp.dom().contains(table) && pre.it_mp.spec_index(table).view().page_closure().contains(page_ptr),
-        !iommu ==> pre.pt_mp.dom().contains(table) && pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).page_closure().contains(page_ptr),
+        !iommu ==> pre.pt_mp.dom().contains(table) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).page_closure().contains(page_ptr),
         post.subsystems_inv(),
     ensures
         pagetable_pages_wf(post.pt_mp, post.pt_lower.view(), post.pg_arr),
@@ -540,7 +540,7 @@ proof fn kill_retire_table_page_scoped_eof_kernel_pages_owner(
         page_ptr_valid(page_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::PageTable { pagetable_root: table, table_type: if iommu { IOMMU_TYPE } else { PT_TYPE } } }),
         iommu ==> pre.it_mp.dom().contains(table) && pre.it_mp.spec_index(table).view().page_closure().contains(page_ptr),
-        !iommu ==> pre.pt_mp.dom().contains(table) && pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).page_closure().contains(page_ptr),
+        !iommu ==> pre.pt_mp.dom().contains(table) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).page_closure().contains(page_ptr),
         post.subsystems_inv(),
     ensures process_kernel_pages_owner_wf(post.pg_arr, post.prc_mp, post.pt_mp, post.it_mp),
 {
@@ -557,7 +557,7 @@ proof fn kill_retire_table_page_scoped_eof_page_object_owner(
         page_ptr_valid(page_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().state == (PageState::Allocated4k { state: Allocated4KPageState::PageTable { pagetable_root: table, table_type: if iommu { IOMMU_TYPE } else { PT_TYPE } } }),
         iommu ==> pre.it_mp.dom().contains(table) && pre.it_mp.spec_index(table).view().page_closure().contains(page_ptr),
-        !iommu ==> pre.pt_mp.dom().contains(table) && pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).page_closure().contains(page_ptr),
+        !iommu ==> pre.pt_mp.dom().contains(table) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).page_closure().contains(page_ptr),
         post.subsystems_inv(),
     ensures page_object_owner_wf(post.pg_arr, post.ctn_mp, post.thr_mp),
 {
@@ -580,7 +580,7 @@ proof fn kill_retire_table_page_scoped_eof_page_relations(
         pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr,
         pre.allc_4k_mp.dom().contains(allocator_ptr),
         iommu ==> pre.it_mp.dom().contains(table) && pre.it_mp.spec_index(table).view().page_closure().contains(page_ptr),
-        !iommu ==> pre.pt_mp.dom().contains(table) && pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).page_closure().contains(page_ptr),
+        !iommu ==> pre.pt_mp.dom().contains(table) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).page_closure().contains(page_ptr),
         pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().free_list_node_storage.addr() == node_addr,
         !pre.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(node_addr),
         post.subsystems_inv(),
@@ -684,8 +684,8 @@ pub(crate) proof fn kill_retire_table_page_scoped_eof(
         pre.ctn_mp.spec_index(owner).view_rodata().view().allocator_ptr_4k == allocator_ptr,
         pre.allc_4k_mp.dom().contains(allocator_ptr),
         iommu ==> pre.it_mp.dom().contains(table) && pre.it_mp.spec_index(table).view().page_closure().contains(page_ptr),
-        !iommu ==> pre.pt_mp.dom().contains(table) && pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).page_closure().contains(page_ptr),
-        !iommu ==> pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).leaves_present(),
+        !iommu ==> pre.pt_mp.dom().contains(table) && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).page_closure().contains(page_ptr),
+        !iommu ==> whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).leaves_present(),
         pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().free_list_node_storage.addr() == node_addr,
         !pre.allc_4k_mp.spec_index(allocator_ptr).cpu_caches.spec_index(cpu_id).view().view().map().dom().contains(node_addr),
         pagetable_perms_wf(post.pt_mp),
@@ -702,7 +702,7 @@ pub(crate) proof fn kill_retire_table_page_scoped_eof(
         post.inv(),
         kernel_cpu_process_thread_nonlock_fields_unchanged(&pre, &post),
         kernel_endpoint_nonlock_fields_unchanged(pre.ep_mp, post.ep_mp),
-        !iommu ==> (pagetable_c(pre.pt_mp, pre.pt_lower.view(), table).leaves_present() ==> pagetable_c(post.pt_mp, post.pt_lower.view(), table).leaves_present()),
+        !iommu ==> (whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table).leaves_present() ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), table).leaves_present()),
         iommu ==> (pre.it_mp.spec_index(table).view().leaves_present() ==> post.it_mp.spec_index(table).view().leaves_present()),
 {
     kill_retire_table_page_scoped_eof_subsystems_inv(pre, post, iommu, table, page_ptr, allocator_ptr, cpu_id, node_addr);

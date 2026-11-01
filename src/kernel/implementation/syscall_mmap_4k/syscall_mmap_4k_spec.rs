@@ -3,7 +3,7 @@ use crate::*;
 
 verus! {
 /// User-visible and physical result of a successful anonymous 4K mmap.
-pub open spec fn mmap_4k_syscall_range_mapped(pagetable: PageTableC<PT_TYPE>, va: VAddr, len: usize) -> bool {
+pub open spec fn mmap_4k_syscall_range_mapped(pagetable: WholePageTable<PT_TYPE>, va: VAddr, len: usize) -> bool {
     forall|i: usize| #![trigger pagetable.mapping_4k().dom().contains(spec_va_add_range(va, i))] i < len ==> {
         let mapped_va = spec_va_add_range(va, i);
         &&& pagetable.mapping_4k().dom().contains(mapped_va)
@@ -354,6 +354,6 @@ pub open spec fn mmap_4k_syscall_success_mapped(post: &KernelK, cpu_id: CpuId, v
     &&& range > 0
     &&& va_4k_valid(va)
     &&& post.pt_mp.dom().contains(pagetable_ptr)
-    &&& mmap_4k_syscall_range_mapped(pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr), va, range)
+    &&& mmap_4k_syscall_range_mapped(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr), va, range)
 }
 } // verus!

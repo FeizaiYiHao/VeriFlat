@@ -16,9 +16,9 @@ pub(super) open spec fn create_initial_thread_and_finish_new_process_eof_transit
         cpu_arr: post.cpu_arr, cpu_op: post.cpu_op, ..mid })
     &&& post.pt_mp.dom() == mid.pt_mp.dom()
     &&& kernel_pagetable_nonlock_fields_unchanged(mid.pt_mp, mid.pt_lower.view(), post.pt_mp, post.pt_lower.view())
-    &&& forall|p: RwLockPageTableRoot| #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), p)]
+    &&& forall|p: RwLockPageTableRoot| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), p)]
         pre.pt_mp.dom().contains(p) && p != pre.prc_mp.spec_index(child_ptr).view().pagetable && p != pre.prc_mp.spec_index(pre.thr_mp.spec_index(current_thread_ptr).view().owning_proc).view().pagetable
-        ==> pagetable_c(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(mid.pt_mp, mid.pt_lower.view(), p).lower.pagetable_window_locks
+        ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), p).lower.pagetable_window_locks
     &&& post.it_mp.dom() == mid.it_mp.dom()
     &&& forall|p: RwLockPageTableRoot| #![trigger post.it_mp.spec_index(p)] mid.it_mp.dom().contains(p) ==> post.it_mp.spec_index(p).view() == mid.it_mp.spec_index(p).view()
     &&& kernel_cpu_nonlock_fields_unchanged(mid.cpu_arr, post.cpu_arr)

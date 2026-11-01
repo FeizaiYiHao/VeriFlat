@@ -118,7 +118,7 @@ pub(super) proof fn process_map_link_new_child_eof_process_perms_wf(pre: Process
         post.spec_index(parent_ptr).view_rodata() == pre.spec_index(parent_ptr).view_rodata(),
         post.spec_index(parent_ptr).view_ghost() == pre.spec_index(parent_ptr).view_ghost(),
     ensures process_perms_wf(post),
-{ reveal(process_perms_wf); seq_push_unique_lemma::<RwLockProcessPtr>(); }
+{ reveal(process_perms_wf); seq_push_absent_implies_no_duplicates_and_index_of::<RwLockProcessPtr>(); }
 
 pub(super) proof fn process_map_unlink_child_eof_process_perms_wf(pre: ProcessLockedMap, post: ProcessLockedMap, parent_ptr: RwLockProcessPtr, child_ptr: RwLockProcessPtr)
     requires
@@ -302,7 +302,7 @@ pub(super) proof fn process_subsystem_create_scheduled_thread_eof_scheduler_wf(
     reveal(container_thread_scheduler_wf);
     reveal(container_thread_wf);
     reveal(container_scheduler_wf);
-    seq_push_lemma::<RwLockThreadPtr>();
+    seq_push_implies_contains::<RwLockThreadPtr>();
 }
 
 pub(super) proof fn process_subsystem_create_scheduled_thread_eof_thread_perms_wf(

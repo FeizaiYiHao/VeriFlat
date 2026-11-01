@@ -196,7 +196,7 @@ pub(super) fn build_staged_4k_global_pool(
         let mut node_perm = Tracked(node_perm);
         node_update_value(node_addr, &mut node_perm, page_ptr);
         global_pool.push_head(node_addr, node_perm);
-        proof { seq_push_head_lemma::<PagePtr>(); }
+        proof { seq_insert_head_implies_contains::<PagePtr>(); }
         current = next;
         remaining = remaining - 1;
     }

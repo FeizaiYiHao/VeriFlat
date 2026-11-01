@@ -68,7 +68,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             Self::unlink_interior_node_eof_prev(*old(self), *self, addr, ghost_index.view(), prev, next);
             Self::unlink_interior_node_eof_next(*old(self), *self, addr, ghost_index.view(), prev, next);
         }
-        assert(old(self).view().no_duplicates() ==> self.view() == old(self).view().remove_value(old(self).map().spec_index(addr))) by { seq_remove_lemma::<T>(); };
+        assert(old(self).view().no_duplicates() ==> self.view() == old(self).view().remove_value(old(self).map().spec_index(addr))) by { seq_remove_at_index_implies_contains_and_index_shift::<T>(); };
 
         (addr, Tracked(old_perm))
     }
@@ -110,11 +110,11 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
                 &&& self.view().spec_index(0) == self.map().spec_index(addr)
             }) by { reveal(LinkedList::wf_perms); reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_head); };
             let ret = self.pop_head();
-            assert(self.view() == old(self).view().remove_value(old(self).map().spec_index(addr))) by { seq_skip_lemma::<T>(); };
+            assert(self.view() == old(self).view().remove_value(old(self).map().spec_index(addr))) by { seq_skip_one_implies_contains_and_index_shift::<T>(); };
             return ret;
         } else if self.head.unwrap() == addr {
             let ret = self.pop_head();
-            assert(self.view() == old(self).view().remove_value(old(self).map().spec_index(addr))) by { seq_skip_lemma::<T>(); };
+            assert(self.view() == old(self).view().remove_value(old(self).map().spec_index(addr))) by { seq_skip_one_implies_contains_and_index_shift::<T>(); };
             return ret;
         } else if self.tail.unwrap() == addr {
             assert({
@@ -142,7 +142,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             self.length = self.length - 1;
 
             assert(self.wf()) by {
-                seq_remove_lemma::<usize>();
+                seq_remove_at_index_implies_contains_and_index_shift::<usize>();
                 reveal(LinkedList::wf_perms);
                 reveal(LinkedList::wf_addr_list);
                 reveal(LinkedList::wf_value_list);
@@ -153,7 +153,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
                 reveal(LinkedList::wf_map);
                 reveal(LinkedList::value_list_unique);
             };
-            assert(self.view() == old(self).view().remove_value(old(self).map().spec_index(addr))) by { seq_remove_lemma::<T>(); };
+            assert(self.view() == old(self).view().remove_value(old(self).map().spec_index(addr))) by { seq_remove_at_index_implies_contains_and_index_shift::<T>(); };
             return (addr, Tracked(old_tail_perm));
         } else {
             return self.unlink_interior_node(addr);

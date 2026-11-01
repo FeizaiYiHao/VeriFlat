@@ -5,7 +5,7 @@ use veriflat_kernel_core::kernel_u_new_thread_changed;
 #[cfg(not(feature = "split-crates"))]
 #[cfg(verus_keep_ghost)]
 use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
-use super::syscall_new_process_common::syscall_new_process_common;
+use super::syscall_new_process_common::syscall_new_process_shared_body;
 use super::syscall_new_process_spec::*;
 
 verus! {
@@ -44,5 +44,5 @@ pub fn syscall_new_process(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Local
         },
         (ret is SuccessPairUsize) == (new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, None, false) is Success),
         !(ret is SuccessPairUsize) ==> ret == new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, None, false),
-{ syscall_new_process_common(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, None, false, initial_regs) }
+{ syscall_new_process_shared_body(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, None, false, initial_regs) }
 }

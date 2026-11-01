@@ -163,16 +163,16 @@ pub open spec fn held_pagetable_windows_unchanged(pre_pt: PageTableLockedMap, pr
     forall|pt: RwLockPageTableRoot, w: WindowVa|
         #![trigger lctx.pagetable_window_lock_map().dom().contains((pt, w))]
         lctx.pagetable_window_lock_map().dom().contains((pt, w)) ==> {
-            let pre = pagetable_c(pre_pt, pre_lower, pt);
-            let post = pagetable_c(post_pt, post_lower, pt);
+            let pre = whole_pagetable(pre_pt, pre_lower, pt);
+            let post = whole_pagetable(post_pt, post_lower, pt);
             &&& post.window_view(w) == pre.window_view(w)
             &&& forall|v: VAddr|
-                #![trigger pagetable_c(post_pt, post_lower, pt).mapping_4k().dom().contains(v)]
-                #![trigger pagetable_c(pre_pt, pre_lower, pt).mapping_4k().dom().contains(v)]
+                #![trigger whole_pagetable(post_pt, post_lower, pt).mapping_4k().dom().contains(v)]
+                #![trigger whole_pagetable(pre_pt, pre_lower, pt).mapping_4k().dom().contains(v)]
                 spec_v2l4index(v) == spec_v2l4index(w.va) && spec_v2l3index(v) == spec_v2l3index(w.va) && spec_v2l2index(v) == spec_v2l2index(w.va) ==> {
-                    &&& pagetable_c(post_pt, post_lower, pt).mapping_4k().dom().contains(v) == pagetable_c(pre_pt, pre_lower, pt).mapping_4k().dom().contains(v)
-                    &&& pagetable_c(pre_pt, pre_lower, pt).mapping_4k().dom().contains(v)
-                        ==> pagetable_c(post_pt, post_lower, pt).mapping_4k().spec_index(v) == pagetable_c(pre_pt, pre_lower, pt).mapping_4k().spec_index(v)
+                    &&& whole_pagetable(post_pt, post_lower, pt).mapping_4k().dom().contains(v) == whole_pagetable(pre_pt, pre_lower, pt).mapping_4k().dom().contains(v)
+                    &&& whole_pagetable(pre_pt, pre_lower, pt).mapping_4k().dom().contains(v)
+                        ==> whole_pagetable(post_pt, post_lower, pt).mapping_4k().spec_index(v) == whole_pagetable(pre_pt, pre_lower, pt).mapping_4k().spec_index(v)
                 }
             &&& post.mapping_2m().dom().contains(w.va) == pre.mapping_2m().dom().contains(w.va)
             &&& pre.mapping_2m().dom().contains(w.va) ==> post.mapping_2m().spec_index(w.va) == pre.mapping_2m().spec_index(w.va)
@@ -188,8 +188,8 @@ pub proof fn held_pagetable_window_mapping_4k_unchanged_at(
         lctx.pagetable_window_lock_map().dom().contains((pt, w)),
         spec_v2l4index(v) == spec_v2l4index(w.va) && spec_v2l3index(v) == spec_v2l3index(w.va) && spec_v2l2index(v) == spec_v2l2index(w.va),
     ensures
-        pagetable_c(post_pt, post_lower, pt).mapping_4k().dom().contains(v) == pagetable_c(pre_pt, pre_lower, pt).mapping_4k().dom().contains(v),
-        pagetable_c(pre_pt, pre_lower, pt).mapping_4k().dom().contains(v) ==> pagetable_c(post_pt, post_lower, pt).mapping_4k().spec_index(v) == pagetable_c(pre_pt, pre_lower, pt).mapping_4k().spec_index(v),
+        whole_pagetable(post_pt, post_lower, pt).mapping_4k().dom().contains(v) == whole_pagetable(pre_pt, pre_lower, pt).mapping_4k().dom().contains(v),
+        whole_pagetable(pre_pt, pre_lower, pt).mapping_4k().dom().contains(v) ==> whole_pagetable(post_pt, post_lower, pt).mapping_4k().spec_index(v) == whole_pagetable(pre_pt, pre_lower, pt).mapping_4k().spec_index(v),
 {}
 
 pub open spec fn held_iommu_tables_unchanged(pre: IommuTableLockedMap, post: IommuTableLockedMap, lctx: &LocalContext) -> bool {

@@ -63,7 +63,7 @@ pub fn move_cache_page_to_pool_2m(krnl: &mut KernelK, allocator: RwLockPageAlloc
     let (node_addr, Tracked(node_perm)) = krnl.allc_2m_mp.pop_cache_page_typed(allocator, cpu_id, Ghost(lctx.allocator_quota_2m_lock_map()), Ghost(lctx.allocator_cache_2m_lock_map()), Ghost(lctx.allocator_global_pool_2m_lock_map()), Tracked(&*lctx), cache_perm);
     assert(node_addr == krnl.pg_arr.spec_index(page_index).view().view().free_list_node_storage.addr()) by {
         container_allocator_free_2m_page_wf_at(old(krnl).allc_2m_mp, old(krnl).pg_arr, page_index);
-        old(krnl).allc_2m_mp.spec_index(allocator).cpu_caches.spec_index(cpu_id).view().view().linked_list.lemma_value_addr_unique(node_addr, krnl.pg_arr.spec_index(page_index).view().view().free_list_node_storage.addr());
+        old(krnl).allc_2m_mp.spec_index(allocator).cpu_caches.spec_index(cpu_id).view().view().linked_list.wf_and_equal_values_implies_equal_addrs(node_addr, krnl.pg_arr.spec_index(page_index).view().view().free_list_node_storage.addr());
     };
     krnl.allc_2m_mp.push_global_pool_page_typed(allocator, node_addr, Tracked(node_perm), Ghost(lctx.allocator_quota_2m_lock_map()), Ghost(lctx.allocator_cache_2m_lock_map()), Ghost(lctx.allocator_global_pool_2m_lock_map()), Tracked(&*lctx), pool_perm);
     {
@@ -76,7 +76,7 @@ pub fn move_cache_page_to_pool_2m(krnl: &mut KernelK, allocator: RwLockPageAlloc
         lctx.enter_kernel_view_release();
         assert(move_cache_page_to_pool_2m_eof_transition_framing(*old(krnl), *krnl, allocator, cpu_id, page_ptr, node_addr)) by {
             reveal(move_cache_page_to_pool_2m_eof_transition_framing);
-            seq_skip_lemma::<PagePtr>(); old(krnl).allc_2m_mp.spec_index(allocator).global_pool.view().view().insert_ensures(0, page_ptr);
+            seq_skip_one_implies_contains_and_index_shift::<PagePtr>(); old(krnl).allc_2m_mp.spec_index(allocator).global_pool.view().view().insert_ensures(0, page_ptr);
         };
         move_cache_page_to_pool_2m_eof(*old(krnl), *krnl, allocator, cpu_id, page_ptr, node_addr);
     }

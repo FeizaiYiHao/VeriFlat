@@ -55,7 +55,7 @@ impl PageMap {
     {
         if value.perm.kernel_present == false {
             self.ar.set(index, 0usize);
-            proof { zero_leads_is_empty_page_entry(); self.spec_seq = Ghost(self.spec_seq.view().update(index as int, usize2page_entry(0usize))); }
+            proof { spec_usize2page_entry_zero_is_empty(); self.spec_seq = Ghost(self.spec_seq.view().update(index as int, usize2page_entry(0usize))); }
             return;
         } else {
             let u = page_entry2usize(&value);

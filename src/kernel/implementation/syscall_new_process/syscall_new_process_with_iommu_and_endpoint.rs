@@ -6,7 +6,7 @@ use veriflat_kernel_core::kernel_u_new_thread_changed;
 #[cfg(verus_keep_ghost)]
 use crate::kernel::implementation::create_thread_from_staged_page::kernel_u_new_thread_changed;
 use super::syscall_new_process_spec::*;
-use super::syscall_new_process_common::syscall_new_process_common;
+use super::syscall_new_process_common::syscall_new_process_shared_body;
 
 verus! {
 pub fn syscall_new_process_with_iommu_and_endpoint(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, range: usize, endpoint_index: EndpointIdx, initial_regs: &Registers) -> (ret: RetValueType)
@@ -54,5 +54,5 @@ pub fn syscall_new_process_with_iommu_and_endpoint(krnl: &mut KernelK, Tracked(l
         },
         (ret is SuccessThreeUsize) == (new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, Some(endpoint_index), true) is Success),
         !(ret is SuccessThreeUsize) ==> ret == new_process_syscall_result(kernel_k_to_kernel_u(*old(krnl)), cpu_id, va, range, Some(endpoint_index), true),
-{ syscall_new_process_common(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, Some(endpoint_index), true, initial_regs) }
+{ syscall_new_process_shared_body(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, Some(endpoint_index), true, initial_regs) }
 }

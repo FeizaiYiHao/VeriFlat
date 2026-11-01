@@ -62,7 +62,7 @@ pub proof fn kernel_snapshot_nonlock_fields_and_lock_states_unchanged_implies_u_
                 let after = krnl.pt_mp.spec_index(p).locking_thread();
                 &&& (after is Write) == (before is Write)
                 &&& (after is Read) == (before is Read)
-                &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), p).lower.pagetable_window_locks == pagetable_c(steps.snapshot_k().pt_mp, steps.snapshot_k().pt_lower.view(), p).lower.pagetable_window_locks
+                &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), p).lower.pagetable_window_locks == whole_pagetable(steps.snapshot_k().pt_mp, steps.snapshot_k().pt_lower.view(), p).lower.pagetable_window_locks
             },
         forall|p: RwLockPageTableRoot| #![trigger krnl.it_mp.spec_index(p)]
             krnl.it_mp.dom().contains(p) && steps.snapshot_k().it_mp.dom().contains(p) ==> {
@@ -137,7 +137,7 @@ pub proof fn kernel_iommu_root_table_process_detached_implies_u_step(pre: &Kerne
 {
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post); reveal(process_iommu_table_match);
     kernel_iommu_root_table_projection(pre); kernel_iommu_root_table_projection(post);
-    pre.irt.view().user_view_unfold(); post.irt.view().user_view_unfold();
+    pre.irt.view().user_view_eq_owners_and_attached(); post.irt.view().user_view_eq_owners_and_attached();
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
     let process = pre.it_mp.spec_index(iommu_table).view().proc_ptr;

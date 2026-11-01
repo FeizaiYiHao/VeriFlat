@@ -399,11 +399,11 @@ pub(crate) proof fn kill_user_4k_unmapped_pre_from_k(krnl: &KernelK, target: RwL
         !krnl.prc_mp.spec_index(target).view().zombie,
         krnl.pt_mp.dom().contains(krnl.prc_mp.spec_index(target).view().pagetable),
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
-            #![trigger pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(target).view().pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
+            #![trigger whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(target).view().pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
             pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && KERNEL_MEM_END_L4INDEX <= l4i
                 && krnl.pt_mp.spec_index(krnl.prc_mp.spec_index(target).view().pagetable).view().kernel_l4_end <= l4i
-                && pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(target).view().pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
-                ==> !pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(target).view().pagetable).mapping_4k().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present,
+                && whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(target).view().pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
+                ==> !whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(target).view().pagetable).mapping_4k().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present,
     ensures
         kernel_k_to_kernel_u(*krnl).process_map[target].pagetable is Some,
         kill_process_user_4k_unmapped(kernel_k_to_kernel_u(*krnl), kernel_k_to_kernel_u(*krnl).process_map[target].pagetable->Some_0),
@@ -1173,15 +1173,15 @@ pub(crate) proof fn kill_window_locks_changed_implies_windows_changed_step(
         post.thr_mp.spec_index(thread_ptr).locking_thread() == pre.thr_mp.spec_index(thread_ptr).locking_thread(),
         kernel_cpu_process_thread_nonlock_fields_unchanged(pre, post) && kernel_container_nonlock_fields_and_quotas_unchanged(pre, post) || {
             &&& *post == (KernelK { pt_mp: post.pt_mp, pt_lower: post.pt_lower, ..*pre })
-            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).mapping_4k() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k()
-            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).mapping_2m() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m()
-            &&& pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).mapping_1g() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g()
+            &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k()
+            &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_2m()
+            &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_1g()
         },
-        pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom().contains(w),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks.insert(w, v),
-        v is WriteLocked && pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks[w] is Unlocked
-            || v is Unlocked && (pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks[w] is WriteLocked
-                || pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks[w] is Unlocked),
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom().contains(w),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks.insert(w, v),
+        v is WriteLocked && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks[w] is Unlocked
+            || v is Unlocked && (whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks[w] is WriteLocked
+                || whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks[w] is Unlocked),
     ensures
         kill_process_step_pre(kernel_k_to_kernel_u(*pre), cpu_id),
         kill_target(kernel_k_to_kernel_u(*pre), cpu_id) == target,
@@ -1197,9 +1197,9 @@ pub(crate) proof fn kill_window_locks_changed_implies_windows_changed_step(
     }
     kernel_pagetable_window_locks_changed_implies_u_window_locks_replaced(pre, post, target, pagetable, thread_ptr);
     process_pagetable_match_process_at(post.prc_mp, post.pt_mp, target); kernel_process_projection_at(pre, target);
-    assert(pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom() =~= pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom());
+    assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom() =~= whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom());
     reveal(kill_process_step_pre);
-    kill_pagetable_windows_changed_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, target, pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks, w, w);
+    kill_pagetable_windows_changed_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, target, whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks, w, w);
 }
 
 /// Growing the 4K quota of the target's container or of one of its ancestors, and nothing else, is a refund step.
@@ -1262,9 +1262,9 @@ pub(crate) proof fn kill_page_freed_then_window_unlocked_implies_refund_step(
         post.pt_lower.view() == mid.pt_lower.view().insert(pagetable, post.pt_lower.view().spec_index(pagetable)),
         kernel_cpu_process_thread_nonlock_fields_unchanged(mid, post),
         kernel_container_nonlock_fields_and_quotas_unchanged(mid, post),
-        pagetable_c(mid.pt_mp, mid.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom().contains(w),
-        pagetable_c(mid.pt_mp, mid.pt_lower.view(), pagetable).lower.pagetable_window_locks[w] is WriteLocked,
-        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks == pagetable_c(mid.pt_mp, mid.pt_lower.view(), pagetable).lower.pagetable_window_locks.insert(w, LockStateU::Unlocked),
+        whole_pagetable(mid.pt_mp, mid.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom().contains(w),
+        whole_pagetable(mid.pt_mp, mid.pt_lower.view(), pagetable).lower.pagetable_window_locks[w] is WriteLocked,
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks == whole_pagetable(mid.pt_mp, mid.pt_lower.view(), pagetable).lower.pagetable_window_locks.insert(w, LockStateU::Unlocked),
     ensures
         kill_process_middle_step(KernelStep { old_u: kernel_k_to_kernel_u(*snap), new_u: kernel_k_to_kernel_u(*post) }, cpu_id),
         kernel_k_to_kernel_u(*snap) != kernel_k_to_kernel_u(*post),
@@ -1273,8 +1273,8 @@ pub(crate) proof fn kill_page_freed_then_window_unlocked_implies_refund_step(
     let m = kernel_k_to_kernel_u(*mid);
     kernel_pagetable_window_locks_changed_implies_u_window_locks_replaced(mid, post, target, pagetable, thread_ptr);
     kernel_process_projection_at(snap, target); process_pagetable_match_process_at(post.prc_mp, post.pt_mp, target); kernel_process_projection_at(mid, target);
-    assert(pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom() =~= pagetable_c(mid.pt_mp, mid.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom());
-    kill_unlocking_refund_step_from_u(a, m, kernel_k_to_kernel_u(*post), cpu_id, target, pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks, w);
+    assert(whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom() =~= whole_pagetable(mid.pt_mp, mid.pt_lower.view(), pagetable).lower.pagetable_window_locks.dom());
+    kill_unlocking_refund_step_from_u(a, m, kernel_k_to_kernel_u(*post), cpu_id, target, whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks, w);
     assert(m == (KernelU { container_map: m.container_map, ..a })) by { reveal(kernel_u_container_quota_4k_increased); };
 }
 

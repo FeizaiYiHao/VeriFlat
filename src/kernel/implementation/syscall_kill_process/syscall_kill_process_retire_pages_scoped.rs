@@ -58,8 +58,8 @@ pub(crate) fn kill_retire_next_table_page_scoped(
             &&& typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), table, TypedLockMode::Write)
             &&& old(lctx).pagetable_lock_map().dom() == set![table]
             &&& table_perm.lock_id() == old(krnl).pt_mp.spec_index(table).locking_thread()->Write_lock_id
-            &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).spec_structure_scan_wf(scan)
-            &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).leaves_present()
+            &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).spec_structure_scan_wf(scan)
+            &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).leaves_present()
         },
         iommu ==> {
             &&& old(krnl).prc_mp.spec_index(target).view().iommu_table == Some(table)
@@ -88,15 +88,15 @@ pub(crate) fn kill_retire_next_table_page_scoped(
         held_threads_unchanged(old(krnl).thr_mp, final(krnl).thr_mp, old(lctx)),
         held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
         held_pages_unchanged(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx)),
-        !iommu ==> pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).page_closure().contains(page_ptr)
-            && pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).page_closure() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).page_closure().remove(page_ptr),
+        !iommu ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).page_closure().contains(page_ptr)
+            && whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).page_closure() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).page_closure().remove(page_ptr),
         iommu ==> old(krnl).it_mp.spec_index(table).view().page_closure().contains(page_ptr)
             && final(krnl).it_mp.spec_index(table).view().page_closure() == old(krnl).it_mp.spec_index(table).view().page_closure().remove(page_ptr),
         iommu ==> held_pagetables_unchanged(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx)),
         !iommu ==> held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
         !iommu ==> {
             &&& final(krnl).pt_mp.spec_index(table).locking_thread() == old(krnl).pt_mp.spec_index(table).locking_thread()
-            &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).leaves_present() ==> pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).leaves_present()
+            &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).leaves_present() ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).leaves_present()
         },
         iommu ==> {
             &&& final(krnl).it_mp.spec_index(table).locking_thread() == old(krnl).it_mp.spec_index(table).locking_thread()
@@ -153,8 +153,8 @@ pub(crate) fn kill_retire_table_page_scoped_and_unlock(
             &&& old(krnl).pt_mp.dom().contains(table)
             &&& typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), table, TypedLockMode::Write)
             &&& table_perm.lock_id() == old(krnl).pt_mp.spec_index(table).locking_thread()->Write_lock_id
-            &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).spec_structure_scan_wf(scan)
-            &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).leaves_present()
+            &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).spec_structure_scan_wf(scan)
+            &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).leaves_present()
             &&& scan is L1 ==> typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (table, WindowVa { va: spec_index2va((scan->L1_l4i, scan->L1_l3i, scan->L1_l2i, 0)) }), TypedLockMode::Write)
             &&& scan is L2 ==> old(lctx).pagetable_window_lock_map().dom().is_empty()
         },
@@ -193,7 +193,7 @@ pub(crate) fn kill_retire_table_page_scoped_and_unlock(
             &&& window_perm is Some
             &&& window_perm->Some_0.state() is WriteLock
             &&& window_perm->Some_0.thread_id() == old(lctx).thread_id()
-            &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.l2_owner(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).window_l2_page(scan->L1_l4i, scan->L1_l3i), scan->L1_l2i)
+            &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).window_l2_page(scan->L1_l4i, scan->L1_l3i), scan->L1_l2i)
                 == (SpinLockState::Some { thread_id: window_perm->Some_0.thread_id(), lock_id: window_perm->Some_0.lock_id() })
         },
     ensures
@@ -213,7 +213,7 @@ pub(crate) fn kill_retire_table_page_scoped_and_unlock(
             &&& final(krnl).it_mp == old(krnl).it_mp
             &&& final(krnl).pt_mp.unchanged_except(&old(krnl).pt_mp, table)
             &&& final(krnl).pt_mp.spec_index(table).locking_thread() == old(krnl).pt_mp.spec_index(table).locking_thread()
-            &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).leaves_present() ==> pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).leaves_present()
+            &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).leaves_present() ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).leaves_present()
         },
         iommu ==> {
             &&& final(krnl).pt_mp == old(krnl).pt_mp
@@ -221,8 +221,8 @@ pub(crate) fn kill_retire_table_page_scoped_and_unlock(
             &&& final(krnl).it_mp.spec_index(table).locking_thread() == old(krnl).it_mp.spec_index(table).locking_thread()
             &&& old(krnl).it_mp.spec_index(table).view().leaves_present() ==> final(krnl).it_mp.spec_index(table).view().leaves_present()
         },
-        !iommu ==> pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).page_closure().contains(page_ptr)
-            && pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).page_closure() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).page_closure().remove(page_ptr),
+        !iommu ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).page_closure().contains(page_ptr)
+            && whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).page_closure() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).page_closure().remove(page_ptr),
         iommu ==> old(krnl).it_mp.spec_index(table).view().page_closure().contains(page_ptr)
             && final(krnl).it_mp.spec_index(table).view().page_closure() == old(krnl).it_mp.spec_index(table).view().page_closure().remove(page_ptr),
         final(krnl).allc_4k_mp.dom() == old(krnl).allc_4k_mp.dom(),
@@ -272,10 +272,10 @@ pub(crate) fn kill_retire_table_page_scoped_to_cache(
             &&& old(krnl).pt_mp.dom().contains(table)
             &&& typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), table, TypedLockMode::Write)
             &&& table_perm.lock_id() == old(krnl).pt_mp.spec_index(table).locking_thread()->Write_lock_id
-            &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).spec_structure_scan_wf(scan)
-            &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).leaves_present()
+            &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).spec_structure_scan_wf(scan)
+            &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).leaves_present()
             &&& scan is L1 ==> typed_lock_map_contains_mode(old(lctx).pagetable_window_lock_map(), (table, WindowVa { va: spec_index2va((scan->L1_l4i, scan->L1_l3i, scan->L1_l2i, 0)) }), TypedLockMode::Write)
-            &&& scan is L1 ==> pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.l2_owner(pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).window_l2_page(scan->L1_l4i, scan->L1_l3i), scan->L1_l2i)
+            &&& scan is L1 ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).window_l2_page(scan->L1_l4i, scan->L1_l3i), scan->L1_l2i)
                 == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() })
             &&& scan is L2 ==> old(lctx).pagetable_window_lock_map().dom().is_empty()
         },
@@ -319,11 +319,11 @@ pub(crate) fn kill_retire_table_page_scoped_to_cache(
             &&& final(krnl).pt_mp.unchanged_except(&old(krnl).pt_mp, table)
             &&& final(krnl).pt_lower.view() == old(krnl).pt_lower.view().insert(table, final(krnl).pt_lower.view().spec_index(table))
             &&& final(krnl).pt_mp.spec_index(table).locking_thread() == old(krnl).pt_mp.spec_index(table).locking_thread()
-            &&& pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).leaves_present() ==> pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).leaves_present()
-            &&& scan is L1 ==> pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).lower.pagetable_window_locks == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.pagetable_window_locks
-            &&& scan is L1 ==> forall|p: PageMapPtr, i: L2Index| #![trigger pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).lower.l2_owner(p, i)]
-                pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).lower.l2_owner(p, i) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.l2_owner(p, i)
-            &&& scan is L1 ==> pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).higher == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).higher
+            &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).leaves_present() ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).leaves_present()
+            &&& scan is L1 ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).lower.pagetable_window_locks == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.pagetable_window_locks
+            &&& scan is L1 ==> forall|p: PageMapPtr, i: L2Index| #![trigger whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).lower.l2_owner(p, i)]
+                whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).lower.l2_owner(p, i) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).lower.l2_owner(p, i)
+            &&& scan is L1 ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).higher == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).higher
         },
         iommu ==> {
             &&& final(krnl).pt_mp == old(krnl).pt_mp
@@ -332,8 +332,8 @@ pub(crate) fn kill_retire_table_page_scoped_to_cache(
             &&& final(krnl).it_mp.spec_index(table).locking_thread() == old(krnl).it_mp.spec_index(table).locking_thread()
             &&& old(krnl).it_mp.spec_index(table).view().leaves_present() ==> final(krnl).it_mp.spec_index(table).view().leaves_present()
         },
-        !iommu ==> pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).page_closure().contains(page_ptr)
-            && pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).page_closure() == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).page_closure().remove(page_ptr),
+        !iommu ==> whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).page_closure().contains(page_ptr)
+            && whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), table).page_closure() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), table).page_closure().remove(page_ptr),
         iommu ==> old(krnl).it_mp.spec_index(table).view().page_closure().contains(page_ptr)
             && final(krnl).it_mp.spec_index(table).view().page_closure() == old(krnl).it_mp.spec_index(table).view().page_closure().remove(page_ptr),
         final(krnl).pg_arr.entries_unchanged_except(&old(krnl).pg_arr, page_ptr2page_index(page_ptr)),

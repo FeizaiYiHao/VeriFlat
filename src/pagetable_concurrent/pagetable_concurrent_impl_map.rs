@@ -9,19 +9,19 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     pub fn map_4k_page(&self, Tracked(lower): Tracked<&mut PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l1i: L1Index,
         target_l2_p: PageMapPtr, target_l1_p: PageMapPtr, target_entry: &MapEntry, Tracked(window_perm): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
-            (PageTableC { higher: *self, lower: *old(lower) }).wf(),
+            (WholePageTable { higher: *self, lower: *old(lower) }).wf(),
             self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             pei_valid(target_l1i),
             page_table_key_4k_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))),
-            (PageTableC { higher: *self, lower: *old(lower) }).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
-            (PageTableC { higher: *self, lower: *old(lower) }).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
-            (PageTableC { higher: *self, lower: *old(lower) }).spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) is None
+            (WholePageTable { higher: *self, lower: *old(lower) }).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is Some,
+            (WholePageTable { higher: *self, lower: *old(lower) }).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i)->0.addr == target_l1_p,
+            (WholePageTable { higher: *self, lower: *old(lower) }).spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) is None
                 || old(lower).mapping_4k.dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i))) == false,
             page_ptr_valid(target_entry.addr),
             target_entry.present,
-            (PageTableC { higher: *self, lower: *old(lower) }).window_locked_by_thread(target_l4i, target_l3i, target_l2i, old(lctx).thread_id()),
+            (WholePageTable { higher: *self, lower: *old(lower) }).window_locked_by_thread(target_l4i, target_l3i, target_l2i, old(lctx).thread_id()),
             self.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
             self.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
             old(lower).l2_owner(target_l2_p, target_l2i) == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
@@ -31,10 +31,10 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
-            (PageTableC { higher: *self, lower: *final(lower) }).wf(),
-            (PageTableC { higher: *self, lower: *final(lower) }).page_closure() == (PageTableC { higher: *self, lower: *old(lower) }).page_closure(),
+            (WholePageTable { higher: *self, lower: *final(lower) }).wf(),
+            (WholePageTable { higher: *self, lower: *final(lower) }).page_closure() == (WholePageTable { higher: *self, lower: *old(lower) }).page_closure(),
             final(lower).mapping_4k == old(lower).mapping_4k.insert(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)), *target_entry),
-            (PageTableC { higher: *self, lower: *final(lower) }).spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) == Some(PageEntry { addr: target_entry.addr,
+            (WholePageTable { higher: *self, lower: *final(lower) }).spec_resolve_mapping_4k_l1(target_l4i, target_l3i, target_l2i, target_l1i) == Some(PageEntry { addr: target_entry.addr,
                 perm: PageEntryPerm { present: true, ps: false, write: target_entry.write, execute_disable: target_entry.execute_disable, user: true, kernel_present: true } }),
             final(lower).mapping_2m == old(lower).mapping_2m,
             forall|l4i: L4Index|
@@ -42,9 +42,9 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
                 self.kernel_l4_end <= l4i && pei_valid(l4i) ==> forall|l3i: L3Index|
                     #![trigger pei_valid(l3i)]
                     pei_valid(l3i) ==> forall|l2i: L2Index|
-                        #![trigger (PageTableC { higher: *self, lower: *final(lower) }).spec_resolve_mapping_l2(l4i, l3i, l2i)]
-                        pei_valid(l2i) ==> (PageTableC { higher: *self, lower: *final(lower) }).spec_resolve_mapping_l2(l4i, l3i, l2i)
-                            == (PageTableC { higher: *self, lower: *old(lower) }).spec_resolve_mapping_l2(l4i, l3i, l2i),
+                        #![trigger (WholePageTable { higher: *self, lower: *final(lower) }).spec_resolve_mapping_l2(l4i, l3i, l2i)]
+                        pei_valid(l2i) ==> (WholePageTable { higher: *self, lower: *final(lower) }).spec_resolve_mapping_l2(l4i, l3i, l2i)
+                            == (WholePageTable { higher: *self, lower: *old(lower) }).spec_resolve_mapping_l2(l4i, l3i, l2i),
             final(lower).l2_perms.dom() == old(lower).l2_perms.dom(),
             forall|p: PageMapPtr, i: L2Index| #![trigger final(lower).l2_entry(p, i)] final(lower).l2_entry(p, i) == old(lower).l2_entry(p, i),
             forall|p: PageMapPtr, i: L2Index| #![trigger final(lower).l2_owner(p, i)] final(lower).l2_owner(p, i) == old(lower).l2_owner(p, i),
@@ -52,7 +52,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(lower).window_stale_cpus == old(lower).window_stale_cpus,
     {
         proof {
-            let c = PageTableC { higher: *self, lower: *lower };
+            let c = WholePageTable { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
             c.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(target_l2_p, target_l2i);
@@ -70,12 +70,12 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         proof {
             lower.l2_perms.tracked_insert(target_l2_p, l2_perm);
             lower.mapping_4k = lower.mapping_4k.insert(spec_index2va((target_l4i, target_l3i, target_l2i, target_l1i)), *target_entry);
-            let pre = PageTableC { higher: *self, lower: *old(lower) };
-            let post = PageTableC { higher: *self, lower: *lower };
-            assert(PageTableC::map_4k_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, *target_entry)) by {
-                reveal(PageTableC::map_4k_page_eof_transition_framing);
+            let pre = WholePageTable { higher: *self, lower: *old(lower) };
+            let post = WholePageTable { higher: *self, lower: *lower };
+            assert(WholePageTable::map_4k_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, *target_entry)) by {
+                reveal(WholePageTable::map_4k_page_eof_transition_framing);
             };
-            PageTableC::map_4k_page_eof(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, *target_entry);
+            WholePageTable::map_4k_page_eof(pre, post, target_l4i, target_l3i, target_l2i, target_l1i, target_l1_p, *target_entry);
         }
     }
 
@@ -84,20 +84,20 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
     pub fn map_2m_page(&self, Tracked(lower): Tracked<&mut PageTableLower<TABLE_TYPE>>, target_l4i: L4Index, target_l3i: L3Index, target_l2i: L2Index, target_l2_p: PageMapPtr,
         target_entry: &MapEntry, Tracked(window_perm): Tracked<&LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>)
         requires
-            (PageTableC { higher: *self, lower: *old(lower) }).wf(),
+            (WholePageTable { higher: *self, lower: *old(lower) }).wf(),
             self.kernel_l4_end <= target_l4i && pei_valid(target_l4i),
             pei_valid(target_l3i),
             pei_valid(target_l2i),
             self.spec_resolve_mapping_l3(target_l4i, target_l3i) is Some,
             self.spec_resolve_mapping_l3(target_l4i, target_l3i)->0.addr == target_l2_p,
-            (PageTableC { higher: *self, lower: *old(lower) }).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
-            (PageTableC { higher: *self, lower: *old(lower) }).spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None
+            (WholePageTable { higher: *self, lower: *old(lower) }).spec_resolve_mapping_l2(target_l4i, target_l3i, target_l2i) is None,
+            (WholePageTable { higher: *self, lower: *old(lower) }).spec_resolve_mapping_2m_l2(target_l4i, target_l3i, target_l2i) is None
                 || old(lower).mapping_2m.dom().contains(spec_index2va((target_l4i, target_l3i, target_l2i, 0))) == false,
-            (PageTableC { higher: *self, lower: *old(lower) }).page_closure().contains(target_entry.addr) == false,
+            (WholePageTable { higher: *self, lower: *old(lower) }).page_closure().contains(target_entry.addr) == false,
             page_ptr_2m_valid(target_entry.addr),
             page_table_key_2m_valid::<TABLE_TYPE>(spec_index2va((target_l4i, target_l3i, target_l2i, 0))),
             target_entry.present,
-            (PageTableC { higher: *self, lower: *old(lower) }).window_locked_by_thread(target_l4i, target_l3i, target_l2i, old(lctx).thread_id()),
+            (WholePageTable { higher: *self, lower: *old(lower) }).window_locked_by_thread(target_l4i, target_l3i, target_l2i, old(lctx).thread_id()),
             old(lower).l2_owner(target_l2_p, target_l2i) == (SpinLockState::Some { thread_id: window_perm.thread_id(), lock_id: window_perm.lock_id() }),
             old(lctx).kernel_view_locking_state() is Acquire,
         ensures
@@ -105,8 +105,8 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(lctx).thread_id() == old(lctx).thread_id(),
             final(lctx).kernel_view_locking_state() is Release,
             typed_lock_maps_unchanged(old(lctx), final(lctx)),
-            (PageTableC { higher: *self, lower: *final(lower) }).wf(),
-            (PageTableC { higher: *self, lower: *final(lower) }).page_closure() == (PageTableC { higher: *self, lower: *old(lower) }).page_closure(),
+            (WholePageTable { higher: *self, lower: *final(lower) }).wf(),
+            (WholePageTable { higher: *self, lower: *final(lower) }).page_closure() == (WholePageTable { higher: *self, lower: *old(lower) }).page_closure(),
             final(lower).mapping_2m == old(lower).mapping_2m.insert(spec_index2va((target_l4i, target_l3i, target_l2i, 0)), *target_entry),
             final(lower).mapping_4k == old(lower).mapping_4k,
             final(lower).l2_perms.dom() == old(lower).l2_perms.dom(),
@@ -115,7 +115,7 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
             final(lower).window_stale_cpus == old(lower).window_stale_cpus,
     {
         proof {
-            let c = PageTableC { higher: *self, lower: *lower };
+            let c = WholePageTable { higher: *self, lower: *lower };
             self.wf_l4_at(target_l4i);
             c.wf_l3_at(self.spec_resolve_mapping_l4(target_l4i)->0.addr, target_l3i);
             c.wf_l2_at(target_l2_p, target_l2i);
@@ -129,12 +129,12 @@ impl<const TABLE_TYPE: PTType> PageTableHigher<TABLE_TYPE> {
         proof {
             lower.l2_perms.tracked_insert(target_l2_p, l2_perm);
             lower.mapping_2m = lower.mapping_2m.insert(spec_index2va((target_l4i, target_l3i, target_l2i, 0)), *target_entry);
-            let pre = PageTableC { higher: *self, lower: *old(lower) };
-            let post = PageTableC { higher: *self, lower: *lower };
-            assert(PageTableC::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, *target_entry)) by {
-                reveal(PageTableC::map_2m_page_eof_transition_framing);
+            let pre = WholePageTable { higher: *self, lower: *old(lower) };
+            let post = WholePageTable { higher: *self, lower: *lower };
+            assert(WholePageTable::map_2m_page_eof_transition_framing(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, *target_entry)) by {
+                reveal(WholePageTable::map_2m_page_eof_transition_framing);
             };
-            PageTableC::map_2m_page_eof(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, *target_entry);
+            WholePageTable::map_2m_page_eof(pre, post, target_l4i, target_l3i, target_l2i, target_l2_p, *target_entry);
         }
     }
 }

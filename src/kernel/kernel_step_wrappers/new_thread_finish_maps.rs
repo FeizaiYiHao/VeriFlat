@@ -53,8 +53,8 @@ pub proof fn kernel_new_thread_fields_and_parent_unlocks_source_runlocked_implie
             let post_u = kernel_k_to_kernel_u(*post);
             let mode = LockStateU::Unlocked;
             let lock = post_u.process_map[source].pagetable->Some_0.lock_state;
-            let source_windows = pagetable_c(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks;
-            let child_windows = pagetable_c(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(process_ptr).view().pagetable).lower.pagetable_window_locks;
+            let source_windows = whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks;
+            let child_windows = whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(process_ptr).view().pagetable).lower.pagetable_window_locks;
             let unlocked = old_u.process_map.insert(source, ProcessU {
                 lock_state: mode, pagetable: Some(PageTableU { lock_state: lock, pagetable_window_locks: source_windows, ..old_u.process_map[source].pagetable->Some_0 }),
                 ..old_u.process_map[source]
@@ -71,8 +71,8 @@ pub proof fn kernel_new_thread_fields_and_parent_unlocks_source_runlocked_implie
     let post_u = kernel_k_to_kernel_u(*post);
     let mode = LockStateU::Unlocked;
     let lock = post_u.process_map[source].pagetable->Some_0.lock_state;
-    let source_windows = pagetable_c(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks;
-    let child_windows = pagetable_c(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(process_ptr).view().pagetable).lower.pagetable_window_locks;
+    let source_windows = whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(source).view().pagetable).lower.pagetable_window_locks;
+    let child_windows = whole_pagetable(post.pt_mp, post.pt_lower.view(), pre.prc_mp.spec_index(process_ptr).view().pagetable).lower.pagetable_window_locks;
     let unlocked = old_u.process_map.insert(source, ProcessU {
         lock_state: mode, pagetable: Some(PageTableU { lock_state: lock, pagetable_window_locks: source_windows, ..old_u.process_map[source].pagetable->Some_0 }),
         ..old_u.process_map[source]

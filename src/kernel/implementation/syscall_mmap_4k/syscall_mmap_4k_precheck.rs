@@ -30,7 +30,7 @@ pub(super) enum Mmap4kPrecheck {
             pagetable_lock_perm.state() is ReadLock ==> krnl.pt_mp.spec_index(pagetable_ptr).locking_thread()->Read_reader_map.contains_pair(lctx.thread_id(), pagetable_lock_perm.lock_id()),
         ensures
             ret.0 is Ready ==> {
-                let pagetable = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
+                let pagetable = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
                 let end_va = range.view().spec_index((range.len - 1) as int);
                 &&& pagetable.kernel_l4_end() <= spec_v2l4index(range.start)
                 &&& pagetable.spec_mapping_4k_va_range_empty(range.start, end_va)
@@ -43,7 +43,7 @@ pub(super) enum Mmap4kPrecheck {
             },
             (ret.0 is Invalid) == (spec_va2index(range.start).0 < krnl.pt_mp.spec_index(pagetable_ptr).view().kernel_l4_end),
             !(ret.0 is Invalid) ==> {
-                let pagetable = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
+                let pagetable = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
                 let end_va = range.view().spec_index((range.len - 1) as int);
                 (ret.0 is InUse) == !(pagetable.spec_mapping_4k_range_empty(spec_va2index(range.start), spec_va2index(end_va))
                     && forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len ==> {
@@ -59,21 +59,21 @@ pub(super) enum Mmap4kPrecheck {
                 &&& pei_valid(found.0) && pei_valid(found.1) && pei_valid(found.2) && pei_valid(found.3)
                 &&& spec_l4_index_path_le(spec_va2index(range.start), found)
                 &&& spec_l4_index_path_le(found, spec_va2index(range.view().spec_index((range.len - 1) as int)))
-                &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(spec_index2va(found))
+                &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(spec_index2va(found))
             },
-            ret.0 is InUse && ret.1.view() is None ==> pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).spec_mapping_4k_range_empty(spec_va2index(range.start),
+            ret.0 is InUse && ret.1.view() is None ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).spec_mapping_4k_range_empty(spec_va2index(range.start),
                 spec_va2index(range.view().spec_index((range.len - 1) as int))),
-            ret.0 is InUse && ret.1.view() is None ==> pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).spec_mapping_4k_va_range_empty(range.start, range.view().spec_index((range.len - 1) as int)),
+            ret.0 is InUse && ret.1.view() is None ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).spec_mapping_4k_va_range_empty(range.start, range.view().spec_index((range.len - 1) as int)),
     {
         let range_len = range.len;
         let range_start = range.start;
         let end_index = range_len - 1;
         let end_va = range.index(end_index);
-        assert(end_va == spec_va_add_range(range_start, end_index)) by { range.va_range_lemma(); };
+        assert(end_va == spec_va_add_range(range_start, end_index)) by { range.wf_implies_view_index_is_start_plus_offset(); };
         let start_indices = va2index(range_start);
         proof {
             assert(krnl.pt_mp.perms_wf() && krnl.pt_mp.spec_index(pagetable_ptr).inv()) by { pagetable_perms_wf_map(krnl.pt_mp); pagetable_perms_wf_at(krnl.pt_mp, pagetable_ptr); };
-            assert(krnl.pt_lower.view().dom().contains(pagetable_ptr) && pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).wf()) by {
+            assert(krnl.pt_lower.view().dom().contains(pagetable_ptr) && whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).wf()) by {
                 pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr);
             };
         }

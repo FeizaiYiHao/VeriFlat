@@ -72,7 +72,7 @@ fn kill_container_pages_drain_4k_cache(
     proof { allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, a4); }
     let tracked cache_perm = caches_4k.tracked_borrow(c);
     let n = krnl.allc_4k_mp.borrow_cache_typed(a4, c, Ghost(lctx.allocator_cache_4k_lock_map()), Tracked(&*lctx), Tracked(cache_perm)).linked_list.len();
-    proof { krnl.allc_4k_mp.spec_index(a4).cpu_caches.spec_index(c).view().view().linked_list.lemma_len_view(); }
+    proof { krnl.allc_4k_mp.spec_index(a4).cpu_caches.spec_index(c).view().view().linked_list.wf_implies_view_len_eq_len(); }
     let mut moved: usize = 0;
     proof { held_kernel_objects_unchanged_reflexive(&*krnl, &*lctx); }
     while moved < n
@@ -120,7 +120,7 @@ fn kill_container_pages_drain_4k_cache(
         let tracked cache_perm = caches_4k.tracked_borrow(c);
         let tracked pool_perm = pools_4k.tracked_borrow(a4);
         let cache = krnl.allc_4k_mp.borrow_cache_typed(a4, c, Ghost(lctx.allocator_cache_4k_lock_map()), Tracked(&*lctx), Tracked(cache_perm));
-        assert(cache.linked_list.len() > 0) by { cache.linked_list.lemma_len_view(); };
+        assert(cache.linked_list.len() > 0) by { cache.linked_list.wf_implies_view_len_eq_len(); };
         let (_, page_ptr) = cache.linked_list.peek_head();
         assert(page_ptr_valid(page_ptr)) by { allocator_free_page_ptrs_wf_cache_at(krnl.allc_4k_mp, a4, c, page_ptr); };
         let page_index = page_ptr2page_index(page_ptr);
@@ -205,7 +205,7 @@ fn kill_container_pages_drain_2m_cache(
     proof { allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, a2); }
     let tracked cache_perm = caches_2m.tracked_borrow(c);
     let n = krnl.allc_2m_mp.borrow_cache_typed(a2, c, Ghost(lctx.allocator_cache_2m_lock_map()), Tracked(&*lctx), Tracked(cache_perm)).linked_list.len();
-    proof { krnl.allc_2m_mp.spec_index(a2).cpu_caches.spec_index(c).view().view().linked_list.lemma_len_view(); }
+    proof { krnl.allc_2m_mp.spec_index(a2).cpu_caches.spec_index(c).view().view().linked_list.wf_implies_view_len_eq_len(); }
     let mut moved: usize = 0;
     proof { held_kernel_objects_unchanged_reflexive(&*krnl, &*lctx); }
     while moved < n
@@ -253,7 +253,7 @@ fn kill_container_pages_drain_2m_cache(
         let tracked cache_perm = caches_2m.tracked_borrow(c);
         let tracked pool_perm = pools_2m.tracked_borrow(a2);
         let cache = krnl.allc_2m_mp.borrow_cache_typed(a2, c, Ghost(lctx.allocator_cache_2m_lock_map()), Tracked(&*lctx), Tracked(cache_perm));
-        assert(cache.linked_list.len() > 0) by { cache.linked_list.lemma_len_view(); };
+        assert(cache.linked_list.len() > 0) by { cache.linked_list.wf_implies_view_len_eq_len(); };
         let (_, page_ptr) = cache.linked_list.peek_head();
         assert(page_ptr_valid(page_ptr)) by { allocator_free_page_ptrs_wf_cache_at(krnl.allc_2m_mp, a2, c, page_ptr); };
         let page_index = page_ptr2page_index(page_ptr);

@@ -78,7 +78,7 @@ impl CpuOpArray {
     /// TCB: the wake-up IPI of `ipi_wake` releases remote cpu `cpu_id` from `wait_until_online` into its idle loop;
     /// called only there.
     #[verifier::external_body]
-    pub(crate) proof fn woken(tracked &mut self, cpu_id: CpuId)
+    pub(crate) proof fn mark_idle_after_wake(tracked &mut self, cpu_id: CpuId)
         requires
             index_valid(NUM_CPUS, cpu_id),
         ensures

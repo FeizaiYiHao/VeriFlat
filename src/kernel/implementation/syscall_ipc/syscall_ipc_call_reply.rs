@@ -361,7 +361,7 @@ verus! {
             locked_k.thr_mp.typed_lock_map_aligned_write_at(locked_lctx.thread_lock_map(), locked_lctx.thread_id(), caller_ptr);
             kernel_cpu_and_two_threads_lock_modes_changed_implies_u_step(&pre_k, &locked_k, &locked_lctx, cpu_id, callee_ptr, caller_ptr, endpoint_ptr, None);
             kernel_dangling_caller_taken_over_implies_u_step(&locked_k, &*krnl, callee_ptr, caller_ptr, Some(endpoint_ptr));
-            endpoint_perms_wf_at(locked_k.ep_mp, endpoint_ptr); locked_k.ep_mp.spec_index(endpoint_ptr).view().queue.lemma_len_view();
+            endpoint_perms_wf_at(locked_k.ep_mp, endpoint_ptr); locked_k.ep_mp.spec_index(endpoint_ptr).view().queue.wf_implies_view_len_eq_len();
             ipc_reply_dangling_caller_step_pre_from_k(&pre_k, cpu_id, endpoint_index, process_ptr, callee_ptr, endpoint_ptr, caller_ptr);
             ipc_reply_dangling_caller_taken_over_step_from_u(kernel_k_to_kernel_u(pre_k), kernel_k_to_kernel_u(locked_k), kernel_k_to_kernel_u(*krnl), cpu_id, callee_ptr, caller_ptr, endpoint_ptr);
             krnl.kernel_step_boundary_thread_state_changed(&mut *lctx, &mut *steps, caller_ptr, ThreadState::DANGLING, ThreadState::KILLED);

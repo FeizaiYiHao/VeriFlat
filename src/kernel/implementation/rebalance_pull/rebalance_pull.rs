@@ -144,7 +144,7 @@ fn rebalance_lock_shards_until_nonempty(krnl: &mut KernelK, Tracked(lctx): Track
     {
         let Tracked(perm) = krnl.wlock_scheduler_shard(scheduler_ptr, next, Tracked(&mut *lctx));
         proof {
-            scheduler_perms_wf_map(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, scheduler_ptr); kernel_scheduler_shards_projection_at(krnl.sched_mp.spec_index(scheduler_ptr), next); krnl.sched_mp.spec_index(scheduler_ptr).shard(next).queue.lemma_len_view();
+            scheduler_perms_wf_map(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, scheduler_ptr); kernel_scheduler_shards_projection_at(krnl.sched_mp.spec_index(scheduler_ptr), next); krnl.sched_mp.spec_index(scheduler_ptr).shard(next).queue.wf_implies_view_len_eq_len();
             assert(kernel_container_nonlock_fields_and_quotas_unchanged(old(krnl), krnl)) by { broadcast use kernel_container_nonlock_fields_and_quotas_unchanged_transitive; };
         }
         let shard = krnl.sched_mp.borrow_shard_typed(scheduler_ptr, next, Ghost(lctx.scheduler_lock_map()), Tracked(&*lctx), Tracked(&perm));
@@ -399,7 +399,7 @@ fn rebalance_pull_move_head(
     };
     proof {
         let queue = before_move.sched_mp.spec_index(scheduler_ptr).shard(victim).queue;
-        queue.lemma_value_addr_unique(node_addr, before_move.thr_mp.spec_index(thread_ptr).view().scheduler_linkedlist_node.addr());
+        queue.wf_and_equal_values_implies_equal_addrs(node_addr, before_move.thr_mp.spec_index(thread_ptr).view().scheduler_linkedlist_node.addr());
     }
     let ghost old_thread_lock_id = krnl.thr_mp.lock_id_by_key(thread_ptr);
     let thread = krnl.thr_mp.borrow_mut_typed(thread_ptr, Ghost(lctx.thread_lock_map()), Tracked(&*lctx), Tracked(&thread_lock_perm));
@@ -488,7 +488,7 @@ pub fn rebalance_pull(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalConte
     let mut local_lock_perm: Option<Tracked<LockPerm>> = None;
     if victim < cpu_id {
         let Tracked(local_perm) = krnl.wlock_scheduler_shard(scheduler_ptr, cpu_id, Tracked(&mut *lctx));
-        proof { scheduler_perms_wf_map(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, scheduler_ptr); kernel_scheduler_shards_projection_at(krnl.sched_mp.spec_index(scheduler_ptr), cpu_id); krnl.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.lemma_len_view(); }
+        proof { scheduler_perms_wf_map(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, scheduler_ptr); kernel_scheduler_shards_projection_at(krnl.sched_mp.spec_index(scheduler_ptr), cpu_id); krnl.sched_mp.spec_index(scheduler_ptr).shard(cpu_id).queue.wf_implies_view_len_eq_len(); }
         let local_len = krnl.sched_mp.borrow_shard_typed(scheduler_ptr, cpu_id, Ghost(lctx.scheduler_lock_map()), Tracked(&*lctx), Tracked(&local_perm)).queue.len();
         if local_len != 0 {
             proof { assert(kernel_cpu_process_thread_nonlock_fields_unchanged(&steps.snapshot_k(), &*krnl)) by { broadcast use kernel_cpu_process_thread_nonlock_fields_unchanged_transitive; }; }
@@ -499,7 +499,7 @@ pub fn rebalance_pull(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalConte
         }
         local_lock_perm = Some(Tracked(local_perm));
     }
-    proof { scheduler_perms_wf_map(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, scheduler_ptr); kernel_scheduler_shards_projection_at(krnl.sched_mp.spec_index(scheduler_ptr), victim); krnl.sched_mp.spec_index(scheduler_ptr).shard(victim).queue.lemma_len_view(); }
+    proof { scheduler_perms_wf_map(krnl.sched_mp); scheduler_perms_wf_at(krnl.sched_mp, scheduler_ptr); kernel_scheduler_shards_projection_at(krnl.sched_mp.spec_index(scheduler_ptr), victim); krnl.sched_mp.spec_index(scheduler_ptr).shard(victim).queue.wf_implies_view_len_eq_len(); }
     let (_, thread_ptr) = krnl.sched_mp.borrow_shard_typed(scheduler_ptr, victim, Ghost(lctx.scheduler_lock_map()), Tracked(&*lctx), Tracked(shard_perms.tracked_borrow(victim))).queue.peek_head();
     proof { container_thread_scheduler_wf_at(krnl.ctn_mp, krnl.thr_mp, krnl.sched_mp, scheduler_ptr, victim, thread_ptr); }
     let res = krnl.wlock_scheduled_thread_unless_killed(thread_ptr, Tracked(&mut *lctx));

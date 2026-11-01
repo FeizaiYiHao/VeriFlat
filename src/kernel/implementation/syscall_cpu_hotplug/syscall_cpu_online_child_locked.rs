@@ -97,7 +97,7 @@ pub(super) fn cpu_online_child_locked(
 {
     let ghost entry = steps.snapshot_k();
     let caller = krnl.ctn_mp.borrow_typed(caller_ptr, Ghost(lctx.container_lock_map()), Tracked(&*lctx), Tracked(&container_lock_perm));
-    proof { caller.children.lemma_len_view(); }
+    proof { caller.children.wf_implies_view_len_eq_len(); }
     let child_ptr = caller.children.get(child);
     proof {
         assert({

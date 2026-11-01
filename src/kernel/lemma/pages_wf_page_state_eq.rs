@@ -96,8 +96,8 @@ pub proof fn pagetable_pages_wf_preserved_for_page_state_eq(old_pagetable_map: P
     requires
         pagetable_pages_wf(old_pagetable_map, old_pt_lower, old_page_array),
         new_pagetable_map.dom() == old_pagetable_map.dom(),
-        forall|p: RwLockPageTableRoot| #![trigger pagetable_c(new_pagetable_map, new_pt_lower, p).page_closure()]
-            new_pagetable_map.dom().contains(p) ==> pagetable_c(new_pagetable_map, new_pt_lower, p).page_closure() == pagetable_c(old_pagetable_map, old_pt_lower, p).page_closure(),
+        forall|p: RwLockPageTableRoot| #![trigger whole_pagetable(new_pagetable_map, new_pt_lower, p).page_closure()]
+            new_pagetable_map.dom().contains(p) ==> whole_pagetable(new_pagetable_map, new_pt_lower, p).page_closure() == whole_pagetable(old_pagetable_map, old_pt_lower, p).page_closure(),
         forall|p_i: PageIndex|
             #![trigger new_page_array.spec_index(p_i).view().view().state]
             index_valid(NUM_PAGES, p_i)

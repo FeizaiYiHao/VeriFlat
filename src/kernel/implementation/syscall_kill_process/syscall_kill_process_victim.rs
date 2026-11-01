@@ -70,7 +70,7 @@ pub(crate) fn kill_leave_process(
             let victim = pre.thr_mp.spec_index(victim_ptr).view();
             let callee = pre.thr_mp.spec_index(victim.callee.unwrap());
             let end = if thread_is_dangling(callee) && !callee.being_killed() { callee.view_ghost().chain_end.unwrap() } else { victim.callee.unwrap() };
-            callers = thread_map_set_chain_end_up_dangling_callers(&mut krnl.thr_mp, victim_ptr, end);
+            callers = thread_map_set_chain_end_along_dangling_caller_chain(&mut krnl.thr_mp, victim_ptr, end);
             assert(krnl.thr_mp.typed_lock_map_aligned(lctx.thread_lock_map(), lctx.thread_id())) by { reveal(LockedMap::typed_lock_map_aligned); };
         }
     }

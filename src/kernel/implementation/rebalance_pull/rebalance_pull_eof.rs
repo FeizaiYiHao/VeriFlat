@@ -23,7 +23,7 @@ proof fn rebalance_pull_eof_container_thread_scheduler(pre: KernelK, post: Kerne
     let queue = pre.sched_mp.spec_index(scheduler_ptr).shard(victim).queue;
     assert(queue.view().no_duplicates()) by { reveal(scheduler_perms_wf); reveal(LinkedList::value_list_unique); reveal(LinkedList::wf_value_list); };
     reveal(container_thread_scheduler_wf); reveal(container_scheduler_wf); reveal(container_thread_wf);
-    seq_push_lemma::<RwLockThreadPtr>(); seq_skip_lemma::<RwLockThreadPtr>();
+    seq_push_implies_contains::<RwLockThreadPtr>(); seq_skip_one_implies_contains_and_index_shift::<RwLockThreadPtr>();
 }
 
 proof fn rebalance_pull_eof_thread_endpoint_ref_counter(pre: KernelK, post: KernelK, cpu_id: CpuId, scheduler_ptr: RwLockSchedulerPtr, victim: CpuId, thread_ptr: RwLockThreadPtr)

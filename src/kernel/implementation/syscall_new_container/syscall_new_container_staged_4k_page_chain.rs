@@ -502,7 +502,7 @@ pub(super) fn allocate_staged_4k_page_chain(
         let (page_ptr, Tracked(page_lock_perm)) = allocate_free_4k_page(krnl, thread_ptr, container_ptr, cpu_id, Tracked(&mut *lctx), Tracked(&mut *steps), Tracked(thread_lock_perm));
         proof {
             assert(lctx.page_lock_map().dom() == old(lctx).page_lock_map().dom().union(page_ptrs_to_indices(page_ptrs.push(page_ptr)))) by {
-                seq_push_lemma::<PagePtr>();
+                seq_push_implies_contains::<PagePtr>();
                 assert_sets_equal!(
                     lctx.page_lock_map().dom() == old(lctx).page_lock_map().dom().union(page_ptrs_to_indices(page_ptrs.push(page_ptr),),),
                     page_index => {
@@ -512,7 +512,7 @@ pub(super) fn allocate_staged_4k_page_chain(
                 );
             };
             assert(page_ptrs_to_indices(page_ptrs.push(page_ptr)).disjoint(old(lctx).page_lock_map().dom())) by {
-                seq_push_lemma::<PagePtr>();
+                seq_push_implies_contains::<PagePtr>();
                 assert_sets_equal!(
                     page_ptrs.push(page_ptr).map_values(|p: PagePtr| page_ptr2page_index(p)).to_set() == page_ptrs.map_values(|p: PagePtr| page_ptr2page_index(p)).to_set().insert(page_ptr2page_index(page_ptr)),
                     page_index => {
@@ -533,11 +533,11 @@ pub(super) fn allocate_staged_4k_page_chain(
             assert(krnl.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view() == old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().union(page_ptrs.push(page_ptr).to_set())) by {
                 assert_sets_equal!(
                     old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().union(page_ptrs.to_set()).insert(page_ptr) == old(krnl).thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().union(page_ptrs.push(page_ptr).to_set()),
-                    x => { seq_push_lemma::<PagePtr>(); page_ptrs.to_set_ensures(); page_ptrs.push(page_ptr).to_set_ensures(); }
+                    x => { seq_push_implies_contains::<PagePtr>(); page_ptrs.to_set_ensures(); page_ptrs.push(page_ptr).to_set_ensures(); }
                 );
             };
             assert(page_lock_perms.insert(page_ptr, page_lock_perm).dom() == page_ptrs.push(page_ptr).to_set()) by {
-                assert_sets_equal!(page_lock_perms.insert(page_ptr, page_lock_perm).dom() == page_ptrs.push(page_ptr).to_set(), x => { seq_push_lemma::<PagePtr>(); page_ptrs.to_set_ensures(); page_ptrs.push(page_ptr).to_set_ensures(); });
+                assert_sets_equal!(page_lock_perms.insert(page_ptr, page_lock_perm).dom() == page_ptrs.push(page_ptr).to_set(), x => { seq_push_implies_contains::<PagePtr>(); page_ptrs.to_set_ensures(); page_ptrs.push(page_ptr).to_set_ensures(); });
             };
             page_lock_perms.tracked_insert(page_ptr, page_lock_perm);
             page_ptrs = page_ptrs.push(page_ptr);

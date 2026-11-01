@@ -25,7 +25,7 @@ pub(super) proof fn new_process_result_from_k(krnl: &KernelK, cpu_id: CpuId, va:
             let allocator = krnl.pcid_allc_mp.spec_index(krnl.ctn_mp.spec_index(container_ptr).view_rodata().view().pcid_allocator).view();
             let free = PcidAllocator::free_pcids(allocator.ref_counters.view());
             let has_pcid = allocator.pcid_is_free(pcid);
-            let table = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), process.view().pagetable);
+            let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), process.view().pagetable);
             let va_range = VaRange4K { start: va, len: range, view: Ghost(Seq::new(range as nat, |i: int| spec_va_add_range(va, i as usize))) };
             let live = !args_bad && cpu.view().view().state is Running && !cpu.being_killed();
             let unkilled = live && !process.being_killed() && !thread.being_killed();
@@ -95,8 +95,8 @@ pub(super) proof fn new_process_enter_step_pre_from_k(
             &&& krnl.pt_mp.dom().contains(pagetable_ptr)
             &&& !(table.locking_thread() is Write)
             &&& table.view().kernel_l4_end <= spec_v2l4index(range.start)
-            &&& forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len ==> pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(range.view().spec_index(j))
-                && pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(range.view().spec_index(j)).present
+            &&& forall|j: int| #![trigger range.view().spec_index(j)] 0 <= j < range.len ==> whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(range.view().spec_index(j))
+                && whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).mapping_4k().spec_index(range.view().spec_index(j)).present
             &&& range.wf()
             &&& 0 < range.len <= (usize::MAX - base) / 3
             &&& endpoint_index is Some ==> edp_idx_valid(endpoint_index->Some_0) && endpoint_ptr is Some && thread.view().endpoint_descriptors.spec_index(endpoint_index->Some_0) == endpoint_ptr

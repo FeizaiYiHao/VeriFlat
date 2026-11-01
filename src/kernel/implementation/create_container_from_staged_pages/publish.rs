@@ -373,8 +373,8 @@ pub(super) fn publish_staged_container_root_mutation(
     let ghost moved_pages = new_container_moved_pages(container_page, pcid_allocator_page, allocator_4k_page, allocator_2m_page, allocator_1g_page, scheduler_page, cpu_set_page, process_page, pagetable_page, l4_page).union(funding_pages.to_set());
     proof {
         assert(!parent_uppers.contains(parent_container_ptr)) by { container_uppertree_seq_not_self(krnl.rt_ctn, krnl.ctn_mp, parent_container_ptr); };
-        assert(child_uppers.no_duplicates()) by { seq_push_unique_lemma::<RwLockContainerPtr>(); };
-        assert(child_uppers.to_set().subset_of(krnl.ctn_mp.dom())) by { parent_uppers.to_set_ensures(); child_uppers.to_set_ensures(); seq_push_lemma::<RwLockContainerPtr>(); container_uppertree_seq_in_dom(krnl.rt_ctn, krnl.ctn_mp, parent_container_ptr); };
+        assert(child_uppers.no_duplicates()) by { seq_push_absent_implies_no_duplicates_and_index_of::<RwLockContainerPtr>(); };
+        assert(child_uppers.to_set().subset_of(krnl.ctn_mp.dom())) by { parent_uppers.to_set_ensures(); child_uppers.to_set_ensures(); seq_push_implies_contains::<RwLockContainerPtr>(); container_uppertree_seq_in_dom(krnl.rt_ctn, krnl.ctn_mp, parent_container_ptr); };
         assert(!child_uppers.to_set().contains(child_container_ptr)) by { child_uppers.to_set_ensures(); };
         owned_4k_page_not_in_2m_region(krnl, thread_page, container_head); owned_4k_page_not_in_2m_region(krnl, thread_page, pcid_allocator_head);
         owned_4k_page_not_in_2m_tail(krnl, allocator_4k_page, container_head); owned_4k_page_not_in_2m_tail(krnl, allocator_2m_page, container_head);
@@ -696,7 +696,7 @@ pub fn publish_staged_container_root(
         final(krnl).allc_4k_mp.spec_index(allocator_4k_page).global_pool.view().view() == funding_pages,
         final(krnl).allc_4k_mp.spec_index(allocator_4k_page).total_free_pages.view() == funding_page_count,
         final(krnl).allc_4k_mp.spec_index(allocator_4k_page).quota.view().view() == allocator_quota_4k,
-        pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_page).is_empty(),
+        whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), pagetable_page).is_empty(),
         final(krnl).pt_mp.spec_index(pagetable_page).view().proc_ptr == process_page,
         final(krnl).prc_mp.spec_index(process_page).view().iommu_table is None,
         final(krnl).ctn_mp.spec_index(container_page).view_ghost().uppertree_seq.view() == old(krnl).ctn_mp.spec_index(parent_container_ptr).view_ghost().uppertree_seq.view().push(parent_container_ptr),

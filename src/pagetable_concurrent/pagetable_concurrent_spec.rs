@@ -7,7 +7,7 @@ use super::l2_page_map::*;
 /// Big-lock payload of a split page table: L4/L3 directories, 1G leaves and bookkeeping.
 ///
 /// `LockInvTrait::inv` is the L4/L3/1G half of the table invariant, so the holder of the big lock in either mode
-/// gets it from the lock. The cross-half and lower-half clauses live in `PageTableC::wf`.
+/// gets it from the lock. The cross-half and lower-half clauses live in `WholePageTable::wf`.
 pub struct PageTableHigher<const TABLE_TYPE: PTType> {
     pub cr3: PageTableRoot,
     pub pcid: Option<Pcid>,
@@ -36,7 +36,7 @@ pub tracked struct PageTableLower<const TABLE_TYPE: PTType> {
 }
 
 /// One whole page table: the big-lock payload and its window half.
-pub ghost struct PageTableC<const TABLE_TYPE: PTType> {
+pub ghost struct WholePageTable<const TABLE_TYPE: PTType> {
     pub higher: PageTableHigher<TABLE_TYPE>,
     pub lower: PageTableLower<TABLE_TYPE>,
 }
@@ -329,7 +329,7 @@ impl<const TABLE_TYPE: PTType> PageTableLower<TABLE_TYPE> {
     pub open spec fn l1_page(&self, p: PageMapPtr, i: L2Index) -> PageMap { self.l1_perm(p, i).value() }
 }
 
-impl<const TABLE_TYPE: PTType> PageTableC<TABLE_TYPE> {
+impl<const TABLE_TYPE: PTType> WholePageTable<TABLE_TYPE> {
     pub open spec fn cr3(&self) -> PageTableRoot { self.higher.cr3 }
     pub open spec fn did(&self) -> Option<VtdDomainId> { self.higher.did }
     pub open spec fn kernel_l4_end(&self) -> usize { self.higher.kernel_l4_end }

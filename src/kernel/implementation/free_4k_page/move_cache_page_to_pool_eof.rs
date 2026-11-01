@@ -67,7 +67,7 @@ proof fn move_cache_page_to_pool_eof_free_4k_pages(pre: KernelK, post: KernelK, 
     reveal(move_cache_page_to_pool_eof_transition_framing);
     assert(container_allocator_cpu_cache_free_4k_page_wf(post.allc_4k_mp, post.pg_arr) && container_allocator_global_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by {
         reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf);
-        page_ptr_valid_imply_page_index_valid(); page_ptr2page_index_injective(); seq_skip_lemma::<PagePtr>();
+        page_ptr_valid_imply_page_index_valid(); page_ptr2page_index_injective(); seq_skip_one_implies_contains_and_index_shift::<PagePtr>();
         pre.allc_4k_mp.spec_index(allocator).global_pool.view().view().insert_ensures(0, page_ptr);
     };
     assert(container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(container_allocator_free_4k_page_wf); };

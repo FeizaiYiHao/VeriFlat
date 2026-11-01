@@ -39,7 +39,7 @@ pub(super) proof fn boot_subsystems_inv_eof(
     assert(pagetable_perms_wf(krnl.pt_mp)) by { reveal(pagetable_perms_wf); };
     assert(pagetable_lower_wf(krnl.pt_mp, krnl.pt_lower.view())) by { reveal(pagetable_lower_wf); };
     assert(pagetable_window_holders_hold_pagetable(krnl.pt_mp, krnl.pt_lower.view())) by {
-        reveal(pagetable_window_holders_hold_pagetable); reveal(PageTableC::wf_window_locks); reveal(PageTableC::wf_l3); reveal(PageTableHigher::wf_l4);
+        reveal(pagetable_window_holders_hold_pagetable); reveal(WholePageTable::wf_window_locks); reveal(WholePageTable::wf_l3); reveal(PageTableHigher::wf_l4);
     };
     assert(pagetable_hidden_leaves_only_when_locked(krnl.pt_mp, krnl.pt_lower.view())) by { reveal(pagetable_hidden_leaves_only_when_locked); };
     assert(pagetable_window_stale_cpus_only_when_locked(krnl.pt_mp, krnl.pt_lower.view())) by { reveal(pagetable_window_stale_cpus_only_when_locked); };

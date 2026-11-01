@@ -90,11 +90,11 @@ pub open spec fn create_process_from_staged_pages_eof_transition_framing(
     &&& post.pt_lower.view() == pre.pt_lower.view().insert(pagetable_page_ptr, post.pt_lower.view().spec_index(pagetable_page_ptr))
     &&& post.pt_mp.spec_index(pagetable_page_ptr).view_ghost() == post.pt_lower.view().spec_index(pagetable_page_ptr)
     &&& forall|pt_ptr: RwLockPageTableRoot|
-        #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), pt_ptr)]
-        pre.pt_mp.dom().contains(pt_ptr) ==> pagetable_c(post.pt_mp, post.pt_lower.view(), pt_ptr) == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pt_ptr)
-    &&& pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_page_ptr).wf()
-    &&& pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_page_ptr).is_empty()
-    &&& pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_page_ptr).page_closure() =~= set![l4_page_ptr]
+        #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), pt_ptr)]
+        pre.pt_mp.dom().contains(pt_ptr) ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), pt_ptr) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt_ptr)
+    &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_page_ptr).wf()
+    &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_page_ptr).is_empty()
+    &&& whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_page_ptr).page_closure() =~= set![l4_page_ptr]
     &&& post.prc_mp.dom() == pre.prc_mp.dom().insert(process_page_ptr)
     &&& forall|p_ptr: RwLockProcessPtr|
         #![trigger post.prc_mp.dom().contains(p_ptr)]
@@ -304,7 +304,7 @@ proof fn create_process_from_staged_pages_eof_subsystems_inv(
     };
     assert(pagetable_perms_wf(post.pt_mp)) by { reveal(pagetable_perms_wf); };
     assert(pagetable_lower_wf(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_lower_wf); };
-    assert(pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_window_holders_hold_pagetable); reveal(PageTableC::wf_window_locks); };
+    assert(pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_window_holders_hold_pagetable); reveal(WholePageTable::wf_window_locks); };
     assert(pagetable_hidden_leaves_only_when_locked(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_hidden_leaves_only_when_locked); };
     assert(pagetable_window_stale_cpus_only_when_locked(post.pt_mp, post.pt_lower.view())) by { reveal(pagetable_window_stale_cpus_only_when_locked); };
     assert(pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()));
@@ -686,7 +686,7 @@ proof fn create_process_from_staged_pages_eof_process_tree_invariants(
     let root_process = pre.ctn_mp.spec_index(container_ptr).view().root_process;
     let process_tree_dom = pre.ctn_mp.spec_index(container_ptr).view_ghost().owned_processes.view();
     assert(process_tree_wf(root_process, process_tree_dom, pre.prc_mp)) by { reveal(container_process_wf); reveal(per_container_process_tree_wf); };
-    assert(process_add_child_ensures(root_process, process_tree_dom, pre.prc_mp, post.prc_mp, parent_ptr, process_page_ptr)) by { reveal(container_process_wf); ancestors.to_set_ensures(); seq_push_lemma::<RwLockProcessPtr>(); };
+    assert(process_add_child_ensures(root_process, process_tree_dom, pre.prc_mp, post.prc_mp, parent_ptr, process_page_ptr)) by { reveal(container_process_wf); ancestors.to_set_ensures(); seq_push_implies_contains::<RwLockProcessPtr>(); };
     process_add_child_preserves_tree_wf(root_process, process_tree_dom, pre.prc_mp, post.prc_mp, parent_ptr, process_page_ptr);
     assert(container_tree_wf(post.rt_ctn, post.ctn_mp)) by { container_no_change_to_tree_fields_imply_wf(pre.rt_ctn, pre.ctn_mp, post.ctn_mp); };
     assert(container_process_wf(post.ctn_mp, post.prc_mp)) by { reveal(container_process_wf); };
@@ -832,7 +832,7 @@ pub(super) proof fn create_process_from_staged_pages_eof_inv(
         post.pt_mp.dom() == pre.pt_mp.dom().insert(pagetable_page_ptr),
         forall|pt: RwLockPageTableRoot| #![trigger post.pt_mp.spec_index(pt)]
             pre.pt_mp.dom().contains(pt) ==> post.pt_mp.spec_index(pt) == pre.pt_mp.spec_index(pt),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_page_ptr).is_empty(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_page_ptr).is_empty(),
         post.pt_mp.spec_index(pagetable_page_ptr).view().proc_ptr == process_page_ptr,
         post.prc_mp.spec_index(process_page_ptr).view().pagetable == pagetable_page_ptr,
         post.ctn_mp.dom() == pre.ctn_mp.dom(),

@@ -14,29 +14,29 @@ verus! {
             #![trigger page_array.spec_index(p_i)]
             index_valid(NUM_PAGES, p_i) && page_array.spec_index(p_i).view().view().state == PageState::Mapped4k ==> forall|pt_ptr:RwLockPageTableRoot, va: VAddr|
                 #![trigger page_array.spec_index(p_i).view().view().mappings().contains((pt_ptr, va))]
-                #![trigger pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_4k().spec_index(va)]
+                #![trigger whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_4k().spec_index(va)]
                 page_array.spec_index(p_i).view().view().mappings().contains((pt_ptr, va))
-                    ==> pagetable_map.dom().contains(pt_ptr) && pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_4k().contains_key(va) && pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_4k().spec_index(va).addr == page_index2page_ptr(p_i)
+                    ==> pagetable_map.dom().contains(pt_ptr) && whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_4k().contains_key(va) && whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_4k().spec_index(va).addr == page_index2page_ptr(p_i)
         &&& forall|pt_ptr:RwLockPageTableRoot|
             #![trigger pagetable_map.dom().contains(pt_ptr)]
             pagetable_map.dom().contains(pt_ptr) ==> forall|va: VAddr|
-                #![trigger pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_4k().contains_key(va)]
-                #![trigger pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_4k().spec_index(va)]
-                pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_4k().contains_key(va)
-                    ==> page_array.spec_index(page_ptr2page_index(pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_4k().spec_index(va).addr)).view().view().state == PageState::Mapped4k
-                    && page_array.spec_index(page_ptr2page_index(pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_4k().spec_index(va).addr)).view().view().mappings().contains((pt_ptr, va))
-                    && pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_4k().spec_index(va).owning_container.view() == page_array.spec_index(page_ptr2page_index(pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_4k().spec_index(va).addr)).view().view().owning_container
+                #![trigger whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_4k().contains_key(va)]
+                #![trigger whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_4k().spec_index(va)]
+                whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_4k().contains_key(va)
+                    ==> page_array.spec_index(page_ptr2page_index(whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_4k().spec_index(va).addr)).view().view().state == PageState::Mapped4k
+                    && page_array.spec_index(page_ptr2page_index(whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_4k().spec_index(va).addr)).view().view().mappings().contains((pt_ptr, va))
+                    && whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_4k().spec_index(va).owning_container.view() == page_array.spec_index(page_ptr2page_index(whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_4k().spec_index(va).addr)).view().view().owning_container
     }
 
     pub proof fn mapped_4k_page_pagetable_wf_pagetable_at(pagetable_map: PageTableLockedMap, pt_lower: PageTableLowerMap, page_array: PageLockedArray, pt_ptr: RwLockPageTableRoot, va: VAddr)
         requires
             mapped_4k_page_pagetable_wf(pagetable_map, pt_lower, page_array),
         ensures
-            pagetable_map.dom().contains(pt_ptr) && pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_4k().contains_key(va) ==> ({
-                let p_i = page_ptr2page_index(pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_4k().spec_index(va).addr);
+            pagetable_map.dom().contains(pt_ptr) && whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_4k().contains_key(va) ==> ({
+                let p_i = page_ptr2page_index(whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_4k().spec_index(va).addr);
                 &&& page_array.spec_index(p_i).view().view().state == PageState::Mapped4k
                 &&& page_array.spec_index(p_i).view().view().mappings().contains((pt_ptr, va))
-                &&& pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_4k().spec_index(va).owning_container.view() == page_array.spec_index(p_i).view().view().owning_container
+                &&& whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_4k().spec_index(va).owning_container.view() == page_array.spec_index(p_i).view().view().owning_container
             }),
     { reveal(mapped_4k_page_pagetable_wf); }
 
@@ -48,7 +48,7 @@ verus! {
             page_array.spec_index(p_i).view().view().state == PageState::Mapped4k,
         ensures
             page_array.spec_index(p_i).view().view().mappings().contains((pt_ptr, va))
-                ==> pagetable_map.dom().contains(pt_ptr) && pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_4k().contains_key(va) && pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_4k().spec_index(va).addr == page_index2page_ptr(p_i),
+                ==> pagetable_map.dom().contains(pt_ptr) && whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_4k().contains_key(va) && whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_4k().spec_index(va).addr == page_index2page_ptr(p_i),
     { reveal(mapped_4k_page_pagetable_wf); }
 
     #[verifier::opaque]
@@ -56,13 +56,13 @@ verus! {
         &&& forall|p_i:PageIndex, pt_ptr:RwLockPageTableRoot, va: VAddr|
             #![trigger page_array.spec_index(p_i).view().view().mappings().contains((pt_ptr, va))]
             index_valid(NUM_PAGES, p_i) && page_array.spec_index(p_i).view().view().state == PageState::Mapped2m && page_array.spec_index(p_i).view().view().mappings().contains((pt_ptr, va))
-                ==> pagetable_map.dom().contains(pt_ptr) && pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_2m().contains_key(va) && pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_2m().spec_index(va).addr == page_index2page_ptr(p_i)
+                ==> pagetable_map.dom().contains(pt_ptr) && whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_2m().contains_key(va) && whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_2m().spec_index(va).addr == page_index2page_ptr(p_i)
         &&& forall|pt_ptr:RwLockPageTableRoot, va: VAddr|
-            #![trigger pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_2m().contains_key(va)]
-            pagetable_map.dom().contains(pt_ptr) && pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_2m().contains_key(va)
-                ==> page_array.spec_index(page_ptr2page_index(pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_2m().spec_index(va).addr)).view().view().state == PageState::Mapped2m
-                && page_array.spec_index(page_ptr2page_index(pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_2m().spec_index(va).addr)).view().view().mappings().contains((pt_ptr, va))
-                && pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_2m().spec_index(va).owning_container.view() == page_array.spec_index(page_ptr2page_index(pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_2m().spec_index(va).addr)).view().view().owning_container
+            #![trigger whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_2m().contains_key(va)]
+            pagetable_map.dom().contains(pt_ptr) && whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_2m().contains_key(va)
+                ==> page_array.spec_index(page_ptr2page_index(whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_2m().spec_index(va).addr)).view().view().state == PageState::Mapped2m
+                && page_array.spec_index(page_ptr2page_index(whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_2m().spec_index(va).addr)).view().view().mappings().contains((pt_ptr, va))
+                && whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_2m().spec_index(va).owning_container.view() == page_array.spec_index(page_ptr2page_index(whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_2m().spec_index(va).addr)).view().view().owning_container
     }
 
     #[verifier::opaque]
@@ -70,13 +70,13 @@ verus! {
         &&& forall|p_i:PageIndex, pt_ptr:RwLockPageTableRoot, va: VAddr|
             #![trigger page_array.spec_index(p_i).view().view().mappings().contains((pt_ptr, va))]
             index_valid(NUM_PAGES, p_i) && page_array.spec_index(p_i).view().view().state == PageState::Mapped1g && page_array.spec_index(p_i).view().view().mappings().contains((pt_ptr, va))
-                ==> pagetable_map.dom().contains(pt_ptr) && pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_1g().contains_key(va) && pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_1g().spec_index(va).addr == page_index2page_ptr(p_i)
+                ==> pagetable_map.dom().contains(pt_ptr) && whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_1g().contains_key(va) && whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_1g().spec_index(va).addr == page_index2page_ptr(p_i)
         &&& forall|pt_ptr:RwLockPageTableRoot, va: VAddr|
-            #![trigger pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_1g().contains_key(va)]
-            pagetable_map.dom().contains(pt_ptr) && pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_1g().contains_key(va)
-                ==> page_array.spec_index(page_ptr2page_index(pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_1g().spec_index(va).addr)).view().view().state == PageState::Mapped1g
-                && page_array.spec_index(page_ptr2page_index(pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_1g().spec_index(va).addr)).view().view().mappings().contains((pt_ptr, va))
-                && pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_1g().spec_index(va).owning_container.view() == page_array.spec_index(page_ptr2page_index(pagetable_c(pagetable_map, pt_lower, pt_ptr).mapping_1g().spec_index(va).addr)).view().view().owning_container
+            #![trigger whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_1g().contains_key(va)]
+            pagetable_map.dom().contains(pt_ptr) && whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_1g().contains_key(va)
+                ==> page_array.spec_index(page_ptr2page_index(whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_1g().spec_index(va).addr)).view().view().state == PageState::Mapped1g
+                && page_array.spec_index(page_ptr2page_index(whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_1g().spec_index(va).addr)).view().view().mappings().contains((pt_ptr, va))
+                && whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_1g().spec_index(va).owning_container.view() == page_array.spec_index(page_ptr2page_index(whole_pagetable(pagetable_map, pt_lower, pt_ptr).mapping_1g().spec_index(va).addr)).view().view().owning_container
     }
 
     // Proof dependencies (confirmed for global-pool page removal): container_page_owner_wf,

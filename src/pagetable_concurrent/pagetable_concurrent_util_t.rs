@@ -7,7 +7,7 @@ pub type PageTableHigherLockedMap = PageTableLockedMap;
 
 /// Publish a fresh page table: retype `page_ptr` into the write-held big lock around `higher_value`, insert it into
 /// `pt_mp`, and file its window half under the same root in `pt_lower`.
-pub fn retype_page_to_pagetable_c_and_insert(pt_mp: &mut PageTableHigherLockedMap, Tracked(pt_lower): Tracked<&mut Map<RwLockPageTableRoot, PageTableLower<PT_TYPE>>>,
+pub fn retype_page_to_whole_pagetable_and_insert(pt_mp: &mut PageTableHigherLockedMap, Tracked(pt_lower): Tracked<&mut Map<RwLockPageTableRoot, PageTableLower<PT_TYPE>>>,
     page_ptr: PagePtr, higher_value: PageTableHigher<PT_TYPE>, Tracked(lower_value): Tracked<PageTableLower<PT_TYPE>>, Tracked(page_perm): Tracked<PagePerm4k>,
     Tracked(lctx): Tracked<&mut LocalContext>) -> (ret: Tracked<LockPerm>)
     requires
@@ -15,7 +15,7 @@ pub fn retype_page_to_pagetable_c_and_insert(pt_mp: &mut PageTableHigherLockedMa
         !old(pt_mp).dom().contains(page_ptr),
         page_perm.is_init(),
         page_perm.addr() == page_ptr,
-        (PageTableC { higher: higher_value, lower: lower_value }).wf(),
+        (WholePageTable { higher: higher_value, lower: lower_value }).wf(),
         old(pt_mp).typed_lock_map_aligned(old(lctx).pagetable_lock_map(), old(lctx).thread_id()),
         old(lctx).kernel_view_locking_state() is Acquire,
     ensures

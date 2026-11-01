@@ -28,10 +28,10 @@ pub proof fn kernel_pagetable_window_locks_changed_implies_u_window_locks_replac
             let table = a.process_map[process_ptr].pagetable->Some_0;
             &&& a.process_map.dom().contains(process_ptr)
             &&& a.process_map[process_ptr].pagetable is Some
-            &&& table.pagetable_window_locks == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks
+            &&& table.pagetable_window_locks == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).lower.pagetable_window_locks
             &&& kernel_k_to_kernel_u(*post) == (KernelU {
                 process_map: a.process_map.insert(process_ptr, ProcessU {
-                    pagetable: Some(PageTableU { pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks, ..table }),
+                    pagetable: Some(PageTableU { pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks, ..table }),
                     ..a.process_map[process_ptr]
                 }),
                 ..a
@@ -40,7 +40,7 @@ pub proof fn kernel_pagetable_window_locks_changed_implies_u_window_locks_replac
 {
     let a = kernel_k_to_kernel_u(*pre);
     let b = kernel_k_to_kernel_u(*post);
-    let windows = pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks;
+    let windows = whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable).lower.pagetable_window_locks;
     kernel_u_domains_projection(pre); kernel_u_domains_projection(post);
     process_pagetable_match_process_at(post.prc_mp, post.pt_mp, process_ptr); kernel_process_projection_at(pre, process_ptr); kernel_process_projection_at(post, process_ptr);
     assert(post.irt.view().user_view() == pre.irt.view().user_view() && post.dflt_pt == pre.dflt_pt) by { reveal(kernel_cpu_process_thread_nonlock_fields_unchanged); };

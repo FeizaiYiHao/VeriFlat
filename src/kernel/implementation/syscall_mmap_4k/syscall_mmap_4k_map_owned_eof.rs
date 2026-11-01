@@ -9,8 +9,8 @@ verus! {
 #[verifier::opaque]
 pub(super) open spec fn map_owned_4k_page_eof_transition_framing(pre: KernelK, post: KernelK, page_ptr: PagePtr, thread_ptr: RwLockThreadPtr, pagetable_ptr: RwLockPageTableRoot, va: VAddr) -> bool {
     let page_index = page_ptr2page_index(page_ptr);
-    let old_pt = pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr);
-    let new_pt = pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr);
+    let old_pt = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr);
+    let new_pt = whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr);
     let old_page = pre.pg_arr.spec_index(page_index).view();
     let new_page = post.pg_arr.spec_index(page_index).view();
     let old_thread = pre.thr_mp.spec_index(thread_ptr);
@@ -18,8 +18,8 @@ pub(super) open spec fn map_owned_4k_page_eof_transition_framing(pre: KernelK, p
     &&& post == (KernelK { pt_lower: post.pt_lower, pg_arr: post.pg_arr, thr_mp: post.thr_mp, ..pre })
     &&& post.pt_lower.view() == pre.pt_lower.view().insert(pagetable_ptr, post.pt_lower.view().spec_index(pagetable_ptr))
     &&& forall|other_pagetable: RwLockPageTableRoot|
-        #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), other_pagetable)]
-        pre.pt_mp.dom().contains(other_pagetable) && other_pagetable != pagetable_ptr ==> pagetable_c(post.pt_mp, post.pt_lower.view(), other_pagetable) == pagetable_c(pre.pt_mp, pre.pt_lower.view(), other_pagetable)
+        #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), other_pagetable)]
+        pre.pt_mp.dom().contains(other_pagetable) && other_pagetable != pagetable_ptr ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), other_pagetable) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), other_pagetable)
     &&& new_pt.mapping_4k() == old_pt.mapping_4k().insert(va, MapEntry { addr: page_ptr, present: true, write: true, execute_disable: false, owning_container: Ghost(old_page.view().owning_container) })
     &&& new_pt.mapping_2m() == old_pt.mapping_2m()
     &&& new_pt.page_closure() == old_pt.page_closure()
@@ -63,7 +63,7 @@ pub(super) proof fn map_owned_4k_page_eof(pre: KernelK, post: KernelK, page_ptr:
         pre.thr_mp.spec_index(thread_ptr).view().proc_pagetable_ptr == pagetable_ptr,
         pre.thr_mp.spec_index(thread_ptr).view().temp_alloc_cache_4k.view().contains(page_ptr),
         pre.thr_mp.spec_index(thread_ptr).view().quota_4k >= 1,
-        pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(va) == false,
+        whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k().dom().contains(va) == false,
         pagetable_lower_wf(post.pt_mp, post.pt_lower.view()),
         pagetable_window_holders_hold_pagetable(post.pt_mp, post.pt_lower.view()),
         pagetable_lower_backup_wf(post.pt_mp, post.pt_lower.view()),

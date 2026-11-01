@@ -329,7 +329,7 @@ pub(super) fn ipc_begin_endpoint_transfer(
             &&& endpoint_node_perm.addr() == peer_node_addr
         }) by {
             thread_endpoint_queue_wf_thread_at(old(krnl).thr_mp, old(krnl).ep_mp, peer_thread_ptr); endpoint_perms_wf_at(old(krnl).ep_mp, channel_endpoint_ptr);
-            old(krnl).ep_mp.spec_index(channel_endpoint_ptr).view().queue.lemma_value_addr_unique(endpoint_node_perm.addr(), old(krnl).thr_mp.spec_index(peer_thread_ptr).view().endpoint_linkedlist_node.addr());
+            old(krnl).ep_mp.spec_index(channel_endpoint_ptr).view().queue.wf_and_equal_values_implies_equal_addrs(endpoint_node_perm.addr(), old(krnl).thr_mp.spec_index(peer_thread_ptr).view().endpoint_linkedlist_node.addr());
         };
     }
     ipc_move_endpoint_waiter_to_transit(&mut krnl.thr_mp, Tracked(&*lctx), peer_thread_ptr, current_thread_ptr, Tracked(endpoint_node_perm), peer_thread_lock_perm);
@@ -382,7 +382,7 @@ pub(super) fn ipc_begin_endpoint_transfer(
             running_thread_not_in_endpoint_queue(old(krnl), channel_endpoint_ptr, current_thread_ptr);
             container_thread_wf_at(old(krnl).ctn_mp, old(krnl).thr_mp, current_thread_ptr); container_thread_wf_at(old(krnl).ctn_mp, old(krnl).thr_mp, peer_thread_ptr);
         };
-        endpoint_perms_wf_at(old(krnl).ep_mp, channel_endpoint_ptr); old(krnl).ep_mp.spec_index(channel_endpoint_ptr).view().queue.lemma_len_view();
+        endpoint_perms_wf_at(old(krnl).ep_mp, channel_endpoint_ptr); old(krnl).ep_mp.spec_index(channel_endpoint_ptr).view().queue.wf_implies_view_len_eq_len();
         ipc_endpoint_transit_step_pre_from_k(&pre_k, cpu_id, process_ptr, current_thread_ptr, channel_endpoint_ptr, peer_thread_ptr, channel_index, waiting_state, source_endpoint_index,
             target_endpoint_index);
         kernel_thread_dequeued_and_locks_changed_implies_u_step(&pre_k, old(krnl), &*krnl, &*lctx, cpu_id, current_thread_ptr, peer_thread_ptr, channel_endpoint_ptr, false);

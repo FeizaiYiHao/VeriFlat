@@ -266,7 +266,7 @@ pub proof fn kernel_l4_end_projection_at(krnl: &KernelK, pagetable_ptr: RwLockPa
         krnl.inv(),
         krnl.pt_mp.dom().contains(pagetable_ptr),
     ensures
-        kernel_k_to_kernel_u(*krnl).kernel_l4_end == pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).kernel_l4_end(),
+        kernel_k_to_kernel_u(*krnl).kernel_l4_end == whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).kernel_l4_end(),
 { reveal(kernel_k_to_kernel_u); reveal(KernelK::default_pagetable_wf); }
 
 /// A live process's projected page table carries its page table's lock mode, and shows the whole 4K, 2M, and 1G
@@ -279,7 +279,7 @@ pub proof fn kernel_pagetable_mappings_projection_at(krnl: &KernelK, process: Rw
     ensures
         ({
             let root = krnl.prc_mp.spec_index(process).view().pagetable;
-            let table = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), root);
+            let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), root);
             let u = kernel_k_to_kernel_u(*krnl).process_map[process].pagetable;
             &&& kernel_k_to_kernel_u(*krnl).process_map.dom().contains(process)
             &&& u is Some
@@ -292,7 +292,7 @@ pub proof fn kernel_pagetable_mappings_projection_at(krnl: &KernelK, process: Rw
         }),
 {
     reveal(kernel_k_to_kernel_u);
-    let table = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(process).view().pagetable);
+    let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(process).view().pagetable);
     let u = kernel_k_to_kernel_u(*krnl).process_map[process].pagetable->Some_0;
     if table.leaves_present() {
         assert_maps_equal!(u.mapping_4k, table.mapping_4k(), va => {});
@@ -310,11 +310,11 @@ pub proof fn kernel_pagetable_user_4k_unmapped_projection_at(krnl: &KernelK, pro
         !krnl.prc_mp.spec_index(process).view().zombie,
         krnl.pt_mp.dom().contains(krnl.prc_mp.spec_index(process).view().pagetable),
         forall|l4i: L4Index, l3i: L3Index, l2i: L2Index, l1i: L1Index|
-            #![trigger pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(process).view().pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
+            #![trigger whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(process).view().pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))]
             pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && KERNEL_MEM_END_L4INDEX <= l4i
-                && pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(process).view().pagetable).kernel_l4_end() <= l4i
-                && pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(process).view().pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
-                ==> !pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(process).view().pagetable).mapping_4k().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present,
+                && whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(process).view().pagetable).kernel_l4_end() <= l4i
+                && whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(process).view().pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
+                ==> !whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), krnl.prc_mp.spec_index(process).view().pagetable).mapping_4k().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present,
     ensures
         kernel_k_to_kernel_u(*krnl).process_map.dom().contains(process),
         kernel_k_to_kernel_u(*krnl).process_map[process].pagetable is Some,

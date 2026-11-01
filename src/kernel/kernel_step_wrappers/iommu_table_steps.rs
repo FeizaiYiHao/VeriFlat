@@ -163,9 +163,9 @@ pub proof fn kernel_cpu_process_thread_pagetable_iommu_table_lock_states_and_pro
         post.pt_mp.unchanged_except(&pre.pt_mp, pagetable_ptr),
         post.pt_mp.spec_index(pagetable_ptr).view() == pre.pt_mp.spec_index(pagetable_ptr).view(),
         post.pt_lower.view() == pre.pt_lower.view().insert(pagetable_ptr, post.pt_lower.view().spec_index(pagetable_ptr)),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k(),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m(),
-        pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g() == pagetable_c(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_4k() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_4k(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_2m() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_2m(),
+        whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).mapping_1g() == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable_ptr).mapping_1g(),
         post.it_mp.unchanged_except(&pre.it_mp, iommu_table_ptr),
         post.it_mp.spec_index(iommu_table_ptr).view() == pre.it_mp.spec_index(iommu_table_ptr).view(),
     ensures
@@ -185,7 +185,7 @@ pub proof fn kernel_cpu_process_thread_pagetable_iommu_table_lock_states_and_pro
                 process_map: pre_u.process_map.insert(process_ptr, ProcessU {
                     lock_state: post.prc_mp.spec_index(process_ptr).lock_state_u(),
                     pagetable: Some(PageTableU {
-                        lock_state: post.pt_mp.spec_index(pagetable_ptr).lock_state_u(), pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
+                        lock_state: post.pt_mp.spec_index(pagetable_ptr).lock_state_u(), pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
                         ..process.pagetable->Some_0
                     }),
                     iommu_table: Some(PageTableU { lock_state: post.it_mp.spec_index(iommu_table_ptr).lock_state_u(), ..process.iommu_table->Some_0 }), ..process
@@ -212,7 +212,7 @@ pub proof fn kernel_cpu_process_thread_pagetable_iommu_table_lock_states_and_pro
     assert_maps_equal!(post_u.process_map, pre_u.process_map.insert(process_ptr, ProcessU {
         lock_state: post.prc_mp.spec_index(process_ptr).lock_state_u(),
         pagetable: Some(PageTableU {
-            lock_state: post.pt_mp.spec_index(pagetable_ptr).lock_state_u(), pagetable_window_locks: pagetable_c(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
+            lock_state: post.pt_mp.spec_index(pagetable_ptr).lock_state_u(), pagetable_window_locks: whole_pagetable(post.pt_mp, post.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
             ..process.pagetable->Some_0
         }),
         iommu_table: Some(PageTableU { lock_state: post.it_mp.spec_index(iommu_table_ptr).lock_state_u(), ..process.iommu_table->Some_0 }), ..process

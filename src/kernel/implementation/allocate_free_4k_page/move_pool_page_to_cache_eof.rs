@@ -57,7 +57,7 @@ proof fn move_pool_page_to_cache_eof_kill_retire_wf(pre: KernelK, post: KernelK,
     if pre.ctn_mp.spec_index(owner).view_ghost().retire_ready {
         container_kill_retire_wf_at(pre.ctn_mp, pre.allc_4k_mp, pre.allc_2m_mp, pre.allc_1g_mp, owner); lemma_container_allocator_quota_eq_total_free_without_users(pre, owner);
         allocator_perms_wf_at(pre.allc_4k_mp, allocator); lemma_cache_len_fold_nonneg(pre.allc_4k_mp.spec_index(allocator).cpu_caches.view());
-        pre.allc_4k_mp.spec_index(allocator).global_pool.view().lemma_len_view();
+        pre.allc_4k_mp.spec_index(allocator).global_pool.view().wf_implies_view_len_eq_len();
     }
     reveal(container_kill_retire_wf); reveal(container_allocator_wf);
 }
@@ -90,7 +90,7 @@ proof fn move_pool_page_to_cache_eof_free_4k_pages(pre: KernelK, post: KernelK, 
     reveal(move_pool_page_to_cache_eof_transition_framing);
     assert(container_allocator_cpu_cache_free_4k_page_wf(post.allc_4k_mp, post.pg_arr) && container_allocator_global_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by {
         reveal(container_allocator_free_4k_page_wf); reveal(container_allocator_cpu_cache_free_4k_page_wf); reveal(container_allocator_global_free_4k_page_wf); reveal(allocator_free_page_ptrs_wf); reveal(page_array_wf);
-        page_ptr_valid_imply_page_index_valid(); page_ptr2page_index_injective(); seq_skip_lemma::<PagePtr>();
+        page_ptr_valid_imply_page_index_valid(); page_ptr2page_index_injective(); seq_skip_one_implies_contains_and_index_shift::<PagePtr>();
         pre.allc_4k_mp.spec_index(allocator).cpu_caches.spec_index(cpu_id).view().view().view().insert_ensures(0, page_ptr);
     };
     assert(container_allocator_free_4k_page_wf(post.allc_4k_mp, post.pg_arr)) by { reveal(container_allocator_free_4k_page_wf); };

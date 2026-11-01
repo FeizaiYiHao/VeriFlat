@@ -153,7 +153,7 @@ pub(super) fn iommu_unmap_4k_lock_and_check(krnl: &mut KernelK, Tracked(lctx): T
     let iova_range = VaRange4K::new(iova, range);
     proof {
         iommu_table_perms_wf_map(krnl.it_mp); iommu_table_perms_wf_at(krnl.it_mp, iommu_table); iommu_table_perms_wf_kernel_l4_end_at(krnl.it_mp, iommu_table);
-        assert(iova_range == iommu_unmap_4k_iova_range(iova, range)) by { iova_range.va_range_lemma(); };
+        assert(iova_range == iommu_unmap_4k_iova_range(iova, range)) by { iova_range.wf_implies_view_index_is_start_plus_offset(); };
     }
     let present = va2index(iova).0 >= krnl.dflt_pt.borrow().kernel_l4_end && {
         let it = krnl.it_mp.borrow_typed(iommu_table, Ghost(lctx.iommu_table_lock_map()), Tracked(&*lctx), Tracked(&iommu_table_perm));

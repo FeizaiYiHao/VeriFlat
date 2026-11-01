@@ -279,8 +279,8 @@ pub(super) proof fn ipc_pages_check_result_from_k(
         target_range.wf(),
         target_range.len > 0,
         ({
-            let source_table = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable);
-            let target_table = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable);
+            let source_table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable);
+            let target_table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable);
             let target_start = spec_va2index(target_range.start);
             let target_end = spec_va2index(target_range.view().spec_index(target_range.len - 1));
             let target_clear = target_table.spec_mapping_4k_range_empty(target_start, target_end) && forall|j: int| #![trigger target_range.view().spec_index(j)] 0 <= j < target_range.len ==> {
@@ -319,11 +319,11 @@ pub(super) proof fn ipc_pages_check_result_from_k(
     kernel_cpu_thread_projection_at(krnl, cpu_id, source_process, thread_ptr, None); kernel_thread_projection_at(krnl, peer_ptr);
     kernel_process_projection_at(krnl, source_process); kernel_process_projection_at(krnl, target_process);
     kernel_l4_end_projection_at(krnl, source_pagetable); kernel_l4_end_projection_at(krnl, target_pagetable); kernel_container_ancestry_projection_at(krnl, target_container);
-    let checked = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable);
+    let checked = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable);
     if ret is ErrorVaInUse {
         let u_table = kernel_k_to_kernel_u(*krnl).process_map[target_process].pagetable->Some_0;
         pagetable_hidden_leaves_only_when_locked_at(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable); pagetable_lower_wf_at(krnl.pt_mp, krnl.pt_lower.view(), target_pagetable);
-        target_range.va_range_lemma();
+        target_range.wf_implies_view_index_is_start_plus_offset();
         if found is Some {
             let f = found->Some_0;
             let fv = spec_index2va((f.0, f.1, f.2, f.3));
@@ -332,7 +332,7 @@ pub(super) proof fn ipc_pages_check_result_from_k(
             assert(checked.mapping_4k().spec_index(fv).present);
             assert(u_table.mapping_4k.dom().contains(fv));
         } else {
-            reveal(PageTableC::spec_mapping_4k_va_range_empty);
+            reveal(WholePageTable::spec_mapping_4k_va_range_empty);
         }
     }
 }
@@ -508,8 +508,8 @@ pub(super) proof fn ipc_pages_lock_tables_step_from_u(
         pre_k.pt_mp.dom().contains(source_table),
         pre_k.pt_mp.dom().contains(target_table),
         {
-            let source_c = pagetable_c(pre_k.pt_mp, pre_k.pt_lower.view(), source_table);
-            let target_c = pagetable_c(pre_k.pt_mp, pre_k.pt_lower.view(), target_table);
+            let source_c = whole_pagetable(pre_k.pt_mp, pre_k.pt_lower.view(), source_table);
+            let target_c = whole_pagetable(pre_k.pt_mp, pre_k.pt_lower.view(), target_table);
             let user = source_c.kernel_l4_end() <= spec_va2index(source_range.start).0 && target_c.kernel_l4_end() <= spec_va2index(target_range.start).0;
             &&& source_windows == if user { pagetable_window_locks_after_locking_range(source_c.lower.pagetable_window_locks, source_range) } else { source_c.lower.pagetable_window_locks }
             &&& target_windows == if user { pagetable_window_locks_after_locking_range(target_c.lower.pagetable_window_locks, target_range) } else { target_c.lower.pagetable_window_locks }
@@ -609,8 +609,8 @@ pub(super) proof fn ipc_pages_failed_check_step_from_u(
         pre_k.pt_mp.dom().contains(source_table),
         pre_k.pt_mp.dom().contains(target_table),
         {
-            let source_c = pagetable_c(pre_k.pt_mp, pre_k.pt_lower.view(), source_table);
-            let target_c = pagetable_c(pre_k.pt_mp, pre_k.pt_lower.view(), target_table);
+            let source_c = whole_pagetable(pre_k.pt_mp, pre_k.pt_lower.view(), source_table);
+            let target_c = whole_pagetable(pre_k.pt_mp, pre_k.pt_lower.view(), target_table);
             let user = source_c.kernel_l4_end() <= spec_va2index(source_range.start).0 && target_c.kernel_l4_end() <= spec_va2index(target_range.start).0;
             &&& source_windows == if user { pagetable_window_locks_after_unlocking_range(source_c.lower.pagetable_window_locks, source_range) } else { source_c.lower.pagetable_window_locks }
             &&& target_windows == if user { pagetable_window_locks_after_unlocking_range(target_c.lower.pagetable_window_locks, target_range) } else { target_c.lower.pagetable_window_locks }
@@ -676,8 +676,8 @@ pub(super) proof fn ipc_pages_unlock_tables_step_from_u(
         pre_k.prc_mp.spec_index(target).view().pagetable == target_table,
         pre_k.pt_mp.dom().contains(source_table),
         pre_k.pt_mp.dom().contains(target_table),
-        source_windows == pagetable_window_locks_after_unlocking_range(pagetable_c(pre_k.pt_mp, pre_k.pt_lower.view(), source_table).lower.pagetable_window_locks, source_range),
-        target_windows == pagetable_window_locks_after_unlocking_range(pagetable_c(pre_k.pt_mp, pre_k.pt_lower.view(), target_table).lower.pagetable_window_locks, target_range),
+        source_windows == pagetable_window_locks_after_unlocking_range(whole_pagetable(pre_k.pt_mp, pre_k.pt_lower.view(), source_table).lower.pagetable_window_locks, source_range),
+        target_windows == pagetable_window_locks_after_unlocking_range(whole_pagetable(pre_k.pt_mp, pre_k.pt_lower.view(), target_table).lower.pagetable_window_locks, target_range),
         pre.cpu_array[cpu_id as int].current_thread == Some(thread_ptr),
         pre.thread_map[thread_ptr].syscall_progress == Some(SyscallProgress::Share4k { source_range, target_range, shared: source_range.len, directory: pre.thread_map[thread_ptr].syscall_progress->Some_0->Share4k_directory, origin: Share4kOrigin::IpcPages { peer: peer_ptr } }),
         share_4k_objects(pre, cpu_id).target == target,
@@ -940,9 +940,9 @@ pub(super) proof fn ipc_pages_downgrade_step_from_u(
         post == (KernelU {
             thread_map: pre.thread_map.insert(thread_ptr, ThreadU { syscall_progress: pre.thread_map[thread_ptr].syscall_progress, ..pre.thread_map[thread_ptr] }),
             process_map: pre.process_map.insert(source, ProcessU {
-                pagetable: Some(PageTableU { lock_state: source_state, pagetable_window_locks: pagetable_c(pre_k.pt_mp, pre_k.pt_lower.view(), source_table).lower.pagetable_window_locks, ..pre.process_map[source].pagetable->Some_0 }), ..pre.process_map[source]
+                pagetable: Some(PageTableU { lock_state: source_state, pagetable_window_locks: whole_pagetable(pre_k.pt_mp, pre_k.pt_lower.view(), source_table).lower.pagetable_window_locks, ..pre.process_map[source].pagetable->Some_0 }), ..pre.process_map[source]
             }).insert(target, ProcessU {
-                pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, pagetable_window_locks: pagetable_c(pre_k.pt_mp, pre_k.pt_lower.view(), target_table).lower.pagetable_window_locks, ..pre.process_map[target].pagetable->Some_0 }), ..pre.process_map[target]
+                pagetable: Some(PageTableU { lock_state: LockStateU::ReadLocked, pagetable_window_locks: whole_pagetable(pre_k.pt_mp, pre_k.pt_lower.view(), target_table).lower.pagetable_window_locks, ..pre.process_map[target].pagetable->Some_0 }), ..pre.process_map[target]
             }),
             ..pre
         }),

@@ -42,7 +42,7 @@ pub(super) fn iommu_map_4k_exit(
         lctx0.scheduler_lock_map().dom().is_empty() && lctx0.cpu_set_lock_map().dom().is_empty(),
         lctx0.holds_no_allocator_locks(PageSize::SZ4k) && lctx0.holds_no_allocator_locks(PageSize::SZ2m) && lctx0.holds_no_allocator_locks(PageSize::SZ1g),
         va_range.wf() && iova_range.wf() && va_range.len > 0 && iova_range.len == va_range.len,
-        pagetable_c(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).kernel_l4_end() <= spec_v2l4index(va_range.start),
+        whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).kernel_l4_end() <= spec_v2l4index(va_range.start),
         k0.cpu_arr.spec_index(cpu_id).view().view().view().current_process == Some(process_ptr),
         k0.cpu_arr.spec_index(cpu_id).view().view().view().current_thread == Some(thread_ptr),
         k0.thr_mp.dom().contains(thread_ptr) && !thread_is_dangling(k0.thr_mp.spec_index(thread_ptr)),
@@ -68,20 +68,20 @@ pub(super) fn iommu_map_4k_exit(
         forall|p: RwLockPageTableRoot, w: WindowVa| #![trigger lctx0.pagetable_window_lock_map().dom().contains((p, w))]
             lctx0.pagetable_window_lock_map().dom().contains((p, w)) == (p == pagetable_ptr && window_perms.dom().contains(w)),
         forall|w: WindowVa| #![trigger va_range_2m_windows(*va_range).contains(w)]
-            va_range_2m_windows(*va_range).contains(w) && pagetable_c(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some
+            va_range_2m_windows(*va_range).contains(w) && whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some
             ==> window_perms.dom().contains(w),
         forall|w: WindowVa| #![trigger window_perms.dom().contains(w)]
             window_perms.dom().contains(w) ==> {
                 &&& va_range_2m_windows(*va_range).contains(w)
-                &&& pagetable_c(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some
+                &&& whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).higher.spec_resolve_mapping_l3(spec_v2l4index(w.va), spec_v2l3index(w.va)) is Some
                 &&& typed_lock_map_contains_mode(lctx0.pagetable_window_lock_map(), (pagetable_ptr, w), TypedLockMode::Write)
                 &&& window_perms.index(w).state() is WriteLock
                 &&& window_perms.index(w).thread_id() == lctx0.thread_id()
-                &&& pagetable_c(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).lower.l2_owner(pagetable_c(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
+                &&& whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).lower.l2_owner(whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
                     == (SpinLockState::Some { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
-                &&& pagetable_c(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).window_leaves_present(w)
-                &&& !pagetable_c(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).lower.window_stale_cpus.dom().contains((
-                    pagetable_c(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
+                &&& whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).window_leaves_present(w)
+                &&& !whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).lower.window_stale_cpus.dom().contains((
+                    whole_pagetable(k0.pt_mp, k0.pt_lower.view(), pagetable_ptr).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va)))
             },
         old(krnl).cpu_arr.spec_index(cpu_id).view() == k0.cpu_arr.spec_index(cpu_id).view(),
         old(krnl).prc_mp.dom().contains(process_ptr),

@@ -42,14 +42,14 @@ pub(crate) open spec fn kill_retire_table_page_eof_transition_framing(
     } else {
         let old_table = pre.pt_mp.spec_index(table);
         let new_table = post.pt_mp.spec_index(table);
-        let old_c = pagetable_c(pre.pt_mp, pre.pt_lower.view(), table);
-        let new_c = pagetable_c(post.pt_mp, post.pt_lower.view(), table);
+        let old_c = whole_pagetable(pre.pt_mp, pre.pt_lower.view(), table);
+        let new_c = whole_pagetable(post.pt_mp, post.pt_lower.view(), table);
         &&& post.it_mp == pre.it_mp
         &&& post.pt_mp.dom() == pre.pt_mp.dom()
         &&& post.pt_mp.unchanged_except(&pre.pt_mp, table)
         &&& post.pt_lower.view() == pre.pt_lower.view().insert(table, post.pt_lower.view().spec_index(table))
-        &&& forall|r: RwLockPageTableRoot| #![trigger pagetable_c(post.pt_mp, post.pt_lower.view(), r)]
-            pre.pt_mp.dom().contains(r) && r != table ==> pagetable_c(post.pt_mp, post.pt_lower.view(), r) == pagetable_c(pre.pt_mp, pre.pt_lower.view(), r)
+        &&& forall|r: RwLockPageTableRoot| #![trigger whole_pagetable(post.pt_mp, post.pt_lower.view(), r)]
+            pre.pt_mp.dom().contains(r) && r != table ==> whole_pagetable(post.pt_mp, post.pt_lower.view(), r) == whole_pagetable(pre.pt_mp, pre.pt_lower.view(), r)
         &&& new_table.locking_thread() == old_table.locking_thread()
         &&& new_table.being_killed() == old_table.being_killed()
         &&& new_table.view_ghost() == post.pt_lower.view().spec_index(table)

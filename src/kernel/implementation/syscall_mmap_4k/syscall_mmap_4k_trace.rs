@@ -8,7 +8,7 @@ verus! {
 /// covers present, since its 2M windows are held and every 2M and 1G leaf is present, and `found` names a 4K leaf in its index
 /// interval or, if there is none, some page is covered by a 2M or 1G leaf. Without a checked table, a range result is only known
 /// to be success or in use.
-pub(super) proof fn mmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAddr, range: usize, ret: RetValueType, cur: Option<PageTableC<PT_TYPE>>,
+pub(super) proof fn mmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAddr, range: usize, ret: RetValueType, cur: Option<WholePageTable<PT_TYPE>>,
     found: Option<(L4Index, L3Index, L2Index, L1Index)>)
     requires
         krnl.inv(),
@@ -20,7 +20,7 @@ pub(super) proof fn mmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAd
             let thread_ptr = cpu.view().view().current_thread->Some_0;
             let thread = krnl.thr_mp.spec_index(thread_ptr);
             let process = krnl.prc_mp.spec_index(thread.view().owning_proc);
-            let table = pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), process.view().pagetable);
+            let table = whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), process.view().pagetable);
             let va_range = mmap_4k_syscall_va_range(va, range);
             let start = spec_va2index(va);
             let end = spec_va2index(va_range.view()[range - 1]);
@@ -78,7 +78,7 @@ pub(super) proof fn mmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAd
             let checked = cur->Some_0;
             let va_range = mmap_4k_syscall_va_range(va, range);
             let u_table = kernel_k_to_kernel_u(*krnl).process_map[thread.owning_proc].pagetable->Some_0;
-            va_range.va_range_lemma();
+            va_range.wf_implies_view_index_is_start_plus_offset();
             if found is Some {
                 let f = found->Some_0;
                 let fv = spec_index2va((f.0, f.1, f.2, f.3));
@@ -87,7 +87,7 @@ pub(super) proof fn mmap_4k_result_from_k(krnl: &KernelK, cpu_id: CpuId, va: VAd
                 spec_va_4k_index_roundtrip_at(fv, f.0, f.1, f.2, f.3);
                 assert(checked.mapping_4k().spec_index(fv).present);
                 assert(u_table.mapping_4k.dom().contains(fv));
-            } else { reveal(PageTableC::spec_mapping_4k_va_range_empty); }
+            } else { reveal(WholePageTable::spec_mapping_4k_va_range_empty); }
         }
     }
 }
@@ -117,7 +117,7 @@ pub(super) proof fn mmap_4k_enter_step_from_u(krnl: &KernelK, post: KernelU, cpu
         !krnl.prc_mp.spec_index(process_ptr).view().zombie,
         krnl.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr,
         krnl.pt_mp.dom().contains(pagetable_ptr),
-        windows == pagetable_window_locks_after_locking_range(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, range),
+        windows == pagetable_window_locks_after_locking_range(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, range),
         {
             let pre = kernel_k_to_kernel_u(*krnl);
             let cpu = pre.cpu_array[cpu_id as int];
@@ -164,7 +164,7 @@ pub(super) proof fn mmap_4k_fill_enter_step_from_u(krnl: &KernelK, mid: KernelU,
         !krnl.prc_mp.spec_index(process_ptr).view().zombie,
         krnl.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr,
         krnl.pt_mp.dom().contains(pagetable_ptr),
-        windows == pagetable_window_locks_after_locking_range(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, range),
+        windows == pagetable_window_locks_after_locking_range(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, range),
         owner == process_ptr,
         {
             let pre = kernel_k_to_kernel_u(*krnl);
@@ -273,7 +273,7 @@ pub(super) proof fn mmap_4k_downgrade_step_from_u(krnl: &KernelK, post: KernelU,
         !krnl.prc_mp.spec_index(process_ptr).view().zombie,
         krnl.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr,
         krnl.pt_mp.dom().contains(pagetable_ptr),
-        windows == pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
+        windows == whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks,
         {
             let pre = kernel_k_to_kernel_u(*krnl);
             let thread = pre.thread_map.spec_index(thread_ptr);
@@ -366,7 +366,7 @@ pub(super) proof fn mmap_4k_exit_step_from_u(krnl: &KernelK, post: KernelU, cpu_
         !krnl.prc_mp.spec_index(process_ptr).view().zombie,
         krnl.prc_mp.spec_index(process_ptr).view().pagetable == pagetable_ptr,
         krnl.pt_mp.dom().contains(pagetable_ptr),
-        windows == pagetable_window_locks_after_unlocking_range(pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, range),
+        windows == pagetable_window_locks_after_unlocking_range(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable_ptr).lower.pagetable_window_locks, range),
         {
             let pre = kernel_k_to_kernel_u(*krnl);
             let thread = pre.thread_map.spec_index(thread_ptr);

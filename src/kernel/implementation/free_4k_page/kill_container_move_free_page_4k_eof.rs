@@ -144,7 +144,7 @@ proof fn kill_container_move_free_page_4k_eof_free_page_ptrs(
         allocator_free_page_ptrs_wf(post.allc_4k_mp),
 {
     reveal(kill_container_move_free_page_4k_eof_transition_framing);
-    seq_skip_lemma::<PagePtr>(); pre.allc_4k_mp.spec_index(dst_allocator).global_pool.view().view().insert_ensures(0, page_ptr);
+    seq_skip_one_implies_contains_and_index_shift::<PagePtr>(); pre.allc_4k_mp.spec_index(dst_allocator).global_pool.view().view().insert_ensures(0, page_ptr);
     reveal(allocator_free_page_ptrs_wf);
 }
 
@@ -175,7 +175,7 @@ proof fn kill_container_move_free_page_4k_eof_global_free_pages_forward(
         container_allocator_global_free_4k_forward_wf(post.allc_4k_mp, post.pg_arr),
 {
     reveal(kill_container_move_free_page_4k_eof_transition_framing);
-    seq_skip_lemma::<PagePtr>(); pre.allc_4k_mp.spec_index(dst_allocator).global_pool.view().view().insert_ensures(0, page_ptr);
+    seq_skip_one_implies_contains_and_index_shift::<PagePtr>(); pre.allc_4k_mp.spec_index(dst_allocator).global_pool.view().view().insert_ensures(0, page_ptr);
 }
 
 proof fn kill_container_move_free_page_4k_eof_global_free_pages_backward(
@@ -205,7 +205,7 @@ proof fn kill_container_move_free_page_4k_eof_global_free_pages_backward(
         container_allocator_global_free_4k_backward_wf(post.allc_4k_mp, post.pg_arr),
 {
     reveal(kill_container_move_free_page_4k_eof_transition_framing);
-    seq_skip_lemma::<PagePtr>(); pre.allc_4k_mp.spec_index(dst_allocator).global_pool.view().view().insert_ensures(0, page_ptr);
+    seq_skip_one_implies_contains_and_index_shift::<PagePtr>(); pre.allc_4k_mp.spec_index(dst_allocator).global_pool.view().view().insert_ensures(0, page_ptr);
     reveal(allocator_free_page_ptrs_wf);
 }
 

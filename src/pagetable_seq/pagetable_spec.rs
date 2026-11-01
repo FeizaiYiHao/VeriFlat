@@ -522,9 +522,9 @@ impl<const TABLE_TYPE: PTType> PageTable<TABLE_TYPE> {
         }
     }
 
-    pub open spec fn va_addr_valid(&self) -> bool { self.va_addr_valid_inner() }
+    pub open spec fn va_addr_valid(&self) -> bool { self.va_addr_valid_definition() }
 
-    pub open spec fn va_addr_valid_inner(&self) -> bool {
+    pub open spec fn va_addr_valid_definition(&self) -> bool {
         &&& forall|va: VAddr|
             #![trigger va_4k_valid(va), self.mapping_4k.view().dom().contains(va)]
             #![trigger self.mapping_4k.view().dom().contains(va), page_ptr_valid(self.mapping_4k.view().spec_index(va).addr)]

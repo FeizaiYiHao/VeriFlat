@@ -99,7 +99,7 @@ pub fn syscall_kill_process(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut Loca
         return RetValueType::ErrorThreadKilled;
     }
     let Tracked(thread_lock_perm) = thread_res.unwrap();
-    proof { process_perms_wf_at(krnl.prc_mp, process_ptr); krnl.prc_mp.spec_index(process_ptr).view().children.lemma_len_view(); }
+    proof { process_perms_wf_at(krnl.prc_mp, process_ptr); krnl.prc_mp.spec_index(process_ptr).view().children.wf_implies_view_len_eq_len(); }
     let num_children = krnl.prc_mp.borrow_typed(process_ptr, Ghost(lctx.process_lock_map()), Tracked(&*lctx), Tracked(&process_lock_perm)).children.len();
     if child_index >= num_children {
         krnl.wunlock_thread(thread_ptr, Tracked(&mut *lctx), Tracked(thread_lock_perm));
@@ -243,7 +243,7 @@ pub(crate) fn kill_walk_and_finish(
         proof {
             process_perms_wf_map(krnl.prc_mp);
             process_perms_wf_at(krnl.prc_mp, target);
-            krnl.prc_mp.spec_index(target).view().children.lemma_len_view(); krnl.prc_mp.spec_index(target).view().owned_threads.lemma_len_view();
+            krnl.prc_mp.spec_index(target).view().children.wf_implies_view_len_eq_len(); krnl.prc_mp.spec_index(target).view().owned_threads.wf_implies_view_len_eq_len();
         }
         let (has_children, has_threads) = {
             let tracked target_perm = chain_perms.tracked_borrow(target);

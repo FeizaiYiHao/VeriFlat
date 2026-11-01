@@ -220,7 +220,7 @@ pub(super) fn cpu_offline_commit_unlock_and_record(
 /// `cpu_offline_commit` once the point facts of the held scheduler shard, cpu set, offline flags, cpu, and current thread
 /// are established: write-locks the default-pcid needflush cell of `cpu_id`, requeues the running thread, if any, takes
 /// the cpu Off, and finishes through `cpu_offline_commit_unlock_and_record`.
-pub(super) fn cpu_offline_commit_go_off(
+pub(super) fn cpu_offline_commit_take_cpu_off(
     krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, pt_regs: &Registers,
     container_ptr: RwLockContainerPtr, scheduler_ptr: RwLockSchedulerPtr, cpu_set_ptr: RwLockCpuSetPtr, flags_ptr: RwLockCpuOfflineFlagsPtr,
     current_process: Option<RwLockProcessPtr>, current_thread: Option<RwLockThreadPtr>, process_lock_perm: Option<Tracked<LockPerm>>,

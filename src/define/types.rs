@@ -277,7 +277,7 @@ pub struct VaRange4K {
 }
 
 impl VaRange4K {
-    pub proof fn va_range_lemma(&self)
+    pub proof fn wf_implies_view_index_is_start_plus_offset(&self)
         requires
             self.wf(),
         ensures

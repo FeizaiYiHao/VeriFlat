@@ -92,7 +92,7 @@ pub(crate) fn kill_container_pages_retire_and_unlock(
         let a4_caches = krnl.allc_4k_mp.spec_index(a4).cpu_caches;
         let a2_caches = krnl.allc_2m_mp.spec_index(a2).cpu_caches;
         allocator_perms_wf_map(krnl.allc_4k_mp); allocator_perms_wf_at(krnl.allc_4k_mp, a4); allocator_perms_wf_map(krnl.allc_2m_mp); allocator_perms_wf_at(krnl.allc_2m_mp, a2);
-        a4_caches.lemma_view_index(); lemma_cache_len_fold_all_zero(a4_caches.view()); a2_caches.lemma_view_index(); lemma_cache_len_fold_all_zero(a2_caches.view());
+        a4_caches.view_index_eq_element_value(); lemma_cache_len_fold_all_zero(a4_caches.view()); a2_caches.view_index_eq_element_value(); lemma_cache_len_fold_all_zero(a2_caches.view());
         lemma_container_allocator_quota_eq_total_free_without_users(*krnl, container_ptr); krnl.thr_mp.typed_lock_map_aligned_write_at(lctx.thread_lock_map(), lctx.thread_id(), thread_ptr);
     }
     let ghost drained = *krnl;

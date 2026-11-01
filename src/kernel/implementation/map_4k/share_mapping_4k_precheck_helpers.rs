@@ -42,7 +42,7 @@ pub(super) fn share_mapping_4k_source_owner_check_at(
         source_range.wf(),
         i < source_range.len,
         old(krnl).pt_mp.spec_index(source_pagetable).view().kernel_l4_end <= spec_va2index(source_range.start).0,
-        pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().dom().contains(source_range.view().spec_index(i as int)),
+        whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable).mapping_4k().dom().contains(source_range.view().spec_index(i as int)),
         kernel_cpu_process_thread_nonlock_fields_unchanged(&old(steps).snapshot_k(), old(krnl)),
         kernel_endpoint_nonlock_fields_unchanged(old(steps).snapshot_k().ep_mp, old(krnl).ep_mp),
         old(krnl).irt.view().owners() == old(steps).snapshot_k().irt.view().owners(),
@@ -82,9 +82,9 @@ pub(super) fn share_mapping_4k_source_owner_check_at(
         held_pagetables_unchanged(old(krnl).pt_mp, final(krnl).pt_mp, old(lctx)),
         held_pagetable_windows_unchanged(old(krnl).pt_mp, old(krnl).pt_lower.view(), final(krnl).pt_mp, final(krnl).pt_lower.view(), old(lctx)),
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), source_pagetable, TypedLockMode::Write)
-            ==> pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), source_pagetable) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable),
+            ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), source_pagetable) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), source_pagetable),
         typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), target_pagetable, TypedLockMode::Write)
-            ==> pagetable_c(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable) == pagetable_c(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable),
+            ==> whole_pagetable(final(krnl).pt_mp, final(krnl).pt_lower.view(), target_pagetable) == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), target_pagetable),
         source_pagetable_lock_perm.state() is ReadLock ==> final(krnl).pt_mp.spec_index(source_pagetable).locking_thread()->Read_reader_map.contains_pair(old(lctx).thread_id(), source_pagetable_lock_perm.lock_id()),
         held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
         held_cpus_unchanged(old(krnl).cpu_arr, final(krnl).cpu_arr, old(lctx)),
@@ -103,11 +103,11 @@ pub(super) fn share_mapping_4k_source_owner_check_at(
             &&& spec_index2va(source_indices) == source_va
             &&& krnl.pt_mp.spec_index(source_pagetable).view().kernel_l4_end <= source_indices.0
             &&& pei_valid(source_indices.0) && pei_valid(source_indices.1) && pei_valid(source_indices.2) && pei_valid(source_indices.3)
-            &&& pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).spec_resolve_mapping_4k_l1(source_indices.0, source_indices.1, source_indices.2, source_indices.3) is Some
+            &&& whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).spec_resolve_mapping_4k_l1(source_indices.0, source_indices.1, source_indices.2, source_indices.3) is Some
         }) by {
-            source_range.va_range_lemma(); spec_v2l4index_monotonic(source_range.start, source_va); spec_va_4k_valid_imply_indices_valid();
+            source_range.wf_implies_view_index_is_start_plus_offset(); spec_v2l4index_monotonic(source_range.start, source_va); spec_va_4k_valid_imply_indices_valid();
             spec_va_4k_index_roundtrip_at(source_va, source_indices.0, source_indices.1, source_indices.2, source_indices.3);
-            pagetable_c(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).wf_mapping_4k_at(source_indices.0, source_indices.1, source_indices.2, source_indices.3);
+            whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), source_pagetable).wf_mapping_4k_at(source_indices.0, source_indices.1, source_indices.2, source_indices.3);
         };
     }
     let source_entry;

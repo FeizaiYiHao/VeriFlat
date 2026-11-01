@@ -80,7 +80,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
 
     /// Expose the (otherwise closed-`wf`) fact that the stored `length` equals
     /// the view length.
-    pub proof fn lemma_len_view(&self)
+    pub proof fn wf_implies_view_len_eq_len(&self)
         requires
             self.wf(),
         ensures
@@ -98,7 +98,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
     /// `addr_list`, push the value equality through `wf_value_list` so both
     /// positions hold the same `view()` element, then `value_list_unique`
     /// forces the positions — hence the addresses — equal.
-    pub proof fn lemma_value_addr_unique(&self, a: usize, b: usize)
+    pub proof fn wf_and_equal_values_implies_equal_addrs(&self, a: usize, b: usize)
         requires
             self.wf(),
             self.map().dom().contains(a),
@@ -262,7 +262,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             self.map = Ghost(self.map.view().insert(addr, perm.view().value().view()));
             proof { self.perms.borrow_mut().tracked_insert(addr, perm.get()); }
 
-            proof { seq_push_lemma::<usize>(); }
+            proof { seq_push_implies_contains::<usize>(); }
             assert(self.wf()) by { reveal(LinkedList::wf_head); reveal(LinkedList::wf_prev); reveal(LinkedList::wf_next); reveal(LinkedList::value_list_unique); };
         } else {
             proof { node_perm_disjoint(perm.borrow_mut(), self.perms.borrow_mut()); }
@@ -281,7 +281,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             self.map = Ghost(self.map.view().insert(addr, perm.view().value().view()));
             proof { self.perms.borrow_mut().tracked_insert(addr, perm.get()); }
 
-            proof { seq_push_lemma::<usize>(); seq_push_lemma::<T>(); seq_push_unique_lemma::<usize>(); }
+            proof { seq_push_implies_contains::<usize>(); seq_push_implies_contains::<T>(); seq_push_absent_implies_no_duplicates_and_index_of::<usize>(); }
 
             assert(self.wf_head() && self.wf_tail()) by { reveal(LinkedList::wf_head); reveal(LinkedList::wf_prev); reveal(LinkedList::wf_next); reveal(LinkedList::value_list_unique); };
             assert(self.wf()) by { reveal(LinkedList::wf_head); reveal(LinkedList::wf_prev); reveal(LinkedList::wf_next); reveal(LinkedList::value_list_unique); };
@@ -319,7 +319,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
             self.map = Ghost(self.map.view().insert(addr, perm.view().value().view()));
             proof { self.perms.borrow_mut().tracked_insert(addr, perm.get()); }
 
-            proof { seq_push_lemma::<usize>(); }
+            proof { seq_push_implies_contains::<usize>(); }
             assert(self.wf()) by { reveal(LinkedList::wf_tail); reveal(LinkedList::wf_prev); reveal(LinkedList::wf_next); reveal(LinkedList::value_list_unique); };
         } else {
             proof { node_perm_disjoint(perm.borrow_mut(), self.perms.borrow_mut()); }
@@ -434,7 +434,7 @@ impl<T, const MAJOR: LockMajorId> LinkedList<T, MAJOR> {
     {
         proof { reveal(LinkedList::wf_perms); reveal(LinkedList::wf_addr_list); reveal(LinkedList::wf_value_list); reveal(LinkedList::wf_head); reveal(LinkedList::wf_next); reveal(LinkedList::wf_map); }
         if self.length != 1 {
-            proof { seq_skip_lemma::<usize>(); seq_skip_lemma::<T>(); seq_skip_index_of_lemma::<usize>(); seq_skip_index_of_lemma::<T>(); }
+            proof { seq_skip_one_implies_contains_and_index_shift::<usize>(); seq_skip_one_implies_contains_and_index_shift::<T>(); seq_skip_one_implies_index_of_minus_one::<usize>(); seq_skip_one_implies_index_of_minus_one::<T>(); }
             let old_head_addr = self.head.unwrap();
             let tracked old_head_perm = self.perms.borrow_mut().tracked_remove(old_head_addr);
             let old_head: &Node<T> = PPtr::<Node<T>>::from_usize(old_head_addr).borrow(Tracked(&old_head_perm));

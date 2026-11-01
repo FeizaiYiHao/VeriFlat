@@ -86,7 +86,7 @@ pub open spec fn usize2execute_disable(v: usize) -> bool { (v & PAGE_ENTRY_EXECU
 pub open spec fn usize2user(v: usize) -> bool { (v & PAGE_ENTRY_USER_MASK as usize) != 0 }
 pub open spec fn usize2kernel_present(v: usize) -> bool { (v & PAGE_ENTRY_KERNEL_PRESENT_MASK as usize) != 0 }
 
-pub proof fn zero_leads_is_empty_page_entry()
+pub proof fn spec_usize2page_entry_zero_is_empty()
     ensures
         spec_usize2page_entry(0).is_empty(),
 {
