@@ -84,6 +84,10 @@ const SPINNER_ROUNDS: usize = 10;
 const TIMED_THREADS: usize = 32;
 /// Ping-pong round trips over the root endpoint to time IPC.
 const IPC_ROUNDS: u64 = 1000;
+/// Fresh 4K pages mapped, touched, and unmapped per round, and the timed rounds, to time `mmap_4k`
+/// and `unmap_4k`.
+const MMAP_PAGES: usize = 64;
+const MMAP_ROUNDS: u64 = 1000;
 static mut PONG_STACK: [u8; 64 * 1024] = [0; 64 * 1024];
 static mut CALL_SERVER_STACK: [u8; 64 * 1024] = [0; 64 * 1024];
 
@@ -420,6 +424,27 @@ fn time_syscall_returns() {
         }
     }
     log::info!("null syscall: {} TSC cycles returning through sysretq, {} through iretq", best[0], best[1]);
+}
+
+/// Times `MMAP_ROUNDS` rounds that map and touch `MMAP_PAGES` fresh 4K pages at `KILL_VA` and unmap
+/// them, after one untimed round that builds the page tables, and logs the mean TSC cycles per page.
+fn time_mmap_unmap() {
+    // mmap_4k needs four 4K quota per page at hand and takes one per page, plus the page tables of
+    // the first round, from the thread; unmap_4k refunds the pages to the container, so every round
+    // first moves one quota per page back to the thread, untimed.
+    fund("mmap timer funding", 3 * MMAP_PAGES + 3);
+    let mut total = 0;
+    for round in 0..=MMAP_ROUNDS {
+        fund("mmap timer funding", MMAP_PAGES);
+        let start = unsafe { core::arch::x86_64::_rdtsc() };
+        map_and_touch("mmap_4k (timed)", MMAP_PAGES);
+        quiet("unmap_4k (timed)", unsafe { sys_unmap_4k(KILL_VA, MMAP_PAGES) });
+        if round > 0 {
+            total += unsafe { core::arch::x86_64::_rdtsc() } - start;
+        }
+    }
+    let cycles = total / (MMAP_ROUNDS * MMAP_PAGES as u64);
+    log::info!("mmap+unmap 4K: {} TSC cycles per page over {} rounds", cycles, MMAP_ROUNDS);
 }
 
 /// Retries `online` while it fails with `ErrorCpuNotOff`, until the CPU has gone Off and is back.
@@ -816,6 +841,7 @@ pub extern "C" fn _start() -> ! {
     check("schedule after the user loaded gs", unsafe { sys_schedule() });
     expect_error("new_thread at a non-canonical ip", unsafe { sys_new_thread(1 << 63, 0) }, "InvalidArgument");
     time_syscall_returns();
+    time_mmap_unmap();
 
     // 1. quota + mmap + touch + unmap
     check("alloc_quota_4k", unsafe { sys_alloc_quota_4k(64) });
