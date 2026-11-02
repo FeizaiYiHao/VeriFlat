@@ -528,18 +528,46 @@ const PAIR_WINDOW: u64 = 100_000_000;
 const PAIR_BATCH: u64 = 64;
 /// The least share, in hundredths, of the concurrent phase's span in which every pair must be timing.
 const PAIR_MIN_OVERLAP: u64 = 50;
-/// The phases dom0 releases a pair's client into: alone, all pairs at once, then in the cross-process
-/// mode the start of its child server and the same two timing phases against it, and stop.
+/// Rounds the concurrent phase's window leaves each pair room for even if the pairs took turns, so that
+/// a round far slower than a call round trip still ends the window together with the others, up to a
+/// window of `PAIR_MAX_WINDOW` cycles.
+const PAIR_MIN_ROUNDS: u64 = 32;
+const PAIR_MAX_WINDOW: u64 = 20 * PAIR_WINDOW;
+/// The phases dom0 releases a pair's client into, in this order (dom0 may skip any of them): the call
+/// timing alone and with all pairs at once, then in the cross-process mode the start of its child server
+/// and the same two timing phases against it; the parallel mmap timing's map+unmap and mmap-only modes in
+/// dom0, then the start of its mmap child, the same two modes in the child, and the child's mmap-only mode
+/// within the per-CPU page cache; and stop.
 const PHASE_ALONE: usize = 1;
 const PHASE_CONCURRENT: usize = 2;
 const PHASE_XPROC_SETUP: usize = 3;
 const PHASE_XPROC_ALONE: usize = 4;
 const PHASE_XPROC_CONCURRENT: usize = 5;
-const PHASE_STOP: usize = 6;
+const PHASE_MMAP_ALONE: usize = 6;
+const PHASE_MMAP_CONCURRENT: usize = 7;
+const PHASE_MMAP_ONLY_ALONE: usize = 8;
+const PHASE_MMAP_ONLY_CONCURRENT: usize = 9;
+const PHASE_MMAP_XPROC_SETUP: usize = 10;
+const PHASE_MMAP_XPROC_ALONE: usize = 11;
+const PHASE_MMAP_XPROC_CONCURRENT: usize = 12;
+const PHASE_MMAP_ONLY_XPROC_ALONE: usize = 13;
+const PHASE_MMAP_ONLY_XPROC_CONCURRENT: usize = 14;
+const PHASE_MMAP_CACHED_XPROC_ALONE: usize = 15;
+const PHASE_MMAP_CACHED_XPROC_CONCURRENT: usize = 16;
+const PHASE_STOP: usize = 17;
 /// The descriptor where each client of the cross-process mode, dom0 as client 0 included, creates the
 /// endpoint of its child server, which holds it in descriptor 0. The pair's endpoint cannot serve: the
 /// same-process server stays blocked in receive_call on it.
 const XPROC_ENDPOINT: usize = 1;
+/// The same for the child of the parallel mmap timing's cross-process modes: a descriptor no earlier
+/// child used, since a killed child's endpoint stays in its client's descriptor.
+const MMAP_XPROC_ENDPOINT: usize = 5;
+/// The parallel timings this build runs, from the build environment: `call`, `mmap`, or both
+/// (`VERIFLAT_PARALLEL=call,mmap`); `call` when unset.
+const PARALLEL: &str = match option_env!("VERIFLAT_PARALLEL") {
+    Some(modes) => modes,
+    None => "call",
+};
 
 /// One client/server pair of the parallel call timing, alone on its cache lines, so the pairs share
 /// nothing but the kernel.
@@ -614,24 +642,27 @@ fn pair_child_quota() -> usize {
     1 + 4 + 3 * image_range().1
 }
 
-/// Starts the child server of pair `k` from the pair's client on CPU `k`, once dom0's process holds the
-/// quota: a fresh endpoint in the client's `XPROC_ENDPOINT`, and a child process holding it in
-/// descriptor 0, whose first thread, `pair_server` queued on the creator's shard, runs until it blocks.
-fn start_pair_child(k: usize) {
+/// Starts a child of pair `k` from the pair's client on CPU `k`, once dom0's process holds the quota: a
+/// fresh endpoint in the client's descriptor `endpoint`, and a child process holding it in descriptor 0,
+/// whose first thread, `server` queued on the creator's shard, runs until it blocks.
+fn start_pair_child(k: usize, endpoint: usize, server: extern "C" fn() -> !) {
     quiet("pair child alloc_thread_quota_4k", unsafe { sys_alloc_thread_quota_4k(pair_child_quota()) });
-    quiet("pair child new_endpoint", unsafe { sys_new_endpoint(XPROC_ENDPOINT) });
+    quiet("pair child new_endpoint", unsafe { sys_new_endpoint(endpoint) });
     let (image, pages) = image_range();
     let sp = stack_top(unsafe { &raw const PAIR_CHILD_STACKS[k] });
-    quiet("pair child new_process_with_endpoint", unsafe { sys_new_process_with_endpoint(image, pages, XPROC_ENDPOINT, entry(pair_server), sp) });
+    quiet("pair child new_process_with_endpoint", unsafe { sys_new_process_with_endpoint(image, pages, endpoint, entry(server), sp) });
     // The child's first thread, the only other thread of this CPU's shard, runs until it blocks.
     unsafe { sys_schedule() };
 }
 
 /// Client of parallel call pair k >= 1, holding the pair's endpoint in descriptor 0. Once CPU k pulled
 /// it, it records that CPU, creates its server there, and lets the server block in receive_call; then
-/// it times the pair in each phase dom0 releases it into, spinning in between. Unless dom0 skips the
-/// pair in the cross-process mode, it then starts its child server and times the pair against it the
-/// same way. At the stop it yields until its CPU goes Off.
+/// it serves each phase dom0 releases it into, spinning in between: it times the pair in the call
+/// phases, starts its child server and times the pair against it in the cross-process ones, runs the
+/// parallel mmap timing's worker k in dom0's mmap phases, and starts its mmap child and has it run
+/// worker k in the cross-process mmap phases. dom0 skips the phases of the timings it does not run and
+/// the cross-process ones of the pairs its quota does not cover. At the stop it yields until its CPU
+/// goes Off.
 extern "C" fn pair_client() -> ! {
     let k = NEXT_PAIR.load(Ordering::SeqCst);
     let pair = &PAIRS[k];
@@ -642,41 +673,41 @@ extern "C" fn pair_client() -> ! {
     // The server, the only other thread of this CPU's shard, runs until it blocks.
     unsafe { sys_schedule() };
     pair.ready.store(true, Ordering::SeqCst);
-    time_client_phases(k, 0, [PHASE_ALONE, PHASE_CONCURRENT]);
-    if released_into(pair, PHASE_XPROC_SETUP) {
-        start_pair_child(k);
-        pair.ready.store(true, Ordering::SeqCst);
-        time_client_phases(k, XPROC_ENDPOINT, [PHASE_XPROC_ALONE, PHASE_XPROC_CONCURRENT]);
-    }
-    while pair.go.load(Ordering::SeqCst) != PHASE_STOP {
-        core::hint::spin_loop();
+    // dom0 releases the next phase only once this client finished the last one, so none is missed.
+    let mut last = 0;
+    loop {
+        let phase = loop {
+            let go = pair.go.load(Ordering::SeqCst);
+            if go != last {
+                break go;
+            }
+            core::hint::spin_loop();
+        };
+        last = phase;
+        match phase {
+            PHASE_ALONE | PHASE_CONCURRENT => time_pair(k, 0, phase),
+            PHASE_XPROC_SETUP => {
+                start_pair_child(k, XPROC_ENDPOINT, pair_server);
+                pair.ready.store(true, Ordering::SeqCst);
+            }
+            PHASE_XPROC_ALONE | PHASE_XPROC_CONCURRENT => time_pair(k, XPROC_ENDPOINT, phase),
+            PHASE_MMAP_ALONE | PHASE_MMAP_CONCURRENT | PHASE_MMAP_ONLY_ALONE | PHASE_MMAP_ONLY_CONCURRENT => time_mmap(k, phase),
+            PHASE_MMAP_XPROC_SETUP => {
+                start_pair_child(k, MMAP_XPROC_ENDPOINT, mmap_server);
+                pair.ready.store(true, Ordering::SeqCst);
+            }
+            PHASE_MMAP_XPROC_ALONE..=PHASE_MMAP_CACHED_XPROC_CONCURRENT => call_mmap_child(phase),
+            PHASE_STOP => break,
+            _ => {
+                log::error!("pair {}: released into unknown phase {}", k, phase);
+                unsafe { sys_debug_exit(1) };
+            }
+        }
     }
     // dom0 asked this CPU to go Off: the schedule check of a yield takes it Off and requeues this thread
     // on its shard.
     loop {
         unsafe { sys_schedule() };
-    }
-}
-
-/// Times client `k`'s pair on `endpoint` in each of `phases`, spinning until dom0 releases it into it.
-fn time_client_phases(k: usize, endpoint: usize, phases: [usize; 2]) {
-    for phase in phases {
-        while PAIRS[k].go.load(Ordering::SeqCst) != phase {
-            core::hint::spin_loop();
-        }
-        time_pair(k, endpoint, phase);
-    }
-}
-
-/// Spins until dom0 releases `pair`'s client into `phase` or to the stop, and returns whether it was
-/// `phase`.
-fn released_into(pair: &Pair, phase: usize) -> bool {
-    loop {
-        let go = pair.go.load(Ordering::SeqCst);
-        if go == phase || go == PHASE_STOP {
-            return go == phase;
-        }
-        core::hint::spin_loop();
     }
 }
 
@@ -725,8 +756,10 @@ fn time_pair(k: usize, endpoint: usize, phase: usize) {
 /// its server on CPU 0. The client of pair k comes to CPU k when dom0 brings that CPU online, which pulls
 /// the only queued thread, and creates its server, and later its child, there; each round trip is a
 /// direct switch between the pair's threads, so no pair leaves its CPU. The cross-process mode times as
-/// many pairs as dom0's container quota funds children for. Afterwards the children are killed and every
-/// CPU but 0 is Off again.
+/// many pairs as dom0's container quota funds children for. Afterwards the children are killed. Then,
+/// when this build runs it (`PARALLEL`), the parallel mmap timing (`time_parallel_mmap`) uses the same
+/// clients as its workers; without `call` in `PARALLEL` the call timing is skipped and the pairs only
+/// place the workers. Finally every CPU but 0 is Off again.
 fn time_parallel_call() {
     // Every CPU but 0 is Off, so an offline request fails without effect until the first missing CPU.
     let mut n = 1;
@@ -763,38 +796,15 @@ fn time_parallel_call() {
         }
         wait_for("a pair server to block", || pair.ready.load(Ordering::SeqCst));
     }
-    time_pairs(n, PAIR_ENDPOINT, [PHASE_ALONE, PHASE_CONCURRENT], "parallel_call");
-
-    // dom0's process takes the children's quota from its container, for as many pairs as it covers.
-    let quota = pair_child_quota();
-    let mut m = n;
-    let mut ret = unsafe { sys_alloc_quota_4k(m * quota) };
-    while ret < 0 && m > 1 {
-        expect_quiet("alloc_quota_4k (pair children)", ret, "ErrorContainerQuotaInsufficient");
-        m -= 1;
-        ret = unsafe { sys_alloc_quota_4k(m * quota) };
+    if PARALLEL.contains("call") {
+        time_pairs(n, [PHASE_ALONE, PHASE_CONCURRENT], "parallel_call", true, &|phase| time_pair(0, PAIR_ENDPOINT, phase));
+        let m = start_pair_children(n, XPROC_ENDPOINT, pair_server, PHASE_XPROC_SETUP, "parallel_call_xproc");
+        time_pairs(m, [PHASE_XPROC_ALONE, PHASE_XPROC_CONCURRENT], "parallel_call_xproc", true, &|phase| time_pair(0, XPROC_ENDPOINT, phase));
+        kill_pair_children(m);
     }
-    quiet("alloc_quota_4k (pair children)", ret);
-    log::info!("parallel_call_xproc funding: {} 4K quota per pair for {} of {} pairs", quota, m, n);
-    // The pairs start their children in turn, as their servers, so each child finds its pair in
-    // `NEXT_PAIR`. The same-process servers stay blocked on the pair endpoints.
-    NEXT_PAIR.store(0, Ordering::SeqCst);
-    PAIRS[0].server_cpu.store(0, Ordering::SeqCst);
-    start_pair_child(0);
-    for k in 1..m {
-        let pair = &PAIRS[k];
-        pair.server_cpu.store(0, Ordering::SeqCst);
-        pair.ready.store(false, Ordering::SeqCst);
-        NEXT_PAIR.store(k, Ordering::SeqCst);
-        pair.go.store(PHASE_XPROC_SETUP, Ordering::SeqCst);
-        wait_for("a pair child to block", || pair.ready.load(Ordering::SeqCst));
+    if PARALLEL.contains("mmap") {
+        time_parallel_mmap(n);
     }
-    time_pairs(m, XPROC_ENDPOINT, [PHASE_XPROC_ALONE, PHASE_XPROC_CONCURRENT], "parallel_call_xproc");
-    // The children, waiting for the next call, are killed, which returns their quota to dom0's container.
-    for _ in 0..m {
-        quiet("kill_process(0) (pair child)", unsafe { sys_kill_process(0) });
-    }
-    expect_quiet("kill_process(0) after the pair children", unsafe { sys_kill_process(0) }, "ErrorInvalidChild");
 
     // The clients take their CPUs Off, so the timings after this one run on CPU 0 alone.
     for k in 1..n {
@@ -816,19 +826,21 @@ fn time_parallel_call() {
     }
 }
 
-/// Times the first `n` pairs in one mode, pair 0 on dom0's `endpoint`: each pair alone in the first of
-/// `phases` while the other clients spin, then all pairs at once in the second, and logs with `prefix`
-/// per CPU the TSC cycles per round trip of both phases and their ratio, then a summary. Each pair times
-/// a window of `PAIR_WINDOW` cycles from its release; the pairs at once share one deadline. Fails unless
-/// every server ran on its pair's CPU and every pair was timing in at least `PAIR_MIN_OVERLAP`
-/// hundredths of the concurrent phase's span.
-fn time_pairs(n: usize, endpoint: usize, [alone_phase, concurrent_phase]: [usize; 2], prefix: &str) {
+/// Times the first `n` pairs in one mode, dom0 doing pair 0's share of a phase with `run0`: each pair
+/// alone in the first of `phases` while the other clients spin, then all pairs at once in the second,
+/// and logs with `prefix` per CPU the TSC cycles per round (a call round trip, or a round of the
+/// parallel mmap timing) of both phases and their ratio, then a summary. Each pair alone times a window
+/// of `PAIR_WINDOW` cycles from its release; the pairs at once share one deadline, at least as far.
+/// Fails unless every server (or mmap worker) ran on its pair's CPU and, when `overlap_fatal`, every
+/// pair was timing in at least `PAIR_MIN_OVERLAP` hundredths of the concurrent phase's span; otherwise a
+/// shorter overlap is only logged as an error.
+fn time_pairs(n: usize, [alone_phase, concurrent_phase]: [usize; 2], prefix: &str, overlap_fatal: bool, run0: &dyn Fn(usize)) {
     let (mut alone, mut alone_rounds) = ([0; MAX_PAIRS], [0; MAX_PAIRS]);
     for k in 0..n {
         let pair = &PAIRS[k];
         pair.deadline.store(unsafe { core::arch::x86_64::_rdtsc() } + PAIR_WINDOW, Ordering::SeqCst);
         if k == 0 {
-            time_pair(0, endpoint, alone_phase);
+            run0(alone_phase);
         } else {
             pair.go.store(alone_phase, Ordering::SeqCst);
             wait_for("a pair alone", || pair.done.load(Ordering::SeqCst) == alone_phase);
@@ -840,15 +852,18 @@ fn time_pairs(n: usize, endpoint: usize, [alone_phase, concurrent_phase]: [usize
             unsafe { sys_debug_exit(1) };
         }
     }
-    // One deadline for all pairs, published before any release.
-    let deadline = unsafe { core::arch::x86_64::_rdtsc() } + PAIR_WINDOW;
+    // One deadline for all pairs, published before any release: `PAIR_WINDOW` away, or further (up to
+    // `PAIR_MAX_WINDOW`) when needed for `PAIR_MIN_ROUNDS` rounds of each pair even if the pairs took
+    // turns at their alone pace.
+    let window = (PAIR_MIN_ROUNDS * n as u64 * alone[..n].iter().max().unwrap()).clamp(PAIR_WINDOW, PAIR_MAX_WINDOW);
+    let deadline = unsafe { core::arch::x86_64::_rdtsc() } + window;
     for pair in &PAIRS[..n] {
         pair.deadline.store(deadline, Ordering::SeqCst);
     }
     for pair in &PAIRS[1..n] {
         pair.go.store(concurrent_phase, Ordering::SeqCst);
     }
-    time_pair(0, endpoint, concurrent_phase);
+    run0(concurrent_phase);
     for pair in &PAIRS[1..n] {
         wait_for("the pairs at once", || pair.done.load(Ordering::SeqCst) == concurrent_phase);
     }
@@ -882,7 +897,282 @@ fn time_pairs(n: usize, endpoint: usize, [alone_phase, concurrent_phase]: [usize
             "{}: the concurrent pairs overlapped in only {} of their span: last begin {}, first end {}",
             prefix, Hundredths(overlap), max_begin, min_end
         );
+        if overlap_fatal {
+            unsafe { sys_debug_exit(1) };
+        }
+    }
+}
+
+/// Starts a child of each of the first pairs that dom0's container quota covers, at most `n`, from the
+/// pair's client, as `start_pair_child` does with `endpoint` and `server`: dom0 starts pair 0's itself
+/// and releases each other client into `setup_phase` in turn. Logs with `prefix` how many pairs got one,
+/// and returns that number.
+fn start_pair_children(n: usize, endpoint: usize, server: extern "C" fn() -> !, setup_phase: usize, prefix: &str) -> usize {
+    // dom0's process takes the children's quota from its container, for as many pairs as it covers.
+    let quota = pair_child_quota();
+    let mut m = n;
+    let mut ret = unsafe { sys_alloc_quota_4k(m * quota) };
+    while ret < 0 && m > 1 {
+        expect_quiet("alloc_quota_4k (pair children)", ret, "ErrorContainerQuotaInsufficient");
+        m -= 1;
+        ret = unsafe { sys_alloc_quota_4k(m * quota) };
+    }
+    quiet("alloc_quota_4k (pair children)", ret);
+    log::info!("{} funding: {} 4K quota per pair for {} of {} pairs", prefix, quota, m, n);
+    // The pairs start their children in turn, as their servers, so each child finds its pair in
+    // `NEXT_PAIR`. The same-process servers stay blocked on the pair endpoints.
+    NEXT_PAIR.store(0, Ordering::SeqCst);
+    PAIRS[0].server_cpu.store(0, Ordering::SeqCst);
+    start_pair_child(0, endpoint, server);
+    for k in 1..m {
+        let pair = &PAIRS[k];
+        pair.server_cpu.store(0, Ordering::SeqCst);
+        pair.ready.store(false, Ordering::SeqCst);
+        NEXT_PAIR.store(k, Ordering::SeqCst);
+        pair.go.store(setup_phase, Ordering::SeqCst);
+        wait_for("a pair child to block", || pair.ready.load(Ordering::SeqCst));
+    }
+    m
+}
+
+/// Kills the `m` pair children, each waiting for its next call, which returns their quota to dom0's
+/// container.
+fn kill_pair_children(m: usize) {
+    for _ in 0..m {
+        quiet("kill_process(0) (pair child)", unsafe { sys_kill_process(0) });
+    }
+    expect_quiet("kill_process(0) after the pair children", unsafe { sys_kill_process(0) }, "ErrorInvalidChild");
+}
+
+/// The parallel mmap timing's regions. In the map+unmap modes worker k maps, touches, and unmaps one 4K
+/// page at `PAR_MMAP_VA + k * PAR_MMAP_STRIDE`, alone in its 2M window (its own L2 entry and L1 table);
+/// the windows of neighbouring workers are adjacent, so the L2 entries of eight workers share a cache line.
+const PAR_MMAP_VA: usize = 0xc0_8000_0000;
+const PAR_MMAP_STRIDE: usize = 1 << 21;
+/// In the mmap-only modes worker k maps and touches a fresh 4K page each round, upwards from
+/// `PAR_ONLY_VA + k * PAR_ONLY_PAGES * 4096` (four 2M windows), and unmaps the whole region, untimed,
+/// once it is full or the container runs out of quota.
+const PAR_ONLY_VA: usize = 0xc0_c000_0000;
+const PAR_ONLY_PAGES: usize = 2048;
+/// The cross-process cached mode is the mmap-only mode with a region small enough that, after the first
+/// region unmap, the pages it maps and unmaps stay in the per-CPU page cache: the cache gives pages to the
+/// global pool only once it holds `ALLOCATOR_MAX_WATERMARK` (256) and takes them from it only when empty,
+/// so a region of this size never touches the global pool, which the mmap-only mode visits every 64 pages.
+const PAR_CACHED_PAGES: usize = 128;
+/// 4K quota a worker moves to its thread at a time, untimed.
+const PAR_FUND: usize = 512;
+/// Thread quota a worker keeps on top of the four one mmap_4k of a page needs at hand: it does not count
+/// the page tables its mappings build, fewer than this many over the whole timing.
+const PAR_TABLE_SLACK: usize = 16;
+/// Untimed rounds before the timed window of each alone phase, cut short after an eighth of the window.
+const PAR_WARMUP: usize = 16;
+/// Timed rounds a worker alone runs past its deadline if needed, for rounds slower than the window.
+const PAR_MIN_ALONE_ROUNDS: u64 = 8;
+/// Per worker, the 4K quota the worker's thread holds by its own count, carried from one phase to the
+/// next, and the region unmaps the container's quota forced early in the current mode.
+static PAR_QUOTA: [AtomicUsize; MAX_PAIRS] = [const { AtomicUsize::new(0) }; MAX_PAIRS];
+static PAR_SHORT: [AtomicUsize; MAX_PAIRS] = [const { AtomicUsize::new(0) }; MAX_PAIRS];
+
+/// Times one worker per CPU (`time_pairs`) looping over `mmap_4k` of one page in four modes: first with
+/// worker k a thread of dom0 on CPU k (dom0 itself for worker 0, a pair's client otherwise), each round
+/// also unmapping the page and then mapping a fresh one without unmapping; then with worker k the first
+/// thread of a child process of pair k's client, sharing dom0's image, so each worker has its own page
+/// table and PCID, in the same two modes, for as many pairs as dom0's container quota funds children
+/// for. The children run their phases while their clients wait in a call to them, and are killed
+/// afterwards. A round's TSC cycles leave out the quota moves and region unmaps between rounds.
+fn time_parallel_mmap(n: usize) {
+    // dom0 builds the page directory of each region's GiB, so that no timed mmap_4k of dom0 takes the
+    // page table's write lock; each worker builds its own L1 tables in its warm-up rounds.
+    fund("parallel mmap page directories", 16);
+    for va in [PAR_MMAP_VA, PAR_ONLY_VA] {
+        quiet("mmap_4k (parallel mmap page directory)", unsafe { sys_mmap_4k(va, 1) });
+        quiet("unmap_4k (parallel mmap page directory)", unsafe { sys_unmap_4k(va, 1) });
+    }
+    let in_dom0 = |phase: usize| time_mmap(0, phase);
+    time_pairs(n, [PHASE_MMAP_ALONE, PHASE_MMAP_CONCURRENT], "parallel_mmap_same", false, &in_dom0);
+    time_pairs(n, [PHASE_MMAP_ONLY_ALONE, PHASE_MMAP_ONLY_CONCURRENT], "parallel_mmap_only_same", false, &in_dom0);
+    report_quota_short("parallel_mmap_only_same", n, PAR_ONLY_PAGES);
+    // The children's threads start without quota of their own.
+    for quota in &PAR_QUOTA {
+        quota.store(0, Ordering::SeqCst);
+    }
+    let m = start_pair_children(n, MMAP_XPROC_ENDPOINT, mmap_server, PHASE_MMAP_XPROC_SETUP, "parallel_mmap_xproc");
+    time_pairs(m, [PHASE_MMAP_XPROC_ALONE, PHASE_MMAP_XPROC_CONCURRENT], "parallel_mmap_xproc", false, &call_mmap_child);
+    time_pairs(m, [PHASE_MMAP_ONLY_XPROC_ALONE, PHASE_MMAP_ONLY_XPROC_CONCURRENT], "parallel_mmap_only_xproc", false, &call_mmap_child);
+    report_quota_short("parallel_mmap_only_xproc", m, PAR_ONLY_PAGES);
+    time_pairs(m, [PHASE_MMAP_CACHED_XPROC_ALONE, PHASE_MMAP_CACHED_XPROC_CONCURRENT], "parallel_mmap_cached_xproc", false, &call_mmap_child);
+    report_quota_short("parallel_mmap_cached_xproc", m, PAR_CACHED_PAGES);
+    kill_pair_children(m);
+}
+
+/// Logs with `prefix` the region unmaps that the container's quota forced early in the last mode of `n`
+/// workers with regions of `region` pages, and resets their count.
+fn report_quota_short(prefix: &str, n: usize, region: usize) {
+    let short: usize = PAR_SHORT[..n].iter().map(|short| short.swap(0, Ordering::SeqCst)).sum();
+    log::info!("{} quota: region {} pages per worker, {} early region unmaps for want of container quota", prefix, region, short);
+}
+
+/// First thread of a child of the parallel mmap timing's cross-process modes, holding its client's
+/// endpoint in descriptor 0: runs worker k, its pair, in this process in each phase its client calls it
+/// with, and replies the phase once done.
+extern "C" fn mmap_server() -> ! {
+    let k = NEXT_PAIR.load(Ordering::SeqCst);
+    let mut phase = quiet_value("mmap server receive_call", unsafe { sys_receive_call(0) });
+    loop {
+        time_mmap(k, phase);
+        phase = quiet_value("mmap server reply_and_receive_usize", unsafe { sys_reply_and_receive_usize(0, phase) });
+    }
+}
+
+/// Has the calling client's mmap child run `phase`, waiting in the call until it is done.
+fn call_mmap_child(phase: usize) {
+    let reply = quiet_value("call_usize (mmap child)", unsafe { sys_call_usize(MMAP_XPROC_ENDPOINT, phase) });
+    if reply != phase {
+        log::error!("the mmap child replied {} to phase {}", reply, phase);
         unsafe { sys_debug_exit(1) };
+    }
+}
+
+/// Runs worker `k` of the parallel mmap timing in `phase`, in the calling process (dom0, or in the
+/// cross-process modes the worker's child): alone, `PAR_WARMUP` untimed rounds first; then timed rounds
+/// until the TSC reaches the pair's deadline (alone, at least `PAR_MIN_ALONE_ROUNDS`; at once, at least
+/// one). Checks that the worker is still on CPU `k`, unmaps what is left mapped, and records the result
+/// as `time_pair` does, the cycles per round without the cycles spent between rounds.
+fn time_mmap(k: usize, phase: usize) {
+    let pair = &PAIRS[k];
+    pair.server_cpu.store(current_cpu() + 1, Ordering::SeqCst);
+    let deadline = pair.deadline.load(Ordering::SeqCst);
+    let unmaps = matches!(phase, PHASE_MMAP_ALONE | PHASE_MMAP_CONCURRENT | PHASE_MMAP_XPROC_ALONE | PHASE_MMAP_XPROC_CONCURRENT);
+    let alone = matches!(
+        phase,
+        PHASE_MMAP_ALONE | PHASE_MMAP_ONLY_ALONE | PHASE_MMAP_XPROC_ALONE | PHASE_MMAP_ONLY_XPROC_ALONE | PHASE_MMAP_CACHED_XPROC_ALONE
+    );
+    let region = if matches!(phase, PHASE_MMAP_CACHED_XPROC_ALONE | PHASE_MMAP_CACHED_XPROC_CONCURRENT) { PAR_CACHED_PAGES } else { PAR_ONLY_PAGES };
+    let base = if unmaps { PAR_MMAP_VA + k * PAR_MMAP_STRIDE } else { PAR_ONLY_VA + k * PAR_ONLY_PAGES * 4096 };
+    let quota = PAR_QUOTA[k].load(Ordering::SeqCst);
+    let mut worker = MmapWorker { base, region, unmaps, mapped: 0, quota, untimed: 0, short: 0 };
+    // Only alone: the phase at once follows the same worker's alone phase in the same region.
+    let start = unsafe { core::arch::x86_64::_rdtsc() };
+    let warmup_end = start + deadline.saturating_sub(start) / 8;
+    for _ in 0..if alone { PAR_WARMUP } else { 0 } {
+        worker.round();
+        if unsafe { core::arch::x86_64::_rdtsc() } >= warmup_end {
+            break;
+        }
+    }
+    worker.untimed = 0;
+    let begin = unsafe { core::arch::x86_64::_rdtsc() };
+    let mut rounds = 0;
+    let end = loop {
+        worker.round();
+        rounds += 1;
+        let now = unsafe { core::arch::x86_64::_rdtsc() };
+        if now >= deadline && (!alone || rounds >= PAR_MIN_ALONE_ROUNDS) {
+            break now;
+        }
+    };
+    if current_cpu() != k {
+        log::error!("mmap worker {} moved to CPU {}", k, current_cpu());
+        unsafe { sys_debug_exit(1) };
+    }
+    if worker.mapped > 0 {
+        worker.unmap_region();
+    }
+    PAR_QUOTA[k].store(worker.quota, Ordering::SeqCst);
+    PAR_SHORT[k].fetch_add(worker.short, Ordering::SeqCst);
+    pair.begin.store(begin, Ordering::SeqCst);
+    pair.end.store(end, Ordering::SeqCst);
+    pair.rounds.store(rounds, Ordering::SeqCst);
+    pair.cycles.store((end - begin - worker.untimed) / rounds, Ordering::SeqCst);
+    pair.done.store(phase, Ordering::SeqCst);
+}
+
+/// A worker of the parallel mmap timing within one phase: its region's start and size in pages, its
+/// pages mapped there, its thread's 4K quota by its own count, the TSC cycles spent between rounds, and
+/// its early region unmaps.
+struct MmapWorker {
+    base: usize,
+    region: usize,
+    unmaps: bool,
+    mapped: usize,
+    quota: usize,
+    untimed: u64,
+    short: usize,
+}
+
+impl MmapWorker {
+    /// One round: maps the next 4K page of the region, writes and reads it back, and in the map+unmap
+    /// modes unmaps it. Before, when needed, it unmaps a full region and tops up the thread quota,
+    /// counting the cycles as `untimed`.
+    fn round(&mut self) {
+        if self.quota < 4 + PAR_TABLE_SLACK || self.mapped == self.region {
+            let start = unsafe { core::arch::x86_64::_rdtsc() };
+            self.make_room();
+            self.untimed += unsafe { core::arch::x86_64::_rdtsc() } - start;
+        }
+        let va = self.base + self.mapped * 4096;
+        quiet("parallel mmap_4k", unsafe { sys_mmap_4k(va, 1) });
+        self.quota -= 1;
+        let (p, value) = (va as *mut u64, PAGE_MAGIC ^ va as u64);
+        unsafe { p.write_volatile(value) };
+        if unsafe { p.read_volatile() } != value {
+            log::error!("parallel mmap: the page at {:#x} does not hold what was written", va);
+            unsafe { sys_debug_exit(1) };
+        }
+        if self.unmaps {
+            quiet("parallel unmap_4k", retry_lock_order(|| unsafe { sys_unmap_4k(va, 1) }));
+        } else {
+            self.mapped += 1;
+        }
+    }
+
+    /// Unmaps a full region, then moves `PAR_FUND` quota to the thread until it holds enough; when the
+    /// container lacks it, unmaps the region early, which refunds its pages to the container.
+    fn make_room(&mut self) {
+        if self.mapped == self.region {
+            self.unmap_region();
+        }
+        while self.quota < 4 + PAR_TABLE_SLACK {
+            if try_fund(PAR_FUND) {
+                self.quota += PAR_FUND;
+            } else if self.mapped > 0 {
+                self.short += 1;
+                self.unmap_region();
+            } else {
+                log::error!("parallel mmap: the container holds less than {} 4K quota", PAR_FUND);
+                unsafe { sys_debug_exit(1) };
+            }
+        }
+    }
+
+    fn unmap_region(&mut self) {
+        quiet("parallel unmap_4k (region)", retry_lock_order(|| unsafe { sys_unmap_4k(self.base, self.mapped) }));
+        self.mapped = 0;
+    }
+}
+
+/// Moves `amount` 4K quota from the container through the calling process to the calling thread, as
+/// `fund` does, unless the container holds less: then it moves nothing and returns false.
+fn try_fund(amount: usize) -> bool {
+    let ret = retry_lock_order(|| unsafe { sys_alloc_quota_4k(amount) });
+    if error_name(ret) == "ErrorContainerQuotaInsufficient" {
+        return false;
+    }
+    quiet("parallel mmap alloc_quota_4k", ret);
+    quiet("parallel mmap alloc_thread_quota_4k", unsafe { sys_alloc_thread_quota_4k(amount) });
+    true
+}
+
+/// Repeats `syscall`, one that write-locks the caller's container, while it fails with
+/// ErrorContainerLockOrderConflict: a child's request fails at once while a thread of dom0 holds that lock.
+fn retry_lock_order(syscall: impl Fn() -> isize) -> isize {
+    let start = unsafe { core::arch::x86_64::_rdtsc() };
+    loop {
+        let ret = syscall();
+        if ret >= 0 || error_name(ret) != "ErrorContainerLockOrderConflict" || unsafe { core::arch::x86_64::_rdtsc() } - start > WAIT_LIMIT {
+            return ret;
+        }
+        core::hint::spin_loop();
     }
 }
 
@@ -1286,12 +1576,13 @@ pub extern "C" fn _start() -> ! {
     // Without the timer (feature `no-timer`) nothing preempts a spinning thread, an idle CPU wakes only
     // at an IPI (queuing a thread sends none), and a CPU notices an offline request only when its thread
     // yields. The remaining timings need none of these: the parallel call timing brings each other CPU
-    // online once, with the IPI of `cpu_online`, kills its children while they block in receive, and its
-    // clients yield to take their CPUs Off again; after it only CPU 0 runs, the pong and call server
-    // threads block in receive, the call server child is killed while it blocks in receive, and the
-    // timed threads are only created. The phases below rely on them (spinning waits for other threads,
-    // CPU offline cycles, the register spinner), so this build skips them. The parallel call timing comes
-    // first, while CPU 0's shard holds no thread that a CPU coming online could pull instead.
+    // online once, with the IPI of `cpu_online`, kills its children while they block in receive (so does
+    // the parallel mmap timing, which runs on the same clients), and its clients yield to take their CPUs
+    // Off again; after it only CPU 0 runs, the pong and call server threads block in receive, the call
+    // server child is killed while it blocks in receive, and the timed threads are only created. The
+    // phases below rely on them (spinning waits for other threads, CPU offline cycles, the register
+    // spinner), so this build skips them. The parallel call timing comes first, while CPU 0's shard holds
+    // no thread that a CPU coming online could pull instead.
     if cfg!(feature = "no-timer") {
         time_parallel_call();
         fund("timing helper threads funding", 2);
