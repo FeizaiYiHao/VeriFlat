@@ -3,8 +3,10 @@ use core::cell::UnsafeCell;
 use core::mem::MaybeUninit;
 use crate::*;
 
-/// Memory of the PCID needflush locks, one row of `PCID_MAX` cells per cpu. Only raw addresses reach it; the needflush
-/// array's points-to tokens own its cells.
+/// Memory of the PCID needflush locks, one row of `PCID_MAX` cells per cpu. Every cell is exactly one 64-byte line
+/// (`PcidNeedFlush::line_pad`) and the alignment starts each on a line boundary, so no two cells share a line. Only raw
+/// addresses reach it; the needflush array's points-to tokens own its cells.
+#[repr(align(64))]
 struct PcidNeedFlushCells(UnsafeCell<MaybeUninit<[[LockCell<PcidNeedFlush, (), Option<CpuId>, NO_KILL_STATE>; PCID_MAX]; NUM_CPUS]>>);
 
 // Every access goes through a cell's lock guard or its owning token.

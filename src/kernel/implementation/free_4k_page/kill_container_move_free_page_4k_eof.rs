@@ -81,6 +81,7 @@ pub(super) open spec fn kill_container_move_free_page_4k_eof_transition_framing(
     &&& new_dst.total_free_pages.view() == old_dst.total_free_pages.view() + 1
 }
 
+/// The owned-process membership `requires`, implied by the framing, lets `container_process_wf` match its pre-state membership term directly.
 proof fn kill_container_move_free_page_4k_eof_process_management(
     pre: KernelK, post: KernelK, src: RwLockContainerPtr, dst: RwLockContainerPtr, src_allocator: RwLockPageAllocatorPtr, dst_allocator: RwLockPageAllocatorPtr,
     page_ptr: PagePtr, node: usize,
@@ -92,6 +93,8 @@ proof fn kill_container_move_free_page_4k_eof_process_management(
         pre.ctn_mp.dom().contains(dst),
         kill_container_move_free_page_4k_eof_transition_framing(pre, post, src, dst, src_allocator, dst_allocator, page_ptr, node),
         post.subsystems_inv(),
+        forall|c: RwLockContainerPtr, p: RwLockProcessPtr| #![trigger post.ctn_mp.spec_index(c).view_ghost().owned_processes.view().contains(p)]
+            post.ctn_mp.dom().contains(c) ==> post.ctn_mp.spec_index(c).view_ghost().owned_processes.view().contains(p) == pre.ctn_mp.spec_index(c).view_ghost().owned_processes.view().contains(p),
     ensures
         post.process_management_inv(),
         cpu_dirty_map_wf(post.ctn_mp, post.cpu_set_mp, post.prc_mp, post.cpu_arr, post.cpu_tlb, post.pt_mp, post.pcid_needflush),
@@ -513,7 +516,7 @@ pub(super) proof fn kill_container_move_free_page_4k_eof(
     kill_container_move_free_page_4k_eof_page_owners(pre, post, src, dst, src_allocator, dst_allocator, page_ptr, node);
     kill_container_move_free_page_4k_eof_page_tables(pre, post, src, dst, src_allocator, dst_allocator, page_ptr, node);
     kill_container_move_free_page_4k_eof_allocators(pre, post, src, dst, src_allocator, dst_allocator, page_ptr, node);
+    reveal(kill_container_move_free_page_4k_eof_transition_framing);
     kill_container_move_free_page_4k_eof_process_management(pre, post, src, dst, src_allocator, dst_allocator, page_ptr, node);
-    assert(post == (KernelK { pg_arr: post.pg_arr, ctn_mp: post.ctn_mp, allc_4k_mp: post.allc_4k_mp, ..pre })) by { reveal(kill_container_move_free_page_4k_eof_transition_framing); };
 }
 } // verus!

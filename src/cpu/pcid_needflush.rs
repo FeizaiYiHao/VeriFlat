@@ -4,9 +4,11 @@ use crate::*;
 verus! {
 pub const PCID_NEEDFLUSH_MINOR_STRIDE: usize = 10000;
 
+/// `line_pad` makes the needflush lock cell exactly one 64-byte cache line (layout assert at the end of this file).
 pub struct PcidNeedFlush {
     pub needflush: bool,
     pub index: Ghost<(CpuId, Pcid)>,
+    pub line_pad: [usize; 6],
 }
 
 pub type PcidNeedFlushArray = LockedArray2D<PcidNeedFlush, (), Option<CpuId>, NUM_CPUS, PCID_MAX>;
@@ -23,13 +25,14 @@ impl PcidNeedFlush {
             !ret.needflush,
             ret.index() == (cpu_id, pcid),
     {
-        Self { needflush: false, index: Ghost((cpu_id, pcid)) }
+        Self { needflush: false, index: Ghost((cpu_id, pcid)), line_pad: [0usize; 6] }
     }
     pub fn set(&mut self, value: bool)
         ensures
             final(self).needflush == value,
             final(self).index() == old(self).index(),
             final(self).index == old(self).index,
+            final(self).line_pad == old(self).line_pad,
     {
         self.needflush = value;
     }
@@ -64,3 +67,6 @@ impl LockMajorTrait for PcidNeedFlush {
     open spec fn lock_major_default_predicate(&self) -> bool { false }
 }
 }
+
+// Layout contract: every needflush lock cell is exactly one cache line.
+const _: () = assert!(core::mem::size_of::<LockCell<PcidNeedFlush, (), Option<CpuId>, NO_KILL_STATE>>() == 64);
