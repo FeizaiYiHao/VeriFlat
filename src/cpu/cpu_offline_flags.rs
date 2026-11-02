@@ -3,11 +3,13 @@ use crate::*;
 
 verus! {
 /// One per-cpu offline request of a container; `index` pins the cell to its table and slot, and `container_depth`
-/// (the owning container's depth) orders its lock among that container's locks.
+/// (the owning container's depth) orders its lock among that container's locks. `line_pad` makes the flag's lock cell
+/// exactly one 64-byte cache line (layout asserts at the end of this file).
 pub struct OfflineFlag {
     pub requested: bool,
     pub index: Ghost<(RwLockCpuOfflineFlagsPtr, CpuId)>,
     pub container_depth: Ghost<usize>,
+    pub line_pad: [usize; 6],
 }
 
 pub type OfflineFlagArray = LockedArray<OfflineFlag, (), (), NUM_CPUS, NO_KILL_STATE>;
@@ -41,7 +43,7 @@ impl OfflineFlag {
             ret.index() == (flags_ptr, cpu_id),
             ret.container_depth.view() == depth,
     {
-        Self { requested: false, index: Ghost((flags_ptr, cpu_id)), container_depth: Ghost(depth) }
+        Self { requested: false, index: Ghost((flags_ptr, cpu_id)), container_depth: Ghost(depth), line_pad: [0usize; 6] }
     }
 
     pub fn set(&mut self, value: bool)
@@ -50,6 +52,7 @@ impl OfflineFlag {
             final(self).index() == old(self).index(),
             final(self).index == old(self).index,
             final(self).container_depth == old(self).container_depth,
+            final(self).line_pad == old(self).line_pad,
     {
         self.requested = value;
     }
@@ -120,3 +123,8 @@ impl CpuOfflineFlags {
 
 const ASSERT_CPU_OFFLINE_FLAGS_FITS_4K: [(); 1] = [(); (core::mem::size_of::<CpuOfflineFlags>() <= PAGE_SZ_4K) as usize];
 const ASSERT_CONTAINER_LOCK_FITS_4K: [(); 1] = [(); (core::mem::size_of::<LockCell<Container, ReadOnlyNode<ContainerRO>, ContainerGhost, CONTAINER_HAS_KILL_STATE>>() <= PAGE_SZ_4K) as usize];
+
+// Layout contract: the table starts the second 4K page of its container, every flag's lock cell is exactly one cache
+// line, and the cells start the table, so one cpu's flag never shares a line with another cpu's.
+const _: () = assert!(core::mem::size_of::<LockCell<OfflineFlag, (), (), NO_KILL_STATE>>() == 64);
+const _: () = assert!(core::mem::offset_of!(CpuOfflineFlags, flags.storage.ar) == 0);

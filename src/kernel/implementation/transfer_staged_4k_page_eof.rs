@@ -50,6 +50,8 @@ pub open spec fn transfer_staged_4k_page_to_child_container_eof_transition_frami
         }
 }
 
+/// The subtree-set membership `requires`, implied by the framing, lets `container_subtree_set_exclusive` match its pre-state
+/// membership term directly.
 proof fn staged_4k_page_container_transfer_eof_container_tree(pre: KernelK, post: KernelK, page_ptr: PagePtr, staging_thread_ptr: RwLockThreadPtr, parent: RwLockContainerPtr, child: RwLockContainerPtr)
     requires
         pre.inv(),
@@ -65,6 +67,8 @@ proof fn staged_4k_page_container_transfer_eof_container_tree(pre: KernelK, post
         pre.pg_arr.spec_index(page_ptr2page_index(page_ptr)).view().view().owning_container == parent,
         transfer_staged_4k_page_to_child_container_eof_transition_framing(pre, post, page_ptr, staging_thread_ptr, parent, child),
         post.subsystems_inv(),
+        forall|c: RwLockContainerPtr, s: RwLockContainerPtr| #![trigger post.ctn_mp.spec_index(c).view_ghost().subtree_set.view().contains(s)]
+            post.ctn_mp.dom().contains(c) ==> post.ctn_mp.spec_index(c).view_ghost().subtree_set.view().contains(s) == pre.ctn_mp.spec_index(c).view_ghost().subtree_set.view().contains(s),
     ensures
         container_tree_wf(post.rt_ctn, post.ctn_mp),
         post.ctn_mp.spec_index(post.rt_ctn).view_ghost().owned_processes.view().contains(post.ctn_mp.spec_index(post.rt_ctn).view().root_process),

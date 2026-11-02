@@ -3,15 +3,19 @@ use vstd::simple_pptr::*;
 verus! {
 use crate::*;
 
-/// One cpu's run queue in a container's scheduler.
+/// One cpu's run queue in a container's scheduler. `line_pad` makes the shard's lock cell exactly one 64-byte cache
+/// line (layout asserts at the end of this file).
 pub struct SchedulerShard {
     pub queue: LinkedList<RwLockThreadPtr, 233>,
+    pub line_pad: [usize; 2],
 }
 
 pub type SchedulerShardArray = LockedArray<SchedulerShard, (), (), NUM_CPUS, NO_KILL_STATE>;
 
 /// Per-container scheduler: one independently locked run queue per cpu. Shard `c` is locked with
-/// major `SCHEDULER_LOCK_MAJOR` and minor `c`.
+/// major `SCHEDULER_LOCK_MAJOR` and minor `c`. Cache-line aligned with the shards first, so every shard's lock cell
+/// sits alone in one cache line of the scheduler's page.
+#[repr(C, align(64))]
 pub struct Scheduler {
     pub shards: SchedulerShardArray,
     pub owning_container: RwLockContainerPtr,
@@ -88,7 +92,7 @@ impl Scheduler {
                 },
             decreases NUM_CPUS - cpu_id,
         {
-            shard_array.set(cpu_id, LockCell::new_unlocked(SchedulerShard { queue: LinkedList::new(None, None) }, (), Ghost(())));
+            shard_array.set(cpu_id, LockCell::new_unlocked(SchedulerShard { queue: LinkedList::new(None, None), line_pad: [0usize; 2] }, (), Ghost(())));
             cpu_id = cpu_id + 1;
         }
         let ret = Self { shards: LockedArray::from_array(shard_array), owning_container };
@@ -113,7 +117,7 @@ impl Scheduler {
         let mut root_queue = LinkedList::new(None, None);
         root_queue.push_tail(thread_node_addr, thread_node_perm);
         let mut shard_array: Array<LockCell<SchedulerShard, (), (), NO_KILL_STATE>, NUM_CPUS> = Array::new();
-        shard_array.set(0, LockCell::new_unlocked(SchedulerShard { queue: root_queue }, (), Ghost(())));
+        shard_array.set(0, LockCell::new_unlocked(SchedulerShard { queue: root_queue, line_pad: [0usize; 2] }, (), Ghost(())));
         let mut cpu_id = 1;
         while cpu_id < NUM_CPUS
             invariant
@@ -127,7 +131,7 @@ impl Scheduler {
                 },
             decreases NUM_CPUS - cpu_id,
         {
-            shard_array.set(cpu_id, LockCell::new_unlocked(SchedulerShard { queue: LinkedList::new(None, None) }, (), Ghost(())));
+            shard_array.set(cpu_id, LockCell::new_unlocked(SchedulerShard { queue: LinkedList::new(None, None), line_pad: [0usize; 2] }, (), Ghost(())));
             cpu_id = cpu_id + 1;
         }
         Self { shards: LockedArray::from_array(shard_array), owning_container }
@@ -136,3 +140,9 @@ impl Scheduler {
 }
 
 const ASSERT_SCHEDULER_FITS_4K: [(); 1] = [(); (core::mem::size_of::<Scheduler>() <= PAGE_SZ_4K) as usize];
+
+// Layout contract: the scheduler starts a 4K page, every shard's lock cell is exactly one cache line, and the shards
+// start the scheduler, so one cpu's run queue never shares a line with another cpu's.
+const _: () = assert!(core::mem::size_of::<LockCell<SchedulerShard, (), (), NO_KILL_STATE>>() == 64);
+const _: () = assert!(core::mem::align_of::<Scheduler>() == 64);
+const _: () = assert!(core::mem::offset_of!(Scheduler, shards.storage.ar) == 0);
