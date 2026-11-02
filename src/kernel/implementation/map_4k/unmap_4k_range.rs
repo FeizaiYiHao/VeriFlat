@@ -73,8 +73,6 @@ fn clear_4k_range_present(
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
                 == (RwLockState::Write { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
         },
-        typed_lock_map_contains_mode(old(lctx).container_lock_map(), old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container, TypedLockMode::Write),
-        typed_lock_map_contains_mode(old(lctx).process_lock_map(), old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc, TypedLockMode::Write),
         old(krnl).prc_mp.spec_index(old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc).view_rodata().view().pcid == pcid,
     ensures
         old(krnl).prc_mp.dom().contains(old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc),
@@ -179,8 +177,6 @@ fn clear_4k_range_present(
             old(krnl).prc_mp.dom().contains(process_ptr),
             !old(krnl).prc_mp.spec_index(process_ptr).view().zombie,
             old(krnl).prc_mp.spec_index(process_ptr).view().pagetable == pagetable,
-            typed_lock_map_contains_mode(old(lctx).process_lock_map(), process_ptr, TypedLockMode::Write),
-            typed_lock_map_contains_mode(old(lctx).container_lock_map(), container_ptr, TypedLockMode::Write),
             forall|j: int| #![trigger steps.view()[j]] 0 <= j < old(steps).view().len() ==> steps.view()[j] == old(steps).view()[j],
             forall|j: int| #![trigger steps.view()[j]] old(steps).view().len() <= j < steps.view().len() ==> unmap_4k_range_step(steps.view()[j], cpu_id),
             steps.snapshot_k() == *krnl,
@@ -280,6 +276,7 @@ fn clear_4k_range_present(
             assert(va_4k_valid(va) && range.start <= va && spec_va_4k_valid(range.start) && spec_va_4k_valid(va)) by { range.wf_implies_view_index_is_start_plus_offset(); };
             assert(krnl.pt_mp.spec_index(pagetable).view().kernel_l4_end <= spec_va2index(va).0) by { spec_v2l4index_monotonic(start, va); };
             assert(lctx.thread_lock_map().dom().subset_of(krnl.thr_mp.dom())) by { krnl.thr_mp.typed_lock_map_aligned_held_in_dom(lctx.thread_lock_map(), lctx.thread_id()); };
+            process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr);
             assert(checked_table.mapping_4k().dom().contains(range.view().spec_index(i as int)));
             assert(checked_table.higher.spec_resolve_mapping_l3(spec_v2l4index(va), spec_v2l3index(va)) is Some) by {
                 spec_va_4k_index_roundtrip_at(va, spec_v2l4index(va), spec_v2l3index(va), spec_v2l2index(va), spec_v2l1index(va));
@@ -375,8 +372,6 @@ pub fn unmap_4k_range(
             &&& whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).lower.l2_owner(whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).window_l2_page(spec_v2l4index(w.va), spec_v2l3index(w.va)), spec_v2l2index(w.va))
                 == (RwLockState::Write { thread_id: window_perms.index(w).thread_id(), lock_id: window_perms.index(w).lock_id() })
         },
-        typed_lock_map_contains_mode(old(lctx).container_lock_map(), old(krnl).thr_mp.spec_index(thread_ptr).view().owning_container, TypedLockMode::Write),
-        typed_lock_map_contains_mode(old(lctx).process_lock_map(), old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc, TypedLockMode::Write),
         old(krnl).prc_mp.spec_index(old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc).view_rodata().view().pcid == pcid,
     ensures
         final(steps).snapshot_k() == *final(krnl),
@@ -435,8 +430,13 @@ pub fn unmap_4k_range(
     let ghost flush_before = steps.view();
     let ghost flush_entry = *krnl;
     let ghost flush_lctx = *lctx;
+    proof {
+        process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, process_ptr);
+        container_process_wf_process_at(krnl.ctn_mp, krnl.prc_mp, process_ptr);
+    }
     flush_pagetable_tlbs(krnl, pagetable, cr3, pcid, cpu_id, thread_ptr, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_perm);
     proof {
+        process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); process_pagetable_match_process_at(krnl.prc_mp, krnl.pt_mp, process_ptr);
         unmap_4k_tlb_flush_range_steps_from_k(&*steps, flush_before, old(steps).view().len() as int, &flush_entry, &flush_lctx, cpu_id, process_ptr, thread_ptr, container_ptr, pagetable, pcid, *range);
     }
     let ghost flushed_snap = steps.snapshot_k();
@@ -572,6 +572,7 @@ pub fn unmap_4k_range(
     }
     let ghost refund_before = steps.view();
     let ghost refund_progress = krnl.thr_mp.spec_index(thread_ptr).view().syscall_progress.view();
+    proof { process_thread_wf_at(krnl.prc_mp, krnl.thr_mp, thread_ptr); }
     refund_unmap_4k_quota(krnl, thread_ptr, &mut indirect, &mut direct, Tracked(&mut *lctx), Tracked(&mut *steps), thread_perm);
     proof {
         assert(krnl.thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view() =~= old(krnl).thr_mp.spec_index(thread_ptr).view().indirect_free_quota_pending_4k.view()) by { thread_perms_wf_at(krnl.thr_mp, thread_ptr); };

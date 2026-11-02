@@ -227,7 +227,7 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
         index_valid(NUM_CPUS, old(lctx).cpu_id()),
         typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), old(lctx).cpu_id(), TypedLockMode::Write),
         old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep,
-        typed_lock_map_contains_mode(old(lctx).process_lock_map(), old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc, TypedLockMode::Write),
+        typed_lock_map_contains_mode(old(lctx).process_lock_map(), old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc, TypedLockMode::Write) || !thread_is_dangling(old(krnl).thr_mp.spec_index(thread_ptr)),
     ensures
         final(steps).snapshot_k() == *final(krnl),
         old(steps).view().len() <= final(steps).view().len() <= old(steps).view().len() + MAX_CONTAINER_TREE_DEPTH + 1,
@@ -245,7 +245,7 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
             &&& old_u.thread_map[thread_ptr].owning_proc == thread.owning_proc
             &&& old_u.thread_map[thread_ptr].syscall_progress == thread.syscall_progress.view()
             &&& old_u.process_map.dom().contains(thread.owning_proc)
-            &&& old_u.process_map[thread.owning_proc].lock_state is WriteLocked
+            &&& typed_lock_map_contains_mode(old(lctx).process_lock_map(), thread.owning_proc, TypedLockMode::Write) ==> old_u.process_map[thread.owning_proc].lock_state is WriteLocked
             &&& !old(krnl).prc_mp.spec_index(thread.owning_proc).view().zombie && typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), old(krnl).prc_mp.spec_index(thread.owning_proc).view().pagetable, TypedLockMode::Write) ==> {
                 &&& old_u.process_map[thread.owning_proc].pagetable is Some
                 &&& old_u.process_map[thread.owning_proc].pagetable->Some_0.lock_state is WriteLocked
@@ -325,7 +325,7 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
                 &&& old_u.thread_map[thread_ptr].owning_proc == thread.owning_proc
                 &&& old_u.thread_map[thread_ptr].syscall_progress == thread.syscall_progress.view()
                 &&& old_u.process_map.dom().contains(thread.owning_proc)
-                &&& old_u.process_map[thread.owning_proc].lock_state is WriteLocked
+                &&& typed_lock_map_contains_mode(old(lctx).process_lock_map(), thread.owning_proc, TypedLockMode::Write) ==> old_u.process_map[thread.owning_proc].lock_state is WriteLocked
                 &&& !old(krnl).prc_mp.spec_index(thread.owning_proc).view().zombie && typed_lock_map_contains_mode(old(lctx).pagetable_lock_map(), old(krnl).prc_mp.spec_index(thread.owning_proc).view().pagetable, TypedLockMode::Write) ==> {
                     &&& old_u.process_map[thread.owning_proc].pagetable is Some
                     &&& old_u.process_map[thread.owning_proc].pagetable->Some_0.lock_state is WriteLocked
@@ -396,7 +396,7 @@ pub fn refund_unmap_4k_quota(krnl: &mut KernelK, thread_ptr: RwLockThreadPtr, in
             index_valid(NUM_CPUS, old(lctx).cpu_id()),
             typed_lock_map_contains_mode(old(lctx).cpu_lock_map(), old(lctx).cpu_id(), TypedLockMode::Write),
             old(krnl).cpu_op.view().view()[old(lctx).cpu_id() as int] is InStep,
-            typed_lock_map_contains_mode(old(lctx).process_lock_map(), old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc, TypedLockMode::Write),
+            typed_lock_map_contains_mode(old(lctx).process_lock_map(), old(krnl).thr_mp.spec_index(thread_ptr).view().owning_proc, TypedLockMode::Write) || !thread_is_dangling(old(krnl).thr_mp.spec_index(thread_ptr)),
             old(krnl).inv(),
             typed_lock_maps_aligned(old(krnl), old(lctx)),
         decreases remaining,

@@ -51,7 +51,7 @@ pub use kernel::implementation::map_4k::map_iommu_4k_spec::*;
 pub use kernel::implementation::map_4k::map_iommu_4k::map_shared_page_into_iommu_4k;
 pub use kernel::implementation::map_4k::map_iommu_4k_directory::install_staged_4k_iommu_table_page;
 use kernel::implementation::map_4k::unmap_4k_range::unmap_4k_range;
-use kernel::implementation::map_4k::unmap_4k_lock_running_thread::{unmap_4k_lock_running_thread, Unmap4kLocked};
+use kernel::implementation::map_4k::unmap_4k_lock_running_thread::{unmap_4k_lock_current_thread, unmap_4k_lock_running_thread, Unmap4kLocked};
 use kernel::implementation::map_4k::unmap_4k_flush_all::flush_pagetable_tlbs;
 use kernel::implementation::map_4k::unmap_4k_present::clear_4k_mapping_present;
 use kernel::implementation::map_4k::unmap_4k_reclaim_one::reclaim_unmapped_4k_page;

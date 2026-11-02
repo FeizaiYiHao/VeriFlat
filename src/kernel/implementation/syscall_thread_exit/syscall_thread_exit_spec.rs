@@ -231,6 +231,9 @@ pub open spec fn thread_exit_lock_table_step(old_u: KernelU, new_u: KernelU, cpu
 pub open spec fn thread_exit_reclaim_step_pre(old_u: KernelU, cpu_id: CpuId, flushed: bool) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
     &&& unmap_4k_locked(old_u, cpu_id)
+    &&& old_u.process_map.spec_index(thread.owning_proc).lock_state is WriteLocked
+    &&& old_u.container_map.dom().contains(thread.owning_container)
+    &&& old_u.container_map.spec_index(thread.owning_container).lock_state is WriteLocked
     &&& old_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.lock_state is WriteLocked
     &&& thread.syscall_progress == Some(SyscallProgress::ThreadExitReclaim { flushed })
 }
@@ -331,6 +334,9 @@ pub open spec fn thread_exit_quota_progress_before(size: PageSize) -> SyscallPro
 pub open spec fn thread_exit_quota_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
     &&& unmap_4k_locked(old_u, cpu_id)
+    &&& old_u.process_map.spec_index(thread.owning_proc).lock_state is WriteLocked
+    &&& old_u.container_map.dom().contains(thread.owning_container)
+    &&& old_u.container_map.spec_index(thread.owning_container).lock_state is WriteLocked
     &&& old_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.lock_state is WriteLocked
     &&& thread.syscall_progress is Some
     &&& {
@@ -380,6 +386,9 @@ pub open spec fn thread_exit_unlock_table_step_pre(old_u: KernelU, cpu_id: CpuId
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
     let process = old_u.process_map.spec_index(thread.owning_proc);
     &&& unmap_4k_locked(old_u, cpu_id)
+    &&& process.lock_state is WriteLocked
+    &&& old_u.container_map.dom().contains(thread.owning_container)
+    &&& old_u.container_map.spec_index(thread.owning_container).lock_state is WriteLocked
     &&& process.pagetable->Some_0.lock_state is WriteLocked
     &&& thread.syscall_progress == Some(SyscallProgress::ThreadExitQuota { returned: PageSize::SZ1g })
     &&& thread_exit_user_4k_unmapped(old_u, process.pagetable->Some_0)

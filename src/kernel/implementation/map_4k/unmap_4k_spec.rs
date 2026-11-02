@@ -2,8 +2,7 @@ use vstd::prelude::*;
 use crate::*;
 
 verus! {
-/// The cpu, its running thread, the thread's process, and its container are write-locked; the process's
-/// pagetable is locked in either mode.
+/// The cpu and its running thread are write-locked, and the pagetable of the thread's process is locked in either mode.
 pub open spec fn unmap_4k_locked(u: KernelU, cpu_id: CpuId) -> bool {
     let thread_ptr = u.cpu_array[cpu_id as int].current_thread->Some_0;
     let thread = u.thread_map.spec_index(thread_ptr);
@@ -15,9 +14,6 @@ pub open spec fn unmap_4k_locked(u: KernelU, cpu_id: CpuId) -> bool {
     &&& u.process_map.dom().contains(thread.owning_proc)
     &&& u.process_map.spec_index(thread.owning_proc).pagetable is Some
     &&& !(u.process_map.spec_index(thread.owning_proc).pagetable->Some_0.lock_state is Unlocked)
-    &&& u.process_map.spec_index(thread.owning_proc).lock_state is WriteLocked
-    &&& u.container_map.dom().contains(thread.owning_container)
-    &&& u.container_map.spec_index(thread.owning_container).lock_state is WriteLocked
 }
 
 /// Leaf steps run while the range is not fully cleared and before the flush.
@@ -79,12 +75,14 @@ pub open spec fn unmap_4k_leaf_trace_step(old_u: KernelU, new_u: KernelU, cpu_id
     })
 }
 
-/// A flush step runs after every recorded VA has been cleared and before the flush is recorded.
+/// A flush step runs after every recorded VA has been cleared and before the flush is recorded, while the thread's
+/// container exists.
 #[verifier::opaque]
 pub open spec fn unmap_4k_flush_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool {
     let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
     let progress = thread.syscall_progress->Some_0;
     &&& unmap_4k_locked(old_u, cpu_id)
+    &&& old_u.container_map.dom().contains(thread.owning_container)
     &&& thread.syscall_progress is Some
     &&& progress is Unmap4k
     &&& progress->Unmap4k_unmapped == progress->Unmap4k_range.len

@@ -7,8 +7,8 @@ use super::syscall_unmap_4k_pagetable::unmap_4k_lock_pagetable_and_unmap;
 
 verus! {
 /// Unmap 4K pages from the running process. Success records an entering step that write-locks the
-/// cpu, container, process, and thread and read-locks the pagetable; one step per cleared leaf,
-/// flushed cpu TLB, recorded flush, or quota refund; and an exiting step that releases all five.
+/// cpu and thread and read-locks the pagetable; one step per cleared leaf, flushed cpu TLB, recorded
+/// flush, or quota refund; and an exiting step that releases all three.
 /// Inside the 2M windows of the range only its pages change. Failure records no step. The result
 /// is `unmap_4k_syscall_result` of the state at entry.
 pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_id: CpuId, va: VAddr, range: usize) -> (ret: RetValueType)
@@ -65,7 +65,7 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         proof { enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx); steps.end_kernel_step_unchanged(&*krnl, &*lctx); }
         return RetValueType::Error;
     }
-    let locked = match unmap_4k_lock_running_thread(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id) {
+    let locked = match unmap_4k_lock_current_thread(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id) {
         Ok(e) => e,
         Err(r) => {
             proof { unmap_4k_lock_rejected_result_from_k(&*old(krnl), cpu_id, va, range, r); }
@@ -73,10 +73,8 @@ pub fn syscall_unmap_4k(krnl: &mut KernelK, Tracked(lctx): Tracked<&mut LocalCon
         },
     };
     let Tracked(cpu_perm) = locked.cpu_lock_perm;
-    let Tracked(container_perm) = locked.container_lock_perm;
-    let Tracked(process_perm) = locked.process_lock_perm;
     let Tracked(thread_perm) = locked.thread_lock_perm;
-    unmap_4k_lock_pagetable_and_unmap(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, locked.container_ptr, locked.process_ptr, locked.thread_ptr, Ghost(*old(lctx)),
-        Tracked(cpu_perm), Tracked(container_perm), Tracked(process_perm), Tracked(thread_perm))
+    unmap_4k_lock_pagetable_and_unmap(krnl, Tracked(&mut *lctx), Tracked(&mut *steps), cpu_id, va, range, locked.process_ptr, locked.thread_ptr, Ghost(*old(lctx)), Tracked(cpu_perm),
+        Tracked(thread_perm))
 }
 }

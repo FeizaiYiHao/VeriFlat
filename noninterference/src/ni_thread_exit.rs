@@ -474,17 +474,16 @@ pub proof fn thread_exit_quota_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: 
         thread_exit_quota_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
 {
-    reveal(thread_exit_quota_step_pre);
-    let process = old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_proc;
-    assert({
-        &&& new_u.container_map[a].subtree_set == old_u.container_map[a].subtree_set
-        &&& new_u.container_map[b].subtree_set == old_u.container_map[b].subtree_set
-        &&& new_u.process_map[process].owning_container == old_u.process_map[process].owning_container
-        &&& new_u.process_map[process].pagetable == old_u.process_map[process].pagetable
-        &&& new_u.process_map[process].iommu_table == old_u.process_map[process].iommu_table
+    let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
+    let thread = old_u.thread_map[thread_ptr];
+    assert(old_u.thread_map.dom().contains(thread_ptr) && old_u.process_map.dom().contains(thread.owning_proc) && old_u.container_map.dom().contains(thread.owning_container)) by { reveal(thread_exit_quota_step_pre); };
+    assert(new_u.process_map.dom() =~= old_u.process_map.dom() && forall|q: RwLockProcessPtr| #![trigger new_u.process_map[q]] {
+        &&& new_u.process_map[q].owning_container == old_u.process_map[q].owning_container
+        &&& new_u.process_map[q].pagetable == old_u.process_map[q].pagetable
+        &&& new_u.process_map[q].iommu_table == old_u.process_map[q].iommu_table
     }) by { reveal(thread_exit_quota_step); };
-    assert(domain_4k_only(new_u, a) && domain_4k_only(new_u, b)) by { reveal(thread_exit_quota_step); };
-    assert(memory_iso(new_u, a, b)) by { reveal(thread_exit_quota_step); };
+    assert(new_u.container_map[a].subtree_set == old_u.container_map[a].subtree_set && new_u.container_map[b].subtree_set == old_u.container_map[b].subtree_set) by { reveal(thread_exit_quota_step); };
+    assert(domain_4k_only(new_u, a) && domain_4k_only(new_u, b) && memory_iso(new_u, a, b));
     reveal(thread_exit_quota_step);
 }
 

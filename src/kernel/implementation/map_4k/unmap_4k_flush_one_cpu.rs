@@ -8,8 +8,9 @@ verus! {
 /// Flushes `pcid` on cpu `cpu_id` under its needflush lock, drops `cpu_id` from the stale-CPU records of `pagetable` the
 /// thread may change, deletes those records after the last cpu, and records the TLB step, which also records this
 /// thread's read hold on the cpu set of its container `container_ptr` when the step's start predates it. The recorded
-/// step keeps the entry projection of the thread, process, and container that `held` write-locks in `entry`. Every such
-/// record lists exactly the cpus from `cpu_id` up on entry and from `cpu_id + 1` up on return.
+/// step keeps the `entry` projection of the non-dangling thread that `held` write-locks and of its process, and the locks
+/// `held` keeps on that process and container. Every such record lists exactly the cpus from `cpu_id` up on entry and from
+/// `cpu_id + 1` up on return.
 pub(super) fn flush_pagetable_tlb_on_cpu(krnl: &mut KernelK, pagetable: RwLockPageTableRoot, cr3: PageTableRoot, pcid: Pcid, cpu_id: usize, local_cpu: CpuId, thread_ptr: RwLockThreadPtr,
     Tracked(lctx): Tracked<&mut LocalContext>, Tracked(steps): Tracked<&mut KernelSteps>, cpu_perm: Tracked<&LockPerm>, Ghost(entry): Ghost<KernelK>, Ghost(held): Ghost<LocalContext>,
     Ghost(container_ptr): Ghost<RwLockContainerPtr>)
@@ -57,14 +58,13 @@ pub(super) fn flush_pagetable_tlb_on_cpu(krnl: &mut KernelK, pagetable: RwLockPa
         old(lctx).pcid_needflush_lock_map().dom().is_empty(),
         forall|held_cpu_id: CpuId| #![trigger old(lctx).cpu_lock_map().dom().contains(held_cpu_id)] old(lctx).cpu_lock_map().dom().contains(held_cpu_id) ==> !(old(krnl).cpu_arr.spec_index(held_cpu_id).view().view().view().state is Off),
         entry.thr_mp.dom().contains(thread_ptr),
+        !thread_is_dangling(entry.thr_mp.spec_index(thread_ptr)),
         entry.prc_mp.dom().contains(entry.thr_mp.spec_index(thread_ptr).view().owning_proc),
         entry.prc_mp.spec_index(entry.thr_mp.spec_index(thread_ptr).view().owning_proc).view().pagetable == pagetable,
         entry.pt_mp.dom().contains(pagetable),
         !entry.prc_mp.spec_index(entry.thr_mp.spec_index(thread_ptr).view().owning_proc).view().zombie,
         held.pagetable_lock_map().dom().contains(pagetable),
         typed_lock_map_contains_mode(held.thread_lock_map(), thread_ptr, TypedLockMode::Write),
-        typed_lock_map_contains_mode(held.process_lock_map(), entry.thr_mp.spec_index(thread_ptr).view().owning_proc, TypedLockMode::Write),
-        typed_lock_map_contains_mode(held.container_lock_map(), entry.thr_mp.spec_index(thread_ptr).view().owning_container, TypedLockMode::Write),
         held_threads_unchanged(entry.thr_mp, old(krnl).thr_mp, &held),
         held_processes_unchanged(entry.prc_mp, old(krnl).prc_mp, &held),
         old(krnl).pt_mp.spec_index(pagetable).view() == entry.pt_mp.spec_index(pagetable).view(),
@@ -97,13 +97,13 @@ pub(super) fn flush_pagetable_tlb_on_cpu(krnl: &mut KernelK, pagetable: RwLockPa
             &&& old_u.thread_map.dom().contains(thread_ptr)
             &&& old_u.thread_map[thread_ptr] == entry_u.thread_map[thread_ptr]
             &&& old_u.process_map.dom().contains(process_ptr)
-            &&& old_u.process_map[process_ptr].lock_state == entry_u.process_map[process_ptr].lock_state
+            &&& typed_lock_map_contains_mode(held.process_lock_map(), process_ptr, TypedLockMode::Write) ==> old_u.process_map[process_ptr].lock_state == entry_u.process_map[process_ptr].lock_state
             &&& old_u.process_map[process_ptr].pagetable is Some
             &&& !(old_u.process_map[process_ptr].pagetable->Some_0.lock_state is Unlocked)
             &&& typed_lock_map_contains_mode(held.pagetable_lock_map(), pagetable, TypedLockMode::Write) ==> old_u.process_map[process_ptr].pagetable == entry_u.process_map[process_ptr].pagetable
             &&& old_u.process_map[process_ptr].pcid == entry_u.process_map[process_ptr].pcid
             &&& old_u.container_map.dom().contains(container_ptr)
-            &&& old_u.container_map[container_ptr].lock_state is WriteLocked
+            &&& typed_lock_map_contains_mode(held.container_lock_map(), container_ptr, TypedLockMode::Write) ==> old_u.container_map[container_ptr].lock_state is WriteLocked
             &&& old_u.kernel_l4_end == entry_u.kernel_l4_end
         },
         final(krnl).inv(),
@@ -125,6 +125,8 @@ pub(super) fn flush_pagetable_tlb_on_cpu(krnl: &mut KernelK, pagetable: RwLockPa
         held_iommu_tables_unchanged(old(krnl).it_mp, final(krnl).it_mp, old(lctx)),
         held_pages_unchanged(old(krnl).pg_arr, final(krnl).pg_arr, old(lctx)),
         held_cpu_sets_unchanged(old(krnl).cpu_set_mp, final(krnl).cpu_set_mp, old(lctx)),
+        final(krnl).ctn_mp.dom().contains(container_ptr),
+        final(krnl).ctn_mp.spec_index(container_ptr).view_rodata() == old(krnl).ctn_mp.spec_index(container_ptr).view_rodata(),
         final(krnl).pt_mp.dom().contains(pagetable),
         final(krnl).pt_mp.spec_index(pagetable).view() == old(krnl).pt_mp.spec_index(pagetable).view(),
         final(krnl).pt_mp.spec_index(pagetable).being_killed() == old(krnl).pt_mp.spec_index(pagetable).being_killed(),

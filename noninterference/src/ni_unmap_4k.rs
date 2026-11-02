@@ -156,8 +156,6 @@ pub proof fn unmap_4k_syscall_result_oc(u1: KernelU, u2: KernelU, cpu_id: CpuId,
         &&& v1.cpus[cpu_id as int] == Some(cpu)
         &&& v1.threads.dom().contains(cpu.current_thread->Some_0) && v1.threads[cpu.current_thread->Some_0] == v2.threads[cpu.current_thread->Some_0]
         &&& v1.processes.dom().contains(thread.owning_proc) && v1.processes[thread.owning_proc] == v2.processes[thread.owning_proc]
-        &&& thread.owning_container == cpu.owning_container && v1.containers.dom().contains(thread.owning_container)
-        &&& v1.containers[thread.owning_container] == v2.containers[thread.owning_container]
     }) by { reveal(kernel_u_cpu_ownership_wf); };
 }
 } // verus!
