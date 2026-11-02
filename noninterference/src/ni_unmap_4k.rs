@@ -49,29 +49,30 @@ pub proof fn unmap_4k_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuI
 { reveal(unmap_4k_leaf_trace_step_pre); reveal(unmap_4k_leaf_step_pre); reveal(unmap_4k_leaf_step); reveal(kernel_u_cpu_ownership_wf); }
 
 
-/// An unmap TLB flush changes only cpu TLBs, which no domain view contains.
-pub proof fn unmap_4k_tlb_cleared_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, pcid: Pcid, a: RwLockContainerPtr, b: RwLockContainerPtr)
+/// An unmap TLB flush on a cpu of `a` read-locks the cpu set of a container of `a` and changes only cpu TLBs, which no
+/// domain view contains.
+pub proof fn unmap_4k_tlb_flush_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         unmap_4k_flush_step_pre(old_u, cpu_id),
-        kernel_u_cpu_tlb_cleared(old_u, new_u, pcid),
+        unmap_4k_tlb_flush_step(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
-{ reveal(kernel_u_cpu_tlb_cleared); }
+{ reveal(unmap_4k_flush_step_pre); reveal(unmap_4k_tlb_flush_step); reveal(kernel_u_cpu_tlb_cleared); reveal(kernel_u_cpu_ownership_wf); }
 
-/// The step of `unmap_4k_tlb_cleared_step_lr` preserves isolation.
-pub proof fn unmap_4k_tlb_cleared_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, pcid: Pcid, a: RwLockContainerPtr, b: RwLockContainerPtr)
+/// The step of `unmap_4k_tlb_flush_step_lr` preserves isolation.
+pub proof fn unmap_4k_tlb_flush_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         unmap_4k_flush_step_pre(old_u, cpu_id),
-        kernel_u_cpu_tlb_cleared(old_u, new_u, pcid),
+        unmap_4k_tlb_flush_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kernel_u_cpu_tlb_cleared); }
+{ reveal(unmap_4k_flush_step_pre); reveal(unmap_4k_tlb_flush_step); reveal(kernel_u_cpu_tlb_cleared); }
 
-/// Recording the unmap flush on a cpu of `a` changes only its running thread.
+/// Recording the unmap flush on a cpu of `a` changes only its running thread and the cpu-set lock mode of its container.
 pub proof fn unmap_4k_flushed_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),

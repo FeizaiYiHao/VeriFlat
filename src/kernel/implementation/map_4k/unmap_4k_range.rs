@@ -439,15 +439,16 @@ pub fn unmap_4k_range(
     proof {
         unmap_4k_tlb_flush_range_steps_from_k(&*steps, flush_before, old(steps).view().len() as int, &flush_entry, &flush_lctx, cpu_id, process_ptr, thread_ptr, container_ptr, pagetable, pcid, *range);
     }
+    let ghost flushed_snap = steps.snapshot_k();
     let ghost flushed_pre = *krnl;
     let ghost flushed_lctx = *lctx;
     krnl.set_thread_syscall_progress(thread_ptr, Ghost(Some(SyscallProgress::Unmap4k { range: *range, unmapped: range.len, flushed: true })), Tracked(&*lctx), thread_perm);
     proof {
         let ghost flushed_before = steps.view();
         let ghost flushed_k = *krnl;
-        enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
-        unmap_4k_flushed_range_steps_from_k(&*steps, flushed_before, old(steps).view().len() as int, &flushed_pre, &flushed_k, &flushed_lctx, cpu_id, process_ptr, thread_ptr, container_ptr, pagetable, pcid, *range);
+        unmap_4k_flushed_range_steps_from_k(&*steps, flushed_before, old(steps).view().len() as int, &flushed_snap, &flushed_pre, &flushed_k, &flushed_lctx, cpu_id, process_ptr, thread_ptr, container_ptr, pagetable, pcid,
+            *range);
     }
     assert(krnl.thr_mp.spec_index(thread_ptr).inv()) by { thread_perms_wf_at(krnl.thr_mp, thread_ptr); };
     assert(krnl.thr_mp.spec_index(thread_ptr).view().container_depth <= MAX_CONTAINER_TREE_DEPTH) by { container_thread_wf_at(krnl.ctn_mp, krnl.thr_mp, thread_ptr); container_perms_wf_at(krnl.ctn_mp, krnl.thr_mp.spec_index(thread_ptr).view().owning_container); };

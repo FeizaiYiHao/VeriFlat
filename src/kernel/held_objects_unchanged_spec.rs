@@ -110,6 +110,8 @@ pub open spec fn held_pcid_allocators_unchanged(pre: PcidAllocatorLockedMap, pos
         }
 }
 
+/// A write-held cpu set keeps its whole entry; a read-held one keeps its payload, this thread's read hold and reader
+/// token, and its kill mark, while other readers may come and go.
 pub open spec fn held_cpu_sets_unchanged(pre: CpuSetLockedMap, post: CpuSetLockedMap, lctx: &LocalContext) -> bool {
     forall|p: RwLockCpuSetPtr|
         #![trigger lctx.cpu_set_lock_map().dom().contains(p)]
@@ -117,7 +119,13 @@ pub open spec fn held_cpu_sets_unchanged(pre: CpuSetLockedMap, post: CpuSetLocke
         #![trigger post.spec_index(p)]
         lctx.cpu_set_lock_map().dom().contains(p) ==> {
             &&& post.dom().contains(p)
-            &&& post.spec_index(p) == pre.spec_index(p)
+            &&& typed_lock_map_contains_mode(lctx.cpu_set_lock_map(), p, TypedLockMode::Write) ==> post.spec_index(p) == pre.spec_index(p)
+            &&& typed_lock_map_contains_mode(lctx.cpu_set_lock_map(), p, TypedLockMode::Read) ==> {
+                &&& post.spec_index(p).view() == pre.spec_index(p).view()
+                &&& post.spec_index(p).rlocked_by_thread(lctx.thread_id())
+                &&& post.spec_index(p).being_killed() == pre.spec_index(p).being_killed()
+                &&& post.spec_index(p).locking_thread()->Read_reader_map.spec_index(lctx.thread_id()) == pre.spec_index(p).locking_thread()->Read_reader_map.spec_index(lctx.thread_id())
+            }
         }
 }
 

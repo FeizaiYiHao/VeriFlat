@@ -322,29 +322,30 @@ pub proof fn thread_exit_leaf_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: C
     ensures isolated(new_u, a, b),
 { reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_leaf_step); }
 
-/// A reclaim TLB flush changes only cpu TLBs, which no domain view contains.
-pub proof fn thread_exit_tlb_cleared_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+/// A reclaim TLB flush on a cpu of `a` read-locks the cpu set of a container of `a` and changes only cpu TLBs, which no
+/// domain view contains.
+pub proof fn thread_exit_tlb_flush_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         thread_exit_flush_step_pre(old_u, cpu_id),
-        kernel_u_cpu_tlb_cleared(old_u, new_u, old_u.process_map[old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_proc].pcid),
+        thread_exit_tlb_flush_step(old_u, new_u, cpu_id),
     ensures domain_view(new_u, b) =~~= domain_view(old_u, b),
-{ reveal(kernel_u_cpu_tlb_cleared); }
+{ reveal(thread_exit_flush_step_pre); reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_tlb_flush_step); reveal(kernel_u_cpu_tlb_cleared); reveal(kernel_u_cpu_ownership_wf); }
 
-/// The step of `thread_exit_tlb_cleared_step_lr` preserves isolation.
-pub proof fn thread_exit_tlb_cleared_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
+/// The step of `thread_exit_tlb_flush_step_lr` preserves isolation.
+pub proof fn thread_exit_tlb_flush_step_iso(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),
         isolated(old_u, a, b),
         steps_in_domain(old_u, cpu_id, a),
         thread_exit_flush_step_pre(old_u, cpu_id),
-        kernel_u_cpu_tlb_cleared(old_u, new_u, old_u.process_map[old_u.thread_map[old_u.cpu_array[cpu_id as int].current_thread->Some_0].owning_proc].pcid),
+        thread_exit_tlb_flush_step(old_u, new_u, cpu_id),
     ensures isolated(new_u, a, b),
-{ reveal(kernel_u_cpu_tlb_cleared); }
+{ reveal(thread_exit_flush_step_pre); reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_tlb_flush_step); reveal(kernel_u_cpu_tlb_cleared); }
 
-/// Recording the flush on a cpu of `a` changes only its running thread.
+/// Recording the flush on a cpu of `a` changes only its running thread and the cpu-set lock mode of its container.
 pub proof fn thread_exit_flushed_step_lr(old_u: KernelU, new_u: KernelU, cpu_id: CpuId, a: RwLockContainerPtr, b: RwLockContainerPtr)
     requires
         kernel_u_ownership_wf(old_u),

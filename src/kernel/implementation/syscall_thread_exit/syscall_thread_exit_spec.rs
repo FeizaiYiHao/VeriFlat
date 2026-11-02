@@ -290,12 +290,29 @@ pub open spec fn thread_exit_flush_step_pre(old_u: KernelU, cpu_id: CpuId) -> bo
     &&& thread_exit_user_4k_unmapped(old_u, old_u.process_map.spec_index(thread.owning_proc).pagetable->Some_0)
 }
 
-/// Recording the flush changes only the thread's progress.
+/// A TLB flush step read-locks the cpu set of the thread's container, or keeps it read-locked, and clears at most one
+/// TLB entry for the process's PCID.
+#[verifier::opaque]
+pub open spec fn thread_exit_tlb_flush_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
+    let locked = KernelU {
+        container_map: old_u.container_map.insert(thread.owning_container, ContainerU { cpu_set_lock: LockStateU::ReadLocked, ..old_u.container_map.spec_index(thread.owning_container) }),
+        ..old_u
+    };
+    new_u == locked || kernel_u_cpu_tlb_cleared(locked, new_u, old_u.process_map.spec_index(thread.owning_proc).pcid)
+}
+
+/// Recording the flush changes the thread's progress and releases this thread's read hold on the cpu set of the
+/// thread's container, which no writer holds afterwards.
 #[verifier::opaque]
 pub open spec fn thread_exit_flushed_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
-    new_u == (KernelU {
+    let container_ptr = old_u.thread_map.spec_index(thread_ptr).owning_container;
+    let cpu_set_lock = new_u.container_map.spec_index(container_ptr).cpu_set_lock;
+    &&& !(cpu_set_lock is WriteLocked)
+    &&& new_u == (KernelU {
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(SyscallProgress::ThreadExitReclaim { flushed: true }), ..old_u.thread_map.spec_index(thread_ptr) }),
+        container_map: old_u.container_map.insert(container_ptr, ContainerU { cpu_set_lock, ..old_u.container_map.spec_index(container_ptr) }),
         ..old_u
     })
 }
@@ -441,7 +458,7 @@ pub open spec fn thread_exit_middle_step(step: KernelStep, cpu_id: CpuId) -> boo
     ||| thread_exit_drop_step_pre(old_u, cpu_id) && thread_exit_release_step(old_u, new_u, cpu_id)
     ||| thread_exit_lock_table_step_pre(old_u, cpu_id) && thread_exit_lock_table_step(old_u, new_u, cpu_id)
     ||| thread_exit_reclaim_step_pre(old_u, cpu_id, false) && thread_exit_leaf_step(old_u, new_u, cpu_id)
-    ||| thread_exit_flush_step_pre(old_u, cpu_id) && kernel_u_cpu_tlb_cleared(old_u, new_u, old_u.process_map.spec_index(thread.owning_proc).pcid)
+    ||| thread_exit_flush_step_pre(old_u, cpu_id) && thread_exit_tlb_flush_step(old_u, new_u, cpu_id)
     ||| thread_exit_flush_step_pre(old_u, cpu_id) && thread_exit_flushed_step(old_u, new_u, cpu_id)
     ||| thread_exit_reclaim_step_pre(old_u, cpu_id, true) && thread_exit_iommu_leaf_step(old_u, new_u, cpu_id)
     ||| thread_exit_reclaim_step_pre(old_u, cpu_id, true) && thread_exit_pagetable_windows_changed_step(old_u, new_u, cpu_id)

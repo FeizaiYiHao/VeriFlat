@@ -11,7 +11,7 @@ verus! {
     pub type PageLockedArray = LockedArray<Page, (), (), NUM_PAGES, NO_KILL_STATE, TokenCells<Page, (), (), NUM_PAGES, NO_KILL_STATE>>;
     pub type CpuLockedArray = LockedArray<Cpu, (), Option<CpuId>, NUM_CPUS, CPU_HAS_KILL_STATE, TokenCells<Cpu, (), Option<CpuId>, NUM_CPUS, CPU_HAS_KILL_STATE>>;
     pub type ContainerLockedMap = LockedMap<RwLockContainerPtr, Container, ReadOnlyNode<ContainerRO>, ContainerGhost, CONTAINER_HAS_KILL_STATE>;
-    pub type CpuSetLockedMap = LockedMap<RwLockCpuSetPtr, CpuSet, (), (), CPU_SET_HAS_KILL_STATE>;
+    pub type CpuSetLockedMap = LockedMap<RwLockCpuSetPtr, CpuSet, (), (), CPU_SET_HAS_KILL_STATE, PerCpuReaderSlots>;
     pub type PcidAllocatorLockedMap = LockedMap<RwLockPcidAllocatorPtr, PcidAllocator, (), (), PCID_ALLOCATOR_HAS_KILL_STATE>;
     pub type EndpointLockedMap = LockedMap<RwLockEndpointPtr, Endpoint, (), (), ENDPOINT_HAS_KILL_STATE>;
     pub type PageAllocatorUnLockedMap<const SIZE: usize> = UnLockedMap<RwLockPageAllocatorPtr, PageAllocator<SIZE>>;
@@ -207,8 +207,8 @@ verus! {
         ///     their state across the boundary — `view`, `view_ghost`,
         ///     `view_rodata`, `locking_thread`,
         ///     `being_killed` are preserved per held lock instance, except that a
-        ///     read-held page table keeps only its payload, this thread's read hold,
-        ///     and its kill mark;
+        ///     read-held page table or cpu set keeps only its payload, this
+        ///     thread's read hold, and its kill mark;
         ///   - each held 2M window keeps its L2 entry, lock owner, linked L1 page,
         ///     and leaves; nothing is said about the window half of a page table
         ///     beyond its held windows;

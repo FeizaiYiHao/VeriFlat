@@ -66,6 +66,8 @@ pub mod iommu_table_steps;
 pub mod env_steps;
 /// K->U lemma of a step that changes only one live process's page-table window locks.
 pub mod pagetable_window_locks;
+/// K->U lemma and step boundary of a section that read-locks or keeps read-holding one container's cpu set.
+pub mod cpu_set_read_lock;
 
 pub use projection::*;
 pub use projection_at::*;
@@ -97,6 +99,7 @@ pub use ipc_pages_tables::*;
 pub use iommu_table_steps::*;
 pub use env_steps::*;
 pub use pagetable_window_locks::*;
+pub use cpu_set_read_lock::*;
 
 verus! {
 /// Each boundary refreshes both stored snapshots after recording its own section.

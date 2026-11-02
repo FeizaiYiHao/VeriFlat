@@ -475,6 +475,6 @@ pub(super) proof fn publish_staged_container_root_eof_postconditions(
     assert(held_cpus_unchanged(pre.cpu_arr, post.cpu_arr, &pre_lctx)) by { reveal(LockedArray::typed_lock_map_aligned); };
     assert(held_processes_unchanged(pre.prc_mp, post.prc_mp, &pre_lctx)) by { pre.prc_mp.typed_lock_map_aligned_held_in_dom(pre_lctx.process_lock_map(), pre_lctx.thread_id()); };
     assert(held_pagetables_unchanged(pre.pt_mp, post.pt_mp, &pre_lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
-    assert(held_cpu_sets_unchanged(pre.cpu_set_mp, post.cpu_set_mp, &pre_lctx)) by { pre.cpu_set_mp.typed_lock_map_aligned_held_in_dom(pre_lctx.cpu_set_lock_map(), pre_lctx.thread_id()); };
+    assert(held_cpu_sets_unchanged(pre.cpu_set_mp, post.cpu_set_mp, &pre_lctx)) by { reveal(LockedMap::typed_lock_map_aligned); };
 }
 }

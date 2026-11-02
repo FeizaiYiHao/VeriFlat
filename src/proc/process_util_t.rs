@@ -143,7 +143,7 @@ pub fn retype_pcid_allocator_rwlock_to_2m_page_perm(
 /// disappears from `lctx` with the object.
 #[verifier::external_body]
 pub fn retype_cpu_set_rwlock_to_4k_page_perm(
-    cpu_set_ptr: RwLockCpuSetPtr, Tracked(cpu_set_perm): Tracked<LockObjPerm<CpuSet, (), (), CPU_SET_HAS_KILL_STATE>>, Tracked(lock_perm): Tracked<LockPerm>,
+    cpu_set_ptr: RwLockCpuSetPtr, Tracked(cpu_set_perm): Tracked<LockObjPerm<CpuSet, (), (), CPU_SET_HAS_KILL_STATE, PerCpuReaderSlots>>, Tracked(lock_perm): Tracked<LockPerm>,
     Tracked(lctx): Tracked<&mut LocalContext>,
 ) -> (ret: Tracked<PagePerm4k>)
     requires

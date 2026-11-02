@@ -4,7 +4,8 @@ use crate::*;
 verus! {
 /// The killer on `cpu_id`, which runs `thread_ptr` of `process_ptr` in its container `owner_ptr`, write-holds with the
 /// permissions given exactly its cpu, its process, and itself, and also its container and the marked container
-/// `container_ptr`, which owns no process, thread, or indirect thread; every other container or cpu set it holds is marked.
+/// `container_ptr`, which owns no process, thread, or indirect thread; every other container it holds is marked, and every cpu
+/// set it holds is write-held and marked.
 /// It holds no page, table, endpoint, scheduler, PCID allocator, dirty-PCID record, or cpu offline flag.
 pub open spec fn kill_container_pages_killer_state(
     k: KernelK, lctx: LocalContext, cpu_id: CpuId, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr,
@@ -39,7 +40,8 @@ pub open spec fn kill_container_pages_killer_state(
     &&& target.view_ghost().owned_processes.view() == Set::<RwLockProcessPtr>::empty()
     &&& target.view_ghost().owned_threads.view() == Set::<RwLockThreadPtr>::empty()
     &&& target.view_ghost().owned_indirect_threads.view() == Set::<RwLockThreadPtr>::empty()
-    &&& forall|s: RwLockCpuSetPtr| #![trigger lctx.cpu_set_lock_map().dom().contains(s)] lctx.cpu_set_lock_map().dom().contains(s) ==> k.cpu_set_mp.spec_index(s).being_killed()
+    &&& forall|s: RwLockCpuSetPtr| #![trigger lctx.cpu_set_lock_map().dom().contains(s)] lctx.cpu_set_lock_map().dom().contains(s)
+        ==> typed_lock_map_contains_mode(lctx.cpu_set_lock_map(), s, TypedLockMode::Write) && k.cpu_set_mp.spec_index(s).being_killed()
     &&& lctx.page_lock_map().dom().is_empty()
     &&& lctx.pagetable_lock_map().dom().is_empty()
     &&& lctx.pagetable_window_lock_map().dom().is_empty()

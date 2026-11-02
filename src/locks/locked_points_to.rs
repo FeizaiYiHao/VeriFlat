@@ -390,6 +390,60 @@ pub fn has_kill_state_wunlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrai
     unsafe { (*p).lock.wunlock(); }
 }
 
+/// `rlock` of an unmarked object with a kill mark; readers never check the mark, so the caller proves it absent.
+#[verifier::external_body]
+pub fn has_kill_state_rlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
+    ROT: LockOwnerIdTrait, GhostT, I: RwLockInner>(pptr: &PPtr<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>, cpu_id: CpuId, Tracked(perm): Tracked<&mut LockObjPerm<T, ROT, GhostT, HAS_KILL_STATE, I>>,
+    Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>) -> (ret: Tracked<LockPerm>)
+    requires
+        cpu_id == old(lctx).cpu_id(),
+        pptr.addr() == old(perm).addr(),
+        old(perm).is_init(),
+        !(old(perm).value().view_rodata().container_source() is Dynamic),
+        !(old(perm).value().view_rodata().process_source() is Dynamic),
+        !old(perm).value().being_killed(),
+        wlock_requires(old(perm).value(), old(lctx)),
+        old(lctx).lock_id_acyclic(LockId { container: old(perm).value().container_depth(), process: old(perm).value().process_depth(), major: old(perm).value().view().current_lock_major(), minor: old(perm).lock_minor() }),
+    ensures
+        final(perm).addr() == old(perm).addr(),
+        final(perm).is_init(),
+        rlock_ensures(old(perm).value(), final(perm).value(), LockId {
+            container: old(perm).value().container_depth(), process: old(perm).value().process_depth(), major: old(perm).value().view().current_lock_major(), minor: old(perm).lock_minor() }, final(lctx), ret.view()),
+        rlock_lctx_ensures(old(lctx), final(lctx), LockId {
+            container: old(perm).value().container_depth(), process: old(perm).value().process_depth(), major: old(perm).value().view().current_lock_major(), minor: old(perm).lock_minor() }, obj_id.view()),
+{
+    let p = pptr.addr() as *mut LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>;
+    unsafe { (*p).lock.rlock(cpu_id); }
+    Tracked::assume_new()
+}
+
+/// `runlock` of an object with a kill mark; no one marks an object while it is read-held, so the mark stays.
+#[verifier::external_body]
+pub fn has_kill_state_runlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait,
+    ROT: LockOwnerIdTrait, GhostT, I: RwLockInner>(pptr: &PPtr<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>, cpu_id: CpuId, Tracked(perm): Tracked<&mut LockObjPerm<T, ROT, GhostT, HAS_KILL_STATE, I>>,
+    Tracked(lctx): Tracked<&mut LocalContext>, lock_perm: Tracked<LockPerm>, obj_id: Ghost<KernelObjId>)
+    requires
+        cpu_id == old(lctx).cpu_id(),
+        pptr.addr() == old(perm).addr(),
+        old(perm).is_init(),
+        !(old(perm).value().view_rodata().container_source() is Dynamic),
+        !(old(perm).value().view_rodata().process_source() is Dynamic),
+        old(perm).value().rlocked_by(old(lctx)),
+        old(perm).value().inv(),
+        lock_perm.view().state() is ReadLock,
+        lock_perm.view().thread_id() == old(lctx).thread_id(),
+        old(perm).value().read_lock_perm_match(&lock_perm.view()),
+        old(lctx).lock_entry_contains(old(perm).lock_id(), obj_id.view()),
+    ensures
+        old(perm).addr() == final(perm).addr(),
+        final(perm).is_init(),
+        runlock_ensures(old(perm).value(), final(perm).value(), old(lctx).thread_id()),
+        unlock_ensures(old(lctx), final(lctx), obj_id.view(), old(perm).lock_id()),
+{
+    let p = pptr.addr() as *mut LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>;
+    unsafe { (*p).lock.runlock(cpu_id); }
+}
+
 /// `KillableLockInner::wlock_unless_killed` of lock array cell `index` at `pptr`, under the ordering id derived from the cell: the
 /// object's owners, the major of its current state, and the cell index as minor; a marked object returns `None` with its
 /// token unchanged.

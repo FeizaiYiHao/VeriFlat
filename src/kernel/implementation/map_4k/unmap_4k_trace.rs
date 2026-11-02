@@ -109,9 +109,20 @@ pub proof fn unmap_4k_flush_step_pre_from_k(
 
 /// While the caller write-holds its cpu, its held thread, process, and container keep their `entry` objects, and its page
 /// table, held in either mode, keeps its `entry` payload (and, while write-held, its lock owner and mappings), the caller's
-/// held objects project as each TLB-flush step of the range requires.
-pub proof fn unmap_4k_tlb_flush_step_pre_from_k(krnl: &KernelK, entry: &KernelK, lctx: &LocalContext, held: &LocalContext, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot)
+/// held objects project in `snap_u`, which `krnl` extends by a TLB update and a read hold on the cpu set of the container
+/// `container_ptr`, as each TLB-flush step of the range requires.
+pub proof fn unmap_4k_tlb_flush_step_pre_from_k(
+    krnl: &KernelK, entry: &KernelK, lctx: &LocalContext, held: &LocalContext, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot, snap_u: KernelU,
+    container_ptr: RwLockContainerPtr,
+)
     requires
+        container_ptr == entry.thr_mp.spec_index(thread_ptr).view().owning_container,
+        snap_u.container_map.dom().contains(container_ptr),
+        kernel_k_to_kernel_u(*krnl) == (KernelU {
+            cpu_tlb: krnl.cpu_tlb.view(),
+            container_map: snap_u.container_map.insert(container_ptr, ContainerU { cpu_set_lock: LockStateU::ReadLocked, ..snap_u.container_map[container_ptr] }),
+            ..snap_u
+        }),
         krnl.inv(),
         entry.inv(),
         typed_lock_maps_aligned(krnl, lctx),
@@ -140,10 +151,9 @@ pub proof fn unmap_4k_tlb_flush_step_pre_from_k(krnl: &KernelK, entry: &KernelK,
         },
     ensures
         ({
-            let u = kernel_k_to_kernel_u(*krnl);
+            let u = snap_u;
             let entry_u = kernel_k_to_kernel_u(*entry);
             let process_ptr = entry.thr_mp.spec_index(thread_ptr).view().owning_proc;
-            let container_ptr = entry.thr_mp.spec_index(thread_ptr).view().owning_container;
             &&& u.cpu_array[cpu_id as int].lock_state is WriteLocked
             &&& u.cpu_array[cpu_id as int].current_thread == Some(thread_ptr)
             &&& u.thread_map.dom().contains(thread_ptr)
@@ -173,14 +183,24 @@ pub proof fn unmap_4k_tlb_flush_step_pre_from_k(krnl: &KernelK, entry: &KernelK,
     kernel_pagetable_mappings_projection_at(krnl, process_ptr);
 }
 
-/// Recording the flush in the progress is the flushed step on `pre`/`post`.
-pub proof fn unmap_4k_flushed_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, range: VaRange4K, unmapped: usize, progress: Option<SyscallProgress>)
+/// Recording the flush in the progress and releasing the read hold on the cpu set of the thread's container, which no
+/// writer holds afterwards, is the flushed step on `pre`/`post`.
+pub proof fn unmap_4k_flushed_step_from_u(
+    pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, range: VaRange4K, unmapped: usize, progress: Option<SyscallProgress>,
+    cpu_set_lock: LockStateU,
+)
     requires
         pre.cpu_array[cpu_id as int].current_thread == Some(thread_ptr),
         pre.thread_map[thread_ptr].syscall_progress == Some(SyscallProgress::Unmap4k { range, unmapped, flushed: false }),
+        pre.thread_map[thread_ptr].owning_container == container_ptr,
         progress == Some(SyscallProgress::Unmap4k { range, unmapped, flushed: true }),
         pre.thread_map.dom().contains(thread_ptr),
-        post == (KernelU { thread_map: pre.thread_map.insert(thread_ptr, ThreadU { syscall_progress: progress, ..pre.thread_map[thread_ptr] }), ..pre }),
+        !(cpu_set_lock is WriteLocked),
+        post == (KernelU {
+            thread_map: pre.thread_map.insert(thread_ptr, ThreadU { syscall_progress: progress, ..pre.thread_map[thread_ptr] }),
+            container_map: pre.container_map.insert(container_ptr, ContainerU { cpu_set_lock, ..pre.container_map[container_ptr] }),
+            ..pre
+        }),
     ensures
         unmap_4k_flushed_step(pre, post, cpu_id),
 { reveal(unmap_4k_flushed_step); }
@@ -223,7 +243,8 @@ pub proof fn unmap_4k_range_steps_from_tlb_flush(
         entry.process_map[process_ptr].pcid == pcid,
         forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
             let old_u = steps.view()[j].old_u;
-            &&& kernel_u_cpu_tlb_cleared(old_u, steps.view()[j].new_u, pcid)
+            let locked = KernelU { container_map: old_u.container_map.insert(container_ptr, ContainerU { cpu_set_lock: LockStateU::ReadLocked, ..old_u.container_map[container_ptr] }), ..old_u };
+            &&& steps.view()[j].new_u == locked || kernel_u_cpu_tlb_cleared(locked, steps.view()[j].new_u, pcid)
             &&& old_u.cpu_array[cpu_id as int].lock_state is WriteLocked
             &&& old_u.cpu_array[cpu_id as int].current_thread == Some(thread_ptr)
             &&& old_u.thread_map.dom().contains(thread_ptr)
@@ -238,7 +259,7 @@ pub proof fn unmap_4k_range_steps_from_tlb_flush(
         },
     ensures
         forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> unmap_4k_range_step(steps.view()[j], cpu_id),
-{ reveal(unmap_4k_range_step); reveal(unmap_4k_flush_step_pre); }
+{ reveal(unmap_4k_range_step); reveal(unmap_4k_flush_step_pre); reveal(unmap_4k_tlb_flush_step); }
 
 /// The flushed step pushed after range steps that start at `start` is a range step.
 pub proof fn unmap_4k_range_steps_from_flushed(steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: KernelU, post: KernelU, cpu_id: CpuId)
@@ -366,7 +387,8 @@ pub proof fn unmap_4k_tlb_flush_range_steps_from_k(
         forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
             let old_u = steps.view()[j].old_u;
             let entry_u = kernel_k_to_kernel_u(*entry);
-            &&& kernel_u_cpu_tlb_cleared(old_u, steps.view()[j].new_u, pcid)
+            let locked = KernelU { container_map: old_u.container_map.insert(container_ptr, ContainerU { cpu_set_lock: LockStateU::ReadLocked, ..old_u.container_map[container_ptr] }), ..old_u };
+            &&& steps.view()[j].new_u == locked || kernel_u_cpu_tlb_cleared(locked, steps.view()[j].new_u, pcid)
             &&& old_u.cpu_array[cpu_id as int].lock_state is WriteLocked
             &&& old_u.cpu_array[cpu_id as int].current_thread == Some(thread_ptr)
             &&& old_u.thread_map.dom().contains(thread_ptr)
@@ -386,17 +408,19 @@ pub proof fn unmap_4k_tlb_flush_range_steps_from_k(
     unmap_4k_range_steps_from_tlb_flush(steps, before, start, kernel_k_to_kernel_u(*entry), cpu_id, thread_ptr, process_ptr, container_ptr, pcid);
 }
 
-/// Recording the flush in the progress from `pre` to `post` after range steps that start at `start`, while the caller
-/// write-holds its cpu, thread, process, and container and holds its pagetable with the whole range cleared, leaves only
-/// range steps.
+/// Recording the flush in the progress from `pre` to `post` after range steps that start at `start`, where `pre` extends
+/// the step's start `snap` by page-table ghost state and by this thread's released read hold on the cpu set of its
+/// container, while the caller write-holds its cpu, thread, process, and container and holds its pagetable with the whole
+/// range cleared, leaves only range steps.
 pub proof fn unmap_4k_flushed_range_steps_from_k(
-    steps: &KernelSteps, before: Seq<KernelStep>, start: int, pre: &KernelK, post: &KernelK, lctx: &LocalContext, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
+    steps: &KernelSteps, before: Seq<KernelStep>, start: int, snap: &KernelK, pre: &KernelK, post: &KernelK, lctx: &LocalContext, cpu_id: CpuId, process_ptr: RwLockProcessPtr,
     thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, pagetable: RwLockPageTableRoot, pcid: Pcid, range: VaRange4K,
 )
     requires
         0 <= start <= before.len(),
         forall|j: int| #![trigger before[j]] start <= j < before.len() ==> unmap_4k_range_step(before[j], cpu_id),
-        steps.view() == before.push(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*post) }),
+        steps.view() == before.push(KernelStep { old_u: kernel_k_to_kernel_u(*snap), new_u: kernel_k_to_kernel_u(*post) }),
+        pre.inv(),
         typed_lock_maps_aligned(pre, lctx),
         index_valid(NUM_CPUS, cpu_id),
         typed_lock_map_contains_mode(lctx.cpu_lock_map(), cpu_id, TypedLockMode::Write),
@@ -411,6 +435,20 @@ pub proof fn unmap_4k_flushed_range_steps_from_k(
         pre.thr_mp.spec_index(thread_ptr).view().owning_proc == process_ptr,
         pre.thr_mp.spec_index(thread_ptr).view().owning_container == container_ptr,
         pre.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::Unmap4k { range, unmapped: range.len, flushed: false }),
+        *pre == (KernelK { pt_mp: pre.pt_mp, pt_lower: pre.pt_lower, cpu_set_mp: pre.cpu_set_mp, ..*snap }),
+        pre.pt_mp.dom() == snap.pt_mp.dom(),
+        forall|pt: RwLockPageTableRoot| #![trigger pre.pt_mp.spec_index(pt)] snap.pt_mp.dom().contains(pt) ==> {
+            &&& pre.pt_mp.spec_index(pt).locking_thread() == snap.pt_mp.spec_index(pt).locking_thread()
+            &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).mapping_4k() == whole_pagetable(snap.pt_mp, snap.pt_lower.view(), pt).mapping_4k()
+            &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).mapping_2m() == whole_pagetable(snap.pt_mp, snap.pt_lower.view(), pt).mapping_2m()
+            &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).mapping_1g() == whole_pagetable(snap.pt_mp, snap.pt_lower.view(), pt).mapping_1g()
+            &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).lower.pagetable_window_locks == whole_pagetable(snap.pt_mp, snap.pt_lower.view(), pt).lower.pagetable_window_locks
+        },
+        pre.ctn_mp.dom().contains(container_ptr),
+        pre.cpu_set_mp.unchanged_except(&snap.cpu_set_mp, pre.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set),
+        pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).being_killed()
+            == snap.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).being_killed(),
+        !(pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).locking_thread() is Write),
         *post == (KernelK { thr_mp: post.thr_mp, ..*pre }),
         pre.thr_mp.dom().contains(thread_ptr),
         post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr),
@@ -421,9 +459,15 @@ pub proof fn unmap_4k_flushed_range_steps_from_k(
     ensures
         forall|j: int| #![trigger steps.view()[j]] start <= j < steps.view().len() ==> unmap_4k_range_step(steps.view()[j], cpu_id),
 {
+    let ghost_tables = KernelK { pt_mp: pre.pt_mp, pt_lower: pre.pt_lower, ..*snap };
+    let cpu_set_lock = pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).lock_state_u();
+    reveal(kernel_cpu_nonlock_fields_unchanged); kernel_u_domains_projection(snap);
+    kernel_cpu_tlb_updated_implies_u_step(snap, &ghost_tables);
+    kernel_cpu_set_lock_mode_changed_implies_u_step(&ghost_tables, pre, container_ptr);
     kernel_thread_syscall_progress_changed_implies_u_step(pre, post, thread_ptr);
     unmap_4k_flush_step_pre_from_k(pre, lctx, cpu_id, process_ptr, thread_ptr, container_ptr, pagetable, pcid, range);
-    unmap_4k_flushed_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, thread_ptr, range, range.len, post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view());
-    unmap_4k_range_steps_from_flushed(steps, before, start, kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id);
+    assert(unmap_4k_flush_step_pre(kernel_k_to_kernel_u(*snap), cpu_id)) by { reveal(unmap_4k_flush_step_pre); };
+    unmap_4k_flushed_step_from_u(kernel_k_to_kernel_u(*snap), kernel_k_to_kernel_u(*post), cpu_id, thread_ptr, container_ptr, range, range.len, post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view(), cpu_set_lock);
+    unmap_4k_range_steps_from_flushed(steps, before, start, kernel_k_to_kernel_u(*snap), kernel_k_to_kernel_u(*post), cpu_id);
 }
 } // verus!

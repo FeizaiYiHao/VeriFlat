@@ -286,8 +286,8 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
     }
 }
 
-impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT>
-    LockedMap<usize, T, ROT, GhostT, HAS_KILL_STATE> {
+impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, I: KillableLockInner>
+    LockedMap<usize, T, ROT, GhostT, HAS_KILL_STATE, I> {
     #[verifier::spinoff_prover]
     pub fn retype_4k_as_unlocked_singleton(&mut self, page_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm4k>, cpu_id: CpuId, lock_thread_id: LockThreadId, Ghost(obj_id): Ghost<KernelObjId>)
         requires

@@ -72,4 +72,4 @@ impl LockOwnerIdTrait for CpuSet {
 }
 }
 
-const ASSERT_CPU_SET_LOCK_FITS_4K: [(); 1] = [(); (core::mem::size_of::<LockCell<CpuSet, (), (), CPU_SET_HAS_KILL_STATE>>() <= PAGE_SZ_4K) as usize];
+const ASSERT_CPU_SET_LOCK_FITS_4K: [(); 1] = [(); (core::mem::size_of::<LockCell<CpuSet, (), (), CPU_SET_HAS_KILL_STATE, PerCpuReaderSlots>>() <= PAGE_SZ_4K) as usize];

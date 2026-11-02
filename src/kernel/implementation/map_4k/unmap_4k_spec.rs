@@ -91,14 +91,30 @@ pub open spec fn unmap_4k_flush_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool 
     &&& !progress->Unmap4k_flushed
 }
 
-/// Recording the flush changes only unmap progress.
+/// A TLB flush step read-locks the cpu set of the thread's container, or keeps it read-locked, and clears at most one
+/// TLB entry for the process's PCID.
+#[verifier::opaque]
+pub open spec fn unmap_4k_tlb_flush_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
+    let thread = old_u.thread_map.spec_index(old_u.cpu_array[cpu_id as int].current_thread->Some_0);
+    let locked = KernelU {
+        container_map: old_u.container_map.insert(thread.owning_container, ContainerU { cpu_set_lock: LockStateU::ReadLocked, ..old_u.container_map.spec_index(thread.owning_container) }),
+        ..old_u
+    };
+    new_u == locked || kernel_u_cpu_tlb_cleared(locked, new_u, old_u.process_map.spec_index(thread.owning_proc).pcid)
+}
+
+/// Recording the flush changes unmap progress and releases this thread's read hold on the cpu set of the thread's
+/// container, which no writer holds afterwards.
 #[verifier::opaque]
 pub open spec fn unmap_4k_flushed_step(old_u: KernelU, new_u: KernelU, cpu_id: CpuId) -> bool {
     let thread_ptr = old_u.cpu_array[cpu_id as int].current_thread->Some_0;
     let thread = old_u.thread_map.spec_index(thread_ptr);
     let progress = thread.syscall_progress->Some_0;
-    new_u == (KernelU {
+    let cpu_set_lock = new_u.container_map.spec_index(thread.owning_container).cpu_set_lock;
+    &&& !(cpu_set_lock is WriteLocked)
+    &&& new_u == (KernelU {
         thread_map: old_u.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(SyscallProgress::Unmap4k { range: progress->Unmap4k_range, unmapped: progress->Unmap4k_unmapped, flushed: true }), ..thread }),
+        container_map: old_u.container_map.insert(thread.owning_container, ContainerU { cpu_set_lock, ..old_u.container_map.spec_index(thread.owning_container) }),
         ..old_u
     })
 }
@@ -121,7 +137,7 @@ pub open spec fn unmap_4k_refund_step_pre(old_u: KernelU, cpu_id: CpuId) -> bool
 pub open spec fn unmap_4k_range_step(step: KernelStep, cpu_id: CpuId) -> bool {
     let thread = step.old_u.thread_map.spec_index(step.old_u.cpu_array[cpu_id as int].current_thread->Some_0);
     ||| unmap_4k_leaf_trace_step_pre(step.old_u, cpu_id) && unmap_4k_leaf_trace_step(step.old_u, step.new_u, cpu_id)
-    ||| unmap_4k_flush_step_pre(step.old_u, cpu_id) && kernel_u_cpu_tlb_cleared(step.old_u, step.new_u, step.old_u.process_map.spec_index(thread.owning_proc).pcid)
+    ||| unmap_4k_flush_step_pre(step.old_u, cpu_id) && unmap_4k_tlb_flush_step(step.old_u, step.new_u, cpu_id)
     ||| unmap_4k_flush_step_pre(step.old_u, cpu_id) && unmap_4k_flushed_step(step.old_u, step.new_u, cpu_id)
     ||| unmap_4k_refund_step_pre(step.old_u, cpu_id) && kernel_u_container_quota_4k_increased(step.old_u, step.new_u, thread.owning_container)
 }

@@ -605,13 +605,17 @@ pub(super) proof fn thread_exit_flush_step_pre_from_k(
     reveal(thread_exit_flush_step_pre); reveal(thread_exit_reclaim_step_pre);
 }
 
-/// Recording the flush is the flushed step on `pre`/`post`.
-pub(super) proof fn thread_exit_flushed_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr)
+/// Recording the flush, with the cpu set of the thread's container left in a mode no writer holds, is the flushed step
+/// on `pre`/`post`.
+pub(super) proof fn thread_exit_flushed_step_from_u(pre: KernelU, post: KernelU, cpu_id: CpuId, thread_ptr: RwLockThreadPtr, container_ptr: RwLockContainerPtr, cpu_set_lock: LockStateU)
     requires
         pre.cpu_array[cpu_id as int].current_thread == Some(thread_ptr),
         pre.thread_map.dom().contains(thread_ptr),
+        pre.thread_map[thread_ptr].owning_container == container_ptr,
+        !(cpu_set_lock is WriteLocked),
         post == (KernelU {
             thread_map: pre.thread_map.insert(thread_ptr, ThreadU { syscall_progress: Some(SyscallProgress::ThreadExitReclaim { flushed: true }), ..pre.thread_map[thread_ptr] }),
+            container_map: pre.container_map.insert(container_ptr, ContainerU { cpu_set_lock, ..pre.container_map[container_ptr] }),
             ..pre
         }),
     ensures
@@ -619,10 +623,11 @@ pub(super) proof fn thread_exit_flushed_step_from_u(pre: KernelU, post: KernelU,
 { reveal(thread_exit_flushed_step); }
 
 /// Recording the flush (`pre` to `post`) by the running thread `thread_ptr` of the process `process_ptr` with PCID `pcid`,
-/// once no user 4K leaf of its page table `pagetable` is left, is a middle step on `pre`/`post`.
+/// once no user 4K leaf of its page table `pagetable` is left, where `pre` extends the step's start `snap` by page-table
+/// ghost state and by this thread's released read hold on the cpu set of its container, is a middle step on `snap`/`post`.
 pub(super) proof fn thread_exit_flush_recorded_implies_flushed_step(
-    pre: &KernelK, lctx: &LocalContext, post: &KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr, thread_ptr: RwLockThreadPtr,
-    pagetable: RwLockPageTableRoot, pcid: Pcid,
+    snap: &KernelK, pre: &KernelK, lctx: &LocalContext, post: &KernelK, cpu_id: CpuId, container_ptr: RwLockContainerPtr, process_ptr: RwLockProcessPtr,
+    thread_ptr: RwLockThreadPtr, pagetable: RwLockPageTableRoot, pcid: Pcid,
 )
     requires
         pre.inv(),
@@ -646,6 +651,20 @@ pub(super) proof fn thread_exit_flush_recorded_implies_flushed_step(
             pei_valid(l4i) && pei_valid(l3i) && pei_valid(l2i) && pei_valid(l1i) && KERNEL_MEM_END_L4INDEX <= l4i && pre.pt_mp.spec_index(pagetable).view().kernel_l4_end <= l4i
                 && whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().dom().contains(spec_index2va((l4i, l3i, l2i, l1i)))
                 ==> !whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pagetable).mapping_4k().spec_index(spec_index2va((l4i, l3i, l2i, l1i))).present,
+        *pre == (KernelK { pt_mp: pre.pt_mp, pt_lower: pre.pt_lower, cpu_set_mp: pre.cpu_set_mp, ..*snap }),
+        pre.pt_mp.dom() == snap.pt_mp.dom(),
+        forall|pt: RwLockPageTableRoot| #![trigger pre.pt_mp.spec_index(pt)] snap.pt_mp.dom().contains(pt) ==> {
+            &&& pre.pt_mp.spec_index(pt).locking_thread() == snap.pt_mp.spec_index(pt).locking_thread()
+            &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).mapping_4k() == whole_pagetable(snap.pt_mp, snap.pt_lower.view(), pt).mapping_4k()
+            &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).mapping_2m() == whole_pagetable(snap.pt_mp, snap.pt_lower.view(), pt).mapping_2m()
+            &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).mapping_1g() == whole_pagetable(snap.pt_mp, snap.pt_lower.view(), pt).mapping_1g()
+            &&& whole_pagetable(pre.pt_mp, pre.pt_lower.view(), pt).lower.pagetable_window_locks == whole_pagetable(snap.pt_mp, snap.pt_lower.view(), pt).lower.pagetable_window_locks
+        },
+        pre.ctn_mp.dom().contains(container_ptr),
+        pre.cpu_set_mp.unchanged_except(&snap.cpu_set_mp, pre.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set),
+        pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).being_killed()
+            == snap.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).being_killed(),
+        !(pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).locking_thread() is Write),
         *post == (KernelK { thr_mp: post.thr_mp, ..*pre }),
         pre.thr_mp.dom().contains(thread_ptr),
         post.thr_mp.unchanged_except(&pre.thr_mp, thread_ptr),
@@ -653,11 +672,17 @@ pub(super) proof fn thread_exit_flush_recorded_implies_flushed_step(
         post.thr_mp.spec_index(thread_ptr).locking_thread() == pre.thr_mp.spec_index(thread_ptr).locking_thread(),
         post.thr_mp.spec_index(thread_ptr).being_killed() == pre.thr_mp.spec_index(thread_ptr).being_killed(),
         post.thr_mp.spec_index(thread_ptr).view().syscall_progress.view() == Some(SyscallProgress::ThreadExitReclaim { flushed: true }),
-    ensures thread_exit_middle_step(KernelStep { old_u: kernel_k_to_kernel_u(*pre), new_u: kernel_k_to_kernel_u(*post) }, cpu_id),
+    ensures thread_exit_middle_step(KernelStep { old_u: kernel_k_to_kernel_u(*snap), new_u: kernel_k_to_kernel_u(*post) }, cpu_id),
 {
-    thread_exit_flush_step_pre_from_k(pre, lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, pcid);
+    let ghost_tables = KernelK { pt_mp: pre.pt_mp, pt_lower: pre.pt_lower, ..*snap };
+    let cpu_set_lock = pre.cpu_set_mp.spec_index(pre.ctn_mp.spec_index(container_ptr).view_rodata().view().cpu_set).lock_state_u();
+    reveal(kernel_cpu_nonlock_fields_unchanged); kernel_u_domains_projection(snap);
+    kernel_cpu_tlb_updated_implies_u_step(snap, &ghost_tables);
+    kernel_cpu_set_lock_mode_changed_implies_u_step(&ghost_tables, pre, container_ptr);
     kernel_thread_syscall_progress_changed_implies_u_step(pre, post, thread_ptr);
-    thread_exit_flushed_step_from_u(kernel_k_to_kernel_u(*pre), kernel_k_to_kernel_u(*post), cpu_id, thread_ptr);
+    thread_exit_flush_step_pre_from_k(pre, lctx, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, pcid);
+    assert(thread_exit_flush_step_pre(kernel_k_to_kernel_u(*snap), cpu_id)) by { reveal(thread_exit_flush_step_pre); reveal(thread_exit_reclaim_step_pre); };
+    thread_exit_flushed_step_from_u(kernel_k_to_kernel_u(*snap), kernel_k_to_kernel_u(*post), cpu_id, thread_ptr, container_ptr, cpu_set_lock);
 }
 
 /// A state holding the cpu, `container_ptr`, `process_ptr` with its page table `pagetable`, and the running `thread_ptr`
@@ -865,7 +890,8 @@ pub(super) proof fn thread_exit_trace_from_tlb_flush(
         entry.process_map[process_ptr].pcid == pcid,
         forall|j: int| #![trigger steps.view()[j]] before.len() <= j < steps.view().len() ==> {
             let old_u = steps.view()[j].old_u;
-            &&& kernel_u_cpu_tlb_cleared(old_u, steps.view()[j].new_u, pcid)
+            let locked = KernelU { container_map: old_u.container_map.insert(container_ptr, ContainerU { cpu_set_lock: LockStateU::ReadLocked, ..old_u.container_map[container_ptr] }), ..old_u };
+            &&& steps.view()[j].new_u == locked || kernel_u_cpu_tlb_cleared(locked, steps.view()[j].new_u, pcid)
             &&& old_u.cpu_array[cpu_id as int].lock_state is WriteLocked
             &&& old_u.cpu_array[cpu_id as int].current_thread == Some(thread_ptr)
             &&& old_u.thread_map.dom().contains(thread_ptr)
@@ -881,7 +907,7 @@ pub(super) proof fn thread_exit_trace_from_tlb_flush(
     ensures
         thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id),
 {
-    reveal(thread_exit_partial_trace); reveal(thread_exit_flush_step_pre); reveal(thread_exit_reclaim_step_pre);
+    reveal(thread_exit_partial_trace); reveal(thread_exit_flush_step_pre); reveal(thread_exit_reclaim_step_pre); reveal(thread_exit_tlb_flush_step);
     let trace = steps.view().subrange(start, steps.view().len() as int);
     let old_trace = before.subrange(start, before.len() as int);
     assert forall|j: int| #![trigger trace[j]] 0 < j < trace.len() implies thread_exit_middle_step(trace[j], cpu_id) by {

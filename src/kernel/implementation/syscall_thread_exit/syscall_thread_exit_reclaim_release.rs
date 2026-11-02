@@ -189,6 +189,7 @@ pub(super) fn thread_exit_reclaim_flush(
             thread_exit_trace_from_tlb_flush(&*steps, flush_before, start, pre, kernel_k_to_kernel_u(entry_flush_k), cpu_id, thread_ptr, process_ptr, container_ptr, pcid);
         };
     }
+    let ghost flush_snap = steps.snapshot_k();
     let ghost flush_k = *krnl;
     let ghost flush_lctx = *lctx;
     proof { assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable).mapping_4k() == whole_pagetable(old(krnl).pt_mp, old(krnl).pt_lower.view(), pagetable).mapping_4k()); }
@@ -196,11 +197,10 @@ pub(super) fn thread_exit_reclaim_flush(
     proof {
         let flushed_before = steps.view();
         let flushed_k = *krnl;
-        enter_kernel_view_release_preserving_lock_alignments(&*krnl, &mut *lctx);
         krnl.kernel_step_boundary_thread_syscall_progress_changed(&mut *lctx, &mut *steps, thread_ptr);
         assert(thread_exit_partial_trace(steps.view().subrange(start, steps.view().len() as int), pre, cpu_id)) by {
-            thread_exit_flush_recorded_implies_flushed_step(&flush_k, &flush_lctx, &flushed_k, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, pcid);
-            thread_exit_trace_push(&*steps, flushed_before, start, pre, kernel_k_to_kernel_u(flush_k), kernel_k_to_kernel_u(flushed_k), cpu_id);
+            thread_exit_flush_recorded_implies_flushed_step(&flush_snap, &flush_k, &flush_lctx, &flushed_k, cpu_id, container_ptr, process_ptr, thread_ptr, pagetable, pcid);
+            thread_exit_trace_push(&*steps, flushed_before, start, pre, kernel_k_to_kernel_u(flush_snap), kernel_k_to_kernel_u(flushed_k), cpu_id);
         };
         assert(whole_pagetable(krnl.pt_mp, krnl.pt_lower.view(), pagetable) == whole_pagetable(flush_k.pt_mp, flush_k.pt_lower.view(), pagetable)) by {
             old(krnl).pt_mp.typed_lock_map_aligned_write_at(old(lctx).pagetable_lock_map(), old(lctx).thread_id(), pagetable);
