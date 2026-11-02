@@ -2,10 +2,12 @@ use vstd::prelude::*;
 use crate::*;
 use vstd::simple_pptr::*;
 verus! {
+/// `line_pad` makes the quota's lock cell exactly one 64-byte cache line (layout asserts after `PageAllocator`).
 pub struct AllocatorQuota<const SIZE: usize> {
     pub value: usize,
     pub minor: Ghost<usize>,
     pub container_depth: usize,
+    pub line_pad: [usize; 5],
 }
 
 impl<const SIZE: usize> LockInvTrait for AllocatorQuota<SIZE> {

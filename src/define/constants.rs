@@ -48,7 +48,7 @@ pub const PT_TYPE: PTType = true;
 pub const IOMMU_TYPE: PTType = false;
 
 pub const ALLOCATOR_MIN_WATERMARK: usize = 0;
-pub const ALLOCATOR_MAX_WATERMARK: usize = 256;
+pub const ALLOCATOR_MAX_WATERMARK: usize = 4096;
 pub const ALLOCATOR_BATCH: usize = 64;
 
 pub const NO_KILL_STATE: bool = false;

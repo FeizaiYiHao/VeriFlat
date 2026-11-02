@@ -2,8 +2,10 @@ use vstd::prelude::*;
 use crate::*;
 use vstd::simple_pptr::*;
 verus! {
+/// `line_pad` makes the cache's lock cell exactly one 64-byte cache line (layout asserts after `PageAllocator`).
 pub struct AllocatorCache<const SIZE: usize> {
     pub linked_list: LinkedList<PagePtr, 233>,
+    pub line_pad: [usize; 2],
 }
 
 impl<const SIZE: usize> LockOwnerIdTrait for AllocatorCache<SIZE> {

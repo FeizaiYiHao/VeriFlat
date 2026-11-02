@@ -4,7 +4,10 @@ use crate::*;
 use vstd::simple_pptr::*;
 
 verus! {
+/// Cache-line aligned with its lock cells in declaration order, so every cpu's cache lock, the global pool lock, and the
+/// quota lock each sit alone in one cache line of the allocator's page.
 #[verifier::reject_recursive_types(SIZE)]
+#[repr(C, align(64))]
 pub struct PageAllocator<const SIZE: usize> {
     pub cpu_caches: LockedArray<AllocatorCache<SIZE>, (), (), NUM_CPUS, NO_KILL_STATE>,
     pub global_pool: LockCell<GlobalPool<SIZE>, (), (), NO_KILL_STATE>,
@@ -62,14 +65,14 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
                 forall|i: int| #![trigger cache_array.view().spec_index(i)] 0 <= i < cpu_id ==> cache_array.view().spec_index(i).view().linked_list.view().len() == 0,
             decreases NUM_CPUS - cpu_id,
         {
-            let cache = AllocatorCache { linked_list: LinkedList::new(Some(container_depth), Some(cpu_id)) };
+            let cache = AllocatorCache { linked_list: LinkedList::new(Some(container_depth), Some(cpu_id)), line_pad: [0usize; 2] };
             cache_array.set(cpu_id, LockCell::new_unlocked(cache, (), Ghost(())));
             cpu_id = cpu_id + 1;
         }
         let total_free_pages = linked_list.length;
         let cpu_caches = LockedArray::from_array(cache_array);
-        let global_pool = LockCell::new_unlocked(GlobalPool { linked_list }, (), Ghost(()));
-        let quota = LockCell::new_unlocked(AllocatorQuota { value: quota_value, minor: Ghost(owning_container), container_depth }, (), Ghost(()));
+        let global_pool = LockCell::new_unlocked(GlobalPool { linked_list, line_pad: [0usize; 2] }, (), Ghost(()));
+        let quota = LockCell::new_unlocked(AllocatorQuota { value: quota_value, minor: Ghost(owning_container), container_depth, line_pad: [0usize; 5] }, (), Ghost(()));
         let ret = Self { cpu_caches, global_pool, quota, total_free_pages: Ghost(total_free_pages), owning_container };
         proof { lemma_cache_len_fold_all_zero(ret.cpu_caches.view()); ret.global_pool.view().wf_implies_view_len_eq_len(); }
         ret
@@ -111,13 +114,13 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
                     0 <= i < cpu_id ==> cache_array.view().spec_index(i).view().linked_list.view().len() == 0,
             decreases NUM_CPUS - cpu_id,
         {
-            let cache = AllocatorCache { linked_list: LinkedList::new(Some(container_depth), Some(cpu_id)) };
+            let cache = AllocatorCache { linked_list: LinkedList::new(Some(container_depth), Some(cpu_id)), line_pad: [0usize; 2] };
             cache_array.set(cpu_id, LockCell::new_unlocked(cache, (), Ghost(())));
             cpu_id = cpu_id + 1;
         }
         let cpu_caches = LockedArray::from_array(cache_array);
-        let global_pool = LockCell::new_unlocked(GlobalPool { linked_list: LinkedList::new(Some(container_depth), Some(owning_container)) }, (), Ghost(()));
-        let quota = LockCell::new_unlocked(AllocatorQuota { value: 0, minor: Ghost(owning_container), container_depth }, (), Ghost(()));
+        let global_pool = LockCell::new_unlocked(GlobalPool { linked_list: LinkedList::new(Some(container_depth), Some(owning_container)), line_pad: [0usize; 2] }, (), Ghost(()));
+        let quota = LockCell::new_unlocked(AllocatorQuota { value: 0, minor: Ghost(owning_container), container_depth, line_pad: [0usize; 5] }, (), Ghost(()));
         let ret = Self { cpu_caches, global_pool, quota, total_free_pages: Ghost(0), owning_container };
         proof { lemma_cache_len_fold_all_zero(ret.cpu_caches.view()); }
         ret
@@ -505,3 +508,13 @@ impl<const SIZE: usize> PageAllocator<SIZE> {
 }
 
 const ASSERT_PAGE_ALLOCATOR_FITS_4K: [(); 1] = [(); (core::mem::size_of::<PageAllocator<ALLOCATOR_SIZE_4K>>() <= PAGE_SZ_4K) as usize];
+
+// Layout contract: the allocator starts a 4K page, every lock cell is exactly one cache line, and each starts on a line
+// boundary, so one cpu's cache operations never share a line with another cpu's cache lock or the pool and quota locks.
+const _: () = assert!(core::mem::size_of::<LockCell<AllocatorCache<ALLOCATOR_SIZE_4K>, (), (), NO_KILL_STATE>>() == 64);
+const _: () = assert!(core::mem::size_of::<LockCell<GlobalPool<ALLOCATOR_SIZE_4K>, (), (), NO_KILL_STATE>>() == 64);
+const _: () = assert!(core::mem::size_of::<LockCell<AllocatorQuota<ALLOCATOR_SIZE_4K>, (), (), NO_KILL_STATE>>() == 64);
+const _: () = assert!(core::mem::align_of::<PageAllocator<ALLOCATOR_SIZE_4K>>() == 64);
+const _: () = assert!(core::mem::offset_of!(PageAllocator<ALLOCATOR_SIZE_4K>, cpu_caches.storage.ar) == 0);
+const _: () = assert!(core::mem::offset_of!(PageAllocator<ALLOCATOR_SIZE_4K>, global_pool) % 64 == 0);
+const _: () = assert!(core::mem::offset_of!(PageAllocator<ALLOCATOR_SIZE_4K>, quota) % 64 == 0);

@@ -73,11 +73,11 @@ condition is the call timing's, but a mode below 0.50 is only logged as an error
 
 | mode (line prefix) | workers | region of worker k |
 | --- | --- | --- |
-| `parallel_mmap_same` | threads of dom0, map+unmap | one page in its own 2M window at `0xc0_8000_0000 + k * 2M` (8 workers' L2 entries per cache line) |
-| `parallel_mmap_only_same` | threads of dom0, mmap-only | 2048 pages (four 2M windows) at `0xc0_c000_0000 + k * 8M` |
+| `parallel_mmap_same` | threads of dom0, map+unmap | one page in its own 2M window at `0xc0_8000_0000 + k * 16M` (each worker's L2 entry in its own cache line) |
+| `parallel_mmap_only_same` | threads of dom0, mmap-only | 2048 pages (four 2M windows) at `0xc0_c000_0000 + k * 16M` |
 | `parallel_mmap_xproc` | the first thread of one child process per worker (sharing dom0's image, own page table and PCID, same container), map+unmap | as `parallel_mmap_same`, in its own address space |
 | `parallel_mmap_only_xproc` | the same children, mmap-only | as `parallel_mmap_only_same` |
-| `parallel_mmap_cached_xproc` | the same children, mmap-only with a 128-page region | after the first region unmap its pages stay in the per-CPU page cache (it drains to the global pool only at 256 pages), so no round touches the global pool; a diagnostic of the pool's cost |
+| `parallel_mmap_cached_xproc` | the same children, mmap-only with a 128-page region | after the first region unmap its pages stay in the per-CPU page cache (it drains to the global pool only at 4096 pages), so no round touches the global pool; a diagnostic of the pool's cost |
 
 Lines: `<prefix> cpu=k alone=A conc=C ratio=R` and `<prefix> summary ...` as for the parallel call
 timing, now in cycles per round; `parallel_mmap_xproc funding` as `parallel_call_xproc funding` (the

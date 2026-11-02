@@ -946,18 +946,20 @@ fn kill_pair_children(m: usize) {
 
 /// The parallel mmap timing's regions. In the map+unmap modes worker k maps, touches, and unmaps one 4K
 /// page at `PAR_MMAP_VA + k * PAR_MMAP_STRIDE`, alone in its 2M window (its own L2 entry and L1 table);
-/// the windows of neighbouring workers are adjacent, so the L2 entries of eight workers share a cache line.
+/// the windows of neighbouring workers are 16M apart, so each worker's L2 entry has its own cache line.
 const PAR_MMAP_VA: usize = 0xc0_8000_0000;
-const PAR_MMAP_STRIDE: usize = 1 << 21;
+const PAR_MMAP_STRIDE: usize = 1 << 24;
 /// In the mmap-only modes worker k maps and touches a fresh 4K page each round, upwards from
-/// `PAR_ONLY_VA + k * PAR_ONLY_PAGES * 4096` (four 2M windows), and unmaps the whole region, untimed,
-/// once it is full or the container runs out of quota.
+/// `PAR_ONLY_VA + k * PAR_ONLY_STRIDE` (four 2M windows, their L2 entries in a cache line of their own),
+/// and unmaps the whole region, untimed, once it is full or the container runs out of quota.
 const PAR_ONLY_VA: usize = 0xc0_c000_0000;
+const PAR_ONLY_STRIDE: usize = 1 << 24;
 const PAR_ONLY_PAGES: usize = 2048;
 /// The cross-process cached mode is the mmap-only mode with a region small enough that, after the first
 /// region unmap, the pages it maps and unmaps stay in the per-CPU page cache: the cache gives pages to the
-/// global pool only once it holds `ALLOCATOR_MAX_WATERMARK` (256) and takes them from it only when empty,
-/// so a region of this size never touches the global pool, which the mmap-only mode visits every 64 pages.
+/// global pool only once it holds `ALLOCATOR_MAX_WATERMARK` (4096) and takes them from it only when empty,
+/// so a region of this size never touches the global pool, which the mmap-only mode visits every 64 pages
+/// until its first region unmap.
 const PAR_CACHED_PAGES: usize = 128;
 /// 4K quota a worker moves to its thread at a time, untimed.
 const PAR_FUND: usize = 512;
@@ -1048,7 +1050,7 @@ fn time_mmap(k: usize, phase: usize) {
         PHASE_MMAP_ALONE | PHASE_MMAP_ONLY_ALONE | PHASE_MMAP_XPROC_ALONE | PHASE_MMAP_ONLY_XPROC_ALONE | PHASE_MMAP_CACHED_XPROC_ALONE
     );
     let region = if matches!(phase, PHASE_MMAP_CACHED_XPROC_ALONE | PHASE_MMAP_CACHED_XPROC_CONCURRENT) { PAR_CACHED_PAGES } else { PAR_ONLY_PAGES };
-    let base = if unmaps { PAR_MMAP_VA + k * PAR_MMAP_STRIDE } else { PAR_ONLY_VA + k * PAR_ONLY_PAGES * 4096 };
+    let base = if unmaps { PAR_MMAP_VA + k * PAR_MMAP_STRIDE } else { PAR_ONLY_VA + k * PAR_ONLY_STRIDE };
     let quota = PAR_QUOTA[k].load(Ordering::SeqCst);
     let mut worker = MmapWorker { base, region, unmaps, mapped: 0, quota, untimed: 0, short: 0 };
     // Only alone: the phase at once follows the same worker's alone phase in the same region.
