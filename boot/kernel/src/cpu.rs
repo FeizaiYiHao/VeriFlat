@@ -40,8 +40,23 @@ const NEW_CPU: Cpu = Cpu::new();
 /// Per-processor data.
 static mut CPUS: [Cpu; MAX_CPUS] = [NEW_CPU; MAX_CPUS];
 
-/// Per-processor kernel stacks.
-static mut KERNEL_STACKS: [Stack<KERNEL_STACK_SIZE>; MAX_CPUS] = [const { Stack::new() }; MAX_CPUS];
+/// In-page offset of every kernel stack top. Pinned so the 168-byte trap-frame slot below the top stays inside
+/// one 4K page and on 3 cache lines. Measured 2026-11-02 (KVM, SMP 8): tops at 0x1b0, 0x200 and 0x400 run the
+/// call path at baseline; 0x0a0 (slot across a page boundary, on 4 lines) and 0x000 cost 55 to 115 cycles per call.
+const KERNEL_STACK_TOP_PAGE_OFFSET: usize = 0x200;
+
+const _: () = assert!(KERNEL_STACK_SIZE % 4096 == 0);
+
+/// Per-processor kernel stacks: page aligned, with `lead` in front so every stack top lies at
+/// `KERNEL_STACK_TOP_PAGE_OFFSET` in its page.
+#[repr(C, align(4096))]
+struct KernelStacks {
+    lead: [u8; KERNEL_STACK_TOP_PAGE_OFFSET],
+    stacks: [Stack<KERNEL_STACK_SIZE>; MAX_CPUS],
+}
+
+static mut KERNEL_STACKS: KernelStacks =
+    KernelStacks { lead: [0; KERNEL_STACK_TOP_PAGE_OFFSET], stacks: [const { Stack::new() }; MAX_CPUS] };
 
 /// Local APIC ID of each CPU ID, written by the BSP before it starts the APs.
 static APIC_IDS: [AtomicU32; MAX_CPUS] = [const { AtomicU32::new(0) }; MAX_CPUS];
@@ -120,6 +135,9 @@ pub struct Cpu {
     pub sysret_exits: u64,
     pub iret_exits: u64,
 
+    /// Remote flushes this CPU requested (`platform::veriflat_remote_flush_pcid`).
+    pub remote_flushes: u64,
+
     /// State for the xAPIC driver.
     pub xapic: MaybeUninit<XAPIC>,
 
@@ -170,6 +188,7 @@ impl Cpu {
             wake_seen: AtomicBool::new(false),
             sysret_exits: 0,
             iret_exits: 0,
+            remote_flushes: 0,
             xapic: MaybeUninit::uninit(),
             gdt: GlobalDescriptorTable::empty(),
             tss: {
@@ -211,7 +230,7 @@ pub fn top_frame() -> *mut veriflat_monolith::Registers {
 /// The stack pointer an AP boots with and a CPU forced to idle restarts with: below the trap-frame
 /// slot of its kernel stack.
 pub fn idle_stack(cpu_id: usize) -> u64 {
-    unsafe { (*(&raw const KERNEL_STACKS))[cpu_id].bottom() as u64 - FRAME_SLOT_RESERVE as u64 }
+    unsafe { (*(&raw const KERNEL_STACKS)).stacks[cpu_id].bottom() as u64 - FRAME_SLOT_RESERVE as u64 }
 }
 
 pub fn set_apic_id(cpu_id: usize, apic_id: u32) {
@@ -270,9 +289,20 @@ pub fn restore_frame_exits() -> (u64, u64) {
     })
 }
 
+/// Counts one remote flush request of the current CPU. Only this CPU writes its count.
+pub fn count_remote_flush() {
+    unsafe { asm!("inc qword ptr gs:[{offset}]", offset = const offset_of!(Cpu, remote_flushes), options(nostack)) };
+}
+
+/// Remote flushes requested by all CPUs so far.
+pub fn remote_flushes() -> u64 {
+    let cpus = unsafe { &*(&raw const CPUS) };
+    cpus[..present_cpus()].iter().map(|cpu| unsafe { ptr::read_volatile(&cpu.remote_flushes) }).sum()
+}
+
 /// Kernel stack bytes ever used on `cpu_id`.
 pub fn kernel_stack_high_water(cpu_id: usize) -> usize {
-    unsafe { (*(&raw const KERNEL_STACKS))[cpu_id].high_water() }
+    unsafe { (*(&raw const KERNEL_STACKS)).stacks[cpu_id].high_water() }
 }
 
 /// Initialize the CPU-local data structure.
@@ -285,7 +315,7 @@ pub unsafe fn init_cpu(cpu_id: usize) {
 
     cpu.self_ptr = address;
     cpu.id = cpu_id;
-    cpu.syscall_sp = (*(&raw const KERNEL_STACKS))[cpu_id].bottom() as u64;
+    cpu.syscall_sp = (*(&raw const KERNEL_STACKS)).stacks[cpu_id].bottom() as u64;
 
     // In the kernel the GS base is this CPU's `Cpu` and IA32_KERNEL_GSBASE holds the user's (0);
     // `swapgs` at every ring 3 crossing exchanges them, so user loads of `gs` cannot reach the kernel.

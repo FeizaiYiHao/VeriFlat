@@ -14,20 +14,43 @@ const CR4_PGE: u64 = 1 << 7;
 /// `INVPCID` type 1: invalidate every non-global translation of one PCID.
 const INVPCID_SINGLE_CONTEXT: u64 = 1;
 
+/// An `AtomicUsize` alone in its 64-byte cache line: arrays of them start on a line boundary and give every
+/// element its own line, so CPUs writing different slots or counters never share a line.
+#[repr(align(64))]
+pub struct LineWord(AtomicUsize);
+
+const _: () = assert!(core::mem::size_of::<LineWord>() == 64);
+
+impl LineWord {
+    const fn new() -> Self {
+        Self(AtomicUsize::new(0))
+    }
+}
+
+impl core::ops::Deref for LineWord {
+    type Target = AtomicUsize;
+
+    fn deref(&self) -> &AtomicUsize {
+        &self.0
+    }
+}
+
 /// `FLUSH_REQUESTS[target][sender]` is `pcid + 1` while `sender` waits for `target` to flush `pcid`.
 /// One slot per sender needs no lock, and an NMI handler that scans every slot also serves an NMI
 /// that arrived while another one was pending.
-static FLUSH_REQUESTS: [[AtomicUsize; MAX_CPUS]; MAX_CPUS] = [const { [const { AtomicUsize::new(0) }; MAX_CPUS] }; MAX_CPUS];
+static FLUSH_REQUESTS: [[LineWord; MAX_CPUS]; MAX_CPUS] = [const { [const { LineWord::new() }; MAX_CPUS] }; MAX_CPUS];
 
 /// `RUNNING_TO_IDLE_REQUESTS[target]` is the default `cr3` while the caller of
 /// `veriflat_ipi_running_to_idle` waits for `target` to load it, else 0. Only the holder of
 /// `target`'s CPU lock sends it the running-to-idle IPI, so one slot per target suffices.
-static RUNNING_TO_IDLE_REQUESTS: [AtomicUsize; MAX_CPUS] = [const { AtomicUsize::new(0) }; MAX_CPUS];
+static RUNNING_TO_IDLE_REQUESTS: [LineWord; MAX_CPUS] = [const { LineWord::new() }; MAX_CPUS];
 
-pub static REMOTE_FLUSHES: AtomicUsize = AtomicUsize::new(0);
-pub static NMI_FLUSHES: AtomicUsize = AtomicUsize::new(0);
-pub static REMOTE_RUNNING_TO_IDLE_IPIS: AtomicUsize = AtomicUsize::new(0);
-pub static WAKE_IPIS: AtomicUsize = AtomicUsize::new(0);
+/// `NMI_FLUSHES[target]` counts the flush requests `target`'s NMI handler served; only that handler writes it.
+/// The requests a CPU sent are counted in its own `Cpu::remote_flushes`.
+static NMI_FLUSHES: [LineWord; MAX_CPUS] = [const { LineWord::new() }; MAX_CPUS];
+
+pub static REMOTE_RUNNING_TO_IDLE_IPIS: LineWord = LineWord::new();
+pub static WAKE_IPIS: LineWord = LineWord::new();
 
 /// Whether this CPU implements `INVPCID` (CPUID.07H:EBX[10]).
 pub fn has_invpcid() -> bool {
@@ -60,7 +83,7 @@ pub extern "C" fn veriflat_remote_flush_pcid(cpu_id: usize, pcid: usize) {
     if !cpu::is_started(cpu_id) {
         return;
     }
-    REMOTE_FLUSHES.fetch_add(1, Ordering::Relaxed);
+    cpu::count_remote_flush();
     let slot = &FLUSH_REQUESTS[cpu_id][cpu::get_cpu_id()];
     slot.store(pcid + 1, Ordering::Release);
     interrupt::send_nmi(cpu::apic_id(cpu_id));
@@ -115,14 +138,21 @@ pub fn handle_running_to_idle_ipi(_regs: &Registers) {
 /// (see `wrap_nmi`), so it uses `cpu_id_without_gs`. Must not log or lock.
 pub fn handle_nmi(_regs: &mut Registers) {
     let me = cpu::cpu_id_without_gs();
+    let served = &NMI_FLUSHES[me];
     for slot in FLUSH_REQUESTS[me].iter() {
         let request = slot.load(Ordering::Acquire);
         if request != 0 {
             invpcid_single_context(request - 1);
-            NMI_FLUSHES.fetch_add(1, Ordering::Relaxed);
+            // Only this CPU's NMI handler writes its count, and NMIs do not nest: no locked add needed.
+            served.store(served.load(Ordering::Relaxed) + 1, Ordering::Relaxed);
             slot.store(0, Ordering::Release);
         }
     }
+}
+
+/// Flush requests served by the NMI handlers of all CPUs so far.
+pub fn nmi_flushes() -> usize {
+    NMI_FLUSHES.iter().map(|served| served.load(Ordering::Relaxed)).sum()
 }
 
 /// Sends the wake-up IPI to `target`. A CPU that does not exist has nothing to wake.
