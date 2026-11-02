@@ -7,7 +7,7 @@ verus! {
 /// address, reached only through that address; this value holds the lock's points-to token and no runtime bytes.
 #[verifier::reject_recursive_types(T)]
 pub struct TokenLock<T, ROT, GhostT, const HAS_KILL_STATE: bool> {
-    perm: Tracked<PointsTo<LockCell<T, ROT, GhostT, HAS_KILL_STATE>>>,
+    perm: Tracked<LockObjPerm<T, ROT, GhostT, HAS_KILL_STATE>>,
 }
 
 impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> TokenLock<T, ROT, GhostT, HAS_KILL_STATE> where LockCell<T, ROT, GhostT, HAS_KILL_STATE>: TokenCellBase {
@@ -30,7 +30,7 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool> TokenLock<T, ROT, GhostT, HAS_K
     pub open spec fn being_killed(&self) -> bool { self.lock().being_killed() }
 
     /// Takes the lock at the lock type's `TokenCellBase` address through its points-to token.
-    pub fn from_token(perm: Tracked<PointsTo<LockCell<T, ROT, GhostT, HAS_KILL_STATE>>>) -> (ret: Self)
+    pub fn from_token(perm: Tracked<LockObjPerm<T, ROT, GhostT, HAS_KILL_STATE>>) -> (ret: Self)
         requires
             perm@.is_init(),
             perm@.addr() == LockCell::<T, ROT, GhostT, HAS_KILL_STATE>::cell_base_spec(),

@@ -46,7 +46,7 @@ verus! {
     /// reached only through raw addresses; the array holds one points-to token per cell and no runtime bytes.
     #[verifier::reject_recursive_types(T)]
     pub struct TokenCells<T, ROT, GhostT, const N: usize, const HAS_KILL_STATE: bool> {
-        pub perms: Tracked<Map<int, PointsTo<LockCell<T, ROT, GhostT, HAS_KILL_STATE>>>>,
+        pub perms: Tracked<Map<int, LockObjPerm<T, ROT, GhostT, HAS_KILL_STATE>>>,
     }
 
     impl<T, ROT, GhostT, const N: usize, const HAS_KILL_STATE: bool> LockStorage<T, ROT, GhostT, N, HAS_KILL_STATE> for TokenCells<T, ROT, GhostT, N, HAS_KILL_STATE>

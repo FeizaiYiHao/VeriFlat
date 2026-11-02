@@ -1,4 +1,5 @@
 use vstd::prelude::*;
+use vstd::simple_pptr::*;
 use crate::{define::*};
 use crate::locks::*;
 
@@ -58,6 +59,9 @@ pub struct LockCell<T, ROT, GhostT, const HAS_KILL_STATE: bool, I = SpinWord> {
     is_init: Ghost<bool>,
     locking_thread: Ghost<RwLockState>,
 }
+
+/// Tracked token of one lock cell: `addr()`, `is_init()`, `value()`; `value()` is exact only while this CPU holds the lock, otherwise the snapshot from the last step boundary.
+pub type LockObjPerm<T, ROT, GhostT, const HAS_KILL_STATE: bool, I = SpinWord> = PointsTo<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>;
 
 impl<T, ROT, GhostT, const HAS_KILL_STATE: bool, I: SpinLockInner> LockCell<T, ROT, GhostT, HAS_KILL_STATE, I> {
     pub fn new_unlocked(value: T, read_only_value: ROT, Ghost(ghost_value): Ghost<GhostT>) -> (ret: Self)

@@ -33,7 +33,7 @@ impl TokenCellBase for LockCell<IommuRootTable, (), (), NO_KILL_STATE> {
 
 /// TCB: write `lock` into the root-table lock cell and mint the cell's points-to token; init only, once.
 #[verifier::external_body]
-pub(crate) fn irt_cell_init(lock: LockCell<IommuRootTable, (), (), NO_KILL_STATE>) -> (ret: Tracked<PointsTo<LockCell<IommuRootTable, (), (), NO_KILL_STATE>>>)
+pub(crate) fn irt_cell_init(lock: LockCell<IommuRootTable, (), (), NO_KILL_STATE>) -> (ret: Tracked<LockObjPerm<IommuRootTable, (), (), NO_KILL_STATE>>)
     ensures
         ret.view().addr() == irt_cell_base_spec(),
         ret.view().is_init(),

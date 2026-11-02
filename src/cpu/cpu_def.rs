@@ -147,7 +147,7 @@ impl Cpu {
                     &&& ret.spec_index(cpu_id).view().view().view().current_pcid == KERNEL_DEFAULT_PCID
                 },
     {
-        let tracked mut perms = Map::<int, PointsTo<LockCell<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>>>::tracked_empty();
+        let tracked mut perms = Map::<int, LockObjPerm<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>>::tracked_empty();
         let mut cpu_id = 0;
         while cpu_id < NUM_CPUS
             invariant

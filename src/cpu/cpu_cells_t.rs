@@ -37,7 +37,7 @@ impl TokenCellBase for LockCell<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE> {
 
 /// TCB: write `lock` into cpu lock cell `i` and mint the cell's points-to token; init only, once per cell.
 #[verifier::external_body]
-pub(crate) fn cpu_cell_init(i: usize, lock: LockCell<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>) -> (ret: Tracked<PointsTo<LockCell<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>>>)
+pub(crate) fn cpu_cell_init(i: usize, lock: LockCell<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>) -> (ret: Tracked<LockObjPerm<Cpu, (), Option<CpuId>, CPU_HAS_KILL_STATE>>)
     requires
         i < NUM_CPUS,
     ensures

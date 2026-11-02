@@ -17,7 +17,7 @@ use vstd::simple_pptr::*;
 #[verifier::external_body]
 pub fn retype_page_perm_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: bool, I: SpinLockInner>(
     page_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm4k>, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>,
-) -> (ret: (Tracked<PointsTo<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>>, Tracked<LockPerm>))
+) -> (ret: (Tracked<LockObjPerm<T, ROT, GhostT, HAS_KILL_STATE, I>>, Tracked<LockPerm>))
     requires
         !(rodata.container_source() is Dynamic),
         !(rodata.process_source() is Dynamic),
@@ -93,7 +93,7 @@ pub fn retype_thread_rwlock_to_4k_page_perm(
 fn retype_page_perm_2m_to_rwlock<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait, GhostT, const HAS_KILL_STATE: bool, I: SpinLockInner>(
     page_ptr: PagePtr, value: T, rodata: ROT, Ghost(ghost): Ghost<GhostT>, Tracked(page_perm): Tracked<PagePerm2m>, Tracked(lctx): Tracked<&mut LocalContext>, obj_id: Ghost<KernelObjId>,
     control: LockControl,
-) -> (ret: (Tracked<PointsTo<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>>, Tracked<LockPerm>))
+) -> (ret: (Tracked<LockObjPerm<T, ROT, GhostT, HAS_KILL_STATE, I>>, Tracked<LockPerm>))
     requires
         !(rodata.container_source() is Dynamic),
         (rodata.process_source() is Dynamic) == (control is DynamicProcess),

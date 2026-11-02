@@ -7,7 +7,7 @@ verus! {
 #[verifier::reject_recursive_types(K)]
 #[verifier::reject_recursive_types(T)]
 pub struct LockedMap<K, T, ROT, GhostT, const HAS_KILL_STATE: bool, I = SpinWord> {
-    map: Tracked<Map<K, PointsTo<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>>>,
+    map: Tracked<Map<K, LockObjPerm<T, ROT, GhostT, HAS_KILL_STATE, I>>>,
     map_u: Ghost<Map<K, LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>>,
 }
 
@@ -17,10 +17,10 @@ impl<T, ROT, GhostT, const HAS_KILL_STATE: bool, I> LockedMap<usize, T, ROT, Gho
             ret.perms_wf(),
             ret.dom() =~= Set::<usize>::empty(),
     {
-        Self { map: Tracked(Map::<usize, PointsTo<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>>::tracked_empty()), map_u: Ghost(Map::<usize, LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>::empty()) }
+        Self { map: Tracked(Map::<usize, LockObjPerm<T, ROT, GhostT, HAS_KILL_STATE, I>>::tracked_empty()), map_u: Ghost(Map::<usize, LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>::empty()) }
     }
 
-    pub closed spec fn view(&self) -> Map<usize, PointsTo<LockCell<T, ROT, GhostT, HAS_KILL_STATE, I>>> { self.map.view() }
+    pub closed spec fn view(&self) -> Map<usize, LockObjPerm<T, ROT, GhostT, HAS_KILL_STATE, I>> { self.map.view() }
     pub open spec fn dom(&self) -> Set<usize> { self.view().dom() }
     pub open spec fn perms_wf(&self) -> bool {
         &&& forall|k: usize|
@@ -315,11 +315,11 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
         self.view().spec_index(key).lock_id()
     }
     /// Insert an already-initialized, already-locked entry into the map.
-    /// The caller provides the `PointsTo<LockCell<T>>` (from a retype operation)
+    /// The caller provides the `LockObjPerm<T>` (from a retype operation)
     /// and the entry is already write-locked; read-only and ghost witnesses are
     /// projected from that permission. No lctx registration is done here (the
     /// caller handles lock registration via the retype primitive).
-    pub fn insert_with_perm(&mut self, key: usize, Tracked(perm): Tracked<PointsTo<LockCell<T, ROT, GhostT, KILL_STATE, I>>>)
+    pub fn insert_with_perm(&mut self, key: usize, Tracked(perm): Tracked<LockObjPerm<T, ROT, GhostT, KILL_STATE, I>>)
         requires
             old(self).dom().contains(key) == false,
             perm.is_init(),
@@ -348,7 +348,7 @@ impl<T: LockInvTrait + LockMajorTrait + LockOwnerIdTrait, ROT: LockOwnerIdTrait,
 
     /// Remove an entry together with its permission so that the caller can retire the object.
     /// No lctx change is done here (the caller handles lock retirement via the retire primitive).
-    pub fn remove_with_perm(&mut self, key: usize) -> (ret: Tracked<PointsTo<LockCell<T, ROT, GhostT, KILL_STATE, I>>>)
+    pub fn remove_with_perm(&mut self, key: usize) -> (ret: Tracked<LockObjPerm<T, ROT, GhostT, KILL_STATE, I>>)
         requires
             old(self).dom().contains(key),
         ensures

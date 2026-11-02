@@ -50,7 +50,7 @@ pub fn retype_process_rwlock_to_4k_page_perm(
 /// no other thread can reach or wait on these locks. The held locks disappear from `lctx` with the objects.
 #[verifier::external_body]
 pub fn retype_container_rwlock_to_2m_page_perm(
-    container_ptr: RwLockContainerPtr, Tracked(container_perm): Tracked<PointsTo<LockCell<Container, ReadOnlyNode<ContainerRO>, ContainerGhost, CONTAINER_HAS_KILL_STATE>>>,
+    container_ptr: RwLockContainerPtr, Tracked(container_perm): Tracked<LockObjPerm<Container, ReadOnlyNode<ContainerRO>, ContainerGhost, CONTAINER_HAS_KILL_STATE>>,
     Tracked(flags_perm): Tracked<PointsTo<CpuOfflineFlags>>, Tracked(parent_node_perm): Tracked<PointsTo<Node<RwLockContainerPtr>>>, Tracked(lock_perm): Tracked<LockPerm>,
     Tracked(flag_lock_perms): Tracked<Map<CpuId, LockPerm>>, Tracked(lctx): Tracked<&mut LocalContext>,
 ) -> (ret: Tracked<PagePerm2m>)
@@ -112,7 +112,7 @@ pub fn retype_container_rwlock_to_2m_page_perm(
 /// lock disappears from `lctx` with the object.
 #[verifier::external_body]
 pub fn retype_pcid_allocator_rwlock_to_2m_page_perm(
-    allocator_ptr: RwLockPcidAllocatorPtr, Tracked(allocator_perm): Tracked<PointsTo<LockCell<PcidAllocator, (), (), PCID_ALLOCATOR_HAS_KILL_STATE>>>,
+    allocator_ptr: RwLockPcidAllocatorPtr, Tracked(allocator_perm): Tracked<LockObjPerm<PcidAllocator, (), (), PCID_ALLOCATOR_HAS_KILL_STATE>>,
     Tracked(lock_perm): Tracked<LockPerm>, Tracked(lctx): Tracked<&mut LocalContext>,
 ) -> (ret: Tracked<PagePerm2m>)
     requires
@@ -143,7 +143,7 @@ pub fn retype_pcid_allocator_rwlock_to_2m_page_perm(
 /// disappears from `lctx` with the object.
 #[verifier::external_body]
 pub fn retype_cpu_set_rwlock_to_4k_page_perm(
-    cpu_set_ptr: RwLockCpuSetPtr, Tracked(cpu_set_perm): Tracked<PointsTo<LockCell<CpuSet, (), (), CPU_SET_HAS_KILL_STATE>>>, Tracked(lock_perm): Tracked<LockPerm>,
+    cpu_set_ptr: RwLockCpuSetPtr, Tracked(cpu_set_perm): Tracked<LockObjPerm<CpuSet, (), (), CPU_SET_HAS_KILL_STATE>>, Tracked(lock_perm): Tracked<LockPerm>,
     Tracked(lctx): Tracked<&mut LocalContext>,
 ) -> (ret: Tracked<PagePerm4k>)
     requires

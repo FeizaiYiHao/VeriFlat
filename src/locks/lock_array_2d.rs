@@ -8,12 +8,12 @@ verus! {
 /// `TokenCellBase` address `base`, and the array holds one points-to token per cell and no runtime bytes.
 #[verifier::reject_recursive_types(T)]
 pub struct LockedArray2D<T, ROT, GhostT, const ROWS: usize, const COLS: usize> {
-    perms: Tracked<Map<(usize, usize), PointsTo<LockCell<T, ROT, GhostT, NO_KILL_STATE>>>>,
+    perms: Tracked<Map<(usize, usize), LockObjPerm<T, ROT, GhostT, NO_KILL_STATE>>>,
 }
 
 impl<T, ROT, GhostT, const ROWS: usize, const COLS: usize> LockedArray2D<T, ROT, GhostT, ROWS, COLS> where LockCell<T, ROT, GhostT, NO_KILL_STATE>: TokenCellBase {
     /// `perms` holds exactly one token per in-range cell, each covering an initialized lock at its cell address.
-    pub open spec fn token_cells_wf(perms: Map<(usize, usize), PointsTo<LockCell<T, ROT, GhostT, NO_KILL_STATE>>>) -> bool {
+    pub open spec fn token_cells_wf(perms: Map<(usize, usize), LockObjPerm<T, ROT, GhostT, NO_KILL_STATE>>) -> bool {
         &&& ROWS * COLS <= usize::MAX
         &&& forall|row: usize, col: usize| #![trigger perms.dom().contains((row, col))] perms.dom().contains((row, col)) <==> index_valid(ROWS, row) && index_valid(COLS, col)
         &&& forall|row: usize, col: usize|
@@ -36,7 +36,7 @@ impl<T, ROT, GhostT, const ROWS: usize, const COLS: usize> LockedArray2D<T, ROT,
     }
 
     /// Builds the array over cells that boot initialized in place.
-    pub fn from_token_cells(perms: Tracked<Map<(usize, usize), PointsTo<LockCell<T, ROT, GhostT, NO_KILL_STATE>>>>) -> (ret: Self)
+    pub fn from_token_cells(perms: Tracked<Map<(usize, usize), LockObjPerm<T, ROT, GhostT, NO_KILL_STATE>>>) -> (ret: Self)
         requires
             Self::token_cells_wf(perms@),
         ensures
